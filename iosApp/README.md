@@ -6,12 +6,14 @@ SwiftUI wrapper. The Kotlin/Native framework (`ComposeApp.framework`) is produce
 
 ## Files
 
-- `iosApp/iOSApp.swift` — SwiftUI `@main` entry. Calls `KoinHelperKt.doInitKoin()` before any
-  Compose view mounts.
+- `iosApp/iOSApp.swift` — SwiftUI `@main` entry. Koin bootstraps via
+  `IosKoinKt.bootstrapIosKoin()` (in `:composeApp` iosMain) before any Compose view mounts;
+  `AppDelegate.swift` owns Firebase configure, notifications, and the background-download bridge.
 - `iosApp/ContentView.swift` — Wraps `MainViewControllerKt.MainViewController()` (from the
   `ComposeApp` framework) inside a `UIViewControllerRepresentable`.
-- `iosApp/Info.plist` — Bundle metadata. Bundle version mirrors Android's `versionCode=35`
-  / `versionName=1.0.35`. Includes `NSPhotoLibraryAddUsageDescription` (required by
+- `iosApp/NativeReader/` — the shipping native UIKit reader (see `docs/ENGINEERING_NOTES.md` §3).
+- `iosApp/Info.plist` — Bundle metadata. `CFBundleShortVersionString`/`CFBundleVersion` mirror
+  Android's `1.0.0`. Includes `NSPhotoLibraryAddUsageDescription` (required by
   `ScreenshotProvider.saveBitmapBytesToGallery`) and `NSAppTransportSecurity.NSAllowsArbitraryLoads`
   (manga sources mix HTTP and HTTPS).
 - `project.yml` — [xcodegen](https://github.com/yonaskolb/XcodeGen) project spec. Run `xcodegen`
@@ -67,7 +69,7 @@ pick a simulator or attached device, press **Run**. AS calls the bound Gradle pr
 ```bash
 ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
-  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 15'
+  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 ## What still requires manual work on the Mac
@@ -76,19 +78,16 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
 |---|---|
 | Code-signing identity / provisioning profile | Apple-issued, machine-bound. Set in Xcode → Signing & Capabilities. |
 | Physical-device selection in Run dropdown | Selected per-machine; not persisted in the project file. |
-| App Icon assets (`Assets.xcassets/AppIcon.appiconset`) | Not yet added — currently no icon catalog. Add a `1024×1024` PNG in Xcode's Assets editor. |
-| Firebase iOS SDK / AdMob iOS SDK / Push (APNs) | No-op stubs on iOS today; out of scope for first device test. |
+| `GoogleService-Info.plist` (Firebase — Analytics/Crashlytics/FCM are live on iOS) | Real config is a secret; gitignored. Copy your own next to `Info.plist`; the committed `.example` documents the structure. Release builds also hard-gate on the Crashlytics dSYM upload. |
+| Push delivery (APNs) | Needs owner console steps: Push capability on the App ID + APNs `.p8` uploaded to Firebase. Debug signs with `iosApp-nopush.entitlements` (Personal-team friendly — remote push absent locally by design). |
+| AdMob iOS SDK | Not integrated on iOS (Android-only stack; owner: keep as-is). |
 
-## Verifying from Windows
+## Compile-only verification without Xcode
 
-The Kotlin side cross-compiles to iOS klibs without Xcode. From Windows you can run:
+The Kotlin side cross-compiles to iOS klibs on any host with a JDK:
 
-```powershell
-.\gradlew.bat :composeApp:compileKotlinIosArm64 `
-              :composeApp:compileKotlinIosSimulatorArm64 `
-              :shared:compileKotlinIosArm64 `
-              :shared:compileKotlinIosSimulatorArm64
+```bash
+./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64
 ```
 
-All four compile clean. Framework linking (`linkDebugFrameworkIos*`) and `xcodebuild` require
-macOS + Xcode.
+Framework linking (`linkDebugFrameworkIos*`) and `xcodebuild` require macOS + Xcode.

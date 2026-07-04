@@ -1,54 +1,41 @@
-# yami-kmp
+# Kira Manga
 
-Kotlin Multiplatform port of [Yami Manga](https://github.com/Apdelrahman1911/yami-manga-apk-main) targeting **Android, iOS, and Desktop (JVM)** with 100% behavior parity to the original Native Android app.
+A **Kotlin Multiplatform** manga reader (Android + iOS + Desktop/JVM, single Compose Multiplatform codebase), originally a full-parity port of the native Android app "Yami Manga". **Android and iOS are the shipping targets**; Desktop builds and runs but is not part of the current release scope.
 
-## Migration status
+- Package root: `me.manga.kira.*` · Android `applicationId` / iOS bundle id: `me.manga.kira` · Display name: **Kira Manga**
+- App version: 1.0.0
 
-> **Current status (2026-05-29):** active work happens on the **`architecture-rework`** branch — a clean-architecture rework (`:core`/`:domain`/`:data`/`:platform`/`:presentation`/`:ui`/`:composeApp` modules with an MVI + strangler-fig migration off the legacy `:shared`/`:app` graph). For the authoritative, up-to-date picture see **[`ARCHITECTURE.md`](ARCHITECTURE.md)** (the rework contract) and **[`PHASE0_PROGRESS.md`](PHASE0_PROGRESS.md)** (current state + remaining-work plan). The `migration/` folder and the original-Native-port framing below are **historical** — they describe the earlier `kmp-migration` phase and should not be treated as current.
+## Documentation map
 
-This repository began as an **in-progress** migration from a Native Android app to Kotlin Multiplatform; that earlier phase's progress and audit trail live under [`migration/`](migration/) (now historical — see banner above).
-
-- Source project (read-only reference): `D:\yami manga\yami-manga-apk-main`
-- Target KMP project: this repository
-- Active branch: `architecture-rework` (earlier phase: `kmp-migration`)
-- Default branch (protected): `main`
-
-## Locked stack
-
-| Concern | Library |
+| Doc | What it is |
 |---|---|
-| Multiplatform | Kotlin Multiplatform |
-| Shared UI | Compose Multiplatform |
-| DI | Koin |
-| Database | Room KMP (with `androidx.sqlite:sqlite-bundled`) |
-| ViewModels | `androidx.lifecycle:lifecycle-viewmodel` 2.8.4+ KMP |
-| Navigation | `androidx.navigation:navigation-compose` 2.8.0+ (type-safe routes via `kotlinx.serialization`) |
-| Networking | Ktor Client (replacing Retrofit) |
-| Image loading | Coil 3 (KMP) |
-| Date/time | `kotlinx.datetime` |
-| Settings | `multiplatform-settings` |
-| Logging | TBD (Napier / Kermit — see `migration/library-decisions.md`) |
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | **Start here** — full project state: architecture, per-subsystem status, decisions, deferred work, risks |
+| [`CLAUDE.md`](CLAUDE.md) | Working rules for AI-assisted development: module contract, build/test gates, conventions, gotchas |
+| [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md) | Subsystem deep-dives: iOS background downloads, native iOS reader, sources engine, device QA checklist |
+| [`docs/ARCHITECTURE_REWORK_CONTRACT.md`](docs/ARCHITECTURE_REWORK_CONTRACT.md) | The owner's verbatim architecture contract — if any rule conflicts with habit, this document wins |
 
-## Targets
+## Build / run
 
-- Android (preserves original `minSdk`, `targetSdk`, `compileSdk`)
-- iOS: `iosArm64`, `iosSimulatorArm64`, `iosX64`
-- Desktop JVM (Windows primary; macOS/Linux supported where Compose MP allows)
-
-## Build
-
-The development host is macOS (`./gradlew`); the tasks below are current. See `CLAUDE.md`
-("Build / test / run") for the full gate cadence — this README's migration-era sections are
-historical.
+Host is macOS. Full gate cadence and gotchas: `CLAUDE.md` § "Build / test / run".
 
 ```bash
-./gradlew :app:assembleDebug                    # Android debug APK
-./gradlew :composeApp:compileKotlinDesktop      # Desktop/JVM compile
-./gradlew :desktopApp:run                       # run the Desktop app (JDK 17+)
+./gradlew :app:assembleDebug        # Android debug APK (needs app/google-services.json — copy the .example)
+./gradlew :desktopApp:run           # Desktop app (JDK 17+, non-JBR)
+
+# iOS (macOS + Xcode): the .xcodeproj is generated, never committed
+( cd iosApp && xcodegen generate )
+# then run the iosApp scheme from Xcode
+
+# Standard pre-commit compile gate
+./gradlew :composeApp:compileKotlinDesktop :composeApp:compileAndroidMain :composeApp:compileKotlinIosSimulatorArm64 --offline
 ```
 
-iOS builds run from `iosApp/` on macOS (Xcode, `xcodegen generate` first) — see `CLAUDE.md`.
+## Branch & CI policy
 
-## Migration docs
+- **`main`** — default branch. **GitHub Actions never run on `main`** (owner rule; encoded in `.github/workflows/ci.yml`).
+- **`testing`** — push here (or use manual workflow dispatch) to get a full CI run: compile matrix, 11 module test suites, locale-parity gates, debug APK, iOS klib compiles, blocking ktlint/detekt.
+- **`release`** — CI runs plus the `release-verify` job (signed R8 release build). Release signing secrets (`KEYSTORE_BASE64` etc.) are **not configured yet**; the job warn-skips until they are.
 
-See [`migration/`](migration/) — the source of truth for what has been migrated, what is pending, library decisions, and verification evidence.
+## Restricted paths
+
+`native-app/` (the original native app, vendored as the read-only parity spec) and `sources_repositry/` (read-only spec for source conversions) must not be edited — see `CLAUDE.md`.

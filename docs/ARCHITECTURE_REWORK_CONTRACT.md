@@ -4,6 +4,11 @@
 > branch was created off `kmp-migration` at commit `98bf8ed`. Every architectural decision made
 > during the rework MUST comply with this document. If a rule here conflicts with day-to-day
 > session habits, this document wins.
+>
+> Editorial note (2026-07-04 docs consolidation; contract body below is unchanged): the running
+> `ARCHITECTURE.md`/`SOLID_AUDIT.md` logs this contract mandates in §7/§14 were retired with the
+> rework's completion — record new binding decisions in `docs/HANDOFF.md` instead. This file was
+> moved here from `migration/`.
 
 You are a senior Kotlin Multiplatform engineer. Build a cross-platform application that runs on Android, iOS, and Desktop (JVM) from a single shared codebase using Compose Multiplatform. The user will tell you the app idea and features separately. Use this document as your permanent technical contract — every decision must comply with it.
 
