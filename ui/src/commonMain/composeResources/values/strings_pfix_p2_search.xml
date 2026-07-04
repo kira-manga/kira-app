@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Search screen filter sheet. The base strings.xml diverged from
+  the native source-of-truth copy ('Filters' vs native 'Filter & Sort', 'Sort' vs 'Order By',
+  'Apply' vs 'Apply Filters', and the short 'no filters' line vs native's 'filters not ready'
+  panel). Native keys: filter_sort_title / order_by / apply_filters / search_filters_not_ready
+  (native values/strings.xml:226-234). Defined here under search_pfix_* keys (the base
+  strings.xml keys search_filter_sheet_title / search_sort / search_apply_filters / search_no_filters
+  are left untouched per the parity-fix scope). Verbatim from native values/strings.xml.
+-->
+<resources>
+    <!-- Filter sheet title — native filter_sort_title. -->
+    <string name="search_pfix_filter_sort_title">Filter &amp; Sort</string>
+    <!-- Sort section label — native order_by. -->
+    <string name="search_pfix_order_by">Order By</string>
+    <!-- Apply button — native apply_filters. -->
+    <string name="search_pfix_apply_filters">Apply Filters</string>
+    <!-- No-filters fallback panel — native search_filters_not_ready. -->
+    <string name="search_pfix_filters_not_ready">Searching filters in this source hasn’t started yet. Check back soon!</string>
+</resources>

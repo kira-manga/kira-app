@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Search screen — Phase 3 (P3) LOW-severity parity pass.
+
+  The base strings.xml search_tab_multi value diverged in casing from the native source-of-truth
+  copy: base 'Multi search' vs native 'Multi Search' (native values/strings.xml multi_search). The
+  base key search_tab_multi is left untouched per the parity-fix scope; the corrected casing is
+  defined here under the search_pfix_* key and wired into the Search mode chip. Verbatim from
+  native values/strings.xml.
+-->
+<resources>
+    <!-- Multi-search mode chip label — native multi_search (corrected casing). -->
+    <string name="search_pfix_tab_multi">Multi Search</string>
+</resources>

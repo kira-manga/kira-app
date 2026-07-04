@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Sources / repo-settings screen (:ui ui/sources).
+
+  Source of truth: native-app features/repo_settings + res/strings.xml.
+
+  Keys:
+    enable_disable_all_sources - per-language master-row subtitle describing the bulk
+                                 enable/disable action (native enable_disable_all_sources,
+                                 "Enable/disable all %1$s sources"). The %1$s arg is the
+                                 raw parenthesised language code, matching native
+                                 RepoSettingsScreen passing the un-stripped map key.
+-->
+<resources>
+    <string name="enable_disable_all_sources">Enable/disable all %1$s sources</string>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Localized download-notification strings for the :data:download WorkManager worker
+  (backlog L15c, 2026-07). Values copied VERBATIM from composeApp/src/commonMain/
+  composeResources/values-ar/strings.xml (the canonical localized copies), with
+  Android-res apostrophe/quote escaping applied. Keep in sync by re-copying, never by
+  re-translating here.
+-->
+<resources>
+    <string name="cancelled_by_user">أُلغي بواسطة المستخدم</string>
+    <string name="notification_downloading_chapters">جاري تنزيل الفصول</string>
+    <string name="notification_chapter_title">الفصل %s</string>
+    <string name="notification_downloading_background">جاري تنزيل جميع الفصول في الخلفية</string>
+    <string name="notification_compressing_images">جاري ضغط الصور…</string>
+    <string name="notification_images_progress">%1$d / %2$d صور</string>
+    <string name="action_cancel_all">إلغاء الكل</string>
+    <string name="action_cancel_chapter">إلغاء الفصل</string>
+    <string name="notification_channel_all_downloads">جميع التنزيلات</string>
+    <string name="notification_channel_all_downloads_desc">تقدم التنزيل الإجمالي</string>
+    <string name="notification_channel_chapter_download">تنزيل فصل</string>
+    <string name="notification_channel_chapter_download_desc">تقدم تنزيل فصل واحد</string>
+    <string name="notification_channel_download_summary">ملخص التنزيل</string>
+    <string name="notification_channel_download_summary_desc">إشعارات الإكمال</string>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the What's New screen (P3 LOW-severity audit, ui/whatsnew).
+
+  Source of truth: native-app features/whatsnew + res/values/strings.xml.
+
+  np_p3_whats_new_title         -> native whats_new_title ("What's New", capital N).
+      The shared base `what_s_new` key reads "What's new" (lowercase n) and is reused by
+      Settings + About rows; this whatsnew-scoped key restores the native header casing
+      without touching the shared base string.
+  np_p3_whats_new_loading       -> native LoadingState label ("Loading What's New...").
+  np_p3_whats_new_empty_title   -> native EmptyState headline ("No Updates Available").
+  np_p3_whats_new_empty_body    -> native EmptyState body.
+  np_p3_whats_new_error_title   -> native ErrorState headline ("Failed to Load").
+-->
+<resources>
+    <string name="np_p3_whats_new_title">What's New</string>
+    <string name="np_p3_whats_new_loading">Loading What's New...</string>
+    <string name="np_p3_whats_new_empty_title">No Updates Available</string>
+    <string name="np_p3_whats_new_empty_body">There are no new features to show at this time.</string>
+    <string name="np_p3_whats_new_error_title">Failed to Load</string>
+</resources>

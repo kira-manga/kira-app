@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for per-screen HTTP error-code mapping. The native app distinguishes
+  network errors by HTTP status code / transport failure rather than collapsing them into one
+  "Network error" string. Source of truth: native `core/states/State.kt`
+  (`State.Error.httpStatusMessage(code)` + `State.Error.fromException(Throwable)`).
+
+  Text is copied verbatim from native (including native's punctuation/casing — e.g. the trailing
+  space in the 403 message and the em-dash phrasing in the transport-failure messages). Key names
+  are descriptive `error_network_*` siblings of the existing generic `error_network`, reused across
+  the Home/Details/Library/Reader/Search screen error mappers. No messages are invented beyond what
+  native's `State.kt` defines; codes native does not name individually fall back to native's
+  generic "Client Error N" / "Server Error N" templates (the existing `error_network`).
+-->
+<resources>
+    <!-- HTTP 403 — native `State.kt:37`. Cloudflare / bot challenge; native steers the user to the
+         in-screen Help action (which opens the WebView 403-recovery flow). Trailing space is
+         native-verbatim. -->
+    <string name="error_network_forbidden">Forbidden Click On Help To Solve The Problem </string>
+
+    <!-- HTTP 404 — native `State.kt:38`. -->
+    <string name="error_network_not_found">Not Found</string>
+
+    <!-- HTTP 400 — native `State.kt:35`. -->
+    <string name="error_network_bad_request">Bad Request</string>
+
+    <!-- HTTP 401 — native `State.kt:36`. -->
+    <string name="error_network_unauthorized">Unauthorized</string>
+
+    <!-- HTTP 408 — native `State.kt:39`. -->
+    <string name="error_network_request_timeout">Request Timeout</string>
+
+    <!-- HTTP 500 — native `State.kt:44`. The native 5xx block names 500/502/503/504 individually;
+         the four are surfaced through this set of strings, with other 5xx falling back to the
+         generic network string (native's "Server Error N" template). -->
+    <string name="error_network_server">Internal Server Error</string>
+
+    <!-- HTTP 502 — native `State.kt:45`. -->
+    <string name="error_network_bad_gateway">Bad Gateway</string>
+
+    <!-- HTTP 503 — native `State.kt:46`. -->
+    <string name="error_network_service_unavailable">Service Unavailable</string>
+
+    <!-- HTTP 504 — native `State.kt:47`. -->
+    <string name="error_network_gateway_timeout">Gateway Timeout</string>
+
+    <!-- SocketTimeoutException — native `State.kt:26` (AppError.Network.Timeout). Em-dash verbatim. -->
+    <string name="error_network_timeout">The request timed out—please try again later.</string>
+
+    <!-- UnknownHostException — native `State.kt:24` (AppError.Network.NoConnectivity). Em-dash
+         verbatim. -->
+    <string name="error_network_no_connectivity">Cannot reach server—please check your internet connection.</string>
+</resources>

@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>kira — logo options</title>
+<style>
+ :root{--bg:#0B0D11;--card:#14171F;--line:rgba(255,255,255,.09);--text:#F3F4F7;--muted:#9AA1AF;
+   --coral:#FF5B6E;--amber:#FF8A5B;--grad:linear-gradient(135deg,#FF5B6E,#FF8A5B);}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:
+   radial-gradient(110% 50% at 80% -5%,rgba(255,91,110,.12),transparent 60%),var(--bg);color:var(--text);padding:44px 28px}
+ .wrap{max-width:1180px;margin:0 auto}
+ .tag{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--coral)}
+ h1{font-size:32px;font-weight:900;letter-spacing:-.6px;margin-top:8px}
+ .lead{color:var(--muted);font-size:15px;margin:10px 0 4px;line-height:1.55;max-width:840px}
+ .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:30px}
+ .c{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px 18px;display:flex;flex-direction:column;align-items:center}
+ .pick{font-size:10.5px;font-weight:800;letter-spacing:1.3px;color:var(--muted);align-self:flex-start;margin-bottom:14px}
+ .icon{position:relative;width:116px;height:116px;border-radius:27px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+   background:radial-gradient(120% 110% at 30% 12%,#222a3b 0%,#10141c 48%,#080a0e 100%);
+   box-shadow:0 16px 36px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.05)}
+ .icon::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.10),transparent 38%);z-index:4;pointer-events:none}
+ .icon svg{width:72px;height:72px;position:relative;z-index:2}
+ .k{font-weight:900;font-size:66px;letter-spacing:-2px;position:relative;z-index:3;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 15px rgba(255,91,110,.45))}
+ .tone::after{content:"";position:absolute;inset:0;z-index:1;opacity:.5;background-image:radial-gradient(circle,rgba(255,120,110,.5) 1.3px,transparent 1.5px);background-size:9px 9px;-webkit-mask-image:radial-gradient(120% 100% at 100% 100%,#000,transparent 60%);mask-image:radial-gradient(120% 100% at 100% 100%,#000,transparent 60%)}
+ .spark{position:absolute;top:24px;right:26px;width:26px;height:26px;z-index:3}
+ .trio{display:flex;gap:11px;align-items:flex-end;margin-top:18px}
+ .trio .s{position:relative;border-radius:24%;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(120% 110% at 30% 12%,#222a3b,#0a0c10);box-shadow:0 6px 14px rgba(0,0,0,.5)}
+ .trio .s svg{width:100%;height:100%}.trio .s span{font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-1px}
+ .s44{width:44px;height:44px}.s44 span{font-size:25px}.s30{width:30px;height:30px}.s30 span{font-size:17px}.s22{width:22px;height:22px}.s22 span{font-size:13px}
+ .wm{margin-top:18px;font-weight:800;letter-spacing:-2px;font-size:34px;display:flex;align-items:flex-end;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .wm .dot{width:8px;height:8px;border-radius:50%;background:var(--grad);margin-left:2px;margin-bottom:6px}
+ .nm{margin-top:8px;font-size:13px;font-weight:700}
+ .why{font-size:12.5px;color:var(--muted);margin-top:6px;text-align:center;line-height:1.5}
+ .lockcell{display:flex;flex-direction:column;justify-content:center;gap:18px}
+ .lock{display:flex;align-items:center;gap:14px}
+ .lock.light{background:linear-gradient(160deg,#fff,#F1ECE7);border-radius:16px;padding:18px 22px}
+ .lock .mk{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(120% 110% at 30% 12%,#222a3b,#0a0c10);box-shadow:0 6px 14px rgba(0,0,0,.45)}
+ .lock .mk svg{width:100%;height:100%}
+ .lock .lw{font-weight:800;letter-spacing:-1.5px;font-size:34px;display:flex;align-items:flex-end;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .lock.light .lw{color:#15171C;background:none;-webkit-text-fill-color:#15171C}
+ .lock .lw .dot{width:7px;height:7px;border-radius:50%;background:var(--grad);margin-left:2px;margin-bottom:6px}
+ .note{color:var(--muted);font-size:13px;margin-top:28px;line-height:1.6;max-width:900px;border-top:1px solid var(--line);padding-top:22px}
+ .note b{color:var(--text)}
+</style></head><body>
+<svg style="position:absolute;width:0;height:0" aria-hidden="true"><defs>
+ <linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF5B6E"/><stop offset="1" stop-color="#FF8A5B"/></linearGradient>
+</defs></svg>
+<div class="wrap">
+ <div class="tag">KIRA · LOGO OPTIONS</div>
+ <h1>Logos for “kira”</h1>
+ <p class="lead">Name locked: <b>kira</b> (キラ, “sparkle / shine”). Five different marks — a clean monogram, a clever letter‑with‑glint, a refined twinkle, a flash burst, and a screentone version — all premium coral on dark. Each with the lowercase wordmark. Pick the mark you want and I’ll build it for real.</p>
+
+ <div class="grid">
+
+  <!-- 1 k monogram -->
+  <div class="c"><div class="pick">01 · MONOGRAM</div>
+   <div class="icon"><div class="k">k</div></div>
+   <div class="trio"><div class="s s44"><span>k</span></div><div class="s s30"><span>k</span></div><div class="s s22"><span>k</span></div></div>
+   <div class="wm">kira<span class="dot"></span></div>
+   <div class="nm">Clean “k”</div>
+   <div class="why">A confident lowercase lettermark — the Atome-clean route. Reads at any size, ages well.</div>
+  </div>
+
+  <!-- 2 k + spark (clever) -->
+  <div class="c"><div class="pick">02 · GLINT</div>
+   <div class="icon"><div class="k">k</div>
+     <svg class="spark" viewBox="0 0 100 100"><path d="M50 8C55 38 62 45 92 50C62 55 55 62 50 92C45 62 38 55 8 50C38 45 45 38 50 8Z" fill="url(#cg)"/></svg>
+   </div>
+   <div class="trio">
+     <div class="s s44"><span>k</span></div><div class="s s30"><span>k</span></div><div class="s s22"><span>k</span></div>
+   </div>
+   <div class="wm">kira<span class="dot"></span></div>
+   <div class="nm">“k” + glint</div>
+   <div class="why">The monogram with a sparkle glint — clever, like the N‑fox mark. Says “k” and “shine” at once.</div>
+  </div>
+
+  <!-- 3 twinkle -->
+  <div class="c"><div class="pick">03 · TWINKLE</div>
+   <div class="icon"><svg viewBox="0 0 100 100">
+     <path d="M44 16C48 40 53 45 77 49C53 53 48 58 44 82C40 58 35 53 11 49C35 45 40 40 44 16Z" fill="url(#cg)" filter="drop-shadow(0 0 9px rgba(255,91,110,.5))"/>
+     <path d="M76 60C78 70 80 72 90 74C80 76 78 78 76 88C74 78 72 76 62 74C72 72 74 70 76 60Z" fill="url(#cg)"/>
+   </svg></div>
+   <div class="trio">
+     <div class="s s44"><svg viewBox="0 0 100 100"><path d="M44 16C48 40 53 45 77 49C53 53 48 58 44 82C40 58 35 53 11 49C35 45 40 40 44 16Z" fill="url(#cg)"/><path d="M76 60C78 70 80 72 90 74C80 76 78 78 76 88C74 78 72 76 62 74C72 72 74 70 76 60Z" fill="url(#cg)"/></svg></div>
+     <div class="s s30"><svg viewBox="0 0 100 100"><path d="M46 18C50 42 54 46 78 50C54 54 50 58 46 82C42 58 38 54 14 50C38 46 42 42 46 18Z" fill="url(#cg)"/></svg></div>
+     <div class="s s22"><svg viewBox="0 0 100 100"><path d="M50 18C54 42 58 46 82 50C58 54 54 58 50 82C46 58 42 54 18 50C42 46 46 42 50 18Z" fill="url(#cg)"/></svg></div>
+   </div>
+   <div class="wm">kira<span class="dot"></span></div>
+   <div class="nm">Twinkle</div>
+   <div class="why">A big spark + a little one — “kira‑kira.” Literal to the name, friendly, glows on dark.</div>
+  </div>
+
+  <!-- 4 burst -->
+  <div class="c"><div class="pick">04 · FLASH</div>
+   <div class="icon"><svg viewBox="0 0 100 100"><g stroke="url(#cg)" stroke-width="8" stroke-linecap="round" filter="drop-shadow(0 0 8px rgba(255,91,110,.45))">
+     <line x1="50" y1="16" x2="50" y2="36"/><line x1="50" y1="64" x2="50" y2="84"/>
+     <line x1="16" y1="50" x2="36" y2="50"/><line x1="64" y1="50" x2="84" y2="50"/>
+     <line x1="28" y1="28" x2="38" y2="38"/><line x1="62" y1="62" x2="72" y2="72"/>
+     <line x1="72" y1="28" x2="62" y2="38"/><line x1="38" y1="62" x2="28" y2="72"/>
+   </g><circle cx="50" cy="50" r="7" fill="url(#cg)"/></svg></div>
+   <div class="trio">
+     <div class="s s44"><svg viewBox="0 0 100 100"><g stroke="url(#cg)" stroke-width="9" stroke-linecap="round"><line x1="50" y1="18" x2="50" y2="36"/><line x1="50" y1="64" x2="50" y2="82"/><line x1="18" y1="50" x2="36" y2="50"/><line x1="64" y1="50" x2="82" y2="50"/></g><circle cx="50" cy="50" r="8" fill="url(#cg)"/></svg></div>
+     <div class="s s30"><svg viewBox="0 0 100 100"><g stroke="url(#cg)" stroke-width="11" stroke-linecap="round"><line x1="50" y1="20" x2="50" y2="38"/><line x1="50" y1="62" x2="50" y2="80"/><line x1="20" y1="50" x2="38" y2="50"/><line x1="62" y1="50" x2="80" y2="50"/></g></svg></div>
+     <div class="s s22"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="14" fill="url(#cg)"/></svg></div>
+   </div>
+   <div class="wm">kira<span class="dot"></span></div>
+   <div class="nm">Flash</div>
+   <div class="why">A shine burst — energetic, dynamic, “action.” The most shonen of the set.</div>
+  </div>
+
+  <!-- 5 k screentone -->
+  <div class="c"><div class="pick">05 · SCREENTONE</div>
+   <div class="icon tone"><div class="k">k</div></div>
+   <div class="trio"><div class="s s44"><span>k</span></div><div class="s s30"><span>k</span></div><div class="s s22"><span>k</span></div></div>
+   <div class="wm">kira<span class="dot"></span></div>
+   <div class="nm">“k” + screentone</div>
+   <div class="why">The monogram on a faint manga halftone — your favorite texture, with the clean letter.</div>
+  </div>
+
+  <!-- lockup -->
+  <div class="c lockcell"><div class="pick">LOCKUP</div>
+   <div class="lock"><div class="mk"><div class="k" style="font-size:28px">k</div></div><div class="lw">kira<span class="dot"></span></div></div>
+   <div class="lock light"><div class="mk"><div class="k" style="font-size:28px">k</div></div><div class="lw">kira<span class="dot"></span></div></div>
+   <div class="why" style="margin-top:4px">Mark + wordmark, dark &amp; light — app splash / store / header.</div>
+  </div>
+
+ </div>
+ <p class="note">Tell me the mark (01–05) and I’ll build the real launcher icon at every density + wire the <b>kira</b> wordmark into splash + Home header. My pick: <b>02 Glint</b> (clever + ownable) or <b>01 Monogram</b> (safest, cleanest). Want me to push your chosen one further (a couple of variations) first? Just say which.</p>
+</div></body></html>

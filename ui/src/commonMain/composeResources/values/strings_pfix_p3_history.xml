@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    P3 parity-fix strings for the History screen (ui history slice).
+
+    Native source of truth: native-app history feature.
+
+    history_title
+      Native top-bar title comes from title_history (values/strings.xml = "History",
+      values-ar/strings.xml = "التاريخ"). The :ui catalog's shared "history" key carries the
+      same English value but a different Arabic value ("السجل"), so a dedicated history-screen
+      title key is added here to align the Arabic translation with native without mutating the
+      shared base "history" string. The English value is identical to native.
+-->
+<resources>
+    <string name="history_title">History</string>
+</resources>

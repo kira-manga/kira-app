@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>kira — logos from your inspiration</title>
+<style>
+ :root{--bg:#0B0D11;--card:#14171F;--line:rgba(255,255,255,.09);--text:#F3F4F7;--muted:#9AA1AF;--coral:#FF5B6E;--amber:#FF8A5B;}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:radial-gradient(110% 50% at 80% -5%,rgba(255,91,110,.12),transparent 60%),var(--bg);color:var(--text);padding:44px 28px}
+ .wrap{max-width:1160px;margin:0 auto}
+ .tag{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--coral)}
+ h1{font-size:31px;font-weight:900;letter-spacing:-.5px;margin-top:8px}
+ .lead{color:var(--muted);font-size:14.5px;margin:10px 0 4px;line-height:1.55;max-width:850px}
+ .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:30px}
+ .c{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px 18px;display:flex;flex-direction:column;align-items:center}
+ .pick{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:var(--coral);align-self:flex-start;margin-bottom:14px}
+ .icon{position:relative;width:120px;height:120px;border-radius:28px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 16px 36px rgba(0,0,0,.55)}
+ .icon svg{width:120px;height:120px;position:relative;z-index:2}
+ /* glossy coral tile (logo 1 / 5 vibe) */
+ .glossy{background:radial-gradient(130% 100% at 50% 0%,#FF8A6E 0%,#FF4D6D 46%,#E0306E 100%);
+   box-shadow:0 16px 34px rgba(224,48,110,.5), inset 0 2px 0 rgba(255,255,255,.35), inset 0 -10px 26px rgba(140,20,70,.45)}
+ .glossy::before{content:"";position:absolute;left:0;right:0;top:0;height:46%;background:linear-gradient(180deg,rgba(255,255,255,.38),transparent);border-radius:28px 28px 60% 60%;z-index:1}
+ /* halftone tile for mascot (logo 2 vibe) */
+ .ht{background:radial-gradient(130% 100% at 50% 0%,#FF7A8A,#FF5B6E 55%,#E84368 100%)}
+ .ht::after{content:"";position:absolute;inset:0;z-index:1;opacity:.35;background-image:radial-gradient(circle,rgba(255,255,255,.6) 1.4px,transparent 1.6px);background-size:11px 11px;-webkit-mask-image:radial-gradient(120% 100% at 100% 0%,#000,transparent 62%);mask-image:radial-gradient(120% 100% at 100% 0%,#000,transparent 62%)}
+ /* blurred gradient tile for geo mark (logo 4 vibe) */
+ .blur{background:linear-gradient(135deg,#2a1430,#7a2b8a 40%,#FF5B6E 100%)}
+ .blur::before{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 30% 30%,rgba(120,60,255,.5),transparent 45%),radial-gradient(circle at 75% 80%,rgba(255,91,110,.6),transparent 50%);filter:blur(10px);z-index:0}
+ .cream{background:linear-gradient(160deg,#F6EFE8,#ECE0D4)}
+ .trio{display:flex;gap:11px;align-items:flex-end;margin-top:18px}
+ .trio .s{position:relative;border-radius:24%;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 6px 14px rgba(0,0,0,.45)}
+ .trio .s svg{width:100%;height:100%}
+ .s44{width:44px;height:44px}.s30{width:30px;height:30px}.s22{width:22px;height:22px}
+ .nm{margin-top:18px;font-size:13px;font-weight:800}
+ .why{font-size:12px;color:var(--muted);margin-top:6px;text-align:center;line-height:1.5}
+ .wm{margin-top:14px;font-weight:800;letter-spacing:-1.5px;font-size:30px;display:flex;align-items:flex-end;background:linear-gradient(135deg,#FF5B6E,#FF8A5B);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .wm .dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,#FF5B6E,#FF8A5B);margin-left:2px;margin-bottom:6px}
+ .note{color:var(--muted);font-size:13px;margin-top:28px;line-height:1.6;border-top:1px solid var(--line);padding-top:22px}
+ .note b{color:var(--text)}
+</style></head><body>
+<svg style="position:absolute;width:0;height:0"><defs>
+ <linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF5B6E"/><stop offset="1" stop-color="#FF8A5B"/></linearGradient>
+</defs></svg>
+<div class="wrap">
+ <div class="tag">KIRA · FROM YOUR INSPIRATION FOLDER</div>
+ <h1>Built from the logos you like</h1>
+ <p class="lead">Four directions for <b>kira</b>, each pulled straight from your folder: a <b>kitsune</b> (fox‑spirit) mascot like your fox + ghost icons, a <b>glossy gradient tile</b> like the red/magenta app icons, a <b>clever geometric K</b> like the D/N marks, and a <b>spark</b> tile. Coral throughout.</p>
+
+ <div class="grid">
+
+  <!-- KITSUNE MASCOT (logo 6 + 2) -->
+  <div class="c"><div class="pick">01 · KITSUNE</div>
+   <div class="icon ht"><svg viewBox="0 0 100 100">
+     <!-- ears -->
+     <path d="M24 46 L30 16 L50 34 Z" fill="#fff"/><path d="M76 46 L70 16 L50 34 Z" fill="#fff"/>
+     <path d="M30 38 L32 24 L42 35 Z" fill="#FF7A88"/><path d="M70 38 L68 24 L58 35 Z" fill="#FF7A88"/>
+     <!-- face -->
+     <path d="M50 28 C32 30 24 44 28 60 C32 78 44 86 50 88 C56 86 68 78 72 60 C76 44 68 30 50 28 Z" fill="#fff"/>
+     <!-- white muzzle is the same; add coral cheeks top -->
+     <path d="M50 28 C36 29 28 38 27 50 C40 50 46 47 50 47 C54 47 60 50 73 50 C72 38 64 29 50 28 Z" fill="#FFE3E0" opacity=".0"/>
+     <!-- eyes (manga, sly) -->
+     <path d="M37 52 C40 49 45 49 47 53 C45 56 40 56 37 52 Z" fill="#23121a"/>
+     <path d="M63 52 C60 49 55 49 53 53 C55 56 60 56 63 52 Z" fill="#23121a"/>
+     <circle cx="45" cy="51" r="1.4" fill="#fff"/><circle cx="55" cy="51" r="1.4" fill="#fff"/>
+     <!-- nose -->
+     <path d="M50 62 l4 4 -4 3 -4 -3 Z" fill="#23121a"/>
+     <!-- sparkle (kira) -->
+     <path d="M74 30 C75 36 76 37 82 38 C76 39 75 40 74 46 C73 40 72 39 66 38 C72 37 73 36 74 30 Z" fill="#fff"/>
+   </svg></div>
+   <div class="trio">
+     <div class="s s44 ht"><svg viewBox="0 0 100 100"><path d="M24 46 L30 16 L50 34 Z" fill="#fff"/><path d="M76 46 L70 16 L50 34 Z" fill="#fff"/><path d="M50 28 C32 30 24 44 28 60 C32 78 44 86 50 88 C56 86 68 78 72 60 C76 44 68 30 50 28 Z" fill="#fff"/><path d="M37 52 C40 49 45 49 47 53 C45 56 40 56 37 52 Z" fill="#23121a"/><path d="M63 52 C60 49 55 49 53 53 C55 56 60 56 63 52 Z" fill="#23121a"/><path d="M50 62 l4 4 -4 3 -4 -3 Z" fill="#23121a"/></svg></div>
+     <div class="s s30 ht"><svg viewBox="0 0 100 100"><path d="M24 46 L30 16 L50 34 Z" fill="#fff"/><path d="M76 46 L70 16 L50 34 Z" fill="#fff"/><path d="M50 28 C32 30 24 44 28 60 C32 78 44 86 50 88 C56 86 68 78 72 60 C76 44 68 30 50 28 Z" fill="#fff"/><circle cx="42" cy="53" r="3" fill="#23121a"/><circle cx="58" cy="53" r="3" fill="#23121a"/></svg></div>
+   </div>
+   <div class="nm">Kitsune 🦊</div><div class="why">A fox‑spirit mascot (your fox + ghost). Manga‑native, cute, ownable — with a kira sparkle.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+
+  <!-- GLOSSY K TILE (logo 1) -->
+  <div class="c"><div class="pick">02 · GLOSSY</div>
+   <div class="icon glossy"><svg viewBox="0 0 100 100"><g fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 2px 3px rgba(120,10,50,.4))"><path d="M36 28 V72 M64 28 L40 50 L66 74"/></g></svg></div>
+   <div class="trio">
+     <div class="s s44 glossy"><svg viewBox="0 0 100 100"><g fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"><path d="M36 28 V72 M64 28 L40 50 L66 74"/></g></svg></div>
+     <div class="s s30 glossy"><svg viewBox="0 0 100 100"><g fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"><path d="M37 30 V70 M63 30 L41 50 L65 72"/></g></svg></div>
+     <div class="s s22 glossy"><svg viewBox="0 0 100 100"><g fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M38 32 V68 M62 32 L42 50 L64 70"/></g></svg></div>
+   </div>
+   <div class="nm">Glossy K</div><div class="why">The premium glossy gradient tile (red→magenta) + gloss + glow, like your favorite app icons. Bold white K.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+
+  <!-- GEOMETRIC NEGATIVE-SPACE K (logo 3/4) -->
+  <div class="c"><div class="pick">03 · GEOMETRIC</div>
+   <div class="icon blur"><svg viewBox="0 0 100 100"><path d="M30 24 h14 v18 l18 -18 h18 L56 46 l24 30 h-19 L44 56 v20 H30 Z" fill="#fff" style="filter:drop-shadow(0 3px 6px rgba(0,0,0,.3))"/></svg></div>
+   <div class="trio">
+     <div class="s s44 blur"><svg viewBox="0 0 100 100"><path d="M30 24 h14 v18 l18 -18 h18 L56 46 l24 30 h-19 L44 56 v20 H30 Z" fill="#fff"/></svg></div>
+     <div class="s s30 blur"><svg viewBox="0 0 100 100"><path d="M30 24 h14 v18 l18 -18 h18 L56 46 l24 30 h-19 L44 56 v20 H30 Z" fill="#fff"/></svg></div>
+     <div class="s s22 blur"><svg viewBox="0 0 100 100"><path d="M30 24 h14 v18 l18 -18 h18 L56 46 l24 30 h-19 L44 56 v20 H30 Z" fill="#fff"/></svg></div>
+   </div>
+   <div class="nm">Geometric K</div><div class="why">A bold geometric K on a blurred coral/violet gradient, like your D & N marks. Clean, modern, tech.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+
+  <!-- KITSUNE on CREAM (logo 6 minimal, flat coral) -->
+  <div class="c"><div class="pick">04 · FOX (FLAT)</div>
+   <div class="icon cream"><svg viewBox="0 0 100 100">
+     <path d="M22 44 L28 16 L48 33 Z" fill="#FF6F66"/><path d="M78 44 L72 16 L52 33 Z" fill="#FF6F66"/>
+     <path d="M50 26 C31 28 23 43 27 60 C31 78 44 87 50 89 C56 87 69 78 73 60 C77 43 69 28 50 26 Z" fill="#FF6F66"/>
+     <path d="M50 54 C42 54 34 59 31 66 C36 79 45 86 50 88 C55 86 64 79 69 66 C66 59 58 54 50 54 Z" fill="#F6EFE8"/>
+     <path d="M38 50 C41 47 46 47 48 51 C46 54 41 54 38 50 Z" fill="#2a1620"/>
+     <path d="M62 50 C59 47 54 47 52 51 C54 54 59 54 62 50 Z" fill="#2a1620"/>
+     <path d="M50 64 l4 4 -4 3 -4 -3 Z" fill="#2a1620"/>
+   </svg></div>
+   <div class="trio">
+     <div class="s s44 cream"><svg viewBox="0 0 100 100"><path d="M22 44 L28 16 L48 33 Z" fill="#FF6F66"/><path d="M78 44 L72 16 L52 33 Z" fill="#FF6F66"/><path d="M50 26 C31 28 23 43 27 60 C31 78 44 87 50 89 C56 87 69 78 73 60 C77 43 69 28 50 26 Z" fill="#FF6F66"/><path d="M50 54 C42 54 34 59 31 66 C36 79 45 86 50 88 C55 86 64 79 69 66 C66 59 58 54 50 54 Z" fill="#F6EFE8"/></svg></div>
+     <div class="s s30 cream"><svg viewBox="0 0 100 100"><path d="M22 44 L28 16 L48 33 Z" fill="#FF6F66"/><path d="M78 44 L72 16 L52 33 Z" fill="#FF6F66"/><path d="M50 26 C31 28 23 43 27 60 C31 78 44 87 50 89 C56 87 69 78 73 60 C77 43 69 28 50 26 Z" fill="#FF6F66"/></svg></div>
+   </div>
+   <div class="nm">Fox (flat)</div><div class="why">The kitsune as a flat coral mark on cream — closer to your N‑fox’s single‑color, designer feel.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+
+ </div>
+ <p class="note">These are pulled straight from your folder. Tell me which to take forward — <b>01 Kitsune</b> and <b>04 Fox</b> are the fox‑spirit route (my pick, given you loved the N‑fox); <b>02 Glossy</b> is the premium app‑icon route; <b>03 Geometric</b> is the clever‑lettermark route. I’ll refine the winner (the fox can be polished a lot further / vectorized cleanly) and build the real launcher icon at every density + the kira wordmark.</p>
+</div></body></html>

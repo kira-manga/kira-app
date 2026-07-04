@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the About screen — French.
+
+  np_source_code / np_soon locale overrides matching native values-fr/strings.xml
+  (source_code / soon). Without these the inert "Source code / Soon" row fell back to
+  English on French devices.
+-->
+<resources>
+    <string name="np_source_code">code source</string>
+    <string name="np_soon">bientôt</string>
+</resources>

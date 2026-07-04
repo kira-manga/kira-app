@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) string for the chapter-list "NEW" badge on the Details screen. A Library refresh
+  flags newly-inserted chapters (`saved_chapters.isNew`); the Details chapter row renders this as a
+  small red badge until the chapter is opened. Native text + native key name (the native
+  `LibraryChapterItem` renders `stringResource(R.string.new_chapter)` = "NEW").
+-->
+<resources>
+    <string name="new_chapter">NEW</string>
+</resources>

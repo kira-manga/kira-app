@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity strings for the History / Updates / Statistics cluster (NP Phase 2).
+
+  Separate file from the shared `strings.xml` so the native-parity slice can author keys
+  without touching the shared catalog. New keys only; existing keys (clear_all, download,
+  downloaded, mark_read, delete, undo, update_deleted, no_updates, today, yesterday, …) are
+  reused from `strings.xml`.
+
+  Updates recency-bucket headers (GAP-UPD-07): port of the native
+  `notifications_group_today / yesterday / last_week / older` string resources. The native
+  bucket grouping uses fixed recency buckets (NOT calendar-date headers), so these are the
+  literal bucket labels. en-only pending trusted Arabic.
+-->
+<resources>
+    <string name="notifications_group_today">Today</string>
+    <string name="notifications_group_yesterday">Yesterday</string>
+    <string name="notifications_group_last_week">Last Week</string>
+    <string name="notifications_group_older">Older</string>
+</resources>

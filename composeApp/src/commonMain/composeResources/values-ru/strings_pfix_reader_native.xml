@@ -1,0 +1,11 @@
+<resources>
+    <string name="reading_mode">Режим чтения</string>
+    <string name="reading_mode_rtl">Справа налево</string>
+    <string name="reading_mode_ltr">Слева направо</string>
+    <string name="reading_mode_continuous">Непрерывно вертикально</string>
+    <string name="reader_native_next_chapter">Следующая глава</string>
+    <string name="reader_native_last_chapter">Это последняя глава</string>
+    <string name="reader_native_finished_prefix">Завершено:</string>
+    <string name="reader_native_couldnt_load_chapter">Не удалось загрузить эту главу</string>
+    <string name="reader_native_add_to_library_first">Сначала добавьте эту мангу в свою библиотеку</string>
+</resources>

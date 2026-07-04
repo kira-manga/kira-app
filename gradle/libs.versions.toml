@@ -1,0 +1,252 @@
+[versions]
+# Toolchain
+kotlin = "2.4.0"
+agp = "9.2.1"
+ksp = "2.3.9"
+
+# Compose Multiplatform
+compose-multiplatform = "1.11.1"
+# material-icons-extended is frozen at 1.7.3 — Compose-MP stopped updating it after 1.7.3 (migrate to
+# Material Symbols vector resources eventually). Pinned explicitly so the deprecated
+# `compose.materialIconsExtended` DSL accessor can be replaced with a direct dependency.
+compose-icons = "1.7.3"
+# material3 (Compose-MP) has no stable release past 1.9.0 — 1.10+/1.11+ are alpha-only — so the
+# `compose.material3` accessor pins 1.9.0 under CMP 1.11.1. Tracked separately from the plugin version.
+compose-material3 = "1.9.0"
+
+# Koin
+koin = "4.2.2"
+
+# AndroidX (KMP-capable)
+# NOTE: this ref feeds BOTH Google's androidx.lifecycle:* (viewmodel / -savedstate) AND the JetBrains
+# Compose-MP ports org.jetbrains.androidx.lifecycle:* (viewmodel-compose / runtime-compose). JetBrains'
+# latest STABLE is 2.10.0 (their 2.11.0 is only -beta) and it aligns with Compose-MP 1.11.x — so this
+# stays 2.10.0 even though Google publishes a 2.11.0. Bumping it breaks the iOS klib resolve (CLAUDE §16
+# "prefer stable"; this is the exact bite the navigation/lifecycle catalog comment warns about).
+lifecycle = "2.10.0"
+# navigation-compose: JetBrains-published Compose-MP port (org.jetbrains.androidx.navigation).
+# Google-published androidx.navigation:navigation-compose does NOT publish iOS klibs as of 2026-05-22 —
+# only Android JVM, JVM, Linux x64. Source: https://kotlinlang.org/docs/multiplatform/compose-navigation.html
+navigation-compose = "2.9.2"
+room = "2.8.4"
+sqlite = "2.6.2"
+
+# Ktor
+ktor = "3.5.1"
+
+# Coil
+# 3.5.0 unlocked by the Kotlin 2.4.0 toolchain bump (2026-06-29): its klibs are ABI 2.4.0, which a
+# 2.4.x Kotlin now consumes. (Was held at 3.4.0 while the project was on Kotlin 2.3.21.)
+coil = "3.5.0"
+
+# Kotlinx
+coroutines = "1.11.0"
+serialization = "1.11.0"
+datetime = "0.8.0"
+atomicfu = "0.33.0"
+
+# Other KMP
+multiplatform-settings = "1.3.0"
+kermit = "2.1.0"
+crashkios = "0.9.0"
+ksoup = "0.2.6"
+okio = "3.17.0"
+
+# Android-only (preserved from source)
+# 1.19.0 unlocked 2026-06-29 by the compileSdk 37 + AGP 9.2.1 bump (it needs compileSdk 37 + AGP ≥ 9.1.0
+# via its AAR-metadata check). Was held at 1.18.0 while the project was compileSdk 36 / AGP 8.13.0.
+core-ktx = "1.19.0"
+core-i18n = "1.0.0"
+# androidx.appcompat — needed by AndroidLocaleSwitcher (Phase 5.6) for
+# AppCompatDelegate.setApplicationLocales(...). Up to now AppCompat reached :shared/androidMain
+# transitively through other artifacts; :platform/androidMain declares it explicitly so the
+# clean-layer module owns its own dependency graph.
+appcompat = "1.7.1"
+core-splashscreen = "1.2.0"
+activity-compose = "1.13.0"
+palette-ktx = "1.0.0"
+datastore = "1.2.1"
+security-crypto = "1.1.0"
+work = "2.11.2"
+material = "1.14.0"
+zoomable = "2.12.0"
+telephoto = "0.19.0"
+avif = "1.3.0.841110fd"
+
+# KCEF — JCEF (Chromium Embedded Framework) wrapper for Compose Multiplatform Desktop.
+# Last stable release on Maven Central (2025-03-23); upstream repository archived 2025-10-28.
+# Pulls JCEF + JetBrains Runtime native binaries on first launch (~150-200 MB) to the configured
+# install dir. Requires JDK 17+ (the linked JBR is 17.0.14b1367.22). See `Main.kt` for init.
+kcef = "2025.03.23"
+google-services = "4.5.0"
+firebase-bom = "34.15.0"
+firebase-crashlytics-plugin = "3.0.7"
+# play-services-ads 25.x is a major bump; the 4 mediation adapters below are version-matched to it
+# (latest stable adapter revisions). Bump them together — a stale adapter breaks AdMob mediation.
+play-services-ads = "25.4.0"
+play-app-update = "2.1.0"
+play-review = "2.0.2"
+# ump 4.0.0 is a major bump (consent / User Messaging Platform).
+ump = "4.0.0"
+mediation-inmobi = "11.3.0.1"
+mediation-ironsource = "9.4.3.0"
+mediation-vungle = "7.7.4.2"
+mediation-facebook = "6.21.0.3"
+
+# Test
+junit = "4.13.2"
+turbine = "1.2.1"
+
+[libraries]
+# Compose Multiplatform — DIRECT dependencies. The `compose.runtime` / `compose.foundation` / `compose.ui`
+# / `compose.material3` / `compose.materialIconsExtended` / `compose.components.*` Gradle DSL shorthands
+# (org.jetbrains.compose.ComposePlugin.Dependencies) are deprecated since CMP 1.9 ("specify dependency
+# directly"); declare the org.jetbrains.compose.* artifacts explicitly instead. Versions track the
+# compose-multiplatform plugin version (icons is the frozen 1.7.3). compose.desktop.* is NOT deprecated.
+compose-runtime = { group = "org.jetbrains.compose.runtime", name = "runtime", version.ref = "compose-multiplatform" }
+compose-foundation = { group = "org.jetbrains.compose.foundation", name = "foundation", version.ref = "compose-multiplatform" }
+compose-animation = { group = "org.jetbrains.compose.animation", name = "animation", version.ref = "compose-multiplatform" }
+compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "compose-material3" }
+compose-material = { group = "org.jetbrains.compose.material", name = "material", version.ref = "compose-multiplatform" }
+compose-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "compose-multiplatform" }
+compose-icons-extended = { group = "org.jetbrains.compose.material", name = "material-icons-extended", version.ref = "compose-icons" }
+compose-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "compose-multiplatform" }
+compose-components-ui-tooling-preview = { group = "org.jetbrains.compose.components", name = "components-ui-tooling-preview", version.ref = "compose-multiplatform" }
+
+# Kotlin / KMP common
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
+# kotlinx-coroutines-play-services: provides `Task<T>.await()` for Play Services / Firebase APIs.
+# Used by Android actuals of PushTokenProvider, AppUpdateClient, InAppReviewClient, ConsentFlowClient
+# in Phase 8.8/8.9 facades — bridges the addOnSuccessListener/Failure callbacks to suspend funcs.
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "datetime" }
+kotlinx-atomicfu = { group = "org.jetbrains.kotlinx", name = "atomicfu", version.ref = "atomicfu" }
+
+# Koin
+koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
+koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
+koin-androidx-workmanager = { group = "io.insert-koin", name = "koin-androidx-workmanager", version.ref = "koin" }
+koin-compose = { group = "io.insert-koin", name = "koin-compose", version.ref = "koin" }
+koin-compose-viewmodel = { group = "io.insert-koin", name = "koin-compose-viewmodel", version.ref = "koin" }
+koin-compose-viewmodel-navigation = { group = "io.insert-koin", name = "koin-compose-viewmodel-navigation", version.ref = "koin" }
+koin-test = { group = "io.insert-koin", name = "koin-test", version.ref = "koin" }
+
+# Lifecycle ViewModel core + savedstate are KMP-capable from AndroidX (Google) at 2.10.0+ — iOS klibs published.
+# Lifecycle Compose helpers are published by JetBrains (Compose-MP port) under "org.jetbrains.androidx.lifecycle".
+# Source: https://kotlinlang.org/docs/multiplatform/compose-viewmodel.html
+androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+
+# Navigation Compose (Compose-MP port — iOS-capable)
+androidx-navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "navigation-compose" }
+
+# Room (KMP)
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
+
+# Ktor client
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version.ref = "ktor" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
+ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
+
+# Coil 3
+# coil-core: subset of coil without the singleton ImageLoader. Library/shared modules should depend
+# on this rather than `coil` per Coil 3 docs — exposes Decoder.Factory et al. without the singleton.
+coil-core = { group = "io.coil-kt.coil3", name = "coil-core", version.ref = "coil" }
+# coil-network-core: NetworkHeaders + ImageRequest.Builder.httpHeaders() extension. Pulled into
+# :shared so BaseManga can build per-source ImageRequest objects (with Cookie / User-Agent / Referer
+# attached) without depending on a specific network engine — coil-network-ktor3 / -okhttp stay in
+# the composeApp/platform layers where they wire to the actual HTTP client.
+coil-network-core = { group = "io.coil-kt.coil3", name = "coil-network-core", version.ref = "coil" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-network-ktor3 = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil" }
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil" }
+
+# Settings
+multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settings", version.ref = "multiplatform-settings" }
+multiplatform-settings-coroutines = { group = "com.russhwolf", name = "multiplatform-settings-coroutines", version.ref = "multiplatform-settings" }
+multiplatform-settings-test = { group = "com.russhwolf", name = "multiplatform-settings-test", version.ref = "multiplatform-settings" }
+
+# Kermit
+kermit = { group = "co.touchlab", name = "kermit", version.ref = "kermit" }
+kermit-crashlytics = { group = "co.touchlab", name = "kermit-crashlytics", version.ref = "kermit" }
+
+# CrashKiOS — reports uncaught Kotlin/Native exceptions to Crashlytics as FATAL crashes with the
+# symbolicated Kotlin stack (iosMain-only; CrashKiOS has no jvm/desktop target).
+crashkios-crashlytics = { group = "co.touchlab.crashkios", name = "crashlytics", version.ref = "crashkios" }
+
+# Ksoup
+ksoup = { group = "com.fleeksoft.ksoup", name = "ksoup", version.ref = "ksoup" }
+
+# Okio (multiplatform file I/O — used by AppFileSystem / CBZ reader/writer)
+okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+
+# Android-only (preserved)
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+androidx-core-i18n = { group = "androidx.core", name = "core-i18n", version.ref = "core-i18n" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "core-splashscreen" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
+androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette-ktx" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+androidx-work-gcm = { group = "androidx.work", name = "work-gcm", version.ref = "work" }
+google-material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+zoomable = { group = "net.engawapg.lib", name = "zoomable", version.ref = "zoomable" }
+telephoto-zoomable-image-coil3 = { group = "me.saket.telephoto", name = "zoomable-image-coil3", version.ref = "telephoto" }
+avif = { group = "org.aomedia.avif.android", name = "avif", version.ref = "avif" }
+
+# KCEF — embedded Chromium for Desktop WebView (`composeApp/.../WebViewHost.desktop.kt`).
+kcef = { group = "dev.datlag", name = "kcef", version.ref = "kcef" }
+
+# Firebase / Google Play / AdMob (Android-only)
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
+firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+# Firebase In-App Messaging — the `-display` artifact is the modal/banner/image renderer that shows
+# console-authored campaigns. It auto-initialises from google-services.json and displays on every
+# screen with no app code. Version via the BOM above. Android-only (iOS uses the SPM
+# FirebaseInAppMessaging-Beta product; Desktop has no SDK).
+firebase-inappmessaging-display = { group = "com.google.firebase", name = "firebase-inappmessaging-display" }
+play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "play-services-ads" }
+play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "play-app-update" }
+play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "play-app-update" }
+play-review = { group = "com.google.android.play", name = "review", version.ref = "play-review" }
+play-review-ktx = { group = "com.google.android.play", name = "review-ktx", version.ref = "play-review" }
+ump = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "ump" }
+mediation-inmobi = { group = "com.google.ads.mediation", name = "inmobi", version.ref = "mediation-inmobi" }
+mediation-ironsource = { group = "com.google.ads.mediation", name = "ironsource", version.ref = "mediation-ironsource" }
+mediation-vungle = { group = "com.google.ads.mediation", name = "vungle", version.ref = "mediation-vungle" }
+mediation-facebook = { group = "com.google.ads.mediation", name = "facebook", version.ref = "mediation-facebook" }
+
+# Test
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+androidx-room = { id = "androidx.room", version.ref = "room" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }

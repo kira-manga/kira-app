@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Arabic worker/notification strings — mirror native res/values-ar/strings.xml verbatim so the
+         background-refresh + new-chapter notifications localize for the shipped RTL locale. -->
+    <string name="new_chapters">فصل جديد</string>
+    <string name="notifications_for_new_manga_chapters">الإشعارات بالفصول الجديدة للمانجا</string>
+    <string name="chapter_is_available">الفصل %1$s متاح</string>
+
+    <string name="notification_channel_library_refresh">تحديث المكتبة</string>
+    <string name="notification_channel_library_refresh_desc">إظهار تقدم تحديث المكتبة في الخلفية</string>
+    <string name="notification_refreshing_library">جاري تحديث المكتبة</string>
+    <string name="notification_library_refresh_failed">فشل تحديث المكتبة</string>
+    <string name="notification_starting">يبدأ…</string>
+    <string name="notification_refresh_failed">فشل التحديث: %s</string>
+    <string name="notification_no_manga_to_refresh">لا يوجد مانجا لتحديثها</string>
+    <string name="notification_processing_batch">جاري معالجة الدفعة %d…</string>
+    <string name="notification_finishing_up">جارٍ الانتهاء…</string>
+    <string name="notification_refresh_progress">%1$s (اكتمل %2$d/%3$d، فشل %4$d)</string>
+    <string name="notification_refresh_completed">اكتمل: %1$d ناجح، %2$d فاشل</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webview_action_forward">İleri</string>
+    <string name="webview_action_reload">Yeniden yükle</string>
+    <string name="webview_action_save_headers">Başlıkları kaydet</string>
+</resources>

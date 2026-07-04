@@ -1,0 +1,11 @@
+<resources>
+    <string name="reading_mode">読み方</string>
+    <string name="reading_mode_rtl">右から左</string>
+    <string name="reading_mode_ltr">左から右</string>
+    <string name="reading_mode_continuous">連続縦読み</string>
+    <string name="reader_native_next_chapter">次の章</string>
+    <string name="reader_native_last_chapter">最終話です</string>
+    <string name="reader_native_finished_prefix">読了:</string>
+    <string name="reader_native_couldnt_load_chapter">この章を読み込めませんでした</string>
+    <string name="reader_native_add_to_library_first">先にこのマンガをライブラリに追加してください</string>
+</resources>

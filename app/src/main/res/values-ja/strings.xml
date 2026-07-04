@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Japanese worker/notification strings — mirror native res/values-ja/strings.xml verbatim. -->
+    <string name="new_chapters">新しいチャプター</string>
+    <string name="notifications_for_new_manga_chapters">新しいマンガチャプターの通知</string>
+    <string name="chapter_is_available">チャプター%1$sが利用可能です</string>
+
+    <string name="notification_channel_library_refresh">ライブラリ更新</string>
+    <string name="notification_channel_library_refresh_desc">バックグラウンド更新の進行状況を表示</string>
+    <string name="notification_refreshing_library">ライブラリを更新しています</string>
+    <string name="notification_library_refresh_failed">ライブラリ更新に失敗しました</string>
+    <string name="notification_starting">開始しています…</string>
+    <string name="notification_refresh_failed">更新に失敗しました: %s</string>
+    <string name="notification_no_manga_to_refresh">更新するマンガがありません</string>
+    <string name="notification_processing_batch">バッチ %d を処理中…</string>
+    <string name="notification_finishing_up">完了処理中…</string>
+    <string name="notification_refresh_progress">%1$s（%2$d/%3$d 完了、%4$d 失敗）</string>
+    <string name="notification_refresh_completed">完了: 成功 %1$d、失敗 %2$d</string>
+</resources>

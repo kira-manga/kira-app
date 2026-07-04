@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_discover">Discover</string>
+    <string name="home_popular">Popular now</string>
+    <string name="home_latest">Latest updates</string>
+</resources>

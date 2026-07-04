@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Complaint / WhatsNew / Welcome / About P3-polish strings (NP Phase 2, COMPLAINT +
+  WHATSNEW + WELCOME + ABOUT cluster — P3 tier).
+
+  Net-new keys for the P3 refactor/cleanup/parity-nit gaps:
+    - GAP-ABT-02: restore the inert "Source code" row (disabled "soon" subtitle) for 1:1 row
+      parity with the legacy About screen.
+
+  Kept in a separate file (per NP convention) from the shared :ui strings.xml so the parity
+  additions are easy to audit and never collide with the hand-authored shared catalog.
+  English-only until the trusted-Arabic pass.
+-->
+<resources>
+    <!-- GAP-ABT-02 — inert "Source code" row (disabled, "soon" subtitle) -->
+    <string name="np_source_code">Source code</string>
+    <string name="np_soon">Soon</string>
+</resources>

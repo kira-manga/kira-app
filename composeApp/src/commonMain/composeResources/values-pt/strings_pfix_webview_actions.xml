@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webview_action_forward">Avançar</string>
+    <string name="webview_action_reload">Recarregar</string>
+    <string name="webview_action_save_headers">Salvar cabeçalhos</string>
+</resources>

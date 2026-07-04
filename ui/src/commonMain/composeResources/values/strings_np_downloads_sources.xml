@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity (NP Phase 2) strings for the Downloads + Sources cluster.
+
+  Separate from the shared `values/strings.xml` per the NP slice convention — new keys introduced
+  by the downloads/sources P1 gap-lift live here so the shared catalog stays untouched. Existing
+  keys (`request_submitted_successfully`, `request_failed`, `retry`, `back`, `delete`, `cancel`)
+  are reused from the shared catalog and NOT redefined here.
+
+  Arabic translations live in the locale-parallel `values-ar/strings_np_downloads_sources.xml`.
+-->
+<resources>
+    <!-- GAP-SRC-07: per-source "Enabled"/"Disabled" caption under the source name. -->
+    <string name="source_enabled">Enabled</string>
+    <string name="source_disabled">Disabled</string>
+
+    <!-- GAP-SRC-04/05: centered onboarding headline above the source list. -->
+    <string name="select_your_manga_sources">Select Your Manga Sources</string>
+
+    <!-- GAP-DL-01: content description for the Downloads top-bar back icon button. -->
+    <string name="np_back">Back</string>
+
+    <!-- GAP-DL-02: content descriptions for the Downloads row action icon buttons. -->
+    <string name="np_cancel_download">Cancel download</string>
+    <string name="np_delete_download">Delete download</string>
+    <string name="np_download_complete">Download complete</string>
+</resources>

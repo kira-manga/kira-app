@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) Arabic strings for the Home feed (P3 low-severity parity wave).
+
+  Native source of truth: native-app/.../res/values-ar/strings.xml.
+
+  - home_status_adult_title: the en value lives in values/strings_np_home_search.xml and was
+    realigned to the verbatim native "Blocked (18+)" (native values/strings.xml:797). The other
+    home_status_* titles/bodies remain en-only (as authored), so only this Arabic override is added
+    here — matching native's adult_content_blocked_title = "محجوب (18+)" (values-ar/strings.xml:819).
+-->
+<resources>
+    <string name="home_status_adult_title">محجوب (18+)</string>
+</resources>

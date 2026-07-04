@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Kira Manga</string>
+    <string name="title_home">Beranda</string>
+    <string name="title_history">Riwayat</string>
+    <string name="title_notifications">Notifikasi</string>
+    <string name="title_library">Perpustakaan</string>
+    <string name="title_settings">Pengaturan</string>
+
+
+    <!-- Library -->
+
+    <string name="continue_string">Lanjutkan</string>
+
+    <!-- Sort Options Section -->
+    <string name="sort_options_title">Opsi Urutkan</string>
+    <string name="sort_direction_label">Arah Urutan</string>
+    <string name="sort_direction_ascending">Menaik</string>
+    <string name="sort_direction_descending">Menurun</string>
+    <string name="sort_by_label">Urutkan berdasarkan</string>
+
+    <!-- Display Options Section -->
+    <string name="items_per_row_label">Item per baris:</string>
+    <string name="auto_text">Otomatis</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">item</string>
+    <string name="items_plural">item</string>
+    <string name="show_items_details">Tampilkan detail item</string>
+    <string name="show_items_source">Tampilkan sumber item</string>
+    <string name="show_items_count">Tampilkan jumlah item</string>
+    <string name="last_updated">Terakhir diperbarui: %1$s</string>
+    <string name="not_updated_yet">Belum diperbarui</string>
+    <plurals name="items_count">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d item</item>
+    </plurals>
+
+    <!-- MangaCard -->
+
+    <!-- Filter Types -->
+    <string name="filter_downloaded">Diunduh</string>
+    <string name="filter_unread">Belum dibaca</string>
+    <string name="filter_started">Dimulai</string>
+    <string name="filter_readed">Dibaca</string>
+    <string name="filter_bookmarked">Tandai</string>
+    <string name="filter_completed">Selesai</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">Berdasarkan abjad</string>
+    <string name="sort_total_chapters">Jumlah bab</string>
+    <string name="sort_last_read">Terakhir dibaca</string>
+    <string name="sort_unread_count">Jumlah belum dibaca</string>
+    <string name="sort_date_added">Tanggal ditambahkan</string>
+    <string name="sort_random">Acak</string>
+
+    <string name="content_description_close_search">Tutup pencarian</string>
+    <string name="searching_placeholder">Cari manga Anda…</string>
+    <string name="contentDescription_search_icon">Ikon pencarian</string>
+    <string name="contentDescription_search_clear">Bersihkan kueri</string>
+    <string name="contentDescription_search">Cari</string>
+    <string name="contentDescription_filter">Filter</string>
+    <string name="dropdown_button_refresh">Muat ulang</string>
+    <string name="library_bottom_sheet_tab_filter">Filter</string>
+    <string name="library_bottom_sheet_tab_sort">Urutkan</string>
+    <string name="library_bottom_sheet_tab_display">Tampilan</string>
+
+    <!-- Updates -->
+    <string name="notifications_group_today">Hari ini</string>
+    <string name="notifications_group_yesterday">Kemarin</string>
+    <string name="notifications_group_last_week">Minggu lalu</string>
+    <string name="notifications_group_older">Lebih lama</string>
+    <string name="contentDescription_delete_all">Hapus semua</string>
+    <string name="contentDescription_mark_all_as_read">Tandai semua sebagai dibaca</string>
+    <string name="chapter_number">Bab %1$s</string>
+
+    <!-- History -->
+    <string name="content_description_clear_history">Bersihkan riwayat</string>
+    <string name="today">Hari ini</string>
+    <string name="yesterday">Kemarin</string>
+    <string name="days_ago">%1$d hari yang lalu</string>
+    <string name="weeks_ago">%1$d minggu yang lalu</string>
+    <string name="months_ago">%1$d bulan yang lalu</string>
+    <string name="years_ago">%1$d tahun yang lalu</string>
+
+    <!-- Settings -->
+    <string name="theme_dark">Mode Gelap</string>
+    <string name="theme_light">Mode Terang</string>
+    <string name="pure_black_mode_title">Mode Gelap Hitam Murni</string>
+    <string name="default_reading_mode">Mode Baca Default</string>
+    <string name="statistics">Statistik</string>
+    <string name="about">Tentang</string>
+    <string name="help">Bantuan</string>
+    <string name="adult_filter_removal_header">Konten tidak tersedia</string>
+    <string name="adult_filter_removal_title">Maaf — konten ini tidak dapat ditampilkan. Sesuai kebijakan Google Play dan untuk menghormati nilai-nilai agama dan budaya, kami tidak dapat menampilkan konten seksual eksplisit. Terima kasih atas pengertian Anda.</string>
+
+
+
+    <!-- Statistics -->
+    <string name="desc_back">Kembali</string>
+    <string name="section_entries">Entri</string>
+    <string name="section_chapters">Bab</string>
+    <string name="label_in_library">Di perpustakaan</string>
+    <string name="label_read_duration">Durasi baca</string>
+    <string name="label_completed_entries">Entri selesai</string>
+    <string name="label_started">Dimulai</string>
+    <string name="label_completed">Selesai</string>
+    <string name="label_total">Total</string>
+    <string name="label_read">Dibaca</string>
+    <string name="label_downloaded">Diunduh</string>
+    <string name="label_bookmarked">Ditandai</string>
+
+    <!-- Library Manga Details -->
+    <string name="add_library_title">Tambahkan ke Perpustakaan</string>
+
+    <string name="action_remove">Hapus</string>
+    <string name="action_bookmark">Tandai</string>
+    <string name="action_downloading">Mengunduh</string>
+    <string name="action_open_in_browser">Buka di WebView</string>
+
+    <string name="chapters_count_format">%1$d Bab</string>
+
+
+    <string name="desc_newest_first">Terbaru terlebih dahulu</string>
+    <string name="desc_oldest_first">Terlama terlebih dahulu</string>
+    <string name="title_copied">Judul disalin!</string>
+
+    <!-- Reading Modes -->
+    <string name="reading_mode_default">Default</string>
+    <string name="reading_mode_vertical">Vertikal</string>
+    <string name="reading_mode_webtoon">Webtoon</string>
+    <string name="but_revert">Kembalikan</string>
+    <string name="but_apply">Terapkan</string>
+    <string name="retry">Coba Lagi</string>
+    <string name="failed_to_load">Gagal memuat: %1$s</string>
+
+    <!-- Search Screen -->
+
+    <string name="title_sources_settings">Pengaturan Sumber</string>
+    <string name="enable_disable_all_sources">Aktifkan/nonaktifkan semua sumber %1$s</string>
+    <string name="enabled">Aktif</string>
+    <string name="disabled">Tidak Aktif</string>
+
+    <!-- Download Notifications -->
+    <string name="new_chapters">Bab Baru</string>
+    <string name="notifications_for_new_manga_chapters">Notifikasi untuk bab manga baru</string>
+    <string name="chapter_is_available">Bab %1$s tersedia</string>
+    <string name="select_language">Pilih Bahasa</string>
+    <string name="downloads">Unduhan</string>
+
+    <string name="request_feature_bug">Laporkan bug atau minta fitur</string>
+    <string name="enter_your_language">Masukkan bahasa Anda</string>
+    <string name="submit">Kirim</string>
+    <string name="request_add_language">Minta Penambahan Bahasa</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">masukkan URL situs yang ingin Anda tambahkan</string>
+    <string name="we_will_add_it_as_soon_it_possible">kami akan menambahkannya sesegera mungkin</string>
+    <string name="enter_the_site_url">Masukkan URL situs</string>
+
+    <!-- Crash Screen -->
+    <string name="crash_screen_title">Ups! Terjadi kesalahan</string>
+    <string name="crash_screen_description">Maaf—%1$s mengalami kesalahan tak terduga. Anda dapat mengirim laporan untuk membantu kami memperbaiki aplikasi.</string>
+    <string name="pref_dump_crash_logs">Kirim Laporan Kesalahan</string>
+    <string name="crash_screen_restart_application">Mulai ulang Aplikasi</string>
+    <string name="finish">Selesai</string>
+    <string name="select_your_manga_sources">Pilih Sumber Manga Anda</string>
+    <string name="you_need_to_enable_notifications">Anda perlu mengaktifkan notifikasi untuk menggunakan aplikasi</string>
+    <string name="choose_your_theme">Pilih Tema Anda</string>
+    <string name="get_started">Mulai</string>
+    <string name="welcome_suptitle">Jelajahi, baca, dan kumpulkan manga dengan mudah.</string>
+    <string name="welcome_title">Selamat datang di Kira Manga</string>
+    <string name="system_theme">Tema Sistem</string>
+    <string name="follow_system_theme">Ikuti Tema Sistem</string>
+    <string name="enable_notifications">Aktifkan Notifikasi</string>
+    <string name="notification_permission">Kami membutuhkan izin ini untuk mengirim bab terbaru, menunjukkan progress unduhan, dan memastikan aplikasi berfungsi dengan baik.</string>
+    <string name="grant_permission">Berikan Izin</string>
+    <string name="theme_system">Sistem</string>
+    <string name="version">Versi</string>
+    <string name="check_for_update">Periksa Pembaruan</string>
+    <string name="rate_our_app">Beri Rating Aplikasi</string>
+    <string name="what_s_new">Apa yang Baru</string>
+    <string name="privacy_policy">Kebijakan Privasi</string>
+
+    <string name="minimum_5_characters_required">Minimal 5 karakter diperlukan</string>
+    <string name="error_in_the_app">Kesalahan Di Aplikasi</string>
+    <string name="add_languages">Tambah Bahasa</string>
+    <string name="add_manga_site">Tambah Situs Manga</string>
+    <string name="error_in_manga_site">Kesalahan Di Situs Manga</string>
+    <string name="ask_to_add_features">Minta Menambahkan Fitur</string>
+    <string name="custom_feedback">Umpan balik kustom</string>
+    <string name="request_language">Minta Bahasa</string>
+    <string name="active">Aktif</string>
+    <string name="failed">Gagal</string>
+    <string name="completed">Selesai</string>
+    <string name="running">Berjalan</string>
+    <string name="queued">Dalam antrean</string>
+    <string name="downloaded">Diunduh</string>
+    <string name="unknown">Tidak diketahui</string>
+
+    <!-- HTTP Errors -->
+
+    <!-- Exceptions -->
+    <string name="cancelled_by_user">Dibatalkan oleh pengguna</string>
+    <string name="failed_to_load_image">Gagal memuat gambar.</string>
+
+    <!-- Closure Reasons -->
+    <string name="closure_reason_done">SELESAI</string>
+
+
+    <!-- Error States -->
+    <string name="error_occurred">Terjadi kesalahan</string>
+
+    <!-- Empty States -->
+
+
+    <string name="status_open">Terbuka</string>
+
+    <string name="status_planned">Direncanakan</string>
+
+
+
+    <string name="content_description_delete">Hapus</string>
+    <string name="show_buttons">Tampilkan tombol</string>
+    <string name="show_tabs_all_likes_etc">Tampilkan tab (Semua, Suka, dll.)</string>
+    <string name="status_pinned">Dipin</string>
+    <string name="admin">admin</string>
+    <string name="feedbacks_and_complaints">Umpan balik dan keluhan</string>
+
+
+    <string name="status_unknown">Unknown</string>
+    <!-- Complaint Actions -->
+    <string name="reply">Balas</string>
+    <string name="edit">Edit</string>
+    <string name="delete">Hapus</string>
+    <string name="cancel">Batal</string>
+    <string name="close">Tutup</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">Balas Keluhan</string>
+    <string name="your_reply">Balasan Anda</string>
+    <string name="reply_placeholder">Ketik balasan Anda di sini...</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">Edit Keluhan</string>
+    <string name="subject">Subjek</string>
+    <string name="complaint_body">Isi Keluhan</string>
+    <string name="edit_placeholder">Edit detail keluhan Anda di sini...</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">Hapus Keluhan</string>
+    <string name="delete_warning_message">Tindakan ini tidak dapat dibatalkan. Keluhan akan dihapus secara permanen.</string>
+    <string name="delete_forever">Hapus Selamanya</string>
+
+    <!-- Navigation -->
+    <string name="back">Kembali</string>
+
+    <!-- Common -->
+    <string name="loading">Memuat...</string>
+
+    <!-- Status Labels -->
+    <string name="status_in_progress">Sedang Diproses</string>
+    <string name="status_resolved">Diselesaikan</string>
+    <string name="status_closed">Ditutup</string>
+
+    <!-- Character Limits -->
+    <string name="character_count">%1$d/%2$d</string>
+
+    <!-- Existing strings -->
+    <string name="feedback_manager_title">Manajer Umpan Balik</string>
+    <string name="clear">Bersihkan</string>
+    <string name="filter_all">Semua</string>
+    <string name="no_results_found">Tidak ada hasil ditemukan</string>
+
+    <!-- UI Elements -->
+    <string name="new_badge">BARU</string>
+    <string name="play_video">Putar Video</string>
+    <string name="video_preview">Pratinjau Video</string>
+
+
+    <!-- res/values/strings.xml - Additional strings for Admin Complaint Management -->
+
+    <!-- Admin Screen Titles -->
+
+    <!-- Search and Filter -->
+
+    <!-- Sort Options -->
+    <string name="sort_status">Status</string>
+    <string name="sort_type">Type</string>
+    <string name="sort_user_id">User ID</string>
+
+    <!-- Statistics -->
+
+    <!-- Dialog Titles -->
+    <string name="change_status">Change Status</string>
+    <string name="add_closure_reason">Add Closure Reason</string>
+
+    <!-- Dialog Content -->
+
+    <!-- Closure Reason Dialog -->
+    <string name="add_reason">Add Reason</string>
+
+    <!-- Delete Dialog -->
+
+    <!-- Card Content -->
+
+    <!-- Closure Reason Types -->
+
+    <!-- Action Messages -->
+
+    <!-- Error Messages -->
+
+    <!-- Bulk Operations -->
+
+    <!-- Admin Actions -->
+    <string name="admin_actions">Admin Actions</string>
+
+    <!-- Validation Messages -->
+
+    <!-- Accessibility -->
+
+    //=========================================================================================================
+
+
+
+
+
+
+
+
+
+
+
+    <string name="languages_coming_soon_title">Bahasa yang Akan Datang</string>
+    <string name="languages_coming_soon_description">🌍 Kami sedang mengerjakan penambahan sumber untuk: 🇹🇷 Turki, 🇩🇪 Jerman, 🇮🇹 Italia, 🇯🇵 Jepang. Mohon bersabar, akan segera dirilis!</string>
+
+
+    <string name="we_d_love_to_hear_from_you">Kami ingin mendengar dari Anda</string>
+    <string name="category">Kategori</string>
+    <string name="select_a_category">Pilih kategori</string>
+    <string name="your_feedback">Masukan Anda</string>
+    <string name="connect_with_us_in_social_media">Terhubung dengan kami di media sosial</string>
+
+    <string name="status_not_planned">Tidak direncanakan</string>
+    <string name="new_chapter">BARU</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <string name="request_submitted_successfully">Permintaan berhasil dikirim</string>
+    <string name="request_failed">Gagal mengirim permintaan</string>
+
+    <string name="converting_to_cbz">Mengonversi ke CBZ</string>
+    <string name="conversion_failed">Konversi Gagal</string>
+
+    <string name="notification_downloading_chapters">Mengunduh chapter</string>
+    <string name="notification_chapter_title">Chapter %s</string>
+
+    <string name="notification_downloading_background">Mengunduh semua chapter di latar belakang</string>
+    <string name="notification_compressing_images">Mengompresi gambar…</string>
+    <string name="notification_images_progress">%1$d / %2$d gambar</string>
+
+    <string name="action_cancel_all">Batalkan Semua</string>
+    <string name="action_cancel_chapter">Batalkan Chapter</string>
+
+    <string name="notification_channel_all_downloads">Semua Unduhan</string>
+    <string name="notification_channel_all_downloads_desc">Progres unduhan keseluruhan</string>
+    <string name="notification_channel_chapter_download">Unduhan Chapter</string>
+    <string name="notification_channel_chapter_download_desc">Progres satu chapter</string>
+    <string name="notification_channel_download_summary">Ringkasan Unduhan</string>
+    <string name="notification_channel_download_summary_desc">Notifikasi penyelesaian</string>
+    <string name="notification_channel_library_refresh">Penyegaran Perpustakaan</string>
+    <string name="notification_channel_library_refresh_desc">Menampilkan progres penyegaran di latar belakang</string>
+
+    <string name="notification_refreshing_library">Menyegarkan perpustakaan</string>
+    <string name="notification_library_refresh_failed">Penyegaran gagal</string>
+    <string name="notification_starting">Memulai…</string>
+    <string name="notification_refresh_timed_out">Waktu penyegaran habis</string>
+    <string name="notification_refresh_failed">Penyegaran gagal: %s</string>
+    <string name="notification_no_manga_to_refresh">Tidak ada manga untuk diperbarui</string>
+    <string name="notification_processing_batch">Memproses batch %d…</string>
+    <string name="notification_finishing_up">Menyelesaikan…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d selesai, %4$d gagal)</string>
+    <string name="notification_refresh_completed">Selesai: %1$d berhasil, %2$d gagal</string>
+
+
+
+    <string name="time_just_now">Baru saja</string>
+
+    <plurals name="time_minutes_ago">
+        <item quantity="other">%d menit yang lalu</item>
+    </plurals>
+
+    <plurals name="time_hours_ago">
+        <item quantity="other">%d jam yang lalu</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="other">%d hari yang lalu</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="other">%d minggu yang lalu</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="other">%d bulan yang lalu</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="other">%d tahun yang lalu</item>
+    </plurals>
+
+
+
+
+
+    <string name="value_count">%,d</string>
+    <string name="use_kira_compressor">Gunakan Kira Compressor</string>
+    <string name="compress_existing_downloads">Kompres unduhan yang ada</string>
+    <string name="converting">Mengonversi…</string>
+    <string name="start_conversion">Mulai konversi</string>
+    <string name="conversion_stopped">Konversi dihentikan</string>
+    <string name="conversion_complete_">Konversi selesai!</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">Jangan tutup aplikasi sampai proses konversi selesai</string>
+    <string name="remaining">Tersisa</string>
+    <string name="current">Saat ini:</string>
+    <string name="chapter">Bab %1$s</string>
+    <string name="stop_conversion">Hentikan konversi</string>
+
+
+    <string name="h_m">%1$dj %2$dm</string>
+    <string name="conversion_stopped_by_user">Konversi dihentikan oleh pengguna.</string>
+    <string name="chapters_converted_successfully">✓ %1$d bab berhasil dikonversi</string>
+    <string name="chapters_remaining">⏸ %1$d bab tersisa</string>
+
+
+
+</resources>

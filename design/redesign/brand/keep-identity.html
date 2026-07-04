@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>kira — keep identity, K, 8 colors</title>
+<style>
+ :root{--bg:#0B0D11;--card:#14171F;--line:rgba(255,255,255,.09);--text:#F3F4F7;--muted:#9AA1AF;}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:#0B0D11;color:var(--text);padding:44px 28px}
+ .wrap{max-width:1180px;margin:0 auto}
+ .tag{font-size:11px;font-weight:800;letter-spacing:2.5px;color:#FF7D8C}
+ h1{font-size:30px;font-weight:900;letter-spacing:-.5px;margin-top:8px}
+ .lead{color:var(--muted);font-size:14.5px;margin:10px 0 4px;line-height:1.55;max-width:850px}
+ .ref{display:flex;align-items:center;gap:14px;margin-top:18px;background:#101015;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+ .ref .lbl{font-size:12px;color:var(--muted)}
+ .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:26px}
+ .c{display:flex;flex-direction:column;align-items:center;gap:12px}
+ .pick{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)}
+ /* dark navy tile — matches the existing identity */
+ .ic{width:118px;height:118px;border-radius:27px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+   background:radial-gradient(125% 115% at 32% 14%,#222a3b 0%,#121620 46%,#080a0f 100%);
+   box-shadow:0 16px 34px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.05)}
+ .ic svg{width:118px;height:118px}
+ .wm{font-weight:800;letter-spacing:-1.2px;font-size:24px;display:flex;align-items:flex-end;color:#fff}
+ .wm .dot{width:6px;height:6px;border-radius:50%;margin-left:2px;margin-bottom:5px}
+ .nm{font-size:11.5px;color:var(--muted)}
+ .note{color:var(--muted);font-size:13px;margin-top:30px;line-height:1.6;border-top:1px solid var(--line);padding-top:20px}
+ .note b{color:var(--text)}
+</style></head><body>
+<svg style="position:absolute;width:0;height:0"><defs>
+ <!-- glossy letter gradients (light top-left -> rich bottom-right), per colorway -->
+ <linearGradient id="c1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB37A"/><stop offset="1" stop-color="#FF4D6D"/></linearGradient>
+ <linearGradient id="c2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9DBE"/><stop offset="1" stop-color="#E0306E"/></linearGradient>
+ <linearGradient id="c3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB14D"/><stop offset="1" stop-color="#FF3B3B"/></linearGradient>
+ <linearGradient id="c4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#C49BFF"/><stop offset="1" stop-color="#FF5B6E"/></linearGradient>
+ <linearGradient id="c5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7AF0FF"/><stop offset="1" stop-color="#1E6BFF"/></linearGradient>
+ <linearGradient id="c6" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7DF7C8"/><stop offset="1" stop-color="#0AA37F"/></linearGradient>
+ <linearGradient id="c7" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B7A0FF"/><stop offset="1" stop-color="#6A2BFF"/></linearGradient>
+ <linearGradient id="c8" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE08A"/><stop offset="1" stop-color="#FF8A3B"/></linearGradient>
+ <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".42"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+ <clipPath id="kclip"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z"/></clipPath>
+</defs></svg>
+<div class="wrap">
+ <div class="tag">KIRA · KEEP THE IDENTITY · Y → K · 8 COLORS</div>
+ <h1>Same logo identity — now a “K”, in 8 colorways</h1>
+ <p class="lead">Your existing icon’s DNA kept: a <b>glossy gradient monogram on a dark navy tile</b> with an accent dot. I swapped the “Y” for a bold <b>“K”</b> (kira) and recolored it 8 ways. Pick the color — same shape, your call on the palette.</p>
+
+ <div class="grid">
+  <div class="c"><div class="pick">01 · CORAL→AMBER</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c1)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c1)"/></svg></div><div class="wm">kira<span class="dot" style="background:#FF6B5B"></span></div><div class="nm">brand coral</div></div>
+  <div class="c"><div class="pick">02 · PINK→MAGENTA</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c2)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c2)"/></svg></div><div class="wm">kira<span class="dot" style="background:#E0306E"></span></div><div class="nm">hot pink</div></div>
+  <div class="c"><div class="pick">03 · RED→ORANGE</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c3)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c3)"/></svg></div><div class="wm">kira<span class="dot" style="background:#FF5234"></span></div><div class="nm">fire</div></div>
+  <div class="c"><div class="pick">04 · VIOLET→CORAL</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c4)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c4)"/></svg></div><div class="wm">kira<span class="dot" style="background:#A86BFF"></span></div><div class="nm">dusk</div></div>
+  <div class="c"><div class="pick">05 · CYAN→BLUE</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c5)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c5)"/></svg></div><div class="wm">kira<span class="dot" style="background:#2BB7FF"></span></div><div class="nm">original blue</div></div>
+  <div class="c"><div class="pick">06 · TEAL→GREEN</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c6)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c6)"/></svg></div><div class="wm">kira<span class="dot" style="background:#13C495"></span></div><div class="nm">mint</div></div>
+  <div class="c"><div class="pick">07 · PURPLE→INDIGO</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c7)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c7)"/></svg></div><div class="wm">kira<span class="dot" style="background:#8A5BFF"></span></div><div class="nm">violet</div></div>
+  <div class="c"><div class="pick">08 · GOLD→AMBER</div><div class="ic"><svg viewBox="0 0 100 100"><path d="M30 22 H46 V44 L68 22 H88 L58 51 L90 84 H69 L46 56 V84 H30 Z" fill="url(#c8)"/><g clip-path="url(#kclip)"><rect x="0" y="0" width="100" height="56" fill="url(#gloss)"/></g><circle cx="92" cy="80" r="6" fill="url(#c8)"/></svg></div><div class="wm">kira<span class="dot" style="background:#FF9E3B"></span></div><div class="nm">gold</div></div>
+ </div>
+
+ <p class="note">Same identity as your current icon (glossy gradient letter on dark navy + dot) — just <b>K</b> instead of YM, in 8 palettes. Tell me the number you like (e.g. “01 coral” or “03 fire”) and I’ll build the real launcher icon at every density (Android adaptive + iOS) with that exact look, plus the <b>kira</b> wordmark. If you also want the <b>K</b> a bit more rounded/flowing (like the old Y’s curves) or a two‑letter mark, say so and I’ll adjust.</p>
+</div></body></html>

@@ -1,0 +1,184 @@
+name: iosApp
+options:
+  bundleIdPrefix: me.manga.kira
+  deploymentTarget:
+    # Raised 14.0 -> 15.0 for the latest Firebase iOS SDK (12.x requires iOS 15 minimum). Accepted
+    # to use the current Firebase line and prepare for AdMob/ads next.
+    iOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  groupSortPosition: top
+
+settings:
+  base:
+    DEVELOPMENT_LANGUAGE: en
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # The KMP framework lives in build/ — Xcode's user-script sandbox would block the
+    # `embedAndSignAppleFrameworkForXcode` Gradle task from writing to derived data,
+    # producing a confusing "Operation not permitted" error during link.
+    SWIFT_VERSION: "5.0"
+
+# Firebase iOS SDK via Swift Package Manager, latest line ("up to next major" = 12.x). 12.x requires
+# a minimum deployment target of iOS 15 (raised in options.deploymentTarget above). Products linked:
+# Analytics + Crashlytics (ready for AdMob), plus Messaging (FCM push) and InAppMessaging (FIAM).
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: "12.0.0"
+
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: iosApp
+        excludes:
+          # The committed placeholder must NOT ship in the app bundle — only the real (gitignored)
+          # GoogleService-Info.plist is a Copy-Bundle-Resources entry.
+          - "GoogleService-Info.plist.example"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira
+        PRODUCT_NAME: Kira
+        INFOPLIST_FILE: iosApp/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_BITCODE: NO
+        # ComposeApp framework lookup path for Xcode after the Gradle embed-and-sign script
+        # copies it into BUILT_PRODUCTS_DIR. This matches the standard KMP+Compose template
+        # produced by the JetBrains "Kotlin Multiplatform" new-project wizard.
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+      # dSYM generation is per-config. Debug builds use plain `dwarf` (no dSYM → faster local builds;
+      # Crashlytics + the dSYM upload are disabled in Debug anyway — see the run script below). Release
+      # / TestFlight use `dwarf-with-dsym` so crashes symbolicate and the dSYM can be uploaded.
+      configs:
+        Debug:
+          DEBUG_INFORMATION_FORMAT: dwarf
+          # SIGNING MODES (owner decision 2026-07-02): Debug signs with the no-push entitlements so
+          # local device builds work under a Personal (free) team — Personal teams cannot carry the
+          # Push Notifications capability, and automatic signing derives capabilities from the
+          # entitlements file, so any aps-environment key fails Debug provisioning outright.
+          # Developer-Program members who want push in a Debug DEVICE build: change this one line to
+          # iosApp/iosApp.entitlements and re-run `xcodegen generate` (APS_ENVIRONMENT below already
+          # selects sandbox APNs for Debug). Simulator builds don't validate entitlements either way.
+          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp-nopush.entitlements
+          # Sandbox APNs for dev builds — only consumed when Debug points at the full entitlements
+          # file above (the default no-push file has no aps-environment key to expand it into).
+          APS_ENVIRONMENT: development
+        Release:
+          DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+          # Full push entitlements for TestFlight/App Store — these builds require a real Apple
+          # Developer Program team anyway (Personal teams can't distribute), so the Push
+          # Notifications capability + aps-environment are always available here. Push is therefore
+          # never lost by the Debug no-push default above.
+          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
+          # Production APNs for TestFlight/App Store — set explicitly so real push isn't silently left
+          # on sandbox APNs by an implicit "development" default. Trade-off: a local Release build for a
+          # physical device then needs a distribution provisioning profile (a dev-profile Release device
+          # build fails codesign — loudly, at build time). The simulator build (Debug) is unaffected.
+          APS_ENVIRONMENT: production
+    dependencies:
+      - framework: ComposeApp.framework
+        embed: true
+        codeSign: true
+        implicit: true
+      # Firebase products:
+      #  - FirebaseCore: FirebaseApp.configure().
+      #  - FirebaseAnalytics: the NORMAL (full) Analytics, which links GoogleAppMeasurement WITH IDFA
+      #    support — chosen deliberately to be ready for AdMob/ads next (ad attribution can use the
+      #    advertising identifier). ATT IMPLICATION: when ads ship, add NSUserTrackingUsageDescription
+      #    to Info.plist and call ATTrackingManager.requestTrackingAuthorization; the IDFA is only read
+      #    after the user authorizes ATT (otherwise it returns zeros), and the App Store privacy form
+      #    must then declare IDFA use. No ATT prompt is added yet (no ad UI yet).
+      #  - FirebaseCrashlytics: crash reporting; auto-initializes on FirebaseApp.configure().
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseAnalytics
+      - package: Firebase
+        product: FirebaseCrashlytics
+      #  - FirebaseMessaging: FCM push — APNs token registration + the FCM registration token bridged
+      #    to Kotlin (IosPushBridgeKt.onPushToken) for PushTokenProvider.
+      - package: Firebase
+        product: FirebaseMessaging
+      #  - FirebaseInAppMessaging (FIAM): console-authored campaigns displayed automatically by the SDK
+      #    on every screen. No app code imports or drives it — the app intentionally never suppresses
+      #    in-app messages. The SPM *product* is "FirebaseInAppMessaging-Beta" (still Beta in the
+      #    Firebase iOS SPM); "FirebaseInAppMessaging" is only a target name.
+      - package: Firebase
+        product: FirebaseInAppMessaging-Beta
+    preBuildScripts:
+      - name: "Build & embed Kotlin/Compose framework"
+        # Runs the Gradle task that links the iOS framework for the current Xcode
+        # configuration/architecture and copies it into BUILT_PRODUCTS_DIR/Frameworks.
+        # KOTLIN_FRAMEWORK_BUILD_TYPE/ARCHS/SDK_NAME are read by Kotlin's Xcode integration
+        # from the Xcode build environment.
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+        inputFiles:
+          - $(SRCROOT)/../composeApp/build.gradle.kts
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/ComposeApp.framework/ComposeApp
+        basedOnDependencyAnalysis: false
+    postBuildScripts:
+      # Firebase Crashlytics dSYM upload — HARD GATE. Uploads the build's dSYM to Crashlytics via the
+      # upload-symbols tool from the firebase-ios-sdk SPM checkout, and FAILS THE BUILD unless the
+      # upload confirms success. This guarantees you never run/ship a build whose symbols weren't
+      # uploaded (a missing dSYM = "unprocessed crash" in Crashlytics). RELEASE/TestFlight ONLY — the
+      # script no-ops in Debug (basedOnDependencyAnalysis: false so it always fires, then exits early
+      # unless CONFIGURATION=Release). We call upload-symbols DIRECTLY — not the lenient `run`
+      # helper, which exits 0 even when nothing uploads — so the "Successfully uploaded" marker can be
+      # verified. ENABLE_USER_SCRIPT_SANDBOXING is already NO (set above) so the script can read
+      # derived data.
+      #
+      # Requires (Release): DEBUG_INFORMATION_FORMAT=dwarf-with-dsym (Release config, set above), a real
+      # GoogleService-Info.plist bundled in the app, and network. For a deliberate OFFLINE build, set
+      # CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1 to downgrade to skip-with-warning. (CI compiles the Kotlin
+      # targets directly and does NOT run this Xcode build phase, so CI is unaffected.)
+      - name: "Firebase Crashlytics dSYM upload (required)"
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "${CONFIGURATION}" != "Release" ]; then
+            echo "note: Crashlytics dSYM upload skipped (CONFIGURATION=${CONFIGURATION}; Release/TestFlight only)"; exit 0
+          fi
+          if [ "${CRASHLYTICS_DSYM_UPLOAD_OPTIONAL:-0}" = "1" ]; then
+            echo "warning: Crashlytics dSYM upload skipped (CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1)"; exit 0
+          fi
+          UPLOAD="${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols"
+          GSP="${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/GoogleService-Info.plist"
+          DSYM="${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}"
+          [ -d "$DSYM" ]   || { echo "error: Crashlytics — no dSYM at $DSYM (need DEBUG_INFORMATION_FORMAT=dwarf-with-dsym)"; exit 1; }
+          DSYM_SIZE="$(du -sh "$DSYM" 2>/dev/null | cut -f1)"; echo "note: Crashlytics dSYM size: $DSYM_SIZE  ($DSYM)"
+          [ -x "$UPLOAD" ] || { echo "error: Crashlytics — upload-symbols not found at $UPLOAD"; exit 1; }
+          [ -f "$GSP" ]    || { echo "error: Crashlytics — GoogleService-Info.plist not bundled at $GSP"; exit 1; }
+          OUT="$("$UPLOAD" -gsp "$GSP" -p ios "$DSYM" 2>&1)"; RC=$?
+          echo "$OUT"
+          if [ "$RC" -ne 0 ] || ! printf '%s\n' "$OUT" | grep -q "Successfully uploaded Crashlytics symbols"; then
+            echo "error: Crashlytics dSYM upload FAILED (rc=$RC) — build blocked so no un-uploaded build is used. Fix network / GoogleService-Info.plist and rebuild (or set CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1 for an offline build)."
+            exit 1
+          fi
+          echo "note: Crashlytics dSYM uploaded and confirmed ✅  size=$DSYM_SIZE  ($DSYM)"
+
+# A SHARED scheme is required for the `iosApp` run configuration to work in Android Studio /
+# Xcode. xcodegen does NOT auto-create schemes — without this block the generated .xcodeproj has
+# no scheme, so AS's checked-in run config (`xcodeScheme = iosApp`) and `xcodebuild -scheme iosApp`
+# both fail to resolve. Declaring it here makes xcodegen emit
+# `iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme` (shared = visible to AS and source
+# control, though the whole .xcodeproj stays gitignored).
+schemes:
+  iosApp:
+    build:
+      targets:
+        iosApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Debug
+    analyze:
+      config: Debug
+    archive:
+      config: Release

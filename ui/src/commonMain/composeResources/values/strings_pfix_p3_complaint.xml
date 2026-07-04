@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P3 complaint-area parity strings (user + admin). New keys introduced by the
+  LOW-severity parity sweep that aligns the rework Complaint surfaces with the
+  native source of truth (native-app/.../features/complaint + admin/complaint).
+
+  Values mirror the native res/values/strings.xml wording verbatim:
+   - feedback_id_format       "ID: %s…"           (user card footer short-id)
+   - search_feedbacks_hint    "Search complaints…" (user search placeholder)
+   - feedbacks_found_count     "%d feedbacks found" (user results count)
+   - loading_feedback          "Loading feedback…"  (user loading message)
+   - complaints_found_count    "%d complaints found"(admin results count)
+   - active filters summary line + per-axis labels  (admin filters summary)
+
+  English-only until the trusted-Arabic pass. Kept separate from the shared
+  :ui strings.xml (and the earlier np_/pfix_ complaint files) so the P3
+  additions are easy to audit and never collide with the base catalog.
+-->
+<resources>
+    <!-- User card footer short-id (native feedback_id_format = "ID: %s…"). -->
+    <string name="np_user_feedback_id_format">ID: %1$s…</string>
+
+    <!-- User search placeholder (native search_feedbacks_hint). -->
+    <string name="np_user_search_complaints_hint">Search complaints…</string>
+
+    <!-- User results count (native feedbacks_found_count = "%d feedbacks found"). -->
+    <string name="np_user_feedbacks_found_count">%1$d feedbacks found</string>
+
+    <!-- User loading message (native loading_feedback). -->
+    <string name="np_user_loading_feedback">Loading feedback…</string>
+
+    <!-- Admin results count (native complaints_found_count = "%d complaints found"). -->
+    <string name="np_admin_complaints_found_count">%1$d complaints found</string>
+
+    <!-- Admin active-filters summary line + per-axis labels (native
+         AdminComplaintScreen.kt:560-575 "Active filters: Status: X, Type: Y, …"). -->
+    <string name="np_admin_active_filters_prefix">Active filters: %1$s</string>
+    <string name="np_admin_active_filter_status">Status: %1$s</string>
+    <string name="np_admin_active_filter_type">Type: %1$s</string>
+    <string name="np_admin_active_filter_version">Version: v%1$s</string>
+    <string name="np_admin_active_filter_search">Search: "%1$s"</string>
+
+    <!-- Admin delete-confirmation details "Status:" label (native status_label). -->
+    <string name="np_admin_status_label">Status:</string>
+
+    <!-- Admin closure-reason dialog "Current status:" label (native current_status). -->
+    <string name="np_admin_current_status_label">Current status:</string>
+</resources>

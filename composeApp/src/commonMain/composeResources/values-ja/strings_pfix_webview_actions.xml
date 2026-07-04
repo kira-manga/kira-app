@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webview_action_forward">進む</string>
+    <string name="webview_action_reload">再読み込み</string>
+    <string name="webview_action_save_headers">ヘッダーを保存</string>
+</resources>

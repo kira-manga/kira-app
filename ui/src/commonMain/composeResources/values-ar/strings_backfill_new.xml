@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Parity backfill (net-new rework strings with no native-app equivalent),
+     localized for ar. Generated; see APP_AUDIT_REVIEW.md. -->
+<resources>
+    <string name="auto_convert_on_download">تحويل تلقائي عند التنزيل</string>
+    <string name="bk_complaint_type_selector_cd">اختر النوع</string>
+    <string name="details_bookmark_all">وضع إشارة على الكل</string>
+    <string name="details_bookmark_chapter">وضع إشارة على الفصل</string>
+    <string name="details_cancel_all_downloads">إلغاء كل التنزيلات</string>
+    <string name="details_chapter_date_full">%1$s %2$d، %3$d</string>
+    <string name="details_chapter_selection_count">%1$d محدد</string>
+    <string name="details_delete_downloaded">حذف الفصول المنزّلة</string>
+    <string name="details_download_all_menu">تنزيل الكل</string>
+    <string name="details_download_chapter">تنزيل الفصل</string>
+    <string name="details_mark_all_down_read">تحديد هذا وما تحته كمقروء</string>
+    <string name="details_mark_read">تحديد كمقروء</string>
+    <string name="details_mark_unread">تحديد كغير مقروء</string>
+    <string name="details_more_options">خيارات أخرى</string>
+    <string name="details_resume_cd">متابعة</string>
+    <string name="details_resume_chapter">متابعة %1$s</string>
+    <string name="details_resume_finished">لقد أنهيت هذه المانجا</string>
+    <string name="details_unbookmark_chapter">إزالة إشارة الفصل</string>
+    <string name="error_network_forbidden">محظور، اضغط على المساعدة لحل المشكلة </string>
+    <string name="feedback_submitted">شكرًا لك! تم إرسال ملاحظاتك.</string>
+    <string name="home_source_icon">أيقونة المصدر</string>
+    <string name="home_status_adult_body">يحتوي هذا المصدر على محتوى للبالغين وهو محظور حاليًا.</string>
+    <string name="library_card_read_chapters_desc">الفصول المقروءة</string>
+    <string name="library_more_options">خيارات أخرى</string>
+    <string name="library_single_delete_message">سيتم حذف كل التقدّم وحالة القراءة والإشارات المرجعية والفصول المنزّلة لهذه المانجا نهائيًا ولا يمكن استعادتها.</string>
+    <string name="np_admin_active_filter_search">بحث: "%1$s"</string>
+    <string name="np_admin_active_filter_status">الحالة: %1$s</string>
+    <string name="np_admin_active_filter_type">النوع: %1$s</string>
+    <string name="np_admin_active_filter_version">الإصدار: v%1$s</string>
+    <string name="np_admin_active_filters_prefix">الفلاتر النشطة: %1$s</string>
+    <string name="np_admin_complaints_found_count">تم العثور على %1$d شكوى</string>
+    <string name="np_admin_feedback_id_format">المعرّف: %1$s…</string>
+    <string name="np_hide_statistics">إخفاء الإحصائيات</string>
+    <string name="np_select_reason_type">اختر نوع السبب</string>
+    <string name="np_show_statistics">عرض الإحصائيات</string>
+    <string name="np_user_feedback_id_format">المعرّف: %1$s…</string>
+    <string name="np_user_feedbacks_found_count">تم العثور على %1$d ملاحظة</string>
+    <string name="pfix_dl_compressing">جارٍ الضغط…</string>
+    <string name="pfix_dl_downloading_format">جارٍ تنزيل %1$s</string>
+    <string name="sort_type_date">التاريخ</string>
+    <string name="sort_type_id">المعرّف</string>
+    <string name="sort_type_last_read_date">تاريخ آخر قراءة</string>
+    <string name="sort_type_number">الرقم</string>
+    <string name="testing_mode">وضع الاختبار</string>
+    <string name="whats_new_image_failed">تعذّر التحميل</string>
+    <string name="whats_new_video_opens_externally">يُفتح في مشغّل الفيديو الخاص بك</string>
+</resources>

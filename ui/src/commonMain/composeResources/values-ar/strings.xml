@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic (primary locale) values for the Kira :ui string catalog (Phase 11.ui.UP-3).
+  Values reused verbatim from the legacy `composeApp/.../composeResources/values-ar/strings.xml`
+  catalog (hand-authored, shipped in the live app) for every overlapping key — no machine
+  translation. New rework strings without a legacy key are added here only when a trusted Arabic
+  source is available (otherwise they fall back to the English `values/` value).
+-->
+<resources>
+    <string name="welcome_title">مرحبًا بك في يامي مانجا</string>
+    <string name="welcome_suptitle">استكشف واقرأ واجمع المانغا بسهولة.</string>
+    <string name="get_started">ابدأ</string>
+
+    <!-- Shared / common (reused verbatim from the legacy values-ar catalog). -->
+    <string name="retry">اعادة المحاولة</string>
+    <string name="new_badge">جديد</string>
+    <string name="what_s_new">ما الجديد</string>
+
+    <!-- Theme picker (reused verbatim from the legacy values-ar catalog). -->
+    <string name="choose_your_theme">اختر الموضوع</string>
+    <string name="theme_light">الوضع الفاتح</string>
+    <string name="theme_dark">الوضع الداكن</string>
+    <string name="theme_system">النظام</string>
+    <string name="pure_black_mode_title">الوضع الأسود الداكن الكامل</string>
+    <string name="continue_string">متابعة</string>
+    <string name="enable_notifications">تفعيل الإشعارات</string>
+    <string name="notification_permission">نحتاج إلى هذا الإذن لإرسال أحدث الفصول إليك، وعرض تقدم التنزيل، وضمان عمل التطبيق بشكل صحيح.</string>
+    <string name="grant_permission">منح الإذن</string>
+
+    <!-- About + common (reused verbatim from the legacy values-ar catalog). -->
+    <string name="about">حول</string>
+    <string name="back">رجوع</string>
+    <string name="version">الإصدار</string>
+    <string name="check_for_update">التحقق من وجود تحديث</string>
+    <string name="rate_our_app">قيّم تطبيقنا</string>
+    <string name="privacy_policy">سياسة الخصوصية</string>
+
+    <!-- Statistics (reused verbatim from the legacy values-ar catalog). -->
+    <string name="statistics">الإحصائيات</string>
+    <string name="section_entries">المانغا</string>
+    <string name="section_chapters">الفصول</string>
+    <string name="label_in_library">في المكتبة</string>
+    <string name="label_started">بدأت</string>
+    <string name="label_completed">مكتملة</string>
+    <string name="label_total">الإجمالي</string>
+    <string name="label_read">مقروءة</string>
+    <string name="label_downloaded">محملة</string>
+    <string name="label_bookmarked">المحفوظة</string>
+
+    <!-- Sources (reused verbatim from the legacy values-ar catalog). -->
+    <string name="enter_the_url_for_site_you_want_us_to_add">أدخل عنوان URL للموقع الذي تريد إضافته</string>
+    <string name="languages_coming_soon_title">اللغات القادمة</string>
+    <string name="languages_coming_soon_description">🌍 نحن نعمل على إضافة مصادر للغات: 🇹🇷 التركية، 🇩🇪 الألمانية، 🇮🇹 الإيطالية، 🇯🇵 اليابانية. نرجو منكم الصبر، سيتم إصدارها قريبًا!</string>
+    <string name="finish">إنهاء</string>
+    <string name="we_will_add_it_as_soon_it_possible">سنضيفه في أقرب وقت ممكن</string>
+    <string name="enter_the_site_url">أدخل عنوان الموقع</string>
+    <string name="minimum_5_characters_required">يجب أن يكون عدد الأحرف 5 على الأقل</string>
+    <string name="submit">إرسال</string>
+    <string name="cancel">إلغاء</string>
+
+    <!-- "Sources" top-bar title — reuses the trusted "المصادر" fragment shipped inside the
+         legacy title_sources_settings ("اعدادات المصادر") value. -->
+    <string name="sources_title">المصادر</string>
+
+    <!-- Downloads (reused verbatim from the legacy values-ar catalog). -->
+    <string name="downloads">التنزيلات</string>
+    <string name="active">نشط</string>
+    <string name="failed">فشل</string>
+    <string name="completed">اكتمل</string>
+    <string name="running">جارٍ التشغيل</string>
+    <string name="queued">قيد الانتظار</string>
+    <string name="downloaded">تم التنزيل</string>
+    <string name="delete">حذف</string>
+    <!-- Card title — reuses the trusted "الفصل" chapter fragment from the legacy `chapter` key. -->
+
+    <!-- History relative-date keys (reused verbatim from the legacy values-ar catalog). -->
+    <string name="today">اليوم</string>
+    <string name="yesterday">أمس</string>
+    <string name="days_ago">منذ %1$d أيام</string>
+    <string name="weeks_ago">منذ %1$d أسابيع</string>
+    <string name="months_ago">منذ %1$d أشهر</string>
+    <string name="years_ago">منذ %1$d سنوات</string>
+
+    <!-- Language picker (reused verbatim from the legacy values-ar catalog). -->
+    <string name="select_language">اختار اللغة</string>
+    <string name="request_add_language">طلب إضافة لغة</string>
+    <string name="enter_your_language">أدخل لغتك</string>
+    <string name="request_submitted_successfully">تم إرسال الطلب بنجاح</string>
+    <string name="request_failed">فشل في إرسال الطلب</string>
+
+    <!-- Settings hub (reused verbatim from the legacy values-ar catalog). -->
+    <string name="follow_system_theme">اتباع موضوع النظام</string>
+    <string name="help">مساعدة</string>
+    <string name="request_feature_bug">الإبلاغ عن خطأ أو طلب ميزة</string>
+    <string name="category">الفئة</string>
+    <string name="your_feedback">ملاحظاتك</string>
+
+    <!-- UP-3l multi-agent batch (reused verbatim from the legacy values-ar catalog). -->
+    <string name="action_open_in_browser">افتح في المتصفح</string>
+    <string name="add_languages">إضافة لغات</string>
+    <string name="add_library_title">أضف إلى المكتبة</string>
+    <string name="add_manga_site">إضافة موقع مانغا</string>
+    <string name="ask_to_add_features">اطلب إضافة ميزات</string>
+    <string name="chapters_count_format">%1$d فصول</string>
+    <string name="clear">مسح</string>
+    <string name="close">إغلاق</string>
+    <string name="complaint_actions_title">إجراءات الشكوى</string>
+    <string name="complaint_body">نص الشكوى</string>
+    <string name="custom_feedback">ملاحظات مخصصة</string>
+    <string name="delete_complaint">حذف الشكوى</string>
+    <string name="delete_forever">حذف نهائي</string>
+    <string name="delete_warning_message">لا يمكن التراجع عن هذا الإجراء. سيتم حذف الشكوى نهائياً.</string>
+    <string name="desc_newest_first">الأحدث أولاً</string>
+    <string name="desc_oldest_first">الأقدم أولاً</string>
+    <string name="dropdown_button_refresh">تحديث</string>
+    <string name="edit">تعديل</string>
+    <string name="edit_complaint">تعديل الشكوى</string>
+    <string name="edit_placeholder">عدل تفاصيل شكواك هنا...</string>
+    <string name="error_in_manga_site">خطأ في موقع المانغا</string>
+    <string name="error_in_the_app">خطأ في التطبيق</string>
+    <string name="error_occurred">حدث خطأ ما</string>
+    <string name="failed_to_load_image">فشل في تحميل الصورة.</string>
+    <string name="feedback_manager_title">مدير التعليقات</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_bookmarked">تم الحفظ</string>
+    <string name="filter_completed">مكتمل</string>
+    <string name="filter_downloaded">تم التحميل</string>
+    <string name="filter_started">تم البدء</string>
+    <string name="filter_unread">غير مقروء</string>
+    <string name="last_updated">آخر تحديث: %1$s</string>
+    <string name="library_bottom_sheet_tab_display">عرض</string>
+    <string name="library_bottom_sheet_tab_filter">تصفية</string>
+    <string name="library_bottom_sheet_tab_sort">ترتيب</string>
+    <string name="no_results_found">لم يتم العثور على نتائج</string>
+    <string name="not_updated_yet">لم يتم التحديث بعد</string>
+    <string name="reader_error_unexpected">حدث خطأ ما</string>
+    <string name="reply">رد</string>
+    <string name="reply_placeholder">اكتب ردك هنا...</string>
+    <string name="reply_to_complaint">الرد على الشكوى</string>
+    <string name="show_buttons">عرض الأزرار</string>
+    <string name="show_items_count">عرض عدد العناصر</string>
+    <string name="show_items_details">عرض تفاصيل العناصر</string>
+    <string name="show_items_source">عرض مصدر العناصر</string>
+    <string name="show_tabs_all_likes_etc">عرض علامات التبويب (الكل، الإعجابات، إلخ)</string>
+    <string name="sort_alphabetic">أبجديًا</string>
+    <string name="sort_date_added">تاريخ الإضافة</string>
+    <string name="sort_last_read">آخر قراءة</string>
+    <string name="sort_random">عشوائي</string>
+    <string name="sort_total_chapters">إجمالي الفصول</string>
+    <string name="sort_unread_count">عدد غير المقروء</string>
+    <string name="status_closed">مغلقة</string>
+    <string name="status_in_progress">قيد المعالجة</string>
+    <string name="status_not_planned">غير مخطط</string>
+    <string name="status_open">مفتوح</string>
+    <string name="status_pinned">مثبت</string>
+    <string name="status_planned">مخطط</string>
+    <string name="status_resolved">تم الحل</string>
+    <string name="status_unknown">غير معلوم</string>
+    <string name="subject">الموضوع</string>
+    <string name="time_just_now">الآن</string>
+    <string name="title_library">المكتبة</string>
+    <string name="your_reply">ردك</string>
+
+    <!-- ============================================================================
+         Localization recovery batch (2026-05-31): keys present in values/strings.xml
+         but previously missing here, so Arabic users saw English fallbacks.
+         HIGH = reused verbatim from the legacy hand-authored values-ar catalog
+         (same key or an obvious sibling). PROPOSED = Modern-Standard-Arabic
+         translation pending native review. Placeholders kept identical to en.
+         ============================================================================ -->
+
+    <!-- Admin / closure reasons (HIGH where a legacy sibling exists). -->
+    <string name="add_closure_reason">إضافة سبب الإغلاق</string>
+    <string name="add_reason">إضافة سبب</string>
+    <string name="admin_actions">إجراءات المسؤول</string>
+    <string name="change_status">تغيير الحالة</string>
+
+    <!-- Admin complaints screen (PROPOSED — admincomplaint_* are net-new). -->
+    <string name="admincomplaint_by_app_version">حسب إصدار التطبيق</string>
+    <string name="admincomplaint_by_status">حسب الحالة</string>
+    <string name="admincomplaint_change_status">تغيير الحالة</string>
+    <string name="admincomplaint_closure_reason">سبب الإغلاق</string>
+    <string name="admincomplaint_closure_reason_placeholder">لماذا يتم إغلاق هذه الشكوى؟</string>
+    <string name="admincomplaint_current_status">الحالية: %1$s</string>
+    <string name="admincomplaint_delete_complaint_title">حذف الشكوى</string>
+    <string name="admincomplaint_delete_warning">يزيل هذا الإجراء الشكوى نهائيًا. لا يمكن التراجع عنه.</string>
+    <string name="admincomplaint_edit_complaint_title">تعديل الشكوى</string>
+    <string name="admincomplaint_editing_complaint">جارٍ تعديل الشكوى %1$s</string>
+    <string name="admincomplaint_filter_app_version">إصدار التطبيق</string>
+    <string name="admincomplaint_filter_sort">ترتيب</string>
+    <string name="admincomplaint_filter_status">الحالة</string>
+    <string name="admincomplaint_filter_type">النوع</string>
+    <string name="admincomplaint_no_complaints">لا توجد شكاوى مُرسَلة</string>
+    <string name="admincomplaint_no_id">(لا يوجد معرّف)</string>
+    <string name="admincomplaint_no_matches">لا توجد نتائج مطابقة</string>
+    <string name="admincomplaint_preview_user">المستخدم: %1$s</string>
+    <string name="admincomplaint_reason_label">السبب</string>
+    <string name="admincomplaint_row_user">المستخدم: %1$s</string>
+    <string name="admincomplaint_save">حفظ</string>
+    <string name="admincomplaint_search_placeholder">البحث في الشكاوى…</string>
+    <string name="admincomplaint_sort_app_version_asc">إصدار التطبيق (تصاعدي)</string>
+    <string name="admincomplaint_sort_app_version_desc">إصدار التطبيق (تنازلي)</string>
+
+    <!-- Complaint / feedback (HIGH where a legacy sibling exists; rest PROPOSED). -->
+    <string name="at_least_n_characters">%1$d أحرف على الأقل</string>
+    <string name="complaint_editing">جارٍ تعديل الشكوى %1$s</string>
+    <string name="complaint_features">طلب ميزة</string>
+    <string name="complaint_id_label">المعرّف: %1$s</string>
+    <string name="complaint_languages">اللغات</string>
+    <string name="complaint_no_id">(لا يوجد معرّف)</string>
+    <string name="complaint_other">أخرى</string>
+    <string name="complaint_save">حفظ</string>
+    <string name="complaint_send">إرسال</string>
+    <string name="complaint_site_error">خطأ في الموقع</string>
+    <string name="complaint_sites_add">إضافة موقع</string>
+    <string name="complaint_technical">مشكلة تقنية</string>
+    <string name="complaint_warning">تحذير</string>
+    <string name="describe_issue_or_feature">صِف المشكلة أو الميزة</string>
+
+    <!-- Details screen (HIGH for add_to_library/remove via legacy; rest PROPOSED). -->
+    <string name="details_error_auth">خطأ في المصادقة</string>
+    <string name="details_error_cancelled">أُلغي</string>
+    <string name="details_error_network">خطأ في الشبكة</string>
+    <string name="details_error_platform">غير مدعوم على هذا الجهاز</string>
+    <string name="details_error_storage">خطأ في التخزين</string>
+    <string name="details_error_validation">إدخال غير صالح</string>
+
+    <!-- Error taxonomy (HIGH error_occurred already shipped; rest PROPOSED). -->
+    <string name="error_auth">خطأ في المصادقة</string>
+    <string name="error_network">خطأ في الشبكة</string>
+    <string name="error_platform">غير مدعوم على هذا الجهاز</string>
+    <string name="error_storage">خطأ في التخزين</string>
+    <string name="error_validation">إدخال غير صالح</string>
+
+    <!-- Downloads / history (HIGH download_failed_reason ← legacy download_failed). -->
+    <string name="download">تنزيل</string>
+    <string name="download_failed_reason">فشل: %1$s</string>
+    <string name="no_reading_history">لا يوجد سجل قراءة بعد</string>
+    <string name="no_active_downloads">لا توجد تنزيلات نشطة</string>
+    <string name="no_completed_downloads">لا توجد تنزيلات مكتملة</string>
+    <string name="no_failed_downloads">لا توجد تنزيلات فاشلة</string>
+    <string name="submitting">جارٍ الإرسال…</string>
+
+    <!-- Updates (HIGH today/yesterday already shipped above; rest PROPOSED). -->
+    <string name="no_updates">لا توجد تحديثات بعد</string>
+    <string name="mark_read">تحديد كمقروء</string>
+    <string name="update_deleted">تم حذف التحديث</string>
+    <string name="undo">تراجع</string>
+
+    <!-- Home + Search (PROPOSED; home_site_* reuse legacy maintenance wording where natural). -->
+    <string name="home_title">الرئيسية</string>
+    <string name="home_grid_view">عرض شبكي</string>
+    <string name="home_list_view">عرض قائمة</string>
+    <string name="home_search">بحث</string>
+    <string name="home_open_in_webview">افتح في المتصفح</string>
+    <string name="home_help">مساعدة</string>
+    <string name="home_edit_sources">تعديل المصادر</string>
+    <string name="home_save">حفظ في المكتبة</string>
+    <string name="home_saved">تم الحفظ</string>
+    <string name="home_new_source_badge">جديد</string>
+    <string name="home_empty">لم يتم العثور على مانجا</string>
+    <string name="search_hint">بحث…</string>
+    <string name="search_close">إغلاق البحث</string>
+    <string name="search_clear">مسح</string>
+    <string name="search_filters">الفلاتر</string>
+    <string name="search_tab_single">بحث</string>
+    <string name="search_empty">لم يتم العثور على نتائج</string>
+    <string name="search_genres">الأنواع</string>
+
+    <!-- Reader (HIGH chapter fragment ← legacy; error taxonomy PROPOSED). -->
+    <string name="reader_chapter_fallback">الفصل</string>
+    <string name="reader_error_auth">خطأ في المصادقة</string>
+    <string name="reader_error_cancelled">أُلغي</string>
+    <string name="reader_error_network">خطأ في الشبكة</string>
+    <string name="reader_error_platform">غير مدعوم على هذا الجهاز</string>
+    <string name="reader_error_storage">خطأ في التخزين</string>
+    <string name="reader_error_validation">إدخال غير صالح</string>
+    <string name="reader_next_chapter">الفصل التالي</string>
+    <string name="reader_previous_chapter">الفصل السابق</string>
+    <string name="reader_toggle_bookmark">حفظ</string>
+
+    <!-- Reading mode (HIGH ← legacy reading_mode_* / default_reading_mode). -->
+    <string name="reading_mode">وضع القراءة</string>
+    <string name="reading_mode_default">افتراضي</string>
+    <string name="reading_mode_rtl">من اليمين إلى اليسار</string>
+    <string name="reading_mode_ltr">من اليسار إلى اليمين</string>
+    <string name="reading_mode_vertical">عمودي</string>
+    <string name="reading_mode_webtoon">ويب تون</string>
+    <string name="reading_mode_continuous">عمودي متصل</string>
+
+    <!-- Settings hub (HIGH downloaded_only/incognito/clear_cache ← legacy; rest PROPOSED). -->
+    <string name="setting_downloaded_only">تنزيل فقط</string>
+    <string name="setting_incognito">وضع التصفح الخفي</string>
+    <string name="language">اللغة</string>
+    <string name="cached_size">المستخدم: %1$s</string>
+    <string name="select_a_category">اختر فئة</string>
+    <string name="theme_screen_title">السمة</string>
+    <string name="request_language_prompt">أخبرنا باللغة التي تريد منا دعمها.</string>
+    <string name="selected">محدَّد</string>
+
+    <!-- Library (HIGH like/watching/options/empty ← legacy likes/watching_now; rest PROPOSED). -->
+    <string name="library_active_downloads">التنزيلات النشطة</string>
+    <string name="library_bookmarked_chapters_desc">الفصول المحفوظة</string>
+    <string name="library_bulk_removed">تمت إزالة %1$d عنصرًا</string>
+    <string name="library_cancelled">أُلغي</string>
+    <string name="library_category_liked">الإعجابات</string>
+    <string name="library_category_watching">تشاهد الآن</string>
+    <string name="library_delete_selected_message">سيتم حذف كل التقدم وحالة القراءة والعلامات المرجعية والفصول المحمّلة للمانجا المحددة نهائيًا ولا يمكن استعادتها.</string>
+    <string name="library_delete_selected_title">حذف %1$d مانجا؟</string>
+    <string name="library_density">الكثافة</string>
+    <string name="library_options">خيارات</string>
+    <string name="library_density_comfortable">مريح</string>
+    <string name="library_density_compact">متضام</string>
+    <string name="library_density_spacious">واسع</string>
+    <string name="library_downloaded_chapters_desc">الفصول المحمّلة</string>
+    <string name="library_empty">المكتبة فارغة</string>
+    <string name="library_like">إعجاب</string>
+    <string name="library_remove_from_library">إزالة من المكتبة</string>
+    <string name="library_selected_count">%1$d محدَّد</string>
+    <string name="library_stop_watching">إيقاف المشاهدة الآن</string>
+    <string name="library_toggle_sort_direction">تبديل اتجاه الترتيب</string>
+    <string name="library_unlike">إلغاء الإعجاب</string>
+    <string name="library_watch_now">شاهد الآن</string>
+
+    <!-- Sort options (HIGH ← legacy sort_*). -->
+    <string name="sort_status">الحالة</string>
+    <string name="sort_type">النوع</string>
+    <string name="sort_user_id">معرّف المستخدم</string>
+
+    <!-- Relative-date keys (PROPOSED — minute/hour granularity not in legacy singular form). -->
+    <string name="minutes_ago">منذ %1$d دقائق</string>
+    <string name="hours_ago">منذ %1$d ساعات</string>
+</resources>

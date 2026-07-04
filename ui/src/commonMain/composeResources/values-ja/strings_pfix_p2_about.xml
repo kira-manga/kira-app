@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the About screen — Japanese.
+
+  np_source_code / np_soon locale overrides matching native values-ja/strings.xml
+  (source_code / soon). Without these the inert "Source code / Soon" row fell back to
+  English on Japanese devices.
+-->
+<resources>
+    <string name="np_source_code">ソースコード</string>
+    <string name="np_soon">近日公開</string>
+</resources>

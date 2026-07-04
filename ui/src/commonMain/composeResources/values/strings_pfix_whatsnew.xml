@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Parity-fix strings for the What's New video media (audit p1/whatsnew).
+
+      Native (source of truth) plays feature videos INLINE via an Android VideoView
+      (SafeVideoPlayer): play/pause tap, looping, lifecycle pause/resume, an in-card
+      Fullscreen button, and an error/retry placeholder. Compose Multiplatform ships no
+      built-in video player and the :platform MediaPlayer SPI does not yet exist, so a true
+      cross-platform inline player is a flagged cross-cutting change (new media dependency +
+      expect/actual SPI). The closest faithful in-:ui behavior is a video poster whose play
+      affordance opens the video URL externally; these strings label that deviation clearly so
+      the user understands the poster opens an external player rather than playing inline.
+
+      Native key names reused where they exist (play_video / video_preview from native
+      res/values/strings.xml). whats_new_video_opens_externally is the KMP-only deviation
+      caption (no native equivalent — native never opens externally).
+    -->
+    <string name="play_video">Play Video</string>
+    <string name="video_preview">Video Preview</string>
+    <string name="whats_new_video_opens_externally">Opens in your video player</string>
+</resources>

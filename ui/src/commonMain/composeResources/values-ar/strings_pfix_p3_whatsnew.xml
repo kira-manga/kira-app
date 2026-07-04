@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic parity-fix translations for the What's New screen (P3 LOW-severity audit).
+
+  Source of truth: native-app features/whatsnew + res/values-ar/strings.xml.
+
+  np_p3_whats_new_title maps to native whats_new_title ("الجديد"). The loading / empty /
+  error strings are English literals in native WhatsNewRoute.kt (no Arabic native value);
+  Arabic is supplied here so RTL users don't see the English fallback.
+-->
+<resources>
+    <string name="np_p3_whats_new_title">الجديد</string>
+    <string name="np_p3_whats_new_loading">جارٍ تحميل الجديد...</string>
+    <string name="np_p3_whats_new_empty_title">لا توجد تحديثات</string>
+    <string name="np_p3_whats_new_empty_body">لا توجد ميزات جديدة لعرضها في الوقت الحالي.</string>
+    <string name="np_p3_whats_new_error_title">فشل التحميل</string>
+</resources>

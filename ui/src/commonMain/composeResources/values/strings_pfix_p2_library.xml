@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      P2 parity-fix strings for the Library screen (audit p2/library).
+
+      Native (source of truth) is me/manga/yami/presentation/features/library/**.
+      Native key names + native text are reused verbatim where they exist so the
+      strangler-fig wire stays aligned with the legacy res/values/strings.xml.
+    -->
+
+    <!--
+      Finding "Empty library state": native EmptyLibraryPlaceholder.kt renders a
+      titleLarge Bold message "Your <tabName> is empty" (native
+      res/values/strings.xml:50 empty_library_message = "Your %1$s is empty") +
+      an Outlined.Inbox icon described by empty_library_desc = "Empty %1$s"
+      (native res/values/strings.xml:51). The <tabName> is the active category's
+      tab display name: "Library" (NAN), "Watching Now" (WATCHING_NOW), "Likes"
+      (LIKED) — native LibraryItems.kt:92-96 + FilterTabs.getDisplayName.
+    -->
+    <string name="library_empty_message_format">Your %1$s is empty</string>
+    <string name="library_empty_desc_format">Empty %1$s</string>
+    <string name="library_tab_likes">Likes</string>
+    <string name="library_tab_watching_now">Watching Now</string>
+
+    <!--
+      Finding "Sort options sheet layout": native SortOptionsSection.kt:49-88
+      headers + direction labels (native res/values/strings.xml:29-33).
+    -->
+    <string name="sort_options_title">Sort Options</string>
+    <string name="sort_direction_label">Sort Direction</string>
+    <string name="sort_direction_ascending">Ascending</string>
+    <string name="sort_direction_descending">Descending</string>
+    <string name="sort_by_label">Sort by</string>
+</resources>

@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Yami — Noir, refined</title>
+<style>
+ :root{--bg:#0B0D11;--card:#14171F;--line:rgba(255,255,255,.09);--text:#F3F4F7;--muted:#9AA1AF;
+   --coral:#FF5B6E;--amber:#FF8A5B;--grad:linear-gradient(135deg,#FF5B6E,#FF8A5B);}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:
+   radial-gradient(110% 50% at 80% -5%,rgba(255,91,110,.12),transparent 60%),var(--bg);color:var(--text);padding:44px 28px}
+ .wrap{max-width:1180px;margin:0 auto}
+ .tag{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--coral)}
+ h1{font-size:32px;font-weight:900;letter-spacing:-.6px;margin-top:8px}
+ .lead{color:var(--muted);font-size:15px;margin:10px 0 4px;line-height:1.55;max-width:840px}
+ .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:32px}
+ .c{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px 18px;display:flex;flex-direction:column;align-items:center}
+ .pick{font-size:10.5px;font-weight:800;letter-spacing:1.3px;color:var(--muted);align-self:flex-start;margin-bottom:16px}
+ /* premium squircle base: dark gradient + top gloss + inner hairline + drop shadow */
+ .icon{position:relative;width:122px;height:122px;border-radius:28px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+   background:radial-gradient(120% 110% at 30% 12%,#222a3b 0%,#10141c 48%,#080a0e 100%);
+   box-shadow:0 18px 38px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.05);}
+ .icon::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.10),transparent 38%);pointer-events:none}
+ .Y{font-weight:900;font-size:74px;line-height:1;letter-spacing:-2px;
+   background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+   filter:drop-shadow(0 2px 1px rgba(0,0,0,.35));position:relative;z-index:2}
+ /* glow halo */
+ .halo::after{content:"";position:absolute;width:78px;height:78px;border-radius:50%;
+   background:radial-gradient(circle,rgba(255,91,110,.55),transparent 68%);filter:blur(6px);z-index:1}
+ /* screentone */
+ .tone::after{content:"";position:absolute;inset:0;z-index:0;opacity:.5;
+   background-image:radial-gradient(circle, rgba(255,120,110,.5) 1.3px, transparent 1.5px);background-size:9px 9px;
+   -webkit-mask-image:radial-gradient(120% 100% at 100% 100%, #000 0%, transparent 60%);mask-image:radial-gradient(120% 100% at 100% 100%, #000 0%, transparent 60%);}
+ /* ring badge */
+ .ring::after{content:"";position:absolute;width:90px;height:90px;border-radius:50%;border:2.5px solid;border-color:rgba(255,91,110,.7) rgba(255,138,91,.3) rgba(255,138,91,.3) rgba(255,91,110,.7);z-index:1}
+ /* emboss Y */
+ .emboss{filter:drop-shadow(0 1px 0 rgba(255,255,255,.25)) drop-shadow(0 -1px 1px rgba(0,0,0,.5))}
+ .trio{display:flex;gap:12px;align-items:flex-end;margin-top:18px}
+ .trio .s{position:relative;border-radius:24%;display:flex;align-items:center;justify-content:center;overflow:hidden;
+   background:radial-gradient(120% 110% at 30% 12%,#222a3b,#0a0c10);box-shadow:0 6px 14px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08)}
+ .trio .s span{font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-1px}
+ .s46{width:46px;height:46px}.s46 span{font-size:28px}.s32{width:32px;height:32px}.s32 span{font-size:20px}.s22{width:22px;height:22px}.s22 span{font-size:14px}
+ .nm{margin-top:18px;font-size:14px;font-weight:800}
+ .why{font-size:12.5px;color:var(--muted);margin-top:7px;text-align:center;line-height:1.5}
+ .tile{margin-top:16px;display:flex;flex-direction:column;align-items:center;gap:6px}
+ .tile .ti{position:relative;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(120% 110% at 30% 12%,#222a3b,#0a0c10);box-shadow:0 6px 14px rgba(0,0,0,.45)}
+ .tile .ti span{font-weight:900;font-size:28px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-1px}
+ .tile .tl{font-size:10px;color:var(--muted)}
+ .note{color:var(--muted);font-size:13px;margin-top:30px;line-height:1.6;max-width:920px;border-top:1px solid var(--line);padding-top:22px}
+ .note b{color:var(--text)}
+</style></head><body><div class="wrap">
+ <div class="tag">YAMI · NOIR — REFINED</div>
+ <h1>Coral “Y” on black, done properly</h1>
+ <p class="lead">You said Noir was the closest. Here it is with real craft: a dark squircle with depth (gloss + inner light), a heavier letterform, a coral glow, and — for the manga‑native option — a <b>screentone</b> halftone (the dot shading manga is printed with). Same icon, four finishes.</p>
+
+ <div class="grid">
+  <div class="c"><div class="pick">A · CLEAN</div>
+   <div class="icon"><div class="Y">Y</div></div>
+   <div class="trio"><div class="s s46"><span>Y</span></div><div class="s s32"><span>Y</span></div><div class="s s22"><span>Y</span></div></div>
+   <div class="nm">Clean</div><div class="why">Depth + gloss + a heavy gradient Y. Premium and restrained.</div>
+   <div class="tile"><div class="ti"><span>Y</span></div><div class="tl">Yami</div></div>
+  </div>
+
+  <div class="c"><div class="pick">B · GLOW</div>
+   <div class="icon halo"><div class="Y">Y</div></div>
+   <div class="trio"><div class="s s46"><span>Y</span></div><div class="s s32"><span>Y</span></div><div class="s s22"><span>Y</span></div></div>
+   <div class="nm">Glow</div><div class="why">A coral halo behind the mark — neon, alive, “app that glows on a dark home screen.”</div>
+   <div class="tile"><div class="ti"><span>Y</span></div><div class="tl">Yami</div></div>
+  </div>
+
+  <div class="c"><div class="pick">C · SCREENTONE</div>
+   <div class="icon tone"><div class="Y">Y</div></div>
+   <div class="trio"><div class="s s46"><span>Y</span></div><div class="s s32"><span>Y</span></div><div class="s s22"><span>Y</span></div></div>
+   <div class="nm">Screentone</div><div class="why">Faint manga halftone dots in the corner — authentically “manga” without a literal book/panel.</div>
+   <div class="tile"><div class="ti"><span>Y</span></div><div class="tl">Yami</div></div>
+  </div>
+
+  <div class="c"><div class="pick">D · RING</div>
+   <div class="icon ring"><div class="Y">Y</div></div>
+   <div class="trio"><div class="s s46"><span>Y</span></div><div class="s s32"><span>Y</span></div><div class="s s22"><span>Y</span></div></div>
+   <div class="nm">Ring</div><div class="why">A thin coral arc badge around the Y — a “seal/collector” feel, more crafted.</div>
+   <div class="tile"><div class="ti"><span>Y</span></div><div class="tl">Yami</div></div>
+  </div>
+ </div>
+
+ <p class="note">If one of these finally clears the bar, tell me which and I’ll build the real launcher icon at every density + the wordmark. <b>If they still don’t</b> — logo craft has limits in hand-coded CSS, so the fastest path to something you love is a concrete anchor: paste/point me to <b>one logo you actually like</b> (a manga app, or any app), or describe it in one line (“a mascot like MangaDex”, “just the bold wordmark, no icon”, “like Manga Plus’s red badge”), and I’ll match that feel exactly. We can also keep your current icon for now and ship the rest of the redesign.</p>
+</div></body></html>

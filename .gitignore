@@ -1,0 +1,38 @@
+# --- Build outputs / caches ---
+build/
+.gradle
+.kotlin/
+.externalNativeBuild
+.cxx
+/captures
+*.hprof
+*.iml
+
+# --- IDE ---
+.idea/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+# iOS Xcode project is generated from iosApp/project.yml via `xcodegen generate` — never committed.
+iosApp/*.xcodeproj/
+DerivedData/
+
+# --- Local machine config ---
+local.properties
+/local.properties
+.DS_Store
+*.log
+
+# --- Secrets (bring-your-own; sanitized *.example files are committed instead) ---
+google-services.json
+# Firebase iOS config — same posture as google-services.json above: the real plist is a secret
+# (contains API_KEY / GOOGLE_APP_ID), so it stays local and uncommitted; a sanitized
+# GoogleService-Info.plist.example is committed to document the required structure.
+GoogleService-Info.plist
+*.keystore
+*.jks
+*.p12
+*.p8
+
+# --- Local scratch / temp working dirs ---
+.audit-scratch/
+.parity_i18n_tmp/

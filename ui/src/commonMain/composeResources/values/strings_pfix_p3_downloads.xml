@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase 3 parity-fix (pfix) strings for the Downloads / offline screen.
+
+  Source of truth: native values/strings.xml + the inline literal in
+  native DownloadsScreen.kt (the chapter-title row builds its label as a Kotlin
+  string template, not a string resource). Kept in a dedicated p3 pfix file so the
+  shared values/strings.xml, the NP catalogs, and the earlier
+  strings_pfix_downloads.xml stay untouched.
+
+  np_download_chapter_title: native DownloadItemCard / RunningDownloadItemCard build the
+  chapter-title row as "Ch ${item.number} - ${item.mangaTitle}" (a hyphen separator,
+  DownloadsScreen.kt lines 298 / 420). The pre-existing shared string download_chapter_title
+  uses an em-dash ("Ch %1$s — %2$s"). This key restores native's hyphen separator without
+  mutating the shared base string (which is owned by other catalogs). The DownloadItemCard
+  variant in native carries a hardcoded trailing space after the title; that trailing space
+  is a layout artifact of native's AutoSubtitleText measurement and is NOT reproduced here
+  (it would render as visible trailing whitespace under the KMP fixed-size Text).
+-->
+<resources>
+    <string name="np_download_chapter_title">Ch %1$s - %2$s</string>
+</resources>

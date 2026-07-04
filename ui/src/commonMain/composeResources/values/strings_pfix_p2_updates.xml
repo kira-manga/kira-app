@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      P2 parity-fix strings for the Updates / Notifications feed (audit p2/updates-refresh
+      + p2/notifications-center).
+
+      Source of truth: native-app notifications feature
+      (me/manga/yami/presentation/features/notifications). Native key names + native text
+      are reused verbatim so the rework screen aligns with the legacy res/values/strings.xml.
+    -->
+
+    <!--
+      Finding "Notifications/Updates screen top app bar title" (notifications-center #1):
+      native UpdatesScreen.kt:79-80 sets the bar title to R.string.title_notifications, which
+      is also the bottom-nav tab label in BOTH apps (KMP BottomNavigationBar.kt:115 uses the
+      :composeApp title_notifications). The rework :ui screen previously used Res.string.updates
+      ("Updates"), inconsistent with its own tab label and with native. This key mirrors the
+      :composeApp title_notifications (en native res/values/strings.xml:6 = "Notification") so
+      the :ui screen can resolve the same copy without depending on the :composeApp catalog.
+    -->
+    <string name="title_notifications">Notification</string>
+
+    <!--
+      Finding "Delete-all / Mark-all-read top bar actions" (updates-refresh + notifications-center
+      #2): native UpdatesScreen.kt:82-93 uses two IconButtons (DeleteSweep, DoneAll) with localized
+      content descriptions (native res/values/strings.xml:97-98). The rework :ui catalog had no
+      such keys, so the icon affordances need accessible labels.
+    -->
+    <string name="contentDescription_delete_all">Delete all</string>
+    <string name="contentDescription_mark_all_as_read">Mark all as read</string>
+</resources>

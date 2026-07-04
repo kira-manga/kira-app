@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P2 complaint-area parity strings (user + admin). New keys introduced by the
+  MEDIUM-severity parity sweep that aligns the rework Complaint surfaces with the
+  native source of truth (native-app/.../features/complaint + admin/complaint).
+
+  Values mirror the native res/values/strings.xml wording verbatim:
+   - no_feedback_found / no_feedback_message      (user empty state)
+   - try_different_search                          (user no-results)
+   - no_complaints_found / no_complaints_message   (admin empty state)
+   - try_different_filters                         (admin no-results)
+   - loading_feedback / loading_complaints         (loading messages)
+   - feedback_id_format                            (admin card footer short-id)
+   - admin_complaint_management                    (admin top-bar title)
+   - complaints_statistics / total_complaints      (admin statistics card)
+-->
+<resources>
+    <!-- User-side empty state (native EmptyState defaults). -->
+    <string name="np_no_feedback_title">No Feedback Yet</string>
+    <string name="np_no_feedback_message">When feedback is submitted, it will appear here.</string>
+
+    <!-- User-side no-results state (native ComplaintScreen no-results EmptyState). -->
+    <string name="np_try_different_search">Try a different search term or filter</string>
+
+    <!-- Admin-side empty state (native AdminComplaintScreen empty EmptyState). -->
+    <string name="np_no_complaints_title">No Complaints Found</string>
+    <string name="np_no_complaints_message">No complaints have been submitted yet.</string>
+
+    <!-- Admin-side no-results state (native AdminComplaintScreen no-results EmptyState). -->
+    <string name="np_try_different_filters">Try adjusting your search or filters</string>
+
+    <!-- Loading message (native LoadingState — admin "Loading complaints…"). -->
+    <string name="np_loading_complaints">Loading complaints…</string>
+
+    <!-- Admin card footer short-id (native feedback_id_format = "ID: %s…"). -->
+    <string name="np_admin_feedback_id_format">ID: %1$s…</string>
+
+    <!-- Admin top-bar title (native admin_complaint_management). -->
+    <string name="np_admin_complaint_management">Admin Complaint Management</string>
+
+    <!-- Admin statistics card (native complaints_statistics / total_complaints). -->
+    <string name="np_complaints_statistics">Complaints Statistics</string>
+    <string name="np_total_complaints_label">Total Complaints</string>
+</resources>

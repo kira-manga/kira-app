@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Settings hub screen (:ui ui settings package).
+
+  Source of truth: native-app features/settings/ui/screens/SettingsScreen.kt + values/strings.xml.
+  All en-only; trusted Arabic pending.
+
+  F2 — Follow-system theme row TITLE. Native SettingsScreen.kt:147-148 renders the follow-system
+  SwitchItem with title = R.string.system_theme ("System Theme") and description =
+  R.string.follow_system_theme ("Follow System Theme"). The :ui rework used the
+  follow_system_theme value ("Follow system theme") as the title, so the native title "System
+  Theme" was missing. system_theme carries the native title text (native strings.xml:291); the
+  description keeps reusing the existing follow_system_theme_desc ("Follow System Theme").
+
+  F3 — Clear-cache row TITLE. Native clear_cache = "Clear Chapter Cache" (native strings.xml:133).
+  The :ui base clear_cache English value reads "Clear cache" (the non-English locale translations
+  already say the equivalent of "Clear Chapter Cache"); the base strings.xml value can't be edited
+  in this slice, so clear_chapter_cache carries the native row title.
+
+  F4 — Clear-cache subtitle placeholder. Native always shows the "Used: <size>" subtitle (native
+  SettingsScreen.kt:286). Before the first cache-size emission the rework cacheSize is "";
+  cache_calculating fills that brief window so the subtitle never pops in late.
+
+  F5 — About row description. Native SettingsScreen.kt:301 renders the About row with description =
+  R.string.app_information_and_updates_contact_us_on_social_media ("App information and updates.
+  Contact us on social media"). The :ui rework rendered the About row label-only.
+  app_information_and_updates carries the native subtitle (native strings.xml:650).
+
+  F7 — Reading-mode row TITLE. Native SettingsScreen.kt:258-263 renders the entry as a plain
+  SettingsNavigationItem(default_reading_mode = "Default Reading Mode") with no subtitle. The :ui
+  rework used title reading_mode ("Reading mode") + a current-mode subtitle. default_reading_mode
+  carries the native row title (native strings.xml:130); the subtitle is dropped to match native.
+-->
+<resources>
+    <string name="system_theme">System Theme</string>
+    <string name="clear_chapter_cache">Clear Chapter Cache</string>
+    <string name="cache_calculating">Calculating…</string>
+    <string name="app_information_and_updates">App information and updates. Contact us on social media</string>
+    <string name="default_reading_mode">Default Reading Mode</string>
+</resources>

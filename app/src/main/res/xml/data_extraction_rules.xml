@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Data-extraction rules (API 31+) for cloud backup and device-to-device transfer.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+
+   The "kira_settings" SharedPreferences file backs the multiplatform-settings store, which includes
+   captured Cloudflare cf_clearance cookies and per-source User-Agent strings — IP/UA-bound session
+   tokens that are useless (and can resurrect immediately-403ing challenge state) when restored onto
+   another device. Exclude it from both cloud backup and device transfer.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="kira_settings.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="kira_settings.xml"/>
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Parity-fix strings for the Statistics screen (:ui ui/statistics). Source: native values-de/strings.xml. -->
+<resources>
+    <string name="desc_back">Zurück</string>
+    <string name="label_read_duration">Lesedauer</string>
+    <string name="h_m">%1$dStd %2$dMin</string>
+</resources>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Details & Reader strings (NP Phase 2, GAP-DET / GAP-RDR cluster).
+
+  Net-new keys for native-parity Details & Reader surfaces. Kept in a separate file
+  (per NP convention) from the shared :ui strings.xml so the parity additions are
+  reviewable as a unit. en-only authored here; verbatim-Arabic counterparts live in
+  values-ar/strings_np_details_reader.xml for user-facing labels.
+
+  The legacy keys these mirror (action_download_all, action_today, action_yesterday,
+  action_no_chapter_yet, day_since_format) do NOT exist in the rework shared strings.xml,
+  so the parity additions re-author them under namespaced np_* names.
+-->
+<resources>
+    <!-- GAP-DET-13: header "Download all" button label (legacy action_download_all). -->
+    <string name="np_details_download_all">Download all</string>
+
+    <!-- GAP-DET-14: last-chapter relative-date / schedule chip labels (legacy
+         action_no_chapter_yet / action_today / action_yesterday / day_since_format). -->
+    <string name="np_details_no_chapter_yet">No chapter yet</string>
+    <string name="np_details_today">Today</string>
+    <string name="np_details_yesterday">Yesterday</string>
+    <string name="np_details_days_ago">%1$d days ago</string>
+
+    <!-- GAP-DET-10: genre overflow "+N more" expand chip. -->
+    <string name="np_details_genres_more">+%1$d more</string>
+
+    <!-- GAP-DET-11: expandable description expand / collapse affordance content descriptions. -->
+    <string name="np_details_description_expand">Show full description</string>
+    <string name="np_details_description_collapse">Collapse description</string>
+
+    <!-- GAP-RDR-02: reading-mode picker dialog header + footer buttons (legacy
+         ReadingModeDialog "Reading mode" header + Apply / Revert). -->
+    <string name="np_reader_mode_dialog_title">Reading mode</string>
+    <string name="np_reader_mode_apply">Apply</string>
+    <string name="np_reader_mode_revert">Revert</string>
+
+    <!-- GAP-RDR-05: next-chapter transition card (legacy NextChapterCard you_are_in / going_to). -->
+    <string name="np_reader_you_are_in">You are in</string>
+    <string name="np_reader_going_to">Going to</string>
+    <string name="np_reader_no_next_chapter">You're on the last chapter</string>
+
+    <!-- #15: bookmark toggle on a not-in-library chapter is a no-op (no saved_chapters row);
+         show this positive instruction instead of silently doing nothing. -->
+    <string name="np_reader_bookmark_not_in_library">Add the manga to your Library to bookmark chapters</string>
+</resources>

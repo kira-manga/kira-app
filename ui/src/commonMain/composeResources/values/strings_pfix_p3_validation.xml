@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P3 LOW-severity validation/forms parity strings.
+
+  New keys introduced by the validation/forms parity sweep that aligns the
+  rework Complaint form surfaces with the native source of truth
+  (native-app/.../features/complaint).
+
+  Kept separate from the shared :ui strings.xml (and the earlier np_/pfix_
+  complaint files) so the P3 validation additions are easy to audit and never
+  collide with the base catalog.
+
+   - character_count  "%1$d/%2$d"  Reply/Edit character counter. Mirrors native
+                                   res/values/strings.xml `character_count`
+                                   ("%1$d/%2$d"); routes the digit/format
+                                   localization through a resource instead of a
+                                   hardcoded "${len}/$max" Kotlin string.
+-->
+<resources>
+    <string name="character_count">%1$d/%2$d</string>
+</resources>

@@ -1,0 +1,127 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.MangaX" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/orange_background</item>
+        <item name="colorPrimaryVariant">@color/background_variant2</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorPrimaryDark">@color/transport_black</item>
+        <!-- Remove or set the translucent status to false -->
+        <item name="android:windowNoTitle">true</item>
+
+        <item name="colorOnError">@color/white</item>
+        <item name="android:windowFullscreen">true</item>
+<!--        <item name="windowActionBar">true</item>-->
+<!--        <item name="android:windowNoTitle">true</item>-->
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/orange_background</item>
+        <item name="colorSecondaryVariant">@color/teal_200</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
+
+
+        <!-- Theme overrides for dark dim mode -->
+        <style name="Theme.MangaXdim" parent="Theme.Material3.DayNight.NoActionBar">
+            <!-- Override primary colors for a dimmer dark mode -->
+            <item name="colorPrimary">@color/dark_dim_primary</item>
+            <item name="colorPrimaryVariant">@color/dark_dim_primary_variant</item>
+            <item name="colorOnPrimary">@color/light_text</item>
+            <item name="colorPrimaryDark">@color/dark_dim_primary_dark</item>
+
+            <!-- Secondary colors -->
+            <item name="colorSecondary">@color/dark_dim_secondary</item>
+            <item name="colorSecondaryVariant">@color/dark_dim_secondary_variant</item>
+            <item name="colorOnSecondary">@color/light_text</item>
+            <item name="colorOnError">@color/light_text</item>
+
+            <!-- Status bar color adjusted for dim mode -->
+            <item name="android:statusBarColor">@color/dark_dim_status_bar</item>
+
+            <!-- Retain or tweak other attributes as necessary -->
+            <item name="android:windowNoTitle">true</item>
+            <item name="android:windowFullscreen">true</item>
+        </style>
+
+    <style name="TabedText" parent="TextAppearance.Design.Tab">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="fontFamily">@font/gellix_bold</item>
+    </style>
+
+    <style name="unTabedText" parent="TextAppearance.Design.Tab">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="fontFamily">@font/gellix_regular</item>
+    </style>
+    <!-- Style for expanded title in CollapsingToolbarLayout -->
+    <style name="CollapsedTitle" parent="TextAppearance.AppCompat.Large">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@android:color/white</item>
+    </style>
+
+    <!-- Style for collapsed title in CollapsingToolbarLayout -->
+<!--    <style name="CollapsedTitle" parent="TextAppearance.AppCompat.Widget.ActionBar.Title">-->
+<!--        <item name="android:textSize">18sp</item>-->
+<!--        <item name="android:textColor">@android:color/white</item>-->
+<!--    </style>-->
+
+    <style name="ExpandedTitle">
+        <item name="android:textColor">@android:color/transparent</item>
+    </style>
+    <style name="ToolbarTitleText" parent="TextAppearance.Widget.AppCompat.Toolbar.Title">
+        <item name="fontFamily">@font/gellix_bold</item> <!-- Replace with your font -->
+        <item name="android:textSize">20sp</item> <!-- Optional -->
+    </style>
+    <style name="ShapeAppearanceOverlay.Button.50" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+    <style name="Widget.Material3.BottomNavigationView.ActiveIndicator" parent="">
+        <item name="android:width">@dimen/m3_bottom_nav_item_active_indicator_width</item>
+        <item name="android:height">@dimen/m3_bottom_nav_item_active_indicator_height</item>
+        <item name="marginHorizontal">@dimen/m3_bottom_nav_item_active_indicator_margin_horizontal</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Material3.NavigationBarView.ActiveIndicator</item>
+        <item name="android:color">@color/accent_background_dark</item>
+    </style>
+    <style name="Theme.YamiManga.Dark" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/yami_manga_primary</item>
+        <item name="colorOnPrimary">@color/yami_manga_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/yami_manga_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/yami_manga_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/yami_manga_secondary</item>
+        <item name="colorOnSecondary">@color/yami_manga_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/yami_manga_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/yami_manga_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/yami_manga_tertiary</item>
+        <item name="colorOnTertiary">@color/yami_manga_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/yami_manga_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/yami_manga_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/yami_manga_background</item>
+        <item name="android:windowBackground">@color/white</item>
+
+        <item name="colorOnBackground">@color/yami_manga_onBackground</item>
+        <item name="colorSurface">@color/yami_manga_surface</item>
+        <item name="colorOnSurface">@color/yami_manga_onSurface</item>
+        <item name="colorSurfaceVariant">@color/yami_manga_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/yami_manga_onSurfaceVariant</item>
+        <item name="colorOutline">@color/yami_manga_outline</item>
+        <item name="colorSurfaceContainer">@color/yami_manga_surfaceContainer</item>
+        <item name="colorSurfaceContainerHigh">@color/yami_manga_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/yami_manga_surfaceContainerHighest</item>
+        <item name="colorSurfaceContainerLow">@color/yami_manga_surfaceContainerLow</item>
+        <item name="colorSurfaceContainerLowest">@color/yami_manga_surfaceContainerLowest</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+
+    </style>
+    <style name="App.Custom.Indicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">?attr/colorPrimaryContainer</item>
+    </style>
+
+</resources>

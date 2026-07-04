@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Details live-download-progress fix (PFIX-DLPROGRESS, 2026-06-01).
+  The Details chapter row now reflects live download STATE + PROGRESS reactively: while downloading
+  it shows a progress ring (determinate while RUNNING, spinner while QUEUED / COMPRESSING) wrapped in
+  a clickable cancel affordance, and flips to downloaded on completion without leaving the screen
+  (native LibraryChapterItem parity).
+
+  This declares a NEW key only — pfix_dlprogress_cancel_chapter_download — for the live progress
+  ring's cancel content description. It is deliberately distinct from the existing
+  details_cancel_chapter_download (strings_pfix_details.xml): compose-resources forbids the same
+  <string name> in two files within one values* qualifier (it crashes at RUNTIME), so this is NOT a
+  redefinition. Native source text: R.string.cancel_chapter_download = "Cancel chapter download".
+-->
+<resources>
+    <string name="pfix_dlprogress_cancel_chapter_download">Cancel chapter download</string>
+    <!-- Per-chapter "delete chapter" button on every in-library Details chapter row (user-requested,
+         additive beyond native): deletes the chapter's saved_chapters row AND its download/files. -->
+    <string name="details_delete_chapter">Delete chapter</string>
+</resources>

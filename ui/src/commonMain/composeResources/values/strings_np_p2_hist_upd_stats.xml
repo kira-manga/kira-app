@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity P2 strings for the History / Updates / Statistics cluster (NP Phase 2, P2 pass).
+
+  Separate file from the shared `strings.xml` and from `strings_np_hist_upd_stats.xml` (the
+  P0/P1 pass) so the P2 polish slice can author keys without touching either catalog.
+
+  GAP-HIST-07: localized 3-letter month abbreviations for the History absolute-date group
+  header (>6 days old). The legacy History screen formatted the fallback as "MMM d, yyyy" via
+  the platform date formatter (locale-aware on Android); the KMP port hard-coded an English
+  array. These per-month keys let the abbreviation resolve through the resource catalog so an
+  Arabic translation renders under RTL. en values ship now; ar is appended in the trusted-Arabic
+  pass. (Updates does NOT use these — its >6-day entries fall into the fixed `Older` recency
+  bucket per GAP-UPD-07, so GAP-UPD-10 is resolved automatically.)
+-->
+<resources>
+    <string name="month_abbrev_jan">Jan</string>
+    <string name="month_abbrev_feb">Feb</string>
+    <string name="month_abbrev_mar">Mar</string>
+    <string name="month_abbrev_apr">Apr</string>
+    <string name="month_abbrev_may">May</string>
+    <string name="month_abbrev_jun">Jun</string>
+    <string name="month_abbrev_jul">Jul</string>
+    <string name="month_abbrev_aug">Aug</string>
+    <string name="month_abbrev_sep">Sep</string>
+    <string name="month_abbrev_oct">Oct</string>
+    <string name="month_abbrev_nov">Nov</string>
+    <string name="month_abbrev_dec">Dec</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Spanish worker/notification strings — mirror native res/values-es/strings.xml verbatim. -->
+    <string name="new_chapters">Nuevos capítulos</string>
+    <string name="notifications_for_new_manga_chapters">Notificaciones de nuevos capítulos</string>
+    <string name="chapter_is_available">¡Capítulo %1$s disponible!</string>
+
+    <string name="notification_channel_library_refresh">Actualización de biblioteca</string>
+    <string name="notification_channel_library_refresh_desc">Muestra el progreso de actualización en segundo plano</string>
+    <string name="notification_refreshing_library">Actualizando biblioteca</string>
+    <string name="notification_library_refresh_failed">Falló la actualización de la biblioteca</string>
+    <string name="notification_starting">Iniciando…</string>
+    <string name="notification_refresh_failed">Fallo en la actualización: %s</string>
+    <string name="notification_no_manga_to_refresh">No hay manga para actualizar</string>
+    <string name="notification_processing_batch">Procesando lote %d…</string>
+    <string name="notification_finishing_up">Finalizando…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d completados, %4$d fallidos)</string>
+    <string name="notification_refresh_completed">Completado: %1$d exitosos, %2$d fallidos</string>
+</resources>

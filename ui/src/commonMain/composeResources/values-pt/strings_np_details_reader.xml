@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Locale placeholder for the reader "bookmark outside library" toast (res-ac-5). English text
+  duplicated here so the locale-key-parity gate passes; the owner will translate later.
+-->
+<resources>
+    <string name="np_reader_bookmark_not_in_library">Add the manga to your Library to bookmark chapters</string>
+</resources>

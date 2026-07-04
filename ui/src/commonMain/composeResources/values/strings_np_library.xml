@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Library strings (NP Phase 2, GAP-LIB cluster).
+
+  Net-new keys added for native-parity Library card surfaces. Kept in a separate file
+  (per NP convention) from the shared :ui strings.xml so the parity additions are
+  reviewable as a unit. en-only for newly-authored strings; the source-badge format
+  mirrors the legacy `source_badge_format` ("api - language") verbatim.
+-->
+<resources>
+    <!-- GAP-LIB-17: source brand badge on the cover, "<api> - <language>". Mirrors the
+         legacy `source_badge_format` value verbatim. -->
+    <string name="library_source_badge_format">%1$s - %2$s</string>
+
+    <!-- GAP-LIB-18: content descriptions for the 4 on-cover count badges (total / read /
+         downloaded / bookmarked). Native MangaCard badges had no contentDescription
+         (decorative icons); the rework supplies accessible labels. -->
+    <string name="library_card_total_chapters_desc">Total chapters</string>
+    <string name="library_card_read_chapters_desc">Read chapters</string>
+
+    <!-- GAP-LIB-15: per-card delete confirmation dialog. Mirrors the legacy route-level
+         delete-confirmation AlertDialog (delete_manga / are_you_sure... warning text). -->
+    <string name="library_single_delete_title">Delete manga?</string>
+    <string name="library_single_delete_message">All progress, read status, bookmarks, and downloaded chapters for this manga will be permanently deleted and cannot be recovered.</string>
+</resources>

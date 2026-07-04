@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_discover">Обзор</string>
+    <string name="home_popular">Популярное</string>
+    <string name="home_latest">Последние обновления</string>
+</resources>

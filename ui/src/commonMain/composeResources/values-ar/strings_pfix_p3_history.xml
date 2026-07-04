@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Arabic (primary locale) P3 parity-fix values for the History screen.
+
+    Native source of truth: native-app history feature.
+
+    history_title
+      Aligns the History top-bar title with native title_history ("التاريخ", from
+      native-app values-ar/strings.xml). The shared :ui "history" key renders "السجل"; this
+      dedicated history-screen key matches native verbatim.
+
+    month_abbrev_*
+      The absolute-date group header (>6 days) renders a localized month name. Native uses
+      java.time DateTimeFormatter.ofPattern("MMM d, yyyy"), which under the Arabic locale
+      resolves through CLDR to the full Arabic month names (Arabic does not abbreviate months,
+      so MMM falls back to the wide forms). The :ui catalog shipped only the English
+      month_abbrev_* values, so under Arabic the header was rendering English abbreviations.
+      These Arabic values restore native-faithful localized month names under RTL.
+-->
+<resources>
+    <string name="history_title">التاريخ</string>
+
+    <string name="month_abbrev_jan">يناير</string>
+    <string name="month_abbrev_feb">فبراير</string>
+    <string name="month_abbrev_mar">مارس</string>
+    <string name="month_abbrev_apr">أبريل</string>
+    <string name="month_abbrev_may">مايو</string>
+    <string name="month_abbrev_jun">يونيو</string>
+    <string name="month_abbrev_jul">يوليو</string>
+    <string name="month_abbrev_aug">أغسطس</string>
+    <string name="month_abbrev_sep">سبتمبر</string>
+    <string name="month_abbrev_oct">أكتوبر</string>
+    <string name="month_abbrev_nov">نوفمبر</string>
+    <string name="month_abbrev_dec">ديسمبر</string>
+</resources>

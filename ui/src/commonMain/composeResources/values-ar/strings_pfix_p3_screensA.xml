@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic (primary locale) P3 "screens A" parity-fix values (:ui ui language + sources packages).
+
+  Native source of truth: native-app values-ar/strings.xml.
+
+  request_language — native values-ar/strings.xml:324 request_language = "طلب لغة" (the Language
+  screen bottom row label, distinct from request_add_language "طلب إضافة لغة" used by the dialog
+  header).
+
+  request_adding_source_full — native values-ar/strings.xml:280 request_adding_source =
+  "طلب إضافة مصدر / موقع" (the Sources request-source row label + dialog title). The :ui base ar
+  request_adding_source value already matches this verbatim; this dedicated key mirrors it so the
+  en copy-parity fix ("Request Adding Source/Site") has its trusted ar counterpart.
+-->
+<resources>
+    <string name="request_language">طلب لغة</string>
+    <string name="request_adding_source_full">طلب إضافة مصدر / موقع</string>
+</resources>

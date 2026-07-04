@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Complaint / WhatsNew / About P2-polish strings (NP Phase 2, COMPLAINT +
+  WHATSNEW + WELCOME + ABOUT cluster — P2 tier).
+
+  Net-new keys for the P2 polish gaps:
+    - GAP-CMP-04: user/admin card footer short-id (8-char Monospace) — native feedback_id_format.
+    - GAP-CMP-15: admin TopAppBar show/hide-statistics toggle content descriptions.
+    - GAP-CMP-25: admin StatusChange Confirm button label.
+    - GAP-WN-07:  WhatsNew header close (X) content description.
+
+  Kept in a separate file (per NP convention) from the shared :ui strings.xml so the parity
+  additions are easy to audit and never collide with the hand-authored shared catalog.
+  English-only until the trusted-Arabic pass; values mirror the native legacy strings verbatim
+  where a native key exists (feedback_id_format = "#%s").
+-->
+<resources>
+    <!-- GAP-CMP-04 — card footer short id (native feedback_id_format) -->
+
+    <!-- GAP-CMP-15 — admin statistics show/hide toggle -->
+    <string name="np_show_statistics">Show statistics</string>
+    <string name="np_hide_statistics">Hide statistics</string>
+
+    <!-- GAP-CMP-25 — admin status-change confirm -->
+    <string name="np_confirm">Confirm</string>
+
+    <!-- GAP-WN-07 — WhatsNew header close (X) -->
+    <string name="np_whats_new_close">Close</string>
+</resources>

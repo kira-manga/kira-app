@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Search screen — Phase 3 (P3), Arabic.
+
+  Trusted Arabic verbatim from the native app's values-ar/strings.xml (source of truth):
+  multi_search (native values-ar/strings.xml). The base values-ar/strings.xml already carried this
+  exact value under search_tab_multi; it is mirrored here so the search_pfix_tab_multi key resolves
+  to the correct Arabic string rather than falling back to the English default.
+-->
+<resources>
+    <string name="search_pfix_tab_multi">بحث متعدد</string>
+</resources>

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#F2F0FF</color>
+    <color name="transport_white">#C8F2F0FF</color>
+    <color name="transport_black">#D3000000</color>
+
+    <color name="simi_white">#B5B3BCFF</color>
+<!--    <color name="background">#221C3E</color>-->
+    <color name="new_chapter">#63F2F2F2</color>
+
+    <color name="background_variant">#110D1F</color>
+    <color name="background2">#000033</color>
+    <color name="background_variant2">#121212</color>
+    <color name="accent">#5899FF</color>
+    <color name="accent_background">#A35899FF</color>
+    <color name="accent_background_dark">#204475</color>
+
+    <color name="accent2">#FFFFFF</color> <!-- White text for strong contrast -->
+    <color name="accent_background2">#5899FF</color> <!-- Vibrant blue for the card background -->
+
+    <color name="transport">#00000000</color>
+    <color name="orange">#FF6905</color>
+    <color name="orange_background">#FFEBF0</color>
+    <color name="theme1">?attr/colorOnError</color>
+    <color name="theme2">?attr/colorPrimaryVariant</color>
+
+
+    <!-- Dark dim colors for night mode -->
+    <color name="dark_dim_primary">#121212</color>            <!-- Very dark primary color -->
+    <color name="dark_dim_primary_variant">#1D1D1D</color>      <!-- Slightly lighter variant if needed -->
+    <color name="dark_dim_primary_dark">#0D0D0D</color>           <!-- Even darker shade for status/navigation bars -->
+
+    <color name="dark_dim_secondary">#1E1E1E</color>
+    <color name="dark_dim_secondary_variant">#272727</color>
+    <color name="dark_dim_status_bar">#1D1D1D</color>
+
+    <!-- Light text color for use on dark backgrounds -->
+    <color name="light_text">#FFFFFF</color>
+    <color name="blue">#0066CC</color>
+    <color name="light_blue">#99CCFF</color>
+
+    <color name="radio_text_color">#FFFFFF</color>
+
+
+    <color name="Dark_background">#1C1C1E</color>
+
+    <color name="primary">#6200EE</color>
+    <color name="primary_variant">#3700B3</color>
+    <color name="secondary">#03DAC6</color>
+    <color name="secondary_variant">#018786</color>
+    <color name="background">#FFFFFF</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="error">#B00020</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="on_secondary">#000000</color>
+    <color name="on_background">#000000</color>
+    <color name="on_surface">#000000</color>
+    <color name="on_error">#FFFFFF</color>
+
+    <color name="yami_manga_primary">#0058CA</color>
+    <color name="yami_manga_onPrimary">#FFFFFF</color>
+    <color name="yami_manga_primaryContainer">#D9E2FF</color>
+    <color name="yami_manga_onPrimaryContainer">#001945</color>
+    <color name="yami_manga_inversePrimary">#B0C6FF</color>
+    <color name="yami_manga_secondary">#0058CA</color>
+    <color name="yami_manga_onSecondary">#FFFFFF</color>
+    <color name="yami_manga_secondaryContainer">#D9E2FF</color>
+    <color name="yami_manga_onSecondaryContainer">#001945</color>
+    <color name="yami_manga_tertiary">#006E1B</color>
+    <color name="yami_manga_onTertiary">#FFFFFF</color>
+    <color name="yami_manga_tertiaryContainer">#95F990</color>
+    <color name="yami_manga_onTertiaryContainer">#002203</color>
+    <color name="yami_manga_background">#FEFBFF</color>
+    <color name="yami_manga_onBackground">#1B1B1F</color>
+    <color name="yami_manga_surface">#FEFBFF</color>
+    <color name="yami_manga_onSurface">#1B1B1F</color>
+    <color name="yami_manga_surfaceVariant">#F3EDF7</color>
+    <color name="yami_manga_onSurfaceVariant">#44464F</color>
+    <color name="yami_manga_surfaceTint">#0058CA</color>
+    <color name="yami_manga_inverseSurface">#303034</color>
+    <color name="yami_manga_inverseOnSurface">#F2F0F4</color>
+    <color name="yami_manga_error">#BA1A1A</color>
+    <color name="yami_manga_onError">#FFFFFF</color>
+    <color name="yami_manga_errorContainer">#FFDAD6</color>
+    <color name="yami_manga_onErrorContainer">#410002</color>
+    <color name="yami_manga_outline">#757780</color>
+    <color name="yami_manga_outlineVariant">#C5C6D0</color>
+    <color name="yami_manga_surfaceContainerLowest">#F5F1F8</color>
+    <color name="yami_manga_surfaceContainerLow">#F7F2FA</color>
+    <color name="yami_manga_surfaceContainer">#F3EDF7</color>
+    <color name="yami_manga_surfaceContainerHigh">#FCF7FF</color>
+    <color name="yami_manga_surfaceContainerHighest">#FCF7FF</color>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backlog complaint-area parity strings. New keys introduced by the deferred
+  COMPLAINT backlog sweep that aligns the rework admin edit dialog with the
+  native source of truth (native-app/.../admin/complaint/StatusChangeDialog.kt
+  EditComplaintDialog Type dropdown).
+
+  Values mirror the native res/values/strings.xml wording verbatim:
+   - complaint_type   "Complaint Type"  (admin edit Type-selector field label)
+   - Select Type      content-description for the Type dropdown trailing icon
+
+  English-only until the trusted-Arabic pass. Kept separate from the shared
+  :ui strings.xml (and the earlier np_/pfix_ complaint files) so the backlog
+  additions are easy to audit and never collide with the base catalog.
+-->
+<resources>
+    <!-- Admin edit-dialog Type-selector field label (native complaint_type = "Complaint Type"). -->
+    <string name="bk_complaint_type_label">Complaint Type</string>
+
+    <!-- Admin edit-dialog Type-dropdown trailing-icon content description (native "Select Type"). -->
+    <string name="bk_complaint_type_selector_cd">Select Type</string>
+</resources>

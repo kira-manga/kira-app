@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Localized download-notification strings for the :data:download WorkManager worker
+  (backlog L15c, 2026-07). Values copied VERBATIM from composeApp/src/commonMain/
+  composeResources/values-ru/strings.xml (the canonical localized copies), with
+  Android-res apostrophe/quote escaping applied. Keep in sync by re-copying, never by
+  re-translating here.
+-->
+<resources>
+    <string name="cancelled_by_user">Отменено пользователем</string>
+    <string name="notification_downloading_chapters">Загрузка глав</string>
+    <string name="notification_chapter_title">Глава %s</string>
+    <string name="notification_downloading_background">Загрузка всех глав в фоновом режиме</string>
+    <string name="notification_compressing_images">Сжатие изображений…</string>
+    <string name="notification_images_progress">%1$d / %2$d изображений</string>
+    <string name="action_cancel_all">Отменить всё</string>
+    <string name="action_cancel_chapter">Отменить главу</string>
+    <string name="notification_channel_all_downloads">Все загрузки</string>
+    <string name="notification_channel_all_downloads_desc">Общий прогресс загрузки</string>
+    <string name="notification_channel_chapter_download">Загрузка главы</string>
+    <string name="notification_channel_chapter_download_desc">Прогресс загрузки одной главы</string>
+    <string name="notification_channel_download_summary">Сводка загрузок</string>
+    <string name="notification_channel_download_summary_desc">Уведомления о завершении</string>
+</resources>

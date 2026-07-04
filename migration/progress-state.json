@@ -1,0 +1,112 @@
+{
+  "session_meta": {
+    "last_session_ended_at": "2026-05-23 (Session 4 — Phase 8.12 Koin wiring complete: detectDeviceTier() expect/actual + sharedModule populated with HttpClient/ApiClient/44 source repos/ManhastroDadosStore + 3x PlatformModule actuals each binding 31 facades; 5-build green)",
+    "last_phase_worked_on": "phase-8.12",
+    "next_action": "Phase 9 (ViewModels): port 24 ViewModels (presentation/features/*/ui/viewmodel/, complaint/viewmodes/, onboarding/viewmodel/, ad_mob/AdViewModel.kt, admin/complaint/AdminComplaintViewModel.kt, core/cbz/CbzConversionViewModel.kt, TextViewModel.kt). Add viewModel { … } registrations. Add MangaRepositoryProvider that dispatches by MangaSource across the 44 bound repos. Bind real ComplaintRepository impls per platform (Android Firestore, iOS/Desktop noop or HTTP).",
+    "build_status_at_end": "passing",
+    "build_status_details": {
+      "shared_compileDebugKotlinAndroid": "BUILD SUCCESSFUL",
+      "shared_compileKotlinDesktop": "BUILD SUCCESSFUL",
+      "shared_compileKotlinIosArm64": "BUILD SUCCESSFUL",
+      "composeApp_compileKotlinDesktop": "BUILD SUCCESSFUL",
+      "app_assembleDebug": "BUILD SUCCESSFUL"
+    },
+    "context_warning": "false"
+  },
+  "phases": {
+    "phase-0": "completed",
+    "phase-1": "completed",
+    "phase-2": "completed",
+    "phase-3": "verified",
+    "phase-4": "completed",
+    "phase-5": "scaffolded",
+    "phase-6": "completed",
+    "phase-7": "scaffolded",
+    "phase-8": "completed",
+    "phase-9": "documented_per_navigation_migration_report",
+    "phase-10": "documented_per_ui_migration_report",
+    "phase-11": "documented_in_migration_log_and_final_report",
+    "phase-12": "ios_readiness_report_committed",
+    "phase-13": "desktop_readiness_report_committed",
+    "phase-14": "runtime_smoke_test_checklist_committed_pending_manual_run",
+    "phase-15": "final_report_and_final_coverage_audit_committed",
+    "f1-compose-resources": "completed"
+  },
+  "phase_4_summary": {
+    "files_moved_to_commonMain": 237,
+    "batches": [
+      "4.0 package consolidation (me.manga.yami.* -> me.manga.yamiapk.*)",
+      "4.1 3 pure domain models (PopularManga, SearchItems, MangaSearchResponse) — dropped @Keep, added @Serializable",
+      "4.2 6 domain models (ChapterImage, ChapterItem, MangaInfo, MangaItem, ReaderChapters, MyData) — dropped @Parcelize/Parcelable, java.time -> kotlinx.datetime",
+      "4.3 4 interfaces + sealed states (UserIdProvider, DeviceInfoProvider, ImagesState, ProgressState)",
+      "4.4 13 files: complaint model + repo interface + 5 use cases + 2 pure core files",
+      "4.5 20 files: 16 pure feature files + Date port (sample.kt) + SimpleDateFormat port (formatTimestamp) + asas.kt oddity + ProgressManager.kt ConcurrentHashMap port. Added kotlinx-atomicfu dep.",
+      "4.6 188 per-source DTOs bulk-ported from sources_repositry/*/models/. 2 ArrayList-extending files (homeV2.kt, Search.kt) deferred to Phase 7; GreenShitModels.kt System.currentTimeMillis() -> kotlin.time.Clock.",
+      "4.7 3 small files (AdState.kt sealed types, dgfhldghlghg.kt + af.kt empty placeholders)"
+    ],
+    "ports_applied": [
+      "java.time.LocalDate -> kotlinx.datetime.LocalDate",
+      "java.util.Date -> kotlin.time.Instant?",
+      "java.text.SimpleDateFormat -> kotlinx.datetime LocalDateTime.Format",
+      "System.currentTimeMillis() -> kotlin.time.Clock.System.now().toEpochMilliseconds()",
+      "LocalDate.now() -> Clock.System.todayIn(TimeZone.currentSystemDefault())",
+      "@Parcelize + Parcelable -> @Serializable (kotlinx.serialization)",
+      "@Keep dropped (kotlinx.serialization plugin emits its own R8 keep rules)",
+      "@Inject dropped (Koin will wire dependencies in Phase 5)",
+      "androidx.annotation.@Contextual dropped (kotlinx.datetime has built-in serializers)",
+      "java.util.concurrent.ConcurrentHashMap -> kotlinx.atomicfu.locks.SynchronizedObject + plain MutableMap"
+    ],
+    "deferred_to_later_phases": {
+      "phase_5_koin": ["TextViewModel.kt (root) — Hilt-based ViewModel", "presentation/common/viewmodel/{Shared,Manga,Chapters}ViewModel.kt"],
+      "phase_6_room": ["MangaDisplayItem.kt (depends on SavedMangaEntity)", "HistoryUiState.kt (uses HistoryItemD entity)", "NotificationsUiState.kt (uses ChapterNotification entity)", "DownloadRequest.kt (uses entity types)", "HandelDataClasses.kt (entity mappers)"],
+      "phase_7_ktor": ["BrowserHeadersInterceptor.kt (OkHttp -> Ktor plugin)", "core/network_cache/forceCacheForDados.kt", "core/progress/ProgressInterceptor.kt", "sources_repositry/common/{BaseManga,NormalSites,NormalSitesv2,SeparatedDetailsSites,SeparatedDetailsSitesv2}.kt", "sources_repositry/BaseMangaRepository.kt + EmptyMangaRepository.kt", "65+ Retrofit-based per-source Repository.kt + Parser.kt + crypto utilities", "en/comick_io/models/{homev2/homeV2,search/Search}.kt (ArrayList-extension issue)", "AzoraModels.kt, DilarV2Models.kt, ProMangaModels.kt, TapasticModels.kt, ProMangaImageCombiner.kt, ImageMapMetadata.kt (Retrofit/OkHttp/jsoup deps)"],
+      "phase_8_expect_actual": ["FileSizeUtils.kt (Context+File)", "FileService.kt", "DeviceIdProvider.kt (Settings.Secure)", "AndroidDeviceInfoProvider.kt", "ConnectivityObserver actual impls", "core/storage/{PrefsDelegate,SharedPrefsHelper,StorageKeys}.kt", "core/storage/DataStore{Delegate,Helper}.kt (Android bridge)", "core/avif/* (Android AVIF decoder)", "core/blur/BlurTransformation.kt", "core/cbz/{CbzManager,OptimizedCbzManager}.kt", "core/util/heap/detectDeviceTier.kt", "core/util/image_share/ScreenshotUtils.kt", "core/util/notification/*.kt", "Base64ImageConverter.kt", "google_play_cores/ss.kt", "ad_mob/AdConfig.kt (BuildConfig)", "admin/Admin.kt (android.util.Log)", "dex/PluginData.kt"],
+      "phase_9_viewmodels": ["24 ViewModels (presentation/features/*/ui/viewmodel/*.kt + complaint/viewmodes/, onboarding/viewmodel/)", "ad_mob/AdViewModel.kt", "admin/complaint/AdminComplaintViewModel.kt", "core/cbz/CbzConversionViewModel.kt", "TextViewModel.kt"],
+      "phase_10_compose_ui": ["~150 @Composable files across presentation/common/ and presentation/features/*/ui/", "theme/{Color,Theme,Type}.kt", "navigation/* (NavGraphV2, routes, double_click handlers)", "ComplaintType/Status display-name extensions (compose-resources)", "core/util/date/Date.kt (Android Context-based formatters -> compose-resources)", "core/util/Plus18memes.kt (R.drawable)", "core/states/StringProvider.kt", "core/progress/format.kt (Composable formatter)", "data/remote/api/IMangaDataApiServices.kt (after Ktor port in Phase 7)"]
+    }
+  },
+  "counts": {
+    "source_kotlin_files": 632,
+    "files_moved_to_commonMain_total": 237,
+    "phase_4_complete": true,
+    "composable_files": 148,
+    "composable_annotations": 296,
+    "viewmodels": 24,
+    "repository_files": 56,
+    "entities": 6,
+    "daos": 8,
+    "room_migrations": 7,
+    "database_version": 8,
+    "use_cases": 5,
+    "modules_source": 1,
+    "locales": 12,
+    "kmp_modules_created": 4
+  },
+  "locked_versions": {
+    "kotlin": "2.3.21",
+    "agp": "8.13.0",
+    "gradle_wrapper": "8.13",
+    "ksp": "2.3.8",
+    "compileSdk": 36,
+    "minSdk": 26,
+    "targetSdk": 35,
+    "compose_multiplatform": "1.11.0",
+    "koin": "4.2.0",
+    "room": "2.8.4",
+    "lifecycle": "2.10.0",
+    "lifecycle_core_group": "androidx.lifecycle",
+    "lifecycle_compose_group": "org.jetbrains.androidx.lifecycle",
+    "navigation_compose_kmp": "2.9.2",
+    "navigation_compose_group": "org.jetbrains.androidx.navigation",
+    "ktor": "3.4.3",
+    "ksoup": "0.2.6",
+    "coil3": "3.4.0",
+    "coroutines": "1.9.0",
+    "serialization_json": "1.11.0",
+    "datetime": "0.8.0",
+    "multiplatform_settings": "1.3.0",
+    "kermit": "2.0.4",
+    "atomicfu": "0.27.0"
+  },
+  "files": []
+}

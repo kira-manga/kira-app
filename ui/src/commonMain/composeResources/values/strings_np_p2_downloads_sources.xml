@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity (NP Phase 2 — P2 polish) strings for the Downloads + Sources cluster.
+
+  Separate from the shared `values/strings.xml` and the P1 `strings_np_downloads_sources.xml`
+  per the NP slice convention — new keys introduced by the P2 polish gap-lift (GAP-SRC-06 title
+  parameterization + GAP-SRC-10 onboarding language-name localization) live here so the shared
+  catalog stays untouched. Existing keys are reused from the shared / P1 catalogs and NOT
+  redefined here.
+
+  Arabic translations live in the locale-parallel `values-ar/strings_np_p2_downloads_sources.xml`.
+-->
+<resources>
+    <!-- GAP-SRC-06: in-settings (RepoSettings) Sources entry top-bar title.
+         Reuses the legacy `title_sources_settings` value verbatim ("Sources Settings"). -->
+    <string name="title_sources_settings">Sources Settings</string>
+</resources>

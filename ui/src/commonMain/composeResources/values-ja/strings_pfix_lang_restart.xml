@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_restart_hint">新しい言語を適用するにはアプリを再起動してください。</string>
+</resources>

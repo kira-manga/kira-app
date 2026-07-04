@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cache-size unit patterns (typed wire, 2026-07 backlog L15).
+
+  Source of truth: native-app res/values*/strings.xml R.string.{bytes,kilobytes,megabytes,gigabytes}.
+  Native rendered the number through a default-locale `%.2f`; compose-resources formatting has no
+  float support, so the float slot became `%1$s` and :ui pre-renders the two-decimal value via
+  formatLocalizedTwoDecimals (ui/util/NumberFormatting.kt). Consumed by formatByteSize
+  (ui/util/ByteSize.kt) for the Settings clear-cache subtitle.
+
+  Keys:
+    size_bytes      - whole-byte sizes, native `"$size B"` shape (bytes = "B").
+    size_kilobytes  - native kilobytes ("%.2f KB").
+    size_megabytes  - native megabytes ("%.2f MB").
+    size_gigabytes  - native gigabytes ("%.2f GB").
+-->
+<resources>
+    <string name="size_bytes">%1$d B</string>
+    <string name="size_kilobytes">%1$s KB</string>
+    <string name="size_megabytes">%1$s MB</string>
+    <string name="size_gigabytes">%1$s GB</string>
+</resources>

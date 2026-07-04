@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Details chapter-download SIZE display (2026-06-02). Native shows
+  each downloaded chapter's on-disk size next to its date and a per-manga total-size header
+  ("<total size> • <N> downloaded", native TotalSizeDisplay / LibraryChapterItem). The per-chapter
+  size is a formatted number rendered directly (no string resource); this file declares only the
+  total-size header format.
+
+  Unique key (compose-resources forbids the same <string name> in two files within one values*
+  qualifier — it crashes at RUNTIME), verified against the standing dup-scan gate. Native source
+  text: "<size> • <count> downloaded".
+-->
+<resources>
+    <string name="pfix_dlsize_total_format">%1$s • %2$d downloaded</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity P2 (polish) Settings / Theme / Language strings (NP Phase 2 — P2 wave).
+
+  New en-only keys introduced by the P2 polish pass (section regrouping, feedback snackbar
+  localization + Retry, language Request-dialog social/subtitle parity). Kept in a separate file
+  (per NP convention) so the P2 additions are reviewable as a unit, distinct from the P0/P1 wave's
+  strings_np_settings_theme_lang.xml.
+
+  - section_other (GAP-SET-04): the native "Other" group header (clear-cache + request-feature +
+    about + help live here per native SettingsScreen grouping).
+  - feedback_retry (GAP-SET-13): error-snackbar Retry action label for the feedback submit failure.
+-->
+<resources>
+    <!-- GAP-SET-04 — native "Other" section group header -->
+
+    <!-- GAP-SET-13 — feedback submit failure snackbar Retry action label -->
+    <string name="feedback_retry">Retry</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cache-size unit patterns. Source: native strings.xml for this locale (bytes/kilobytes/megabytes/gigabytes — same B/KB/MB/GB units as the base locale). -->
+<resources>
+    <string name="size_bytes">%1$d B</string>
+    <string name="size_kilobytes">%1$s KB</string>
+    <string name="size_megabytes">%1$s MB</string>
+    <string name="size_gigabytes">%1$s GB</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Statistics screen (:ui ui/statistics).
+
+  Source of truth: native-app features/statistics + common app_bars + res/strings.xml.
+
+  Keys:
+    desc_back            - back-arrow IconButton contentDescription (native desc_back).
+    label_read_duration  - overview middle cell label (native label_read_duration,
+                           "Read duration"); supersedes the en+ar-only read_time key.
+    h_m                  - localized read-duration unit format (native h_m, "%1$dh %2$dm").
+                           Re-rendered in the :ui layer from the upstream "Xh Ym" value
+                           so the unit suffixes localize per app language.
+-->
+<resources>
+    <string name="desc_back">Back</string>
+    <string name="label_read_duration">Read duration</string>
+    <string name="h_m">%1$dh %2$dm</string>
+</resources>

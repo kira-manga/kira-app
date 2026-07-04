@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stub: full localized strings live in composeApp/src/commonMain/composeResources/values*. This file
+         only carries the Android app-name string used by the manifest, plus the worker/notification
+         strings that Android-only WorkManager + NotificationManager code paths need (which cannot reach
+         Compose-MP resource accessors from a worker/Service context). These keys mirror the native app's
+         res/values/strings.xml verbatim so the background-refresh + new-chapter notifications localize the
+         same way native does (including the shipped Arabic/RTL locale). -->
+    <string name="app_name">Kira Manga</string>
+
+    <!-- New-chapter notifications (ChapterNotificationHelper) — mirror native res/values/strings.xml. -->
+    <string name="new_chapters">New Chapters</string>
+    <string name="notifications_for_new_manga_chapters">Notifications for new manga chapters</string>
+    <string name="chapter_is_available">Chapter %1$s is available</string>
+
+    <!-- Library refresh foreground notification (LibraryRefreshWorker) — mirror native verbatim. -->
+    <string name="notification_channel_library_refresh">Library refresh updates</string>
+    <string name="notification_channel_library_refresh_desc">Shows progress of background library refresh</string>
+    <string name="notification_refreshing_library">Refreshing Library</string>
+    <string name="notification_library_refresh_failed">Library Refresh Failed</string>
+    <string name="notification_starting">Starting…</string>
+    <string name="notification_refresh_failed">Refresh failed: %s</string>
+    <string name="notification_no_manga_to_refresh">No manga to refresh</string>
+    <string name="notification_processing_batch">Processing batch %d…</string>
+    <string name="notification_finishing_up">Finishing up…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d completed, %4$d failed)</string>
+    <string name="notification_refresh_completed">Completed: %1$d successful, %2$d failed</string>
+</resources>

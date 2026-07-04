@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Details chapter-download STATUS line (2026-06-02). The user
+  reported that during a download the UI "only shows loading" with no visible "compressing" step
+  (native shows a distinct compress phase after the page downloads finish). These strings drive a
+  small status line in the chapter row subtitle: "Downloading N%" while RUNNING, "Compressing…"
+  while the pages are being archived into a CBZ, and "Queued" while waiting for a slot — mirroring
+  native's download → compress phases on every platform.
+
+  Unique keys (compose-resources forbids the same <string name> in two files within one values*
+  qualifier — it crashes at RUNTIME), verified against the standing dup-scan gate. The percent
+  argument is passed pre-formatted (e.g. "45%") as a %1$s string arg, so the template carries no
+  literal '%' to escape — avoiding any compose-resources printf-escaping ambiguity.
+-->
+<resources>
+    <string name="pfix_dl_downloading_format">Downloading %1$s</string>
+    <string name="pfix_dl_compressing">Compressing…</string>
+    <string name="pfix_dl_queued">Queued</string>
+</resources>

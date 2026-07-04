@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic (values-ar) translations for the P3-LOW Details parity pass.
+
+  Adds the missing Arabic counterparts for two user-facing Details keys whose English
+  values live in values/strings_np_p2_details_reader.xml:
+    - np_details_title_copied   : long-press title-copy confirmation (native R.string.title_copied)
+    - np_details_adult_icon_cd  : 18+ adult-content icon content description
+
+  Compose resources merge string definitions by `name` within each locale qualifier, independent
+  of the source file name, so these Arabic values bind to the same en keys without editing the
+  base / P2 string files.
+-->
+<resources>
+    <string name="np_details_title_copied">تم نسخ العنوان</string>
+    <string name="np_details_adult_icon_cd">تحذير محتوى للبالغين</string>
+</resources>

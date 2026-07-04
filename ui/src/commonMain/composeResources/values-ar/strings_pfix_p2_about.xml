@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the About screen — Arabic.
+
+  The np_source_code / np_soon keys (the inert "Source code / Soon" row) ship only in the
+  :ui en catalog (values/strings_np_p3_complaint_etc.xml), so Arabic devices fell back to
+  English. Restored here as locale overrides matching native values-ar/strings.xml:293-294
+  (source_code / soon).
+-->
+<resources>
+    <string name="np_source_code">كود المصدر</string>
+    <string name="np_soon">قريبًا</string>
+</resources>

@@ -1,0 +1,6 @@
+package me.manga.kira.sources_repositry.ar.dilar.models.chapter
+
+import kotlinx.serialization.Serializable
+
+@Serializable
+class MemberShelves

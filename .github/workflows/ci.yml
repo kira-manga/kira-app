@@ -1,0 +1,200 @@
+name: CI
+
+# Post-audit safety net. Mirrors the compile matrix + test/assemble gates verified green locally
+# (composeApp Android/Desktop/iOS Arm64/iOS Sim + :desktopApp JVM + :app debug), the full module
+# test suite (11 desktopTest suites + :app Koin DI-graph registration test + both locale-parity
+# gates), and a debug APK assembly. Kept in lockstep with the local gate cadence (last synced
+# 2026-07-04, audit Wave C).
+#
+# A clean GitHub runner does an online dependency resolve, which may surface the clean-checkout
+# resolution issue the state audit flagged (the local builds pass only via a warm Gradle cache).
+# That signal is intentional — fix repository availability if a run is red on resolution.
+#
+# Static analysis (detekt + ktlint) runs as a CI-only `static-analysis` job below, via the tools'
+# standalone CLI release jars — deliberately NOT Gradle plugins, so the local offline build graph is
+# untouched (adding an uncached plugin would break `./gradlew --offline`). The job is BLOCKING
+# since T3 (2026-07-03): the pre-existing tree was baselined (config/ktlint-baseline.xml — 9,450
+# findings; config/detekt-baseline.xml — 2,846 weighted issues; both generated with the exact CLI
+# invocations below and mutation-verified to fail on NEW findings), so the gate trips only on
+# violations introduced by new code. Shrink the baselines opportunistically; never append to them
+# to silence a new finding without a reason. detekt 1.23.7's bundled parser handles the project's
+# Kotlin 2.4 sources (verified 2026-07-03). The read-only native-app/ parity spec is excluded —
+# not our code to lint.
+#
+# Reproduce locally (tools + checksums as below, from the repo root):
+#   ktlint --baseline=config/ktlint-baseline.xml --relative "**/src/**/*.kt" "!**/build/**" \
+#     "!**/sources_repositry/**" "!native-app/**" "!.parity_i18n_tmp/**"
+#   detekt-cli --input . --excludes "**/build/**,**/sources_repositry/**,**/native-app/**,**/.parity_i18n_tmp/**" \
+#     --build-upon-default-config --baseline config/detekt-baseline.xml
+# Cache the two CLIs locally instead of re-downloading per run — this project's dev machine keeps
+# them in ~/.kira/tools/ (`ktlint` self-exec jar + `detekt-cli-1.23.7/bin/detekt-cli`, the same
+# pinned versions + checksums as the steps below). Formatting gotcha: ktlint --format on a
+# baselined file resurfaces that file's OLD findings as "new" (ktlint baselines match on
+# line/column; detekt signatures embed the parameter-list text, which the ktlint_official style
+# rewrites) — fix the surfaced findings for real; don't re-baseline them.
+
+on:
+  # Actions policy (owner rule): CI must NEVER run on `main` — the owner pushes to main frequently
+  # and every-push runs burn Actions minutes for no value. CI runs ONLY on pushes to the `testing`
+  # and `release` branches, plus manual dispatch. Deliberately no `pull_request` and no tag
+  # triggers: a PR into main or a tag push must not start a run either.
+  push:
+    branches: [ testing, release ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm-android:
+    name: JVM/Android compile + :domain tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile (Android + Desktop + :desktopApp JVM)
+        # compileAndroidMain: the AGP-9 new-DSL KMP-library plugin's single-variant Android compile
+        # task — the old per-variant compileDebugKotlinAndroid no longer exists post-migration.
+        run: ./gradlew :composeApp:compileAndroidMain :composeApp:compileKotlinDesktop :desktopApp:compileKotlinJvm --stacktrace
+      - name: Unit tests (all 11 desktopTest suites)
+        # :data:download — the iOS background-download rule suite (recovery/finalize/retry/
+        # resolve-ahead/manifest-store); :platform — CBZ path-rederivation etc.; :composeApp —
+        # the pilot-source parity tests + push parser/router tests.
+        # :ui — headless compose-ui-test suite (canned-state *ScreenContent renders + the L4
+        # spinner pixel-visibility checks); Skiko renders software-headless, no display needed.
+        # :data:local (Room migration/DAO tests), :sources:engine (the golden-fixture guard every
+        # source conversion relies on) and :sources:config (config lifecycle/merger) were missing
+        # from this list until the 2026-07 audit — a regression there passed CI green.
+        run: ./gradlew :core:desktopTest :domain:desktopTest :data:desktopTest :data:local:desktopTest :data:download:desktopTest :platform:desktopTest :presentation:desktopTest :composeApp:desktopTest :ui:desktopTest :sources:engine:desktopTest :sources:config:desktopTest --stacktrace
+      - name: i18n locale-key parity gates (:ui + :composeApp resource sets)
+        # :composeApp has its own composeResources tree (route-adapter strings) with its own
+        # parity task — both must gate (2026-07 audit: only :ui's ran in CI).
+        run: ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
+      - name: Provision placeholder google-services.json for the :app debug tasks
+        # app/google-services.json is BYO/gitignored; the google-services plugin hard-fails
+        # without it on a clean runner (this exact miss is why the job's only two historical runs
+        # were red — 2026-07 audit). The committed placeholder makes debug builds compile with
+        # inert Firebase backends; release builds reject it (app/build.gradle.kts guard).
+        run: cp app/google-services.json.example app/google-services.json
+      - name: Compile :app + Koin DI-graph registration test
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --stacktrace
+      - name: Assemble debug APK (packaging + dex + manifest/resource merge)
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+  ios:
+    name: iOS klib compile
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile iOS (Arm64 + SimulatorArm64)
+        run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 --stacktrace
+
+  release-verify:
+    name: Release artifact build (R8 fullMode + minify + shrink + sign)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Runs on pushes to the `release` branch and on-demand. Skips automatically when the signing
+    # secret is absent (e.g. before the repo secrets are configured) so it never blocks the main
+    # gate, but it MUST be exercised before any production release. Verified to build a signed,
+    # R8-fullMode-shrunk app-release.apk locally (2026-06-04); this job makes that repeatable in CI.
+    if: ${{ github.ref == 'refs/heads/release' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      # The release variant pulls release-only deps (e.g. kermit-crashlytics) not present in the
+      # debug cache, so this job resolves online (no --offline).
+      - name: Provision google-services.json (placeholder if no real config secret)
+        # Gated on the keystore secret too: without it every build/upload step skips, so there is
+        # nothing to provision — and the job would otherwise report a misleading green "verified"
+        # while having built nothing (see the warning step below).
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json
+          else
+            cp app/google-services.json.example app/google-services.json
+          fi
+      - name: Decode release keystore
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/release.keystore"
+      - name: Assemble signed release (exercises signing + R8 fullMode + minify + resource shrink)
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ADMOB_REWARDED_ID: ${{ secrets.ADMOB_REWARDED_ID }}
+          ADMOB_NATIVE_ID: ${{ secrets.ADMOB_NATIVE_ID }}
+          ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
+        # -PallowPlaceholderGoogleServices=true: this job validates the build PATH (R8/sign/shrink),
+        # so it may run against the placeholder google-services.json. A real release pipeline that
+        # ships to a store MUST omit this flag so the placeholder guard fails the build.
+        run: ./gradlew :app:assembleRelease -PallowPlaceholderGoogleServices=true --stacktrace
+      - name: Upload release APK + R8 mapping
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/mapping/release/mapping.txt
+          retention-days: 7
+      - name: Warn if keystore secret missing
+        if: ${{ env.KEYSTORE_BASE64 == '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "::warning::KEYSTORE_BASE64 not set — release build skipped. Set the signing secrets to validate the production artifact path."
+
+  static-analysis:
+    name: Static analysis (ktlint + detekt) — blocking, baselined
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # ktlint: standalone CLI, no Gradle plugin. BLOCKING against config/ktlint-baseline.xml (T3,
+      # 2026-07-03): pre-existing findings are baselined; only NEW violations fail the job. The
+      # read-only native-app/ parity spec and the legacy source-repository subtree are excluded.
+      - name: ktlint (blocking, baselined)
+        run: |
+          curl -sSLO https://github.com/pinterest/ktlint/releases/download/1.5.0/ktlint
+          echo "a16be01dcc480aab2f55f444b620142152f66e31564b3b9376506d624c28a2ad  ktlint" | sha256sum -c -
+          chmod +x ktlint
+          ./ktlint --baseline=config/ktlint-baseline.xml --relative "**/src/**/*.kt" "!**/build/**" "!**/sources_repositry/**" "!native-app/**" "!.parity_i18n_tmp/**"
+      # detekt: standalone CLI (bundles its own Kotlin compiler — 1.23.7 parses the project's
+      # Kotlin 2.4 sources, verified 2026-07-03). BLOCKING against config/detekt-baseline.xml:
+      # pre-existing findings are baselined; only NEW issues fail the job.
+      - name: detekt (blocking, baselined)
+        run: |
+          curl -sSLO https://github.com/detekt/detekt/releases/download/v1.23.7/detekt-cli-1.23.7.zip
+          echo "a641ecd392251336f8a1b7e1192acb603e47e04cbbb994aa3541c5fa9fc0bc87  detekt-cli-1.23.7.zip" | sha256sum -c -
+          unzip -q detekt-cli-1.23.7.zip
+          ./detekt-cli-1.23.7/bin/detekt-cli --input . --excludes "**/build/**,**/sources_repositry/**,**/native-app/**,**/.parity_i18n_tmp/**" --build-upon-default-config --baseline config/detekt-baseline.xml

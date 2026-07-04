@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Localized download-notification strings for the :data:download WorkManager worker
+  (backlog L15c, 2026-07). Values copied VERBATIM from composeApp/src/commonMain/
+  composeResources/values-it/strings.xml (the canonical localized copies), with
+  Android-res apostrophe/quote escaping applied. Keep in sync by re-copying, never by
+  re-translating here.
+-->
+<resources>
+    <string name="cancelled_by_user">Annullato dall\'utente</string>
+    <string name="notification_downloading_chapters">Scaricamento capitoli</string>
+    <string name="notification_chapter_title">Capitolo %s</string>
+    <string name="notification_downloading_background">Scaricamento di tutti i capitoli in background</string>
+    <string name="notification_compressing_images">Compressione delle immagini…</string>
+    <string name="notification_images_progress">%1$d / %2$d immagini</string>
+    <string name="action_cancel_all">Annulla tutto</string>
+    <string name="action_cancel_chapter">Annulla capitolo</string>
+    <string name="notification_channel_all_downloads">Tutti i download</string>
+    <string name="notification_channel_all_downloads_desc">Avanzamento totale del download</string>
+    <string name="notification_channel_chapter_download">Download capitolo</string>
+    <string name="notification_channel_chapter_download_desc">Avanzamento di un singolo capitolo</string>
+    <string name="notification_channel_download_summary">Riepilogo download</string>
+    <string name="notification_channel_download_summary_desc">Notifiche di completamento</string>
+</resources>

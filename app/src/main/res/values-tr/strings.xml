@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Turkish worker/notification strings — mirror native res/values-tr/strings.xml verbatim. -->
+    <string name="new_chapters">Yeni Bölümler</string>
+    <string name="notifications_for_new_manga_chapters">Yeni manga bölümleri için bildirimler</string>
+    <string name="chapter_is_available">Bölüm %1$s mevcut</string>
+
+    <string name="notification_channel_library_refresh">Kutuphane yenileme</string>
+    <string name="notification_channel_library_refresh_desc">Arka plan yenileme ilerlemesi</string>
+    <string name="notification_refreshing_library">Kutuphane yenileniyor</string>
+    <string name="notification_library_refresh_failed">Kutuphane yenileme basarisiz</string>
+    <string name="notification_starting">Basliyor...</string>
+    <string name="notification_refresh_failed">Yenileme basarisiz: %s</string>
+    <string name="notification_no_manga_to_refresh">Yenilenecek manga yok</string>
+    <string name="notification_processing_batch">%d. grup isleniyor...</string>
+    <string name="notification_finishing_up">Tamamlaniyor...</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d tamamlandi, %4$d basarisiz)</string>
+    <string name="notification_refresh_completed">Tamamlandi: %1$d basarili, %2$d basarisiz</string>
+</resources>

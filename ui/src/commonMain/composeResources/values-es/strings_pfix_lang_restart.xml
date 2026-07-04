@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_restart_hint">Reinicia la aplicación para aplicar el nuevo idioma.</string>
+</resources>

@@ -1,0 +1,12 @@
+<resources>
+    <!-- Native iOS reader strings missing from composeApp (the rest are reused from existing keys). -->
+    <string name="reading_mode">Reading mode</string>
+    <string name="reading_mode_rtl">Right to left</string>
+    <string name="reading_mode_ltr">Left to right</string>
+    <string name="reading_mode_continuous">Continuous vertical</string>
+    <string name="reader_native_next_chapter">Next chapter</string>
+    <string name="reader_native_last_chapter">You\'re on the last chapter</string>
+    <string name="reader_native_finished_prefix">Finished:</string>
+    <string name="reader_native_couldnt_load_chapter">Couldn\'t load this chapter</string>
+    <string name="reader_native_add_to_library_first">Add this manga to your library first</string>
+</resources>

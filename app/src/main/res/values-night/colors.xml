@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kira Manga Material 3 token set — dark values ported verbatim from native
+         native-app/.../res/values-night/colors.xml (the source of truth). Mirrors values/colors.xml
+         so Theme.KiraManga / the splash background track day/night exactly as native does. -->
+    <color name="kira_manga_primary">#B0C6FF</color>
+    <color name="kira_manga_onPrimary">#002D6E</color>
+    <color name="kira_manga_primaryContainer">#00429B</color>
+    <color name="kira_manga_onPrimaryContainer">#D9E2FF</color>
+    <color name="kira_manga_secondary">#B0C6FF</color>
+    <color name="kira_manga_onSecondary">#002D6E</color>
+    <color name="kira_manga_secondaryContainer">#00429B</color>
+    <color name="kira_manga_onSecondaryContainer">#D9E2FF</color>
+    <color name="kira_manga_tertiary">#7ADC77</color>
+    <color name="kira_manga_onTertiary">#003909</color>
+    <color name="kira_manga_tertiaryContainer">#005312</color>
+    <color name="kira_manga_onTertiaryContainer">#95F990</color>
+    <color name="kira_manga_background">#1B1B1F</color>
+    <color name="kira_manga_onBackground">#FFFFFF</color>
+    <color name="kira_manga_surface">#1B1B1F</color>
+    <color name="kira_manga_onSurface">#E3E2E6</color>
+    <color name="kira_manga_surfaceVariant">#211F26</color>
+    <color name="kira_manga_onSurfaceVariant">#C5C6D0</color>
+    <color name="kira_manga_outline">#8F9099</color>
+    <color name="kira_manga_surfaceContainerLowest">#1A181D</color>
+    <color name="kira_manga_surfaceContainerLow">#1E1C22</color>
+    <color name="kira_manga_surfaceContainer">#211F26</color>
+    <color name="kira_manga_surfaceContainerHigh">#292730</color>
+    <color name="kira_manga_surfaceContainerHighest">#302E38</color>
+</resources>

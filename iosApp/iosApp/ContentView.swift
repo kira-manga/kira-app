@@ -1,0 +1,20 @@
+import SwiftUI
+import UIKit
+import ComposeApp
+
+/// Bridges the Kotlin/Compose UI (`MainViewControllerKt.MainViewController()`)
+/// into SwiftUI via `UIViewControllerRepresentable`.
+struct ComposeView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        MainViewControllerKt.MainViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+struct ContentView: View {
+    var body: some View {
+        ComposeView()
+            .ignoresSafeArea(edges: .all)
+    }
+}

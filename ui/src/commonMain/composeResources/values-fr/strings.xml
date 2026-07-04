@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  French (values-fr) values for the Kira :ui string catalog (P0-LOC localization recovery).
+
+  Created so the live :ui screens resolve fr for the French locale instead of falling back to
+  English. Compose-resources resolves strings against the package that owns the Res symbol, so
+  the full catalogs that already shipped under composeApp/.../values-fr were unreachable from
+  :ui screens; this file ports the translations for the keys the :ui module defines.
+
+  Values are reused verbatim (no machine translation) from
+  composeApp/src/commonMain/composeResources/values-fr/strings.xml, matched by identical key name
+  against the :ui default catalog (ui/.../values/). Keys with no translation available in the
+  composeApp or native fr catalogs are intentionally omitted and fall back to the English
+  values/ default automatically.
+-->
+<resources>
+    <string name="about">À propos</string>
+    <string name="action_open_in_browser">Ouvrir dans le navigateur</string>
+    <string name="active">Actif</string>
+    <string name="add_closure_reason">Add Closure Reason</string>
+    <string name="add_languages">Ajouter des langues</string>
+    <string name="add_library_title">Ajouter à la bibliothèque</string>
+    <string name="add_manga_site">Ajouter un site de manga</string>
+    <string name="add_reason">Add Reason</string>
+    <string name="admin_actions">Admin Actions</string>
+    <string name="ask_to_add_features">Demander l’ajout de fonctionnalités</string>
+    <string name="back">Retour</string>
+    <string name="but_apply">Appliquer</string>
+    <string name="but_revert">Rétablir</string>
+    <string name="cancel">Annuler</string>
+    <string name="category">Catégorie</string>
+    <string name="change_status">Change Status</string>
+    <string name="chapter">Chapitre %1$s</string>
+    <string name="chapters_count_format">%1$d chapitres</string>
+    <string name="check_for_update">Vérifier les mises à jour</string>
+    <string name="choose_your_theme">Choisissez votre thème</string>
+    <string name="clear">Effacer</string>
+    <string name="close">Fermer</string>
+    <string name="closure_reason_done">TERMINÉ</string>
+    <string name="complaint_body">Corps de la Plainte</string>
+    <string name="completed">Terminé</string>
+    <string name="compress_existing_downloads">Compresser les téléchargements existants</string>
+    <string name="connect_with_us_in_social_media">Rejoignez-nous sur les réseaux sociaux</string>
+    <string name="continue_string">Continuer</string>
+    <string name="conversion_complete_">Conversion terminée !</string>
+    <string name="conversion_failed">Échec de la conversion</string>
+    <string name="conversion_stopped">Conversion arrêtée</string>
+    <string name="converting">Conversion…</string>
+    <string name="converting_to_cbz">Conversion en CBZ</string>
+    <string name="current">Actuel :</string>
+    <string name="custom_feedback">Retour personnalisé</string>
+    <string name="days_ago">il y a %1$d jours</string>
+    <string name="delete">Supprimer</string>
+    <string name="delete_complaint">Supprimer la Plainte</string>
+    <string name="delete_forever">Supprimer Définitivement</string>
+    <string name="delete_warning_message">Cette action ne peut pas être annulée. La plainte sera supprimée définitivement.</string>
+    <string name="desc_newest_first">Les plus récents en premier</string>
+    <string name="desc_oldest_first">Les plus anciens en premier</string>
+    <string name="downloaded">Téléchargé</string>
+    <string name="downloads">Téléchargements</string>
+    <string name="dropdown_button_refresh">Rafraîchir</string>
+    <string name="edit">Modifier</string>
+    <string name="edit_complaint">Modifier la Plainte</string>
+    <string name="edit_placeholder">Modifiez les détails de votre plainte ici...</string>
+    <string name="enable_notifications">Activer les notifications</string>
+    <string name="enter_the_site_url">Entrez l’URL du site</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">entrez l’URL du site que vous souhaitez que nous ajoutions</string>
+    <string name="enter_your_language">Entrez votre langue</string>
+    <string name="error_in_manga_site">Erreur sur le site de manga</string>
+    <string name="error_in_the_app">Erreur dans l’application</string>
+    <string name="error_occurred">Quelque chose s'est mal passé</string>
+    <string name="failed">Échoué</string>
+    <string name="failed_to_load_image">Échec du chargement de l'image.</string>
+    <string name="feedback_manager_title">Gestionnaire de Commentaires</string>
+    <string name="feedbacks_and_complaints">Retours et plaintes</string>
+    <string name="filter_all">Tous</string>
+    <string name="filter_bookmarked">Marqués</string>
+    <string name="filter_completed">Terminés</string>
+    <string name="filter_downloaded">Téléchargés</string>
+    <string name="filter_started">Commencés</string>
+    <string name="filter_unread">Non lus</string>
+    <string name="finish">Terminer</string>
+    <string name="follow_system_theme">Suivre le thème du système</string>
+    <string name="get_started">Commencer</string>
+    <string name="grant_permission">Accorder l'autorisation</string>
+    <string name="help">Aide</string>
+    <string name="label_bookmarked">Marqué</string>
+    <string name="label_completed">Terminés</string>
+    <string name="label_downloaded">Téléchargé</string>
+    <string name="label_in_library">En bibliothèque</string>
+    <string name="label_read">Lu</string>
+    <string name="label_started">Commencés</string>
+    <string name="label_total">Total</string>
+    <string name="languages_coming_soon_description">🌍 Nous travaillons à ajouter des sources pour : 🇹🇷 Turc, 🇩🇪 Allemand, 🇮🇹 Italien, 🇯🇵 Japonais. Merci de votre patience, elles seront disponibles bientôt !</string>
+    <string name="languages_coming_soon_title">Langues à venir</string>
+    <string name="last_updated">Dernière mise à jour : %1$s</string>
+    <string name="library_bottom_sheet_tab_display">Afficher</string>
+    <string name="library_bottom_sheet_tab_filter">Filtrer</string>
+    <string name="library_bottom_sheet_tab_sort">Trier</string>
+    <string name="minimum_5_characters_required">Au moins 5 caractères requis</string>
+    <string name="months_ago">il y a %1$d mois</string>
+    <string name="new_badge">NOUVEAU</string>
+    <string name="no_results_found">Aucun résultat trouvé</string>
+    <string name="not_updated_yet">Pas encore mis à jour</string>
+    <string name="notification_permission">Nous avons besoin de cette autorisation pour vous envoyer les derniers chapitres, afficher la progression du téléchargement et garantir le bon fonctionnement de l'application.</string>
+    <string name="notifications_group_last_week">La semaine dernière</string>
+    <string name="notifications_group_older">Plus anciennes</string>
+    <string name="notifications_group_today">Aujourd’hui</string>
+    <string name="notifications_group_yesterday">Hier</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">Veuillez ne pas fermer l’application avant la fin de la conversion</string>
+    <string name="privacy_policy">Politique de confidentialité</string>
+    <string name="pure_black_mode_title">Noir pur</string>
+    <string name="queued">En file d’attente</string>
+    <string name="rate_our_app">Noter notre application</string>
+    <string name="reading_mode_default">Par défaut</string>
+    <string name="reading_mode_vertical">Vertical</string>
+    <string name="reading_mode_webtoon">Webtoon</string>
+    <string name="remaining">Restant</string>
+    <string name="reply">Répondre</string>
+    <string name="reply_placeholder">Tapez votre réponse ici...</string>
+    <string name="reply_to_complaint">Répondre à la Plainte</string>
+    <string name="request_add_language">Demander l’ajout d’une langue</string>
+    <string name="request_failed">Échec de l’envoi de la demande</string>
+    <string name="request_feature_bug">Signaler un bug ou suggérer une fonctionnalité</string>
+    <string name="request_submitted_successfully">Demande envoyée avec succès</string>
+    <string name="retry">Réessayer</string>
+    <string name="running">En cours</string>
+    <string name="section_chapters">Chapitres</string>
+    <string name="section_entries">Entrées</string>
+    <string name="select_a_category">Sélectionnez une catégorie</string>
+    <string name="select_language">Choisissez la langue</string>
+    <string name="select_your_manga_sources">Sélectionnez vos sources de manga</string>
+    <string name="show_buttons">Afficher les boutons</string>
+    <string name="show_items_count">Afficher nombre</string>
+    <string name="show_items_details">Afficher détails</string>
+    <string name="show_items_source">Afficher source</string>
+    <string name="show_tabs_all_likes_etc">Afficher les onglets (Tous, J’aime, etc.)</string>
+    <string name="sort_alphabetic">Alphabétique</string>
+    <string name="sort_date_added">Date d’ajout</string>
+    <string name="sort_last_read">Dernière lecture</string>
+    <string name="sort_random">Aléatoire</string>
+    <string name="sort_status">Status</string>
+    <string name="sort_total_chapters">Total chapitres</string>
+    <string name="sort_type">Type</string>
+    <string name="sort_unread_count">Non lus</string>
+    <string name="sort_user_id">User ID</string>
+    <string name="start_conversion">Démarrer la conversion</string>
+    <string name="statistics">Statistiques</string>
+    <string name="status_closed">Fermé</string>
+    <string name="status_in_progress">En Cours</string>
+    <string name="status_not_planned">Non prévu</string>
+    <string name="status_open">Ouvert</string>
+    <string name="status_pinned">Épinglé</string>
+    <string name="status_planned">Planifié</string>
+    <string name="status_resolved">Résolu</string>
+    <string name="status_unknown">Unknown</string>
+    <string name="stop_conversion">Arrêter la conversion</string>
+    <string name="subject">Sujet</string>
+    <string name="submit">Envoyer</string>
+    <string name="theme_dark">Mode sombre</string>
+    <string name="theme_light">Mode clair</string>
+    <string name="theme_system">Système</string>
+    <string name="time_just_now">À l'instant</string>
+    <string name="title_library">Bibliothèque</string>
+    <string name="title_sources_settings">Paramètres des sources</string>
+    <string name="today">Aujourd’hui</string>
+    <string name="use_kira_compressor">Utiliser le compresseur Kira</string>
+    <string name="version">Version</string>
+    <string name="we_d_love_to_hear_from_you">Nous serions ravis d'avoir de vos nouvelles</string>
+    <string name="we_will_add_it_as_soon_it_possible">nous l’ajouterons dès que possible</string>
+    <string name="weeks_ago">il y a %1$d semaines</string>
+    <string name="welcome_suptitle">Explorez, lisez et collectionnez des mangas facilement.</string>
+    <string name="welcome_title">Bienvenue sur Kira Manga</string>
+    <string name="what_s_new">Quoi de neuf</string>
+    <string name="years_ago">il y a %1$d ans</string>
+    <string name="yesterday">Hier</string>
+    <string name="your_feedback">Vos retours</string>
+    <string name="your_reply">Votre Réponse</string>
+</resources>

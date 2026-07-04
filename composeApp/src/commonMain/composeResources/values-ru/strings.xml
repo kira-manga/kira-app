@@ -1,0 +1,470 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kira Manga</string>
+    <string name="title_home">Главная</string>
+    <string name="title_history">История</string>
+    <string name="title_notifications">Уведомления</string>
+    <string name="title_library">Библиотека</string>
+    <string name="title_settings">Настройки</string>
+
+
+    <!-- Library -->
+
+    <string name="continue_string">Продолжить</string>
+
+    <!-- SortOptionsSection -->
+    <string name="sort_options_title">Параметры сортировки</string>
+    <string name="sort_direction_label">Направление сортировки</string>
+    <string name="sort_direction_ascending">По возрастанию</string>
+    <string name="sort_direction_descending">По убыванию</string>
+    <string name="sort_by_label">Сортировать по</string>
+
+    <!-- DisplayOptionsSection -->
+    <string name="items_per_row_label">Элементов в ряд:</string>
+    <string name="auto_text">Авто</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">элемент</string>
+    <string name="items_plural">элементов</string>
+    <string name="show_items_details">Показать детали</string>
+    <string name="show_items_source">Показать источник</string>
+    <string name="show_items_count">Показать количество</string>
+    <string name="last_updated">Последнее обновление: %1$s</string>
+    <string name="not_updated_yet">Еще не обновлено</string>
+    <plurals name="items_count">
+        <item quantity="one">%d элемент</item>
+        <item quantity="few">%d элемента</item>
+        <item quantity="many">%d элементов</item>
+        <item quantity="other">%d элементов</item>
+    </plurals>
+
+    <!-- MangaCard-specific strings -->
+
+    <!-- Filter Types -->
+    <string name="filter_downloaded">Загруженные</string>
+    <string name="filter_unread">Непрочитанные</string>
+    <string name="filter_started">Начатые</string>
+    <string name="filter_readed">Прочитано</string>
+    <string name="filter_bookmarked">В закладках</string>
+    <string name="filter_completed">Завершенные</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">По алфавиту</string>
+    <string name="sort_total_chapters">Всего глав</string>
+    <string name="sort_last_read">Последнее чтение</string>
+    <string name="sort_unread_count">Непрочитанных</string>
+    <string name="sort_date_added">Дата добавления</string>
+    <string name="sort_random">Случайно</string>
+
+    <string name="content_description_close_search">Закрыть поиск</string>
+    <string name="searching_placeholder">Поиск манги…</string>
+    <string name="contentDescription_search_icon">Иконка поиска</string>
+    <string name="contentDescription_search_clear">Очистить запрос</string>
+    <string name="contentDescription_search">Поиск</string>
+    <string name="contentDescription_filter">Фильтр</string>
+    <string name="dropdown_button_refresh">Обновить</string>
+    <string name="library_bottom_sheet_tab_filter">Фильтр</string>
+    <string name="library_bottom_sheet_tab_sort">Сортировка</string>
+    <string name="library_bottom_sheet_tab_display">Отображение</string>
+
+    <!-- Updates -->
+    <string name="notifications_group_today">Сегодня</string>
+    <string name="notifications_group_yesterday">Вчера</string>
+    <string name="notifications_group_last_week">На прошлой неделе</string>
+    <string name="notifications_group_older">Ранее</string>
+    <string name="contentDescription_delete_all">Удалить всё</string>
+    <string name="contentDescription_mark_all_as_read">Отметить как прочитанное всё</string>
+    <string name="chapter_number">Глава %1$s</string>
+
+    <!-- History -->
+    <string name="content_description_clear_history">Очистить историю</string>
+    <string name="today">Сегодня</string>
+    <string name="yesterday">Вчера</string>
+    <string name="days_ago">%1$d дней назад</string>
+    <string name="weeks_ago">%1$d недель назад</string>
+    <string name="months_ago">%1$d месяцев назад</string>
+    <string name="years_ago">%1$d лет назад</string>
+
+    <!-- Settings -->
+    <string name="theme_dark">Тёмная тема</string>
+    <string name="theme_light">Светлая тема</string>
+    <string name="pure_black_mode_title">Чисто‑черная тёмная тема</string>
+    <string name="default_reading_mode">Режим чтения по умолчанию</string>
+    <string name="statistics">Статистика</string>
+    <string name="about">О приложении</string>
+    <string name="help">Помощь</string>
+    <string name="adult_filter_removal_header">Содержимое недоступно</string>
+    <string name="adult_filter_removal_title">Извините — это содержимое нельзя показать. В соответствии с политикой Google Play и из уважения к религиозным и культурным ценностям мы не можем отображать откровенный сексуальный контент. Спасибо за понимание.</string>
+
+
+    <!-- Statistics -->
+    <string name="desc_back">Назад</string>
+    <string name="section_entries">Записи</string>
+    <string name="section_chapters">Главы</string>
+    <string name="label_in_library">В библиотеке</string>
+    <string name="label_read_duration">Время чтения</string>
+    <string name="label_completed_entries">Завершённые записи</string>
+    <string name="label_started">Начатые</string>
+    <string name="label_completed">Завершённые</string>
+    <string name="label_total">Всего</string>
+    <string name="label_read">Прочитано</string>
+    <string name="label_downloaded">Загружено</string>
+    <string name="label_bookmarked">С закладкой</string>
+
+    <!-- LibraryMangaDetails -->
+    <string name="add_library_title">Добавить в библиотеку</string>
+    <string name="action_remove">Удалить</string>
+    <string name="action_bookmark">Закладка</string>
+    <string name="action_downloading">Скачивание</string>
+    <string name="action_open_in_browser">Открыть в WebView</string>
+    <string name="chapters_count_format">%1$d Главы</string>
+    <string name="desc_newest_first">Сначала новые</string>
+    <string name="desc_oldest_first">Сначала старые</string>
+    <string name="title_copied">Название скопировано!</string>
+
+    <!-- Reading modes -->
+    <string name="reading_mode_default">По умолчанию</string>
+    <string name="reading_mode_vertical">Вертикально</string>
+    <string name="reading_mode_webtoon">Веб‑тун</string>
+    <string name="but_revert">Отменить</string>
+    <string name="but_apply">Применить</string>
+    <string name="retry">Повторить</string>
+    <string name="failed_to_load">Ошибка загрузки: %1$s</string>
+
+    <!-- SearchScreen -->
+
+    <string name="title_sources_settings">Настройки источников</string>
+    <string name="enable_disable_all_sources">Включить/отключить все источники %1$s</string>
+    <string name="enabled">Включено</string>
+    <string name="disabled">Отключено</string>
+
+    <!-- Download notifications -->
+    <string name="new_chapters">Новые главы</string>
+    <string name="notifications_for_new_manga_chapters">Уведомления о новых главах</string>
+    <string name="chapter_is_available">Глава %1$s доступна</string>
+    <string name="select_language">Выберите язык</string>
+    <string name="downloads">Загрузки</string>
+
+    <string name="request_feature_bug">Сообщить об ошибке или запросить функцию</string>
+    <string name="enter_your_language">Укажите ваш язык</string>
+    <string name="submit">Отправить</string>
+    <string name="request_add_language">Запрос на добавление языка</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">Введите URL сайта, который хотите добавить</string>
+    <string name="we_will_add_it_as_soon_it_possible">Мы добавим его как можно скорее</string>
+    <string name="enter_the_site_url">Введите URL сайта</string>
+
+    <!-- Crash screen -->
+    <string name="crash_screen_title">Упс! Что‑то пошло не так</string>
+    <string name="crash_screen_description">Извините — приложение %1$s столкнулось с непредвиденной ошибкой. Вы можете отправить отчёт, чтобы помочь нам улучшить его.</string>
+    <string name="pref_dump_crash_logs">Отправить отчёт об ошибке</string>
+    <string name="crash_screen_restart_application">Перезапустить приложение</string>
+    <string name="finish">Завершить</string>
+    <string name="select_your_manga_sources">Выберите источники манги</string>
+    <string name="you_need_to_enable_notifications">Вам нужно включить уведомления для использования приложения</string>
+    <string name="choose_your_theme">Выберите тему</string>
+    <string name="get_started">Начать</string>
+    <string name="welcome_suptitle">Исследуйте, читайте и собирайте мангу с лёгкостью.</string>
+    <string name="welcome_title">Добро пожаловать в Kira Manga</string>
+    <string name="system_theme">Тема системы</string>
+    <string name="follow_system_theme">Следовать системе</string>
+    <string name="enable_notifications">Включить уведомления</string>
+    <string name="notification_permission">Нам нужно это разрешение, чтобы отправлять последние главы, показывать прогресс загрузки и гарантировать работу приложения.</string>
+    <string name="grant_permission">Предоставить разрешение</string>
+    <string name="theme_system">Система</string>
+    <string name="version">Версия</string>
+    <string name="check_for_update">Проверить обновления</string>
+    <string name="rate_our_app">Оценить наше приложение</string>
+    <string name="what_s_new">Что нового</string>
+    <string name="privacy_policy">Политика конфиденциальности</string>
+
+    <string name="minimum_5_characters_required">Требуется минимум 5 символов</string>
+    <string name="error_in_the_app">Ошибка в приложении</string>
+    <string name="add_languages">Добавить язык</string>
+    <string name="add_manga_site">Добавить сайт манги</string>
+    <string name="error_in_manga_site">Ошибка на сайте манги</string>
+    <string name="ask_to_add_features">Попросить о добавлении функций</string>
+    <string name="custom_feedback">Пользовательский отзыв</string>
+    <string name="request_language">Запросить язык</string>
+    <string name="active">Активно</string>
+    <string name="failed">Неудачно</string>
+    <string name="completed">Завершено</string>
+    <string name="running">Выполняется</string>
+    <string name="queued">В очереди</string>
+    <string name="downloaded">Загружено</string>
+    <string name="unknown">Неизвестно</string>
+
+
+    <!-- Exceptions -->
+    <string name="cancelled_by_user">Отменено пользователем</string>
+    <string name="failed_to_load_image">Не удалось загрузить изображение.</string>
+
+
+
+    <!-- Closure Reasons -->
+    <string name="closure_reason_done">ВЫПОЛНЕНО</string>
+
+
+
+    <!-- Error States -->
+    <string name="error_occurred">Что-то пошло не так</string>
+
+    <!-- Empty States -->
+    <string name="status_open">Открыто</string>
+    <string name="status_planned">Запланировано</string>
+    <string name="show_buttons">Показать кнопки</string>
+    <string name="show_tabs_all_likes_etc">Показать вкладки (Все, лайки и т. д.)</string>
+    <string name="status_pinned">Закреплено</string>
+    <string name="admin">админ</string>
+    <string name="feedbacks_and_complaints">Отзывы и жалобы</string>
+    <string name="content_description_delete">Удалить</string>
+
+
+    <string name="status_unknown">Unknown</string>
+    <string name="reply">Ответить</string>
+    <string name="edit">Редактировать</string>
+    <string name="delete">Удалить</string>
+    <string name="cancel">Отмена</string>
+    <string name="close">Закрыть</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">Ответить на Жалобу</string>
+    <string name="your_reply">Ваш Ответ</string>
+    <string name="reply_placeholder">Введите ваш ответ здесь...</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">Редактировать Жалобу</string>
+    <string name="subject">Тема</string>
+    <string name="complaint_body">Содержание Жалобы</string>
+    <string name="edit_placeholder">Отредактируйте детали вашей жалобы здесь...</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">Удалить Жалобу</string>
+    <string name="delete_warning_message">Это действие нельзя отменить. Жалоба будет удалена навсегда.</string>
+    <string name="delete_forever">Удалить Навсегда</string>
+
+    <!-- Navigation -->
+    <string name="back">Назад</string>
+
+    <!-- Common -->
+    <string name="loading">Загрузка...</string>
+
+    <!-- Status Labels -->
+    <string name="status_in_progress">В Процессе</string>
+    <string name="status_resolved">Решено</string>
+    <string name="status_closed">Закрыто</string>
+
+    <!-- Character Limits -->
+    <string name="character_count">%1$d/%2$d</string>
+
+    <!-- Existing strings -->
+    <string name="feedback_manager_title">Менеджер Отзывов</string>
+    <string name="clear">Очистить</string>
+    <string name="filter_all">Все</string>
+    <string name="no_results_found">Результаты не найдены</string>
+
+    <!-- UI Elements -->
+    <string name="new_badge">НОВОЕ</string>
+    <string name="play_video">Воспроизвести Видео</string>
+    <string name="video_preview">Превью Видео</string>
+
+
+
+
+    <!-- res/values/strings.xml - Additional strings for Admin Complaint Management -->
+
+    <!-- Admin Screen Titles -->
+
+    <!-- Search and Filter -->
+
+    <!-- Sort Options -->
+    <string name="sort_status">Status</string>
+    <string name="sort_type">Type</string>
+    <string name="sort_user_id">User ID</string>
+
+    <!-- Statistics -->
+
+    <!-- Dialog Titles -->
+    <string name="change_status">Change Status</string>
+    <string name="add_closure_reason">Add Closure Reason</string>
+
+    <!-- Dialog Content -->
+
+
+    <!-- Closure Reason Dialog -->
+    <string name="add_reason">Add Reason</string>
+
+    <!-- Delete Dialog -->
+
+    <!-- Card Content -->
+
+    <!-- Closure Reason Types -->
+
+    <!-- Action Messages -->
+
+    <!-- Error Messages -->
+
+    <!-- Bulk Operations -->
+
+    <!-- Admin Actions -->
+    <string name="admin_actions">Admin Actions</string>
+
+    <!-- Validation Messages -->
+
+    <!-- Accessibility -->
+
+    //=========================================================================================================
+
+
+
+
+
+
+
+
+
+    <string name="languages_coming_soon_title">Скоро появятся новые языки</string>
+    <string name="languages_coming_soon_description">🌍 Мы работаем над добавлением источников для: 🇹🇷 Турецкого, 🇩🇪 Немецкого, 🇮🇹 Итальянского, 🇯🇵 Японского. Пожалуйста, подождите — скоро они будут доступны!</string>
+
+    <string name="we_d_love_to_hear_from_you">Нам было бы приятно получить от вас отзыв</string>
+    <string name="category">Категория</string>
+    <string name="select_a_category">Выберите категорию</string>
+    <string name="your_feedback">Ваш отзыв</string>
+    <string name="connect_with_us_in_social_media">Свяжитесь с нами в социальных сетях</string>
+
+
+    <string name="status_not_planned">Не запланировано</string>
+    <string name="new_chapter">НОВЫЙ</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- What's New -->
+
+
+
+
+
+
+    <string name="request_submitted_successfully">Запрос успешно отправлен</string>
+    <string name="request_failed">Не удалось отправить запрос</string>
+
+
+    <string name="converting_to_cbz">Конвертация в CBZ</string>
+    <string name="conversion_failed">Ошибка конвертации</string>
+
+    <string name="notification_downloading_chapters">Загрузка глав</string>
+    <string name="notification_chapter_title">Глава %s</string>
+
+    <string name="notification_downloading_background">Загрузка всех глав в фоновом режиме</string>
+    <string name="notification_compressing_images">Сжатие изображений…</string>
+    <string name="notification_images_progress">%1$d / %2$d изображений</string>
+
+    <string name="action_cancel_all">Отменить всё</string>
+    <string name="action_cancel_chapter">Отменить главу</string>
+
+    <string name="notification_channel_all_downloads">Все загрузки</string>
+    <string name="notification_channel_all_downloads_desc">Общий прогресс загрузки</string>
+    <string name="notification_channel_chapter_download">Загрузка главы</string>
+    <string name="notification_channel_chapter_download_desc">Прогресс загрузки одной главы</string>
+    <string name="notification_channel_download_summary">Сводка загрузок</string>
+    <string name="notification_channel_download_summary_desc">Уведомления о завершении</string>
+    <string name="notification_channel_library_refresh">Обновление библиотеки</string>
+    <string name="notification_channel_library_refresh_desc">Прогресс фонового обновления</string>
+
+    <string name="notification_refreshing_library">Обновление библиотеки</string>
+    <string name="notification_library_refresh_failed">Не удалось обновить библиотеку</string>
+    <string name="notification_starting">Запуск…</string>
+    <string name="notification_refresh_timed_out">Время обновления истекло</string>
+    <string name="notification_refresh_failed">Ошибка обновления: %s</string>
+    <string name="notification_no_manga_to_refresh">Нет манги для обновления</string>
+    <string name="notification_processing_batch">Обработка пакета %d…</string>
+    <string name="notification_finishing_up">Завершение…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d завершено, %4$d не удалось)</string>
+    <string name="notification_refresh_completed">Завершено: %1$d успешно, %2$d не удалось</string>
+
+
+
+
+    <string name="time_just_now">Только что</string>
+
+    <plurals name="time_minutes_ago">
+        <item quantity="one">%d минуту назад</item>
+        <item quantity="few">%d минуты назад</item>
+        <item quantity="other">%d минут назад</item>
+    </plurals>
+
+    <plurals name="time_hours_ago">
+        <item quantity="one">%d час назад</item>
+        <item quantity="few">%d часа назад</item>
+        <item quantity="other">%d часов назад</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="one">%d день назад</item>
+        <item quantity="few">%d дня назад</item>
+        <item quantity="other">%d дней назад</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="one">%d неделю назад</item>
+        <item quantity="few">%d недели назад</item>
+        <item quantity="other">%d недель назад</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="one">%d месяц назад</item>
+        <item quantity="few">%d месяца назад</item>
+        <item quantity="other">%d месяцев назад</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="one">%d год назад</item>
+        <item quantity="few">%d года назад</item>
+        <item quantity="other">%d лет назад</item>
+    </plurals>
+
+
+
+
+
+
+    <string name="value_count">%,d</string>
+    <string name="use_kira_compressor">Использовать компрессор Kira</string>
+    <string name="compress_existing_downloads">Сжать существующие загрузки</string>
+    <string name="converting">Конвертация…</string>
+    <string name="start_conversion">Начать конвертацию</string>
+    <string name="conversion_stopped">Конвертация остановлена</string>
+    <string name="conversion_complete_">Конвертация завершена!</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">Пожалуйста, не закрывайте приложение, пока конвертация не завершится</string>
+    <string name="remaining">Осталось</string>
+    <string name="current">Текущий:</string>
+    <string name="chapter">Глава %1$s</string>
+    <string name="stop_conversion">Остановить конвертацию</string>
+
+
+    <string name="h_m">%1$dч %2$dм</string>
+    <string name="conversion_stopped_by_user">Преобразование остановлено пользователем.</string>
+    <string name="chapters_converted_successfully">✓ %1$d глав успешно преобразовано</string>
+    <string name="chapters_remaining">⏸ %1$d глав осталось</string>
+
+
+
+</resources>

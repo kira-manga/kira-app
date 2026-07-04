@@ -1,0 +1,11 @@
+<resources>
+    <string name="reading_mode">وضع القراءة</string>
+    <string name="reading_mode_rtl">من اليمين إلى اليسار</string>
+    <string name="reading_mode_ltr">من اليسار إلى اليمين</string>
+    <string name="reading_mode_continuous">عمودي متصل</string>
+    <string name="reader_native_next_chapter">الفصل التالي</string>
+    <string name="reader_native_last_chapter">أنت في الفصل الأخير</string>
+    <string name="reader_native_finished_prefix">انتهى:</string>
+    <string name="reader_native_couldnt_load_chapter">تعذّر تحميل هذا الفصل</string>
+    <string name="reader_native_add_to_library_first">أضِف هذه المانجا إلى مكتبتك أولاً</string>
+</resources>

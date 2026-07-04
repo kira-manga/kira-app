@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Parity-fix strings for the Library screen (audit p1/library).
+
+      Native (source of truth) is me/manga/yami/presentation/features/library/**.
+      Native key names + native text are reused verbatim where they exist so the
+      strangler-fig wire stays aligned with the legacy res/values/strings.xml.
+
+      Finding 2 (items-per-row slider): native DisplayOptionsSection.kt exposes a
+      continuous 0..8 Slider where 0 = "Auto" (Adaptive grid) and 1..8 = Fixed
+      columns. Labels: items_per_row_label / auto_text / items_count_format
+      (%1$d %2$s) / items_singular / items_plural — all native key names from
+      native res/values/strings.xml:36-40.
+
+      Finding 3 (toggleable SearchAppBar): native SearchAppBar.kt + LibraryScreen.kt
+      use content_description_close_search / searching_placeholder /
+      contentDescription_search_icon / contentDescription_search_clear /
+      contentDescription_search — native key names from native
+      res/values/strings.xml:76-80.
+    -->
+
+    <!-- Finding 2: items-per-row Slider (native DisplayOptionsSection.kt:36-57) -->
+    <string name="items_per_row_label">Items per row:</string>
+    <string name="auto_text">Auto</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">item</string>
+    <string name="items_plural">items</string>
+
+    <!-- Finding 3: toggleable SearchAppBar (native SearchAppBar.kt + LibraryScreen.kt:140-141) -->
+    <string name="content_description_close_search">Close search</string>
+    <string name="searching_placeholder">Search your manga…</string>
+    <string name="contentDescription_search_icon">Search icon</string>
+    <string name="contentDescription_search_clear">Clear query</string>
+    <string name="contentDescription_search">Search</string>
+</resources>

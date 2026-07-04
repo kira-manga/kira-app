@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      P2 parity-fix strings for the Updates / Notifications feed — Arabic.
+
+      Trusted Arabic verbatim from the native app's values-ar/strings.xml (source of truth).
+      - title_notifications: native values-ar/strings.xml:6 "التحديثات" (the screen + tab title).
+      - contentDescription_delete_all / contentDescription_mark_all_as_read: native
+        values-ar/strings.xml:99-100 — accessible labels for the two top-bar icon actions.
+    -->
+    <string name="title_notifications">التحديثات</string>
+    <string name="contentDescription_delete_all">حذف الكل</string>
+    <string name="contentDescription_mark_all_as_read">تحديد الكل كمقروء</string>
+</resources>

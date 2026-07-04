@@ -1,0 +1,92 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Downloads — old vs new</title>
+<link rel="stylesheet" href="ds.css"></head><body>
+
+<!-- ================= OLD ================= -->
+<div class="stage"><div class="label old">Before</div>
+<div class="screen old">
+  <div class="statusbar"><span>9:41</span><span class="dots">5G ▮▮▮ 100%</span></div>
+  <div class="oldbar"><div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div><h1>Downloads</h1></div>
+  <div style="display:flex;gap:18px;padding:12px 16px 4px;font-size:14px;font-weight:600;color:var(--muted)">
+    <span style="color:#3D5AFE;border-bottom:2px solid #3D5AFE;padding-bottom:8px">Active</span><span>Failed</span><span>Completed</span>
+  </div>
+  <!-- running card: flat, sharp, plain bar + plain text -->
+  <div style="background:#1b1d24;border-radius:6px;padding:12px;margin:12px 16px">
+    <div style="font-size:14px;font-weight:600">Chapter 142 — Crimson Vow of the Fallen King</div>
+    <div style="height:6px;border-radius:0;background:#2a2d36;margin-top:10px"><div style="height:100%;width:72%;background:#3D5AFE"></div></div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--muted)"><span>Running · 18/24 pages</span><span>72%</span></div>
+  </div>
+  <div style="background:#1b1d24;border-radius:6px;padding:12px;margin:0 16px 10px">
+    <div style="font-size:14px;font-weight:600">Chapter 141 — Crimson Vow of the Fallen King</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">Queued</div>
+    <div style="text-align:right;font-size:13px;font-weight:600;color:#3D5AFE;margin-top:4px">Cancel</div>
+  </div>
+  <div style="background:#1b1d24;border-radius:6px;padding:12px;margin:0 16px 10px">
+    <div style="font-size:14px;font-weight:600">Chapter 18 — Neon Samurai</div>
+    <div style="font-size:12px;color:#ff6b6b;margin-top:6px">Failed: network error</div>
+    <div style="text-align:right;font-size:13px;font-weight:600;color:#3D5AFE;margin-top:4px">Retry</div>
+  </div>
+  <div style="background:#1b1d24;border-radius:6px;padding:12px;margin:0 16px 10px">
+    <div style="font-size:14px;font-weight:600">Chapter 09 — Iron Lotus</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">Downloaded</div>
+  </div>
+</div></div>
+
+<!-- ================= NEW ================= -->
+<div class="stage"><div class="label new">Redesign</div>
+<div class="screen">
+  <div class="statusbar"><span>9:41</span><span class="dots">5G ▮▮▮ 100%</span></div>
+  <div class="topbar">
+    <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+    <h1>Downloads</h1>
+  </div>
+
+  <!-- Downloading now: single running card with cover, progress bar, % and cancel -->
+  <div class="sec" style="padding:14px 20px 10px"><h2>Downloading now</h2><a>1 active ›</a></div>
+  <div class="feed">
+    <div class="row">
+      <div class="rcover g1"></div>
+      <div class="body">
+        <div class="title">Crimson Vow of the Fallen King</div>
+        <div class="meta">Chapter 142 <span class="dot">·</span> 18/24 pages</div>
+        <div class="bar"><i style="width:72%"></i></div>
+        <div style="display:flex;justify-content:flex-end;font-size:11.5px;font-weight:800;color:var(--accent);margin-top:6px">72%</div>
+      </div>
+      <div class="iconbtn on"><svg viewBox="0 0 24 24"><rect x="7" y="6" width="3.4" height="12" rx="1"/><rect x="13.6" y="6" width="3.4" height="12" rx="1"/></svg></div>
+    </div>
+  </div>
+
+  <!-- Queue / Completed: status chips + retry/delete -->
+  <div class="sec" style="padding:18px 20px 10px"><h2>Queue &amp; completed</h2><a>4 items ›</a></div>
+  <div class="feed">
+    <div class="row">
+      <div class="rcover g1"></div>
+      <div class="body"><div class="title">Crimson Vow of the Fallen King</div><div class="meta">Chapter 141 <span class="dot">·</span> 24 pages</div>
+        <div class="chrow"><span class="chip muted">Queued</span></div>
+      </div>
+      <div class="iconbtn"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div>
+    </div>
+    <div class="row">
+      <div class="rcover g3"></div>
+      <div class="body"><div class="title">Iron Lotus</div><div class="meta">Chapter 09 <span class="dot">·</span> 31 pages</div>
+        <div class="chrow"><span class="chip good">Done</span></div>
+      </div>
+      <div class="iconbtn"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></div>
+    </div>
+    <div class="row">
+      <div class="rcover g2"></div>
+      <div class="body"><div class="title">Neon Samurai</div><div class="meta">Chapter 18 <span class="dot">·</span> Network error</div>
+        <div class="chrow"><span class="chip" style="color:#FF7A6B;background:rgba(255,122,107,.13);border-color:rgba(255,122,107,.28)">Failed</span></div>
+      </div>
+      <div class="iconbtn on"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 16"/><path d="M4 20v-4h4"/></svg></div>
+    </div>
+    <div class="row">
+      <div class="rcover g6"></div>
+      <div class="body"><div class="title">Solo Ascension</div><div class="meta">Chapter 07 <span class="dot">·</span> 28 pages</div>
+        <div class="chrow"><span class="chip good">Done</span></div>
+      </div>
+      <div class="iconbtn"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></div>
+    </div>
+  </div>
+</div></div>
+
+</body></html>

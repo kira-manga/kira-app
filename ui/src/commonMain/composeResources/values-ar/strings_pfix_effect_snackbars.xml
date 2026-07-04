@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Effect-snackbar strings (rework MVI i18n fix).
+
+  These replace the hardcoded English snackbar copy that the Complaint / AdminComplaint / Updates /
+  Downloads ViewModels previously embedded in their effect payloads (a violation of the MVI contract:
+  "effects carry only trigger data, never i18n text"). The VMs now emit semantic effect variants and
+  :ui resolves the localized copy here. Generic action failures reuse the existing error_occurred
+  ("Something went wrong") key, so no new failure string is added.
+
+  English-only until the trusted-translation pass (the other locale folders carry the same English
+  placeholder so the locale-parity gate passes).
+-->
+<resources>
+    <!-- User + admin complaint action confirmation snackbars. -->
+    <string name="np_complaint_action_status_updated">تم تحديث الحالة</string>
+    <string name="np_complaint_action_closure_added">تمت إضافة سبب الإغلاق</string>
+    <string name="np_complaint_action_deleted">تم حذف الشكوى</string>
+    <string name="np_complaint_action_updated">تم تحديث الشكوى</string>
+    <string name="np_complaint_action_reply_sent">تم إرسال الرد</string>
+    <string name="np_complaint_body_copied">تم النسخ إلى الحافظة</string>
+
+    <!-- Updates screen: chapter download could not be enqueued. -->
+    <string name="np_download_enqueue_failed">فشل التنزيل</string>
+
+    <!-- Updates screen: undo of a just-deleted update could not be completed (row stays deleted). -->
+    <string name="np_undo_failed">تعذّر التراجع عن الحذف</string>
+</resources>

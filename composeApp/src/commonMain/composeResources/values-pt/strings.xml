@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kira Manga</string>
+    <string name="title_home">Início</string>
+    <string name="title_history">Histórico</string>
+    <string name="title_notifications">Notificações</string>
+    <string name="title_library">Biblioteca</string>
+    <string name="title_settings">Definições</string>
+
+
+    <!-- Library -->
+
+    <string name="continue_string">Continuar</string>
+
+    <!-- SortOptionsSection -->
+    <string name="sort_options_title">Opções de ordenação</string>
+    <string name="sort_direction_label">Direção da ordenação</string>
+    <string name="sort_direction_ascending">Ascendente</string>
+    <string name="sort_direction_descending">Descendente</string>
+    <string name="sort_by_label">Ordenar por</string>
+
+    <!-- DisplayOptionsSection -->
+    <string name="items_per_row_label">Itens por linha:</string>
+    <string name="auto_text">Automático</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">item</string>
+    <string name="items_plural">itens</string>
+    <string name="show_items_details">Mostrar detalhes dos itens</string>
+    <string name="show_items_source">Mostrar fonte dos itens</string>
+    <string name="show_items_count">Mostrar contagem dos itens</string>
+    <string name="last_updated">Última atualização: %1$s</string>
+    <string name="not_updated_yet">Ainda não atualizado</string>
+    <plurals name="items_count">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d itens</item>
+    </plurals>
+
+    <!-- MangaCard-specific strings -->
+
+    <!-- Filter Types -->
+    <string name="filter_downloaded">Descarregados</string>
+    <string name="filter_unread">Não lidos</string>
+    <string name="filter_started">Começados</string>
+    <string name="filter_readed">Lidos</string>
+    <string name="filter_bookmarked">Com marcador</string>
+    <string name="filter_completed">Concluídos</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">Alfabeticamente</string>
+    <string name="sort_total_chapters">Total de capítulos</string>
+    <string name="sort_last_read">Última leitura</string>
+    <string name="sort_unread_count">Contagem de não lidos</string>
+    <string name="sort_date_added">Data de adição</string>
+    <string name="sort_random">Aleatório</string>
+
+    <string name="content_description_close_search">Fechar pesquisa</string>
+    <string name="searching_placeholder">Pesquisar o seu manga…</string>
+    <string name="contentDescription_search_icon">Ícone de pesquisa</string>
+    <string name="contentDescription_search_clear">Limpar pesquisa</string>
+    <string name="contentDescription_search">Pesquisar</string>
+    <string name="contentDescription_filter">Filtrar</string>
+    <string name="dropdown_button_refresh">Atualizar</string>
+    <string name="library_bottom_sheet_tab_filter">Filtrar</string>
+    <string name="library_bottom_sheet_tab_sort">Ordenar</string>
+    <string name="library_bottom_sheet_tab_display">Exibir</string>
+
+    <!-- Updates -->
+    <string name="notifications_group_today">Hoje</string>
+    <string name="notifications_group_yesterday">Ontem</string>
+    <string name="notifications_group_last_week">Última semana</string>
+    <string name="notifications_group_older">Mais antigos</string>
+    <string name="contentDescription_delete_all">Eliminar tudo</string>
+    <string name="contentDescription_mark_all_as_read">Marcar tudo como lido</string>
+    <string name="chapter_number">Capítulo %1$s</string>
+
+    <!-- History -->
+    <string name="content_description_clear_history">Limpar histórico</string>
+    <string name="today">Hoje</string>
+    <string name="yesterday">Ontem</string>
+    <string name="days_ago">%1$d dias atrás</string>
+    <string name="weeks_ago">%1$d semanas atrás</string>
+    <string name="months_ago">%1$d meses atrás</string>
+    <string name="years_ago">%1$d anos atrás</string>
+
+    <!-- Settings -->
+    <string name="theme_dark">Modo escuro</string>
+    <string name="theme_light">Modo claro</string>
+    <string name="pure_black_mode_title">Modo escuro puro</string>
+    <string name="default_reading_mode">Modo de leitura predefinido</string>
+    <string name="statistics">Estatísticas</string>
+    <string name="about">Sobre</string>
+    <string name="help">Ajuda</string>
+    <string name="adult_filter_removal_header">Conteúdo indisponível</string>
+    <string name="adult_filter_removal_title">Lamentamos — este conteúdo não pode ser exibido. Em conformidade com a política do Google Play e por respeito a valores religiosos e culturais, não podemos exibir conteúdo sexual explícito. Obrigado pela compreensão.</string>
+
+
+
+    <!-- Statistics -->
+    <string name="desc_back">Voltar</string>
+    <string name="section_entries">Entradas</string>
+    <string name="section_chapters">Capítulos</string>
+    <string name="label_in_library">Na biblioteca</string>
+    <string name="label_read_duration">Duração de leitura</string>
+    <string name="label_completed_entries">Entradas concluídas</string>
+    <string name="label_started">Começadas</string>
+    <string name="label_completed">Concluídas</string>
+    <string name="label_total">Total</string>
+    <string name="label_read">Lidos</string>
+    <string name="label_downloaded">Descarregados</string>
+    <string name="label_bookmarked">Com marcador</string>
+
+    <!-- LibraryMangaDetails -->
+    <string name="add_library_title">Adicionar à biblioteca</string>
+    <string name="action_remove">Remover</string>
+    <string name="action_bookmark">Marcar</string>
+    <string name="action_downloading">A descarregar</string>
+    <string name="action_open_in_browser">Abrir na WebView</string>
+    <string name="chapters_count_format">%1$d Capítulos</string>
+    <string name="desc_newest_first">Mais recentes primeiro</string>
+    <string name="desc_oldest_first">Mais antigos primeiro</string>
+    <string name="title_copied">Título copiado!</string>
+
+    <!-- Reading modes -->
+    <string name="reading_mode_default">Padrão</string>
+    <string name="reading_mode_vertical">Vertical</string>
+    <string name="reading_mode_webtoon">Webtoon</string>
+    <string name="but_revert">Reverter</string>
+    <string name="but_apply">Aplicar</string>
+    <string name="retry">Tentar novamente</string>
+    <string name="failed_to_load">Falha ao carregar: %1$s</string>
+
+    <!-- SearchScreen -->
+
+    <string name="title_sources_settings">Definições das fontes</string>
+    <string name="enable_disable_all_sources">Ativar/desativar todas as %1$s fontes</string>
+    <string name="enabled">Ativadas</string>
+    <string name="disabled">Desativadas</string>
+
+    <!-- Download notifications -->
+    <string name="new_chapters">Novos capítulos</string>
+    <string name="notifications_for_new_manga_chapters">Notificações de novos capítulos de manga</string>
+    <string name="chapter_is_available">Capítulo %1$s disponível</string>
+    <string name="select_language">Selecionar idioma</string>
+    <string name="downloads">Descarregamentos</string>
+
+    <string name="request_feature_bug">Reportar bug ou pedir funcionalidade</string>
+    <string name="enter_your_language">Escreva o seu idioma</string>
+    <string name="submit">Submeter</string>
+    <string name="request_add_language">Pedir adição de idioma</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">Digite a URL do site que deseja adicionar</string>
+    <string name="we_will_add_it_as_soon_it_possible">Adicionaremos assim que possível</string>
+    <string name="enter_the_site_url">Introduza a URL do site</string>
+
+    <!-- Crash screen -->
+    <string name="crash_screen_title">Ups! Algo correu mal</string>
+    <string name="crash_screen_description">Desculpe—o %1$s encontrou um erro inesperado. Pode enviar um relatório para nos ajudar a melhorar a app.</string>
+    <string name="pref_dump_crash_logs">Enviar relatório de erro</string>
+    <string name="crash_screen_restart_application">Reiniciar a aplicação</string>
+    <string name="finish">Terminar</string>
+    <string name="select_your_manga_sources">Selecione as suas fontes de manga</string>
+    <string name="you_need_to_enable_notifications">Precisa de ativar notificações para usar a app</string>
+    <string name="choose_your_theme">Escolha o seu tema</string>
+    <string name="get_started">Começar</string>
+    <string name="welcome_suptitle">Explore, leia e colecione manga com facilidade.</string>
+    <string name="welcome_title">Bem‑vindo ao Kira Manga</string>
+    <string name="system_theme">Tema do sistema</string>
+    <string name="follow_system_theme">Seguir tema do sistema</string>
+    <string name="enable_notifications">Ativar notificações</string>
+    <string name="notification_permission">Precisamos desta permissão para enviar os últimos capítulos, mostrar progresso de descarregamento e garantir o bom funcionamento da app.</string>
+    <string name="grant_permission">Conceder permissão</string>
+    <string name="theme_system">Sistema</string>
+    <string name="version">Versão</string>
+    <string name="check_for_update">Verificar atualização</string>
+    <string name="rate_our_app">Avaliar a nossa app</string>
+    <string name="what_s_new">Novidades</string>
+    <string name="privacy_policy">Política de privacidade</string>
+
+    <string name="minimum_5_characters_required">Requer no mínimo 5 caracteres</string>
+    <string name="error_in_the_app">Erro na aplicação</string>
+    <string name="add_languages">Adicionar idiomas</string>
+    <string name="add_manga_site">Adicionar site de manga</string>
+    <string name="error_in_manga_site">Erro no site de manga</string>
+    <string name="ask_to_add_features">Pedir para adicionar funcionalidades</string>
+    <string name="custom_feedback">Feedback personalizado</string>
+    <string name="request_language">Pedir idioma</string>
+    <string name="active">Ativo</string>
+    <string name="failed">Falhou</string>
+    <string name="completed">Concluído</string>
+    <string name="running">A correr</string>
+    <string name="queued">Na fila</string>
+    <string name="downloaded">Descarregado</string>
+    <string name="unknown">Desconhecido</string>
+
+
+    <!-- Exception‑based messages -->
+    <string name="cancelled_by_user">Cancelado pelo utilizador</string>
+    <string name="failed_to_load_image">Falha ao carregar imagem.</string>
+
+
+
+
+
+
+
+
+    <!-- Error States -->
+    <string name="error_occurred">Algo deu errado</string>
+    <string name="status_open">Aberto</string>
+
+
+    <string name="status_planned">Planejado</string>
+    <!-- Empty States -->
+
+    <!-- Closure Reasons -->
+    <string name="closure_reason_done">FEITO</string>
+
+
+    <string name="show_buttons">Mostrar botões</string>
+    <string name="show_tabs_all_likes_etc">Mostrar abas (Tudo, Curtidas, etc.)</string>
+    <string name="status_pinned">Fixado</string>
+    <string name="admin">administrador</string>
+    <string name="feedbacks_and_complaints">Feedbacks e reclamações</string>
+
+
+    <string name="content_description_delete">Excluir</string>
+
+
+    <string name="status_unknown">Unknown</string>
+    <string name="reply">Responder</string>
+    <string name="edit">Editar</string>
+    <string name="delete">Excluir</string>
+    <string name="cancel">Cancelar</string>
+    <string name="close">Fechar</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">Responder à Reclamação</string>
+    <string name="your_reply">Sua Resposta</string>
+    <string name="reply_placeholder">Digite sua resposta aqui...</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">Editar Reclamação</string>
+    <string name="subject">Assunto</string>
+    <string name="complaint_body">Conteúdo da Reclamação</string>
+    <string name="edit_placeholder">Edite os detalhes da sua reclamação aqui...</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">Excluir Reclamação</string>
+    <string name="delete_warning_message">Esta ação não pode ser desfeita. A reclamação será excluída permanentemente.</string>
+    <string name="delete_forever">Excluir Para Sempre</string>
+
+    <!-- Navigation -->
+    <string name="back">Voltar</string>
+
+    <!-- Common -->
+    <string name="loading">Carregando...</string>
+
+    <!-- Status Labels -->
+    <string name="status_in_progress">Em Andamento</string>
+    <string name="status_resolved">Resolvido</string>
+    <string name="status_closed">Fechado</string>
+
+    <!-- Character Limits -->
+    <string name="character_count">%1$d/%2$d</string>
+
+    <!-- Existing strings -->
+    <string name="feedback_manager_title">Gerenciador de Feedback</string>
+    <string name="clear">Limpar</string>
+    <string name="filter_all">Todos</string>
+    <string name="no_results_found">Nenhum resultado encontrado</string>
+
+    <!-- UI Elements -->
+    <string name="new_badge">NOVO</string>
+    <string name="play_video">Reproduzir Vídeo</string>
+    <string name="video_preview">Pré-visualização de Vídeo</string>
+
+
+
+    <!-- res/values/strings.xml - Additional strings for Admin Complaint Management -->
+
+    <!-- Admin Screen Titles -->
+
+    <!-- Search and Filter -->
+
+    <!-- Sort Options -->
+    <string name="sort_status">Status</string>
+    <string name="sort_type">Type</string>
+    <string name="sort_user_id">User ID</string>
+
+    <!-- Statistics -->
+
+    <!-- Dialog Titles -->
+    <string name="change_status">Change Status</string>
+    <string name="add_closure_reason">Add Closure Reason</string>
+
+    <!-- Dialog Content -->
+
+    <!-- Closure Reason Dialog -->
+    <string name="add_reason">Add Reason</string>
+
+    <!-- Delete Dialog -->
+
+    <!-- Card Content -->
+
+    <!-- Closure Reason Types -->
+
+    <!-- Action Messages -->
+
+    <!-- Error Messages -->
+
+    <!-- Bulk Operations -->
+
+    <!-- Admin Actions -->
+    <string name="admin_actions">Admin Actions</string>
+
+    <!-- Validation Messages -->
+
+    <!-- Accessibility -->
+
+    //=========================================================================================================
+
+
+
+
+
+
+
+    <string name="languages_coming_soon_title">Idiomas em breve</string>
+    <string name="languages_coming_soon_description">🌍 Estamos trabalhando para adicionar fontes para: 🇹🇷 Turco, 🇩🇪 Alemão, 🇮🇹 Italiano, 🇯🇵 Japonês. Obrigado pela paciência, estarão disponíveis em breve!</string>
+
+
+    <string name="we_d_love_to_hear_from_you">Adoraríamos saber sua opinião</string>
+    <string name="category">Categoria</string>
+    <string name="select_a_category">Selecione uma categoria</string>
+    <string name="your_feedback">Seu feedback</string>
+    <string name="connect_with_us_in_social_media">Conecte-se conosco nas redes sociais</string>
+
+
+    <string name="status_not_planned">Não planejado</string>
+    <string name="new_chapter">NOVO</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- What's New -->
+
+
+
+
+
+    <string name="request_submitted_successfully">Solicitação enviada com sucesso</string>
+    <string name="request_failed">Falha ao enviar a solicitação</string>
+
+    <string name="converting_to_cbz">Convertendo para CBZ</string>
+    <string name="conversion_failed">Falha na conversão</string>
+
+    <string name="notification_downloading_chapters">Baixando capítulos</string>
+    <string name="notification_chapter_title">Capítulo %s</string>
+
+    <string name="notification_downloading_background">Baixando todos os capítulos em segundo plano</string>
+    <string name="notification_compressing_images">Compactando imagens…</string>
+    <string name="notification_images_progress">%1$d / %2$d imagens</string>
+
+    <string name="action_cancel_all">Cancelar tudo</string>
+    <string name="action_cancel_chapter">Cancelar capítulo</string>
+
+    <string name="notification_channel_all_downloads">Todos os downloads</string>
+    <string name="notification_channel_all_downloads_desc">Progresso geral dos downloads</string>
+    <string name="notification_channel_chapter_download">Download de capítulo</string>
+    <string name="notification_channel_chapter_download_desc">Progresso de um único capítulo</string>
+    <string name="notification_channel_download_summary">Resumo de downloads</string>
+    <string name="notification_channel_download_summary_desc">Notificações de conclusão</string>
+    <string name="notification_channel_library_refresh">Atualização da biblioteca</string>
+    <string name="notification_channel_library_refresh_desc">Mostra o progresso da atualização em segundo plano</string>
+
+    <string name="notification_refreshing_library">Atualizando biblioteca</string>
+    <string name="notification_library_refresh_failed">Falha na atualização da biblioteca</string>
+    <string name="notification_starting">Iniciando…</string>
+    <string name="notification_refresh_timed_out">Tempo esgotado</string>
+    <string name="notification_refresh_failed">Falha na atualização: %s</string>
+    <string name="notification_no_manga_to_refresh">Nenhum mangá para atualizar</string>
+    <string name="notification_processing_batch">Processando lote %d…</string>
+    <string name="notification_finishing_up">Finalizando…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d concluídos, %4$d falharam)</string>
+    <string name="notification_refresh_completed">Concluído: %1$d com sucesso, %2$d falharam</string>
+
+
+
+
+    <string name="time_just_now">Agora mesmo</string>
+
+    <plurals name="time_minutes_ago">
+        <item quantity="one">%d minuto atrás</item>
+        <item quantity="other">%d minutos atrás</item>
+    </plurals>
+
+    <plurals name="time_hours_ago">
+        <item quantity="one">%d hora atrás</item>
+        <item quantity="other">%d horas atrás</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="one">%d dia atrás</item>
+        <item quantity="other">%d dias atrás</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="one">%d semana atrás</item>
+        <item quantity="other">%d semanas atrás</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="one">%d mês atrás</item>
+        <item quantity="other">%d meses atrás</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="one">%d ano atrás</item>
+        <item quantity="other">%d anos atrás</item>
+    </plurals>
+
+
+
+
+
+
+    <string name="value_count">%,d</string>
+    <string name="use_kira_compressor">Usar o compressor Kira</string>
+    <string name="compress_existing_downloads">Comprimir downloads existentes</string>
+    <string name="converting">Convertendo…</string>
+    <string name="start_conversion">Iniciar conversão</string>
+    <string name="conversion_stopped">Conversão interrompida</string>
+    <string name="conversion_complete_">Conversão concluída!</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">Não feche o aplicativo até que a conversão seja concluída</string>
+    <string name="remaining">Restante</string>
+    <string name="current">Atual:</string>
+    <string name="chapter">Capítulo %1$s</string>
+    <string name="stop_conversion">Parar conversão</string>
+    <string name="h_m">%1$dh %2$dmin</string>
+    <string name="conversion_stopped_by_user">Conversão interrompida pelo usuário.</string>
+    <string name="chapters_converted_successfully">✓ %1$d capítulos convertidos com sucesso</string>
+    <string name="chapters_remaining">⏸ %1$d capítulos restantes</string>
+
+
+
+
+
+
+</resources>

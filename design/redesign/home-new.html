@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yami — Home (redesign v2, dark)</title>
+<style>
+  /* ===== Yami redesign v2 — DARK. Coral accent, premium/airy, ref#12 taste ===== */
+  /* v2 gate fixes: clear list/grid toggle + explicit edit-sources (divider+pencil); */
+  /* tamed coral budget (lead chip soft, brighter inactive nav icons). */
+  :root{
+    --bg:#0E1014; --bg-2:#0B0D11;
+    --card:#161A23; --card-2:#1C2130;
+    --ghost:rgba(255,255,255,.055); --ghost-line:rgba(255,255,255,.085);
+    --text:#F3F4F7; --muted:#9AA1AF; --dim:#838B9A;
+    --accent:#FF5B6E; --accent-2:#FF8A5B;
+    --accent-grad:linear-gradient(135deg,#FF5B6E,#FF8A5B);
+    --accent-soft:rgba(255,91,110,.13);
+    --shadow:0 14px 34px rgba(0,0,0,.5);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif}
+  .screen{width:390px;height:880px;position:relative;overflow:hidden;background:
+     radial-gradient(120% 60% at 85% -5%,rgba(255,91,110,.16),transparent 60%),
+     radial-gradient(90% 45% at -10% 0%,rgba(255,138,91,.08),transparent 55%),
+     var(--bg);color:var(--text)}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:700}
+  .statusbar .dots{opacity:.85;letter-spacing:1px}
+  .header{display:flex;align-items:center;justify-content:space-between;padding:8px 20px 14px}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--accent)}
+  .header h1{font-size:28px;font-weight:800;letter-spacing:-.6px;margin-top:3px}
+  .header .actions{display:flex;gap:10px}
+  .cbtn{width:42px;height:42px;border-radius:14px;background:var(--ghost);border:1px solid var(--ghost-line);display:flex;align-items:center;justify-content:center;color:var(--text)}
+  .cbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .pills{display:flex;gap:9px;padding:2px 20px 4px;overflow:hidden;align-items:center}
+  .pill{padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;color:var(--muted);background:var(--ghost);border:1px solid var(--ghost-line)}
+  .pill.sel{color:#fff;background:var(--accent-grad);border:none;box-shadow:0 8px 18px rgba(255,91,110,.35)}
+  .pills .divider{width:1px;height:26px;background:var(--ghost-line);margin:0 3px 0 7px;flex:0 0 auto}
+  .pills .edit{margin-left:auto;flex:0 0 auto;width:42px;height:42px;border-radius:14px;background:var(--ghost);border:1px solid var(--ghost-line);display:flex;align-items:center;justify-content:center;color:var(--accent)}
+  .pills .edit svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .sec{display:flex;align-items:baseline;justify-content:space-between;padding:18px 20px 12px}
+  .sec h2{font-size:19px;font-weight:800;letter-spacing:-.3px}
+  .sec a{font-size:13px;font-weight:700;color:var(--accent)}
+  .hero{display:flex;gap:14px;padding:0 20px;overflow:hidden}
+  .hcard{position:relative;flex:0 0 auto;width:158px;height:212px;border-radius:20px;overflow:hidden;box-shadow:var(--shadow)}
+  .hcard.lift{transform:scale(1.02)}
+  .hcard .scrim{position:absolute;inset:0;background:linear-gradient(transparent 38%,rgba(0,0,0,.82))}
+  .hcard .rate{position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;background:rgba(10,10,14,.5);backdrop-filter:blur(6px);font-size:11px;font-weight:700;color:#fff}
+  .hcard .rate svg{width:12px;height:12px;fill:#FFC65B;stroke:none}
+  .hcard .tag{position:absolute;top:10px;right:10px;padding:3px 8px;border-radius:999px;background:rgba(255,91,110,.92);font-size:10px;font-weight:800;color:#fff;letter-spacing:.4px}
+  .hcard .meta{position:absolute;left:12px;right:12px;bottom:12px}
+  .hcard .meta .t{font-size:15px;font-weight:800;color:#fff;line-height:1.15}
+  .hcard .meta .s{font-size:11px;font-weight:600;color:rgba(255,255,255,.7);margin-top:3px}
+  .feed{padding:2px 16px 0}
+  .row{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--ghost-line);border-radius:20px;padding:11px;margin-bottom:12px}
+  .row .rcover{width:78px;height:104px;border-radius:14px;overflow:hidden;flex:0 0 auto;position:relative}
+  .row .rcover .badge{position:absolute;left:6px;bottom:6px;padding:2px 7px;border-radius:999px;background:rgba(10,10,14,.6);backdrop-filter:blur(4px);font-size:9px;font-weight:800;color:#fff}
+  .row .body{flex:1;min-width:0}
+  .row .title{font-size:16px;font-weight:800;letter-spacing:-.2px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .row .meta{font-size:12.5px;font-weight:600;color:var(--muted);margin-top:4px}
+  .row .meta .dot{color:var(--dim);margin:0 6px}
+  .chrow{display:flex;gap:7px;margin-top:10px}
+  .chip{font-size:11px;font-weight:700;padding:6px 11px;border-radius:999px;color:var(--accent);background:var(--accent-soft);border:1px solid rgba(255,91,110,.20)}
+  .chip.muted{color:var(--muted);background:var(--ghost);border-color:var(--ghost-line)}
+  .row .save{width:42px;height:42px;border-radius:13px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:var(--ghost);border:1px solid var(--ghost-line);color:var(--muted)}
+  .row .save.on{background:var(--accent-soft);border-color:rgba(255,91,110,.3);color:var(--accent)}
+  .row .save svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .row .save.on svg{fill:currentColor;stroke:none}
+  .nav{position:absolute;left:16px;right:16px;bottom:18px;height:66px;border-radius:26px;background:rgba(22,26,35,.92);backdrop-filter:blur(16px);border:1px solid var(--ghost-line);box-shadow:0 18px 40px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:space-around;padding:0 10px}
+  .nav .item{display:flex;align-items:center;justify-content:center;color:#9097A6;height:44px}
+  .nav .item svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .nav .item.sel{color:#fff;background:var(--accent-grad);border-radius:18px;padding:0 15px;gap:7px;font-size:13px;font-weight:800;box-shadow:0 10px 22px rgba(255,91,110,.4)}
+  .g1{background:linear-gradient(150deg,#42506e,#1b2130)} .g2{background:linear-gradient(150deg,#6e4250,#2a1c24)}
+  .g3{background:linear-gradient(150deg,#3f6e5f,#1a2a26)} .g4{background:linear-gradient(150deg,#5b4f9c,#221f33)}
+  .g5{background:linear-gradient(150deg,#9c7340,#322512)} .g6{background:linear-gradient(150deg,#3f6f9c,#142632)}
+</style>
+</head>
+<body>
+  <div class="screen">
+    <div class="statusbar"><span>9:41</span><span class="dots">5G ▮▮▮ 100%</span></div>
+
+    <div class="header">
+      <div><div class="eyebrow">YAMI</div><h1>Discover</h1></div>
+      <div class="actions">
+        <div class="cbtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></div>
+        <!-- list/grid toggle: explicit list-rows glyph -->
+        <div class="cbtn"><svg viewBox="0 0 24 24"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg></div>
+        <div class="cbtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></div>
+      </div>
+    </div>
+
+    <div class="pills">
+      <div class="pill sel">MangaDex</div>
+      <div class="pill">Comick</div>
+      <div class="pill">Team-X</div>
+      <div class="pill">3asq</div>
+      <span class="divider"></span>
+      <!-- edit/manage sources: explicit pencil -->
+      <div class="edit"><svg viewBox="0 0 24 24"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><line x1="14" y1="6" x2="18" y2="10"/></svg></div>
+    </div>
+
+    <div class="sec"><h2>Popular now</h2><a>See all ›</a></div>
+    <div class="hero">
+      <div class="hcard g1"><div class="scrim"></div><div class="rate"><svg viewBox="0 0 24 24"><path d="M12 2l3 6.3 6.9.9-5 4.8 1.2 6.8L12 18l-6.1 3.5 1.2-6.8-5-4.8 6.9-.9z"/></svg>4.8</div><span class="tag">HOT</span><div class="meta"><div class="t">Crimson Vow</div><div class="s">Action · Fantasy</div></div></div>
+      <div class="hcard g2 lift"><div class="scrim"></div><div class="rate"><svg viewBox="0 0 24 24"><path d="M12 2l3 6.3 6.9.9-5 4.8 1.2 6.8L12 18l-6.1 3.5 1.2-6.8-5-4.8 6.9-.9z"/></svg>4.9</div><div class="meta"><div class="t">Neon Samurai</div><div class="s">Sci‑fi · Seinen</div></div></div>
+      <div class="hcard g3"><div class="scrim"></div><div class="rate"><svg viewBox="0 0 24 24"><path d="M12 2l3 6.3 6.9.9-5 4.8 1.2 6.8L12 18l-6.1 3.5 1.2-6.8-5-4.8 6.9-.9z"/></svg>4.6</div><div class="meta"><div class="t">Iron Lotus</div><div class="s">Martial arts</div></div></div>
+    </div>
+
+    <div class="sec"><h2>Latest updates</h2><a>See all ›</a></div>
+    <div class="feed">
+      <div class="row">
+        <div class="rcover g4"><span class="badge">NEW</span></div>
+        <div class="body">
+          <div class="title">Shadow Blade of the Eclipse</div>
+          <div class="meta">MangaDex <span class="dot">•</span> Action</div>
+          <div class="chrow"><span class="chip">Ch 142</span><span class="chip muted">141</span><span class="chip muted">140</span></div>
+        </div>
+        <div class="save"><svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></div>
+      </div>
+      <div class="row">
+        <div class="rcover g5"></div>
+        <div class="body">
+          <div class="title">Vast Ocean Chronicle</div>
+          <div class="meta">Comick <span class="dot">•</span> Adventure</div>
+          <div class="chrow"><span class="chip">Ch 88</span><span class="chip muted">87</span><span class="chip muted">86</span></div>
+        </div>
+        <div class="save on"><svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></div>
+      </div>
+      <div class="row">
+        <div class="rcover g6"></div>
+        <div class="body">
+          <div class="title">Solo Ascension</div>
+          <div class="meta">Team‑X <span class="dot">•</span> Fantasy</div>
+          <div class="chrow"><span class="chip">Ch 53</span><span class="chip muted">52</span><span class="chip muted">51</span></div>
+        </div>
+        <div class="save"><svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M4 5h11a2 2 0 0 1 2 2v13H6a2 2 0 0 1-2-2z"/><path d="M20 7v13"/><line x1="17" y1="7" x2="20" y2="7"/></svg></div>
+      <div class="item"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10.5 20a2 2 0 0 0 3 0"/></svg></div>
+      <div class="item sel"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</div>
+      <div class="item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+      <div class="item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.3 1a7 7 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7 7 0 0 0-1.7 1l-2.3-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.5-2-1.5a7 7 0 0 0 .1-1z"/></svg></div>
+    </div>
+  </div>
+</body>
+</html>

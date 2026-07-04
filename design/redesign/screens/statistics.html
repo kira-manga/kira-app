@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Statistics — old vs new</title>
+<link rel="stylesheet" href="ds.css"></head><body>
+
+<!-- ================= OLD ================= -->
+<div class="stage"><div class="label old">Before</div>
+<div class="screen old">
+  <div class="statusbar"><span>9:41</span><span class="dots">5G ▮▮▮ 100%</span></div>
+  <div class="oldbar"><div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div><h1>Statistics</h1></div>
+
+  <!-- flat sharp overview card, plain numbers, blue accent -->
+  <div class="statcard" style="border-radius:6px">
+    <div class="statcell"><div class="v" style="color:#3D5AFE">38</div><div class="l">In library</div></div>
+    <div class="statcell"><div class="v">52h</div><div class="l">Read duration</div></div>
+    <div class="statcell"><div class="v">12</div><div class="l">Completed</div></div>
+  </div>
+
+  <div style="font-size:14px;font-weight:600;padding:14px 20px 8px">Entries</div>
+  <div class="statcard" style="border-radius:6px;flex-direction:column;gap:0;padding:0 16px">
+    <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--ghost-line)"><span style="font-size:14px">In library</span><span style="font-size:14px;font-weight:700">38</span></div>
+    <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--ghost-line)"><span style="font-size:14px">Started</span><span style="font-size:14px;font-weight:700">26</span></div>
+    <div style="display:flex;justify-content:space-between;padding:13px 0"><span style="font-size:14px">Completed</span><span style="font-size:14px;font-weight:700">12</span></div>
+  </div>
+
+  <div style="font-size:14px;font-weight:600;padding:14px 20px 8px">Chapters</div>
+  <div class="statcard" style="border-radius:6px;flex-direction:column;gap:0;padding:0 16px">
+    <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--ghost-line)"><span style="font-size:14px">Total</span><span style="font-size:14px;font-weight:700">1,284</span></div>
+    <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--ghost-line)"><span style="font-size:14px">Read</span><span style="font-size:14px;font-weight:700">906</span></div>
+    <div style="display:flex;justify-content:space-between;padding:13px 0"><span style="font-size:14px">Downloaded</span><span style="font-size:14px;font-weight:700">148</span></div>
+  </div>
+</div></div>
+
+<!-- ================= NEW ================= -->
+<div class="stage"><div class="label new">Redesign</div>
+<div class="screen">
+  <div class="statusbar"><span>9:41</span><span class="dots">5G ▮▮▮ 100%</span></div>
+  <div class="topbar">
+    <div class="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
+    <h1>Statistics</h1><div class="sp"></div>
+  </div>
+
+  <!-- overview: 3 big-number cells, middle accented -->
+  <div class="statcard">
+    <div class="statcell"><div class="v">38</div><div class="l">In library</div></div>
+    <div class="statcell"><div class="v accent">52h</div><div class="l">Read time</div></div>
+    <div class="statcell"><div class="v">12</div><div class="l">Completed</div></div>
+  </div>
+
+  <!-- Reading activity — last 7 days as coral bars -->
+  <div class="sec"><h2>Reading activity</h2><a>This week</a></div>
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:9px;height:120px;background:var(--card);border:1px solid var(--ghost-line);border-radius:18px;margin:0 16px 4px;padding:16px 16px 12px">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:34px;border-radius:7px;background:var(--accent-grad);opacity:.55"></div><span style="font-size:10px;font-weight:700;color:var(--dim)">M</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:58px;border-radius:7px;background:var(--accent-grad);opacity:.65"></div><span style="font-size:10px;font-weight:700;color:var(--dim)">T</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:22px;border-radius:7px;background:var(--accent-grad);opacity:.5"></div><span style="font-size:10px;font-weight:700;color:var(--dim)">W</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:72px;border-radius:7px;background:var(--accent-grad)"></div><span style="font-size:10px;font-weight:700;color:var(--accent)">T</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:46px;border-radius:7px;background:var(--accent-grad);opacity:.6"></div><span style="font-size:10px;font-weight:700;color:var(--dim)">F</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:64px;border-radius:7px;background:var(--accent-grad);opacity:.7"></div><span style="font-size:10px;font-weight:700;color:var(--dim)">S</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:40px;border-radius:7px;background:var(--accent-grad);opacity:.55"></div><span style="font-size:10px;font-weight:700;color:var(--dim)">S</span></div>
+  </div>
+
+  <!-- Top sources — name + relative bar + count -->
+  <div class="sec"><h2>Top sources</h2><a>3 of 9 ›</a></div>
+  <div class="group" style="padding:6px 16px">
+    <div class="srow" style="padding:13px 0;gap:0;border-color:var(--ghost-line)"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700">MangaDex</div><div class="bar" style="margin-top:8px"><i style="width:100%"></i></div></div><span style="font-size:14px;font-weight:800;margin-left:14px">142</span></div>
+    <div class="srow" style="padding:13px 0;gap:0;border-color:var(--ghost-line)"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700">Comick</div><div class="bar" style="margin-top:8px"><i style="width:62%"></i></div></div><span style="font-size:14px;font-weight:800;margin-left:14px">88</span></div>
+    <div class="srow" style="padding:13px 0;gap:0;border:none"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700">Team-X</div><div class="bar" style="margin-top:8px"><i style="width:37%"></i></div></div><span style="font-size:14px;font-weight:800;margin-left:14px">53</span></div>
+  </div>
+
+  <!-- By status — mini breakdown as chips -->
+  <div class="sec"><h2>By status</h2></div>
+  <div style="display:flex;gap:9px;padding:0 16px 22px">
+    <div class="chip" style="flex:1;text-align:center;padding:12px 8px;font-size:12.5px">Reading · 26</div>
+    <div class="chip good" style="flex:1;text-align:center;padding:12px 8px;font-size:12.5px">Completed · 12</div>
+    <div class="chip muted" style="flex:1;text-align:center;padding:12px 8px;font-size:12.5px">On hold · 4</div>
+  </div>
+</div></div>
+
+</body></html>

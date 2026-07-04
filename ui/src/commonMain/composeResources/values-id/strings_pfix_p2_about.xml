@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the About screen — Indonesian.
+
+  np_source_code / np_soon locale overrides matching native values-in/strings.xml
+  (source_code / soon). Without these the inert "Source code / Soon" row fell back to
+  English on Indonesian devices.
+-->
+<resources>
+    <string name="np_source_code">kode sumber</string>
+    <string name="np_soon">segera</string>
+</resources>

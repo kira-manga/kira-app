@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Settings hub screen (:ui ui/settings).
+
+  Source of truth: native-app features/settings/ui/screens/SettingsScreen.kt + values/strings.xml.
+
+  F4 — Dark/light row title. Native SettingsScreen.kt:156-162 renders the dark/light SwitchItem
+  with title = R.string.theme_title ("Custom Theme") and a DYNAMIC subtitle that toggles "Dark
+  Mode" / "Light Mode" (theme_dark / theme_light). The :ui rework used theme_dark ("Dark Mode")
+  as the title, dropping "Custom Theme" and duplicating the subtitle. theme_custom_title carries
+  the native theme_title text (native strings.xml:125 `theme_title` = "Custom Theme"); the dynamic
+  subtitle keeps reusing the already-present theme_dark_desc / theme_light_desc keys.
+
+  F5 — Request-feature/bug row. Native SettingsScreen.kt:293-297 renders the row with
+  title = R.string.request_feature_bug_title ("Report Bug / Feature") and
+  description = R.string.request_feature_bug_desc ("Tap to send us your feedback"). The :ui
+  rework used the dialog-header string request_feature_bug ("Request feature / bug") as a single
+  title-only line. report_bug_feature_title / report_bug_feature_desc carry the native row strings
+  (native strings.xml:268-269). The dialog header keeps reusing the existing request_feature_bug.
+-->
+<resources>
+    <string name="theme_custom_title">Custom Theme</string>
+    <string name="report_bug_feature_title">Report Bug / Feature</string>
+    <string name="report_bug_feature_desc">Tap to send us your feedback</string>
+</resources>

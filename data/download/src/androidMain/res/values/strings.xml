@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android-only download-feature strings consumed by the WorkManager-backed
+      DownloadRepositoryImpl / DownloadWorkerV2 in :data:download androidMain, via
+      `me.manga.kira.data.download.R.string` (no compose-resources access from a worker /
+      WorkManager runtime context).
+
+      The canonical localized copies live in
+      composeApp/src/commonMain/composeResources/values*/strings.xml. The sibling
+      values-<locale>/strings.xml folders here (backlog L15c, 2026-07) are VERBATIM copies of
+      those (with Android-res apostrophe escaping) — when a value changes there, re-copy it here;
+      never re-translate in place. Indonesian uses the Android-legacy `values-in` qualifier only.
+    -->
+    <string name="cancelled_by_user">Cancelled by user</string>
+
+    <string name="notification_downloading_chapters">Downloading chapters</string>
+    <string name="notification_chapter_title">Chapter %s</string>
+    <string name="notification_downloading_background">Downloading all chapters in background</string>
+    <string name="notification_compressing_images">Compressing images…</string>
+    <string name="notification_images_progress">%1$d / %2$d images</string>
+
+    <string name="action_cancel_all">Cancel All</string>
+    <string name="action_cancel_chapter">Cancel Chapter</string>
+
+    <string name="notification_channel_all_downloads">All Downloads</string>
+    <string name="notification_channel_all_downloads_desc">Overall download progress</string>
+    <string name="notification_channel_chapter_download">Chapter Download</string>
+    <string name="notification_channel_chapter_download_desc">Single chapter progress</string>
+    <string name="notification_channel_download_summary">Download Summary</string>
+    <string name="notification_channel_download_summary_desc">Completion notifications</string>
+</resources>

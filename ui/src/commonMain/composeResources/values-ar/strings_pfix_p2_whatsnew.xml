@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic parity-fix translations for the What's New screen (:ui ui/whatsnew).
+
+  Source of truth: native-app features/whatsnew + res/values-ar/strings.xml.
+
+  These keys are already declared (English) in values/strings_np_complaint_etc.xml
+  + values/strings_np_p2_complaint_etc.xml; compose-resources merges by key, so this
+  values-ar file supplies the Arabic value for the same keys. Without it, Arabic users
+  saw the English fallback for the What's New navigation buttons + fullscreen caption.
+
+  Native key mapping:
+    np_previous            -> previous            ("السابق")
+    np_next                -> next                ("التالي")
+    np_get_started         -> get_started         ("ابدأ")
+    np_close               -> close               ("إغلاق")
+    np_whats_new_close     -> close               ("إغلاق")
+    np_tap_outside_to_close-> tap_outside_to_close ("اضغط خارج الإطار للإغلاق")
+-->
+<resources>
+    <string name="np_previous">السابق</string>
+    <string name="np_next">التالي</string>
+    <string name="np_get_started">ابدأ</string>
+    <string name="np_close">إغلاق</string>
+    <string name="np_whats_new_close">إغلاق</string>
+    <string name="np_tap_outside_to_close">اضغط خارج الإطار للإغلاق</string>
+</resources>

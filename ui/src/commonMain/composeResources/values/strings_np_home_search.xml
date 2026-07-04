@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Home & Search strings (NP Phase 2, GAP-HOME / GAP-SRCH cluster).
+
+  Net-new keys for the native-parity Home + Search surfaces. Kept in a separate file
+  (per NP convention) from the shared :ui strings.xml so the parity additions are
+  reviewable as a unit. en-only for newly-authored strings; status-screen titles +
+  bodies mirror the legacy SimpleStatusScreen variants (Build/Error/Error glyphs,
+  primary/error/tertiary container colours) value-for-value.
+-->
+<resources>
+    <!-- GAP-HOME-17: distinct site-status screens (maintenance / stopped / adult). -->
+    <string name="home_status_maintenance_title">Under maintenance</string>
+    <string name="home_status_maintenance_body">This site is currently under maintenance. Please check back later or try a different source.</string>
+    <string name="home_status_stopped_title">Site stopped</string>
+    <string name="home_status_stopped_body">This site has been stopped and is no longer available. Please select a different source from the tabs above.</string>
+    <!-- P3-LOW parity: native adult_content_blocked_title (values/strings.xml:797) is the verbatim
+         "Blocked (18+)" (was "Adult content blocked" here). Arabic override lives in
+         values-ar/strings_pfix_p3_home.xml ("محجوب (18+)", native values-ar/strings.xml:819). -->
+    <string name="home_status_adult_title">Blocked (18+)</string>
+    <string name="home_status_adult_body">This source contains adult content and is currently blocked.</string>
+
+    <!-- GAP-HOME-04: fallback source-tab icon content description (legacy team_x fallback glyph). -->
+    <string name="home_source_icon">Source icon</string>
+
+    <!-- GAP-HOME-01 / GAP-HOME-02: error-state action labels (legacy ErrorScreen 3-action). -->
+    <string name="home_error_open_in_webview">Open in WebView</string>
+</resources>

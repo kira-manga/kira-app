@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Localized download-notification strings for the :data:download WorkManager worker
+  (backlog L15c, 2026-07). Values copied VERBATIM from composeApp/src/commonMain/
+  composeResources/values-in/strings.xml (the canonical localized copies), with
+  Android-res apostrophe/quote escaping applied. Keep in sync by re-copying, never by
+  re-translating here.
+-->
+<resources>
+    <string name="cancelled_by_user">Dibatalkan oleh pengguna</string>
+    <string name="notification_downloading_chapters">Mengunduh chapter</string>
+    <string name="notification_chapter_title">Chapter %s</string>
+    <string name="notification_downloading_background">Mengunduh semua chapter di latar belakang</string>
+    <string name="notification_compressing_images">Mengompresi gambar…</string>
+    <string name="notification_images_progress">%1$d / %2$d gambar</string>
+    <string name="action_cancel_all">Batalkan Semua</string>
+    <string name="action_cancel_chapter">Batalkan Chapter</string>
+    <string name="notification_channel_all_downloads">Semua Unduhan</string>
+    <string name="notification_channel_all_downloads_desc">Progres unduhan keseluruhan</string>
+    <string name="notification_channel_chapter_download">Unduhan Chapter</string>
+    <string name="notification_channel_chapter_download_desc">Progres satu chapter</string>
+    <string name="notification_channel_download_summary">Ringkasan Unduhan</string>
+    <string name="notification_channel_download_summary_desc">Notifikasi penyelesaian</string>
+</resources>

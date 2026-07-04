@@ -1,0 +1,11 @@
+<resources>
+    <string name="reading_mode">Mode baca</string>
+    <string name="reading_mode_rtl">Kanan ke kiri</string>
+    <string name="reading_mode_ltr">Kiri ke kanan</string>
+    <string name="reading_mode_continuous">Vertikal Berkelanjutan</string>
+    <string name="reader_native_next_chapter">Bab berikutnya</string>
+    <string name="reader_native_last_chapter">Anda berada di bab terakhir</string>
+    <string name="reader_native_finished_prefix">Selesai:</string>
+    <string name="reader_native_couldnt_load_chapter">Tidak dapat memuat bab ini</string>
+    <string name="reader_native_add_to_library_first">Tambahkan manga ini ke perpustakaan Anda terlebih dahulu</string>
+</resources>

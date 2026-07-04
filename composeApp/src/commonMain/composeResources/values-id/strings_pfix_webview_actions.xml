@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webview_action_forward">Maju</string>
+    <string name="webview_action_reload">Muat ulang</string>
+    <string name="webview_action_save_headers">Simpan header</string>
+</resources>

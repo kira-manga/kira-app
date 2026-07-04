@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Details & Reader strings — Arabic (NP Phase 2, GAP-DET / GAP-RDR cluster).
+
+  Verbatim-Arabic counterparts to values/strings_np_details_reader.xml for user-facing labels.
+  Mirrors the legacy native app's Arabic wording where a legacy equivalent existed.
+-->
+<resources>
+    <string name="np_details_download_all">تنزيل الكل</string>
+
+    <string name="np_details_no_chapter_yet">لا يوجد فصل بعد</string>
+    <string name="np_details_today">اليوم</string>
+    <string name="np_details_yesterday">أمس</string>
+    <string name="np_details_days_ago">منذ %1$d أيام</string>
+
+    <string name="np_details_genres_more">+%1$d المزيد</string>
+
+    <string name="np_details_description_expand">عرض الوصف كاملاً</string>
+    <string name="np_details_description_collapse">طي الوصف</string>
+
+    <string name="np_reader_mode_dialog_title">وضع القراءة</string>
+    <string name="np_reader_mode_apply">تطبيق</string>
+    <string name="np_reader_mode_revert">تراجع</string>
+
+    <string name="np_reader_you_are_in">أنت في</string>
+    <string name="np_reader_going_to">الانتقال إلى</string>
+    <string name="np_reader_no_next_chapter">أنت في الفصل الأخير</string>
+
+    <string name="np_reader_bookmark_not_in_library">أضف المانجا إلى مكتبتك لإضافة إشارة مرجعية للفصول</string>
+</resources>

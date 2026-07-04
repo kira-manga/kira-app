@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  App-level privacy manifest (required for App Store submission since spring 2024).
+
+  Scope: this manifest covers the APP TARGET's own code — including the statically produced
+  ComposeApp.framework (Kotlin/Native), which ships no manifest of its own. The Firebase SPM
+  packages (Core/Analytics/Crashlytics/Messaging/InAppMessaging) each bundle their OWN
+  PrivacyInfo.xcprivacy declaring their data collection, and Apple aggregates app + SDK manifests
+  at submission — so NSPrivacyCollectedDataTypes here stays empty rather than re-declaring
+  Firebase's collection.
+
+  Required-reason APIs used by app/Kotlin code:
+  - UserDefaults (CA92.1): multiplatform-settings persists app settings in NSUserDefaults
+    (:platform SettingsFactory); read/written only by this app for its own functionality.
+  - File timestamps (C617.1): okio file metadata inside the app container — the download engine's
+    reconcile/folder-size walks (AppFileSystem.folderSize, chapter dirs) and cache pruning.
+  - System boot time (35F9.1): kotlin.time's monotonic TimeSource (mach_absolute_time) measures
+    elapsed intervals (download settle/backoff timers, perf marks); never exposed off-device.
+
+  No tracking (NSPrivacyTracking=false, no tracking domains): the iOS app ships no ads SDK and
+  does not link user data with third-party data for advertising. If AdMob/ATT ever ships on iOS,
+  revisit this manifest alongside the NSUserTrackingUsageDescription work already noted in
+  project.yml.
+-->
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

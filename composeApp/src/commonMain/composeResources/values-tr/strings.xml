@@ -1,0 +1,468 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kira Manga</string>
+    <string name="title_home">Ana Sayfa</string>
+    <string name="title_history">Geçmiş</string>
+    <string name="title_notifications">Bildirimler</string>
+    <string name="title_library">Kütüphane</string>
+    <string name="title_settings">Ayarlar</string>
+
+
+    <!-- Library -->
+
+    <string name="continue_string">Devam Et</string>
+
+    <!-- SortOptionsSection -->
+    <string name="sort_options_title">Sıralama Seçenekleri</string>
+    <string name="sort_direction_label">Sıralama Yönü</string>
+    <string name="sort_direction_ascending">Artan</string>
+    <string name="sort_direction_descending">Azalan</string>
+    <string name="sort_by_label">Sıralama kriteri</string>
+
+    <!-- DisplayOptionsSection -->
+    <string name="items_per_row_label">Satır başına öğe:</string>
+    <string name="auto_text">Otomatik</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">öğe</string>
+    <string name="items_plural">öğe</string>
+    <string name="show_items_details">Öğe Detaylarını Göster</string>
+    <string name="show_items_source">Öğe Kaynağını Göster</string>
+    <string name="show_items_count">Öğe Sayısını Göster</string>
+    <string name="last_updated">Son güncelleme: %1$s</string>
+    <string name="not_updated_yet">Henüz güncellenmedi</string>
+    <plurals name="items_count">
+        <item quantity="one">%d öğe</item>
+        <item quantity="other">%d öğe</item>
+    </plurals>
+
+    <!-- MangaCard-specific strings -->
+
+    <!-- Filter Types -->
+    <string name="filter_downloaded">İndirilmiş</string>
+    <string name="filter_unread">Okunmamış</string>
+    <string name="filter_started">Başlanmış</string>
+    <string name="filter_readed">Okunmuş</string>
+    <string name="status_open">Açık</string>
+
+    <string name="filter_bookmarked">Yer İmlere Eklenen</string>
+    <string name="filter_completed">Tamamlanan</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">Alfabetik</string>
+    <string name="sort_total_chapters">Toplam bölüm</string>
+    <string name="sort_last_read">Son okunan</string>
+    <string name="sort_unread_count">Okunmamış sayısı</string>
+    <string name="sort_date_added">Eklenme tarihi</string>
+    <string name="sort_random">Rastgele</string>
+
+    <string name="content_description_close_search">Aramayı kapat</string>
+    <string name="searching_placeholder">Mangalarınızda ara…</string>
+    <string name="contentDescription_search_icon">Arama simgesi</string>
+    <string name="contentDescription_search_clear">Sorguyu temizle</string>
+    <string name="contentDescription_search">Ara</string>
+    <string name="contentDescription_filter">Filtrele</string>
+    <string name="dropdown_button_refresh">Yenile</string>
+    <string name="library_bottom_sheet_tab_filter">Filtre</string>
+    <string name="library_bottom_sheet_tab_sort">Sırala</string>
+    <string name="library_bottom_sheet_tab_display">Görünüm</string>
+
+    <!-- Updates -->
+    <string name="notifications_group_today">Bugün</string>
+    <string name="notifications_group_yesterday">Dün</string>
+    <string name="notifications_group_last_week">Geçen Hafta</string>
+    <string name="notifications_group_older">Daha Eski</string>
+    <string name="contentDescription_delete_all">Tümünü sil</string>
+    <string name="contentDescription_mark_all_as_read">Tümünü okunmuş olarak işaretle</string>
+    <string name="chapter_number">Bölüm %1$s</string>
+
+    <!-- History -->
+    <string name="content_description_delete">Sil</string>
+    <string name="content_description_clear_history">Geçmişi temizle</string>
+    <string name="today">Bugün</string>
+    <string name="yesterday">Dün</string>
+    <string name="days_ago">%1$d gün önce</string>
+    <string name="weeks_ago">%1$d hafta önce</string>
+    <string name="months_ago">%1$d ay önce</string>
+    <string name="years_ago">%1$d yıl önce</string>
+
+    <!-- Settings -->
+    <string name="theme_dark">Karanlık Mod</string>
+    <string name="theme_light">Açık Mod</string>
+    <string name="pure_black_mode_title">Saf siyah karanlık mod</string>
+    <string name="default_reading_mode">Varsayılan Okuma Modu</string>
+    <string name="statistics">İstatistikler</string>
+    <string name="about">Hakkında</string>
+    <string name="help">Yardım</string>
+    <string name="adult_filter_removal_header">İçerik kullanılamıyor</string>
+    <string name="adult_filter_removal_title">Üzgünüz — bu içerik gösterilemiyor. Google Play politikası ve dini/kültürel değerlere saygı nedeniyle açık cinsel içerik gösteremiyoruz. Anlayışınız için teşekkürler.</string>
+
+
+    <!-- Statistics -->
+    <string name="desc_back">Geri</string>
+
+    <!-- Section titles -->
+    <string name="section_entries">Girişler</string>
+    <string name="section_chapters">Bölümler</string>
+
+    <!-- Overview labels -->
+    <string name="label_in_library">Kütüphanede</string>
+    <string name="label_read_duration">Okuma süresi</string>
+    <string name="label_completed_entries">Tamamlanan girişler</string>
+
+    <!-- Entries group -->
+    <string name="label_started">Başlanmış</string>
+    <string name="label_completed">Tamamlanmış</string>
+
+    <!-- Chapters group -->
+    <string name="label_total">Toplam</string>
+    <string name="label_read">Okunmuş</string>
+    <string name="label_downloaded">İndirilmiş</string>
+    <string name="label_bookmarked">Yer İmine Eklenen</string>
+
+    <!-- LibraryMangaDetails -->
+    <!-- Confirm dialogs -->
+    <string name="add_library_title">Kütüphaneye Ekle</string>
+
+    <!-- Header actions -->
+    <string name="action_remove">Kaldır</string>
+    <string name="action_bookmark">Yer İmi</string>
+    <string name="action_downloading">İndiriliyor</string>
+    <string name="action_open_in_browser">WebView'da Aç</string>
+
+    <!-- Chapter list -->
+    <string name="chapters_count_format">%1$d Bölüm</string>
+
+    <!-- TopAppBar and menu -->
+
+    <!-- Icon descriptions -->
+    <string name="desc_newest_first">Önce en yeniler</string>
+    <string name="desc_oldest_first">Önce en eskiler</string>
+    <string name="title_copied">Başlık kopyalandı!</string>
+
+    <!-- Reading modes -->
+    <string name="reading_mode_default">Varsayılan</string>
+    <string name="reading_mode_vertical">Dikey</string>
+    <string name="reading_mode_webtoon">Webtoon</string>
+    <string name="but_revert">Geri Al</string>
+    <string name="but_apply">Uygula</string>
+    <string name="retry">Tekrar Dene</string>
+    <string name="failed_to_load">Yüklenemedi: %1$s</string>
+
+    <!-- SearchScreen -->
+
+    <string name="title_sources_settings">Kaynak Ayarları</string>
+    <string name="enable_disable_all_sources">Tüm %1$s kaynaklarını etkinleştir/devre dışı bırak</string>
+    <string name="enabled">Etkin</string>
+    <string name="disabled">Devre Dışı</string>
+
+    <!-- Download notifications -->
+    <string name="new_chapters">Yeni Bölümler</string>
+    <string name="notifications_for_new_manga_chapters">Yeni manga bölümleri için bildirimler</string>
+    <string name="chapter_is_available">Bölüm %1$s mevcut</string>
+    <string name="select_language">Dil Seç</string>
+    <string name="downloads">İndirmeler</string>
+
+    <string name="request_feature_bug">Hata bildir veya özellik iste</string>
+    <string name="enter_your_language">Dilinizi girin</string>
+
+    <string name="submit">Gönder</string>
+    <string name="request_add_language">Dil Adı Ekleme Talebi</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">eklememizi istediğiniz sitenin url'sini girin</string>
+    <string name="we_will_add_it_as_soon_it_possible">mümkün olan en kısa sürede ekleyeceğiz</string>
+    <string name="enter_the_site_url">Site url'sini girin</string>
+
+    <!-- Crash screen -->
+    <string name="crash_screen_title">Oops! Bir şeyler ters gitti</string>
+    <string name="crash_screen_description">
+    Üzgünüz—%1$s beklenmedik bir hatayla karşılaştı. Uygulamayı geliştirmemize yardımcı olması için çökme raporu gönderebilirsiniz.
+</string>
+    <string name="pref_dump_crash_logs">Çökme Raporu Gönder</string>
+    <string name="crash_screen_restart_application">Uygulamayı Yeniden Başlat</string>
+    <string name="finish">Bitir</string>
+    <string name="select_your_manga_sources">Manga Kaynaklarınızı Seçin</string>
+    <string name="you_need_to_enable_notifications">Uygulamayı kullanmak için bildirimleri etkinleştirmeniz gerekiyor</string>
+    <string name="choose_your_theme">Temanızı Seçin</string>
+    <string name="get_started">Başlayın</string>
+    <string name="welcome_suptitle">Mangaları kolaylıkla keşfedin, okuyun ve toplayın.</string>
+    <string name="welcome_title">Kira Manga'ya Hoş Geldiniz</string>
+    <string name="system_theme">Sistem Teması</string>
+    <string name="follow_system_theme">Sistem Temasını Takip Et</string>
+    <string name="enable_notifications">Bildirimleri Etkinleştir</string>
+    <string name="notification_permission">Size en son bölümleri göndermek, indirme ilerlemesini göstermek ve uygulamanın düzgün çalışmasını sağlamak için bu izne ihtiyacımız var.</string>
+    <string name="grant_permission">İzin Ver</string>
+    <string name="theme_system">Sistem</string>
+    <string name="version">Sürüm</string>
+    <string name="check_for_update">Güncelleme Kontrolü</string>
+    <string name="rate_our_app">Uygulamamızı Oylayın</string>
+    <string name="what_s_new">Yenilikler</string>
+    <string name="privacy_policy">Gizlilik Politikası</string>
+
+    <string name="minimum_5_characters_required">En az 5 karakter gerekli</string>
+    <string name="error_in_the_app">Uygulamada Hata</string>
+    <string name="add_languages">Dil Ekle</string>
+    <string name="add_manga_site">Manga Sitesi Ekle</string>
+    <string name="error_in_manga_site">Manga Sitesinde Hata</string>
+    <string name="ask_to_add_features">Özellik Ekleme Talebi</string>
+    <string name="custom_feedback">Özel Geri Bildirim</string>
+    <string name="request_language">Dil Talebi</string>
+    <string name="active">Aktif</string>
+    <string name="failed">Başarısız</string>
+    <string name="completed">Tamamlandı</string>
+    <string name="running">Çalışıyor</string>
+    <string name="queued">Sırada</string>
+    <string name="downloaded">İndirildi</string>
+    <string name="unknown">Bilinmeyen</string>
+
+    <!-- HTTP Error Messages -->
+
+
+
+    <!-- Exception-based messages -->
+    <string name="cancelled_by_user">Kullanıcı tarafından iptal edildi</string>
+    <string name="failed_to_load_image">Görsel yüklenemedi.</string>
+    <string name="show_buttons">Düğmeleri Göster</string>
+    <string name="show_tabs_all_likes_etc">Sekmeleri Göster (Tümü, beğeniler, vs.)</string>
+
+    <!-- Feedback Manager Screen -->
+    <!-- Closure Reasons -->
+    <string name="closure_reason_done">TAMAMLANDI</string>
+
+    <!-- Error States -->
+    <string name="error_occurred">Bir şeyler ters gitti</string>
+
+    <!-- Empty States -->
+    <string name="status_pinned">Sabitlendi</string>
+
+    <string name="status_planned">Planlandı</string>
+    <string name="admin">yönetici</string>
+    <string name="feedbacks_and_complaints">Geri bildirimler ve şikayetler</string>
+    <string name="status_unknown">Bilinmeyen</string>
+
+    <!-- Complaint Actions -->
+    <string name="reply">Yanıtla</string>
+    <string name="edit">Düzenle</string>
+    <string name="delete">Sil</string>
+    <string name="cancel">İptal</string>
+    <string name="close">Kapat</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">Şikayete Yanıtla</string>
+    <string name="your_reply">Yanıtınız</string>
+    <string name="reply_placeholder">Yanıtınızı buraya yazın...</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">Şikayeti Düzenle</string>
+    <string name="subject">Konu</string>
+    <string name="complaint_body">Şikayet İçeriği</string>
+    <string name="edit_placeholder">Şikayet detaylarınızı buraya düzenleyin...</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">Şikayeti Sil</string>
+    <string name="delete_warning_message">Bu işlem geri alınamaz. Şikayet kalıcı olarak silinecek.</string>
+    <string name="delete_forever">Kalıcı Olarak Sil</string>
+
+    <!-- Navigation -->
+    <string name="back">Geri</string>
+
+    <!-- Common -->
+    <string name="loading">Yükleniyor...</string>
+
+    <!-- Status Labels -->
+    <string name="status_in_progress">Devam Ediyor</string>
+    <string name="status_resolved">Çözüldü</string>
+    <string name="status_closed">Kapatıldı</string>
+
+    <!-- Character Limits -->
+    <string name="character_count">%1$d/%2$d</string>
+
+    <!-- Existing strings from original files -->
+    <string name="feedback_manager_title">Geri Bildirim Yöneticisi</string>
+    <string name="clear">Temizle</string>
+    <string name="filter_all">Tümü</string>
+    <string name="no_results_found">Sonuç bulunamadı</string>
+
+
+
+    <!-- UI Elements -->
+    <string name="new_badge">YENİ</string>
+    <string name="play_video">Video Oynat</string>
+    <string name="video_preview">Video Önizleme</string>
+
+    <!-- Admin Complaint Management -->
+
+    <!-- Search and Filter -->
+
+    <!-- Sort Options -->
+    <string name="sort_status">Durum</string>
+    <string name="sort_type">Tür</string>
+    <string name="sort_user_id">Kullanıcı ID</string>
+
+    <!-- Statistics -->
+
+    <!-- Dialog Titles -->
+    <string name="change_status">Durum Değiştir</string>
+    <string name="add_closure_reason">Kapatma Nedeni Ekle</string>
+
+    <!-- Dialog Content -->
+
+    <!-- Closure Reason Dialog -->
+    <string name="add_reason">Neden Ekle</string>
+
+    <!-- Delete Dialog -->
+
+    <!-- Card Content -->
+
+    <!-- Closure Reason Types -->
+
+    <!-- Action Messages -->
+
+    <!-- Error Messages -->
+
+    <!-- Bulk Operations -->
+
+    <!-- Admin Actions -->
+    <string name="admin_actions">Yönetici İşlemleri</string>
+
+    <!-- Validation Messages -->
+
+    <!-- Accessibility -->
+
+    <!-- Site Status Descriptions -->
+
+    <!-- Tips -->
+
+    <!-- Maintenance Tips -->
+
+    <!-- Stopped Tips -->
+
+    <!-- Actions -->
+
+    <string name="languages_coming_soon_title">Yakında Gelecek Diller</string>
+    <string name="languages_coming_soon_description">🌍 Şu diller için kaynak eklemek üzerinde çalışıyoruz: 🇹🇷 Türkçe, 🇩🇪 Almanca, 🇮🇹 İtalyanca, 🇯🇵 Japonca. Lütfen sabırlı olun — yakında yayınlanacak!</string>
+
+
+
+
+    <string name="we_d_love_to_hear_from_you">Sizden haber almak isteriz</string>
+    <string name="category">Kategori</string>
+    <string name="select_a_category">Bir kategori seçin</string>
+    <string name="your_feedback">Görüşleriniz</string>
+    <string name="connect_with_us_in_social_media">Bize sosyal medyadan bağlanın</string>
+
+
+    <string name="status_not_planned">Planlanmadı</string>
+    <string name="new_chapter">YENİ</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- What's New Features -->
+
+
+
+
+    <string name="request_submitted_successfully">İstek başarıyla gönderildi</string>
+    <string name="request_failed">İstek gönderilemedi</string>
+
+    <string name="converting_to_cbz">CBZ'ye dönüştürülüyor</string>
+    <string name="conversion_failed">Dönüştürme başarısız</string>
+
+    <string name="notification_downloading_chapters">Bolumler indiriliyor</string>
+    <string name="notification_chapter_title">Bolum %s</string>
+
+    <string name="notification_downloading_background">Tum bolumler arka planda indiriliyor</string>
+    <string name="notification_compressing_images">Gorseller sikistiriliyor...</string>
+    <string name="notification_images_progress">%1$d / %2$d gorsel</string>
+
+    <string name="action_cancel_all">Hepsini iptal et</string>
+    <string name="action_cancel_chapter">Bolumu iptal et</string>
+
+    <string name="notification_channel_all_downloads">Tum indirmeler</string>
+    <string name="notification_channel_all_downloads_desc">Genel indirme ilerlemesi</string>
+    <string name="notification_channel_chapter_download">Bolum indirme</string>
+    <string name="notification_channel_chapter_download_desc">Tek bolum indirmesi</string>
+    <string name="notification_channel_download_summary">Indirme ozeti</string>
+    <string name="notification_channel_download_summary_desc">Tamamlama bildirimleri</string>
+    <string name="notification_channel_library_refresh">Kutuphane yenileme</string>
+    <string name="notification_channel_library_refresh_desc">Arka plan yenileme ilerlemesi</string>
+
+    <string name="notification_refreshing_library">Kutuphane yenileniyor</string>
+    <string name="notification_library_refresh_failed">Kutuphane yenileme basarisiz</string>
+    <string name="notification_starting">Basliyor...</string>
+    <string name="notification_refresh_timed_out">Yenileme zaman asimina ugradi</string>
+    <string name="notification_refresh_failed">Yenileme basarisiz: %s</string>
+    <string name="notification_no_manga_to_refresh">Yenilenecek manga yok</string>
+    <string name="notification_processing_batch">%d. grup isleniyor...</string>
+    <string name="notification_finishing_up">Tamamlaniyor...</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d tamamlandi, %4$d basarisiz)</string>
+    <string name="notification_refresh_completed">Tamamlandi: %1$d basarili, %2$d basarisiz</string>
+
+
+
+
+    <string name="time_just_now">Az önce</string>
+
+    <plurals name="time_minutes_ago">
+        <item quantity="other">%d dakika önce</item>
+    </plurals>
+
+    <plurals name="time_hours_ago">
+        <item quantity="other">%d saat önce</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="other">%d gün önce</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="other">%d hafta önce</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="other">%d ay önce</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="other">%d yıl önce</item>
+    </plurals>
+
+
+
+
+
+    <string name="value_count">%,d</string>
+    <string name="use_kira_compressor">Kira sıkıştırıcıyı kullan</string>
+    <string name="compress_existing_downloads">Mevcut indirmeleri sıkıştır</string>
+    <string name="converting">Dönüştürülüyor…</string>
+    <string name="start_conversion">Dönüştürmeyi başlat</string>
+    <string name="conversion_stopped">Dönüştürme durduruldu</string>
+    <string name="conversion_complete_">Dönüştürme tamamlandı!</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">Dönüştürme tamamlanana kadar uygulamayı kapatmayın</string>
+    <string name="remaining">Kalan</string>
+    <string name="current">Şu an:</string>
+    <string name="chapter">Bölüm %1$s</string>
+    <string name="stop_conversion">Dönüştürmeyi durdur</string>
+
+
+    <string name="h_m">%1$dsa %2$ddk</string>
+    <string name="conversion_stopped_by_user">Dönüştürme kullanıcı tarafından durduruldu.</string>
+    <string name="chapters_converted_successfully">✓ %1$d bölüm başarıyla dönüştürüldü</string>
+    <string name="chapters_remaining">⏸ %1$d bölüm kaldı</string>
+
+
+
+
+</resources>

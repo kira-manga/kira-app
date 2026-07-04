@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Updates / Notifications feed — Arabic.
+
+  Trusted Arabic verbatim from the native app's values-ar/strings.xml (source of truth).
+  - notifications_group_*: the four date-group headers. These keys ship in the :ui en
+    catalog (values/strings_np_hist_upd_stats.xml) and in 9 other locales, but were
+    absent from values-ar, so the Updates screen showed English headers on Arabic
+    devices. Restored here to match native values-ar/strings.xml:95-98.
+  - chapter_number: native values-ar/strings.xml:103 "الفصل %1$s" for the chapter line.
+-->
+<resources>
+    <string name="notifications_group_today">اليوم</string>
+    <string name="notifications_group_yesterday">أمس</string>
+    <string name="notifications_group_last_week">الأسبوع الماضي</string>
+    <string name="notifications_group_older">أقدم</string>
+    <string name="chapter_number">الفصل %1$s</string>
+</resources>

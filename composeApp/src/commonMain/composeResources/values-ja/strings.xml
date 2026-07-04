@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kira Manga</string>
+    <string name="title_home">ホーム</string>
+    <string name="title_history">履歴</string>
+    <string name="title_notifications">通知</string>
+    <string name="title_library">ライブラリ</string>
+    <string name="title_settings">設定</string>
+
+
+    <!-- Library -->
+
+    <string name="continue_string">続行</string>
+
+    <!-- SortOptionsSection -->
+    <string name="sort_options_title">ソートオプション</string>
+    <string name="sort_direction_label">ソート方向</string>
+    <string name="sort_direction_ascending">昇順</string>
+    <string name="sort_direction_descending">降順</string>
+    <string name="sort_by_label">ソート基準</string>
+
+    <!-- DisplayOptionsSection -->
+    <string name="items_per_row_label">行あたりのアイテム数:</string>
+    <string name="auto_text">自動</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">アイテム</string>
+    <string name="items_plural">アイテム</string>
+    <string name="show_items_details">アイテム詳細を表示</string>
+    <string name="show_items_source">アイテムソースを表示</string>
+    <string name="show_items_count">アイテム数を表示</string>
+    <string name="last_updated">最終更新: %1$s</string>
+    <string name="not_updated_yet">まだ更新されていません</string>
+    <plurals name="items_count">
+        <item quantity="one">%dアイテム</item>
+        <item quantity="other">%dアイテム</item>
+    </plurals>
+
+    <!-- MangaCard-specific strings -->
+
+    <!-- Filter Types -->
+    <string name="filter_downloaded">ダウンロード済み</string>
+    <string name="filter_unread">未読</string>
+    <string name="filter_started">開始済み</string>
+    <string name="filter_readed">既読</string>
+    <string name="status_open">オープン</string>
+
+    <string name="filter_bookmarked">ブックマーク</string>
+    <string name="filter_completed">完了済み</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">アルファベット順</string>
+    <string name="sort_total_chapters">総章数</string>
+    <string name="sort_last_read">最後に読んだ</string>
+    <string name="sort_unread_count">未読数</string>
+    <string name="sort_date_added">追加日</string>
+    <string name="sort_random">ランダム</string>
+
+    <string name="content_description_close_search">検索を閉じる</string>
+    <string name="searching_placeholder">マンガを検索…</string>
+    <string name="contentDescription_search_icon">検索アイコン</string>
+    <string name="contentDescription_search_clear">クエリをクリア</string>
+    <string name="contentDescription_search">検索</string>
+    <string name="contentDescription_filter">フィルタ</string>
+    <string name="dropdown_button_refresh">更新</string>
+    <string name="library_bottom_sheet_tab_filter">フィルタ</string>
+    <string name="library_bottom_sheet_tab_sort">ソート</string>
+    <string name="library_bottom_sheet_tab_display">表示</string>
+
+    <!-- Updates -->
+    <string name="notifications_group_today">今日</string>
+    <string name="notifications_group_yesterday">昨日</string>
+    <string name="notifications_group_last_week">先週</string>
+    <string name="notifications_group_older">それ以前</string>
+    <string name="contentDescription_delete_all">すべて削除</string>
+    <string name="contentDescription_mark_all_as_read">すべて既読にする</string>
+    <string name="chapter_number">第%1$s話</string>
+
+    <!-- History -->
+    <string name="content_description_delete">削除</string>
+    <string name="content_description_clear_history">履歴をクリア</string>
+    <string name="today">今日</string>
+    <string name="yesterday">昨日</string>
+    <string name="days_ago">%1$d日前</string>
+    <string name="weeks_ago">%1$d週間前</string>
+    <string name="months_ago">%1$dヶ月前</string>
+    <string name="years_ago">%1$d年前</string>
+
+    <!-- Settings -->
+    <string name="theme_dark">ダークモード</string>
+    <string name="theme_light">ライトモード</string>
+    <string name="pure_black_mode_title">純黒ダークモード</string>
+    <string name="default_reading_mode">デフォルト読書モード</string>
+    <string name="statistics">統計</string>
+    <string name="about">このアプリについて</string>
+    <string name="help">ヘルプ</string>
+    <string name="adult_filter_removal_header">コンテンツは利用できません</string>
+    <string name="adult_filter_removal_title">申し訳ありません — このコンテンツは表示できません。Google Play のポリシーおよび宗教的・文化的価値の尊重により、露骨な性的コンテンツは表示できません。ご理解ありがとうございます。</string>
+
+
+
+    <!-- Statistics -->
+    <string name="desc_back">戻る</string>
+    <string name="section_entries">エントリ</string>
+    <string name="section_chapters">チャプター</string>
+    <string name="label_in_library">ライブラリ内</string>
+    <string name="label_read_duration">読書時間</string>
+    <string name="label_completed_entries">完了済みエントリ</string>
+    <string name="label_started">開始済み</string>
+    <string name="label_completed">完了済み</string>
+    <string name="label_total">合計</string>
+    <string name="label_read">読了</string>
+    <string name="label_downloaded">ダウンロード済み</string>
+    <string name="label_bookmarked">ブックマーク済み</string>
+
+    <!-- LibraryMangaDetails -->
+    <string name="add_library_title">ライブラリに追加</string>
+
+    <string name="action_remove">削除</string>
+    <string name="action_bookmark">ブックマーク</string>
+    <string name="action_downloading">ダウンロード中</string>
+    <string name="action_open_in_browser">WebViewで開く</string>
+
+    <string name="chapters_count_format">%1$dチャプター</string>
+
+
+    <string name="desc_newest_first">新しいものから</string>
+    <string name="desc_oldest_first">古いものから</string>
+    <string name="title_copied">タイトルがコピーされました！</string>
+
+    <!-- Reading modes -->
+    <string name="reading_mode_default">デフォルト</string>
+    <string name="reading_mode_vertical">縦読み</string>
+    <string name="reading_mode_webtoon">ウェブトゥーン</string>
+    <string name="but_revert">元に戻す</string>
+    <string name="but_apply">適用</string>
+    <string name="retry">再試行</string>
+    <string name="failed_to_load">読み込み失敗 : %1$s</string>
+
+    <!-- SearchScreen -->
+
+    <string name="title_sources_settings">ソース設定</string>
+    <string name="enable_disable_all_sources">すべての%1$sソースを有効/無効</string>
+    <string name="enabled">有効</string>
+    <string name="disabled">無効</string>
+
+    <!-- Download notifications -->
+    <string name="new_chapters">新しいチャプター</string>
+    <string name="notifications_for_new_manga_chapters">新しいマンガチャプターの通知</string>
+    <string name="chapter_is_available">チャプター%1$sが利用可能です</string>
+    <string name="select_language">言語を選択</string>
+    <string name="downloads">ダウンロード</string>
+
+    <string name="request_feature_bug">バグを報告または機能をリクエスト</string>
+    <string name="enter_your_language">言語を入力</string>
+
+    <string name="submit">送信</string>
+    <string name="request_add_language">言語名追加リクエスト</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">追加したいサイトのURLを入力してください</string>
+    <string name="we_will_add_it_as_soon_it_possible">可能な限り早く追加します</string>
+    <string name="enter_the_site_url">サイトURLを入力</string>
+
+    <!-- Crash screen -->
+    <string name="crash_screen_title">おっと！何か問題が発生しました</string>
+    <string name="crash_screen_description">
+    申し訳ございません—%1$sで予期しないエラーが発生しました。クラッシュレポートを送信してアプリの改善にご協力ください。
+</string>
+    <string name="pref_dump_crash_logs">クラッシュレポートを送信</string>
+    <string name="crash_screen_restart_application">アプリを再起動</string>
+    <string name="finish">終了</string>
+    <string name="select_your_manga_sources">マンガソースを選択</string>
+    <string name="you_need_to_enable_notifications">アプリを使用するには通知を有効にする必要があります</string>
+    <string name="choose_your_theme">テーマを選択</string>
+    <string name="get_started">開始</string>
+    <string name="welcome_suptitle">簡単にマンガを探索、読書、収集しましょう。</string>
+    <string name="welcome_title">Kira Mangaへようこそ</string>
+    <string name="system_theme">システムテーマ</string>
+    <string name="follow_system_theme">システムテーマに従う</string>
+    <string name="enable_notifications">通知を有効にする</string>
+    <string name="notification_permission">最新のチャプターをお送りし、ダウンロード進捗を表示し、アプリが正常に動作することを確実にするため、この権限が必要です。</string>
+    <string name="grant_permission">権限を付与</string>
+    <string name="theme_system">システム</string>
+    <string name="version">バージョン</string>
+    <string name="check_for_update">アップデートを確認</string>
+    <string name="rate_our_app">アプリを評価</string>
+    <string name="what_s_new">新機能</string>
+    <string name="privacy_policy">プライバシーポリシー</string>
+
+    <string name="minimum_5_characters_required">最低5文字必要</string>
+    <string name="error_in_the_app">アプリでのエラー</string>
+    <string name="add_languages">言語を追加</string>
+    <string name="add_manga_site">マンガサイトを追加</string>
+    <string name="error_in_manga_site">マンガサイトでのエラー</string>
+    <string name="ask_to_add_features">機能追加をリクエスト</string>
+    <string name="custom_feedback">カスタムフィードバック</string>
+    <string name="request_language">言語をリクエスト</string>
+    <string name="active">アクティブ</string>
+    <string name="failed">失敗</string>
+    <string name="completed">完了</string>
+    <string name="running">実行中</string>
+    <string name="queued">待機中</string>
+    <string name="downloaded">ダウンロード済み</string>
+    <string name="unknown">不明</string>
+
+    <!-- HTTP Errors -->
+
+
+
+    <string name="cancelled_by_user">ユーザーによってキャンセルされました</string>
+    <string name="failed_to_load_image">画像の読み込みに失敗しました。</string>
+    <string name="show_buttons">ボタンを表示</string>
+    <string name="show_tabs_all_likes_etc">タブを表示（すべて、いいね、など）</string>
+
+    <!-- Feedback Manager Screen -->
+    <string name="closure_reason_done">完了</string>
+
+    <string name="error_occurred">問題が発生しました</string>
+
+    <string name="status_pinned">ピン留め</string>
+    <string name="status_planned">計画済み</string>
+    <string name="admin">管理者</string>
+    <string name="feedbacks_and_complaints">フィードバックと苦情</string>
+    <string name="status_unknown">不明</string>
+
+    <!-- Complaint Actions -->
+    <string name="reply">返信</string>
+    <string name="edit">編集</string>
+    <string name="delete">削除</string>
+    <string name="cancel">キャンセル</string>
+    <string name="close">閉じる</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">苦情に返信</string>
+    <string name="your_reply">あなたの返信</string>
+    <string name="reply_placeholder">ここに返信を入力してください...</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">苦情を編集</string>
+    <string name="subject">件名</string>
+    <string name="complaint_body">苦情本文</string>
+    <string name="edit_placeholder">苦情の詳細をここで編集してください...</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">苦情を削除</string>
+    <string name="delete_warning_message">この操作は元に戻すことができません。苦情は永続的に削除されます。</string>
+    <string name="delete_forever">完全に削除</string>
+
+    <string name="back">戻る</string>
+    <string name="loading">読み込み中...</string>
+
+    <!-- Status Labels -->
+    <string name="status_in_progress">進行中</string>
+    <string name="status_resolved">解決済み</string>
+    <string name="status_closed">終了</string>
+
+    <string name="character_count">%1$d/%2$d</string>
+
+    <string name="feedback_manager_title">フィードバックマネージャー</string>
+    <string name="clear">クリア</string>
+    <string name="filter_all">すべて</string>
+    <string name="no_results_found">結果が見つかりません</string>
+
+
+
+    <string name="new_badge">新着</string>
+    <string name="play_video">動画を再生</string>
+    <string name="video_preview">動画プレビュー</string>
+
+    <!-- Admin Complaint Management -->
+
+
+    <string name="sort_status">ステータス</string>
+    <string name="sort_type">タイプ</string>
+    <string name="sort_user_id">ユーザーID</string>
+
+
+    <string name="change_status">ステータス変更</string>
+    <string name="add_closure_reason">終了理由を追加</string>
+
+
+    <string name="add_reason">理由を追加</string>
+
+
+
+
+
+
+
+    <string name="admin_actions">管理者アクション</string>
+
+
+
+    <!-- Site Status -->
+
+
+
+
+    <string name="languages_coming_soon_title">近日追加予定の言語</string>
+    <string name="languages_coming_soon_description">🌍 次の言語のソースを追加予定です： 🇹🇷 トルコ語、🇩🇪 ドイツ語、🇮🇹 イタリア語、🇯🇵 日本語。 少々お待ちください — まもなく公開します！</string>
+
+
+
+    <string name="we_d_love_to_hear_from_you">ご意見をお聞かせください</string>
+    <string name="category">カテゴリ</string>
+    <string name="select_a_category">カテゴリを選択</string>
+    <string name="your_feedback">ご意見</string>
+    <string name="connect_with_us_in_social_media">ソーシャルメディアでつながりましょう</string>
+
+
+    <string name="status_not_planned">計画なし</string>
+    <string name="new_chapter">新規</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- What's New -->
+
+
+
+
+    <string name="request_submitted_successfully">リクエストが正常に送信されました</string>
+    <string name="request_failed">リクエストの送信に失敗しました</string>
+
+    <string name="converting_to_cbz">CBZ に変換しています</string>
+    <string name="conversion_failed">変換に失敗しました</string>
+
+    <string name="notification_downloading_chapters">章をダウンロードしています</string>
+    <string name="notification_chapter_title">第 %s 章</string>
+
+    <string name="notification_downloading_background">すべての章をバックグラウンドでダウンロードしています</string>
+    <string name="notification_compressing_images">画像を圧縮しています…</string>
+    <string name="notification_images_progress">%1$d / %2$d 枚</string>
+
+    <string name="action_cancel_all">すべてキャンセル</string>
+    <string name="action_cancel_chapter">章をキャンセル</string>
+
+    <string name="notification_channel_all_downloads">全ダウンロード</string>
+    <string name="notification_channel_all_downloads_desc">全体的な進行状況</string>
+    <string name="notification_channel_chapter_download">章ダウンロード</string>
+    <string name="notification_channel_chapter_download_desc">単一章の進行状況</string>
+    <string name="notification_channel_download_summary">ダウンロードの概要</string>
+    <string name="notification_channel_download_summary_desc">完了通知</string>
+    <string name="notification_channel_library_refresh">ライブラリ更新</string>
+    <string name="notification_channel_library_refresh_desc">バックグラウンド更新の進行状況を表示</string>
+
+    <string name="notification_refreshing_library">ライブラリを更新しています</string>
+    <string name="notification_library_refresh_failed">ライブラリ更新に失敗しました</string>
+    <string name="notification_starting">開始しています…</string>
+    <string name="notification_refresh_timed_out">更新がタイムアウトしました</string>
+    <string name="notification_refresh_failed">更新に失敗しました: %s</string>
+    <string name="notification_no_manga_to_refresh">更新するマンガがありません</string>
+    <string name="notification_processing_batch">バッチ %d を処理中…</string>
+    <string name="notification_finishing_up">完了処理中…</string>
+    <string name="notification_refresh_progress">%1$s（%2$d/%3$d 完了、%4$d 失敗）</string>
+    <string name="notification_refresh_completed">完了: 成功 %1$d、失敗 %2$d</string>
+
+
+
+
+
+    <string name="time_just_now">たった今</string>
+
+    <plurals name="time_minutes_ago">
+        <item quantity="other">%d 分前</item>
+    </plurals>
+
+    <plurals name="time_hours_ago">
+        <item quantity="other">%d 時間前</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="other">%d 日前</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="other">%d 週間前</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="other">%d か月前</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="other">%d 年前</item>
+    </plurals>
+
+
+
+
+
+    <string name="value_count">%,d</string>
+    <string name="use_kira_compressor">Kira コンプレッサーを使用</string>
+    <string name="compress_existing_downloads">既存のダウンロードを圧縮</string>
+    <string name="converting">変換中…</string>
+    <string name="start_conversion">変換を開始</string>
+    <string name="conversion_stopped">変換が停止しました</string>
+    <string name="conversion_complete_">変換完了！</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">変換が完了するまでアプリを閉じないでください</string>
+    <string name="remaining">残り</string>
+    <string name="current">現在：</string>
+    <string name="chapter">第 %1$s 章</string>
+    <string name="stop_conversion">変換を停止</string>
+
+
+    <string name="h_m">%1$d時 %2$d分</string>
+    <string name="conversion_stopped_by_user">ユーザーによって変換が停止されました。</string>
+    <string name="chapters_converted_successfully">✓ %1$d 章が正常に変換されました</string>
+    <string name="chapters_remaining">⏸ 残り %1$d 章</string>
+
+
+
+
+</resources>

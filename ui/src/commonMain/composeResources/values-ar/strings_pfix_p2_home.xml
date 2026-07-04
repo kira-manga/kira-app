@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Home feed (P2 medium-severity parity wave) — Arabic.
+
+  Trusted Arabic verbatim from the native app's values-ar/strings.xml (source of truth):
+   - failed_to_load (native values-ar/strings.xml:225) → home_pfix_failed_to_load
+-->
+<resources>
+    <string name="home_pfix_failed_to_load">فشل التحميل : %1$s</string>
+</resources>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P2 MEDIUM-parity-fix strings for the Details area (manga details + folded library details).
+  Native text + native key names. Keys already present in the shared catalog are reused, NOT
+  redefined here. Added for: add-to-library long message + "Add to Library" confirm, relative
+  chapter-date format ("MMM d, yyyy"), error-pane Help action, multi-select bulk actions
+  (bookmark all / delete downloaded / mark down read), download menu (custom download / download
+  selected / cancel selection), top-bar overflow (delete all downloaded / share / cancel all),
+  total-downloaded-size banner.
+-->
+<resources>
+    <!-- Add-to-library confirm dialog (native add_library_message + confirm_add_to_library). -->
+    <string name="details_add_library_message">To download chapters and keep track of your reading progress, please add this manga to your library first. Would you like to add it now?</string>
+    <string name="details_confirm_add_to_library">Add to Library</string>
+
+    <!-- Relative chapter-date strings (native Date.toRelativeString — date_today / date_yesterday
+         are lowercase in native; the "MMM d, yyyy" fallback format below). -->
+    <string name="details_chapter_date_today">today</string>
+    <string name="details_chapter_date_yesterday">yesterday</string>
+    <!-- %1$s = abbreviated month name, %2$d = day-of-month, %3$d = year. -->
+    <string name="details_chapter_date_full">%1$s %2$d, %3$d</string>
+
+    <!-- Error pane Help action (native ErrorScreen onHelp affordance). -->
+    <string name="details_error_help">Help</string>
+
+    <!-- Multi-select bulk-action content descriptions (native ChapterSelectionActionsRow). -->
+    <string name="details_bookmark_all">Bookmark all</string>
+    <string name="details_mark_all_down_read">Mark this and below as read</string>
+    <string name="details_delete_downloaded">Delete downloaded chapters</string>
+
+    <!-- Header download menu (native DownloadMenu). -->
+    <string name="details_download_all_menu">Download all</string>
+    <string name="details_custom_download">Custom Download</string>
+    <string name="details_download_selected_format">Download Selected (%1$d)</string>
+    <string name="details_cancel_selection">Cancel Selection</string>
+
+    <!-- Top-bar overflow menu (native MangaTopAppBar). -->
+    <string name="details_delete_all_downloaded">Delete all downloaded chapters</string>
+    <string name="details_menu_share">Share</string>
+    <string name="details_cancel_all_downloads">Cancel all downloads</string>
+    <string name="details_more_options">More options</string>
+
+    <!-- Total-downloaded-size header banner (native downloaded_header). %1$s = size, %2$d = count. -->
+    <string name="details_downloaded_header">%1$s • %2$d downloaded</string>
+</resources>

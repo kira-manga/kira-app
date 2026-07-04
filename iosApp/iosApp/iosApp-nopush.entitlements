@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Personal-team / local-development entitlements (Debug config default — see project.yml).
+
+  Deliberately contains NO aps-environment key: with automatic signing, Xcode derives the
+  required capabilities FROM the entitlements file, and Personal (free) development teams do not
+  support the Push Notifications capability — a Debug device build signed with a Personal Team
+  fails provisioning the moment aps-environment is present ("Personal development teams ... do
+  not support the Push Notifications capability").
+
+  Runtime consequence in this mode: registerForRemoteNotifications() fails (logged via the
+  existing didFailToRegisterForRemoteNotificationsWithError handler), FCM never receives an APNs
+  token, and no remote push is delivered — everything else (app, downloads, local notifications,
+  FIAM fetch) works normally. Push is NOT removed from the app: Release / TestFlight / App Store
+  builds sign with iosApp.entitlements (aps-environment = production) and keep full push support.
+
+  Developer-Program members who want push in a local Debug DEVICE build: point the Debug
+  CODE_SIGN_ENTITLEMENTS at iosApp.entitlements in project.yml and re-run `xcodegen generate`
+  (one line — see the comment there).
+-->
+<dict/>
+</plist>

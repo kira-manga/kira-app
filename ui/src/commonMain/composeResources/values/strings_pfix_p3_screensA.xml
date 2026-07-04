@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the P3 "screens A" cluster (:ui ui language + sources packages).
+
+  Source of truth: native-app features/language + features/repo_settings (+ onboarding/sources) +
+  values/strings.xml. en here; trusted Arabic in values-ar/strings_pfix_p3_screensA.xml (native ar
+  exists for both keys).
+
+  request_language — Language screen "Request Language" bottom row label. Native
+  LanguageSelectionScreen.kt:115 sets the clickable bottom row title to
+  R.string.request_language ("Request Language", native strings.xml:313), while the dialog HEADER
+  uses request_add_language separately (native LanguageSelectionScreen.kt:158). The :ui rework
+  reused request_add_language ("Request a language") for the row, so the native row wording was
+  missing. This key carries the native row label; the dialog title keeps request_add_language.
+
+  request_adding_source_full — Sources screen "Request Adding Source/Site" row label + dialog
+  title. Native strings.xml:271 request_adding_source = "Request Adding Source/Site". The :ui base
+  strings.xml request_adding_source English value reads "Request adding source" (a copy
+  divergence) and the base file is out of this slice's edit scope, so this dedicated key carries
+  the native wording for the request-source row + the request-source dialog title. (The native ar
+  value for request_adding_source already matches the :ui ar value verbatim — "طلب إضافة مصدر /
+  موقع" — so the ar value here mirrors it.)
+-->
+<resources>
+    <string name="request_language">Request Language</string>
+    <string name="request_adding_source_full">Request Adding Source/Site</string>
+</resources>

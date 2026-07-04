@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Localized download-notification strings for the :data:download WorkManager worker
+  (backlog L15c, 2026-07). Values copied VERBATIM from composeApp/src/commonMain/
+  composeResources/values-ja/strings.xml (the canonical localized copies), with
+  Android-res apostrophe/quote escaping applied. Keep in sync by re-copying, never by
+  re-translating here.
+-->
+<resources>
+    <string name="cancelled_by_user">ユーザーによってキャンセルされました</string>
+    <string name="notification_downloading_chapters">章をダウンロードしています</string>
+    <string name="notification_chapter_title">第 %s 章</string>
+    <string name="notification_downloading_background">すべての章をバックグラウンドでダウンロードしています</string>
+    <string name="notification_compressing_images">画像を圧縮しています…</string>
+    <string name="notification_images_progress">%1$d / %2$d 枚</string>
+    <string name="action_cancel_all">すべてキャンセル</string>
+    <string name="action_cancel_chapter">章をキャンセル</string>
+    <string name="notification_channel_all_downloads">全ダウンロード</string>
+    <string name="notification_channel_all_downloads_desc">全体的な進行状況</string>
+    <string name="notification_channel_chapter_download">章ダウンロード</string>
+    <string name="notification_channel_chapter_download_desc">単一章の進行状況</string>
+    <string name="notification_channel_download_summary">ダウンロードの概要</string>
+    <string name="notification_channel_download_summary_desc">完了通知</string>
+</resources>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark variant of the post-splash window theme. Adapted from native
+         native-app/.../res/values-night/themes.xml `Theme.YamiManga.Dark` — but that style was
+         DORMANT in native (nothing applies it: the manifest routes Theme.App.Starting ->
+         postSplashScreenTheme Theme.YamiManga and no setTheme() references .Dark), so native's
+         effective night windowBackground was values/themes.xml's @color/black. Renaming the style
+         to Theme.KiraManga here activates it, so android:windowBackground must stay @color/black
+         (native's .Dark literal @color/white would flash white in dark mode). The M3 color tokens
+         (@color/kira_manga_*) resolve to their dark values automatically via values-night/colors.xml.
+         All other window / system-bar attributes are inherited unchanged from values/themes.xml. -->
+    <style name="Theme.KiraManga" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/kira_manga_primary</item>
+        <item name="colorOnPrimary">@color/kira_manga_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/kira_manga_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/kira_manga_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/kira_manga_secondary</item>
+        <item name="colorOnSecondary">@color/kira_manga_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/kira_manga_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/kira_manga_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/kira_manga_tertiary</item>
+        <item name="colorOnTertiary">@color/kira_manga_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/kira_manga_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/kira_manga_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/kira_manga_background</item>
+        <item name="android:windowBackground">@color/black</item>
+
+        <item name="colorOnBackground">@color/kira_manga_onBackground</item>
+        <item name="colorSurface">@color/kira_manga_surface</item>
+        <item name="colorOnSurface">@color/kira_manga_onSurface</item>
+        <item name="colorSurfaceVariant">@color/kira_manga_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/kira_manga_onSurfaceVariant</item>
+        <item name="colorOutline">@color/kira_manga_outline</item>
+        <item name="colorSurfaceContainer">@color/kira_manga_surfaceContainer</item>
+        <item name="colorSurfaceContainerHigh">@color/kira_manga_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/kira_manga_surfaceContainerHighest</item>
+        <item name="colorSurfaceContainerLow">@color/kira_manga_surfaceContainerLow</item>
+        <item name="colorSurfaceContainerLowest">@color/kira_manga_surfaceContainerLowest</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+    </style>
+</resources>

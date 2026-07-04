@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic translation for the Sources / repo-settings parity-fix strings
+  (:ui ui/sources). Source of truth: native-app res/values-ar/strings.xml.
+-->
+<resources>
+    <string name="enable_disable_all_sources">تفعيل او الغاء مصادر ال %1$s</string>
+</resources>

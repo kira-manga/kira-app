@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P3 parity-fix strings for the Statistics screen (:ui ui/statistics).
+
+  Source of truth: native-app features/statistics + res/strings.xml.
+
+  Keys:
+    label_completed_entries - overview card 3rd cell label (native label_completed_entries,
+                              "Completed entries"). Distinct from the Entries-section row's
+                              label_completed ("Completed"); the overview big-number cell and the
+                              section row must read differently to match native wording.
+-->
+<resources>
+    <string name="label_completed_entries">Completed entries</string>
+</resources>

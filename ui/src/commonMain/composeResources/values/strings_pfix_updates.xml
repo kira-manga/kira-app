@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Updates / Notifications feed (:ui ui/updates).
+
+  Source of truth: native-app notifications/UpdatesScreen + UpdateItem.
+  - chapter_number: native UpdateItem.kt:102-110 renders the chapter line via the
+    "Chapter %1$s" template (R.string.chapter_number). The :ui catalog had no such key
+    (it only lived in composeApp/ for other screens), so the Updates row rendered the
+    raw chapterNumber with no "Chapter" prefix. Restored here so the row matches native
+    and localizes per device language (Arabic in values-ar/strings_pfix_updates.xml).
+-->
+<resources>
+    <string name="chapter_number">Chapter %1$s</string>
+</resources>

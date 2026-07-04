@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      P3 parity-fix strings for the Library screen (audit p3/library, LOW-severity items).
+
+      Native (source of truth) is me/manga/yami/presentation/features/library.
+      Native key names + native text are reused verbatim where they exist so the
+      strangler-fig wire stays aligned with the legacy res/values/strings.xml.
+
+      Cover content-description (a11y): native MangaCard's cover AsyncImage labels
+      the cover with R.string.manga_cover_description = "Cover of %1$s" (native
+      res/values/strings.xml:54). The rework's LibraryCardCover passed
+      contentDescription = null, leaving the cover image unlabeled for TalkBack.
+      This restores the native label verbatim; %1$s is the manga title.
+    -->
+    <string name="library_cover_content_description">Cover of %1$s</string>
+
+    <!--
+      Overflow "Open Random Manga" menu label: native LibraryScreen's overflow DropdownMenuItem
+      uses R.string.dropdown_button_open_random_manga = "Open Random Manga" (native
+      res/values/strings.xml:84). The rework's overflow item reused the terse `library_random`
+      ("Random") label. This restores native's full wording for exact-parity of the menu copy.
+    -->
+    <string name="library_open_random_manga">Open Random Manga</string>
+</resources>

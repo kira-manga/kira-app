@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Auto Backup rules (used on API < 31 via android:fullBackupContent).
+   See https://developer.android.com/guide/topics/data/autobackup
+
+   The "kira_settings" SharedPreferences file backs the multiplatform-settings store, which
+   includes captured Cloudflare cf_clearance cookies and per-source User-Agent strings. Those are
+   IP/UA-bound session tokens: restoring them onto a new device is useless and can resurrect
+   solved-challenge state that immediately 403s, so it is excluded from cloud backup.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="kira_settings.xml"/>
+</full-backup-content>

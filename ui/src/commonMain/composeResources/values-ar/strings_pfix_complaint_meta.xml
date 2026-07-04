@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the user-side Complaint card's DEVICE-METADATA row — Arabic.
+
+  Trusted Arabic verbatim from the native app's values-ar/strings.xml (source of truth).
+  - unknown: native values-ar/strings.xml:313 "غير معروف" — the else-branch label of
+    apiLevelToAndroidVersion for an unrecognized API level. (filter_all, the apiLevel-0
+    branch, already ships in the :ui Arabic catalog.)
+-->
+<resources>
+    <string name="unknown">غير معروف</string>
+</resources>

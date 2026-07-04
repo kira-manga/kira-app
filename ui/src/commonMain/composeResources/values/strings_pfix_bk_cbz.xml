@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GAP-SET-16 — CBZ conversion progress dialog count/terminal-summary strings (native parity).
+
+  Net-new en-only keys for the `:ui` CbzConversionDialog's terminal Success / Stopped summary
+  lines, ported verbatim from the native app's values/strings.xml (chapters_converted_successfully
+  / chapters_remaining / conversion_stopped_by_user). The dialog builds the summary from the
+  structured count fields of the domain CbzConversionProgress (the `:data` impl has no
+  compose-resources access, so the string lookup lives here in `:ui`, preserving native's exact
+  counts). Kept in a dedicated file (per the NP convention) so the parity additions review as a
+  unit; the converting-shell / title / Stop-button strings already live in
+  strings_np_settings_theme_lang.xml + base strings.xml and are NOT redefined here (duplicate
+  string ids across files in one qualifier crash compose-resources).
+-->
+<resources>
+    <string name="chapters_converted_successfully">✓ %1$d chapters converted successfully</string>
+    <string name="chapters_remaining">⏸ %1$d chapters remaining</string>
+    <string name="conversion_stopped_by_user">Conversion stopped by user.</string>
+    <string name="cbz_conversion_error_body">An error occurred while converting your downloads. Please try again.</string>
+</resources>

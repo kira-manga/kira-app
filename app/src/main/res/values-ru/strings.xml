@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Russian worker/notification strings — mirror native res/values-ru/strings.xml verbatim. -->
+    <string name="new_chapters">Новые главы</string>
+    <string name="notifications_for_new_manga_chapters">Уведомления о новых главах</string>
+    <string name="chapter_is_available">Глава %1$s доступна</string>
+
+    <string name="notification_channel_library_refresh">Обновление библиотеки</string>
+    <string name="notification_channel_library_refresh_desc">Прогресс фонового обновления</string>
+    <string name="notification_refreshing_library">Обновление библиотеки</string>
+    <string name="notification_library_refresh_failed">Не удалось обновить библиотеку</string>
+    <string name="notification_starting">Запуск…</string>
+    <string name="notification_refresh_failed">Ошибка обновления: %s</string>
+    <string name="notification_no_manga_to_refresh">Нет манги для обновления</string>
+    <string name="notification_processing_batch">Обработка пакета %d…</string>
+    <string name="notification_finishing_up">Завершение…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d завершено, %4$d не удалось)</string>
+    <string name="notification_refresh_completed">Завершено: %1$d успешно, %2$d не удалось</string>
+</resources>

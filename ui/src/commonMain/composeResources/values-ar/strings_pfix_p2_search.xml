@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the Search screen filter sheet — Arabic.
+
+  Trusted Arabic verbatim from the native app's values-ar/strings.xml (source of truth):
+  filter_sort_title / order_by / apply_filters / search_filters_not_ready
+  (native values-ar/strings.xml:230-236).
+-->
+<resources>
+    <string name="search_pfix_filter_sort_title">تصفية وفرز</string>
+    <string name="search_pfix_order_by">الترتيب حسب</string>
+    <string name="search_pfix_apply_filters">تطبيق</string>
+    <string name="search_pfix_filters_not_ready">لم يبدأ بعد البحث في الفلاتر في هذا المصدر. عُد لاحقًا للاطلاع!</string>
+</resources>

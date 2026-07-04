@@ -1,0 +1,5 @@
+# Rendered design proofs are regenerable build artifacts (Edge headless HTML→PNG).
+# Keep the source HTML mockups + BRIEF.md in git; ignore the renders.
+redesign/renders/
+redesign/screens/out/
+redesign/brand/out/

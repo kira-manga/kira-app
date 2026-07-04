@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Settings / Theme / Language strings (NP Phase 2, GAP-SET / GAP-THM / GAP-LANG cluster).
+
+  Net-new + reused-legacy-key parity strings for the Settings hub, Theme picker, Language picker
+  and the shared Feedback / ReadingMode / CBZ-conversion dialogs. Kept in a separate file (per NP
+  convention) from the shared :ui strings.xml so the parity additions are reviewable as a unit.
+
+  Reused legacy keys (en values verbatim from the old app's values/strings.xml; the matching
+  values-ar/strings_np_settings_theme_lang.xml carries the trusted Arabic verbatim from the old
+  app's values-ar/strings.xml):
+    - we_d_love_to_hear_from_you, connect_with_us_in_social_media,
+      you_ll_receive_a_prompt_response  (FeedbackDialog social section, GAP-SET-12)
+    - but_revert, but_apply  (ReadingModeDialog footer, GAP-SET-14)
+    - converting_to_cbz, conversion_complete_, conversion_stopped, conversion_failed,
+      please_don_t_close_the_app_until_conversion_is_complete, completed, remaining, current,
+      chapter, stop_conversion, close, closure_reason_done  (CbzConversionDialog, GAP-SET-16)
+    - feedbacks_and_complaints  (Settings nav-row label, GAP-SET-06)
+  New en-only keys (toggle descriptions / CBZ section copy lifted from inline literals,
+  GAP-SET-21): setting_downloaded_only_desc, setting_incognito_desc, follow_system_theme_desc,
+  theme_dark_desc, theme_light_desc, testing_mode, use_kira_compressor,
+  use_kira_compressor_desc, auto_convert_on_download, auto_convert_on_download_desc,
+  compress_existing_downloads, compress_existing_downloads_desc, start_conversion, converting,
+  settings_header_icon, cache_cleared, conversion_complete, feedback_submitted,
+  feedback_submit_failed.
+-->
+<resources>
+    <!-- GAP-SET-12 — Feedback dialog subtitle + social section (reused legacy keys, ar shipped) -->
+    <string name="we_d_love_to_hear_from_you">We'd love to hear from you</string>
+    <string name="connect_with_us_in_social_media">Connect with us in social media</string>
+    <string name="you_ll_receive_a_prompt_response">You’ll receive a prompt response — our developer will reach out to you shortly.</string>
+
+    <!-- GAP-SET-14 — ReadingMode dialog Apply/Revert footer (reused legacy keys, ar shipped) -->
+    <string name="but_revert">Revert</string>
+    <string name="but_apply">Apply</string>
+
+    <!-- GAP-SET-16 — CBZ conversion progress dialog (reused legacy keys, ar shipped) -->
+    <string name="converting_to_cbz">Converting to CBZ</string>
+    <string name="conversion_complete_">Conversion Complete!</string>
+    <string name="conversion_stopped">Conversion Stopped</string>
+    <string name="conversion_failed">Conversion Failed</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">Please don't close the app until conversion is complete</string>
+    <!-- `completed` and `close` are defined in the base strings.xml; not redefined here (duplicate
+         string ids across files in one qualifier crash compose-resources at runtime). -->
+    <string name="remaining">Remaining</string>
+    <string name="current">Current:</string>
+    <string name="chapter">Chapter %1$s</string>
+    <string name="stop_conversion">Stop Conversion</string>
+    <string name="closure_reason_done">DONE</string>
+
+    <!-- GAP-SET-06 — Settings nav-row label parity (reused legacy key, ar shipped) -->
+    <string name="feedbacks_and_complaints">Feedbacks &amp; complaints</string>
+
+    <!-- GAP-SET-03 — header launcher icon contentDescription -->
+    <string name="settings_header_icon">Header Icon</string>
+
+    <!-- GAP-SET-21 — toggle descriptions + CBZ section copy lifted from inline literals (en-only) -->
+    <string name="setting_downloaded_only_desc">Filters all entries in your library</string>
+    <string name="setting_incognito_desc">Stop saving your reading history.</string>
+    <string name="follow_system_theme_desc">Follow System Theme</string>
+    <string name="theme_dark_desc">Dark Mode</string>
+    <string name="theme_light_desc">Light Mode</string>
+    <string name="testing_mode">Testing Mode</string>
+    <string name="use_kira_compressor">Use Kira Compressor</string>
+    <string name="use_kira_compressor_desc">Use Kira Compressor to reduce chapter size by over 50% and save storage</string>
+    <string name="auto_convert_on_download">Auto-convert on Download</string>
+    <string name="compress_existing_downloads">Compress Existing Downloads</string>
+    <string name="compress_existing_downloads_desc">Compress all previously downloaded chapters. This will save storage space but may take some time.</string>
+    <string name="start_conversion">Start Conversion</string>
+    <string name="converting">Converting...</string>
+
+    <!-- GAP-SET-21 — VM snackbar strings lifted from inline literals (en-only) -->
+    <string name="feedback_submitted">Thanks! Your feedback was submitted.</string>
+</resources>

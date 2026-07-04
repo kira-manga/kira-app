@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_discover">Keşfet</string>
+    <string name="home_popular">Popüler</string>
+    <string name="home_latest">Son güncellemeler</string>
+</resources>

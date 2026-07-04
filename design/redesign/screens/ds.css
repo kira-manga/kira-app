@@ -1,0 +1,157 @@
+/* ===== Yami redesign — shared design system (dark). Matches approved Home mockup. ===== */
+:root{
+  --bg:#0E1014; --bg-2:#0B0D11;
+  --card:#161A23; --card-2:#1C2130;
+  --ghost:rgba(255,255,255,.055); --ghost-line:rgba(255,255,255,.085);
+  --text:#F3F4F7; --muted:#9AA1AF; --dim:#838B9A;
+  --accent:#FF5B6E; --accent-2:#FF8A5B;
+  --accent-grad:linear-gradient(135deg,#FF5B6E,#FF8A5B);
+  --accent-soft:rgba(255,91,110,.13);
+  --good:#46D6A6; --warn:#FFC65B;
+  --shadow:0 14px 34px rgba(0,0,0,.5);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:#05060a;padding:26px;display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start}
+.stage{display:flex;flex-direction:column;gap:12px;align-items:center}
+.stage .label{font-size:13px;font-weight:800;letter-spacing:1.5px;color:#aeb6c6;text-transform:uppercase}
+.stage .label.old{color:#7c8597}
+.stage .label.new{color:#ff7d8c}
+/* ---- phone frame ---- */
+.screen{width:390px;height:844px;position:relative;overflow:hidden;border-radius:30px;background:
+   radial-gradient(120% 60% at 85% -5%,rgba(255,91,110,.16),transparent 60%),
+   radial-gradient(90% 45% at -10% 0%,rgba(255,138,91,.08),transparent 55%),
+   var(--bg);color:var(--text);box-shadow:0 30px 70px rgba(0,0,0,.6)}
+/* OLD frame: flat, bluish legacy M3, sharp corners, no glow */
+.screen.old{background:#101216;border-radius:30px}
+.statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:700;color:var(--text)}
+.statusbar .dots{opacity:.85;letter-spacing:1px}
+/* ---- big header (eyebrow + title + circular actions) ---- */
+.header{display:flex;align-items:center;justify-content:space-between;padding:8px 20px 14px}
+.eyebrow{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--accent)}
+.header h1{font-size:28px;font-weight:800;letter-spacing:-.6px;margin-top:3px}
+.header .actions{display:flex;gap:10px}
+.cbtn{width:42px;height:42px;border-radius:14px;background:var(--ghost);border:1px solid var(--ghost-line);display:flex;align-items:center;justify-content:center;color:var(--text)}
+.cbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* ---- plain top app bar (back + title) ---- */
+.topbar{display:flex;align-items:center;gap:14px;padding:10px 16px 12px}
+.topbar .back{width:40px;height:40px;border-radius:12px;background:var(--ghost);border:1px solid var(--ghost-line);display:flex;align-items:center;justify-content:center;color:var(--text)}
+.topbar .back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.topbar h1{font-size:22px;font-weight:800;letter-spacing:-.4px}
+.topbar .sp{flex:1}
+/* ---- source pills ---- */
+.pills{display:flex;gap:9px;padding:2px 20px 4px;overflow:hidden;align-items:center}
+.pill{padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;color:var(--muted);background:var(--ghost);border:1px solid var(--ghost-line)}
+.pill.sel{color:#fff;background:var(--accent-grad);border:none;box-shadow:0 8px 18px rgba(255,91,110,.35)}
+/* ---- section header ---- */
+.sec{display:flex;align-items:baseline;justify-content:space-between;padding:18px 20px 12px}
+.sec h2{font-size:19px;font-weight:800;letter-spacing:-.3px}
+.sec a{font-size:13px;font-weight:700;color:var(--accent)}
+/* ---- poster grid ---- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:4px 18px}
+.grid.g3{grid-template-columns:1fr 1fr 1fr;gap:10px}
+.poster{position:relative;border-radius:16px;overflow:hidden;aspect-ratio:.68;box-shadow:var(--shadow)}
+.poster .scrim{position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(0,0,0,.85))}
+.poster .rate{position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:3px;padding:3px 8px;border-radius:999px;background:rgba(10,10,14,.5);backdrop-filter:blur(6px);font-size:10px;font-weight:700}
+.poster .rate svg{width:11px;height:11px;fill:var(--warn);stroke:none}
+.poster .t{position:absolute;left:10px;right:10px;bottom:10px;font-size:13px;font-weight:800;color:#fff;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.poster .badge{position:absolute;top:8px;right:8px;padding:3px 8px;border-radius:999px;background:rgba(255,91,110,.92);font-size:9px;font-weight:800;letter-spacing:.4px}
+/* ---- horizontal hero cards ---- */
+.hero{display:flex;gap:14px;padding:0 20px;overflow:hidden}
+.hcard{position:relative;flex:0 0 auto;width:158px;height:212px;border-radius:20px;overflow:hidden;box-shadow:var(--shadow)}
+.hcard .scrim{position:absolute;inset:0;background:linear-gradient(transparent 38%,rgba(0,0,0,.82))}
+.hcard .meta{position:absolute;left:12px;right:12px;bottom:12px}
+.hcard .meta .t{font-size:15px;font-weight:800;color:#fff;line-height:1.15}
+.hcard .meta .s{font-size:11px;font-weight:600;color:rgba(255,255,255,.7);margin-top:3px}
+/* ---- list rows (card style) ---- */
+.feed{padding:2px 16px 0;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--ghost-line);border-radius:20px;padding:11px}
+.row .rcover{width:64px;height:86px;border-radius:14px;overflow:hidden;flex:0 0 auto;position:relative}
+.row .rcover.sq{width:64px;height:64px;border-radius:14px}
+.row .body{flex:1;min-width:0}
+.row .title{font-size:15.5px;font-weight:800;letter-spacing:-.2px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row .meta{font-size:12.5px;font-weight:600;color:var(--muted);margin-top:4px}
+.row .meta .dot{color:var(--dim);margin:0 6px}
+.chrow{display:flex;gap:7px;margin-top:9px}
+.chip{font-size:11px;font-weight:700;padding:6px 11px;border-radius:999px;color:var(--accent);background:var(--accent-soft);border:1px solid rgba(255,91,110,.20)}
+.chip.muted{color:var(--muted);background:var(--ghost);border-color:var(--ghost-line)}
+.chip.good{color:var(--good);background:rgba(70,214,166,.12);border-color:rgba(70,214,166,.25)}
+.iconbtn{width:42px;height:42px;border-radius:13px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:var(--ghost);border:1px solid var(--ghost-line);color:var(--muted)}
+.iconbtn.on{background:var(--accent-soft);border-color:rgba(255,91,110,.3);color:var(--accent)}
+.iconbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+.iconbtn.on svg{fill:currentColor;stroke:none}
+/* ---- progress ---- */
+.bar{height:7px;border-radius:999px;background:var(--ghost);overflow:hidden;margin-top:10px}
+.bar > i{display:block;height:100%;border-radius:999px;background:var(--accent-grad)}
+/* ---- settings / grouped sections ---- */
+.group{background:var(--card);border:1px solid var(--ghost-line);border-radius:18px;margin:0 16px 16px;overflow:hidden}
+.glabel{font-size:12px;font-weight:800;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;padding:18px 22px 8px}
+.srow{display:flex;align-items:center;gap:14px;padding:15px 16px;border-bottom:1px solid var(--ghost-line)}
+.srow:last-child{border-bottom:none}
+.srow .si{width:38px;height:38px;border-radius:11px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent);flex:0 0 auto}
+.srow .si svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+.srow .st{flex:1;min-width:0}
+.srow .st .a{font-size:15px;font-weight:700}
+.srow .st .b{font-size:12.5px;color:var(--muted);margin-top:2px}
+.srow .chev{color:var(--dim)}
+.srow .chev svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+/* toggle */
+.tog{width:46px;height:28px;border-radius:999px;background:var(--ghost);border:1px solid var(--ghost-line);position:relative;flex:0 0 auto}
+.tog.on{background:var(--accent-grad);border:none}
+.tog i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.tog.on i{left:21px}
+/* ---- stat cells ---- */
+.statcard{background:var(--card);border:1px solid var(--ghost-line);border-radius:18px;margin:0 16px 14px;padding:18px;display:flex;gap:12px}
+.statcell{flex:1;text-align:center}
+.statcell .v{font-size:24px;font-weight:900;letter-spacing:-.5px}
+.statcell .v.accent{color:var(--accent)}
+.statcell .l{font-size:11.5px;font-weight:600;color:var(--muted);margin-top:4px}
+/* ---- detail hero ---- */
+.dhero{position:relative;height:330px}
+.dhero .bg{position:absolute;inset:0;filter:blur(2px);transform:scale(1.05)}
+.dhero .bgscrim{position:absolute;inset:0;background:linear-gradient(transparent,var(--bg) 92%),rgba(14,16,20,.35)}
+.dhero .content{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;padding:0 24px 4px}
+.dhero .cover{width:128px;height:188px;border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+.dhero h1{font-size:21px;font-weight:900;text-align:center;margin-top:14px;letter-spacing:-.3px}
+.dhero .sub{font-size:13px;color:var(--muted);margin-top:6px;font-weight:600}
+.dhero .genres{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap;justify-content:center}
+/* big CTA */
+.cta{display:flex;gap:10px;padding:16px 20px}
+.btn{flex:1;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:800}
+.btn.primary{background:var(--accent-grad);color:#fff;box-shadow:0 12px 26px rgba(255,91,110,.4)}
+.btn.ghost{flex:0 0 auto;width:54px;background:var(--ghost);border:1px solid var(--ghost-line);color:var(--text)}
+.btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.btn.primary svg{fill:#fff;stroke:none}
+/* chapter list rows */
+.clrow{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--ghost-line)}
+.clrow .cn{font-size:15px;font-weight:700}
+.clrow .cd{font-size:12px;color:var(--muted);margin-top:3px}
+.clrow.read .cn,.clrow.read .cd{color:var(--dim)}
+/* ---- floating nav ---- */
+.nav{position:absolute;left:16px;right:16px;bottom:18px;height:66px;border-radius:26px;background:rgba(22,26,35,.92);backdrop-filter:blur(16px);border:1px solid var(--ghost-line);box-shadow:0 18px 40px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:space-around;padding:0 10px}
+.nav .item{display:flex;align-items:center;justify-content:center;color:#9097A6;height:44px}
+.nav .item svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8}
+.nav .item.sel{color:#fff;background:var(--accent-grad);border-radius:18px;padding:0 15px;gap:7px;font-size:13px;font-weight:800;box-shadow:0 10px 22px rgba(255,91,110,.4)}
+/* empty / medallion */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;padding:40px}
+.medallion{width:96px;height:96px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.medallion svg{width:44px;height:44px;stroke:currentColor;fill:none;stroke-width:1.6}
+.empty .et{font-size:17px;font-weight:800}
+.empty .es{font-size:13px;color:var(--muted);text-align:center}
+/* cover gradients (stand-ins for art) */
+.g1{background:linear-gradient(150deg,#42506e,#1b2130)} .g2{background:linear-gradient(150deg,#6e4250,#2a1c24)}
+.g3{background:linear-gradient(150deg,#3f6e5f,#1a2a26)} .g4{background:linear-gradient(150deg,#5b4f9c,#221f33)}
+.g5{background:linear-gradient(150deg,#9c7340,#322512)} .g6{background:linear-gradient(150deg,#3f6f9c,#142632)}
+.g7{background:linear-gradient(150deg,#9c4070,#33121f)} .g8{background:linear-gradient(150deg,#40709c,#12222f)}
+/* ===== OLD (legacy) look helpers — flat, bluish M3, sharp ===== */
+.old{--accent:#3D5AFE;--accent-grad:#3D5AFE;--accent-soft:rgba(61,90,254,.12);--card:#1b1d24;--ghost:rgba(255,255,255,.05);--ghost-line:rgba(255,255,255,.08)}
+.old .poster,.old .hcard,.old .row,.old .rcover,.old .cover,.old .group,.old .statcard,.old .dhero .cover{border-radius:6px!important}
+.old .pill{border-radius:6px}
+.old .chip{border-radius:6px}
+.old .nav{position:absolute;left:0;right:0;bottom:0;height:62px;border-radius:0;background:#15171d;border:none;border-top:1px solid var(--ghost-line);box-shadow:none;backdrop-filter:none}
+.old .nav .item.sel{background:none;color:#3D5AFE;box-shadow:none;padding:0;border-radius:0}
+.old .btn.primary{background:#3D5AFE;box-shadow:none;border-radius:6px}
+.old .iconbtn,.old .cbtn{border-radius:6px}
+.old .tog.on{background:#3D5AFE}
+.oldbar{display:flex;align-items:center;gap:14px;padding:14px 16px;background:#15171d;border-bottom:1px solid var(--ghost-line)}
+.oldbar h1{font-size:20px;font-weight:600}
+.oldbar .sp{flex:1}

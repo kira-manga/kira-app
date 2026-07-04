@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_discover">Descobrir</string>
+    <string name="home_popular">Em alta</string>
+    <string name="home_latest">Últimas atualizações</string>
+</resources>

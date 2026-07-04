@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Indonesian worker/notification strings — mirror native res/values-in/strings.xml verbatim. -->
+    <string name="new_chapters">Bab Baru</string>
+    <string name="notifications_for_new_manga_chapters">Notifikasi untuk bab manga baru</string>
+    <string name="chapter_is_available">Bab %1$s tersedia</string>
+
+    <string name="notification_channel_library_refresh">Penyegaran Perpustakaan</string>
+    <string name="notification_channel_library_refresh_desc">Menampilkan progres penyegaran di latar belakang</string>
+    <string name="notification_refreshing_library">Menyegarkan perpustakaan</string>
+    <string name="notification_library_refresh_failed">Penyegaran gagal</string>
+    <string name="notification_starting">Memulai…</string>
+    <string name="notification_refresh_failed">Penyegaran gagal: %s</string>
+    <string name="notification_no_manga_to_refresh">Tidak ada manga untuk diperbarui</string>
+    <string name="notification_processing_batch">Memproses batch %d…</string>
+    <string name="notification_finishing_up">Menyelesaikan…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d selesai, %4$d gagal)</string>
+    <string name="notification_refresh_completed">Selesai: %1$d berhasil, %2$d gagal</string>
+</resources>

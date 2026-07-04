@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_discover">اكتشف</string>
+    <string name="home_popular">الرائج الآن</string>
+    <string name="home_latest">آخر التحديثات</string>
+</resources>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the manga Details screen (the native library_details screen was
+  folded into the KMP Details screen). Native text + native key names; keys already present in
+  the shared catalog (filter_all/filter_downloaded/filter_unread/filter_bookmarked,
+  np_details_download_all/np_details_no_chapter_yet/np_details_today/np_details_yesterday/
+  np_details_days_ago, action_open_in_browser, desc_newest_first/desc_oldest_first,
+  library_bottom_sheet_tab_filter/library_bottom_sheet_tab_sort) are reused, NOT redefined here.
+-->
+<resources>
+    <!-- Header 4-button ActionButton row labels (native HeaderSection.kt / ActionsRow.kt). -->
+    <string name="action_bookmark">Bookmark</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_downloading">Downloading</string>
+
+    <!-- Chapter filter sheet — 5th filter (READED); the other four reuse existing keys. -->
+    <string name="filter_readed">Readed</string>
+
+    <!-- Filter top-bar icon content description (native contentDescription_filter). -->
+    <string name="contentDescription_filter">Filter</string>
+
+    <!-- Sort options section labels (sort_options_title/sort_by_label/sort_direction_*) are defined
+         once in strings_pfix_p2_library.xml and shared via the :ui Res accessor — not redefined here
+         (compose-resources forbids the same string id in two files within one qualifier; it crashes
+         at runtime). -->
+
+    <!-- Sort-type display names (native LibraryDetailsViewModel.SortType.getDisplayName). -->
+    <string name="sort_type_id">Id</string>
+    <string name="sort_type_number">Number</string>
+    <string name="sort_type_date">Date</string>
+    <string name="sort_type_last_read_date">Last Read Date</string>
+
+    <!-- Resume FAB (native LibraryMangaScreen.kt:234). %1$s = first-unread chapter number. -->
+    <string name="details_resume_chapter">Resume %1$s</string>
+    <string name="details_resume_finished">You finished this manga</string>
+    <string name="details_resume_cd">Resume</string>
+
+    <!-- Per-chapter bookmark toggle content descriptions (native BookmarkBorder/BookmarkRemove). -->
+    <string name="details_bookmark_chapter">Bookmark chapter</string>
+    <string name="details_unbookmark_chapter">Remove chapter bookmark</string>
+</resources>

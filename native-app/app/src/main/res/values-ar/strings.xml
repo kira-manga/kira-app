@@ -1,0 +1,825 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">يامي مانجا</string>
+    <string name="title_home">الصفحة الرئيسية</string>
+    <string name="title_history">التاريخ</string>
+    <string name="title_notifications">التحديثات</string>
+    <string name="title_library">المكتبة</string>
+    <string name="title_settings">الإعدادات</string>
+    <string name="title_statistics">الإحصائيات</string>
+
+    <string name="content_description_close">اغلاق</string>
+
+    // libaray screen
+    <string name="searching_placeholder">بحث...</string>
+    <string name="dropdown_button_refresh">تحديث</string>
+    <string name="dropdown_button_open_random_manga">افتح مانغا عشوائية</string>
+    <string name="library_bottom_sheet_tab_filter">تصفية</string>
+    <string name="library_bottom_sheet_tab_sort">ترتيب</string>
+    <string name="library_bottom_sheet_tab_display">عرض</string>
+    <string name="ascending">تصاعدي</string>
+    <string name="descending">تنازلي</string>
+    <string name="auto_label">تلقائي</string>
+    <string name="downloading_title">جارٍ التنزيل…</string>
+    <string name="continue_string">متابعة</string>
+    <string name="stop">إيقاف</string>
+    <string name="downloaded_info">تم تنزيل %1$d من %2$d</string>
+    <string name="percent_completed">%1$d%% مكتمل</string>
+
+    <string name="libaray_open_the_web_view">افتح في المتصفح لتحديث الرمز </string>
+    <string name="libaray_open_the_web_button">افتح</string>
+
+    <string name="last_updated">آخر تحديث: %1$s</string>
+    <string name="not_updated_yet">لم يتم التحديث بعد</string>
+    <plurals name="items_count">
+        <item quantity="zero">%d عنصر</item>
+        <item quantity="one">%d عنصر</item>
+        <item quantity="two">%d عنصران</item>
+        <item quantity="few">%d عناصر</item>
+        <item quantity="many">%d عنصراً</item>
+        <item quantity="other">%d عنصر</item>
+    </plurals>
+    <string name="empty_library_message">%1$s فارغة</string>
+    <string name="empty_library_desc">%1$s فارغة</string>
+    <!-- MangaCard-specific strings -->
+    <string name="manga_cover_description">غلاف %1$s</string>
+    <string name="source_badge_format">%1$s - %2$s</string>
+
+    <!-- SortOptionsSection -->
+    <string name="sort_options_title">خيارات الفرز</string>
+    <string name="sort_direction_label">اتجاه الفرز</string>
+    <string name="sort_direction_ascending">تصاعدي</string>
+    <string name="sort_direction_descending">تنازلي</string>
+    <string name="sort_by_label">فرز حسب</string>
+
+
+    <!-- DisplayOptionsSection -->
+    <string name="items_per_row_label">العناصر في الصف:</string>
+    <string name="auto_text">تلقائي</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">عنصر</string>
+    <string name="items_plural">عناصر</string>
+    <string name="show_items_details">عرض تفاصيل العناصر</string>
+    <string name="show_items_source">عرض مصدر العناصر</string>
+    <string name="show_items_count">عرض عدد العناصر</string>
+    <!-- Filter Types -->
+    <string name="filter_downloaded">تم التحميل</string>
+    <string name="filter_unread">غير مقروء</string>
+    <string name="filter_started">تم البدء</string>
+    <string name="filter_bookmarked">تم الحفظ</string>
+    <string name="filter_completed">مكتمل</string>
+    <string name="filter_readed">مقروء</string>
+    <string name="status_open">مفتوح</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">أبجديًا</string>
+    <string name="sort_total_chapters">إجمالي الفصول</string>
+    <string name="sort_last_read">آخر قراءة</string>
+    <string name="sort_unread_count">عدد غير المقروء</string>
+    <string name="sort_date_added">تاريخ الإضافة</string>
+    <string name="sort_random">عشوائي</string>
+
+    <string name="content_description_close_search">اغلاق البحث</string>
+    <string name="contentDescription_search">البحث</string>
+    <string name="contentDescription_filter">فرز</string>
+    <string name="contentDescription_options">خيارات</string>
+    <string name="contentDescription_search_icon">رمز البحث</string>
+    <string name="contentDescription_search_clear">مسح البحث</string>
+
+
+    //-------------------------------------------------------------------------------------------------------
+
+
+    // Updates
+
+    <string name="notifications_group_today">اليوم</string>
+    <string name="notifications_group_yesterday">أمس</string>
+    <string name="notifications_group_last_week">الأسبوع الماضي</string>
+    <string name="notifications_group_older">أقدم</string>
+    <string name="contentDescription_delete_all">حذف الكل</string>
+    <string name="contentDescription_mark_all_as_read">تحديد الكل كمقروء</string>
+    <string name="contentDescription_mark_as_read">تحديد كمقروء</string>
+    <string name="contentDescription_delete">حذف</string>
+    <string name="chapter_number">الفصل %1$s</string>
+    //-------------------------------------------------------------------------------------------------------
+
+    // History
+
+
+    <string name="content_description_delete">حذف</string>
+    <string name="content_description_clear_history">مسح السجل</string>
+    <string name="today">اليوم</string>
+    <string name="yesterday">أمس</string>
+    <string name="days_ago">منذ %1$d أيام</string>
+    <string name="weeks_ago">منذ %1$d أسابيع</string>
+    <string name="months_ago">منذ %1$d أشهر</string>
+    <string name="years_ago">منذ %1$d سنوات</string>
+
+
+    //-------------------------------------------------------------------------------------------------------
+    //Settings
+
+    <string name="header_icon_desc">أيقونة العنوان</string>
+    <string name="downloaded_only_title">تنزيل فقط</string>
+    <string name="downloaded_only_desc">يقوم بترشيح جميع المانغات في مكتبتك</string>
+    <string name="incognito_mode_title">وضع التصفح الخفي</string>
+    <string name="incognito_mode_desc"> توقف عن حفظ سجل قراءتك.</string>
+    <string name="theme_title">سمة مخصصة</string>
+    <string name="theme_dark">الوضع الداكن</string>
+    <string name="theme_light">الوضع الفاتح</string>
+    <string name="pure_black_mode_title">الوضع الأسود الداكن الكامل</string>
+    <string name="plus18_filter_title">فلتر +18</string>
+    <string name="default_reading_mode">الوضع الافتراضي للقراءة</string>
+    <string name="statistics">الإحصائيات</string>
+    <string name="app_language">لغة التطبيق</string>
+    <string name="clear_cache">مسح ذاكرة الفصول</string>
+    <string name="cache_used">المستخدم: </string>
+    <string name="about">حول</string>
+    <string name="help">مساعدة</string>
+    <string name="adult_filter_removal_header">المحتوى غير متاح</string>
+    <string name="adult_filter_removal_title">نأسف — لا يمكن عرض هذا المحتوى. تماشيًا مع سياسات متجر Google Play ومع احترام القيم الدينية والثقافية، لا نعرض المحتوى الجنسي الصريح. شكرًا لتفهمك.</string>
+    <string name="confirm">تأكيد</string>
+    <string name="calculating">جارٍ الحساب…</string>
+    <string name="bytes">ب</string>
+    <string name="kilobytes">%.2f كيلوبايت</string>
+    <string name="megabytes">%.2f ميغابايت</string>
+    <string name="gigabytes">%.2f غيغابايت</string>
+
+    //-------------------------------------------------------------------------------------------------------
+
+    //Statistics
+
+
+    <!-- Section titles -->
+    <string name="section_entries">المانغا</string>
+    <string name="section_chapters">الفصول</string>
+
+    <!-- Overview labels -->
+    <string name="label_in_library">في المكتبة</string>
+    <string name="label_read_duration">مدة القراءة</string>
+    <string name="label_completed_entries">المانغاالمكتملة</string>
+
+    <!-- Entries group -->
+    <string name="label_started">بدأت</string>
+    <string name="label_completed">مكتملة</string>
+
+    <!-- Chapters group -->
+    <string name="label_total">الإجمالي</string>
+    <string name="label_read">مقروءة</string>
+    <string name="label_downloaded">محملة</string>
+    <string name="label_bookmarked">مظلّمة</string>
+
+
+
+
+
+    //-------------------------------------------------------------------------------------------------------
+
+    //LibraryMangaDetails
+    <!-- Confirm dialogs -->
+    <string name="remove_bookmark_title">إزالة من المكتبة</string>
+    <string name="remove_bookmark_message">هل أنت متأكد من رغبتك في إزالة هذا المانجا من مكتبتك؟ سيتم حذف جميع الفصول المحفوظة.</string>
+    <string name="add_library_title">أضف إلى المكتبة</string>
+    <string name="add_library_message">لتنزيل الفصول وتتبع تقدم القراءة، يرجى إضافة هذا المانجا إلى مكتبتك أولاً. هل ترغب في إضافته الآن؟</string>
+    <string name="confirm_add_to_library">أضف إلى المكتبة</string>
+
+    <!-- Header actions -->
+    <string name="action_remove">إزالة</string>
+    <string name="action_bookmark">حفظ</string>
+    <string name="action_download_all">تنزيل </string>
+    <string name="action_downloading">جارٍ التنزيل</string>
+    <string name="action_open_in_browser">افتح في المتصفح</string>
+    <string name="action_no_chapter_yet">لا يوجد فصل بعد</string>
+
+    <!-- Chapter list -->
+    <string name="chapters_count_format">%1$d فصول</string>
+    <string name="day_since_format">%1$d منذ </string>
+    <string name="cancel_selection">إلغاء التحديد</string>
+    <string name="download_selected_format">تنزيل المحدد (%1$d)</string>
+    <string name="custom_download">تنزيل مخصص</string>
+
+    <!-- TopAppBar and menu -->
+    <string name="desc_back">رجوع</string>
+    <string name="menu_filter">تصفية</string>
+    <string name="menu_share">مشاركة</string>
+
+    <!-- Icon descriptions -->
+    <string name="desc_newest_first">الأحدث أولاً</string>
+    <string name="desc_oldest_first">الأقدم أولاً</string>
+    <string name="title_copied">تم نسخ العنوان!</string>
+
+
+    //-------------------------------------------------------------------------------------------------------
+
+
+    // reading modes
+    <string name="reading_mode_default">افتراضي</string>
+    <string name="reading_mode_right_to_left">من اليمين إلى اليسار</string>
+    <string name="reading_mode_left_to_right">من اليسار إلى اليمين</string>
+    <string name="reading_mode_vertical">عمودي</string>
+    <string name="reading_mode_webtoon">ويب تون</string>
+    <string name="reading_mode_continuous_vertical">عمودي متصل</string>
+    <string name="but_revert">ارجاع</string>
+    <string name="but_apply">تفعيل</string>
+    <string name="retry">اعادة المحاولة</string>
+    <string name="failed_to_load">فشل التحميل : %1$s</string>
+
+    //-------------------------------------------------------------------------------------------------------
+
+        <!-- Search filters not ready -->
+    <string name="search_filters_not_ready">
+    لم يبدأ بعد البحث في الفلاتر في هذا المصدر. عُد لاحقًا للاطلاع!</string>
+    <string name="filter_sort_title">تصفية وفرز</string>
+    <string name="genres">الأنواع</string>
+    <string name="order_by">الترتيب حسب</string>
+    <string name="no_sort_types">لا يوجد أنواع فرز</string>
+    <string name="apply_filters">تطبيق</string>
+
+    //-------------------------------------------------------------------------------------------------------
+
+    <string name="title_sources_settings">اعدادات المصادر</string>
+    <string name="enable_disable_all_sources">
+    تفعيل او الغاء مصادر ال %1$s
+    </string>
+
+    <string name="enabled">تفعيل</string>
+    <string name="disabled">الغاء تفعيل</string>
+
+    //-------------------------------------------------------------------------------------------------------
+
+    // download notifications
+    <string name="new_chapters">فصل جديد</string>
+    <string name="notifications_for_new_manga_chapters">الإشعارات بالفصول الجديدة للمانجا</string>
+    <string name="chapter_id_not_found_for_url">لم يتم العثور على معرف الفصل للرابط: %1$s</string>
+    <string name="chapter_is_available">الفصل %1$s متاح</string>
+    <string name="chapter_downloaded_successfully">تم تنزيل الفصل %1$s بنجاح!</string>
+    <string name="failed_to_download_chapter">فشل في تنزيل الفصل %1$s</string>
+    <string name="manga_download">تنزيل المانجا</string>
+    <string name="downloading_chapter">جاري تنزيل الفصل %1$s…</string>
+    <string name="download_complete">اكتمل التنزيل</string>
+    <string name="download_error">خطأ في التنزيل</string>
+    <string name="select_language">اختار اللغة</string>
+    <string name="downloads">التحملات</string>
+    <string name="action_today">اليوم</string>
+    <string name="action_yesterday">امس</string>
+    //-------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+    <!-- Feedback and Requests -->
+    <string name="request_feature_bug">الإبلاغ عن خطأ أو طلب ميزة</string>
+    <string name="enter_your_feedback">أدخل ملاحظاتك</string>
+    <string name="submit">إرسال</string>
+    <string name="enter_your_language">أدخل لغتك</string>
+    <string name="request_feature_bug_title">الإبلاغ عن خطأ / طلب ميزة</string>
+    <string name="request_feature_bug_desc">انقر لإرسال ملاحظاتك</string>
+    <string name="request_add_language">طلب إضافة لغة</string>
+    <string name="request_adding_source">طلب إضافة مصدر / موقع</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">أدخل عنوان URL للموقع الذي تريد إضافته</string>
+    <string name="we_will_add_it_as_soon_it_possible">سنضيفه في أقرب وقت ممكن</string>
+    <string name="enter_the_site_url">أدخل عنوان الموقع</string>
+
+    <string name="enable_notifications">تفعيل الإشعارات</string>
+    <string name="notification_permission">نحتاج إلى هذا الإذن لإرسال أحدث الفصول إليك، وعرض تقدم التنزيل، وضمان عمل التطبيق بشكل صحيح.</string>
+    <string name="grant_permission">منح الإذن</string>
+    <string name="theme_system">النظام</string>
+    <string name="version">الإصدار</string>
+    <string name="check_for_update">التحقق من وجود تحديث</string>
+    <string name="rate_our_app">قيّم تطبيقنا</string>
+    <string name="what_s_new">ما الجديد</string>
+    <string name="source_code">كود المصدر</string>
+    <string name="soon">قريبًا</string>
+    <string name="privacy_policy">سياسة الخصوصية</string>
+
+    <!-- Crash Screen -->
+    <string name="crash_screen_title">عذرًا! حدث خطأ ما</string>
+    <string name="crash_screen_description">نأسف—واجهت %1$s خطأً غير متوقع. يمكنك إرسال تقرير عن التعطل لمساعدتنا في تحسين التطبيق.</string>
+    <string name="pref_dump_crash_logs">إرسال تقرير عن التعطل</string>
+    <string name="crash_screen_restart_application">إعادة تشغيل التطبيق</string>
+    <string name="finish">إنهاء</string>
+    <!-- Onboarding -->
+    <string name="select_your_manga_sources">اختر مصادر المانغا الخاصة بك</string>
+    <string name="you_need_to_enable_notifications">تحتاج إلى تمكين الإشعارات لاستخدام التطبيق</string>
+    <string name="choose_your_theme">اختر الموضوع</string>
+    <string name="get_started">ابدأ</string>
+    <string name="welcome_suptitle">استكشف واقرأ واجمع المانغا بسهولة.</string>
+    <string name="welcome_title">مرحبًا بك في يامي مانجا</string>
+    <string name="system_theme">موضوع النظام</string>
+    <string name="follow_system_theme">اتباع موضوع النظام</string>
+    <string name="download_failed">فشل: %1$s</string>
+    <string name="unknown">غير معروف</string>
+
+
+    <string name="minimum_5_characters_required">يجب أن يكون عدد الأحرف 5 على الأقل</string>
+    <string name="error_in_the_app">خطأ في التطبيق</string>
+    <string name="add_languages">إضافة لغات</string>
+    <string name="add_manga_site">إضافة موقع مانغا</string>
+    <string name="error_in_manga_site">خطأ في موقع المانغا</string>
+    <string name="ask_to_add_features">اطلب إضافة ميزات</string>
+    <string name="custom_feedback">ملاحظات مخصصة</string>
+
+    <string name="request_language">طلب لغة</string>
+    <string name="active">نشط</string>
+    <string name="failed">فشل</string>
+    <string name="completed">اكتمل</string>
+    <string name="running">جارٍ التشغيل</string>
+    <string name="queued">قيد الانتظار</string>
+    <string name="downloaded">تم التنزيل</string>
+
+    <string name="http_400">طلب غير صالح</string>
+    <string name="http_401">غير مصرح</string>
+    <string name="http_403">ممنوع – انقر على “مساعدة” لحل المشكلة</string>
+    <string name="http_404">غير موجود</string>
+    <string name="http_408">انتهت مهلة الطلب</string>
+    <string name="http_client_error">خطأ في العميل %1$d</string>
+
+    <string name="http_500">خطأ داخلي في الخادم</string>
+    <string name="http_502">بوابة خاطئة</string>
+    <string name="http_503">الخدمة غير متوفرة</string>
+    <string name="http_504">انتهت مهلة البوابة</string>
+    <string name="http_server_error">خطأ في الخادم %1$d</string>
+
+    <string name="http_unexpected_status">حالة HTTP غير متوقعة %1$d</string>
+
+    <string name="err_no_internet">لا يمكن الوصول إلى الخادم—يرجى التحقق من اتصالك بالإنترنت.</string>
+    <string name="err_timeout">انتهت مهلة الطلب—يرجى المحاولة مرة أخرى لاحقًا.</string>
+    <string name="err_connect">يتعذر الاتصال بالخادم.</string>
+    <string name="err_unexpected">حدث خطأ غير متوقع: %1$s</string>
+    <string name="cancelled_by_user">أُلغي بواسطة المستخدم</string>
+    <string name="failed_to_load_image">فشل في تحميل الصورة.</string>
+    <string name="image_too_large_tap_here_to_open_the_chapter_in_webview">الصورة كبيرة جدًا \n اضغط هنا لفتح الفصل في عرض الويب</string>
+    <string name="you_are_in">أنت في</string>
+    <string name="going_to">ذاهب إلى</string>
+    <string name="no_internet_connection_please_try_again_when_you_re_online">لا يوجد اتصال بالإنترنت. يرجى المحاولة مرة أخرى عند الاتصال بالإنترنت.</string>
+    <string name="image_is_too_big">الصورة كبيرة جدًا ولا يمكن عرضها \n حاول فتحها في عرض الويب</string>
+    <string name="likes">الإعجابات</string>
+    <string name="watching_now">تشاهد الآن</string>
+    <string name="feedback_id_format">المعرف: %s…</string>
+
+    <!-- Closure Reasons -->
+    <string name="closure_reason">سبب الإغلاق</string>
+    <string name="closure_reason_label">سبب الإغلاق:</string>
+    <string name="closure_reason_done">تم</string>
+    <string name="closure_reason_done_wait_update">تم - انتظار التحديث</string>
+    <string name="closure_reason_other">أخرى</string>
+
+
+    <!-- Error States -->
+    <string name="error_occurred">حدث خطأ ما</string>
+    <string name="error_code_format">رمز الخطأ: %d</string>
+    <string name="get_help">الحصول على المساعدة</string>
+
+    <!-- Empty States -->
+    <string name="no_feedback_found">لا توجد تعليقات بعد</string>
+    <string name="no_feedback_message">عندما يتم إرسال التعليقات، ستظهر هنا.</string>
+
+    <string name="status_planned">مخطط</string>
+
+    <string name="show_buttons">عرض الأزرار</string>
+    <string name="show_tabs_all_likes_etc">عرض علامات التبويب (الكل، الإعجابات، إلخ)</string>
+    <string name="status_pinned">مثبت</string>
+    <string name="pinned_reason">مُثبَّت</string>
+    <string name="admin">المسؤول</string>
+    <string name="content_removed_18_hentai">تمت إزالة المحتوى: +18 هينتاي</string>
+    <string name="references_to_adult_18_content_aren_t_allowed_here_so_we_ve_removed_them_to_keep_our_community_safe_thanks_for_understanding">الإشارات إلى المحتوى البالغ (+18) غير مسموح بها هنا، لذا قمنا بإزالتها للحفاظ على أمان مجتمعنا. شكرًا لتفهمك!</string>
+    <string name="removed_18_hentai_reference_to_comply_with_community_guidelines">تمت إزالة إشارة +18 هينتاي للامتثال لإرشادات المجتمع</string>
+    <string name="pinned_new_manga_site_requirements">مثبت: متطلبات موقع مانغا جديد</string>
+    <string name="any_new_manga_site_must_offer_at_least_200_titles_have_no_bot_verification_steps_and_be_worth_the_setup_effort_adding_a_site_takes_significant_time_and_work">يجب أن يقدم أي موقع مانغا جديد ما لا يقل عن 200 عنوان، وألا يتضمن خطوات تحقق بوت، ويكون جديرًا بجهد الإعداد—إضافة موقع تتطلب وقتًا وجهدًا كبيرين.</string>
+    <string name="new_site_requires_200_mangas_no_bot_checks_to_justify_the_manual_setup_effort"><![CDATA[الموقع الجديد يتطلب ≥200 مانجا ولا تحقق بوت ليبرر جهد الإعداد اليدوي]]></string>
+    <string name="feedbacks_and_complaints">الملاحظات والشكاوى</string>
+
+
+    <string name="status_unknown">غير معلوم</string>
+
+
+
+    <!-- Complaint Actions -->
+    <string name="complaint_actions">إجراءات الشكوى</string>
+    <string name="reply">رد</string>
+    <string name="edit">تعديل</string>
+    <string name="delete">حذف</string>
+    <string name="cancel">إلغاء</string>
+    <string name="close">إغلاق</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">الرد على الشكوى</string>
+    <string name="your_reply">ردك</string>
+    <string name="reply_placeholder">اكتب ردك هنا...</string>
+    <string name="send_reply">إرسال الرد</string>
+    <string name="reply_to_complaint_id">الرد على الشكوى رقم: %s</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">تعديل الشكوى</string>
+    <string name="subject">الموضوع</string>
+    <string name="complaint_body">نص الشكوى</string>
+    <string name="edit_placeholder">عدل تفاصيل شكواك هنا...</string>
+    <string name="save_changes">حفظ التغييرات</string>
+    <string name="edit_complaint_id">تعديل الشكوى رقم: %s</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">حذف الشكوى</string>
+    <string name="delete_warning_title">هل أنت متأكد؟</string>
+    <string name="delete_warning_message">لا يمكن التراجع عن هذا الإجراء. سيتم حذف الشكوى نهائياً.</string>
+    <string name="delete_forever">حذف نهائي</string>
+
+    <!-- Navigation -->
+    <string name="back">رجوع</string>
+
+    <!-- Common -->
+    <string name="loading">جاري التحميل...</string>
+    <string name="error">خطأ</string>
+
+    <!-- Status Labels -->
+    <string name="status_pending">معلقة</string>
+    <string name="status_in_progress">قيد المعالجة</string>
+    <string name="status_resolved">تم الحل</string>
+    <string name="status_closed">مغلقة</string>
+    <string name="status_rejected">مرفوضة</string>
+    <string name="status_reopened">معاد فتحها</string>
+
+    <!-- Character Limits -->
+    <string name="character_count">%1$d/%2$d</string>
+    <string name="character_limit_exceeded">تم تجاوز حد الأحرف</string>
+
+    <!-- Existing strings -->
+    <string name="feedback_manager_title">مدير التعليقات</string>
+    <string name="loading_feedback">جاري تحميل التعليقات...</string>
+    <string name="search_feedbacks_hint">البحث في الشكاوى...</string>
+    <string name="search">بحث</string>
+    <string name="clear">مسح</string>
+    <string name="filter_all">الكل</string>
+    <string name="feedbacks_found_count">تم العثور على %d تعليق</string>
+    <string name="no_results_found">لم يتم العثور على نتائج</string>
+    <string name="try_different_search">جرب كلمة بحث أو فلتر مختلف</string>
+
+
+    <!-- UI Elements -->
+    <string name="whats_new_title">الجديد</string>
+    <string name="previous">السابق</string>
+    <string name="next">التالي</string>
+    <string name="new_badge">جديد</string>
+    <string name="feature_image">صورة الميزة</string>
+    <string name="thumbnail">صورة مصغرة %1$d</string>
+    <string name="play">تشغيل</string>
+    <string name="play_video">تشغيل الفيديو</string>
+    <string name="video_preview">معاينة الفيديو</string>
+    <string name="fullscreen">شاشة كاملة</string>
+    <string name="fullscreen_image">صورة بشاشة كاملة</string>
+    <string name="tap_outside_to_close">اضغط خارج الإطار للإغلاق</string>
+
+
+
+    <!-- res/values/strings.xml - Additional strings for Admin Complaint Management -->
+
+    <!-- Admin Screen Titles -->
+    <string name="admin_complaint_management">Admin Complaint Management</string>
+    <string name="complaints_statistics">Complaints Statistics</string>
+    <string name="loading_complaints">Loading complaints…</string>
+    <string name="no_complaints_found">No Complaints Found</string>
+    <string name="no_complaints_message">No complaints have been submitted yet.</string>
+
+    <!-- Search and Filter -->
+    <string name="search_complaints_admin">Search complaints, users, IDs…</string>
+    <string name="filter_by_status">Filter by Status</string>
+    <string name="filter_by_type">Filter by Type</string>
+    <string name="all_statuses">All Statuses</string>
+    <string name="all_types">All Types</string>
+    <string name="sort_by">Sort by</string>
+    <string name="complaints_found_count">%d complaints found</string>
+    <string name="try_different_filters">Try adjusting your search or filters</string>
+
+    <!-- Sort Options -->
+    <string name="sort_date_newest">Date (Newest)</string>
+    <string name="sort_date_oldest">Date (Oldest)</string>
+    <string name="sort_status">Status</string>
+    <string name="sort_type">Type</string>
+    <string name="sort_user_id">User ID</string>
+
+    <!-- Statistics -->
+    <string name="total_complaints">Total Complaints</string>
+    <string name="by_status">By Status</string>
+    <string name="by_type">By Type</string>
+
+    <!-- Dialog Titles -->
+    <string name="change_status">Change Status</string>
+    <string name="add_closure_reason">Add Closure Reason</string>
+    <string name="delete_complaint_title">Delete Complaint</string>
+
+    <!-- Dialog Content -->
+    <string name="select_new_status">Select new status:</string>
+    <string name="update_status">Update Status</string>
+    <string name="complaint_type">Complaint Type</string>
+    <string name="description">Description</string>
+    <string name="enter_subject">Enter subject</string>
+    <string name="enter_description">Enter description</string>
+
+    <!-- Closure Reason Dialog -->
+    <string name="reason_type" >Reason Type</string>
+    <string name="closure_reason_details">Closure Reason Details</string>
+    <string name="enter_closure_reason">Enter closure reason details…</string>
+    <string name="add_reason">Add Reason</string>
+    <string name="current_status">Current Status:</string>
+
+    <!-- Delete Dialog -->
+    <string name="delete_complaint_message">Are you sure you want to delete this complaint? This action cannot be undone.</string>
+    <string name="complaint_details">Complaint Details:</string>
+
+    <!-- Card Content -->
+    <string name="user_id_format">User: %s</string>
+    <string name="complaint_id_format">ID: %s</string>
+    <string name="status_label">Status:</string>
+
+    <!-- Closure Reason Types -->
+    <string name="reason_done">Done</string>
+    <string name="reason_done_wait_update">Done - Wait for Update</string>
+    <string name="reason_pinned">Pinned</string>
+    <string name="reason_other">Other</string>
+
+    <!-- Action Messages -->
+    <string name="status_updated_successfully">Status updated successfully</string>
+    <string name="complaint_updated_successfully">Complaint updated successfully</string>
+    <string name="closure_reason_added_successfully">Closure reason added successfully</string>
+    <string name="complaint_deleted_successfully">Complaint deleted successfully</string>
+    <string name="bulk_update_success">Successfully updated %d complaints</string>
+    <string name="bulk_delete_success">Successfully deleted %d complaints</string>
+
+    <!-- Error Messages -->
+    <string name="error_updating_status">Failed to update status</string>
+    <string name="error_updating_complaint">Failed to update complaint</string>
+    <string name="error_adding_reason">Failed to add closure reason</string>
+    <string name="error_deleting_complaint">Failed to delete complaint</string>
+    <string name="error_bulk_operation">Bulk operation failed</string>
+
+    <!-- Bulk Operations -->
+    <string name="bulk_operations">Bulk Operations</string>
+    <string name="select_multiple">Select Multiple</string>
+    <string name="selected_count">%d selected</string>
+    <string name="bulk_status_change">Bulk Status Change</string>
+    <string name="bulk_delete">Bulk Delete</string>
+    <string name="confirm_bulk_delete">Delete %d selected complaints?</string>
+    <string name="confirm_bulk_status_change">Change status for %d selected complaints?</string>
+
+    <!-- Admin Actions -->
+    <string name="admin_actions">Admin Actions</string>
+    <string name="export_data">Export Data</string>
+    <string name="import_data">Import Data</string>
+    <string name="generate_report">Generate Report</string>
+    <string name="system_settings">System Settings</string>
+
+    <!-- Validation Messages -->
+    <string name="field_required">This field is required</string>
+    <string name="subject_too_short">Subject must be at least 3 characters</string>
+    <string name="description_too_short">Description must be at least 10 characters</string>
+    <string name="reason_too_short">Reason must be at least 5 characters</string>
+
+    <!-- Accessibility -->
+    <string name="edit_complaint_button">Edit complaint</string>
+    <string name="delete_complaint_button">Delete complaint</string>
+    <string name="change_status_button">Change status</string>
+    <string name="add_closure_reason_button">Add closure reason</string>
+    <string name="toggle_statistics">Toggle statistics visibility</string>
+    <string name="select_complaint">Select complaint</string>
+
+    <string name="sort_app_version">App Version (Newest)</string>
+    <string name="sort_app_version_desc">App Version (Oldest)</string>
+
+
+
+    //=========================================================================================================
+
+
+    <string name="site_maintenance_description">هذا المصدر الخاص بالمانغا يخضع حالياً للصيانة. قد تكون الميزات محدودة أو غير متاحة مؤقتاً أثناء إجراء التحسينات.</string>
+    <string name="site_stopped_description">هذا المصدر الخاص بالمانغا غير متاح حالياً أو تم إيقافه. يرجى الانتقال إلى مصدر آخر لمتابعة قراءة المانغا المفضلة لديك.</string>
+
+    <string name="helpful_tips">نصائح مفيدة</string>
+
+    <string name="maintenance_tip_1">حاول التحديث بعد دقائق قليلة فالصيانة عادةً قصيرة</string>
+    <string name="maintenance_tip_2">انتقل إلى مصدر آخر لمتابعة القراءة فوراً</string>
+    <string name="maintenance_tip_3">يتم حفظ تقدم القراءة والإشارات المرجعية بأمان</string>
+
+    <string name="stopped_tip_1">يُحتفظ بتقدم القراءة عند الانتقال إلى مصدر آخر</string>
+    <string name="stopped_tip_2">فعّل مصادر متعددة لتحسين الاعتمادية</string>
+    <string name="stopped_tip_3">عاود التحقق لاحقاً فقد تصبح المصادر متاحة مرة أخرى</string>
+
+    <string name="manage_sources">إدارة المصادر</string>
+    <string name="delete_all_downloaded_chapters">حذف كل الفصول المحمّلة</string>
+
+    <string name="languages_coming_soon_title">اللغات القادمة</string>
+    <string name="languages_coming_soon_description">
+    🌍 نحن نعمل على إضافة مصادر للغات:
+    🇹🇷 التركية، 🇩🇪 الألمانية، 🇮🇹 الإيطالية، 🇯🇵 اليابانية.
+    نرجو منكم الصبر، سيتم إصدارها قريبًا!
+</string>
+
+
+        <string name="we_d_love_to_hear_from_you">نود أن نسمع منك</string>
+        <string name="category">الفئة</string>
+        <string name="select_a_category">اختر فئة</string>
+        <string name="your_feedback">ملاحظاتك</string>
+        <string name="connect_with_us_in_social_media">تواصل معنا عبر وسائل التواصل الاجتماعي</string>
+        <string name="you_ll_receive_a_prompt_response_our_developer_will_reach_out_to_you_shortly">
+        سوف تتلقى ردًا سريعًا — سيتواصل معك المطوّر قريبًا.
+    </string>
+    <string name="status_not_planned">غير مخطط</string>
+    <string name="new_chapter">جديد</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <string name="whats_new_sources_title">لغات و مصادر جديدة</string>
+    <string name="whats_new_sources_description">أضفنا مصادر مانغا محلية جديدة — MangaPark (EN)، Pro Manga (AR)، InManga (ES)، وMediocreToons (PT). قم بتثبيتها من التطبيق لتحصل على نتائج بحث محسّنة، ترجمات أكثر دقة، ومكتبة أوسع مخصّصة لكل لغة. كما قمنا بإصلاح مشكلة Team X.</string>
+
+
+    <string name="whats_new_languages_title">دعم التركية والألمانية والإيطالية واليابانية — مصادر لغوية قادمة</string>
+    <string name="whats_new_languages_description">أضفنا دعمًا لأربع لغات جديدة — التركية (TR)، الألمانية (DE)، الإيطالية (IT)، واليابانية (JA). بسبب عبء تطوير كبير، هذا الإصدار لا يتضمن مصادر مخصصة لكل لغة؛ وسيتم إضافتها في تحديث قادم.</string>
+
+
+    <string name="whats_new_fixes_title">إصلاحات والأداء</string>
+    <string name="whats_new_fixes_description">قمنا بإصلاح عدة مشكلات في التطبيق وتحسين الأداء والثبات لتجربة أكثر سلاسة وسرعة.</string>
+
+
+    <string name="delete_manga">حذف المانجا؟</string>
+    <string name="are_you_sure_you_want_to_remove_this_manga_from_your_library_all_progress_read_status_bookmarks_and_downloaded_chapters_for_this_manga_will_be_permanently_deleted_and_cannot_be_recovered">
+    هل أنت متأكد أنك تريد إزالة هذه المانجا من مكتبتك؟ سيتم حذف جميع التقدم (حالة القراءة، العلامات المرجعية) والفصول المحمّلة لهذه المانجا نهائيًا ولا يمكن استعادتها.</string>
+    <string name="request_submitted_successfully">تم إرسال الطلب بنجاح</string>
+    <string name="request_failed">فشل في إرسال الطلب</string>
+    <string name="please_solve_the_bot_check">يرجى حل اختبار التحقق من الروبوت</string>
+    <string name="app_information_and_updates_contact_us_on_social_media">معلومات وتحديثات التطبيق. تواصل معنا عبر وسائل التواصل الاجتماعي</string>
+    <string name="converting_to_cbz">جارٍ التحويل إلى CBZ</string>
+    <string name="conversion_complete">اكتمل التحويل!</string>
+    <string name="conversion_failed">فشل التحويل</string>
+    <string name="converted_chapters_count">تم تحويل %1$d من أصل %2$d فصول بنجاح</string>
+    <string name="please_wait">يرجى الانتظار، قد يستغرق الأمر بعض الوقت…</string>
+    <string name="ok">حسنًا</string>
+    <string name="error_loading_more">حدث خطأ أثناء تحميل المزيد</string>
+
+    <string name="notification_downloading_chapters">جاري تنزيل الفصول</string>
+    <string name="notification_chapter_title">الفصل %s</string>
+
+    <string name="notification_downloading_background">جاري تنزيل جميع الفصول في الخلفية</string>
+    <string name="notification_compressing_images">جاري ضغط الصور…</string>
+    <string name="notification_images_progress">%1$d / %2$d صور</string>
+
+    <string name="action_cancel_all">إلغاء الكل</string>
+    <string name="action_cancel_chapter">إلغاء الفصل</string>
+
+    <string name="notification_channel_all_downloads">جميع التنزيلات</string>
+    <string name="notification_channel_all_downloads_desc">تقدم التنزيل الإجمالي</string>
+    <string name="notification_channel_chapter_download">تنزيل فصل</string>
+    <string name="notification_channel_chapter_download_desc">تقدم تنزيل فصل واحد</string>
+    <string name="notification_channel_download_summary">ملخص التنزيل</string>
+    <string name="notification_channel_download_summary_desc">إشعارات الإكمال</string>
+    <string name="notification_channel_library_refresh">تحديث المكتبة</string>
+    <string name="notification_channel_library_refresh_desc">إظهار تقدم تحديث المكتبة في الخلفية</string>
+
+    <string name="notification_refreshing_library">جاري تحديث المكتبة</string>
+    <string name="notification_library_refresh_failed">فشل تحديث المكتبة</string>
+    <string name="notification_starting">يبدأ…</string>
+    <string name="notification_refresh_timed_out">انتهت مهلة التحديث</string>
+    <string name="notification_refresh_failed">فشل التحديث: %s</string>
+    <string name="notification_no_manga_to_refresh">لا يوجد مانجا لتحديثها</string>
+    <string name="notification_processing_batch">جاري معالجة الدفعة %d…</string>
+    <string name="notification_finishing_up">جارٍ الانتهاء…</string>
+    <string name="notification_refresh_progress">%1$s (اكتمل %2$d/%3$d، فشل %4$d)</string>
+    <string name="notification_refresh_completed">اكتمل: %1$d ناجح، %2$d فاشل</string>
+
+
+
+
+
+
+
+
+
+    <plurals name="time_minutes_ago">
+        <item quantity="zero">قبل 0 دقيقة</item>
+        <item quantity="one">قبل دقيقة واحدة</item>
+        <item quantity="two">قبل دقيقتين</item>
+        <item quantity="few">قبل %d دقائق</item>
+        <item quantity="many">قبل %d دقيقة</item>
+        <item quantity="other">قبل %d دقيقة</item>
+    </plurals>
+
+
+    <plurals name="time_hours_ago">
+        <item quantity="zero">قبل 0 ساعة</item>
+        <item quantity="one">قبل ساعة واحدة</item>
+        <item quantity="two">قبل ساعتين</item>
+        <item quantity="few">قبل %d ساعات</item>
+        <item quantity="many">قبل %d ساعة</item>
+        <item quantity="other">قبل %d ساعة</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="zero">قبل 0 يوم</item>
+        <item quantity="one">قبل يوم واحد</item>
+        <item quantity="two">قبل يومين</item>
+        <item quantity="few">قبل %d أيام</item>
+        <item quantity="many">قبل %d يومًا</item>
+        <item quantity="other">قبل %d يوم</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="zero">قبل 0 أسبوع</item>
+        <item quantity="one">قبل أسبوع واحد</item>
+        <item quantity="two">قبل أسبوعين</item>
+        <item quantity="few">قبل %d أسابيع</item>
+        <item quantity="many">قبل %d أسبوعًا</item>
+        <item quantity="other">قبل %d أسبوع</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="zero">قبل 0 شهر</item>
+        <item quantity="one">قبل شهر واحد</item>
+        <item quantity="two">قبل شهرين</item>
+        <item quantity="few">قبل %d أشهر</item>
+        <item quantity="many">قبل %d شهرًا</item>
+        <item quantity="other">قبل %d شهر</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="zero">قبل 0 سنة</item>
+        <item quantity="one">قبل سنة واحدة</item>
+        <item quantity="two">قبل سنتين</item>
+        <item quantity="few">قبل %d سنوات</item>
+        <item quantity="many">قبل %d سنة</item>
+        <item quantity="other">قبل %d سنة</item>
+    </plurals>
+    <string name="date_today">اليوم</string>
+    <string name="date_yesterday">أمس</string>
+
+    <string name="time_just_now">الآن</string>
+    <string name="time_yesterday">أمس</string>
+
+
+
+    <string name="downloaded_header">%1$s • %2$d تم التنزيل</string>
+    <string name="cancel_chapter_download">إلغاء تنزيل الفصل</string>
+    <string name="bytes_zero">0 بايت</string>
+    <string name="bytes_format_b">%.1f بايت</string>
+    <string name="bytes_format_kb">%.1f ك.بايت</string>
+    <string name="bytes_format_mb">%.1f م.بايت</string>
+    <string name="bytes_format_gb">%.1f ج.بايت</string>
+    <string name="bytes_format_tb">%.1f ت.بايت</string>
+
+
+    <string name="value_count">%,d</string>
+    <string name="multi_search">بحث متعدد</string>
+    <string name="use_yami_compressor">استخدام ضاغط يامي</string>
+    <string name="use_yami_compressor_to_reduce_chapter_size_by_over_50_and_save_storage">استخدم ضاغط يامي لتقليل حجم الفصول بأكثر من ٥٠٪ وتوفير المساحة التخزينية</string>
+    <string name="compress_existing_downloads">ضغط التنزيلات الحالية</string>
+    <string name="compress_all_previously_downloaded_chapters_this_will_save_storage_space_but_may_take_some_time">اضغط جميع الفصول التي تم تنزيلها مسبقًا، فهذا يوفر مساحة ولكنه قد يستغرق بعض الوقت.</string>
+    <string name="converting">جارٍ التحويل…</string>
+    <string name="start_conversion">بدء التحويل</string>
+    <string name="conversion_stopped">تم إيقاف التحويل</string>
+    <string name="conversion_complete_">اكتمل التحويل!</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">يرجى عدم إغلاق التطبيق حتى يكتمل التحويل</string>
+    <string name="remaining">المتبقي</string>
+    <string name="current">الحالي:</string>
+    <string name="chapter">الفصل %1$s</string>
+    <string name="stop_conversion">إيقاف التحويل</string>
+
+    <string name="h_m">%1$dس %2$dد</string>
+    <string name="under_maintenance">قيد الصيانة</string>
+    <string name="this_site_is_currently_under_maintenance_please_check_back_later_or_try_a_different_source">هذا الموقع قيد الصيانة حالياً. يرجى العودة لاحقاً أو تجربة مصدر آخر.</string>
+    <string name="site_stopped">تم إيقاف الموقع</string>
+    <string name="this_site_has_been_stopped_and_is_no_longer_available_please_select_a_different_source_from_the_tabs_above">تم إيقاف هذا الموقع ولم يعد متاحًا. يرجى اختيار مصدر آخر من التبويبات أعلاه.</string>
+    <string name="conversion_stopped_by_user">تم إيقاف التحويل بواسطة المستخدم.\n</string>
+    <string name="chapters_converted_successfully">✓ %1$d فصل تم تحويله بنجاح\n</string>
+    <string name="chapters_remaining">⏸ %1$d فصول متبقية</string>
+    <string name="no_chapters_to_convert_all_chapters_are_already_in_cbz_format">لا توجد فصول للتحويل. جميع الفصول بالفعل بصيغة CBZ.</string>
+    <string name="chapters_failed">\n✗ %1$d فصول فشلت</string>
+    <string name="compressing">جاري الضغط…</string>
+
+    <string name="progress_percent">%1$d%%</string>
+    <string name="progress_size">%1$s / %2$s</string>
+    <string name="bytes_b">%1$d بايت</string>
+    <string name="bytes_kb">%1$d كيلوبايت</string>
+    <string name="bytes_mb">%1$d ميغابايت</string>
+
+
+    <string name="adult_content_blocked_title">محجوب (18+)</string>
+    <string name="adult_content_blocked_message">
+    هذا المصدر غير متاح لأنه يحتوي على محتوى +18. برجاء اختيار مصدر آخر.
+</string>
+
+
+</resources>

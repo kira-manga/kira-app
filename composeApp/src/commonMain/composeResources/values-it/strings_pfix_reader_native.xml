@@ -1,0 +1,11 @@
+<resources>
+    <string name="reading_mode">Modalità di lettura</string>
+    <string name="reading_mode_rtl">Da destra a sinistra</string>
+    <string name="reading_mode_ltr">Da sinistra a destra</string>
+    <string name="reading_mode_continuous">Verticale Continuo</string>
+    <string name="reader_native_next_chapter">Capitolo successivo</string>
+    <string name="reader_native_last_chapter">Sei all\'ultimo capitolo</string>
+    <string name="reader_native_finished_prefix">Completato:</string>
+    <string name="reader_native_couldnt_load_chapter">Impossibile caricare questo capitolo</string>
+    <string name="reader_native_add_to_library_first">Aggiungi prima questo manga alla tua libreria</string>
+</resources>

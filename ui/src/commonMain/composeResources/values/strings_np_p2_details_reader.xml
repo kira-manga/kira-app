@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity P2 polish strings for the Details & Reader cluster.
+
+  New keys introduced by the P2 implementation pass (separate from the P0/P1
+  strings_np_details_reader.xml so the P2 additions are reviewable as a unit).
+  en-only authored here; user-facing labels mirror legacy wording where one
+  existed (title_copied, content-description "Share").
+-->
+<resources>
+    <!-- GAP-DET-12: confirmation snackbar after a long-press title copy
+         (legacy R.string.title_copied). -->
+    <string name="np_details_title_copied">Title copied</string>
+
+    <!-- GAP-DET-02: adult-content 18+ icon content description. -->
+    <string name="np_details_adult_icon_cd">Adult content warning</string>
+
+    <!-- P0-ADULT: hard-block adult-content gate (native parity). Key names mirror the native
+         res catalog (adult_filter_removal_header / adult_filter_removal_title) so future locale
+         ports reuse the existing translations verbatim. The header + Play-policy apology body are
+         shown in the first dialog of the AdultWarning -> MStep1 -> MStep2 chain, where every path
+         back-navigates and the content is never revealed. Text copied verbatim from native
+         (curly typographic apostrophes preserved). -->
+    <string name="adult_filter_removal_header">Content unavailable</string>
+    <string name="adult_filter_removal_title">We’re sorry — this content can’t be shown. Due to Google Play policy and respect for religious and cultural values, we cannot display explicit sexual content. Thank you for your understanding.</string>
+
+    <!-- GAP-RDR-09: reader top-bar share action content description (was a
+         hardcoded English literal). -->
+    <string name="np_reader_share">Share</string>
+
+    <!-- GAP-RDR-07: per-page step buttons flanking the page scrubber slider. -->
+</resources>

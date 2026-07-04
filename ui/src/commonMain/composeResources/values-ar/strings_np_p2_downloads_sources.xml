@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic translations for the NP Phase 2 (P2 polish) Downloads + Sources cluster strings.
+  Locale-parallel to values/strings_np_p2_downloads_sources.xml. Verbatim trusted-Arabic
+  reused from the legacy app's values-ar/strings.xml `title_sources_settings`.
+-->
+<resources>
+    <string name="title_sources_settings">اعدادات المصادر</string>
+</resources>

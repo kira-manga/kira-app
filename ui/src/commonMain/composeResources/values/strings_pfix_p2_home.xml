@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Home feed (P2 medium-severity parity wave).
+
+  Native source of truth: native-app/.../features/home + navigation/routes/HomeRoute.kt.
+
+  - home_pfix_failed_to_load: native error pane interpolated the underlying source failure text into
+    the error line via stringResource(R.string.failed_to_load, mangaItemsState.message) — native
+    string "Failed to load : %1$s" (values/strings.xml:222). The rework error pane showed only the
+    static "Failed to load" (home_failed_to_load), dropping the typed-error detail. This parameterized
+    string restores the interpolation so a 403 / Cloudflare block reads differently from a parse
+    error, matching native.
+
+  (The Lekmanga 403 health-probe snackbar — native libaray_open_the_web_view / _button — is
+  Deferred-cross-cutting: the live HTTP probe must live in :data, outside this fix's scope, so no
+  in-scope code references those strings yet. They are NOT added here to avoid shipping dead
+  resources; when the :data probe lands, reuse the existing native libaray_open_the_web_view /
+  libaray_open_the_web_button.)
+-->
+<resources>
+    <string name="home_pfix_failed_to_load">Failed to load : %1$s</string>
+</resources>

@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Yami redesign — old vs new (all screens)</title>
+<style>
+ body{margin:0;background:#05060a;color:#F3F4F7;font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;padding:40px 20px}
+ .wrap{max-width:980px;margin:0 auto}
+ h1{font-size:30px;font-weight:900;letter-spacing:-.5px}
+ .lead{color:#9AA1AF;font-size:15px;margin:10px 0 8px;line-height:1.5}
+ .key{color:#FF7D8C;font-weight:700}
+ .card{background:#0E1014;border:1px solid rgba(255,255,255,.08);border-radius:20px;margin:26px 0;overflow:hidden}
+ .card h2{font-size:20px;font-weight:800;padding:18px 22px 4px}
+ .card p{color:#9AA1AF;font-size:13.5px;padding:0 22px 14px;line-height:1.5;margin:0}
+ .card img{display:block;width:100%;height:auto;border-top:1px solid rgba(255,255,255,.06)}
+ .tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1px;color:#FF5B6E;text-transform:uppercase}
+</style></head><body><div class="wrap">
+ <span class="tag">YAMI REDESIGN</span>
+ <h1>Every screen — old vs new</h1>
+ <p class="lead">Each row: <b>Before</b> (current/legacy flat look) on the left, <span class="key">Redesign</span> (genuine new layout) on the right. Same coral design system as the approved Home screen. These are static mockups for your review — nothing is implemented in the app yet.</p>
+
+ <div class="card"><h2>Library</h2><p>Captioned card grid → premium poster grid with overlaid titles, rating + "NEW" badges, category pills, and the floating nav.</p><img src="out/library.png"></div>
+ <div class="card"><h2>Manga Details</h2><p>Flat centered header → cinematic blurred-cover hero, big coral “Continue” CTA + ghost actions, genre chips, and premium chapter rows with read/NEW states.</p><img src="out/details.png"></div>
+ <div class="card"><h2>Search</h2><p>Plain app-bar search → full-width rounded search field, coral mode chips, result count, and a poster results grid with rating chips.</p><img src="out/search.png"></div>
+ <div class="card"><h2>Downloads</h2><p>Flat tab list → a prominent “Downloading now” progress card + a “Queue &amp; completed” list with glanceable status chips and per-item actions.</p><img src="out/downloads.png"></div>
+ <div class="card"><h2>History</h2><p>Flat rows → “Recently read” header, clear date sections, rounded entry cards, and the floating nav.</p><img src="out/history.png"></div>
+ <div class="card"><h2>Updates</h2><p>Dense notification list → recency sections (Today / Yesterday / Last week), spacious cards, and coral unread dots.</p><img src="out/updates.png"></div>
+ <div class="card"><h2>Sources</h2><p>Flat switch list → language-grouped cards with brand icon medallions, sublabels, coral toggles, and a “Request a source” card.</p><img src="out/sources.png"></div>
+ <div class="card"><h2>Settings</h2><p>Flat single list → grouped section cards with coral icon medallions, two-line rows, toggles, and chevrons.</p><img src="out/settings.png"></div>
+ <div class="card"><h2>Statistics</h2><p>Plain number lists → a dashboard: overview stat card, weekly activity bars, ranked top-source bars, and status chips.</p><img src="out/statistics.png"></div>
+
+ <p class="lead" style="margin-top:30px">Reader is already implemented full-screen (edge-to-edge image, immersive chrome). Smaller screens (Theme, Language, About, What’s New, Complaints, Welcome) reuse these same patterns — I’ll mock those too if you want before implementing.</p>
+</div></body></html>

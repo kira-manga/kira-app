@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  PLACEHOLDER Firebase iOS config (mirror of google-services.json.example for Android).
+
+  The real GoogleService-Info.plist is gitignored (it carries API_KEY / GOOGLE_APP_ID). To build
+  the iOS app, drop the real plist from the Firebase console (project: kira-manga, bundle id
+  me.manga.kira) at: iosApp/iosApp/GoogleService-Info.plist — then run `xcodegen generate`.
+  xcodegen includes it in the app target's Copy Bundle Resources; FirebaseApp.configure() reads it.
+-->
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>YOUR_IOS_API_KEY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>YOUR_GCM_SENDER_ID</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>me.manga.kira</string>
+	<key>PROJECT_ID</key>
+	<string>your-project-id</string>
+	<key>STORAGE_BUCKET</key>
+	<string>your-project-id.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:000000000000:ios:0000000000000000000000</string>
+</dict>
+</plist>

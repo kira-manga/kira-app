@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webview_action_forward">Suivant</string>
+    <string name="webview_action_reload">Recharger</string>
+    <string name="webview_action_save_headers">Enregistrer les en-têtes</string>
+</resources>

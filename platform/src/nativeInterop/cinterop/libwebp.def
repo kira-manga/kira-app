@@ -1,0 +1,6 @@
+# Kotlin/Native cinterop bindings for the vendored static libwebp (encode path).
+# Headers + the per-slice static archive are wired from platform/build.gradle.kts
+# (includeDirs + -staticLibrary/-libraryPath), so this .def stays path-free / portable.
+# The static .a (libwebp + libsharpyuv, combined) lives under platform/libs/libwebp/<slice>/.
+headers = webp/encode.h webp/decode.h webp/types.h
+package = libwebp

@@ -1,0 +1,11 @@
+<resources>
+    <string name="reading_mode">Okuma modu</string>
+    <string name="reading_mode_rtl">Sağdan sola</string>
+    <string name="reading_mode_ltr">Soldan sağa</string>
+    <string name="reading_mode_continuous">Sürekli Dikey</string>
+    <string name="reader_native_next_chapter">Sonraki bölüm</string>
+    <string name="reader_native_last_chapter">Son bölümdesiniz</string>
+    <string name="reader_native_finished_prefix">Bitti:</string>
+    <string name="reader_native_couldnt_load_chapter">Bu bölüm yüklenemedi</string>
+    <string name="reader_native_add_to_library_first">Önce bu mangayı kütüphanenize ekleyin</string>
+</resources>

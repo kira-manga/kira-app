@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Locale placeholder for the per-chapter "delete chapter" Details affordance (res-ac-4). English
+  text duplicated here so the locale-key-parity gate passes; the owner will translate later.
+-->
+<resources>
+    <string name="details_delete_chapter">Bölümü sil</string>
+</resources>

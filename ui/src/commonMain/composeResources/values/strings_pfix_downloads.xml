@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix (pfix) strings for the Downloads / offline screen.
+
+  Introduced by the downloads-offline parity audit. Kept in a dedicated pfix file so the shared
+  `values/strings.xml` and the NP `values/strings_np_downloads_sources.xml` catalogs stay
+  untouched.
+
+  np_download_unknown_error: native `DownloadItemCard` renders a FAILED row's reason as
+  `Failed: %s`, substituting the localized `R.string.unknown` ("Unknown") when the row's
+  `errorMsg` is null. The KMP screen previously hard-coded the English literal "unknown"
+  (lower-case, non-localizable). This key restores native parity — the same fallback word,
+  localizable per-locale like every other on-screen string.
+-->
+<resources>
+    <string name="np_download_unknown_error">Unknown</string>
+    <string name="pfix_download_cancelled_by_user">Cancelled by user</string>
+</resources>

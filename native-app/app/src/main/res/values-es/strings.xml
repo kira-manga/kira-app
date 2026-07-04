@@ -1,0 +1,740 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Yami Manga</string>
+    <string name="title_home">Inicio</string>
+    <string name="title_history">Historial</string>
+    <string name="title_notifications">Actualizaciones</string>
+    <string name="title_library">Biblioteca</string>
+    <string name="title_settings">Ajustes</string>
+    <string name="title_statistics">Estadísticas</string>
+    <string name="content_description_close">Cerrar</string>
+
+    <!-- Library -->
+    <string name="searching_placeholder">Buscando…</string>
+    <string name="dropdown_button_refresh">Actualizar</string>
+    <string name="dropdown_button_open_random_manga">Abrir manga aleatorio</string>
+    <string name="library_bottom_sheet_tab_filter">Filtrar</string>
+    <string name="library_bottom_sheet_tab_sort">Ordenar</string>
+    <string name="library_bottom_sheet_tab_display">Mostrar</string>
+    <string name="ascending">Ascendente</string>
+    <string name="descending">Descendente</string>
+    <string name="auto_label">Automático</string>
+    <string name="downloading_title">Descargando…</string>
+    <string name="continue_string">Continuar</string>
+    <string name="stop">Detener</string>
+    <string name="downloaded_info">Descargado %1$d de %2$d</string>
+    <string name="percent_completed">%1$d%% completado</string>
+    <string name="libaray_open_the_web_view">Abrir en el navegador para actualizar el token</string>
+    <string name="libaray_open_the_web_button">Abrir</string>
+    <string name="last_updated">Última actualización: %1$s</string>
+    <string name="not_updated_yet">Aún no actualizado</string>
+    <plurals name="items_count">
+        <item quantity="zero">%d elementos</item>
+        <item quantity="one">%d elemento</item>
+        <item quantity="two">%d elementos</item>
+        <item quantity="few">%d elementos</item>
+        <item quantity="many">%d elementos</item>
+        <item quantity="other">%d elementos</item>
+    </plurals>
+    <string name="empty_library_message">Tu %1$s está vacía</string>
+    <string name="empty_library_desc">%1$s vacía</string>
+    <string name="manga_cover_description">Portada de %1$s</string>
+    <string name="source_badge_format">%1$s - %2$s</string>
+
+    <!-- SortOptionsSection -->
+    <string name="sort_options_title">Opciones de orden</string>
+    <string name="sort_direction_label">Dirección</string>
+    <string name="sort_direction_ascending">Ascendente</string>
+    <string name="sort_direction_descending">Descendente</string>
+    <string name="sort_by_label">Ordenar por</string>
+
+    <!-- DisplayOptionsSection -->
+    <string name="items_per_row_label">Elementos por fila:</string>
+    <string name="auto_text">Automático</string>
+    <string name="items_count_format">%1$d %2$s</string>
+    <string name="items_singular">elemento</string>
+    <string name="items_plural">elementos</string>
+    <string name="show_items_details">Mostrar detalles</string>
+    <string name="show_items_source">Mostrar fuente</string>
+    <string name="show_items_count">Mostrar cantidad</string>
+
+    <!-- Filters -->
+    <string name="filter_downloaded">Descargados</string>
+    <string name="filter_unread">No leídos</string>
+    <string name="filter_started">Iniciados</string>
+    <string name="filter_bookmarked">Marcados</string>
+    <string name="filter_completed">Completados</string>
+    <string name="filter_readed">legible</string>
+
+    <!-- Sort Types -->
+    <string name="sort_alphabetic">Alfabéticamente</string>
+    <string name="sort_total_chapters">Total de capítulos</string>
+    <string name="sort_last_read">Última lectura</string>
+    <string name="sort_unread_count">Cuenta no leída</string>
+    <string name="sort_date_added">Fecha de añadido</string>
+    <string name="sort_random">Aleatorio</string>
+
+    <string name="content_description_close_search">Cerrar búsqueda</string>
+    <string name="contentDescription_search">Buscar</string>
+    <string name="contentDescription_filter">Filtrar</string>
+    <string name="contentDescription_options">Opciones</string>
+    <string name="contentDescription_search_icon">Icono de búsqueda</string>
+    <string name="contentDescription_search_clear">Borrar búsqueda</string>
+
+    <!-- Updates -->
+    <string name="notifications_group_today">Hoy</string>
+    <string name="notifications_group_yesterday">Ayer</string>
+    <string name="notifications_group_last_week">La semana pasada</string>
+    <string name="notifications_group_older">Antiguas</string>
+    <string name="contentDescription_delete_all">Eliminar todo</string>
+    <string name="contentDescription_mark_all_as_read">Marcar todo como leído</string>
+    <string name="contentDescription_mark_as_read">Marcar como leído</string>
+    <string name="contentDescription_delete">Eliminar</string>
+    <string name="chapter_number">Capítulo %1$s</string>
+
+    <!-- History -->
+    <string name="content_description_clear_history">Borrar historial</string>
+    <string name="today">Hoy</string>
+    <string name="yesterday">Ayer</string>
+    <string name="days_ago">hace %1$d días</string>
+    <string name="weeks_ago">hace %1$d semanas</string>
+    <string name="months_ago">hace %1$d meses</string>
+    <string name="years_ago">hace %1$d años</string>
+
+    <!-- Settings -->
+    <string name="header_icon_desc">Icono de encabezado</string>
+    <string name="downloaded_only_title">Solo descargados</string>
+    <string name="downloaded_only_desc">Filtra solo descargados</string>
+    <string name="incognito_mode_title">Modo incógnito</string>
+    <string name="incognito_mode_desc">Dejar de guardar tu historial de lectura.</string>
+    <string name="theme_title">Tema</string>
+    <string name="theme_dark">Modo oscuro</string>
+    <string name="theme_light">Modo claro</string>
+    <string name="pure_black_mode_title">Negro puro</string>
+    <string name="plus18_filter_title">Filtro +18</string>
+    <string name="default_reading_mode">Modo de lectura predeterminado</string>
+    <string name="statistics">Estadísticas</string>
+    <string name="app_language">Idioma de la app</string>
+    <string name="clear_cache">Borrar caché</string>
+    <string name="cache_used">Usado: </string>
+    <string name="about">Acerca de</string>
+    <string name="help">Ayuda</string>
+    <string name="adult_filter_removal_header">Contenido no disponible</string>
+    <string name="adult_filter_removal_title">Lo sentimos — no se puede mostrar este contenido. Debido a la política de Google Play y por respeto a los valores religiosos y culturales, no podemos mostrar contenido sexual explícito. Gracias por su comprensión.</string>
+    <string name="confirm">Confirmar</string>
+    <string name="calculating">Calculando…</string>
+    <string name="bytes">B</string>
+    <string name="kilobytes">%.2f KB</string>
+    <string name="megabytes">%.2f MB</string>
+    <string name="gigabytes">%.2f GB</string>
+
+    <!-- Statistics Screen -->
+    <string name="section_entries">Entradas</string>
+    <string name="section_chapters">Capítulos</string>
+    <string name="label_in_library">En biblioteca</string>
+    <string name="label_read_duration">Duración de lectura</string>
+    <string name="label_completed_entries">Entradas completas</string>
+    <string name="label_started">Iniciadas</string>
+    <string name="label_completed">Completadas</string>
+    <string name="label_total">Total</string>
+    <string name="label_read">Leídos</string>
+    <string name="label_downloaded">Descargados</string>
+    <string name="label_bookmarked">Marcados</string>
+
+    <!-- Manga Details -->
+    <string name="remove_bookmark_title">Eliminar marcador</string>
+    <string name="remove_bookmark_message">¿Seguro que quieres quitar este manga? Se eliminarán los capítulos descargados.</string>
+    <string name="add_library_title">Añadir a biblioteca</string>
+    <string name="add_library_message">Para descargar y guardar tu progreso, añade primero el manga. ¿Deseas añadirlo?</string>
+    <string name="confirm_add_to_library">Añadir a biblioteca</string>
+    <string name="action_remove">Eliminar</string>
+    <string name="action_bookmark">Marcar</string>
+    <string name="action_download_all">Descargar</string>
+    <string name="action_downloading">Descargando</string>
+    <string name="action_open_in_browser">Abrir en navegador</string>
+    <string name="action_no_chapter_yet">aún no hay capítulos</string>
+    <string name="chapters_count_format">%1$d capítulos</string>
+    <string name="day_since_format">%1$d día</string>
+    <string name="cancel_selection">Cancelar selección</string>
+    <string name="download_selected_format">Descargar seleccionados (%1$d)</string>
+    <string name="custom_download">Descarga personalizada</string>
+    <string name="desc_back">Atrás</string>
+    <string name="menu_filter">Filtrar</string>
+    <string name="menu_share">Compartir</string>
+    <string name="desc_newest_first">Los más nuevos primero</string>
+    <string name="desc_oldest_first">Los más antiguos primero</string>
+    <string name="title_copied">¡Título copiado!</string>
+
+    <!-- Reading Modes -->
+    <string name="reading_mode_default">Predeterminado</string>
+    <string name="reading_mode_right_to_left">Derecha a izquierda</string>
+    <string name="reading_mode_left_to_right">Izquierda a derecha</string>
+    <string name="reading_mode_vertical">Vertical</string>
+    <string name="reading_mode_webtoon">Webtoon</string>
+    <string name="reading_mode_continuous_vertical">Vertical continuo</string>
+    <string name="but_revert">Revertir</string>
+    <string name="but_apply">Aplicar</string>
+    <string name="retry">Reintentar</string>
+    <string name="failed_to_load">Error al cargar: %1$s</string>
+
+    <!-- Search Filters -->
+    <string name="search_filters_not_ready">La búsqueda de filtros en esta fuente aún no ha comenzado. ¡Vuelve más tarde!</string>
+    <string name="filter_sort_title">Filtrar y ordenar</string>
+    <string name="genres">Géneros</string>
+    <string name="order_by">Ordenar por</string>
+    <string name="no_sort_types">Sin opciones de orden</string>
+    <string name="apply_filters">Aplicar filtros</string>
+
+    <!-- Sources Settings -->
+    <string name="title_sources_settings">Ajustes de fuentes</string>
+    <string name="enable_disable_all_sources">Activar/desactivar todas las fuentes de %1$s</string>
+    <string name="enabled">Activadas</string>
+    <string name="disabled">Desactivadas</string>
+
+    <!-- Download Notifications -->
+    <string name="new_chapters">Nuevos capítulos</string>
+    <string name="notifications_for_new_manga_chapters">Notificaciones de nuevos capítulos</string>
+    <string name="chapter_id_not_found_for_url">ID de capítulo no encontrado para: %1$s</string>
+    <string name="chapter_is_available">¡Capítulo %1$s disponible!</string>
+    <string name="chapter_downloaded_successfully">¡Capítulo %1$s descargado!</string>
+    <string name="failed_to_download_chapter">Error al descargar capítulo %1$s</string>
+    <string name="manga_download">Descarga de manga</string>
+    <string name="downloading_chapter">Descargando capítulo %1$s…</string>
+    <string name="download_complete">Descarga completa</string>
+    <string name="download_error">Error de descarga</string>
+    <string name="select_language">Elige el idioma</string>
+
+
+    <string name="downloads">Descargas</string>
+    <string name="action_today">Hoy</string>
+    <string name="action_yesterday">Ayer</string>
+    <string name="enter_your_language">Ingresa tu idioma</string>
+    <string name="content_description_delete">Eliminar</string>
+    <string name="request_feature_bug">Reportar un error o solicitar una función</string>
+    <string name="enter_your_feedback">Ingresa tus comentarios</string>
+    <string name="submit">Enviar</string>
+    <string name="request_feature_bug_title">Informar error / Función</string>
+    <string name="request_feature_bug_desc">Toca para enviarnos tus comentarios</string>
+    <string name="request_add_language">Solicitar agregar idioma</string>
+    <string name="request_adding_source">Solicitar agregar fuente/sitio</string>
+    <string name="enter_the_url_for_site_you_want_us_to_add">Ingresa la URL del sitio que deseas que agreguemos</string>
+    <string name="we_will_add_it_as_soon_it_possible">Lo agregaremos tan pronto como sea posible</string>
+    <string name="enter_the_site_url">Ingresa la URL del sitio</string>
+
+    <!-- MR.strings (or R.strings) resources translated into Spanish -->
+    <string name="crash_screen_title">¡Vaya! Algo salió mal</string>
+    <string name="crash_screen_description">
+    Lo sentimos: %1$s ha encontrado un error inesperado. Puedes enviar un informe de fallos para ayudarnos a mejorar la aplicación.
+</string>
+    <string name="pref_dump_crash_logs">Enviar informe de fallo</string>
+    <string name="crash_screen_restart_application">Reiniciar aplicación</string>
+    <string name="finish">Finalizar</string>
+    <string name="select_your_manga_sources">Selecciona tus fuentes de manga</string>
+    <string name="you_need_to_enable_notifications">Necesitas habilitar las notificaciones para usar la aplicación</string>
+    <string name="choose_your_theme">Elige tu tema</string>
+    <string name="get_started">Comenzar</string>
+    <string name="welcome_suptitle">Explora, lee y colecciona manga con facilidad.</string>
+    <string name="welcome_title">Bienvenido a Yami Manga</string>
+    <string name="system_theme">Tema del sistema</string>
+    <string name="follow_system_theme">Seguir el tema del sistema</string>
+    <string name="enable_notifications">Habilitar notificaciones</string>
+    <string name="notification_permission">Necesitamos este permiso para enviarte los capítulos más recientes, mostrar el progreso de descarga y garantizar el correcto funcionamiento de la aplicación.</string>
+    <string name="grant_permission">Conceder permiso</string>
+    <string name="theme_system">Sistema</string>
+    <string name="version">Versión</string>
+    <string name="check_for_update">Buscar actualizaciones</string>
+    <string name="rate_our_app">Califica nuestra app</string>
+    <string name="what_s_new">Novedades</string>
+    <string name="source_code">Código fuente</string>
+    <string name="soon">Próximamente</string>
+    <string name="privacy_policy">Política de privacidad</string>
+    <string name="download_failed">Error: %1$s</string>
+    <string name="unknown">Desconocido</string>
+    <string name="minimum_5_characters_required">Se requieren al menos 5 caracteres</string>
+    <string name="error_in_the_app">Error en la aplicación</string>
+    <string name="add_languages">Agregar idiomas</string>
+    <string name="add_manga_site">Agregar sitio de manga</string>
+    <string name="error_in_manga_site">Error en el sitio de manga</string>
+    <string name="ask_to_add_features">Solicitar agregar funciones</string>
+    <string name="custom_feedback">Comentarios personalizados</string>
+
+    <string name="request_language">Idioma de solicitud</string>
+    <string name="active">Activo</string>
+    <string name="failed">Fallido</string>
+    <string name="completed">Completado</string>
+    <string name="running">En ejecución</string>
+    <string name="queued">En cola</string>
+    <string name="downloaded">Descargado</string>
+
+    <string name="http_400">Solicitud incorrecta</string>
+    <string name="http_401">No autorizado</string>
+    <string name="http_403">Prohibido – haz clic en “Ayuda” para resolver el problema</string>
+    <string name="http_404">No encontrado</string>
+    <string name="http_408">Tiempo de espera de la solicitud agotado</string>
+    <string name="http_client_error">Error de cliente %1$d</string>
+
+    <string name="http_500">Error interno del servidor</string>
+    <string name="http_502">Puerta de enlace incorrecta</string>
+    <string name="http_503">Servicio no disponible</string>
+    <string name="http_504">Tiempo de espera de la puerta de enlace</string>
+    <string name="http_server_error">Error de servidor %1$d</string>
+
+    <string name="http_unexpected_status">Estado HTTP inesperado %1$d</string>
+
+    <string name="err_no_internet">No se puede acceder al servidor: comprueba tu conexión a Internet.</string>
+    <string name="err_timeout">La solicitud ha caducado: inténtalo de nuevo más tarde.</string>
+    <string name="err_connect">No se puede conectar con el servidor.</string>
+    <string name="err_unexpected">Ha ocurrido un error inesperado: %1$s</string>
+    <string name="cancelled_by_user">Cancelado por el usuario</string>
+    <string name="failed_to_load_image">No se pudo cargar la imagen.</string>
+    <string name="image_too_large_tap_here_to_open_the_chapter_in_webview">La imagen es demasiado grande \n toca aquí para abrir el capítulo en vista web</string>
+    <string name="you_are_in">Estás en</string>
+    <string name="going_to">Vas a</string>
+    <string name="no_internet_connection_please_try_again_when_you_re_online">Sin conexión a internet. Inténtalo de nuevo cuando estés en línea.</string>
+    <string name="image_is_too_big">La imagen es demasiado grande para mostrarla \n intenta abrirla en vista web</string>
+
+    <string name="feedback_id_format">ID: %s…</string>
+
+    <!-- Closure Reasons -->
+    <string name="closure_reason">Razón de cierre</string>
+    <string name="closure_reason_label">Razón de Cierre:</string>
+    <string name="closure_reason_done">HECHO</string>
+    <string name="closure_reason_done_wait_update">HECHO - ESPERAR ACTUALIZACIÓN</string>
+    <string name="closure_reason_other">OTRO</string>
+
+    <!-- Error States -->
+    <string name="error_occurred">Algo salió mal</string>
+    <string name="error_code_format">Código de error: %d</string>
+    <string name="get_help">Obtener ayuda</string>
+
+    <!-- Empty States -->
+    <string name="no_feedback_found">Aún no hay comentarios</string>
+    <string name="no_feedback_message">Cuando se envíe un comentario, aparecerá aquí.</string>
+    <string name="status_open">Abierto</string>
+    <string name="status_planned">Planificado</string>
+
+    <string name="likes">Me gusta</string>
+    <string name="watching_now">Viéndolo ahora</string>
+    <string name="show_buttons">Mostrar botones</string>
+    <string name="show_tabs_all_likes_etc">Mostrar pestañas (Todo, Me gusta, etc.)</string>
+    <string name="status_pinned">Fijado</string>
+    <string name="pinned_reason">FIJADO</string>
+    <string name="admin">administrador</string>
+    <string name="content_removed_18_hentai">Contenido eliminado: hentai +18</string>
+    <string name="references_to_adult_18_content_aren_t_allowed_here_so_we_ve_removed_them_to_keep_our_community_safe_thanks_for_understanding">Las referencias a contenido para adultos (+18) no están permitidas aquí, así que las hemos eliminado para mantener nuestra comunidad segura. ¡Gracias por entenderlo!</string>
+    <string name="removed_18_hentai_reference_to_comply_with_community_guidelines">Referencia a hentai +18 eliminada para cumplir con las normas de la comunidad</string>
+    <string name="pinned_new_manga_site_requirements">Fijado: Requisitos para nuevo sitio de manga</string>
+    <string name="any_new_manga_site_must_offer_at_least_200_titles_have_no_bot_verification_steps_and_be_worth_the_setup_effort_adding_a_site_takes_significant_time_and_work">Cualquier sitio de manga nuevo debe ofrecer al menos 200 títulos, no tener pasos de verificación de bots y valer el esfuerzo de configuración: agregar un sitio requiere mucho tiempo y trabajo.</string>
+    <string name="new_site_requires_200_mangas_no_bot_checks_to_justify_the_manual_setup_effort"><![CDATA[El sitio nuevo requiere ≥200 mangas y sin verificaciones de bot para justificar el esfuerzo de configuración manual]]></string>
+    <string name="feedbacks_and_complaints">Comentarios y reclamaciones</string>
+
+
+    <string name="status_unknown">Unknown</string>
+
+
+
+
+
+    <!-- Complaint Actions -->
+    <string name="complaint_actions">Acciones de Queja</string>
+    <string name="reply">Responder</string>
+    <string name="edit">Editar</string>
+    <string name="delete">Eliminar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="close">Cerrar</string>
+
+    <!-- Reply Section -->
+    <string name="reply_to_complaint">Responder a Queja</string>
+    <string name="your_reply">Tu Respuesta</string>
+    <string name="reply_placeholder">Escribe tu respuesta aquí...</string>
+    <string name="send_reply">Enviar Respuesta</string>
+    <string name="reply_to_complaint_id">Responder a Queja ID: %s</string>
+
+    <!-- Edit Section -->
+    <string name="edit_complaint">Editar Queja</string>
+    <string name="subject">Asunto</string>
+    <string name="complaint_body">Contenido de la Queja</string>
+    <string name="edit_placeholder">Edita los detalles de tu queja aquí...</string>
+    <string name="save_changes">Guardar Cambios</string>
+    <string name="edit_complaint_id">Editar Queja ID: %s</string>
+
+    <!-- Delete Section -->
+    <string name="delete_complaint">Eliminar Queja</string>
+    <string name="delete_warning_title">¿Estás seguro?</string>
+    <string name="delete_warning_message">Esta acción no se puede deshacer. La queja será eliminada permanentemente.</string>
+    <string name="delete_forever">Eliminar Para Siempre</string>
+
+    <!-- Navigation -->
+    <string name="back">Atrás</string>
+
+    <!-- Common -->
+    <string name="loading">Cargando...</string>
+    <string name="error">Error</string>
+
+    <!-- Status Labels -->
+    <string name="status_pending">Pendiente</string>
+    <string name="status_in_progress">En Progreso</string>
+    <string name="status_resolved">Resuelto</string>
+    <string name="status_closed">Cerrado</string>
+    <string name="status_rejected">Rechazado</string>
+    <string name="status_reopened">Reabierto</string>
+
+    <!-- Character Limits -->
+    <string name="character_count">%1$d/%2$d</string>
+    <string name="character_limit_exceeded">Límite de caracteres excedido</string>
+
+    <!-- Existing strings -->
+    <string name="feedback_manager_title">Gestor de Comentarios</string>
+    <string name="loading_feedback">Cargando comentarios...</string>
+    <string name="search_feedbacks_hint">Buscar quejas...</string>
+    <string name="search">Buscar</string>
+    <string name="clear">Limpiar</string>
+    <string name="filter_all">Todos</string>
+    <string name="feedbacks_found_count">%d comentarios encontrados</string>
+    <string name="no_results_found">No se encontraron resultados</string>
+    <string name="try_different_search">Prueba un término de búsqueda o filtro diferente</string>
+
+
+    <string name="whats_new_title">Novedades</string>
+    <string name="previous">Anterior</string>
+    <string name="next">Siguiente</string>
+    <string name="new_badge">NUEVO</string>
+    <string name="feature_image">Imagen destacada</string>
+    <string name="thumbnail">Miniatura %1$d</string>
+    <string name="play">Reproducir</string>
+    <string name="play_video">Reproducir video</string>
+    <string name="video_preview">Vista previa del video</string>
+    <string name="fullscreen">Pantalla completa</string>
+    <string name="fullscreen_image">Imagen en pantalla completa</string>
+    <string name="tap_outside_to_close">Toque fuera para cerrar</string>
+
+
+
+    <!-- res/values/strings.xml - Additional strings for Admin Complaint Management -->
+
+    <!-- Admin Screen Titles -->
+    <string name="admin_complaint_management">Admin Complaint Management</string>
+    <string name="complaints_statistics">Complaints Statistics</string>
+    <string name="loading_complaints">Loading complaints…</string>
+    <string name="no_complaints_found">No Complaints Found</string>
+    <string name="no_complaints_message">No complaints have been submitted yet.</string>
+
+    <!-- Search and Filter -->
+    <string name="search_complaints_admin">Search complaints, users, IDs…</string>
+    <string name="filter_by_status">Filter by Status</string>
+    <string name="filter_by_type">Filter by Type</string>
+    <string name="all_statuses">All Statuses</string>
+    <string name="all_types">All Types</string>
+    <string name="sort_by">Sort by</string>
+    <string name="complaints_found_count">%d complaints found</string>
+    <string name="try_different_filters">Try adjusting your search or filters</string>
+
+    <!-- Sort Options -->
+    <string name="sort_date_newest">Date (Newest)</string>
+    <string name="sort_date_oldest">Date (Oldest)</string>
+    <string name="sort_status">Status</string>
+    <string name="sort_type">Type</string>
+    <string name="sort_user_id">User ID</string>
+
+    <!-- Statistics -->
+    <string name="total_complaints">Total Complaints</string>
+    <string name="by_status">By Status</string>
+    <string name="by_type">By Type</string>
+
+    <!-- Dialog Titles -->
+    <string name="change_status">Change Status</string>
+    <string name="add_closure_reason">Add Closure Reason</string>
+    <string name="delete_complaint_title">Delete Complaint</string>
+
+    <!-- Dialog Content -->
+    <string name="select_new_status">Select new status:</string>
+    <string name="update_status">Update Status</string>
+    <string name="complaint_type">Complaint Type</string>
+    <string name="description">Description</string>
+    <string name="enter_subject">Enter subject</string>
+    <string name="enter_description">Enter description</string>
+
+
+    <!-- Closure Reason Dialog -->
+    <string name="reason_type">Reason Type</string>
+    <string name="closure_reason_details">Closure Reason Details</string>
+    <string name="enter_closure_reason">Enter closure reason details…</string>
+    <string name="add_reason">Add Reason</string>
+    <string name="current_status">Current Status:</string>
+
+    <!-- Delete Dialog -->
+    <string name="delete_complaint_message">Are you sure you want to delete this complaint? This action cannot be undone.</string>
+    <string name="complaint_details">Complaint Details:</string>
+
+    <!-- Card Content -->
+    <string name="user_id_format">User: %s</string>
+    <string name="complaint_id_format">ID: %s</string>
+    <string name="status_label">Status:</string>
+
+    <!-- Closure Reason Types -->
+    <string name="reason_done">Done</string>
+    <string name="reason_done_wait_update">Done - Wait for Update</string>
+    <string name="reason_pinned">Pinned</string>
+    <string name="reason_other">Other</string>
+
+    <!-- Action Messages -->
+    <string name="status_updated_successfully">Status updated successfully</string>
+    <string name="complaint_updated_successfully">Complaint updated successfully</string>
+    <string name="closure_reason_added_successfully">Closure reason added successfully</string>
+    <string name="complaint_deleted_successfully">Complaint deleted successfully</string>
+    <string name="bulk_update_success">Successfully updated %d complaints</string>
+    <string name="bulk_delete_success">Successfully deleted %d complaints</string>
+
+    <!-- Error Messages -->
+    <string name="error_updating_status">Failed to update status</string>
+    <string name="error_updating_complaint">Failed to update complaint</string>
+    <string name="error_adding_reason">Failed to add closure reason</string>
+    <string name="error_deleting_complaint">Failed to delete complaint</string>
+    <string name="error_bulk_operation">Bulk operation failed</string>
+
+    <!-- Bulk Operations -->
+    <string name="bulk_operations">Bulk Operations</string>
+    <string name="select_multiple">Select Multiple</string>
+    <string name="selected_count">%d selected</string>
+    <string name="bulk_status_change">Bulk Status Change</string>
+    <string name="bulk_delete">Bulk Delete</string>
+    <string name="confirm_bulk_delete">Delete %d selected complaints?</string>
+    <string name="confirm_bulk_status_change">Change status for %d selected complaints?</string>
+
+    <!-- Admin Actions -->
+    <string name="admin_actions">Admin Actions</string>
+    <string name="export_data">Export Data</string>
+    <string name="import_data">Import Data</string>
+    <string name="generate_report">Generate Report</string>
+    <string name="system_settings">System Settings</string>
+
+    <!-- Validation Messages -->
+    <string name="field_required">This field is required</string>
+    <string name="subject_too_short">Subject must be at least 3 characters</string>
+    <string name="description_too_short">Description must be at least 10 characters</string>
+    <string name="reason_too_short">Reason must be at least 5 characters</string>
+
+    <!-- Accessibility -->
+    <string name="edit_complaint_button">Edit complaint</string>
+    <string name="delete_complaint_button">Delete complaint</string>
+    <string name="change_status_button">Change status</string>
+    <string name="add_closure_reason_button">Add closure reason</string>
+    <string name="toggle_statistics">Toggle statistics visibility</string>
+    <string name="select_complaint">Select complaint</string>
+
+    <string name="sort_app_version">App Version (Newest)</string>
+    <string name="sort_app_version_desc">App Version (Oldest)</string>
+
+
+    //=========================================================================================================
+
+
+
+    <string name="site_maintenance_description">Esta fuente de manga está actualmente en mantenimiento. Es posible que las funciones estén limitadas o temporalmente no disponibles mientras se realizan mejoras.</string>
+    <string name="site_stopped_description">Esta fuente de manga no está disponible o ha sido descontinuada. Cambia a otra fuente para seguir leyendo tu manga favorito.</string>
+
+    <string name="helpful_tips">Consejos útiles</string>
+
+    <string name="maintenance_tip_1">Intenta actualizar en unos minutos, el mantenimiento suele ser breve</string>
+    <string name="maintenance_tip_2">Cámbiate a otra fuente para seguir leyendo inmediatamente</string>
+    <string name="maintenance_tip_3">Tu progreso de lectura y marcadores están guardados de forma segura</string>
+
+    <string name="stopped_tip_1">Tu progreso de lectura se conserva al cambiar de fuente</string>
+    <string name="stopped_tip_2">Activa múltiples fuentes para mayor fiabilidad</string>
+    <string name="stopped_tip_3">Vuelve a comprobar más tarde, las fuentes pueden volver a estar disponibles</string>
+
+    <string name="manage_sources">Gestionar fuentes</string>
+    <string name="delete_all_downloaded_chapters">Eliminar todos los capítulos descargados</string>
+
+    <string name="languages_coming_soon_title">Idiomas próximos</string>
+    <string name="languages_coming_soon_description">
+    🌍 Estamos trabajando en añadir fuentes para:
+    🇹🇷 Turco, 🇩🇪 Alemán, 🇮🇹 Italiano, 🇯🇵 Japonés.
+    ¡Gracias por tu paciencia, estarán disponibles pronto!
+</string>
+
+    <string name="delete_manga">¿Eliminar manga?</string>
+    <string name="are_you_sure_you_want_to_remove_this_manga_from_your_library_all_progress_read_status_bookmarks_and_downloaded_chapters_for_this_manga_will_be_permanently_deleted_and_cannot_be_recovered">
+    ¿Estás seguro de que deseas eliminar este manga de tu biblioteca? Todo el progreso (estado de lectura, marcadores) y los capítulos descargados se eliminarán permanentemente y no se podrán recuperar.
+</string>
+    <string name="we_d_love_to_hear_from_you">Nos encantaría saber de ti</string>
+    <string name="category">Categoría</string>
+    <string name="select_a_category">Selecciona una categoría</string>
+    <string name="your_feedback">Tus comentarios</string>
+    <string name="connect_with_us_in_social_media">Conéctate con nosotros en las redes sociales</string>
+    <string name="you_ll_receive_a_prompt_response_our_developer_will_reach_out_to_you_shortly">
+        Recibirás una respuesta rápida — nuestro desarrollador se pondrá en contacto contigo en breve.
+    </string>
+
+    <string name="status_not_planned">No planeado</string>
+    <string name="new_chapter">NUEVO</string>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <string name="whats_new_sources_title">Nuevos Idiomas de Fuentes</string>
+    <string name="whats_new_sources_description">Hemos añadido nuevas fuentes de manga localizadas — MangaPark (EN), Pro Manga (AR), InManga (ES) y MediocreToons (PT). Instálalas desde la app para obtener resultados de búsqueda mejorados, traducciones más precisas y un catálogo mayor específico por idioma. También arreglamos el problema de Team X.</string>
+
+
+    <string name="whats_new_languages_title">Compatibilidad con turco, alemán, italiano y japonés — fuentes por idioma próximamente</string>
+    <string name="whats_new_languages_description">Hemos añadido soporte para cuatro nuevos idiomas — turco (TR), alemán (DE), italiano (IT) y japonés (JA). Debido a la alta carga de trabajo de desarrollo, esta versión no incluye fuentes específicas por idioma; se añadirán en una actualización futura.</string>
+
+
+    <string name="whats_new_fixes_title">Correcciones y rendimiento</string>
+    <string name="whats_new_fixes_description">Hemos corregido varios problemas en la app e implementado mejoras de rendimiento y estabilidad para una experiencia más fluida y rápida.</string>
+    <string name="request_submitted_successfully">Solicitud enviada con éxito</string>
+    <string name="request_failed">Error al enviar la solicitud</string>
+    <string name="please_solve_the_bot_check">Por favor, completa la verificación del bot</string>
+    <string name="app_information_and_updates_contact_us_on_social_media">Información y actualizaciones de la aplicación. Contáctanos en las redes sociales</string>
+
+    <string name="converting_to_cbz">Convirtiendo a CBZ</string>
+    <string name="conversion_complete">¡Conversión completa!</string>
+    <string name="conversion_failed">La conversión falló</string>
+    <string name="converted_chapters_count">Se convirtieron %1$d de %2$d capítulos</string>
+    <string name="please_wait">Por favor espera, esto puede tardar…</string>
+    <string name="ok">OK</string>
+    <string name="error_loading_more">Error al cargar más elementos</string>
+
+    <string name="notification_downloading_chapters">Descargando capítulos</string>
+    <string name="notification_chapter_title">Capítulo %s</string>
+
+    <string name="notification_downloading_background">Descargando todos los capítulos en segundo plano</string>
+    <string name="notification_compressing_images">Comprimiendo imágenes…</string>
+    <string name="notification_images_progress">%1$d / %2$d imágenes</string>
+
+    <string name="action_cancel_all">Cancelar todo</string>
+    <string name="action_cancel_chapter">Cancelar capítulo</string>
+
+    <string name="notification_channel_all_downloads">Todas las descargas</string>
+    <string name="notification_channel_all_downloads_desc">Progreso total de descarga</string>
+    <string name="notification_channel_chapter_download">Descarga de capítulo</string>
+    <string name="notification_channel_chapter_download_desc">Progreso de un solo capítulo</string>
+    <string name="notification_channel_download_summary">Resumen de descarga</string>
+    <string name="notification_channel_download_summary_desc">Notificaciones de finalización</string>
+    <string name="notification_channel_library_refresh">Actualización de biblioteca</string>
+    <string name="notification_channel_library_refresh_desc">Muestra el progreso de actualización en segundo plano</string>
+
+    <string name="notification_refreshing_library">Actualizando biblioteca</string>
+    <string name="notification_library_refresh_failed">Falló la actualización de la biblioteca</string>
+    <string name="notification_starting">Iniciando…</string>
+    <string name="notification_refresh_timed_out">Tiempo de espera agotado</string>
+    <string name="notification_refresh_failed">Fallo en la actualización: %s</string>
+    <string name="notification_no_manga_to_refresh">No hay manga para actualizar</string>
+    <string name="notification_processing_batch">Procesando lote %d…</string>
+    <string name="notification_finishing_up">Finalizando…</string>
+    <string name="notification_refresh_progress">%1$s (%2$d/%3$d completados, %4$d fallidos)</string>
+    <string name="notification_refresh_completed">Completado: %1$d exitosos, %2$d fallidos</string>
+
+
+    <string name="date_today">hoy</string>
+    <string name="date_yesterday">ayer</string>
+
+    <string name="time_just_now">Justo ahora</string>
+    <string name="time_yesterday">Ayer</string>
+
+    <plurals name="time_minutes_ago">
+        <item quantity="one">hace %d minuto</item>
+        <item quantity="other">hace %d minutos</item>
+    </plurals>
+
+    <plurals name="time_hours_ago">
+        <item quantity="one">hace %d hora</item>
+        <item quantity="other">hace %d horas</item>
+    </plurals>
+
+    <plurals name="time_days_ago">
+        <item quantity="one">hace %d día</item>
+        <item quantity="other">hace %d días</item>
+    </plurals>
+
+    <plurals name="time_weeks_ago">
+        <item quantity="one">hace %d semana</item>
+        <item quantity="other">hace %d semanas</item>
+    </plurals>
+
+    <plurals name="time_months_ago">
+        <item quantity="one">hace %d mes</item>
+        <item quantity="other">hace %d meses</item>
+    </plurals>
+
+    <plurals name="time_years_ago">
+        <item quantity="one">hace %d año</item>
+        <item quantity="other">hace %d años</item>
+    </plurals>
+
+
+
+    <string name="downloaded_header">%1$s • %2$d descargados</string>
+    <string name="cancel_chapter_download">Cancelar descarga del capítulo</string>
+    <string name="bytes_zero">0 B</string>
+    <string name="bytes_format_b">%.1f B</string>
+    <string name="bytes_format_kb">%.1f KB</string>
+    <string name="bytes_format_mb">%.1f MB</string>
+    <string name="bytes_format_gb">%.1f GB</string>
+    <string name="bytes_format_tb">%.1f TB</string>
+
+    <string name="value_count">%,d</string>
+    <string name="multi_search">Búsqueda múltiple</string>
+    <string name="use_yami_compressor">Usar el compresor Yami</string>
+    <string name="use_yami_compressor_to_reduce_chapter_size_by_over_50_and_save_storage">Usa el compresor Yami para reducir el tamaño de los capítulos en más del cincuenta por ciento y ahorrar espacio</string>
+    <string name="compress_existing_downloads">Comprimir descargas existentes</string>
+    <string name="compress_all_previously_downloaded_chapters_this_will_save_storage_space_but_may_take_some_time">Comprime todos los capítulos descargados previamente. Esto ahorrará espacio, pero puede tomar tiempo.</string>
+    <string name="converting">Convirtiendo…</string>
+    <string name="start_conversion">Iniciar conversión</string>
+    <string name="conversion_stopped">Conversión detenida</string>
+    <string name="conversion_complete_">¡Conversión completada!</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">No cierres la aplicación hasta que la conversión termine</string>
+    <string name="remaining">Restante</string>
+    <string name="current">Actual:</string>
+    <string name="chapter">Capítulo %1$s</string>
+    <string name="stop_conversion">Detener conversión</string>
+
+
+    <string name="h_m">%1$dh %2$dmin</string>
+    <string name="under_maintenance">En mantenimiento</string>
+    <string name="this_site_is_currently_under_maintenance_please_check_back_later_or_try_a_different_source">Este sitio está en mantenimiento. Vuelve más tarde o prueba otra fuente.</string>
+    <string name="site_stopped">Sitio detenido</string>
+    <string name="this_site_has_been_stopped_and_is_no_longer_available_please_select_a_different_source_from_the_tabs_above">Este sitio ha sido detenido y ya no está disponible. Selecciona otra fuente desde las pestañas superiores.</string>
+    <string name="conversion_stopped_by_user">Conversión detenida por el usuario.\n</string>
+    <string name="chapters_converted_successfully">✓ %1$d capítulos convertidos con éxito\n</string>
+    <string name="chapters_remaining">⏸ %1$d capítulos restantes</string>
+    <string name="no_chapters_to_convert_all_chapters_are_already_in_cbz_format">No hay capítulos para convertir. Todos ya están en formato CBZ.</string>
+    <string name="chapters_failed">\n✗ %1$d capítulos fallaron</string>
+    <string name="compressing">Comprimiendo…</string>
+
+    <string name="progress_percent">%1$d%%</string>
+    <string name="progress_size">%1$s / %2$s</string>
+    <string name="bytes_b">%1$d B</string>
+    <string name="bytes_kb">%1$d KB</string>
+    <string name="bytes_mb">%1$d MB</string>
+
+    <string name="adult_content_blocked_title">Bloqueado (18+)</string>
+    <string name="adult_content_blocked_message">
+    Esta fuente no está disponible porque contiene contenido para mayores de 18 años. Por favor, elige otra fuente.
+</string>
+
+</resources>

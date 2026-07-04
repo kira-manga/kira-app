@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Settings / Theme / Language strings — Arabic (NP Phase 2).
+
+  Trusted Arabic verbatim from the old app's values-ar/strings.xml for every reused-legacy key.
+  New en-only keys (toggle descriptions / CBZ section copy / VM snackbars) are intentionally NOT
+  duplicated here — they fall back to the en values per compose-resources resolution, matching the
+  UP-3 localization playbook posture for genuinely-new strings pending trusted Arabic.
+-->
+<resources>
+    <!-- GAP-SET-12 -->
+    <string name="we_d_love_to_hear_from_you">نود أن نسمع منك</string>
+    <string name="connect_with_us_in_social_media">تواصل معنا عبر وسائل التواصل الاجتماعي</string>
+    <string name="you_ll_receive_a_prompt_response">سوف تتلقى ردًا سريعًا — سيتواصل معك المطوّر قريبًا.</string>
+
+    <!-- GAP-SET-14 -->
+    <string name="but_revert">ارجاع</string>
+    <string name="but_apply">تفعيل</string>
+
+    <!-- GAP-SET-16 -->
+    <string name="converting_to_cbz">جارٍ التحويل إلى CBZ</string>
+    <string name="conversion_complete_">اكتمل التحويل!</string>
+    <string name="conversion_stopped">تم إيقاف التحويل</string>
+    <string name="conversion_failed">فشل التحويل</string>
+    <string name="please_don_t_close_the_app_until_conversion_is_complete">يرجى عدم إغلاق التطبيق حتى يكتمل التحويل</string>
+    <!-- `completed`/`close` live in base values-ar/strings.xml; not redefined here (runtime-duplicate guard). -->
+    <string name="remaining">المتبقي</string>
+    <string name="current">الحالي:</string>
+    <string name="chapter">الفصل %1$s</string>
+    <string name="stop_conversion">إيقاف التحويل</string>
+    <string name="closure_reason_done">تم</string>
+
+    <!-- GAP-SET-06 -->
+    <string name="feedbacks_and_complaints">الملاحظات والشكاوى</string>
+</resources>

@@ -1,0 +1,90 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>kira — glossy 3D icons</title>
+<style>
+ :root{--bg:#0B0D11;--card:#14171F;--line:rgba(255,255,255,.09);--text:#F3F4F7;--muted:#9AA1AF;--coral:#FF5B6E;}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:#0B0D11;color:var(--text);padding:46px 30px}
+ .wrap{max-width:1120px;margin:0 auto}
+ .tag{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--coral)}
+ h1{font-size:30px;font-weight:900;letter-spacing:-.5px;margin-top:8px}
+ .lead{color:var(--muted);font-size:14.5px;margin:10px 0 4px;line-height:1.55;max-width:850px}
+ .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:34px}
+ .c{display:flex;flex-direction:column;align-items:center;gap:14px;background:#101015;border:1px solid var(--line);border-radius:24px;padding:30px 20px}
+ .pick{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:var(--coral);align-self:flex-start}
+ /* GLOSSY 3D TILE — matches logo 1: bright coral top -> magenta bottom, strong gloss + glow */
+ .ic{position:relative;width:140px;height:140px;border-radius:33px;overflow:hidden;
+   background:linear-gradient(176deg,#FF9A7A 0%,#FF5B6E 34%,#F23A6E 64%,#D5256E 100%);
+   box-shadow:0 22px 46px rgba(213,37,110,.55), 0 0 60px rgba(255,91,110,.30),
+     inset 0 3px 1px rgba(255,255,255,.5), inset 0 -16px 30px rgba(150,15,70,.55), inset 0 0 0 1px rgba(255,255,255,.12)}
+ .ic::before{content:"";position:absolute;left:8%;right:8%;top:5%;height:42%;border-radius:50%;
+   background:radial-gradient(120% 100% at 50% 0%,rgba(255,255,255,.55),rgba(255,255,255,0) 70%);filter:blur(2px);z-index:3}
+ .ic svg{width:140px;height:140px;position:relative;z-index:2}
+ .trio{display:flex;gap:12px;align-items:flex-end}
+ .trio .s{position:relative;border-radius:26%;overflow:hidden;background:linear-gradient(176deg,#FF9A7A,#F23A6E 60%,#D5256E);box-shadow:0 8px 16px rgba(213,37,110,.5),inset 0 2px 0 rgba(255,255,255,.4),inset 0 -8px 14px rgba(150,15,70,.5)}
+ .trio .s svg{width:100%;height:100%}
+ .s52{width:52px;height:52px}.s36{width:36px;height:36px}.s26{width:26px;height:26px}
+ .nm{font-size:13px;font-weight:800}.why{font-size:12px;color:var(--muted);text-align:center;line-height:1.5;max-width:230px}
+ .wm{font-weight:800;letter-spacing:-1.5px;font-size:28px;display:flex;align-items:flex-end;background:linear-gradient(135deg,#FF5B6E,#FF8A5B);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .wm .dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,#FF5B6E,#FF8A5B);margin-left:2px;margin-bottom:6px}
+ .note{color:var(--muted);font-size:13px;margin-top:30px;line-height:1.65;background:#14171F;border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+ .note b{color:var(--text)} .note .big{color:#fff;font-weight:800;font-size:15px;display:block;margin-bottom:6px}
+</style></head><body>
+<svg style="position:absolute;width:0;height:0"><defs>
+ <!-- embossed/debossed dark mark: top in shadow, bottom catches light (carved look) -->
+ <linearGradient id="emb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c0f38"/><stop offset="1" stop-color="#b32a57"/></linearGradient>
+ <filter id="carve" x="-20%" y="-20%" width="140%" height="140%">
+   <feDropShadow dx="0" dy="-1.4" stdDeviation="0.6" flood-color="#5e0a2c" flood-opacity="0.8"/>
+   <feDropShadow dx="0" dy="1.6" stdDeviation="0.4" flood-color="#ffffff" flood-opacity="0.45"/>
+ </filter>
+</defs></svg>
+<div class="wrap">
+ <div class="tag">KIRA · GLOSSY 3D (LIKE LOGO 1)</div>
+ <h1>Glossy, dimensional — like the icons you saved</h1>
+ <p class="lead">Vibrant coral→magenta gloss, a top light‑arc, a colored glow, and a <b>mark carved into the gradient</b> with bevel + shadow — chasing your favorite (logo 1). Three embossed marks: an interlocking hex‑knot, a ribbon “K”, and a spark.</p>
+
+ <div class="grid">
+  <div class="c"><div class="pick">01 · HEX KNOT</div>
+   <div class="ic"><svg viewBox="0 0 100 100"><g filter="url(#carve)" fill="url(#emb)">
+     <path d="M50 24 L70 35 L70 47 L56 39 L56 55 L44 55 L44 39 L30 47 L30 35 Z"/>
+     <path d="M30 53 L44 61 L30 69 L30 57 Z M70 53 L70 69 L56 61 Z M40 64 L50 70 L60 64 L60 76 L40 76 Z"/>
+   </g></svg></div>
+   <div class="trio">
+     <div class="s s52"><svg viewBox="0 0 100 100"><g fill="url(#emb)"><path d="M50 26 L68 36 L68 47 L56 40 L56 55 L44 55 L44 40 L32 47 L32 36 Z"/><path d="M42 62 L50 68 L58 62 L58 74 L42 74 Z"/></g></svg></div>
+     <div class="s s36"><svg viewBox="0 0 100 100"><g fill="url(#emb)"><path d="M50 28 L68 38 L68 50 L50 40 L32 50 L32 38 Z"/><path d="M42 60 H58 V74 H42 Z"/></g></svg></div>
+     <div class="s s26"><svg viewBox="0 0 100 100"><path d="M50 30 L66 40 L66 60 L34 60 L34 40 Z" fill="url(#emb)"/></svg></div>
+   </div>
+   <div class="nm">Hex knot</div><div class="why">An abstract interlocking mark carved into the gloss — the closest to logo 1’s embossed geometric symbol.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+
+  <div class="c"><div class="pick">02 · RIBBON K</div>
+   <div class="ic"><svg viewBox="0 0 100 100"><g filter="url(#carve)" fill="url(#emb)">
+     <path d="M34 26 H46 V46 L64 26 H80 L56 50 L80 74 H64 L46 54 V74 H34 Z"/>
+   </g></svg></div>
+   <div class="trio">
+     <div class="s s52"><svg viewBox="0 0 100 100"><path d="M34 26 H46 V46 L64 26 H80 L56 50 L80 74 H64 L46 54 V74 H34 Z" fill="url(#emb)"/></svg></div>
+     <div class="s s36"><svg viewBox="0 0 100 100"><path d="M36 28 H47 V46 L63 28 H77 L56 50 L77 72 H63 L47 54 V72 H36 Z" fill="url(#emb)"/></svg></div>
+     <div class="s s26"><svg viewBox="0 0 100 100"><path d="M38 30 H48 V46 L62 30 H74 L56 50 L74 70 H62 L48 54 V70 H38 Z" fill="url(#emb)"/></svg></div>
+   </div>
+   <div class="nm">Ribbon K</div><div class="why">A bold geometric “K” carved into the gloss — premium app‑icon feel, clearly “kira”.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+
+  <div class="c"><div class="pick">03 · SPARK</div>
+   <div class="ic"><svg viewBox="0 0 100 100"><g filter="url(#carve)" fill="url(#emb)">
+     <path d="M50 22 C54 44 56 46 78 50 C56 54 54 56 50 78 C46 56 44 54 22 50 C44 46 46 44 50 22 Z"/>
+   </g></svg></div>
+   <div class="trio">
+     <div class="s s52"><svg viewBox="0 0 100 100"><path d="M50 24 C54 44 56 46 76 50 C56 54 54 56 50 76 C46 56 44 54 24 50 C44 46 46 44 50 24 Z" fill="url(#emb)"/></svg></div>
+     <div class="s s36"><svg viewBox="0 0 100 100"><path d="M50 26 C54 44 56 46 74 50 C56 54 54 56 50 74 C46 56 44 54 26 50 C44 46 46 44 50 26 Z" fill="url(#emb)"/></svg></div>
+     <div class="s s26"><svg viewBox="0 0 100 100"><path d="M50 28 C54 45 55 46 72 50 C55 54 54 55 50 72 C46 55 45 54 28 50 C45 46 46 45 50 28 Z" fill="url(#emb)"/></svg></div>
+   </div>
+   <div class="nm">Spark (kira)</div><div class="why">A sparkle carved into the gloss — literal to the name, glossy and premium.</div>
+   <div class="wm">kira<span class="dot"></span></div>
+  </div>
+ </div>
+
+ <div class="note">
+  <span class="big">Real talk on getting it perfect 👇</span>
+  These chase logo 1’s glossy‑embossed look in code. But your favorites (the 3D ghost mascot, the pro fox) are <b>rendered/illustrated by designers</b> — that exact polish is beyond what I can hand‑code in CSS. The fastest way to a logo you truly love: <b>generate the icon in an AI image tool</b> (e.g. “glossy 3D app icon, coral gradient, fox/spark, dark background”) or have a designer make it, then <b>drop the image into this chat</b> — I’ll vectorize/clean it and build the real launcher icon at every density + the kira wordmark. Meanwhile, if any of these three is “good enough for now,” say which and I’ll ship it so the app isn’t blocked on the logo.
+ </div>
+</div></body></html>

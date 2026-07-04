@@ -1,0 +1,91 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>yami — wordmark + screentone icon</title>
+<style>
+ :root{--bg:#0B0D11;--card:#14171F;--line:rgba(255,255,255,.09);--text:#F3F4F7;--muted:#9AA1AF;
+   --coral:#FF5B6E;--amber:#FF8A5B;--grad:linear-gradient(135deg,#FF5B6E,#FF8A5B);}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:
+   radial-gradient(110% 50% at 80% -5%,rgba(255,91,110,.12),transparent 60%),var(--bg);color:var(--text);padding:44px 30px}
+ .wrap{max-width:1120px;margin:0 auto}
+ .tag{font-size:11px;font-weight:800;letter-spacing:2.5px;color:var(--coral)}
+ h1{font-size:32px;font-weight:900;letter-spacing:-.6px;margin-top:8px}
+ .lead{color:var(--muted);font-size:15px;margin:10px 0 4px;line-height:1.55;max-width:820px}
+ .sec{font-size:11px;font-weight:800;letter-spacing:1.8px;color:var(--muted);margin:38px 0 16px;text-transform:uppercase}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:30px;margin-bottom:18px}
+ /* ===== screentone icon (the kept mark) ===== */
+ .ic{position:relative;border-radius:28px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+   background:radial-gradient(120% 110% at 30% 12%,#222a3b 0%,#10141c 48%,#080a0e 100%);
+   box-shadow:0 18px 38px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.05)}
+ .ic::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.10),transparent 38%)}
+ .ic::after{content:"";position:absolute;inset:0;opacity:.5;
+   background-image:radial-gradient(circle,rgba(255,120,110,.5) 1.3px,transparent 1.5px);background-size:9px 9px;
+   -webkit-mask-image:radial-gradient(120% 100% at 100% 100%,#000,transparent 60%);mask-image:radial-gradient(120% 100% at 100% 100%,#000,transparent 60%)}
+ .ic .y{position:relative;z-index:2;font-weight:900;letter-spacing:-2px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .ic128{width:128px;height:128px}.ic128 .y{font-size:78px}
+ .ic56{width:56px;height:56px;border-radius:14px}.ic56 .y{font-size:34px}
+ .ic40{width:40px;height:40px;border-radius:11px}.ic40 .y{font-size:25px}
+ /* ===== wordmarks ===== */
+ .wmrow{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+ .wm{font-weight:800;letter-spacing:-3px;font-size:72px;line-height:.9;display:inline-flex;align-items:flex-end}
+ .wm.coral{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .wm.onlight{color:#15171C}
+ .idot{width:13px;height:13px;border-radius:50%;background:var(--grad);display:inline-block;margin-left:5px;margin-bottom:11px}
+ /* screentone-filled wordmark */
+ .wm.tone{color:transparent;-webkit-background-clip:text;background-clip:text;
+   background-image:radial-gradient(circle,#FF5B6E 1.6px,transparent 1.9px),linear-gradient(135deg,#FF5B6E,#FF8A5B);
+   background-size:7px 7px,100% 100%}
+ .opt{display:flex;flex-direction:column;gap:6px;margin-bottom:26px}
+ .opt .lab{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--coral)}
+ .opt .desc{font-size:12.5px;color:var(--muted)}
+ /* lockup */
+ .lock{display:flex;align-items:center;gap:18px}
+ .lock.light{background:linear-gradient(160deg,#FFFFFF,#F1ECE7);border-radius:18px;padding:26px 30px}
+ .lock.light .wm{color:#15171C}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ /* in-app header demo */
+ .hd{background:#0E1014;border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+ .hd .eb{font-size:11px;font-weight:800;letter-spacing:2px}
+ .hd .eb.coral{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+ .hd .ti{font-size:26px;font-weight:800;margin-top:3px;color:var(--text)}
+ .note{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.6}
+</style></head><body><div class="wrap">
+ <div class="tag">YAMI · WORDMARK + ICON</div>
+ <h1>A custom “yami” wordmark, with the screentone icon</h1>
+ <p class="lead">Built from your refs — clean modern custom wordmarks (Atome / LUVI) — paired with the <b>Screentone</b> icon you picked. Lowercase, tight, confident, with the coral dot as the brand signal. (I couldn’t load the Dribbble images directly, so this matches the known style of those marks — tell me if you want it rounder, sharper, or more custom.)</p>
+
+ <div class="sec">The icon you chose — screentone “Y”</div>
+ <div class="card"><div class="wmrow">
+   <div class="ic ic128"><div class="y">Y</div></div>
+   <div class="ic ic56"><div class="y">Y</div></div>
+   <div class="ic ic40"><div class="y">Y</div></div>
+   <div style="flex:1;min-width:200px;color:var(--muted);font-size:13.5px;line-height:1.6">Kept as the app icon: coral gradient Y, depth + gloss, faint manga screentone in the corner. This is the launcher mark.</div>
+ </div></div>
+
+ <div class="sec">Wordmark options (pick one)</div>
+ <div class="card">
+   <div class="opt"><div class="lab">A · CORAL LOWERCASE — the Atome-clean route</div>
+     <div class="wmrow"><div class="wm coral">yami<span class="idot"></span></div></div>
+     <div class="desc">Tight geometric lowercase, coral→amber, the dot as the brand mark. Modern, premium, friendly.</div>
+   </div>
+   <div class="opt"><div class="lab">B · SCREENTONE FILL — ties to the icon</div>
+     <div class="wmrow"><div class="wm tone">yami<span class="idot"></span></div></div>
+     <div class="desc">The wordmark filled with the same halftone dots as the icon — distinctive, unmistakably “manga”.</div>
+   </div>
+   <div class="opt" style="margin-bottom:0"><div class="lab">C · ON LIGHT — for light surfaces / store listing</div>
+     <div class="wmrow" style="background:linear-gradient(160deg,#FFFFFF,#F1ECE7);border-radius:14px;padding:22px 26px"><div class="wm onlight">yami<span class="idot"></span></div></div>
+     <div class="desc">Near-black on cream with the coral dot — the light-context version of A.</div>
+   </div>
+ </div>
+
+ <div class="sec">Lockup — icon + wordmark (app splash / store / header)</div>
+ <div class="grid2">
+   <div class="card"><div class="lock"><div class="ic ic56"><div class="y">Y</div></div><div class="wm coral" style="font-size:48px">yami<span class="idot" style="width:9px;height:9px;margin-bottom:8px"></span></div></div></div>
+   <div class="card" style="padding:0"><div class="lock light"><div class="ic ic56"><div class="y">Y</div></div><div class="wm" style="font-size:48px;color:#15171C">yami<span class="idot" style="width:9px;height:9px;margin-bottom:8px"></span></div></div></div>
+ </div>
+
+ <div class="sec">In the app</div>
+ <div class="card"><div class="hd"><div class="eb coral">YAMI</div><div class="ti">Discover</div></div>
+   <div class="note">The wordmark also drives the Home eyebrow + splash. The icon is the launcher; the wordmark is everywhere the name appears.</div>
+ </div>
+
+ <p class="note" style="margin-top:24px">Tell me the wordmark you want (A coral / B screentone / C is just A on light) and I’ll lock it with the screentone icon, then build the real launcher icon at every density + wire the wordmark into the splash + Home header. Want the letterforms <b>rounder</b> (softer, friendly) or <b>sharper</b> (tech, edgy)? I can also add one clever custom detail (e.g. the “y” tail or the “a” counter) like the N‑fox mark — say the word.</p>
+</div></body></html>

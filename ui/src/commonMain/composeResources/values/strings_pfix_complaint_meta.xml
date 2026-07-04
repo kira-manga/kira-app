@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Parity-fix strings for the user-side Complaint card's DEVICE-METADATA row (:ui ui/complaint).
+
+  Source of truth: native-app ComplaintCard.kt:69-94 renders an InfoItem row showing the
+  device OS version (via apiLevelToAndroidVersion) and the manufacturer, read from the legacy
+  Complaint.metadata map (osVersion / manufacturer). The :ui rework ComplaintRow surfaced
+  neither, so the device row was missing.
+
+  apiLevelToAndroidVersion (native utils/apiLevelToAndroidVersion.kt) maps the integer API level
+  to a human-readable Android version. Its two non-version branches resolve string resources:
+  - apiLevel 0  -> R.string.filter_all ("All") — already present in :ui strings.xml, reused here.
+  - else        -> R.string.unknown    ("Unknown") — added below with native text + native key name
+    (native-app strings.xml:324 `unknown` = "Unknown"). Localized in values-ar where present.
+-->
+<resources>
+    <string name="unknown">Unknown</string>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    P2 parity-fix strings for the History screen (ui/.../ui/history).
+
+    Native source of truth: native-app/.../features/history uses two content-description
+    strings for the History destructive icon affordances:
+      - content_description_clear_history ("Clear history") on the top-bar DeleteForever IconButton
+      - content_description_delete ("Delete") on the per-row Outlined.Delete IconButton
+    The :ui catalog had no equivalents (the rework had been rendering labelled TextButtons), so
+    they are added here under the P2 pfix convention rather than mutating the base strings.xml.
+-->
+<resources>
+    <string name="content_description_clear_history">Clear history</string>
+    <string name="content_description_delete">Delete</string>
+</resources>

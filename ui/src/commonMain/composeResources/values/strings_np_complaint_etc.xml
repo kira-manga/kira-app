@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Complaint / WhatsNew / About strings (NP Phase 2, COMPLAINT + WHATSNEW +
+  WELCOME + ABOUT cluster).
+
+  Net-new keys for the P1 gap implementations:
+    - GAP-CMP-02 / GAP-CMP-23: ClosureReasonCard + ClosureReasonType dropdown labels.
+    - GAP-CMP-12: admin reply-to-complaint-id reference line.
+    - GAP-WN-02 / GAP-WN-03: fullscreen media viewer + prev/next/get-started nav buttons.
+
+  Kept in a separate file (per NP convention) from the shared :ui strings.xml so the parity
+  additions are easy to audit and never collide with the hand-authored shared catalog.
+  English-only until the trusted-Arabic pass; values mirror the native legacy strings verbatim
+  where a native key exists (closure_reason_label, reply_to_complaint_id, get_started,
+  tap_outside_to_close, reason_type, closure_reason_details).
+-->
+<resources>
+    <!-- GAP-CMP-02 — ClosureReasonCard (user-side row + dialog preview) -->
+    <string name="np_closure_reason_label">Closure Reason:</string>
+    <string name="np_closure_reason">Closure reason</string>
+    <string name="np_closure_reason_done">DONE</string>
+    <string name="np_closure_reason_done_wait_update">DONE - WAIT UPDATE</string>
+    <string name="np_closure_reason_other">OTHER</string>
+    <string name="np_closure_reason_pinned">PINNED</string>
+
+    <!-- GAP-CMP-23 — admin closure-reason type dropdown -->
+    <string name="np_reason_type">Reason Type</string>
+    <string name="np_closure_reason_details">Closure Reason Details</string>
+    <string name="np_select_reason_type">Select reason type</string>
+
+    <!-- GAP-CMP-12 — admin reply-to-complaint reference line -->
+    <string name="np_reply_to_complaint_id">Reply to Complaint ID: %1$s</string>
+
+    <!-- GAP-WN-02 — fullscreen media viewer -->
+    <string name="np_tap_outside_to_close">Tap outside to close</string>
+    <string name="np_close">Close</string>
+
+    <!-- GAP-WN-03 — prev / next / get-started navigation buttons -->
+    <string name="np_previous">Previous</string>
+    <string name="np_next">Next</string>
+    <string name="np_get_started">Get Started</string>
+</resources>

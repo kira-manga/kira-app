@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Localized download-notification strings for the :data:download WorkManager worker
+  (backlog L15c, 2026-07). Values copied VERBATIM from composeApp/src/commonMain/
+  composeResources/values-tr/strings.xml (the canonical localized copies), with
+  Android-res apostrophe/quote escaping applied. Keep in sync by re-copying, never by
+  re-translating here.
+-->
+<resources>
+    <string name="cancelled_by_user">Kullanıcı tarafından iptal edildi</string>
+    <string name="notification_downloading_chapters">Bolumler indiriliyor</string>
+    <string name="notification_chapter_title">Bolum %s</string>
+    <string name="notification_downloading_background">Tum bolumler arka planda indiriliyor</string>
+    <string name="notification_compressing_images">Gorseller sikistiriliyor...</string>
+    <string name="notification_images_progress">%1$d / %2$d gorsel</string>
+    <string name="action_cancel_all">Hepsini iptal et</string>
+    <string name="action_cancel_chapter">Bolumu iptal et</string>
+    <string name="notification_channel_all_downloads">Tum indirmeler</string>
+    <string name="notification_channel_all_downloads_desc">Genel indirme ilerlemesi</string>
+    <string name="notification_channel_chapter_download">Bolum indirme</string>
+    <string name="notification_channel_chapter_download_desc">Tek bolum indirmesi</string>
+    <string name="notification_channel_download_summary">Indirme ozeti</string>
+    <string name="notification_channel_download_summary_desc">Tamamlama bildirimleri</string>
+</resources>

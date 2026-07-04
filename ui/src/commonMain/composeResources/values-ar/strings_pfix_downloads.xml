@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic parity-fix (pfix) strings for the Downloads / offline screen.
+
+  Source of truth: native values-ar/strings.xml `unknown` = "غير معروف".
+
+  np_download_unknown_error: the base values/strings_pfix_downloads.xml introduced this key
+  ("Unknown") to restore native parity for the FAILED-row reason fallback. Without an Arabic
+  variant the Arabic build fell back to the English "Unknown" — so the failed reason rendered
+  "فشل: Unknown" instead of native's fully-localized "فشل: غير معروف". This file supplies the
+  Arabic translation so the fallback matches native's localized R.string.unknown per-locale.
+-->
+<resources>
+    <string name="np_download_unknown_error">غير معروف</string>
+    <string name="pfix_download_cancelled_by_user">تم الإلغاء بواسطة المستخدم</string>
+</resources>

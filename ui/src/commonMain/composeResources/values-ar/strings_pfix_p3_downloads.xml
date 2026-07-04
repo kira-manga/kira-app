@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic Phase 3 parity-fix (pfix) strings for the Downloads / offline screen.
+
+  np_download_chapter_title: native builds the chapter-title row from a non-localized Kotlin
+  template ("Ch ${number} - ${title}") so native renders the English "Ch" prefix and a hyphen
+  separator in every locale. KMP already localizes the prefix ("الفصل") — an intentional
+  localization improvement preserved here — while adopting native's hyphen separator (instead
+  of the em-dash the shared base download_chapter_title used) for cosmetic parity.
+-->
+<resources>
+    <string name="np_download_chapter_title">الفصل %1$s - %2$s</string>
+</resources>

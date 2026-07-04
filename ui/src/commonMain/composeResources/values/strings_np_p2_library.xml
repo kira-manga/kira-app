@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native-parity Library P2 strings (NP Phase 2, GAP-LIB P2 cluster).
+
+  Net-new keys for the P2 polish pass on the Library cluster. Kept separate from the
+  earlier strings_np_library.xml (P0/P1 additions) so the P2 polish additions are
+  reviewable as a unit. en-only for newly-authored strings.
+-->
+<resources>
+    <!-- GAP-LIB-21: "N items" count caption in the Library header row, gated on the
+         `showCount` display flag. Mirrors the native `items_count` plural label that the
+         "Show Items Count" toggle controls. Single-form template (Compose `pluralStringResource`
+         is not used here for cross-locale simplicity — the native label is "N items"). -->
+
+    <!-- GAP-LIB-14: content description for the Library top-bar overflow (MoreVert) button that
+         groups the Refresh + Open-Random actions, matching native's overflow DropdownMenu. -->
+    <string name="library_more_options">More options</string>
+</resources>

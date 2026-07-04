@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arabic translations for the NP Phase 2 Downloads + Sources cluster strings.
+  Locale-parallel to values/strings_np_downloads_sources.xml. Verbatim trusted-Arabic.
+-->
+<resources>
+    <string name="source_enabled">مُفعّل</string>
+    <string name="source_disabled">مُعطّل</string>
+
+    <string name="select_your_manga_sources">اختر مصادر المانجا الخاصة بك</string>
+
+    <string name="np_back">رجوع</string>
+
+    <string name="np_cancel_download">إلغاء التنزيل</string>
+    <string name="np_delete_download">حذف التنزيل</string>
+    <string name="np_download_complete">اكتمل التنزيل</string>
+</resources>
