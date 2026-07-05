@@ -7,13 +7,20 @@
   the iOS app, drop the real plist from the Firebase console (project: kira-manga, bundle id
   me.manga.kira) at: iosApp/iosApp/GoogleService-Info.plist — then run `xcodegen generate`.
   xcodegen includes it in the app target's Copy Bundle Resources; FirebaseApp.configure() reads it.
+
+  The values below are FAKE but format-valid: FirebaseInstallations format-validates API_KEY at
+  FirebaseApp.configure() (39 chars, "AIza" prefix) and raises an NSException — SIGABRT at launch —
+  on a malformed one (the previous "YOUR_IOS_API_KEY" literal crashed every launch; seen on-device
+  2026-07-05). A placeholder-provisioned build must start with inert Firebase backends instead of
+  crashing; requests signed with the fake key simply fail server-side, same as Android's
+  google-services.json.example posture.
 -->
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>YOUR_IOS_API_KEY</string>
+	<string>AIzaPlaceholderPlaceholderPlaceholder00</string>
 	<key>GCM_SENDER_ID</key>
-	<string>YOUR_GCM_SENDER_ID</string>
+	<string>000000000000</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
