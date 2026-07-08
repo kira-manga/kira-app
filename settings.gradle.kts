@@ -19,7 +19,19 @@ dependencyResolutionManagement {
         mavenCentral()
         // Preserved from source — IronSource Ads SDK + JitPack for transitive deps
         maven("https://android-sdk.is.com/")
-        maven("https://jitpack.io")
+        maven("https://jitpack.io") {
+            content {
+                // JitPack may only serve its own com.github.* coordinates. Without this filter it
+                // also answers for ANY GitHub project's group: it auto-builds tags on demand and
+                // serves a synthetic root POM at io.github.<user>:<repo>:<tag> that hard-depends
+                // on every module (Android AAR included) — which SHADOWED a real Maven Central
+                // io.github.* release while Central was still propagating it, poisoning every
+                // iOS-target resolve with androidJvm variants (seen 2026-07-06 with
+                // io.github.apdelrahman1911:nativecomposekit:0.3.0). Central is listed first,
+                // but first-resolve races + descriptor caching make ordering alone insufficient.
+                includeGroupByRegex("com\\.github\\..*")
+            }
+        }
         // KCEF (Desktop JCEF wrapper) — JOGL native bindings are hosted at jogamp.org and are not
         // mirrored to Maven Central. Required for the `dev.datlag:kcef` transitive `org.jogamp.*`
         // deps used by Phase 14.x Desktop WebViewHost.
