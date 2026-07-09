@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Cadangkan &amp; pulihkan</string>
+    <string name="backup_scoped_title">Ekspor manga</string>
+    <string name="backup_scoped_desc">Cadangan ini akan berisi:</string>
+    <string name="backup_export_title">Ekspor pustaka</string>
+    <string name="backup_export_subtitle">Simpan pustaka, progres baca, dan markah Anda ke sebuah file.</string>
+    <string name="backup_export_scoped_subtitle">Simpan manga terpilih beserta bab, progres baca, dan markah ke sebuah file.</string>
+    <string name="backup_export_action">Ekspor</string>
+    <string name="backup_include_downloads">Sertakan bab yang diunduh</string>
+    <string name="backup_include_downloads_hint">Memasukkan bab yang diunduh ke file cadangan (file lebih besar).</string>
+    <string name="backup_import_title">Impor cadangan</string>
+    <string name="backup_import_subtitle">Gabungkan file cadangan ke perangkat ini. Tidak ada yang dihapus.</string>
+    <string name="backup_import_action">Impor</string>
+    <string name="backup_busy_cbz_hint">Tidak tersedia saat kompresi bab sedang berjalan.</string>
+    <string name="backup_progress_exporting">Mengekspor…</string>
+    <string name="backup_progress_importing">Mengimpor…</string>
+    <string name="backup_stop">Berhenti</string>
+    <string name="backup_ok">Selesai</string>
+    <string name="backup_export_done_title">Ekspor selesai</string>
+    <string name="backup_export_summary">%1$d manga, %2$d bab disimpan.</string>
+    <string name="backup_import_done_title">Impor selesai</string>
+    <string name="backup_import_summary_mangas">Manga: %1$d ditambahkan, %2$d digabungkan</string>
+    <string name="backup_import_summary_chapters">Bab: %1$d ditambahkan, %2$d digabungkan</string>
+    <string name="backup_import_summary_history">Entri riwayat diperbarui: %1$d</string>
+    <string name="backup_stopped_title">Dihentikan</string>
+    <string name="backup_stopped_message">Operasi dihentikan. Data yang sudah diproses tetap tersimpan.</string>
+    <string name="backup_failed_title">Terjadi kesalahan</string>
+    <string name="backup_error_invalid_file">File ini bukan cadangan Kira yang valid.</string>
+    <string name="backup_error_newer_version">Cadangan ini dibuat dengan versi aplikasi yang lebih baru. Perbarui aplikasi lalu coba lagi.</string>
+    <string name="backup_error_too_large">Cadangan akan terlalu besar. Coba ekspor tanpa bab yang diunduh.</string>
+    <string name="backup_error_io">Tidak dapat membaca atau menulis file. Periksa ruang kosong lalu coba lagi.</string>
+    <string name="backup_error_generic">Operasi gagal. Silakan coba lagi.</string>
+</resources>

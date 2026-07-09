@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Yedekleme ve geri yükleme</string>
+    <string name="backup_scoped_title">Manga dışa aktar</string>
+    <string name="backup_scoped_desc">Bu yedek şunları içerecek:</string>
+    <string name="backup_export_title">Kitaplığı dışa aktar</string>
+    <string name="backup_export_subtitle">Kitaplığınızı, okuma ilerlemenizi ve yer imlerinizi bir dosyaya kaydeder.</string>
+    <string name="backup_export_scoped_subtitle">Seçili mangaları bölümleri, okuma ilerlemesi ve yer imleriyle birlikte bir dosyaya kaydeder.</string>
+    <string name="backup_export_action">Dışa aktar</string>
+    <string name="backup_include_downloads">İndirilen bölümleri dahil et</string>
+    <string name="backup_include_downloads_hint">İndirilen bölümleri yedek dosyasına ekler (daha büyük dosya).</string>
+    <string name="backup_import_title">Yedek içe aktar</string>
+    <string name="backup_import_subtitle">Bir yedek dosyasını bu cihazla birleştirir. Hiçbir şey silinmez.</string>
+    <string name="backup_import_action">İçe aktar</string>
+    <string name="backup_busy_cbz_hint">Bölüm sıkıştırma çalışırken kullanılamaz.</string>
+    <string name="backup_progress_exporting">Dışa aktarılıyor…</string>
+    <string name="backup_progress_importing">İçe aktarılıyor…</string>
+    <string name="backup_stop">Durdur</string>
+    <string name="backup_ok">Tamam</string>
+    <string name="backup_export_done_title">Dışa aktarma tamamlandı</string>
+    <string name="backup_export_summary">%1$d manga, %2$d bölüm kaydedildi.</string>
+    <string name="backup_import_done_title">İçe aktarma tamamlandı</string>
+    <string name="backup_import_summary_mangas">Manga: %1$d eklendi, %2$d birleştirildi</string>
+    <string name="backup_import_summary_chapters">Bölümler: %1$d eklendi, %2$d birleştirildi</string>
+    <string name="backup_import_summary_history">Güncellenen geçmiş kayıtları: %1$d</string>
+    <string name="backup_stopped_title">Durduruldu</string>
+    <string name="backup_stopped_message">İşlem durduruldu. İşlenmiş veriler korunur.</string>
+    <string name="backup_failed_title">Bir şeyler ters gitti</string>
+    <string name="backup_error_invalid_file">Bu dosya geçerli bir Kira yedeği değil.</string>
+    <string name="backup_error_newer_version">Bu yedek, uygulamanın daha yeni bir sürümüyle oluşturulmuş. Uygulamayı güncelleyip tekrar deneyin.</string>
+    <string name="backup_error_too_large">Yedek çok büyük olur. İndirilen bölümler olmadan dışa aktarmayı deneyin.</string>
+    <string name="backup_error_io">Dosya okunamadı veya yazılamadı. Boş alanı kontrol edip tekrar deneyin.</string>
+    <string name="backup_error_generic">İşlem başarısız oldu. Lütfen tekrar deneyin.</string>
+</resources>

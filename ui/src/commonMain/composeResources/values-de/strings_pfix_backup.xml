@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Sichern &amp; Wiederherstellen</string>
+    <string name="backup_scoped_title">Manga exportieren</string>
+    <string name="backup_scoped_desc">Diese Sicherung enthält:</string>
+    <string name="backup_export_title">Bibliothek exportieren</string>
+    <string name="backup_export_subtitle">Speichert Bibliothek, Lesefortschritt und Lesezeichen in einer Datei.</string>
+    <string name="backup_export_scoped_subtitle">Speichert die ausgewählten Manga mit Kapiteln, Lesefortschritt und Lesezeichen in einer Datei.</string>
+    <string name="backup_export_action">Exportieren</string>
+    <string name="backup_include_downloads">Heruntergeladene Kapitel einschließen</string>
+    <string name="backup_include_downloads_hint">Packt heruntergeladene Kapitel in die Sicherungsdatei (größere Datei).</string>
+    <string name="backup_import_title">Sicherung importieren</string>
+    <string name="backup_import_subtitle">Führt eine Sicherungsdatei mit diesem Gerät zusammen. Nichts wird gelöscht.</string>
+    <string name="backup_import_action">Importieren</string>
+    <string name="backup_busy_cbz_hint">Nicht verfügbar, während die Kapitelkomprimierung läuft.</string>
+    <string name="backup_progress_exporting">Wird exportiert…</string>
+    <string name="backup_progress_importing">Wird importiert…</string>
+    <string name="backup_stop">Stopp</string>
+    <string name="backup_ok">Fertig</string>
+    <string name="backup_export_done_title">Export abgeschlossen</string>
+    <string name="backup_export_summary">%1$d Manga, %2$d Kapitel gespeichert.</string>
+    <string name="backup_import_done_title">Import abgeschlossen</string>
+    <string name="backup_import_summary_mangas">Manga: %1$d hinzugefügt, %2$d zusammengeführt</string>
+    <string name="backup_import_summary_chapters">Kapitel: %1$d hinzugefügt, %2$d zusammengeführt</string>
+    <string name="backup_import_summary_history">Aktualisierte Verlaufseinträge: %1$d</string>
+    <string name="backup_stopped_title">Gestoppt</string>
+    <string name="backup_stopped_message">Der Vorgang wurde gestoppt. Bereits verarbeitete Daten bleiben erhalten.</string>
+    <string name="backup_failed_title">Etwas ist schiefgelaufen</string>
+    <string name="backup_error_invalid_file">Diese Datei ist keine gültige Kira-Sicherung.</string>
+    <string name="backup_error_newer_version">Diese Sicherung stammt aus einer neueren App-Version. Aktualisiere die App und versuche es erneut.</string>
+    <string name="backup_error_too_large">Die Sicherung wäre zu groß. Versuche den Export ohne heruntergeladene Kapitel.</string>
+    <string name="backup_error_io">Datei konnte nicht gelesen oder geschrieben werden. Prüfe den freien Speicher und versuche es erneut.</string>
+    <string name="backup_error_generic">Der Vorgang ist fehlgeschlagen. Bitte erneut versuchen.</string>
+</resources>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Резервное копирование и восстановление</string>
+    <string name="backup_scoped_title">Экспорт манги</string>
+    <string name="backup_scoped_desc">Эта резервная копия будет содержать:</string>
+    <string name="backup_export_title">Экспорт библиотеки</string>
+    <string name="backup_export_subtitle">Сохраняет библиотеку, прогресс чтения и закладки в файл.</string>
+    <string name="backup_export_scoped_subtitle">Сохраняет выбранную мангу с главами, прогрессом чтения и закладками в файл.</string>
+    <string name="backup_export_action">Экспорт</string>
+    <string name="backup_include_downloads">Включить скачанные главы</string>
+    <string name="backup_include_downloads_hint">Добавляет скачанные главы в файл резервной копии (файл больше).</string>
+    <string name="backup_import_title">Импорт резервной копии</string>
+    <string name="backup_import_subtitle">Объединяет файл резервной копии с этим устройством. Ничего не удаляется.</string>
+    <string name="backup_import_action">Импорт</string>
+    <string name="backup_busy_cbz_hint">Недоступно во время сжатия глав.</string>
+    <string name="backup_progress_exporting">Экспорт…</string>
+    <string name="backup_progress_importing">Импорт…</string>
+    <string name="backup_stop">Остановить</string>
+    <string name="backup_ok">Готово</string>
+    <string name="backup_export_done_title">Экспорт завершён</string>
+    <string name="backup_export_summary">Сохранено манги: %1$d, глав: %2$d.</string>
+    <string name="backup_import_done_title">Импорт завершён</string>
+    <string name="backup_import_summary_mangas">Манга: добавлено %1$d, объединено %2$d</string>
+    <string name="backup_import_summary_chapters">Главы: добавлено %1$d, объединено %2$d</string>
+    <string name="backup_import_summary_history">Обновлено записей истории: %1$d</string>
+    <string name="backup_stopped_title">Остановлено</string>
+    <string name="backup_stopped_message">Операция остановлена. Уже обработанные данные сохранены.</string>
+    <string name="backup_failed_title">Что-то пошло не так</string>
+    <string name="backup_error_invalid_file">Этот файл не является корректной резервной копией Kira.</string>
+    <string name="backup_error_newer_version">Эта резервная копия создана в более новой версии приложения. Обновите приложение и попробуйте снова.</string>
+    <string name="backup_error_too_large">Резервная копия будет слишком большой. Попробуйте экспортировать без скачанных глав.</string>
+    <string name="backup_error_io">Не удалось прочитать или записать файл. Проверьте свободное место и попробуйте снова.</string>
+    <string name="backup_error_generic">Не удалось выполнить операцию. Попробуйте ещё раз.</string>
+</resources>

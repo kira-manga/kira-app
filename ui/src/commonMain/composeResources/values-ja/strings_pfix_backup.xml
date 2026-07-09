@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">バックアップと復元</string>
+    <string name="backup_scoped_title">マンガをエクスポート</string>
+    <string name="backup_scoped_desc">このバックアップに含まれる内容:</string>
+    <string name="backup_export_title">ライブラリをエクスポート</string>
+    <string name="backup_export_subtitle">ライブラリ、読書の進行状況、ブックマークをファイルに保存します。</string>
+    <string name="backup_export_scoped_subtitle">選択したマンガをチャプター、読書の進行状況、ブックマークと共にファイルに保存します。</string>
+    <string name="backup_export_action">エクスポート</string>
+    <string name="backup_include_downloads">ダウンロード済みチャプターを含める</string>
+    <string name="backup_include_downloads_hint">ダウンロード済みチャプターをバックアップファイルに含めます（ファイルが大きくなります）。</string>
+    <string name="backup_import_title">バックアップをインポート</string>
+    <string name="backup_import_subtitle">バックアップファイルをこの端末に統合します。何も削除されません。</string>
+    <string name="backup_import_action">インポート</string>
+    <string name="backup_busy_cbz_hint">チャプター圧縮の実行中は利用できません。</string>
+    <string name="backup_progress_exporting">エクスポート中…</string>
+    <string name="backup_progress_importing">インポート中…</string>
+    <string name="backup_stop">停止</string>
+    <string name="backup_ok">完了</string>
+    <string name="backup_export_done_title">エクスポート完了</string>
+    <string name="backup_export_summary">マンガ%1$d件、チャプター%2$d件を保存しました。</string>
+    <string name="backup_import_done_title">インポート完了</string>
+    <string name="backup_import_summary_mangas">マンガ: 追加%1$d件、統合%2$d件</string>
+    <string name="backup_import_summary_chapters">チャプター: 追加%1$d件、統合%2$d件</string>
+    <string name="backup_import_summary_history">更新された履歴: %1$d件</string>
+    <string name="backup_stopped_title">停止しました</string>
+    <string name="backup_stopped_message">操作を停止しました。処理済みのデータは保持されます。</string>
+    <string name="backup_failed_title">問題が発生しました</string>
+    <string name="backup_error_invalid_file">このファイルは有効なKiraバックアップではありません。</string>
+    <string name="backup_error_newer_version">このバックアップは新しいバージョンのアプリで作成されています。アプリを更新して再試行してください。</string>
+    <string name="backup_error_too_large">バックアップが大きすぎます。ダウンロード済みチャプターを含めずにエクスポートしてください。</string>
+    <string name="backup_error_io">ファイルの読み書きができませんでした。空き容量を確認して再試行してください。</string>
+    <string name="backup_error_generic">操作に失敗しました。もう一度お試しください。</string>
+</resources>

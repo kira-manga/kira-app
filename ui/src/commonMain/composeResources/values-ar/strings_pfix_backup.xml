@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">النسخ الاحتياطي والاستعادة</string>
+    <string name="backup_scoped_title">تصدير مانجا</string>
+    <string name="backup_scoped_desc">ستحتوي هذه النسخة الاحتياطية على:</string>
+    <string name="backup_export_title">تصدير المكتبة</string>
+    <string name="backup_export_subtitle">احفظ مكتبتك وتقدم القراءة والإشارات المرجعية في ملف.</string>
+    <string name="backup_export_scoped_subtitle">احفظ المانجا المحددة مع الفصول وتقدم القراءة والإشارات المرجعية في ملف.</string>
+    <string name="backup_export_action">تصدير</string>
+    <string name="backup_include_downloads">تضمين الفصول المحملة</string>
+    <string name="backup_include_downloads_hint">يضيف الفصول المحملة إلى ملف النسخة الاحتياطية (حجم أكبر).</string>
+    <string name="backup_import_title">استيراد نسخة احتياطية</string>
+    <string name="backup_import_subtitle">دمج ملف نسخة احتياطية في هذا الجهاز. لن يتم حذف أي شيء.</string>
+    <string name="backup_import_action">استيراد</string>
+    <string name="backup_busy_cbz_hint">غير متاح أثناء تشغيل ضغط الفصول.</string>
+    <string name="backup_progress_exporting">جارٍ التصدير…</string>
+    <string name="backup_progress_importing">جارٍ الاستيراد…</string>
+    <string name="backup_stop">إيقاف</string>
+    <string name="backup_ok">تم</string>
+    <string name="backup_export_done_title">اكتمل التصدير</string>
+    <string name="backup_export_summary">تم حفظ %1$d مانجا و%2$d فصلًا.</string>
+    <string name="backup_import_done_title">اكتمل الاستيراد</string>
+    <string name="backup_import_summary_mangas">المانجا: %1$d مضافة، %2$d مدمجة</string>
+    <string name="backup_import_summary_chapters">الفصول: %1$d مضافة، %2$d مدمجة</string>
+    <string name="backup_import_summary_history">سجلات القراءة المحدثة: %1$d</string>
+    <string name="backup_stopped_title">تم الإيقاف</string>
+    <string name="backup_stopped_message">تم إيقاف العملية. البيانات التي تمت معالجتها محفوظة.</string>
+    <string name="backup_failed_title">حدث خطأ ما</string>
+    <string name="backup_error_invalid_file">هذا الملف ليس نسخة احتياطية صالحة من كيرا.</string>
+    <string name="backup_error_newer_version">أُنشئت هذه النسخة الاحتياطية بإصدار أحدث من التطبيق. حدّث التطبيق وحاول مجددًا.</string>
+    <string name="backup_error_too_large">ستكون النسخة الاحتياطية كبيرة جدًا. جرّب التصدير بدون الفصول المحملة.</string>
+    <string name="backup_error_io">تعذرت قراءة الملف أو كتابته. تحقق من المساحة المتاحة وحاول مجددًا.</string>
+    <string name="backup_error_generic">فشلت العملية. حاول مرة أخرى.</string>
+</resources>

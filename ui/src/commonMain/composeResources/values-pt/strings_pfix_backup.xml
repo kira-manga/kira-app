@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Backup e restauração</string>
+    <string name="backup_scoped_title">Exportar mangá</string>
+    <string name="backup_scoped_desc">Este backup vai conter:</string>
+    <string name="backup_export_title">Exportar biblioteca</string>
+    <string name="backup_export_subtitle">Salva sua biblioteca, progresso de leitura e favoritos em um arquivo.</string>
+    <string name="backup_export_scoped_subtitle">Salva os mangás selecionados com capítulos, progresso de leitura e favoritos em um arquivo.</string>
+    <string name="backup_export_action">Exportar</string>
+    <string name="backup_include_downloads">Incluir capítulos baixados</string>
+    <string name="backup_include_downloads_hint">Adiciona os capítulos baixados ao arquivo de backup (arquivo maior).</string>
+    <string name="backup_import_title">Importar backup</string>
+    <string name="backup_import_subtitle">Mescla um arquivo de backup com este dispositivo. Nada é excluído.</string>
+    <string name="backup_import_action">Importar</string>
+    <string name="backup_busy_cbz_hint">Indisponível enquanto a compressão de capítulos está em andamento.</string>
+    <string name="backup_progress_exporting">Exportando…</string>
+    <string name="backup_progress_importing">Importando…</string>
+    <string name="backup_stop">Parar</string>
+    <string name="backup_ok">Concluído</string>
+    <string name="backup_export_done_title">Exportação concluída</string>
+    <string name="backup_export_summary">%1$d mangás e %2$d capítulos salvos.</string>
+    <string name="backup_import_done_title">Importação concluída</string>
+    <string name="backup_import_summary_mangas">Mangás: %1$d adicionados, %2$d mesclados</string>
+    <string name="backup_import_summary_chapters">Capítulos: %1$d adicionados, %2$d mesclados</string>
+    <string name="backup_import_summary_history">Entradas de histórico atualizadas: %1$d</string>
+    <string name="backup_stopped_title">Parado</string>
+    <string name="backup_stopped_message">A operação foi interrompida. Os dados já processados são mantidos.</string>
+    <string name="backup_failed_title">Algo deu errado</string>
+    <string name="backup_error_invalid_file">Este arquivo não é um backup válido do Kira.</string>
+    <string name="backup_error_newer_version">Este backup foi criado em uma versão mais recente do app. Atualize o app e tente novamente.</string>
+    <string name="backup_error_too_large">O backup ficaria grande demais. Tente exportar sem os capítulos baixados.</string>
+    <string name="backup_error_io">Não foi possível ler ou gravar o arquivo. Verifique o espaço livre e tente novamente.</string>
+    <string name="backup_error_generic">A operação falhou. Tente novamente.</string>
+</resources>

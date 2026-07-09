@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Sauvegarde et restauration</string>
+    <string name="backup_scoped_title">Exporter le manga</string>
+    <string name="backup_scoped_desc">Cette sauvegarde contiendra :</string>
+    <string name="backup_export_title">Exporter la bibliothèque</string>
+    <string name="backup_export_subtitle">Enregistre votre bibliothèque, votre progression de lecture et vos signets dans un fichier.</string>
+    <string name="backup_export_scoped_subtitle">Enregistre les manga sélectionnés avec chapitres, progression de lecture et signets dans un fichier.</string>
+    <string name="backup_export_action">Exporter</string>
+    <string name="backup_include_downloads">Inclure les chapitres téléchargés</string>
+    <string name="backup_include_downloads_hint">Ajoute les chapitres téléchargés au fichier de sauvegarde (fichier plus volumineux).</string>
+    <string name="backup_import_title">Importer une sauvegarde</string>
+    <string name="backup_import_subtitle">Fusionne un fichier de sauvegarde avec cet appareil. Rien n\'est supprimé.</string>
+    <string name="backup_import_action">Importer</string>
+    <string name="backup_busy_cbz_hint">Indisponible pendant la compression des chapitres.</string>
+    <string name="backup_progress_exporting">Exportation…</string>
+    <string name="backup_progress_importing">Importation…</string>
+    <string name="backup_stop">Arrêter</string>
+    <string name="backup_ok">Terminé</string>
+    <string name="backup_export_done_title">Exportation terminée</string>
+    <string name="backup_export_summary">%1$d manga et %2$d chapitres enregistrés.</string>
+    <string name="backup_import_done_title">Importation terminée</string>
+    <string name="backup_import_summary_mangas">Manga : %1$d ajoutés, %2$d fusionnés</string>
+    <string name="backup_import_summary_chapters">Chapitres : %1$d ajoutés, %2$d fusionnés</string>
+    <string name="backup_import_summary_history">Entrées d\'historique mises à jour : %1$d</string>
+    <string name="backup_stopped_title">Arrêté</string>
+    <string name="backup_stopped_message">L\'opération a été arrêtée. Les données déjà traitées sont conservées.</string>
+    <string name="backup_failed_title">Une erreur est survenue</string>
+    <string name="backup_error_invalid_file">Ce fichier n\'est pas une sauvegarde Kira valide.</string>
+    <string name="backup_error_newer_version">Cette sauvegarde provient d\'une version plus récente de l\'application. Mettez à jour l\'application et réessayez.</string>
+    <string name="backup_error_too_large">La sauvegarde serait trop volumineuse. Essayez d\'exporter sans les chapitres téléchargés.</string>
+    <string name="backup_error_io">Impossible de lire ou d\'écrire le fichier. Vérifiez l\'espace libre et réessayez.</string>
+    <string name="backup_error_generic">L\'opération a échoué. Veuillez réessayer.</string>
+</resources>
