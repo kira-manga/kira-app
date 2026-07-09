@@ -23,33 +23,34 @@ import org.koin.dsl.module
  * selection). Provenance strings come from the `:platform` [AppVersionProvider] binding plus the
  * per-target [backupPlatformName] actual.
  */
-val backupReworkModule: Module = module {
-    single<BackupRepository> {
-        BackupRepositoryImpl(
-            backupDao = get(),
-            readProgress = get(),
-            appFileSystem = get(),
-            dispatchers = get(),
-            appVersion = get<AppVersionProvider>().versionName,
-            platformName = backupPlatformName(),
-        )
+val backupReworkModule: Module =
+    module {
+        single<BackupRepository> {
+            BackupRepositoryImpl(
+                backupDao = get(),
+                readProgress = get(),
+                appFileSystem = get(),
+                dispatchers = get(),
+                appVersion = get<AppVersionProvider>().versionName,
+                platformName = backupPlatformName(),
+            )
+        }
+        factory { ExportBackupUseCase(get()) }
+        factory { ImportBackupUseCase(get()) }
+        factory { ObserveBackupProgressUseCase(get()) }
+        factory { StopBackupUseCase(get()) }
+        factory { ClearBackupProgressUseCase(get()) }
+        factory { DiscardBackupArtifactUseCase(get()) }
+        viewModel { (scope: BackupScope) ->
+            BackupViewModel(
+                scope = scope,
+                exportBackup = get(),
+                importBackup = get(),
+                observeBackupProgress = get(),
+                stopBackup = get(),
+                clearBackupProgress = get(),
+                discardBackupArtifact = get(),
+                observeCbzConversion = get(),
+            )
+        }
     }
-    factory { ExportBackupUseCase(get()) }
-    factory { ImportBackupUseCase(get()) }
-    factory { ObserveBackupProgressUseCase(get()) }
-    factory { StopBackupUseCase(get()) }
-    factory { ClearBackupProgressUseCase(get()) }
-    factory { DiscardBackupArtifactUseCase(get()) }
-    viewModel { (scope: BackupScope) ->
-        BackupViewModel(
-            scope = scope,
-            exportBackup = get(),
-            importBackup = get(),
-            observeBackupProgress = get(),
-            stopBackup = get(),
-            clearBackupProgress = get(),
-            discardBackupArtifact = get(),
-            observeCbzConversion = get(),
-        )
-    }
-}

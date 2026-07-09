@@ -11,7 +11,11 @@ package me.manga.kira.platform.backup
 internal class Crc32 {
     private var crc: Int = 0.inv()
 
-    fun update(data: ByteArray, offset: Int = 0, length: Int = data.size) {
+    fun update(
+        data: ByteArray,
+        offset: Int = 0,
+        length: Int = data.size,
+    ) {
         var c = crc
         for (i in offset until offset + length) {
             val index = (c xor data[i].toInt()) and 0xFF

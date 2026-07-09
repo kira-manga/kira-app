@@ -22,7 +22,10 @@ interface BackupRepository {
      * Build a backup archive in app cache and return where it landed. With [includeDownloads],
      * chapters that already have a CBZ are packed into the archive as well.
      */
-    suspend fun exportBackup(scope: BackupScope, includeDownloads: Boolean): AppResult<BackupExportResult>
+    suspend fun exportBackup(
+        scope: BackupScope,
+        includeDownloads: Boolean,
+    ): AppResult<BackupExportResult>
 
     /**
      * Merge-import the archive at [archivePath] (an app-sandbox copy). Adds missing

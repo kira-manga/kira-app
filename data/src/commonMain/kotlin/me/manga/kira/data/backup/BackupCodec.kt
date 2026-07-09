@@ -2,8 +2,6 @@
 
 package me.manga.kira.data.backup
 
-import kotlin.time.ExperimentalTime
-import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
@@ -15,6 +13,8 @@ import me.manga.kira.data.backup.model.BackupManga
 import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /** Format version this build writes — and the highest it will accept on import. */
 internal const val BACKUP_FORMAT_VERSION = 1
@@ -26,10 +26,11 @@ internal const val BACKUP_JSON_ENTRY = "backup.json"
 internal const val BACKUP_DB_VERSION = 11
 
 /** Lenient on read (additive forward-compat), explicit on write (defaults serialized). */
-internal val backupJson = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = true
-}
+internal val backupJson =
+    Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
 // Entity <-> DTO mappers. Dates travel as epoch numbers so the wire format needs no
 // kotlinx-datetime serializers; LocalDateTime <-> epoch-ms uses the device timezone (display may
@@ -71,7 +72,10 @@ internal fun BackupManga.toEntity(): SavedMangaEntity =
         isWatchingNow = isWatchingNow,
     )
 
-internal fun SavedChapterEntity.toBackup(resumePage: Int?, downloadEntry: String?): BackupChapter =
+internal fun SavedChapterEntity.toBackup(
+    resumePage: Int?,
+    downloadEntry: String?,
+): BackupChapter =
     BackupChapter(
         name = name,
         number = number,
@@ -134,8 +138,10 @@ internal fun BackupHistoryItem.toEntity(resolvedMangaId: Long?): HistoryItemD =
         chapterTitle = chapterTitle,
         isDownloaded = false,
         localImagePaths = emptyList(),
-        lastReadDate = Instant.fromEpochMilliseconds(lastReadDateEpochMs)
-            .toLocalDateTime(TimeZone.currentSystemDefault()),
+        lastReadDate =
+            Instant
+                .fromEpochMilliseconds(lastReadDateEpochMs)
+                .toLocalDateTime(TimeZone.currentSystemDefault()),
         lastReadPage = lastReadPage,
         totalPages = totalPages,
     )

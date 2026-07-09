@@ -25,20 +25,24 @@ import org.koin.core.parameter.parametersOf
  * need a custom NavType and a separator-safe encoding for titles; JSON-in-one-string avoids both.
  */
 @Serializable
-data class BackupScopeKey(val api: String, val language: String, val title: String)
+data class BackupScopeKey(
+    val api: String,
+    val language: String,
+    val title: String,
+)
 
 private val backupScopeJson = Json { ignoreUnknownKeys = true }
 
 /** Encode a Details/Library selection into the [Screen.BackupRework] route argument. */
-fun encodeBackupScope(keys: List<BackupScopeKey>): String =
-    if (keys.isEmpty()) "" else backupScopeJson.encodeToString(keys)
+fun encodeBackupScope(keys: List<BackupScopeKey>): String = if (keys.isEmpty()) "" else backupScopeJson.encodeToString(keys)
 
 /** Blank/undecodable/empty scope falls back to a full-library backup screen. */
 internal fun decodeBackupScope(raw: String): BackupScope {
     if (raw.isBlank()) return BackupScope.FullLibrary
-    val keys = runCatching {
-        backupScopeJson.decodeFromString<List<BackupScopeKey>>(raw)
-    }.getOrNull()
+    val keys =
+        runCatching {
+            backupScopeJson.decodeFromString<List<BackupScopeKey>>(raw)
+        }.getOrNull()
     if (keys.isNullOrEmpty()) return BackupScope.FullLibrary
     return BackupScope.Mangas(
         keys.map { MangaKey(api = it.api, language = it.language, title = it.title) },

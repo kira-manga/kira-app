@@ -22,7 +22,6 @@ data class BackupState(
     val isCbzConversionRunning: Boolean = false,
     val error: AppError? = null,
 ) : MviState {
-
     /** Scoped export (Details / Library selection) — the Import row is hidden in this mode. */
     val isScoped: Boolean get() = scope is BackupScope.Mangas
 

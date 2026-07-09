@@ -60,12 +60,18 @@ interface BackupDao {
     suspend fun getMangaByUrl(url: String): SavedMangaEntity?
 
     @Query("SELECT * FROM saved_manga WHERE api = :api AND title = :title LIMIT 1")
-    suspend fun getMangaByApiAndTitle(api: String, title: String): SavedMangaEntity?
+    suspend fun getMangaByApiAndTitle(
+        api: String,
+        title: String,
+    ): SavedMangaEntity?
 
     // Chapter lookups MUST be mangaId-scoped: ChapterDao.getChapterIdByUrl is url-only LIMIT 1,
     // and a chapter url reused under another manga would mismap the merge.
     @Query("SELECT * FROM saved_chapters WHERE mangaId = :mangaId AND url = :url LIMIT 1")
-    suspend fun getChapterByMangaAndUrl(mangaId: Long, url: String): SavedChapterEntity?
+    suspend fun getChapterByMangaAndUrl(
+        mangaId: Long,
+        url: String,
+    ): SavedChapterEntity?
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertMangaRow(manga: SavedMangaEntity): Long
@@ -141,20 +147,22 @@ interface BackupDao {
                 val inserted = insertChapterRow(chapter.copy(id = 0, mangaId = mangaId))
                 val chapterId = if (inserted != -1L) inserted else getChapterByMangaAndUrl(mangaId, chapter.url)?.id
                 if (chapterId != null) {
-                    chaptersByUrl[chapter.url] = ImportedChapterResult(
-                        chapterId = chapterId,
-                        wasNew = true,
-                        localLastReadDateBefore = 0,
-                    )
+                    chaptersByUrl[chapter.url] =
+                        ImportedChapterResult(
+                            chapterId = chapterId,
+                            wasNew = true,
+                            localLastReadDateBefore = 0,
+                        )
                     added++
                 }
             } else {
                 updateChapterRow(mergeChapter(localChapter, chapter))
-                chaptersByUrl[chapter.url] = ImportedChapterResult(
-                    chapterId = localChapter.id,
-                    wasNew = false,
-                    localLastReadDateBefore = localChapter.lastReadDate,
-                )
+                chaptersByUrl[chapter.url] =
+                    ImportedChapterResult(
+                        chapterId = localChapter.id,
+                        wasNew = false,
+                        localLastReadDateBefore = localChapter.lastReadDate,
+                    )
                 merged++
             }
         }

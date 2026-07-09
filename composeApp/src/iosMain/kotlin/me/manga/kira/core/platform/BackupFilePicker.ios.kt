@@ -27,7 +27,6 @@ actual fun rememberBackupFilePicker(): BackupFilePicker = remember { IosBackupFi
 actual fun backupPlatformName(): String = "ios"
 
 private class IosBackupFilePicker : BackupFilePicker {
-
     // UIKit holds its delegate weakly; the in-flight picker's delegate is retained here.
     private var activeDelegate: NSObject? = null
 
@@ -41,25 +40,27 @@ private class IosBackupFilePicker : BackupFilePicker {
             onResult(false)
             return
         }
-        val delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
-            override fun documentPicker(
-                controller: UIDocumentPickerViewController,
-                didPickDocumentsAtURLs: List<*>,
-            ) {
-                activeDelegate = null
-                onResult(true)
-            }
+        val delegate =
+            object : NSObject(), UIDocumentPickerDelegateProtocol {
+                override fun documentPicker(
+                    controller: UIDocumentPickerViewController,
+                    didPickDocumentsAtURLs: List<*>,
+                ) {
+                    activeDelegate = null
+                    onResult(true)
+                }
 
-            override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-                activeDelegate = null
-                onResult(false)
+                override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
+                    activeDelegate = null
+                    onResult(false)
+                }
             }
-        }
         activeDelegate = delegate
-        val picker = UIDocumentPickerViewController(
-            forExportingURLs = listOf(NSURL.fileURLWithPath(sourcePath)),
-            asCopy = true,
-        )
+        val picker =
+            UIDocumentPickerViewController(
+                forExportingURLs = listOf(NSURL.fileURLWithPath(sourcePath)),
+                asCopy = true,
+            )
         picker.delegate = delegate
         rootVC.presentViewController(picker, animated = true, completion = null)
     }
@@ -70,26 +71,28 @@ private class IosBackupFilePicker : BackupFilePicker {
             onResult(null)
             return
         }
-        val delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
-            override fun documentPicker(
-                controller: UIDocumentPickerViewController,
-                didPickDocumentsAtURLs: List<*>,
-            ) {
-                activeDelegate = null
-                val picked = didPickDocumentsAtURLs.firstOrNull() as? NSURL
-                onResult(picked?.path)
-            }
+        val delegate =
+            object : NSObject(), UIDocumentPickerDelegateProtocol {
+                override fun documentPicker(
+                    controller: UIDocumentPickerViewController,
+                    didPickDocumentsAtURLs: List<*>,
+                ) {
+                    activeDelegate = null
+                    val picked = didPickDocumentsAtURLs.firstOrNull() as? NSURL
+                    onResult(picked?.path)
+                }
 
-            override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-                activeDelegate = null
-                onResult(null)
+                override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
+                    activeDelegate = null
+                    onResult(null)
+                }
             }
-        }
         activeDelegate = delegate
-        val picker = UIDocumentPickerViewController(
-            forOpeningContentTypes = listOf(UTTypeZIP),
-            asCopy = true,
-        )
+        val picker =
+            UIDocumentPickerViewController(
+                forOpeningContentTypes = listOf(UTTypeZIP),
+                asCopy = true,
+            )
         picker.delegate = delegate
         rootVC.presentViewController(picker, animated = true, completion = null)
     }
@@ -101,13 +104,14 @@ private class IosBackupFilePicker : BackupFilePicker {
     @Suppress("DEPRECATION")
     private fun resolveRootViewController(): UIViewController? {
         val app = UIApplication.sharedApplication
-        val sceneWindow = app.connectedScenes
-            .filterIsInstance<UIWindowScene>()
-            .firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
-            ?.let { scene ->
-                val windows = scene.windows.filterIsInstance<UIWindow>()
-                windows.firstOrNull { it.isKeyWindow() } ?: windows.firstOrNull()
-            }
+        val sceneWindow =
+            app.connectedScenes
+                .filterIsInstance<UIWindowScene>()
+                .firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
+                ?.let { scene ->
+                    val windows = scene.windows.filterIsInstance<UIWindow>()
+                    windows.firstOrNull { it.isKeyWindow() } ?: windows.firstOrNull()
+                }
         return (sceneWindow ?: app.keyWindow)?.rootViewController
     }
 }

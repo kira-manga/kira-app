@@ -2,9 +2,6 @@
 
 package me.manga.kira.data.repository
 
-import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +48,9 @@ import okio.Path.Companion.toPath
 import okio.buffer
 import okio.openZip
 import okio.use
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 /**
  * Cross-platform [BackupRepository]: builds and merge-imports the single-ZIP backup archive
@@ -69,7 +69,6 @@ class BackupRepositoryImpl(
     private val appVersion: String,
     private val platformName: String,
 ) : BackupRepository {
-
     private val progress = MutableStateFlow(BackupProgress())
 
     // Cooperative stop, checked between mangas — StateFlow for the cross-thread visibility edge.
@@ -83,8 +82,7 @@ class BackupRepositoryImpl(
     override suspend fun exportBackup(
         scope: BackupScope,
         includeDownloads: Boolean,
-    ): AppResult<BackupExportResult> =
-        runExclusive(BackupPhase.EXPORTING) { runExport(scope, includeDownloads) }
+    ): AppResult<BackupExportResult> = runExclusive(BackupPhase.EXPORTING) { runExport(scope, includeDownloads) }
 
     override suspend fun importBackup(archivePath: String): AppResult<BackupImportResult> =
         runExclusive(BackupPhase.IMPORTING) { runImport(archivePath) }
@@ -141,11 +139,12 @@ class BackupRepositoryImpl(
         }
     }
 
-    private fun mapUnexpected(t: Throwable): AppError = when (t) {
-        is ZipLimitExceededException -> AppError.Validation.OutOfRange("backup_size", t)
-        is IOException -> AppError.Storage.Io(t)
-        else -> AppError.Unexpected(t.message ?: "backup operation failed", t)
-    }
+    private fun mapUnexpected(t: Throwable): AppError =
+        when (t) {
+            is ZipLimitExceededException -> AppError.Validation.OutOfRange("backup_size", t)
+            is IOException -> AppError.Storage.Io(t)
+            else -> AppError.Unexpected(t.message ?: "backup operation failed", t)
+        }
 
     /** Cooperative stop between items: terminal Stopped snapshot; partial work stays consistent. */
     private fun stoppedTerminal(): AppResult<Nothing> {
@@ -178,32 +177,36 @@ class BackupRepositoryImpl(
         }
         progress.update { it.copy(processedMangas = rows.size, currentTitle = "") }
 
-        val document = BackupFile(
-            formatVersion = BACKUP_FORMAT_VERSION,
-            appVersion = appVersion,
-            dbVersion = BACKUP_DB_VERSION,
-            platform = platformName,
-            createdAtEpochMs = Clock.System.now().toEpochMilliseconds(),
-            includesDownloads = false,
-            mangas = mangas,
-            history = exportHistory(scope, rows),
-        )
-        val result = writeArchive(
-            document = document,
-            name = suggestedFileName(scope, rows),
-            mangaCount = mangas.size,
-            chapterCount = chapterCount,
-        )
+        val document =
+            BackupFile(
+                formatVersion = BACKUP_FORMAT_VERSION,
+                appVersion = appVersion,
+                dbVersion = BACKUP_DB_VERSION,
+                platform = platformName,
+                createdAtEpochMs = Clock.System.now().toEpochMilliseconds(),
+                includesDownloads = false,
+                mangas = mangas,
+                history = exportHistory(scope, rows),
+            )
+        val result =
+            writeArchive(
+                document = document,
+                name = suggestedFileName(scope, rows),
+                mangaCount = mangas.size,
+                chapterCount = chapterCount,
+            )
         progress.update { it.copy(isRunning = false, exportResult = result) }
         return appSuccess(result)
     }
 
-    private suspend fun resolveScopeRows(scope: BackupScope): List<SavedMangaEntity> = when (scope) {
-        is BackupScope.FullLibrary -> backupDao.getAllSavedManga()
-        is BackupScope.Mangas -> scope.keys
-            .mapNotNull { backupDao.getMangaByApiAndTitle(it.api, it.title) }
-            .distinctBy { it.id }
-    }
+    private suspend fun resolveScopeRows(scope: BackupScope): List<SavedMangaEntity> =
+        when (scope) {
+            is BackupScope.FullLibrary -> backupDao.getAllSavedManga()
+            is BackupScope.Mangas ->
+                scope.keys
+                    .mapNotNull { backupDao.getMangaByApiAndTitle(it.api, it.title) }
+                    .distinctBy { it.id }
+        }
 
     private suspend fun exportChapters(mangaId: Long): List<BackupChapter> =
         backupDao.getChaptersForManga(mangaId).map { chapter ->
@@ -218,13 +221,14 @@ class BackupRepositoryImpl(
         rows: List<SavedMangaEntity>,
     ): List<BackupHistoryItem> {
         val all = backupDao.getAllHistoryOnce()
-        val relevant = when (scope) {
-            is BackupScope.FullLibrary -> all
-            is BackupScope.Mangas -> {
-                val urls = rows.mapTo(HashSet()) { it.url }
-                all.filter { it.mangaUrl in urls }
+        val relevant =
+            when (scope) {
+                is BackupScope.FullLibrary -> all
+                is BackupScope.Mangas -> {
+                    val urls = rows.mapTo(HashSet()) { it.url }
+                    all.filter { it.mangaUrl in urls }
+                }
             }
-        }
         return relevant.map { it.toBackup() }
     }
 
@@ -264,7 +268,10 @@ class BackupRepositoryImpl(
         )
     }
 
-    private fun suggestedFileName(scope: BackupScope, rows: List<SavedMangaEntity>): String {
+    private fun suggestedFileName(
+        scope: BackupScope,
+        rows: List<SavedMangaEntity>,
+    ): String {
         val singleTitle = rows.singleOrNull()?.takeIf { scope is BackupScope.Mangas }?.title
         return if (singleTitle != null) {
             "kira-manga-${sanitizeForFileName(singleTitle)}-${timestampSuffix()}.kira.zip"
@@ -275,19 +282,21 @@ class BackupRepositoryImpl(
 
     private fun timestampSuffix(): String {
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+
         fun two(v: Int) = v.toString().padStart(2, '0')
         return "${now.year}${two(now.month.number)}${two(now.day)}-" +
             "${two(now.hour)}${two(now.minute)}${two(now.second)}"
     }
 
     private fun sanitizeForFileName(title: String): String {
-        val cleaned = title
-            .map { if (it.isLetterOrDigit()) it else '-' }
-            .joinToString("")
-            .split('-')
-            .filter { it.isNotEmpty() }
-            .joinToString("-")
-            .take(MAX_TITLE_IN_FILENAME)
+        val cleaned =
+            title
+                .map { if (it.isLetterOrDigit()) it else '-' }
+                .joinToString("")
+                .split('-')
+                .filter { it.isNotEmpty() }
+                .joinToString("-")
+                .take(MAX_TITLE_IN_FILENAME)
         return cleaned.ifEmpty { "manga" }
     }
 
@@ -298,10 +307,11 @@ class BackupRepositoryImpl(
         if (!appFileSystem.fileSystem().exists(path)) {
             return appFailure(AppError.Storage.NotFound("backup_file"))
         }
-        val document = when (val parsed = parseArchive(path)) {
-            is AppResult.Failure -> return parsed
-            is AppResult.Success -> parsed.value
-        }
+        val document =
+            when (val parsed = parseArchive(path)) {
+                is AppResult.Failure -> return parsed
+                is AppResult.Success -> parsed.value
+            }
         if (document.formatVersion > BACKUP_FORMAT_VERSION) {
             return appFailure(AppError.Validation.OutOfRange("formatVersion"))
         }
@@ -321,8 +331,9 @@ class BackupRepositoryImpl(
         var historyMerged = 0
         for (item in document.history) {
             if (shouldStop.value) return stoppedTerminal()
-            val resolvedId = resolvedIdsByUrl[item.mangaUrl]
-                ?: backupDao.getMangaByUrl(item.mangaUrl)?.id
+            val resolvedId =
+                resolvedIdsByUrl[item.mangaUrl]
+                    ?: backupDao.getMangaByUrl(item.mangaUrl)?.id
             backupDao.importHistoryMerging(
                 item.toEntity(resolvedId),
                 BackupMergePolicy::shouldReplaceHistory,
@@ -330,14 +341,15 @@ class BackupRepositoryImpl(
             historyMerged++
         }
 
-        val result = BackupImportResult(
-            mangasAdded = counters.mangasAdded,
-            mangasMerged = counters.mangasMerged,
-            chaptersAdded = counters.chaptersAdded,
-            chaptersMerged = counters.chaptersMerged,
-            downloadsRestored = 0,
-            historyMerged = historyMerged,
-        )
+        val result =
+            BackupImportResult(
+                mangasAdded = counters.mangasAdded,
+                mangasMerged = counters.mangasMerged,
+                chaptersAdded = counters.chaptersAdded,
+                chaptersMerged = counters.chaptersMerged,
+                downloadsRestored = 0,
+                historyMerged = historyMerged,
+            )
         progress.update { it.copy(isRunning = false, importResult = result) }
         return appSuccess(result)
     }
@@ -346,29 +358,34 @@ class BackupRepositoryImpl(
      * Not-a-ZIP, missing `backup.json`, and undecodable JSON all collapse into one user-facing
      * failure mode: "this file is not a Kira backup".
      */
-    private fun parseArchive(path: Path): AppResult<BackupFile> = try {
-        val text = appFileSystem.fileSystem().openZip(path)
-            .source(BACKUP_JSON_ENTRY.toPath())
-            .buffer()
-            .use { it.readUtf8() }
-        appSuccess(backupJson.decodeFromString<BackupFile>(text))
-    } catch (ce: CancellationException) {
-        throw ce
-    } catch (t: Throwable) {
-        appFailure(AppError.Validation.Format("backup_file", t))
-    }
+    private fun parseArchive(path: Path): AppResult<BackupFile> =
+        try {
+            val text =
+                appFileSystem
+                    .fileSystem()
+                    .openZip(path)
+                    .source(BACKUP_JSON_ENTRY.toPath())
+                    .buffer()
+                    .use { it.readUtf8() }
+            appSuccess(backupJson.decodeFromString<BackupFile>(text))
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            appFailure(AppError.Validation.Format("backup_file", t))
+        }
 
     private suspend fun importOneManga(
         manga: BackupManga,
         counters: ImportCounters,
         resolvedIdsByUrl: MutableMap<String, Long>,
     ) {
-        val outcome = backupDao.importMangaMerging(
-            incoming = manga.toEntity(),
-            incomingChapters = manga.chapters.map { it.toEntity() },
-            mergeManga = BackupMergePolicy::mergeManga,
-            mergeChapter = BackupMergePolicy::mergeChapter,
-        )
+        val outcome =
+            backupDao.importMangaMerging(
+                incoming = manga.toEntity(),
+                incomingChapters = manga.chapters.map { it.toEntity() },
+                mergeManga = BackupMergePolicy::mergeManga,
+                mergeChapter = BackupMergePolicy::mergeChapter,
+            )
         if (outcome.mangaId == -1L) return
         resolvedIdsByUrl[manga.url] = outcome.mangaId
         if (outcome.mangaWasNew) counters.mangasAdded++ else counters.mangasMerged++
@@ -385,12 +402,13 @@ class BackupRepositoryImpl(
             val page = chapter.resumePage ?: continue
             val outcome = outcomes[chapter.url] ?: continue
             val localSaved = if (outcome.wasNew) null else readProgress.load(chapter.url)
-            val restore = BackupMergePolicy.shouldRestoreResumePage(
-                chapterWasNew = outcome.wasNew,
-                incomingLastReadDate = chapter.lastReadDate,
-                localLastReadDateBefore = outcome.localLastReadDateBefore,
-                localSavedPage = localSaved,
-            )
+            val restore =
+                BackupMergePolicy.shouldRestoreResumePage(
+                    chapterWasNew = outcome.wasNew,
+                    incomingLastReadDate = chapter.lastReadDate,
+                    localLastReadDateBefore = outcome.localLastReadDateBefore,
+                    localSavedPage = localSaved,
+                )
             if (restore) readProgress.save(chapter.url, page)
         }
     }

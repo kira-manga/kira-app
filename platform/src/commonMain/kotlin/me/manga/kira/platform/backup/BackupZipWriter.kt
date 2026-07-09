@@ -5,16 +5,20 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.buffer
-// okio.use, NOT kotlin.io.use: on JVM the Closeable extension resolves implicitly, but
-// Kotlin/Native has no java.io.Closeable — the iOS target fails to compile without this import.
 import okio.use
+
+// The okio.use import above is load-bearing, NOT kotlin.io.use: on JVM the Closeable extension
+// resolves implicitly, but Kotlin/Native has no java.io.Closeable — the iOS target fails to
+// compile without it.
 
 /**
  * The archive would exceed a hard ZIP32 ceiling (4 GiB total or 65535 entries). Surfaced as a
  * distinct type so the caller can map it to a typed "backup too large" error instead of a
  * generic IO failure.
  */
-class ZipLimitExceededException(message: String) : IOException(message)
+class ZipLimitExceededException(
+    message: String,
+) : IOException(message)
 
 /**
  * Minimal STORE-method (uncompressed) ZIP writer over an okio [BufferedSink] — the commonMain
@@ -36,8 +40,9 @@ class ZipLimitExceededException(message: String) : IOException(message)
  * Usage: construct over an open sink, write entries in order, then [finish] exactly once. The
  * caller owns the sink lifecycle and deletes the partial output file on failure/cancel.
  */
-class BackupZipWriter(private val sink: BufferedSink) {
-
+class BackupZipWriter(
+    private val sink: BufferedSink,
+) {
     private class CentralEntry(
         val nameBytes: ByteArray,
         val crc32: Int,
@@ -50,7 +55,10 @@ class BackupZipWriter(private val sink: BufferedSink) {
     private var finished = false
 
     /** Append one STORE entry from in-memory bytes (the `backup.json` manifest). */
-    fun writeEntryBytes(name: String, data: ByteArray) {
+    fun writeEntryBytes(
+        name: String,
+        data: ByteArray,
+    ) {
         val crc = Crc32().apply { update(data) }
         beginEntry(name, data.size.toLong(), crc.value) { nameBytes, offset ->
             writeBytes(data)
@@ -66,9 +74,14 @@ class BackupZipWriter(private val sink: BufferedSink) {
      * @throws IOException if the file's size changes between the passes (torn source — the
      *   archive would be corrupt).
      */
-    fun writeEntryFromFile(name: String, fileSystem: FileSystem, path: Path) {
-        val size = fileSystem.metadata(path).size
-            ?: throw IOException("No size metadata for $path")
+    fun writeEntryFromFile(
+        name: String,
+        fileSystem: FileSystem,
+        path: Path,
+    ) {
+        val size =
+            fileSystem.metadata(path).size
+                ?: throw IOException("No size metadata for $path")
 
         val crc = Crc32()
         val chunk = ByteArray(CHUNK_SIZE)
@@ -118,15 +131,15 @@ class BackupZipWriter(private val sink: BufferedSink) {
         // ---- Local file header (signature 0x04034b50) ----
         writeIntLe(LOCAL_FILE_HEADER_SIG)
         writeShortLe(VERSION_NEEDED)
-        writeShortLe(0)                     // general-purpose bit flag
+        writeShortLe(0) // general-purpose bit flag
         writeShortLe(METHOD_STORE)
-        writeShortLe(0)                     // last mod file time
-        writeShortLe(0)                     // last mod file date
+        writeShortLe(0) // last mod file time
+        writeShortLe(0) // last mod file date
         writeIntLe(crc)
-        writeIntLe(size.asZipSize())        // compressed size (== uncompressed for STORE)
-        writeIntLe(size.asZipSize())        // uncompressed size
+        writeIntLe(size.asZipSize()) // compressed size (== uncompressed for STORE)
+        writeIntLe(size.asZipSize()) // uncompressed size
         writeShortLe(nameBytes.size)
-        writeShortLe(0)                     // extra field length
+        writeShortLe(0) // extra field length
         writeBytes(nameBytes)
 
         entries += writeData(nameBytes, offset)
@@ -143,19 +156,19 @@ class BackupZipWriter(private val sink: BufferedSink) {
             writeIntLe(CENTRAL_DIR_HEADER_SIG)
             writeShortLe(VERSION_MADE_BY)
             writeShortLe(VERSION_NEEDED)
-            writeShortLe(0)                            // general-purpose bit flag
+            writeShortLe(0) // general-purpose bit flag
             writeShortLe(METHOD_STORE)
-            writeShortLe(0)                            // last mod file time
-            writeShortLe(0)                            // last mod file date
+            writeShortLe(0) // last mod file time
+            writeShortLe(0) // last mod file date
             writeIntLe(entry.crc32)
-            writeIntLe(entry.size.asZipSize())         // compressed size
-            writeIntLe(entry.size.asZipSize())         // uncompressed size
+            writeIntLe(entry.size.asZipSize()) // compressed size
+            writeIntLe(entry.size.asZipSize()) // uncompressed size
             writeShortLe(entry.nameBytes.size)
-            writeShortLe(0)                            // extra field length
-            writeShortLe(0)                            // file comment length
-            writeShortLe(0)                            // disk number start
-            writeShortLe(0)                            // internal file attributes
-            writeIntLe(0)                              // external file attributes
+            writeShortLe(0) // extra field length
+            writeShortLe(0) // file comment length
+            writeShortLe(0) // disk number start
+            writeShortLe(0) // internal file attributes
+            writeIntLe(0) // external file attributes
             writeIntLe(entry.localHeaderOffset.asZipSize())
             writeBytes(entry.nameBytes)
         }
@@ -163,13 +176,13 @@ class BackupZipWriter(private val sink: BufferedSink) {
 
         // ---- End of central directory record (signature 0x06054b50) ----
         writeIntLe(END_OF_CENTRAL_DIR_SIG)
-        writeShortLe(0)                                // number of this disk
-        writeShortLe(0)                                // disk with start of central directory
-        writeShortLe(entries.size)                     // central-dir entries on this disk
-        writeShortLe(entries.size)                     // total central-dir entries
+        writeShortLe(0) // number of this disk
+        writeShortLe(0) // disk with start of central directory
+        writeShortLe(entries.size) // central-dir entries on this disk
+        writeShortLe(entries.size) // total central-dir entries
         writeIntLe(centralDirSize.asZipSize())
         writeIntLe(centralDirOffset.asZipSize())
-        writeShortLe(0)                                // ZIP file comment length
+        writeShortLe(0) // ZIP file comment length
     }
 
     // Values up to 0xFFFFFFFF are written as their raw little-endian bit pattern; the ZIP32

@@ -7,14 +7,17 @@ import androidx.compose.runtime.Composable
  * only ever see absolute paths inside the app sandbox — no Uri/NSURL crosses a module boundary.
  */
 interface BackupFilePicker {
-
     /**
      * Hand the finished export artifact at [sourcePath] (app cache; its file name is already the
      * suggested display name) to the platform save UI. [onResult] fires once: `true` when the
      * file was delivered to the user-chosen destination, `false` on cancel or copy failure.
      * The caller discards the cache artifact on every outcome.
      */
-    fun launchExport(sourcePath: String, suggestedName: String, onResult: (delivered: Boolean) -> Unit)
+    fun launchExport(
+        sourcePath: String,
+        suggestedName: String,
+        onResult: (delivered: Boolean) -> Unit,
+    )
 
     /**
      * Open the platform file-picker for a backup archive. [onResult] fires once with an

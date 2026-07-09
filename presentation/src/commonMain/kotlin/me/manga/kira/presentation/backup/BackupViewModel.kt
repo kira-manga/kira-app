@@ -39,7 +39,6 @@ class BackupViewModel(
     private val discardBackupArtifact: DiscardBackupArtifactUseCase,
     observeCbzConversion: ObserveCbzConversionUseCase,
 ) : MviViewModel<BackupState, BackupIntent, BackupEffect>(BackupState(scope = scope)) {
-
     init {
         launchSafely {
             observeBackupProgress().collect { snapshot ->
@@ -55,9 +54,10 @@ class BackupViewModel(
 
     override suspend fun handle(intent: BackupIntent) {
         when (intent) {
-            BackupIntent.OnToggleIncludeDownloads -> updateState {
-                it.copy(includeDownloads = !it.includeDownloads)
-            }
+            BackupIntent.OnToggleIncludeDownloads ->
+                updateState {
+                    it.copy(includeDownloads = !it.includeDownloads)
+                }
             BackupIntent.OnExport -> startExport()
             is BackupIntent.OnExportDelivered -> finishExportHandoff(intent.success)
             BackupIntent.OnImport -> requestImportPicker()
@@ -73,21 +73,24 @@ class BackupViewModel(
         if (!current.canStartRun) return
         updateState { it.copy(error = null) }
         when (val result = exportBackup(current.scope, current.includeDownloads)) {
-            is AppResult.Success -> emit(
-                BackupEffect.LaunchExportPicker(
-                    archivePath = result.value.archivePath,
-                    suggestedName = result.value.suggestedName,
-                ),
-            )
-            is AppResult.Failure -> if (result.error !is AppError.Cancelled) {
-                updateState { it.copy(error = result.error) }
-            }
+            is AppResult.Success ->
+                emit(
+                    BackupEffect.LaunchExportPicker(
+                        archivePath = result.value.archivePath,
+                        suggestedName = result.value.suggestedName,
+                    ),
+                )
+            is AppResult.Failure ->
+                if (result.error !is AppError.Cancelled) {
+                    updateState { it.copy(error = result.error) }
+                }
         }
     }
 
     private suspend fun finishExportHandoff(success: Boolean) {
         // The picker copied (or abandoned) the cache artifact — it is garbage on every outcome.
-        state.value.progress.exportResult?.let { discardBackupArtifact(it.archivePath) }
+        state.value.progress.exportResult
+            ?.let { discardBackupArtifact(it.archivePath) }
         if (!success) {
             // Save-picker dismissed: nothing was delivered, drop the terminal summary silently.
             clearBackupProgress()

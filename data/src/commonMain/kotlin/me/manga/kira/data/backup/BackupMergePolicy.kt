@@ -13,9 +13,11 @@ import me.manga.kira.data.local.entity.SavedMangaEntity
  * over the backup's copy (the local row may have been refreshed more recently than the backup).
  */
 internal object BackupMergePolicy {
-
     /** Local metadata kept; only progress/engagement fields advance. */
-    fun mergeManga(local: SavedMangaEntity, incoming: SavedMangaEntity): SavedMangaEntity =
+    fun mergeManga(
+        local: SavedMangaEntity,
+        incoming: SavedMangaEntity,
+    ): SavedMangaEntity =
         local.copy(
             isLiked = local.isLiked || incoming.isLiked,
             isWatchingNow = local.isWatchingNow || incoming.isWatchingNow,
@@ -28,7 +30,10 @@ internal object BackupMergePolicy {
      * transient badge state (`isDownloaded`/`localImagePaths`/`isNew`/`fetchedAt`) stay LOCAL —
      * restoring a packed download flips them separately, only after its CBZ is in place.
      */
-    fun mergeChapter(local: SavedChapterEntity, incoming: SavedChapterEntity): SavedChapterEntity =
+    fun mergeChapter(
+        local: SavedChapterEntity,
+        incoming: SavedChapterEntity,
+    ): SavedChapterEntity =
         local.copy(
             isRead = local.isRead || incoming.isRead,
             isBookmarked = local.isBookmarked || incoming.isBookmarked,
@@ -36,8 +41,10 @@ internal object BackupMergePolicy {
         )
 
     /** History is one row per manga: the side that read more recently defines the position. */
-    fun shouldReplaceHistory(local: HistoryItemD, incoming: HistoryItemD): Boolean =
-        incoming.lastReadDate > local.lastReadDate
+    fun shouldReplaceHistory(
+        local: HistoryItemD,
+        incoming: HistoryItemD,
+    ): Boolean = incoming.lastReadDate > local.lastReadDate
 
     /**
      * Restore the backup's per-chapter resume page iff the chapter was just created from the
@@ -50,13 +57,16 @@ internal object BackupMergePolicy {
         incomingLastReadDate: Long,
         localLastReadDateBefore: Long,
         localSavedPage: Int?,
-    ): Boolean =
-        chapterWasNew || incomingLastReadDate > localLastReadDateBefore || localSavedPage == null
+    ): Boolean = chapterWasNew || incomingLastReadDate > localLastReadDateBefore || localSavedPage == null
 
     /** "Saved earliest" for savedTimestamp — but 0 means "unknown", never wins. */
-    fun minNonZero(a: Long, b: Long): Long = when {
-        a == 0L -> b
-        b == 0L -> a
-        else -> minOf(a, b)
-    }
+    fun minNonZero(
+        a: Long,
+        b: Long,
+    ): Long =
+        when {
+            a == 0L -> b
+            b == 0L -> a
+            else -> minOf(a, b)
+        }
 }

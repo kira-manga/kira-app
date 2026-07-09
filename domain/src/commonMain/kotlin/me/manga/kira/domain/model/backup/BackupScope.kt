@@ -15,5 +15,7 @@ sealed interface BackupScope {
      * Only the given mangas (one entry = single-manga export from Details; several = Library
      * multi-select). History is filtered to these mangas.
      */
-    data class Mangas(val keys: List<MangaKey>) : BackupScope
+    data class Mangas(
+        val keys: List<MangaKey>,
+    ) : BackupScope
 }

@@ -13,7 +13,6 @@ actual fun rememberBackupFilePicker(): BackupFilePicker = remember { DesktopBack
 actual fun backupPlatformName(): String = "desktop"
 
 private class DesktopBackupFilePicker : BackupFilePicker {
-
     override fun launchExport(
         sourcePath: String,
         suggestedName: String,
@@ -28,10 +27,11 @@ private class DesktopBackupFilePicker : BackupFilePicker {
             onResult(false)
             return
         }
-        val delivered = runCatching {
-            File(sourcePath).copyTo(File(dir, name), overwrite = true)
-            true
-        }.getOrDefault(false)
+        val delivered =
+            runCatching {
+                File(sourcePath).copyTo(File(dir, name), overwrite = true)
+                true
+            }.getOrDefault(false)
         onResult(delivered)
     }
 
