@@ -10,6 +10,7 @@ import me.manga.kira.data.local.converter.DownloadingStateConverter
 import me.manga.kira.data.local.converter.LocalDateConverter
 import me.manga.kira.data.local.converter.LocalDateTimeConverter
 import me.manga.kira.data.local.converter.StringListConverter
+import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.HistoryDao
@@ -73,6 +74,7 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun chapterDownloadingDao(): ChapterDownloadDao
     abstract fun sourcesDao(): SourcesDao
     abstract fun sourceConfigCacheDao(): SourceConfigCacheDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         const val DATABASE_NAME = "manga_database"

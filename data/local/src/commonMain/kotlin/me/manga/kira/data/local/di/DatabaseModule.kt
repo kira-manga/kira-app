@@ -2,6 +2,7 @@ package me.manga.kira.data.local.di
 
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.buildMangaDatabase
+import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.HistoryDao
@@ -39,4 +40,5 @@ fun databaseModule(): Module = module {
     single<ChapterDownloadDao> { get<MangaDatabase>().chapterDownloadingDao() }
     single<SourcesDao> { get<MangaDatabase>().sourcesDao() }
     single<SourceConfigCacheDao> { get<MangaDatabase>().sourceConfigCacheDao() }
+    single<BackupDao> { get<MangaDatabase>().backupDao() }
 }
