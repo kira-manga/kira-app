@@ -14,7 +14,6 @@ import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
-import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.domain.model.settings.CbzConversionProgress
 import me.manga.kira.domain.model.settings.SettingsSnapshot
@@ -22,9 +21,10 @@ import me.manga.kira.domain.model.settings.SettingsToggle
 import me.manga.kira.domain.repository.SettingsRepository
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.storage.DataStoreHelper
-import me.manga.kira.presentation.features.settings.domain.SettingsRepository as LegacySettingsRepository
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import okio.Path.Companion.toPath
 import kotlin.coroutines.cancellation.CancellationException
+import me.manga.kira.presentation.features.settings.domain.SettingsRepository as LegacySettingsRepository
 
 /**
  * [SettingsRepository] strangler-fig delegate over the legacy `:shared`
@@ -150,7 +150,6 @@ class SettingsRepositoryImpl(
     // transferring/finalizing, so the two never race on the same chapter dir's .cbz.part + loose pages.
     private val chapterDownloadDao: ChapterDownloadDao,
 ) : SettingsRepository {
-
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)
 
     // GAP-SET-16 — hot progress state for the CBZ bulk-convert run, native-parity port of the
@@ -168,30 +167,33 @@ class SettingsRepositoryImpl(
     private val shouldStop = MutableStateFlow(false)
 
     override fun observeSettings(): Flow<SettingsSnapshot> {
-        val booleans: Flow<BooleansBundle> = combine(
-            legacy.downloadedOnlyFlow,
-            legacy.incognitoFlow,
-            legacy.followSystemFlow,
-            legacy.darkModeFlow,
-            legacy.pureBlackFlow,
-        ) { downloaded, incog, follow, dark, pure ->
-            BooleansBundle(downloaded, incog, follow, dark, pure)
-        }
+        val booleans: Flow<BooleansBundle> =
+            combine(
+                legacy.downloadedOnlyFlow,
+                legacy.incognitoFlow,
+                legacy.followSystemFlow,
+                legacy.darkModeFlow,
+                legacy.pureBlackFlow,
+            ) { downloaded, incog, follow, dark, pure ->
+                BooleansBundle(downloaded, incog, follow, dark, pure)
+            }
         // Phase 7.x.settings.cbz — Yami Compressor toggles read from the legacy DataStoreHelper
         // KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ cells (the same cells the legacy
         // CbzConversionViewModel wrote). A second typed bundle keeps every flow typed (no `Any`).
-        val cbz: Flow<CbzBundle> = combine(
-            dataStore.useCbzFormatFlow,
-            dataStore.autoConvertToCbzFlow,
-        ) { useCbz, autoConvert ->
-            CbzBundle(useCbz, autoConvert)
-        }
+        val cbz: Flow<CbzBundle> =
+            combine(
+                dataStore.useCbzFormatFlow,
+                dataStore.autoConvertToCbzFlow,
+            ) { useCbz, autoConvert ->
+                CbzBundle(useCbz, autoConvert)
+            }
         // Typed wire (2026-07 backlog L15): the snapshot carries RAW bytes; the localized
         // "1.23 GB"-style rendering happens in :ui (formatByteSize + the size_* patterns).
-        val cacheSizeBytes: Flow<Long> = cacheRefresh
-            .onStart { emit(Unit) }
-            .map { legacy.getCacheFolderSize() }
-            .flowOn(dispatchers.io)
+        val cacheSizeBytes: Flow<Long> =
+            cacheRefresh
+                .onStart { emit(Unit) }
+                .map { legacy.getCacheFolderSize() }
+                .flowOn(dispatchers.io)
         return combine(booleans, cbz, cacheSizeBytes) { b, c, size ->
             SettingsSnapshot(
                 downloadedOnly = b.downloaded,
@@ -211,7 +213,10 @@ class SettingsRepositoryImpl(
     // the record-history hot path on every chapter open / Next / Prev.
     override fun observeIncognito(): Flow<Boolean> = legacy.incognitoFlow
 
-    override suspend fun setToggle(toggle: SettingsToggle, value: Boolean): Result<Unit> =
+    override suspend fun setToggle(
+        toggle: SettingsToggle,
+        value: Boolean,
+    ): Result<Unit> =
         runCatchingCancellable {
             when (toggle) {
                 SettingsToggle.DOWNLOADED_ONLY -> legacy.setDownloadedOnly(value)
@@ -224,12 +229,13 @@ class SettingsRepositoryImpl(
             }
         }
 
-    override suspend fun clearLargeCache(): Result<Unit> = runCatchingCancellable {
-        withContext(dispatchers.io) {
-            legacy.clearFilesLargerThan1MB()
+    override suspend fun clearLargeCache(): Result<Unit> =
+        runCatchingCancellable {
+            withContext(dispatchers.io) {
+                legacy.clearFilesLargerThan1MB()
+            }
+            cacheRefresh.tryEmit(Unit)
         }
-        cacheRefresh.tryEmit(Unit)
-    }
 
     // Phase 7.x.settings.cbz — the bulk convert-existing-downloads engine, strangler-figged into a
     // cross-platform `:data` pipeline over the `:shared` [ChapterDao] + the `:platform` [CbzWriter]
@@ -261,97 +267,109 @@ class SettingsRepositoryImpl(
     // structured count fields (`convertedChapters` / `totalChapters` / `wasStopped`) via
     // `stringResource`. Native builds the message in the VM with `context.getString(...)`; the KMP
     // split moves the string lookup to `:ui` where resources live, preserving the same counts.
-    override suspend fun compressExistingDownloads(): Result<Unit> = runCatchingCancellable {
-        shouldStop.value = false
-        conversionProgress.value = CbzConversionProgress(isConverting = true)
-        try {
-        withContext(dispatchers.io) {
-            // B4: a chapter the background download engine is still transferring/finalizing shares this
-            // chapter's dir (.cbz.part + loose pages); compressing it concurrently corrupts one of the two
-            // writers. Skip any chapter with an active download row — the engine finalizes it on its own.
-            val activeStates = setOf(
-                DownloadingState.QUEUED, DownloadingState.RUNNING,
-                DownloadingState.DOWNLOADED, DownloadingState.COMPRESSING,
-            )
-            val chapters = chapterDao.getAllDownloadedChapters().filter { chapter ->
-                chapter.localImagePaths.isNotEmpty() &&
-                    !(chapter.localImagePaths.size == 1 &&
-                        chapter.localImagePaths.first().endsWith(".cbz")) &&
-                    chapterDownloadDao.getDownloadByChapter(chapter.id)?.state !in activeStates
-            }
-            val total = chapters.size
-            conversionProgress.update { it.copy(totalChapters = total) }
+    override suspend fun compressExistingDownloads(): Result<Unit> =
+        runCatchingCancellable {
+            shouldStop.value = false
+            conversionProgress.value = CbzConversionProgress(isConverting = true)
+            try {
+                withContext(dispatchers.io) {
+                    // B4: a chapter the background download engine is still transferring/finalizing shares this
+                    // chapter's dir (.cbz.part + loose pages); compressing it concurrently corrupts one of the two
+                    // writers. Skip any chapter with an active download row — the engine finalizes it on its own.
+                    val activeStates =
+                        setOf(
+                            DownloadingState.QUEUED,
+                            DownloadingState.RUNNING,
+                            DownloadingState.DOWNLOADED,
+                            DownloadingState.COMPRESSING,
+                        )
+                    val chapters =
+                        chapterDao.getAllDownloadedChapters().filter { chapter ->
+                            chapter.localImagePaths.isNotEmpty() &&
+                                !(
+                                    chapter.localImagePaths.size == 1 &&
+                                        chapter.localImagePaths.first().endsWith(".cbz")
+                                ) &&
+                                chapterDownloadDao.getDownloadByChapter(chapter.id)?.state !in activeStates
+                        }
+                    val total = chapters.size
+                    conversionProgress.update { it.copy(totalChapters = total) }
 
-            if (total == 0) {
-                // Nothing to convert — terminal Completed with zero counts (native's
-                // "no_chapters_to_convert" success path collapses into the same Completed state;
-                // the `:ui` renders the localized summary from the 0/0 counts).
-                conversionProgress.value = CbzConversionProgress(
-                    isConverting = false,
-                    successMessage = TERMINAL_MARKER,
-                )
-                return@withContext
-            }
+                    if (total == 0) {
+                        // Nothing to convert — terminal Completed with zero counts (native's
+                        // "no_chapters_to_convert" success path collapses into the same Completed state;
+                        // the `:ui` renders the localized summary from the 0/0 counts).
+                        conversionProgress.value =
+                            CbzConversionProgress(
+                                isConverting = false,
+                                successMessage = TERMINAL_MARKER,
+                            )
+                        return@withContext
+                    }
 
-            var converted = 0
-            chapters.forEachIndexed { index, chapter ->
-                if (shouldStop.value) {
-                    emitStopped(total = total, converted = converted)
-                    return@withContext
+                    var converted = 0
+                    chapters.forEachIndexed { index, chapter ->
+                        if (shouldStop.value) {
+                            emitStopped(total = total, converted = converted)
+                            return@withContext
+                        }
+                        val mangaTitle =
+                            runCatchingCancellable { mangaDao.getMangaById(chapter.mangaId)?.title }
+                                .getOrNull()
+                                .orEmpty()
+                        conversionProgress.update {
+                            it.copy(
+                                convertedChapters = index,
+                                currentMangaTitle = mangaTitle,
+                                currentChapterNumber = chapter.number,
+                            )
+                        }
+                        runCatchingCancellable {
+                            val cbz =
+                                cbzWriter.createCbzWithSplitting(
+                                    imagePaths = chapter.localImagePaths.map { it.toPath() },
+                                    mangaId = chapter.mangaId,
+                                    chapterId = chapter.id,
+                                )
+                            chapterDao.updateChapterLocalPaths(chapter.id, listOf(cbz.toString()))
+                        }.onSuccess { converted++ }
+                    }
+
+                    // Re-check after the last chapter so a Stop pressed during the final convert still
+                    // surfaces the Stopped terminal state (native re-checks `shouldStopConversion` too).
+                    if (shouldStop.value) {
+                        emitStopped(total = total, converted = converted)
+                    } else {
+                        conversionProgress.value =
+                            CbzConversionProgress(
+                                isConverting = false,
+                                totalChapters = total,
+                                convertedChapters = converted,
+                                successMessage = TERMINAL_MARKER,
+                            )
+                    }
                 }
-                val mangaTitle = runCatchingCancellable { mangaDao.getMangaById(chapter.mangaId)?.title }
-                    .getOrNull()
-                    .orEmpty()
-                conversionProgress.update {
-                    it.copy(
-                        convertedChapters = index,
-                        currentMangaTitle = mangaTitle,
-                        currentChapterNumber = chapter.number,
-                    )
-                }
-                runCatchingCancellable {
-                    val cbz = cbzWriter.createCbzWithSplitting(
-                        imagePaths = chapter.localImagePaths.map { it.toPath() },
-                        mangaId = chapter.mangaId,
-                        chapterId = chapter.id,
-                    )
-                    chapterDao.updateChapterLocalPaths(chapter.id, listOf(cbz.toString()))
-                }.onSuccess { converted++ }
+            } catch (ce: CancellationException) {
+                // Navigating away from Settings mid-run cancels viewModelScope -> this coroutine.
+                // runCatchingCancellable rethrows CancellationException so .onFailure never resets the
+                // app-lifetime single's flow; without this, isConverting stays true forever and the
+                // :ui CbzConversionDialog becomes a permanently undismissable modal. Reset to idle and
+                // rethrow so structured concurrency is preserved.
+                conversionProgress.value = CbzConversionProgress()
+                throw ce
             }
-
-            // Re-check after the last chapter so a Stop pressed during the final convert still
-            // surfaces the Stopped terminal state (native re-checks `shouldStopConversion` too).
-            if (shouldStop.value) {
-                emitStopped(total = total, converted = converted)
-            } else {
-                conversionProgress.value = CbzConversionProgress(
-                    isConverting = false,
-                    totalChapters = total,
-                    convertedChapters = converted,
-                    successMessage = TERMINAL_MARKER,
-                )
+            Unit
+        }.onFailure {
+            // The DAO walk itself threw (the per-chapter convert is isolated above). Emit the terminal
+            // Error snapshot unless the user already stopped (native suppresses the error on a stop).
+            if (!shouldStop.value) {
+                conversionProgress.value =
+                    CbzConversionProgress(
+                        isConverting = false,
+                        error = TERMINAL_MARKER,
+                    )
             }
         }
-        } catch (ce: CancellationException) {
-            // Navigating away from Settings mid-run cancels viewModelScope -> this coroutine.
-            // runCatchingCancellable rethrows CancellationException so .onFailure never resets the
-            // app-lifetime single's flow; without this, isConverting stays true forever and the
-            // :ui CbzConversionDialog becomes a permanently undismissable modal. Reset to idle and
-            // rethrow so structured concurrency is preserved.
-            conversionProgress.value = CbzConversionProgress()
-            throw ce
-        }
-        Unit
-    }.onFailure {
-        // The DAO walk itself threw (the per-chapter convert is isolated above). Emit the terminal
-        // Error snapshot unless the user already stopped (native suppresses the error on a stop).
-        if (!shouldStop.value) {
-            conversionProgress.value = CbzConversionProgress(
-                isConverting = false,
-                error = TERMINAL_MARKER,
-            )
-        }
-    }
 
     override fun observeCbzConversion(): Flow<CbzConversionProgress> = conversionProgress.asStateFlow()
 
@@ -372,14 +390,18 @@ class SettingsRepositoryImpl(
      * `isConverting = false`, carrying the converted count + the implied remaining
      * (`total - converted`). The `:ui` renders the localized "stopped by user" summary from these.
      */
-    private fun emitStopped(total: Int, converted: Int) {
-        conversionProgress.value = CbzConversionProgress(
-            isConverting = false,
-            totalChapters = total,
-            convertedChapters = converted,
-            wasStopped = true,
-            successMessage = TERMINAL_MARKER,
-        )
+    private fun emitStopped(
+        total: Int,
+        converted: Int,
+    ) {
+        conversionProgress.value =
+            CbzConversionProgress(
+                isConverting = false,
+                totalChapters = total,
+                convertedChapters = converted,
+                wasStopped = true,
+                successMessage = TERMINAL_MARKER,
+            )
     }
 
     private data class BooleansBundle(
