@@ -148,6 +148,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             // (workPending) can then arm a new Live Activity.
             self?.continuedTaskActive = false
             self?.refreshDeviceStress()
+            self?.clearDeliveredNotificationsAndBadge()
         }
 
         // Device-stress → engine: it defers FOREGROUND CBZ compression while the device is thermally
@@ -475,7 +476,41 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // with no valid deep link is ignored, so a plain download-notification tap just opens the app.
         bgLog("notif.didReceive tap categoryId=\(response.notification.request.content.categoryIdentifier)")
         IosPushBridgeKt.onNotificationTap(userInfo: response.notification.request.content.userInfo)
+        // The tap means the user has seen the notifications: iOS removes the tapped one itself, and
+        // this sweeps the rest + the badge. Needed here (not just didBecomeActive) because a tap from
+        // a pulled-down Notification Center while the app is ALREADY active fires no lifecycle event.
+        clearDeliveredNotificationsAndBadge()
         completionHandler()
+    }
+
+    // MARK: - Delivered-notification / badge cleanup
+
+    /// Clears stale notification clutter once the user is back in the app: removes Kira's delivered
+    /// notifications from Notification Center and resets the app-icon badge to 0.
+    ///
+    /// DOWNLOAD_PROGRESS notifications are kept — they mirror a live in-flight download (and are
+    /// re-posted on every progress tick anyway); remote pushes and DOWNLOAD_DONE are stale the
+    /// moment the app is open.
+    ///
+    /// Badge policy: the app itself never sets a badge anywhere. A badge can only appear when a push
+    /// payload carries `aps.badge` — console campaigns / future server sends must OMIT `badge` unless
+    /// badge behavior is intentional; this reset-on-open also covers any stray payload that sets one.
+    private func clearDeliveredNotificationsAndBadge() {
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let stale = delivered
+                .filter { $0.request.content.categoryIdentifier != "DOWNLOAD_PROGRESS" }
+                .map { $0.request.identifier }
+            if !stale.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: stale)
+                bgLog("notif.cleanup removedDelivered=\(stale.count) keptProgress=\(delivered.count - stale.count)")
+            }
+        }
+        if #available(iOS 16.0, *) {
+            center.setBadgeCount(0)
+        } else {
+            DispatchQueue.main.async { UIApplication.shared.applicationIconBadgeNumber = 0 }
+        }
     }
 
     // MARK: - APNs registration → FCM
