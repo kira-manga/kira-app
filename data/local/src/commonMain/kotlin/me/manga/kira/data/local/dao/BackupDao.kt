@@ -6,9 +6,11 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.presentation.features.download.data.DownloadingState
 
 /**
  * Per-chapter outcome of a merge-import, keyed by chapter url in [ImportedMangaResult].
@@ -101,6 +103,35 @@ interface BackupDao {
      */
     @Update(entity = SavedChapterEntity::class)
     suspend fun markChapterRestored(update: RestoredChapterUpdate)
+
+    @Query("SELECT * FROM chapter_downloads WHERE chapterId = :chapterId LIMIT 1")
+    suspend fun getDownloadRowByChapter(chapterId: Long): ChapterDownloadEntity?
+
+    // REPLACE rides the unique chapterId index — a stale FAILED/SUCCESS row is superseded in place.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDownloadRow(row: ChapterDownloadEntity): Long
+
+    /**
+     * [markChapterRestored] + the `chapter_downloads` SUCCESS row, atomically. The download engines
+     * finish a chapter by writing a SUCCESS queue row carrying `sizeBytes` — the Details/Downloads
+     * screens read the per-chapter size and the per-manga total from those rows, so a restored
+     * chapter without one shows no size at all. Inside the transaction the row is re-checked: when
+     * the engine currently owns the chapter (state in [activeStates]) nothing is written and the
+     * caller must not count the chapter as restored. A stale terminal row keeps its Room id so the
+     * Downloads-screen ordering (id DESC) doesn't jump.
+     */
+    @Transaction
+    suspend fun markChapterRestoredWithDownloadRow(
+        update: RestoredChapterUpdate,
+        downloadRow: ChapterDownloadEntity,
+        activeStates: Set<DownloadingState>,
+    ): Boolean {
+        val existing = getDownloadRowByChapter(downloadRow.chapterId)
+        if (existing != null && existing.state in activeStates) return false
+        markChapterRestored(update)
+        upsertDownloadRow(downloadRow.copy(id = existing?.id ?: 0))
+        return true
+    }
 
     @Query("SELECT * FROM history_items WHERE mangaUrl = :mangaUrl LIMIT 1")
     suspend fun getHistoryByMangaUrl(mangaUrl: String): HistoryItemD?

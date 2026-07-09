@@ -7,15 +7,18 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -29,17 +32,17 @@ import kotlin.test.assertTrue
  * lastReadDate) — the policy itself is unit-tested in :data; this class tests the DAO mechanics.
  */
 class BackupDaoChapterUpsertTest {
-
     private lateinit var db: MangaDatabase
     private lateinit var dao: BackupDao
 
     @BeforeTest
     fun open() {
-        db = Room
-            .inMemoryDatabaseBuilder<MangaDatabase>()
-            .setDriver(BundledSQLiteDriver())
-            .setQueryCoroutineContext(Dispatchers.Default)
-            .build()
+        db =
+            Room
+                .inMemoryDatabaseBuilder<MangaDatabase>()
+                .setDriver(BundledSQLiteDriver())
+                .setQueryCoroutineContext(Dispatchers.Default)
+                .build()
         dao = db.backupDao()
     }
 
@@ -130,135 +133,253 @@ class BackupDaoChapterUpsertTest {
     }
 
     @Test
-    fun backup_with_chapters_1_to_100_over_local_1_to_95_ends_at_1_to_100() = runTest {
-        val mangaId = seedLocalLibrary(chapterCount = 95)
+    fun backup_with_chapters_1_to_100_over_local_1_to_95_ends_at_1_to_100() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 95)
 
-        // The backup device read everything up to ch 100.
-        val backupChapters = (1..100).map { n ->
-            incomingChapter(n = n, isRead = true, lastReadDate = 9_000)
+            // The backup device read everything up to ch 100.
+            val backupChapters =
+                (1..100).map { n ->
+                    incomingChapter(n = n, isRead = true, lastReadDate = 9_000)
+                }
+
+            val result = dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
+
+            assertEquals(mangaId, result.mangaId)
+            assertFalse(result.mangaWasNew)
+            assertEquals(5, result.chaptersAdded, "96-100 created from the backup")
+            assertEquals(95, result.chaptersMerged)
+
+            val chapters = dao.getChaptersForManga(mangaId)
+            assertEquals(100, chapters.size, "local library now holds 1-100, nothing deleted")
+            val byNumber = chapters.associateBy { it.number.toInt() }
+            for (n in 96..100) {
+                val created = assertNotNull(byNumber[n], "chapter $n was inserted from the backup")
+                assertTrue(created.isRead, "backup read state carried onto the new row")
+                assertEquals(9_000, created.lastReadDate)
+                assertEquals(mangaId, created.mangaId, "resolved local mangaId overwrote the placeholder")
+            }
+            // Existing rows merged, never regressed.
+            assertTrue(byNumber.getValue(10).isBookmarked, "local bookmark survives")
+            assertTrue(byNumber.getValue(70).isRead, "locally-unread chapter picked up the backup's read flag")
+            assertEquals(9_000, byNumber.getValue(95).lastReadDate, "newer backup read stamp wins")
+            assertTrue(byNumber.getValue(20).isDownloaded, "local download state untouched by the merge")
+            assertEquals(listOf("/device/ch20.cbz"), byNumber.getValue(20).localImagePaths)
+
+            // Per-chapter results expose what the caller needs for resume-page restoration.
+            val ch95 = assertNotNull(result.chaptersByUrl["https://azora/ch/95"])
+            assertFalse(ch95.wasNew)
+            assertEquals(5_000, ch95.localLastReadDateBefore, "pre-merge value, unrecoverable after the write")
+            val ch100 = assertNotNull(result.chaptersByUrl["https://azora/ch/100"])
+            assertTrue(ch100.wasNew)
+            assertEquals(0, ch100.localLastReadDateBefore)
         }
 
-        val result = dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
-
-        assertEquals(mangaId, result.mangaId)
-        assertFalse(result.mangaWasNew)
-        assertEquals(5, result.chaptersAdded, "96-100 created from the backup")
-        assertEquals(95, result.chaptersMerged)
-
-        val chapters = dao.getChaptersForManga(mangaId)
-        assertEquals(100, chapters.size, "local library now holds 1-100, nothing deleted")
-        val byNumber = chapters.associateBy { it.number.toInt() }
-        for (n in 96..100) {
-            val created = assertNotNull(byNumber[n], "chapter $n was inserted from the backup")
-            assertTrue(created.isRead, "backup read state carried onto the new row")
-            assertEquals(9_000, created.lastReadDate)
-            assertEquals(mangaId, created.mangaId, "resolved local mangaId overwrote the placeholder")
-        }
-        // Existing rows merged, never regressed.
-        assertTrue(byNumber.getValue(10).isBookmarked, "local bookmark survives")
-        assertTrue(byNumber.getValue(70).isRead, "locally-unread chapter picked up the backup's read flag")
-        assertEquals(9_000, byNumber.getValue(95).lastReadDate, "newer backup read stamp wins")
-        assertTrue(byNumber.getValue(20).isDownloaded, "local download state untouched by the merge")
-        assertEquals(listOf("/device/ch20.cbz"), byNumber.getValue(20).localImagePaths)
-
-        // Per-chapter results expose what the caller needs for resume-page restoration.
-        val ch95 = assertNotNull(result.chaptersByUrl["https://azora/ch/95"])
-        assertFalse(ch95.wasNew)
-        assertEquals(5_000, ch95.localLastReadDateBefore, "pre-merge value, unrecoverable after the write")
-        val ch100 = assertNotNull(result.chaptersByUrl["https://azora/ch/100"])
-        assertTrue(ch100.wasNew)
-        assertEquals(0, ch100.localLastReadDateBefore)
-    }
-
     @Test
-    fun rerunning_the_same_import_is_idempotent() = runTest {
-        val mangaId = seedLocalLibrary(chapterCount = 95)
-        val backupChapters = (1..100).map { n ->
-            incomingChapter(n = n, isRead = true, lastReadDate = 9_000)
+    fun rerunning_the_same_import_is_idempotent() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 95)
+            val backupChapters =
+                (1..100).map { n ->
+                    incomingChapter(n = n, isRead = true, lastReadDate = 9_000)
+                }
+
+            dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
+            val afterFirst = dao.getChaptersForManga(mangaId)
+
+            val second = dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
+
+            assertEquals(0, second.chaptersAdded, "every chapter already present on the re-run")
+            assertEquals(100, second.chaptersMerged)
+            assertEquals(afterFirst, dao.getChaptersForManga(mangaId), "second import converges to the identical state")
         }
 
-        dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
-        val afterFirst = dao.getChaptersForManga(mangaId)
+    @Test
+    fun manga_absent_locally_is_created_with_all_its_chapters() =
+        runTest {
+            val backupChapters = (1..3).map { n -> incomingChapter(n = n, isRead = n == 1) }
 
-        val second = dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
+            val result = dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
 
-        assertEquals(0, second.chaptersAdded, "every chapter already present on the re-run")
-        assertEquals(100, second.chaptersMerged)
-        assertEquals(afterFirst, dao.getChaptersForManga(mangaId), "second import converges to the identical state")
-    }
+            assertTrue(result.mangaWasNew)
+            assertEquals(3, result.chaptersAdded)
+            assertEquals(0, result.chaptersMerged)
+            val saved = assertNotNull(dao.getMangaByUrl("https://azora/manga/1"))
+            assertEquals(result.mangaId, saved.id)
+            assertEquals(3, dao.getChaptersForManga(result.mangaId).size)
+        }
 
     @Test
-    fun manga_absent_locally_is_created_with_all_its_chapters() = runTest {
-        val backupChapters = (1..3).map { n -> incomingChapter(n = n, isRead = n == 1) }
+    fun manga_resolution_falls_back_to_api_and_title_when_url_moved() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 1)
 
-        val result = dao.importMangaMerging(manga(), backupChapters, mergeManga, mergeChapter)
+            // Same manga exported from a device that saved it under a moved host url.
+            val result =
+                dao.importMangaMerging(
+                    manga(url = "https://azora-new-host/manga/1"),
+                    listOf(incomingChapter(n = 1, isRead = true)),
+                    mergeManga,
+                    mergeChapter,
+                )
 
-        assertTrue(result.mangaWasNew)
-        assertEquals(3, result.chaptersAdded)
-        assertEquals(0, result.chaptersMerged)
-        val saved = assertNotNull(dao.getMangaByUrl("https://azora/manga/1"))
-        assertEquals(result.mangaId, saved.id)
-        assertEquals(3, dao.getChaptersForManga(result.mangaId).size)
-    }
-
-    @Test
-    fun manga_resolution_falls_back_to_api_and_title_when_url_moved() = runTest {
-        val mangaId = seedLocalLibrary(chapterCount = 1)
-
-        // Same manga exported from a device that saved it under a moved host url.
-        val result = dao.importMangaMerging(
-            manga(url = "https://azora-new-host/manga/1"),
-            listOf(incomingChapter(n = 1, isRead = true)),
-            mergeManga,
-            mergeChapter,
-        )
-
-        assertEquals(mangaId, result.mangaId, "resolved by (api, title), no duplicate manga row")
-        assertFalse(result.mangaWasNew)
-        assertEquals(1, dao.getChaptersForManga(mangaId).size)
-        assertTrue(assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1")).isRead)
-    }
+            assertEquals(mangaId, result.mangaId, "resolved by (api, title), no duplicate manga row")
+            assertFalse(result.mangaWasNew)
+            assertEquals(1, dao.getChaptersForManga(mangaId).size)
+            assertTrue(assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1")).isRead)
+        }
 
     @Test
-    fun chapter_lookup_is_mangaId_scoped_so_shared_urls_do_not_cross_mangas() = runTest {
-        // Two mangas whose chapters share the same url (relative-path sources make this real).
-        val otherId = dao.insertMangaRow(manga(url = "https://other/manga", api = "other", title = "Other"))
-        dao.insertChapterRow(incomingChapter(n = 1).copy(mangaId = otherId))
+    fun chapter_lookup_is_mangaId_scoped_so_shared_urls_do_not_cross_mangas() =
+        runTest {
+            // Two mangas whose chapters share the same url (relative-path sources make this real).
+            val otherId = dao.insertMangaRow(manga(url = "https://other/manga", api = "other", title = "Other"))
+            dao.insertChapterRow(incomingChapter(n = 1).copy(mangaId = otherId))
 
-        val result = dao.importMangaMerging(
-            manga(),
-            listOf(incomingChapter(n = 1, isRead = true)),
-            mergeManga,
-            mergeChapter,
-        )
+            val result =
+                dao.importMangaMerging(
+                    manga(),
+                    listOf(incomingChapter(n = 1, isRead = true)),
+                    mergeManga,
+                    mergeChapter,
+                )
 
-        assertEquals(1, result.chaptersAdded, "same url under a different manga does not count as present")
-        val otherChapter = assertNotNull(dao.getChapterByMangaAndUrl(otherId, "https://azora/ch/1"))
-        assertFalse(otherChapter.isRead, "the other manga's row was not touched")
-    }
+            assertEquals(1, result.chaptersAdded, "same url under a different manga does not count as present")
+            val otherChapter = assertNotNull(dao.getChapterByMangaAndUrl(otherId, "https://azora/ch/1"))
+            assertFalse(otherChapter.isRead, "the other manga's row was not touched")
+        }
 
     @Test
-    fun markChapterRestored_flips_only_the_download_columns() = runTest {
-        val mangaId = seedLocalLibrary(chapterCount = 1)
-        val before = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+    fun markChapterRestored_flips_only_the_download_columns() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 1)
+            val before = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
 
-        dao.markChapterRestored(
-            RestoredChapterUpdate(
-                id = before.id,
-                isDownloaded = true,
-                localImagePaths = listOf("/restored/ch1.cbz"),
-            ),
+            dao.markChapterRestored(
+                RestoredChapterUpdate(
+                    id = before.id,
+                    isDownloaded = true,
+                    localImagePaths = listOf("/restored/ch1.cbz"),
+                ),
+            )
+
+            val after = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+            assertTrue(after.isDownloaded)
+            assertEquals(listOf("/restored/ch1.cbz"), after.localImagePaths)
+            assertEquals(
+                before.copy(isDownloaded = true, localImagePaths = listOf("/restored/ch1.cbz")),
+                after,
+                "partial-entity update left every other column alone",
+            )
+        }
+
+    // --- restore + download row ------------------------------------------------------------------
+
+    private val activeStates =
+        setOf(
+            DownloadingState.QUEUED,
+            DownloadingState.RUNNING,
+            DownloadingState.DOWNLOADED,
+            DownloadingState.COMPRESSING,
         )
 
-        val after = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
-        assertTrue(after.isDownloaded)
-        assertEquals(listOf("/restored/ch1.cbz"), after.localImagePaths)
-        assertEquals(
-            before.copy(isDownloaded = true, localImagePaths = listOf("/restored/ch1.cbz")),
-            after,
-            "partial-entity update left every other column alone",
-        )
-    }
+    private fun downloadRow(
+        chapterId: Long,
+        mangaId: Long,
+        state: DownloadingState = DownloadingState.SUCCESS,
+        sizeBytes: Long = 0,
+    ) = ChapterDownloadEntity(
+        number = "1",
+        chapterId = chapterId,
+        mangaId = mangaId,
+        api = "azora",
+        mangaTitle = "Solo Leveling",
+        url = "https://azora/ch/1",
+        state = state,
+        progress = if (state == DownloadingState.SUCCESS) 100 else 0,
+        sizeBytes = sizeBytes,
+    )
+
+    @Test
+    fun restore_with_download_row_flips_the_chapter_and_writes_the_sized_success_row() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 1)
+            val chapter = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+            assertNull(dao.getDownloadRowByChapter(chapter.id), "restored chapters start with no queue row")
+
+            val restored =
+                dao.markChapterRestoredWithDownloadRow(
+                    update =
+                        RestoredChapterUpdate(
+                            id = chapter.id,
+                            isDownloaded = true,
+                            localImagePaths = listOf("/restored/ch1.cbz"),
+                        ),
+                    downloadRow = downloadRow(chapter.id, mangaId, sizeBytes = 12_345),
+                    activeStates = activeStates,
+                )
+
+            assertTrue(restored)
+            val after = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+            assertTrue(after.isDownloaded)
+            val row = assertNotNull(dao.getDownloadRowByChapter(chapter.id), "the size display reads this row")
+            assertEquals(DownloadingState.SUCCESS, row.state)
+            assertEquals(100, row.progress)
+            assertEquals(12_345, row.sizeBytes)
+        }
+
+    @Test
+    fun restore_is_refused_while_the_engine_owns_the_chapter() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 1)
+            val chapter = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+            dao.upsertDownloadRow(downloadRow(chapter.id, mangaId, state = DownloadingState.RUNNING))
+
+            val restored =
+                dao.markChapterRestoredWithDownloadRow(
+                    update =
+                        RestoredChapterUpdate(
+                            id = chapter.id,
+                            isDownloaded = true,
+                            localImagePaths = listOf("/restored/ch1.cbz"),
+                        ),
+                    downloadRow = downloadRow(chapter.id, mangaId, sizeBytes = 12_345),
+                    activeStates = activeStates,
+                )
+
+            assertFalse(restored)
+            val after = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+            assertFalse(after.isDownloaded, "nothing flipped — the running download keeps ownership")
+            val row = assertNotNull(dao.getDownloadRowByChapter(chapter.id))
+            assertEquals(DownloadingState.RUNNING, row.state, "the engine's row was not clobbered")
+        }
+
+    @Test
+    fun restore_supersedes_a_stale_failed_row_in_place() =
+        runTest {
+            val mangaId = seedLocalLibrary(chapterCount = 1)
+            val chapter = assertNotNull(dao.getChapterByMangaAndUrl(mangaId, "https://azora/ch/1"))
+            dao.upsertDownloadRow(downloadRow(chapter.id, mangaId, state = DownloadingState.FAILED))
+            val staleId = assertNotNull(dao.getDownloadRowByChapter(chapter.id)).id
+
+            val restored =
+                dao.markChapterRestoredWithDownloadRow(
+                    update =
+                        RestoredChapterUpdate(
+                            id = chapter.id,
+                            isDownloaded = true,
+                            localImagePaths = listOf("/restored/ch1.cbz"),
+                        ),
+                    downloadRow = downloadRow(chapter.id, mangaId, sizeBytes = 777),
+                    activeStates = activeStates,
+                )
+
+            assertTrue(restored)
+            val row = assertNotNull(dao.getDownloadRowByChapter(chapter.id))
+            assertEquals(staleId, row.id, "the failed row is superseded in place, keeping its ordering slot")
+            assertEquals(DownloadingState.SUCCESS, row.state)
+            assertEquals(777, row.sizeBytes)
+        }
 
     // --- history merge ---------------------------------------------------------------------------
 
@@ -284,27 +405,28 @@ class BackupDaoChapterUpsertTest {
     )
 
     @Test
-    fun history_absent_inserts_newer_replaces_position_older_keeps_local() = runTest {
-        val older = LocalDateTime(2026, 1, 1, 10, 0)
-        val newer = LocalDateTime(2026, 2, 1, 10, 0)
-        val newerWins: (HistoryItemD, HistoryItemD) -> Boolean =
-            { local, incoming -> incoming.lastReadDate > local.lastReadDate }
+    fun history_absent_inserts_newer_replaces_position_older_keeps_local() =
+        runTest {
+            val older = LocalDateTime(2026, 1, 1, 10, 0)
+            val newer = LocalDateTime(2026, 2, 1, 10, 0)
+            val newerWins: (HistoryItemD, HistoryItemD) -> Boolean =
+                { local, incoming -> incoming.lastReadDate > local.lastReadDate }
 
-        // Absent -> insert.
-        dao.importHistoryMerging(historyRow(older, chapterUrl = "https://azora/ch/90", page = 2), newerWins)
-        val inserted = assertNotNull(dao.getHistoryByMangaUrl("https://azora/manga/1"))
-        assertEquals("https://azora/ch/90", inserted.chapterUrl)
+            // Absent -> insert.
+            dao.importHistoryMerging(historyRow(older, chapterUrl = "https://azora/ch/90", page = 2), newerWins)
+            val inserted = assertNotNull(dao.getHistoryByMangaUrl("https://azora/manga/1"))
+            assertEquals("https://azora/ch/90", inserted.chapterUrl)
 
-        // Newer backup read -> position fields replaced, row identity kept.
-        dao.importHistoryMerging(historyRow(newer, chapterUrl = "https://azora/ch/95", page = 7), newerWins)
-        val replaced = assertNotNull(dao.getHistoryByMangaUrl("https://azora/manga/1"))
-        assertEquals(inserted.id, replaced.id, "same row, merged in place")
-        assertEquals("https://azora/ch/95", replaced.chapterUrl)
-        assertEquals(7, replaced.lastReadPage)
-        assertEquals(newer, replaced.lastReadDate)
+            // Newer backup read -> position fields replaced, row identity kept.
+            dao.importHistoryMerging(historyRow(newer, chapterUrl = "https://azora/ch/95", page = 7), newerWins)
+            val replaced = assertNotNull(dao.getHistoryByMangaUrl("https://azora/manga/1"))
+            assertEquals(inserted.id, replaced.id, "same row, merged in place")
+            assertEquals("https://azora/ch/95", replaced.chapterUrl)
+            assertEquals(7, replaced.lastReadPage)
+            assertEquals(newer, replaced.lastReadDate)
 
-        // Older backup read -> local kept.
-        dao.importHistoryMerging(historyRow(older, chapterUrl = "https://azora/ch/1", page = 1), newerWins)
-        assertEquals(replaced, assertNotNull(dao.getHistoryByMangaUrl("https://azora/manga/1")))
-    }
+            // Older backup read -> local kept.
+            dao.importHistoryMerging(historyRow(older, chapterUrl = "https://azora/ch/1", page = 1), newerWins)
+            assertEquals(replaced, assertNotNull(dao.getHistoryByMangaUrl("https://azora/manga/1")))
+        }
 }

@@ -33,7 +33,9 @@ import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.ImportedChapterResult
 import me.manga.kira.data.local.dao.ImportedMangaResult
+import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.dao.RestoredChapterUpdate
+import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.backup.BackupExportResult
 import me.manga.kira.domain.model.backup.BackupImportResult
@@ -81,6 +83,7 @@ class BackupRepositoryImpl(
     private val dispatchers: DispatcherProvider,
     private val cbzReader: CbzReader,
     private val chapterDownloadDao: ChapterDownloadDao,
+    private val notificationDao: NotificationDao,
     private val appVersion: String,
     private val platformName: String,
 ) : BackupRepository {
@@ -506,8 +509,9 @@ class BackupRepositoryImpl(
                     restoreOneDownload(
                         zipFs = zipFs,
                         entryName = entryName,
+                        manga = manga,
+                        chapter = chapter,
                         mangaId = outcome.mangaId,
-                        chapterUrl = chapter.url,
                         chapterId = chapterOutcome.chapterId,
                     )
                 }.getOrDefault(false)
@@ -520,17 +524,23 @@ class BackupRepositoryImpl(
      * Streams one packed CBZ to the chapter's canonical `DefaultCbzReader.cbzPath` location.
      * Order is the torn-archive guard: bytes land in `.part`, the rename is atomic, and only
      * then do the chapter row's reader-facing columns flip. Already-downloaded local chapters
-     * keep their own archive (never overwritten).
+     * keep their own archive (never overwritten), and a chapter the download engine currently
+     * owns is skipped entirely. The flag flip lands together with a `chapter_downloads` SUCCESS
+     * row carrying the archive size — the same terminal row the engines write, and the only
+     * source the Details/Downloads screens read the per-chapter size and per-manga total from.
      */
     private suspend fun restoreOneDownload(
         zipFs: FileSystem,
         entryName: String,
+        manga: BackupManga,
+        chapter: BackupChapter,
         mangaId: Long,
-        chapterUrl: String,
         chapterId: Long,
     ): Boolean {
-        val current = backupDao.getChapterByMangaAndUrl(mangaId, chapterUrl)
+        val current = backupDao.getChapterByMangaAndUrl(mangaId, chapter.url)
         if (current == null || current.isDownloaded) return false
+        // Cheap pre-check before streaming megabytes; the DAO transaction re-checks authoritatively.
+        if (chapterDownloadDao.getDownloadByChapter(chapterId)?.state in ACTIVE_DOWNLOAD_STATES) return false
         val fs = appFileSystem.fileSystem()
         val target = cbzReader.cbzPath(mangaId, chapterId)
         val parentDir = target.parent ?: return false
@@ -550,14 +560,33 @@ class BackupRepositoryImpl(
             }
         }
         fs.atomicMove(part, target)
-        backupDao.markChapterRestored(
-            RestoredChapterUpdate(
-                id = chapterId,
-                isDownloaded = true,
-                localImagePaths = listOf(target.toString()),
-            ),
-        )
-        return true
+        val localPaths = listOf(target.toString())
+        val sizeBytes = fs.metadataOrNull(target)?.size ?: 0L
+        val restored =
+            backupDao.markChapterRestoredWithDownloadRow(
+                update =
+                    RestoredChapterUpdate(
+                        id = chapterId,
+                        isDownloaded = true,
+                        localImagePaths = localPaths,
+                    ),
+                downloadRow =
+                    ChapterDownloadEntity(
+                        number = chapter.number,
+                        chapterId = chapterId,
+                        mangaId = mangaId,
+                        api = manga.api,
+                        mangaTitle = manga.title,
+                        url = chapter.url,
+                        state = DownloadingState.SUCCESS,
+                        progress = 100,
+                        sizeBytes = sizeBytes,
+                    ),
+                activeStates = ACTIVE_DOWNLOAD_STATES,
+            )
+        // Updates-screen parity with the engines' completion tail (no-op without a notification row).
+        if (restored) notificationDao.addLocalImagePathByChapterId(chapterId, localPaths)
+        return restored
     }
 
     private class ImportCounters {

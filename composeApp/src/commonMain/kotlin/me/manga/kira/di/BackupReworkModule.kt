@@ -33,6 +33,7 @@ val backupReworkModule: Module =
                 dispatchers = get(),
                 cbzReader = get(),
                 chapterDownloadDao = get(),
+                notificationDao = get(),
                 appVersion = get<AppVersionProvider>().versionName,
                 platformName = backupPlatformName(),
             )
