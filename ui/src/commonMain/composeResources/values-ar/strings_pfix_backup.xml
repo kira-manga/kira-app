@@ -31,4 +31,5 @@
     <string name="backup_error_too_large">ستكون النسخة الاحتياطية كبيرة جدًا. جرّب التصدير بدون الفصول المحملة.</string>
     <string name="backup_error_io">تعذرت قراءة الملف أو كتابته. تحقق من المساحة المتاحة وحاول مجددًا.</string>
     <string name="backup_error_generic">فشلت العملية. حاول مرة أخرى.</string>
+    <string name="backup_export_skipped_hint">تم تخطي %1$d من الفصول المحملة (لا يوجد أرشيف CBZ لها بعد). شغّل ضغط التنزيلات الحالية من الإعدادات أولًا.</string>
 </resources>

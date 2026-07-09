@@ -31,4 +31,5 @@
     <string name="backup_error_too_large">O backup ficaria grande demais. Tente exportar sem os capítulos baixados.</string>
     <string name="backup_error_io">Não foi possível ler ou gravar o arquivo. Verifique o espaço livre e tente novamente.</string>
     <string name="backup_error_generic">A operação falhou. Tente novamente.</string>
+    <string name="backup_export_skipped_hint">%1$d capítulos baixados foram ignorados (ainda sem arquivo CBZ). Execute primeiro a compressão dos downloads existentes nos Ajustes.</string>
 </resources>

@@ -31,4 +31,5 @@
     <string name="backup_error_too_large">Резервная копия будет слишком большой. Попробуйте экспортировать без скачанных глав.</string>
     <string name="backup_error_io">Не удалось прочитать или записать файл. Проверьте свободное место и попробуйте снова.</string>
     <string name="backup_error_generic">Не удалось выполнить операцию. Попробуйте ещё раз.</string>
+    <string name="backup_export_skipped_hint">Пропущено скачанных глав: %1$d (ещё нет архива CBZ). Сначала выполните сжатие существующих загрузок в настройках.</string>
 </resources>

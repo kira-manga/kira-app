@@ -23,6 +23,13 @@ data class ImportedChapterResult(
     val localLastReadDateBefore: Long,
 )
 
+/** Partial-entity payload for [BackupDao.markChapterRestored]. */
+data class RestoredChapterUpdate(
+    val id: Long,
+    val isDownloaded: Boolean,
+    val localImagePaths: List<String>,
+)
+
 /** Outcome of [BackupDao.importMangaMerging]. [mangaId] is -1 when the manga could not be resolved. */
 data class ImportedMangaResult(
     val mangaId: Long,
@@ -84,6 +91,16 @@ interface BackupDao {
 
     @Update
     suspend fun updateChapterRow(chapter: SavedChapterEntity)
+
+    /**
+     * Flips a restored chapter's reader-facing download columns in ONE statement (the reader
+     * must never observe isDownloaded=1 with stale paths). Partial-entity update rather than a
+     * raw `@Query` because `localImagePaths` needs the [SavedChapterEntity] type converter — a
+     * collection-typed `@Query` arg would be expanded as an IN-clause vararg instead. Callers
+     * must have the CBZ fully in place (write-to-.part + atomic rename) BEFORE calling this.
+     */
+    @Update(entity = SavedChapterEntity::class)
+    suspend fun markChapterRestored(update: RestoredChapterUpdate)
 
     @Query("SELECT * FROM history_items WHERE mangaUrl = :mangaUrl LIMIT 1")
     suspend fun getHistoryByMangaUrl(mangaUrl: String): HistoryItemD?

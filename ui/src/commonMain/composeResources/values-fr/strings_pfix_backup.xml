@@ -31,4 +31,5 @@
     <string name="backup_error_too_large">La sauvegarde serait trop volumineuse. Essayez d\'exporter sans les chapitres téléchargés.</string>
     <string name="backup_error_io">Impossible de lire ou d\'écrire le fichier. Vérifiez l\'espace libre et réessayez.</string>
     <string name="backup_error_generic">L\'opération a échoué. Veuillez réessayer.</string>
+    <string name="backup_export_skipped_hint">%1$d chapitres téléchargés ont été ignorés (pas encore d\'archive CBZ). Lancez d\'abord la compression des téléchargements existants dans les Réglages.</string>
 </resources>

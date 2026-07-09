@@ -31,4 +31,5 @@
     <string name="backup_error_too_large">Yedek çok büyük olur. İndirilen bölümler olmadan dışa aktarmayı deneyin.</string>
     <string name="backup_error_io">Dosya okunamadı veya yazılamadı. Boş alanı kontrol edip tekrar deneyin.</string>
     <string name="backup_error_generic">İşlem başarısız oldu. Lütfen tekrar deneyin.</string>
+    <string name="backup_export_skipped_hint">%1$d indirilen bölüm atlandı (henüz CBZ arşivi yok). Önce Ayarlar\'dan mevcut indirmeleri sıkıştırmayı çalıştırın.</string>
 </resources>

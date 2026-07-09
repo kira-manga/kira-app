@@ -31,4 +31,5 @@
     <string name="backup_error_too_large">バックアップが大きすぎます。ダウンロード済みチャプターを含めずにエクスポートしてください。</string>
     <string name="backup_error_io">ファイルの読み書きができませんでした。空き容量を確認して再試行してください。</string>
     <string name="backup_error_generic">操作に失敗しました。もう一度お試しください。</string>
+    <string name="backup_export_skipped_hint">ダウンロード済みチャプター%1$d件をスキップしました（CBZアーカイブ未作成）。先に設定で既存ダウンロードの圧縮を実行してください。</string>
 </resources>

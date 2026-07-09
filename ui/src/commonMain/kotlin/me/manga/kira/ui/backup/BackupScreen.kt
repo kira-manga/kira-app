@@ -31,6 +31,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -67,6 +68,7 @@ import me.manga.kira.ui.generated.resources.backup_error_too_large
 import me.manga.kira.ui.generated.resources.backup_export_action
 import me.manga.kira.ui.generated.resources.backup_export_done_title
 import me.manga.kira.ui.generated.resources.backup_export_scoped_subtitle
+import me.manga.kira.ui.generated.resources.backup_export_skipped_hint
 import me.manga.kira.ui.generated.resources.backup_export_subtitle
 import me.manga.kira.ui.generated.resources.backup_export_summary
 import me.manga.kira.ui.generated.resources.backup_export_title
@@ -78,6 +80,8 @@ import me.manga.kira.ui.generated.resources.backup_import_summary_chapters
 import me.manga.kira.ui.generated.resources.backup_import_summary_history
 import me.manga.kira.ui.generated.resources.backup_import_summary_mangas
 import me.manga.kira.ui.generated.resources.backup_import_title
+import me.manga.kira.ui.generated.resources.backup_include_downloads
+import me.manga.kira.ui.generated.resources.backup_include_downloads_hint
 import me.manga.kira.ui.generated.resources.backup_ok
 import me.manga.kira.ui.generated.resources.backup_progress_exporting
 import me.manga.kira.ui.generated.resources.backup_progress_importing
@@ -88,6 +92,7 @@ import me.manga.kira.ui.generated.resources.backup_stopped_message
 import me.manga.kira.ui.generated.resources.backup_stopped_title
 import me.manga.kira.ui.generated.resources.backup_title
 import me.manga.kira.ui.generated.resources.desc_back
+import me.manga.kira.ui.generated.resources.downloads
 import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
@@ -199,9 +204,14 @@ internal fun BackupScreenContent(
                 actionLabel = stringResource(Res.string.backup_export_action),
                 enabled = state.canStartRun,
                 onAction = { onIntent(BackupIntent.OnExport) },
+                extraContent = {
+                    IncludeDownloadsToggle(
+                        checked = state.includeDownloads,
+                        enabled = state.canStartRun,
+                        onToggle = { onIntent(BackupIntent.OnToggleIncludeDownloads) },
+                    )
+                },
             )
-            // The include-downloads toggle is deliberately absent until Phase B lands: rendering
-            // it now would offer an option the archive silently ignores.
 
             if (!state.isScoped) {
                 Spacer(Modifier.height(spacing.lg))
@@ -261,6 +271,7 @@ private fun BackupActionCard(
     actionLabel: String,
     enabled: Boolean,
     onAction: () -> Unit,
+    extraContent: (@Composable () -> Unit)? = null,
 ) {
     val spacing = LocalSpacing.current
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -284,6 +295,10 @@ private fun BackupActionCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (extraContent != null) {
+                Spacer(Modifier.height(spacing.sm))
+                extraContent()
+            }
             Spacer(Modifier.height(spacing.md))
             Button(
                 onClick = onAction,
@@ -293,6 +308,35 @@ private fun BackupActionCard(
                 Text(actionLabel)
             }
         }
+    }
+}
+
+/** Phase B — pack downloaded chapters (their CBZs) into the archive. */
+@Composable
+private fun IncludeDownloadsToggle(
+    checked: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(Res.string.backup_include_downloads),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(Res.string.backup_include_downloads_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(spacing.sm))
+        Switch(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            enabled = enabled,
+        )
     }
 }
 
@@ -457,6 +501,21 @@ private fun BackupRunningBody(progress: BackupProgress) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (progress.totalDownloads > 0) {
+                Spacer(Modifier.height(spacing.sm))
+                LinearProgressIndicator(
+                    progress = { progress.processedDownloads.toFloat() / progress.totalDownloads.toFloat() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(spacing.sm))
+                Text(
+                    text =
+                        "${stringResource(Res.string.downloads)}: " +
+                            "${progress.processedDownloads} / ${progress.totalDownloads}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
@@ -465,13 +524,35 @@ private fun BackupRunningBody(progress: BackupProgress) {
 
 @Composable
 private fun ExportDoneBody(result: BackupExportResult) {
-    Text(
-        text = stringResource(Res.string.backup_export_summary, result.mangaCount, result.chapterCount),
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val spacing = LocalSpacing.current
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth(),
-    )
+    ) {
+        Text(
+            text = stringResource(Res.string.backup_export_summary, result.mangaCount, result.chapterCount),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (result.downloadCount > 0) {
+            Spacer(Modifier.height(spacing.xs))
+            Text(
+                text = "${stringResource(Res.string.downloads)}: ${result.downloadCount}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (result.skippedLooseDownloads > 0) {
+            Spacer(Modifier.height(spacing.sm))
+            Text(
+                text = stringResource(Res.string.backup_export_skipped_hint, result.skippedLooseDownloads),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable

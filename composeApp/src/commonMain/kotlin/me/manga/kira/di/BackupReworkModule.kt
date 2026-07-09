@@ -31,6 +31,8 @@ val backupReworkModule: Module =
                 readProgress = get(),
                 appFileSystem = get(),
                 dispatchers = get(),
+                cbzReader = get(),
+                chapterDownloadDao = get(),
                 appVersion = get<AppVersionProvider>().versionName,
                 platformName = backupPlatformName(),
             )
