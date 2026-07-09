@@ -67,6 +67,11 @@ Flowermanga (PT), Timenaight + Webtoontr + Webtoonhatti (TR).
 
 ### How to convert a source
 
+> **The full lifecycle guide is [`sources/ADDING_SOURCES.md`](sources/ADDING_SOURCES.md)** —
+> authoring, api-immutability rules, endpoint requirements, validation, testing, domain moves,
+> retirement policy (`disabled` → `removed`, never silent deletion), and troubleshooting. The
+> steps below are the short form.
+
 1. Author its `SourceConfig` (`engine="generic"`) in `CONFIG_BACKED_SOURCES_JSON`, deriving fields
    from the legacy parser in `sources_repositry/` (read-only spec); add the api to
    `CONFIG_BACKED_APIS`.

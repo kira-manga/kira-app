@@ -15,8 +15,13 @@ interface SourceConfigValidator {
 
 /**
  * Outcome of validation. [errors] is empty iff [isValid]. Per-source problems are reported as
- * messages keyed by api in the text so a single bad source can be diagnosed without failing the rest
- * (the engine may choose to drop only the offending sources — that policy lives in `:sources:config`).
+ * messages keyed by api in the text so each bad stanza is individually diagnosable.
+ *
+ * NOTE (doc corrected 2026-07): acceptance is **all-or-nothing** — `:sources:config`'s
+ * `RemoteSourceConfigManager` drops the ENTIRE document when any error exists (no per-source drop
+ * policy is implemented). For the bundled tier that means a single bad stanza silently costs every
+ * generic source; `ConfigBackedSourceCompletenessTest` in `:composeApp` is the build-time gate that
+ * prevents it, and the manager's `onDocumentRejected` hook is the runtime alarm.
  */
 data class ValidationResult(
     val isValid: Boolean,
