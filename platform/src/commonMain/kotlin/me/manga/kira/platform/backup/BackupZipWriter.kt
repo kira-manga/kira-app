@@ -5,6 +5,9 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.buffer
+// okio.use, NOT kotlin.io.use: on JVM the Closeable extension resolves implicitly, but
+// Kotlin/Native has no java.io.Closeable — the iOS target fails to compile without this import.
+import okio.use
 
 /**
  * The archive would exceed a hard ZIP32 ceiling (4 GiB total or 65535 entries). Surfaced as a

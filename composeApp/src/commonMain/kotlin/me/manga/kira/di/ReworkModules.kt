@@ -33,6 +33,7 @@ fun allReworkModules(): List<Module> = listOf(
     complaintReworkModule,
     complaintAdminReworkModule,
     settingsReworkModule,
+    backupReworkModule,
     downloadsReworkModule,
     // Legacy chapter-download engine bindings, extracted from :shared's platformModule() to
     // :data:download (strangler-fig Phase 4). Per-target expect/actual downloadModule() — Android

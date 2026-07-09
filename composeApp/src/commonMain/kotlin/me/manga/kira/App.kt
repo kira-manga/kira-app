@@ -90,6 +90,7 @@ import me.manga.kira.navigation.routes.MangaDetailsReworkScreenRoute
 import me.manga.kira.navigation.routes.RepoSettingsScreenRoute
 import me.manga.kira.navigation.routes.SettingsRoute
 import me.manga.kira.navigation.routes.SourcesScreenRoute
+import me.manga.kira.navigation.routes.BackupReworkScreenRoute
 import me.manga.kira.navigation.routes.StatisticsReworkScreenRoute
 import me.manga.kira.navigation.routes.ThemeReworkScreenRoute
 import me.manga.kira.navigation.routes.ThemeSelectionScreenRoute
@@ -911,6 +912,18 @@ private fun AppNavHost(
         composable<Screen.StatisticsRework> { backStackEntry ->
             SideEffect { onBottomBarVisibleChange(false) }
             StatisticsReworkScreenRoute(
+                navController = navController,
+                backStackEntry = backStackEntry,
+            )
+        }
+
+        // Backup & restore (feature/backup): file export/import of the library or of a scoped
+        // manga selection. Reached from Settings (full-library mode, scopeJson = "") and from
+        // the Details top-bar / Library multi-select export actions (scoped mode). Bottom bar
+        // hidden like the other Settings sub-screens.
+        composable<Screen.BackupRework> { backStackEntry ->
+            SideEffect { onBottomBarVisibleChange(false) }
+            BackupReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
             )

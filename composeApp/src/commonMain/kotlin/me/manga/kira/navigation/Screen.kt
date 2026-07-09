@@ -150,6 +150,17 @@ sealed class Screen(val route: String) {
     ) : Screen("me.manga.kira.navigation.Screen.MangaDetailsRework")
 
     /**
+     * Backup & restore (feature/backup). [scopeJson] is a JSON-encoded
+     * `List<BackupScopeKey>` (see `navigation/routes/BackupReworkScreenRoute.kt`) naming the
+     * mangas a scoped export covers; empty = full-library mode (Settings entry). One string arg
+     * instead of a `List` NavType keeps titles separator-safe.
+     */
+    @Serializable
+    data class BackupRework(
+        val scopeJson: String = "",
+    ) : Screen("me.manga.kira.navigation.Screen.BackupRework")
+
+    /**
      * Architecture-rework Reader screen (Phase 8.x.reader).
      *
      * Renders the new `:ui/.../reader/ReaderScreen` composable backed by the rework
