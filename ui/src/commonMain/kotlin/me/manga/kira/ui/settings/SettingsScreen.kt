@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.SettingsBackupRestore
 import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -105,6 +106,7 @@ import me.manga.kira.presentation.settings.SettingsState
 import me.manga.kira.presentation.settings.SettingsViewModel
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.about
+import me.manga.kira.ui.generated.resources.backup_title
 import me.manga.kira.ui.generated.resources.app_information_and_updates
 import me.manga.kira.ui.generated.resources.auto_convert_on_download
 import me.manga.kira.ui.generated.resources.but_apply
@@ -641,6 +643,13 @@ private fun SettingsList(
                     onClick = { onIntent(SettingsIntent.OnClearCache) },
                     // SET-PFIX-01 — native cache_cleaner vector (native SettingsScreen.kt:287).
                     leadingIcon = { RowIcon(Res.drawable.cache_cleaner) },
+                )
+                SectionDivider()
+                // feature/backup — Backup & restore entry (full-library export + merge-import).
+                NavRow(
+                    label = settingsDestinationLabel(SettingsDestination.BACKUP),
+                    onClick = { onIntent(SettingsIntent.OnNavigate(SettingsDestination.BACKUP)) },
+                    leadingIcon = { RowIcon(Icons.Outlined.SettingsBackupRestore) },
                 )
                 SectionDivider()
                 NavRow(
@@ -1191,6 +1200,7 @@ private fun settingsDestinationLabel(destination: SettingsDestination): String =
     SettingsDestination.COMPLAINT -> stringResource(Res.string.feedbacks_and_complaints)
     SettingsDestination.WHATSNEW -> stringResource(Res.string.what_s_new)
     SettingsDestination.DOWNLOADS -> stringResource(Res.string.downloads)
+    SettingsDestination.BACKUP -> stringResource(Res.string.backup_title)
 }
 
 /**

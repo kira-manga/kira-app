@@ -2,6 +2,7 @@ package me.manga.kira.presentation.library
 
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.presentation.mvi.MviEffect
 
 /**
@@ -46,6 +47,13 @@ sealed interface LibraryEffect : MviEffect {
 
     /** View should navigate to the manga details screen. */
     data class NavigateToDetails(val manga: Manga) : LibraryEffect
+
+    /**
+     * feature/backup — view should open the Backup screen scoped to [keys] (multi-select export
+     * handoff). Destination descriptor only: the `:composeApp` adapter maps this to
+     * `Screen.BackupRework(scopeJson)`.
+     */
+    data class NavigateToBackupExport(val keys: List<MangaKey>) : LibraryEffect
 
     /** View should show a non-blocking error toast / snackbar. */
     data class ShowError(val error: AppError) : LibraryEffect

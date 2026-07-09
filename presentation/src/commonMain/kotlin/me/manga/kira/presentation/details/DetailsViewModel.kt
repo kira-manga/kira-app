@@ -16,6 +16,7 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
+import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.domain.usecase.details.ClearChapterNewUseCase
 import me.manga.kira.domain.usecase.details.DeleteChapterUseCase
 import me.manga.kira.domain.usecase.details.FetchMangaDetailsUseCase
@@ -279,6 +280,18 @@ class DetailsViewModel(
             DetailsIntent.OnAdultGateBack -> emit(DetailsEffect.NavigateBack)
             DetailsIntent.OnToggleInLibrary -> onToggleInLibrary()
             DetailsIntent.OnDownloadClick -> emit(DetailsEffect.NavigateToDownloads)
+            DetailsIntent.OnExportManga -> {
+                // feature/backup: scoped export — gated on membership (an unsaved manga has no
+                // local rows to back up; the :ui action is hidden then too, this is the VM guard).
+                val manga = state.value.manga
+                if (state.value.isInLibrary && manga != null) {
+                    emit(
+                        DetailsEffect.NavigateToBackupExport(
+                            MangaKey(api = manga.api, language = manga.language, title = manga.title),
+                        ),
+                    )
+                }
+            }
             DetailsIntent.OnDownloadAllClick -> onDownloadAllClick()
             DetailsIntent.OnOpenInWebView -> onOpenInWebView()
             is DetailsIntent.OnToggleChapterRead -> onToggleChapterRead(intent.chapter)

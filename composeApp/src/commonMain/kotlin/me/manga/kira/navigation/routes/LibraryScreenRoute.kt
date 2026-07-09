@@ -223,6 +223,16 @@ fun LibraryScreenRoute(
         // deferral documented in this adapter's KDoc). Routes to `Screen.DownloadsRework`, the same
         // rework Downloads key the MangaDetails downloads action navigates to.
         onNavigateToDownloads = { navController.safeNavigate(Screen.DownloadsRework) },
+        // feature/backup: multi-select export — Backup screen scoped to the selected keys.
+        onNavigateToBackupExport = { keys ->
+            navController.safeNavigate(
+                Screen.BackupRework(
+                    scopeJson = encodeBackupScope(
+                        keys.map { BackupScopeKey(api = it.api, language = it.language, title = it.title) },
+                    ),
+                ),
+            )
+        },
         // #32: build a source-aware Coil request per cover so library grids authenticate on
         // Cloudflare-protected sources whose cover CDN host differs from the source base host
         // (e.g. a source not visited yet this session). rememberSourceImageRequest hydrates the

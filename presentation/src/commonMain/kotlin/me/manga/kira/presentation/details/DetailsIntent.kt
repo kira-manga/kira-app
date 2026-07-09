@@ -261,6 +261,13 @@ sealed interface DetailsIntent : MviIntent {
     data object OnDownloadClick : DetailsIntent
 
     /**
+     * feature/backup — user tapped "Export manga" in the top-bar overflow (only rendered for an
+     * in-library manga). VM re-checks membership and emits
+     * [DetailsEffect.NavigateToBackupExport] with this manga's identity key.
+     */
+    data object OnExportManga : DetailsIntent
+
+    /**
      * User tapped the header "Download all" action — legacy parity with the `HeaderSection`
      * `action_download_all` `ActionButton`, which enqueued every chapter for offline download
      * (gated on the manga being saved to the library first).

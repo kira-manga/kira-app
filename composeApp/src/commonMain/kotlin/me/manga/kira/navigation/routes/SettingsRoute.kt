@@ -156,6 +156,9 @@ fun SettingsRoute(
                     if (Admin.isAdmin) Screen.ComplaintAdminRework else Screen.ComplaintRework
                 SettingsDestination.WHATSNEW -> Screen.WhatsNewRework
                 SettingsDestination.DOWNLOADS -> Screen.DownloadsRework
+                // Full-library mode: empty scopeJson (the scoped variants navigate from the
+                // Details / Library export actions, not from here).
+                SettingsDestination.BACKUP -> Screen.BackupRework()
             }
             navController.safeNavigate(target)
         },

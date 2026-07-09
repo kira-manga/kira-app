@@ -3,6 +3,7 @@ package me.manga.kira.presentation.details
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.presentation.mvi.MviEffect
 
 /**
@@ -39,6 +40,13 @@ sealed interface DetailsEffect : MviEffect {
      * Phase 7.x.details.downloads §253.
      */
     data object NavigateToDownloads : DetailsEffect
+
+    /**
+     * feature/backup — view should open the Backup screen scoped to [key] (single-manga export).
+     * Destination descriptor only: the `:composeApp` adapter is the sole layer that maps this to
+     * `Screen.BackupRework(scopeJson)`.
+     */
+    data class NavigateToBackupExport(val key: MangaKey) : DetailsEffect
 
     /**
      * View should navigate to the WebView screen for [url], scoped to source [api].

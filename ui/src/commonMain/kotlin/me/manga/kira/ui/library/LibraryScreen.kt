@@ -93,6 +93,7 @@ import me.manga.kira.ui.util.BackHandler
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import me.manga.kira.ui.generated.resources.Res
+import me.manga.kira.ui.generated.resources.backup_export_action
 import me.manga.kira.ui.generated.resources.cancel
 import me.manga.kira.ui.generated.resources.contentDescription_search
 import me.manga.kira.ui.generated.resources.contentDescription_search_clear
@@ -248,6 +249,7 @@ fun LibraryScreen(
     viewModel: LibraryViewModel,
     onNavigateToDetails: (Manga) -> Unit,
     onNavigateToDownloads: () -> Unit,
+    onNavigateToBackupExport: (List<MangaKey>) -> Unit,
     modifier: Modifier = Modifier,
     // #32: optional source-aware cover model. The :composeApp route adapter supplies an
     // ImageRequest carrying per-source Cloudflare auth headers (via rememberSourceImageRequest);
@@ -262,6 +264,7 @@ fun LibraryScreen(
         onIntent = viewModel::submit,
         onNavigateToDetails = onNavigateToDetails,
         onNavigateToDownloads = onNavigateToDownloads,
+        onNavigateToBackupExport = onNavigateToBackupExport,
         modifier = modifier,
         coverModel = coverModel,
     )
@@ -280,6 +283,7 @@ internal fun LibraryScreenContent(
     onIntent: (LibraryIntent) -> Unit,
     onNavigateToDetails: (Manga) -> Unit,
     onNavigateToDownloads: () -> Unit,
+    onNavigateToBackupExport: (List<MangaKey>) -> Unit,
     modifier: Modifier = Modifier,
     // #32: source-aware cover model slot (see [LibraryScreen]).
     coverModel: @Composable ((LibraryManga) -> Any?)? = null,
@@ -306,6 +310,7 @@ internal fun LibraryScreenContent(
         effects.collect { effect ->
             when (effect) {
                 is LibraryEffect.NavigateToDetails -> onNavigateToDetails(effect.manga)
+                is LibraryEffect.NavigateToBackupExport -> onNavigateToBackupExport(effect.keys)
                 is LibraryEffect.ShowError -> scope.launch { snackbarHostState.showSnackbar(errorMessages(effect.error)) }
                 is LibraryEffect.ShowBulkRemoveSuccess -> scope.launch {
                     snackbarHostState.showSnackbar(
@@ -551,6 +556,10 @@ private fun LibraryTopBar(
             TopAppBar(
                 title = { Text(stringResource(Res.string.library_selected_count, state.selection.size)) },
                 actions = {
+                    // feature/backup — export the selected mangas to a backup file.
+                    TextButton(onClick = { onIntent(LibraryIntent.OnExportSelected) }) {
+                        Text(stringResource(Res.string.backup_export_action))
+                    }
                     TextButton(onClick = { onIntent(LibraryIntent.OnDeleteSelected) }) {
                         Text(stringResource(Res.string.delete))
                     }

@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowUp
 import androidx.compose.material3.AlertDialog
@@ -141,6 +142,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.back
+import me.manga.kira.ui.generated.resources.backup_scoped_title
 import me.manga.kira.ui.generated.resources.retry
 import me.manga.kira.ui.generated.resources.cancel
 import me.manga.kira.ui.generated.resources.downloads
@@ -303,6 +305,7 @@ fun DetailsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToReader: (Manga, Chapter) -> Unit,
     onNavigateToDownloads: () -> Unit,
+    onNavigateToBackupExport: (api: String, language: String, title: String) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
@@ -321,6 +324,7 @@ fun DetailsScreen(
         onNavigateBack = onNavigateBack,
         onNavigateToReader = onNavigateToReader,
         onNavigateToDownloads = onNavigateToDownloads,
+        onNavigateToBackupExport = onNavigateToBackupExport,
         onOpenInWebView = onOpenInWebView,
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         modifier = modifier,
@@ -346,6 +350,7 @@ fun DetailsScreenByUrl(
     onNavigateBack: () -> Unit,
     onNavigateToReader: (Manga, Chapter) -> Unit,
     onNavigateToDownloads: () -> Unit,
+    onNavigateToBackupExport: (api: String, language: String, title: String) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
@@ -365,6 +370,7 @@ fun DetailsScreenByUrl(
         onNavigateBack = onNavigateBack,
         onNavigateToReader = onNavigateToReader,
         onNavigateToDownloads = onNavigateToDownloads,
+        onNavigateToBackupExport = onNavigateToBackupExport,
         onOpenInWebView = onOpenInWebView,
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         modifier = modifier,
@@ -391,6 +397,7 @@ internal fun DetailsScreenContent(
     onNavigateBack: () -> Unit,
     onNavigateToReader: (Manga, Chapter) -> Unit,
     onNavigateToDownloads: () -> Unit,
+    onNavigateToBackupExport: (api: String, language: String, title: String) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
@@ -507,6 +514,8 @@ internal fun DetailsScreenContent(
                 is DetailsEffect.NavigateToReader -> onNavigateToReader(effect.manga, effect.chapter)
                 is DetailsEffect.ShowError -> snackbarScope.launch { snackbarHostState.showSnackbar(errorMessages.messageFor(effect.error)) }
                 DetailsEffect.NavigateToDownloads -> onNavigateToDownloads()
+                is DetailsEffect.NavigateToBackupExport ->
+                    onNavigateToBackupExport(effect.key.api, effect.key.language, effect.key.title)
                 is DetailsEffect.NavigateToWebView -> onOpenInWebView(effect.url, effect.api)
                 // 403 Cloudflare interstitial → route to the WebView challenge-solver (legacy
                 // Handle403Error parity, bug #2). The `:composeApp` adapter navigates to the
@@ -548,6 +557,7 @@ internal fun DetailsScreenContent(
                 showCancelAll = state.isDownloadingAny,
                 onCancelAllDownloads = { onIntent(DetailsIntent.OnCancelAllDownloads) },
                 onDeleteAllDownloads = { onIntent(DetailsIntent.OnDeleteAllDownloads) },
+                onExportManga = { onIntent(DetailsIntent.OnExportManga) },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -776,6 +786,7 @@ private fun DetailsTopBar(
     showCancelAll: Boolean,
     onCancelAllDownloads: () -> Unit,
     onDeleteAllDownloads: () -> Unit,
+    onExportManga: () -> Unit,
 ) {
     var overflowExpanded by remember { mutableStateOf(false) }
     TopAppBar(
@@ -855,6 +866,15 @@ private fun DetailsTopBar(
                         onClick = {
                             overflowExpanded = false
                             onDeleteAllDownloads()
+                        },
+                    )
+                    // feature/backup — single-manga export (overflow is already in-library-gated).
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.backup_scoped_title)) },
+                        leadingIcon = { Icon(Icons.Outlined.FileUpload, contentDescription = null) },
+                        onClick = {
+                            overflowExpanded = false
+                            onExportManga()
                         },
                     )
                     DropdownMenuItem(

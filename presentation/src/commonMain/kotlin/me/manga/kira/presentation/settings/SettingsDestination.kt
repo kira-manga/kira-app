@@ -108,4 +108,10 @@ enum class SettingsDestination {
     COMPLAINT,
     WHATSNEW,
     DOWNLOADS,
+
+    /**
+     * Backup & restore (feature/backup) — full-library export + merge-import. The `:composeApp`
+     * adapter maps this to `Screen.BackupRework()` with an empty scope (full-library mode).
+     */
+    BACKUP,
 }

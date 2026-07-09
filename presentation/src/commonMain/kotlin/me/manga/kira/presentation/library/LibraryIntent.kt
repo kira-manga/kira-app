@@ -364,4 +364,11 @@ sealed interface LibraryIntent : MviIntent {
      * mutating the library.
      */
     data object OnSingleDeleteDismiss : LibraryIntent
+
+    /**
+     * feature/backup — user tapped Export in the multi-select toolbar. VM hands the current
+     * selection to the scoped Backup screen via [LibraryEffect.NavigateToBackupExport] and exits
+     * selection mode (the handoff consumes the selection, mirroring the delete flow).
+     */
+    data object OnExportSelected : LibraryIntent
 }

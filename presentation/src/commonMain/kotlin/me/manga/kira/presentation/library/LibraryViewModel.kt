@@ -321,6 +321,15 @@ class LibraryViewModel(
                 it.copy(selection = emptySet(), isInSelectionMode = false)
             }
             LibraryIntent.OnDeleteSelected -> onDeleteSelectedRequest()
+            LibraryIntent.OnExportSelected -> {
+                // feature/backup: hand the selection to the scoped Backup screen and exit
+                // selection mode (the handoff consumes the selection, like the delete flow).
+                val keys = state.value.selection.toList()
+                if (keys.isNotEmpty()) {
+                    emit(LibraryEffect.NavigateToBackupExport(keys))
+                    updateState { it.copy(selection = emptySet(), isInSelectionMode = false) }
+                }
+            }
             LibraryIntent.OnDeleteSelectedConfirm -> onDeleteSelectedConfirm()
             LibraryIntent.OnDeleteSelectedDismiss -> updateState {
                 it.copy(isDeleteDialogVisible = false)

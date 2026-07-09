@@ -123,6 +123,16 @@ fun MangaDetailsReworkScreenRoute(
         // the rework Downloads screen, not the legacy Library-tab quirk. Intentional UX change
         // documented in the slice's commit + ADR-3.
         onNavigateToDownloads = { navController.safeNavigate(Screen.DownloadsRework) },
+        // feature/backup: single-manga export — Backup screen scoped to this manga's identity key.
+        onNavigateToBackupExport = { api, language, title ->
+            navController.safeNavigate(
+                Screen.BackupRework(
+                    scopeJson = encodeBackupScope(
+                        listOf(BackupScopeKey(api = api, language = language, title = title)),
+                    ),
+                ),
+            )
+        },
         // Phase 7.x.details.webview §253 / ADR-5: Details top-bar ↗ button + the error-pane
         // "Open in WebView" fallback both route here. `:composeApp` is the only layer that
         // knows the destination is the legacy `Screen.WebView(url, api)`; `:presentation`
@@ -219,6 +229,16 @@ fun MangaDetailsByUrlReworkScreenRoute(
             )
         },
         onNavigateToDownloads = { navController.safeNavigate(Screen.DownloadsRework) },
+        // feature/backup: single-manga export — Backup screen scoped to this manga's identity key.
+        onNavigateToBackupExport = { api, language, title ->
+            navController.safeNavigate(
+                Screen.BackupRework(
+                    scopeJson = encodeBackupScope(
+                        listOf(BackupScopeKey(api = api, language = language, title = title)),
+                    ),
+                ),
+            )
+        },
         onOpenInWebView = { url, api -> navController.safeNavigate(Screen.WebView(url = url, api = api)) },
         // Bug #2 (legacy Handle403Error parity): a 403 fetch failure routes here to solve the
         // Cloudflare challenge, then auto-retries the fetch when control returns to Details.
