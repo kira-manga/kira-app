@@ -35,6 +35,14 @@ class RemoteSourceConfigManager(
     private val verifier: ConfigSignatureVerifier,
     private val validator: SourceConfigValidator,
     private val remote: RemoteConfigSource? = null,
+    /**
+     * Invoked when a document is dropped (parse failure or validation errors) with the tier it came
+     * from (`bundled`/`cache`/`remote`) and the per-stanza reasons. Rejection is otherwise SILENT —
+     * the previous good document stays active, and a rejected BUNDLED document degrades to [EMPTY]
+     * (every generic source lost at once, since validation is all-or-nothing). The composition root
+     * wires this to a logger so that catastrophic-but-quiet state is diagnosable in the field.
+     */
+    private val onDocumentRejected: (origin: String, reasons: List<String>) -> Unit = { _, _ -> },
 ) : SourceUpdateManager {
 
     private val bundledDocument: SourceConfigDocument = resolveBundled()
@@ -66,7 +74,7 @@ class RemoteSourceConfigManager(
 
             // CACHE — trusted-on-write, only needs to parse + validate.
             store.readCached()?.let { raw ->
-                acceptedOrNull(raw)?.takeIf { it.revision >= acceptedRevision }?.let {
+                acceptedOrNull(raw, origin = "cache")?.takeIf { it.revision >= acceptedRevision }?.let {
                     documents += it
                     origin = UpdateState.Origin.CACHE
                     acceptedRevision = it.revision
@@ -76,7 +84,7 @@ class RemoteSourceConfigManager(
             // REMOTE — only when wired; must verify signature before it is parsed or trusted.
             remote?.fetch()?.let { payload ->
                 if (verifier.verify(payload.payload.encodeToByteArray(), payload.signatureBase64)) {
-                    acceptedOrNull(payload.payload)?.takeIf { it.revision >= acceptedRevision }?.let {
+                    acceptedOrNull(payload.payload, origin = "remote")?.takeIf { it.revision >= acceptedRevision }?.let {
                         store.writeCached(payload.payload) // cache only what we verified and accepted
                         documents += it
                         origin = UpdateState.Origin.REMOTE
@@ -100,15 +108,30 @@ class RemoteSourceConfigManager(
         }
     }
 
-    /** Parse + validate a raw document; null if it is malformed or fails validation. */
-    private fun acceptedOrNull(raw: String): SourceConfigDocument? {
-        val parsed = (SourceConfigParser.parse(raw) as? AppResult.Success)?.value ?: return null
-        return if (validator.validate(parsed).isValid) parsed else null
+    /**
+     * Parse + validate a raw document; null if it is malformed or fails validation. Every drop is
+     * reported through [onDocumentRejected] with its [origin] — validation is all-or-nothing, so a
+     * single bad stanza rejects the whole document and the reasons list is the only diagnostic.
+     */
+    private fun acceptedOrNull(raw: String, origin: String): SourceConfigDocument? {
+        val parsed = when (val result = SourceConfigParser.parse(raw)) {
+            is AppResult.Success -> result.value
+            is AppResult.Failure -> {
+                onDocumentRejected(origin, listOf("document does not parse: ${result.error}"))
+                return null
+            }
+        }
+        val validation = validator.validate(parsed)
+        if (!validation.isValid) {
+            onDocumentRejected(origin, validation.errors)
+            return null
+        }
+        return parsed
     }
 
     private fun resolveBundled(): SourceConfigDocument {
         val raw = store.readBundled() ?: return EMPTY
-        return acceptedOrNull(raw) ?: EMPTY
+        return acceptedOrNull(raw, origin = "bundled") ?: EMPTY
     }
 
     private companion object {

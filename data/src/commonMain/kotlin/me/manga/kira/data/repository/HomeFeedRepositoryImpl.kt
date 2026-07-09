@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.data.mapper.classifyHomeThrowable
@@ -331,9 +332,24 @@ class HomeFeedRepositoryImpl(
      * into an [AppResult.Failure] rather than escaping raw — preserving the pre-flip behavior, where
      * the `activeRepo()` call sat inside each method's error-classifying try/catch.
      * [CancellationException] still propagates.
+     *
+     * A resolution that lands on the [EmptyMangaRepository] null-object (blank api — no enabled
+     * source rows at all: the bundled config was rejected wholesale, or the user disabled every
+     * source) is surfaced as a typed [AppResult.Failure] instead of letting the null-object's
+     * empty-Success feed render a silent blank Home (2026-07 source-lifecycle hardening).
      */
     private suspend fun activeRepoResult(): AppResult<BaseMangaRepository> = try {
-        AppResult.Success(activeRepo())
+        val repo = activeRepo()
+        if (repo.API.isBlank()) {
+            AppResult.Failure(
+                AppError.Unexpected(
+                    "No enabled sources available — the source catalog is empty " +
+                        "(bundled source config rejected, or every source is disabled)",
+                ),
+            )
+        } else {
+            AppResult.Success(repo)
+        }
     } catch (ce: CancellationException) {
         throw ce
     } catch (t: Throwable) {

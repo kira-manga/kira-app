@@ -193,6 +193,28 @@ class AzoraHomeSearchRoutingTest {
             assertEquals(emptyList(), registry.getCalls) // never reached the routing decision
         }
 
+    @Test
+    fun zero_enabled_sources_surfaces_a_failure_instead_of_a_silent_empty_home() =
+        runTest {
+            // 2026-07 source-lifecycle hardening: with NO enabled source rows at all (bundled config
+            // rejected wholesale, or the user disabled every source), the active flow resolves to the
+            // EmptyMangaRepository null-object whose empty-Success used to render a silent blank Home.
+            // The resolution must now surface a typed Failure so Home shows its error pane.
+            val registry = FakeRegistry(piloted = emptySet()) { error("no sources to serve") }
+            val repo =
+                HomeFeedRepositoryImpl(
+                    sourcesRepository = legacySources(emptyList(), this),
+                    dadosStore = ManhastroDadosStore(),
+                    dispatchers = testDispatchers,
+                    sourceRegistry = registry,
+                )
+
+            val result = repo.fetchHome(reset = true)
+
+            assertTrue(result is AppResult.Failure, "expected a typed Failure, got $result")
+            assertEquals(emptyList(), registry.getCalls) // nothing was fetched
+        }
+
     // --- Phase 5/6: legacy isolation from the active flow ----------------------------------------
 
     @Test

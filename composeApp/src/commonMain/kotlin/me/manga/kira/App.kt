@@ -57,6 +57,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import me.manga.kira.platform.toast.ToastRelay
+import me.manga.kira.core.logging.KermitLoggerAdapter
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import kotlinx.coroutines.launch
@@ -389,6 +390,18 @@ fun App() {
         launch {
             sourceUpdateManager.refresh()
             syncSourceCatalog()
+            // Zero generic stanzas after refresh = the bundled document was rejected wholesale
+            // (validation is all-or-nothing) or is empty — every config-backed source is gone and
+            // Home degrades to its error pane. The per-reason detail is logged at rejection time by
+            // the manager's onDocumentRejected hook (SourcesGenericModule); this is the aggregate
+            // startup alarm (2026-07 source-lifecycle hardening).
+            if (sourceUpdateManager.activeDocument().sources.none { it.engine == "generic" }) {
+                KermitLoggerAdapter().e(
+                    "SourceConfig",
+                    "startup: ZERO valid generic sources in the active config document — " +
+                        "the source catalog is effectively empty",
+                )
+            }
         }
         // #11: fire app_open once per launch (synchronous, fast, best-effort telemetry).
         logAppOpen()

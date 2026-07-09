@@ -87,11 +87,25 @@ val sourcesGenericModule =
         // Config lifecycle — remote disabled. The bundled config-backed config resolves at construction
         // (resolveBundled), so activeDocument() returns the config-backed descriptors without any refresh().
         single<SourceUpdateManager> {
+            val logger = KermitLoggerAdapter()
             RemoteSourceConfigManager(
                 store = get(),
                 verifier = get(),
                 validator = get(),
                 remote = null,
+                // Document rejection used to be fully silent — for the BUNDLED tier that means every
+                // generic source vanishes at once (validation is all-or-nothing). Log it loudly so a
+                // blank source catalog is diagnosable in the field (2026-07 source-lifecycle
+                // hardening). The build-time gate is ConfigBackedSourceCompletenessTest; this is the
+                // runtime alarm for whatever slips past it.
+                onDocumentRejected = { origin, reasons ->
+                    logger.e(
+                        "SourceConfig",
+                        "source config document REJECTED (origin=$origin) — previous good document " +
+                            "stays active; a rejected bundled document means ALL generic sources are " +
+                            "lost:\n" + reasons.joinToString("\n") { "  - $it" },
+                    )
+                },
             )
         }
 
