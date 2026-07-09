@@ -222,9 +222,11 @@ class CompressExistingDownloadsTest {
         )
 
     /**
-     * Minimal [AppFileSystem] fake. `compressExistingDownloads` never touches the legacy facade
-     * (it reaches the DAO + CbzWriter directly), so the cache-walk plumbing is never invoked —
-     * [fileSystem] therefore throws to catch an accidental new dependency loudly.
+     * Minimal [AppFileSystem] fake. The cache-walk plumbing is never invoked here, so
+     * [fileSystem] throws — which also exercises the ledger size-refresh guard for real: the
+     * post-convert `folderSize` walk fails, the write is skipped best-effort, and the conversion
+     * still counts as success (the disk-backed refresh itself is covered by
+     * `CompressExistingDownloadsSizeRefreshTest` in desktopTest).
      */
     private object FakeAppFileSystem : AppFileSystem {
         override val filesDir: Path = "files".toPath()
@@ -260,6 +262,7 @@ class CompressExistingDownloadsTest {
             cbzWriter = writer,
             mangaDao = FakeMangaDao,
             chapterDownloadDao = downloadDao,
+            appFileSystem = FakeAppFileSystem,
         )
 
     /** [FakeChapterDownloadDao] whose [getDownloadByChapter] serves a per-chapter download state (B4). */

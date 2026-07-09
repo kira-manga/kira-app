@@ -20,6 +20,9 @@ import me.manga.kira.domain.model.settings.SettingsSnapshot
 import me.manga.kira.domain.model.settings.SettingsToggle
 import me.manga.kira.domain.repository.SettingsRepository
 import me.manga.kira.platform.cbz.CbzWriter
+import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import okio.Path.Companion.toPath
@@ -149,6 +152,9 @@ class SettingsRepositoryImpl(
     // B4: lets the manual compressor skip chapters that the background download engine is actively
     // transferring/finalizing, so the two never race on the same chapter dir's .cbz.part + loose pages.
     private val chapterDownloadDao: ChapterDownloadDao,
+    // Ledger-size invariant (ChapterDownloadEntity KDoc): after a convert rewrites the chapter dir,
+    // the SUCCESS row's sizeBytes must be re-walked or Details keeps showing the loose-pages size.
+    private val appFileSystem: AppFileSystem,
 ) : SettingsRepository {
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)
 
@@ -332,6 +338,19 @@ class SettingsRepositoryImpl(
                                     chapterId = chapter.id,
                                 )
                             chapterDao.updateChapterLocalPaths(chapter.id, listOf(cbz.toString()))
+                            // The WebP re-encode changed the chapter's on-disk size — refresh the
+                            // chapter_downloads SUCCESS row's sizeBytes (the canonical size ledger
+                            // Details reads) with an engine-parity dir walk. Keyed by chapter.id
+                            // (unique-indexed), never by url. Best-effort in its own guard: a
+                            // walk/DB hiccup keeps the convert successful, and a row-only-deleted
+                            // ledger row makes updateSize a no-op — never resurrect a queue row.
+                            runCatchingCancellable {
+                                val sizeBytes =
+                                    appFileSystem.folderSize(
+                                        appFileSystem.chapterDir(chapter.mangaId, chapter.id),
+                                    )
+                                if (sizeBytes > 0L) chapterDownloadDao.updateSize(chapter.id, sizeBytes)
+                            }
                         }.onSuccess { converted++ }
                     }
 

@@ -145,6 +145,8 @@ val settingsReworkModule: Module = module {
             // B4 — same ChapterDownloadDao singleton the download engine uses; lets the manual compressor
             // skip chapters with an active download row so the two never race on one chapter's CBZ.
             chapterDownloadDao = get(),
+            // Re-walks each converted chapter dir so the ledger row's sizeBytes tracks the new archive.
+            appFileSystem = get(),
         )
     }
 

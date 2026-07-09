@@ -6,6 +6,26 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import me.manga.kira.presentation.features.download.data.DownloadingState
 
+/**
+ * One row of the `chapter_downloads` download ledger — the CANONICAL source for download
+ * lifecycle metadata: queue state, progress, failure detail, and the terminal SUCCESS row's
+ * [sizeBytes] that every size surface reads (Details per-chapter size label, the
+ * "total • N downloaded" header, the Downloads screen). `saved_chapters` answers only
+ * "is this chapter readable offline" (`isDownloaded` + `localImagePaths`); sizes never live there.
+ *
+ * **Ledger-size invariant**: every writer that leaves a chapter readable must keep its terminal
+ * SUCCESS row's [sizeBytes] aligned with the CURRENT readable archive on disk — the engines'
+ * finalize tail (`ChapterFinalizer` / `DownloadWorkerV2`), backup restore
+ * (`BackupDao.markChapterRestoredWithDownloadRow`), and the bulk CBZ converter
+ * (`SettingsRepositoryImpl.compressExistingDownloads`, which re-walks the dir after replacing
+ * loose pages with a smaller archive). The startup reconcile back-fills rows whose size is 0,
+ * so 0 means "unknown, will self-heal", while a stale non-zero value is never corrected — hence
+ * the invariant sits on the writers. **Intentional exception**: the row-only
+ * `DownloadsActionRepository.deleteDownload` path (native-wins #10) removes the ledger row while
+ * keeping the chapter readable; such chapters deliberately show no size and are excluded from the
+ * downloaded count/total (see `DetailsState.downloadedChapterCount` for why the two must move
+ * together).
+ */
 @Entity(
     tableName = "chapter_downloads",
     // CASCADE FK to saved_manga (belt-and-braces with the explicit purge in
