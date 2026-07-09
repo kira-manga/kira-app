@@ -59,6 +59,9 @@ class KoinGraphResolutionTest {
             // WorkManager injects Context + WorkerParameters into Workers at runtime (koin
             // workerOf); they are not Koin definitions.
             WorkerParameters::class,
+            // BackupViewModel's scope is a runtime injection parameter — the BackupRework route
+            // adapter passes it via parametersOf(decodeBackupScope(args.scopeJson)).
+            me.manga.kira.domain.model.backup.BackupScope::class,
         )
     }
 }
