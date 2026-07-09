@@ -62,16 +62,19 @@ jobs:
         # compileAndroidMain: the AGP-9 new-DSL KMP-library plugin's single-variant Android compile
         # task — the old per-variant compileDebugKotlinAndroid no longer exists post-migration.
         run: ./gradlew :composeApp:compileAndroidMain :composeApp:compileKotlinDesktop :desktopApp:compileKotlinJvm --stacktrace
-      - name: Unit tests (all 11 desktopTest suites)
+      - name: Unit tests (all 12 desktopTest suites)
         # :data:download — the iOS background-download rule suite (recovery/finalize/retry/
         # resolve-ahead/manifest-store); :platform — CBZ path-rederivation etc.; :composeApp —
-        # the pilot-source parity tests + push parser/router tests.
+        # the pilot-source parity tests + push parser/router tests + the bundled-config
+        # validation/completeness release gates (ConfigBackedSourceCompletenessTest).
         # :ui — headless compose-ui-test suite (canned-state *ScreenContent renders + the L4
         # spinner pixel-visibility checks); Skiko renders software-headless, no display needed.
         # :data:local (Room migration/DAO tests), :sources:engine (the golden-fixture guard every
         # source conversion relies on) and :sources:config (config lifecycle/merger) were missing
         # from this list until the 2026-07 audit — a regression there passed CI green.
-        run: ./gradlew :core:desktopTest :domain:desktopTest :data:desktopTest :data:local:desktopTest :data:download:desktopTest :platform:desktopTest :presentation:desktopTest :composeApp:desktopTest :ui:desktopTest :sources:engine:desktopTest :sources:config:desktopTest --stacktrace
+        # :sources:legacy — the dead-source cover-blanking regression guard
+        # (LibraryRepositoryCoverGuardTest, 2026-07 source-lifecycle hardening).
+        run: ./gradlew :core:desktopTest :domain:desktopTest :data:desktopTest :data:local:desktopTest :data:download:desktopTest :platform:desktopTest :presentation:desktopTest :composeApp:desktopTest :ui:desktopTest :sources:engine:desktopTest :sources:config:desktopTest :sources:legacy:desktopTest --stacktrace
       - name: i18n locale-key parity gates (:ui + :composeApp resource sets)
         # :composeApp has its own composeResources tree (route-adapter strings) with its own
         # parity task — both must gate (2026-07 audit: only :ui's ran in CI).

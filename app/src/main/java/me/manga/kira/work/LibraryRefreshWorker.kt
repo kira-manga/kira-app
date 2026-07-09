@@ -227,7 +227,13 @@ class LibraryRefreshWorker(
     private suspend fun refreshSingleManga(manga: SavedMangaEntity): Boolean {
         return try {
             if (manga.id == 0L) return false
-            val repo = sourcesRepository.getRepoByName(manga.api)
+            // Strict lookup: an unknown/retired api must count as a failed refresh, NOT resolve to
+            // EmptyMangaRepository — its empty-Success (imageUrl="") used to blank the saved cover
+            // via the reconcile in fetchMangaUpdates (2026-07 source-lifecycle hardening).
+            val repo = sourcesRepository.getOrRepoByName(manga.api) ?: run {
+                log.w { "Skipping refresh for '${manga.title}': unknown source api=${manga.api}" }
+                return false
+            }
             fetchMangaUpdates(manga, repo)
             true
         } catch (e: Exception) {
@@ -248,7 +254,10 @@ class LibraryRefreshWorker(
             }
 
             state.toData()?.let { mangaInfo ->
-                if (mangaInfo.imageUrl != manga.imageUrl) {
+                // Never reconcile a blank cover over an existing one — a source that fails to parse
+                // its details page (or a null-object repo) reports imageUrl="" and must not wipe the
+                // stored cover across saved_manga/history/notifications.
+                if (mangaInfo.imageUrl.isNotBlank() && mangaInfo.imageUrl != manga.imageUrl) {
                     libraryRepository.updateMangaImageUrlEverywhere(manga.id, mangaInfo.imageUrl)
                 }
 

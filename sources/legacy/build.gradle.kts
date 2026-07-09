@@ -84,5 +84,16 @@ kotlin {
             // legacySourcesModule() (43 scraper factories + Set<BaseMangaRepository> registry) lives here.
             api(libs.koin.core)
         }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
+            // Real-database tests (LibraryRepositoryCoverGuardTest) build an in-memory MangaDatabase —
+            // Room + the bundled SQLite driver are `implementation` in :data:local, so the test source
+            // set needs its own visibility. okio: the AppFileSystem fake exposes Path/FileSystem.
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.okio)
+        }
     }
 }
