@@ -40,6 +40,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira
         PRODUCT_NAME: Kira
+        # Apple Developer Program team (2026-07-09). Set here so `xcodegen generate` no longer wipes
+        # the team out of the project — device builds needed DEVELOPMENT_TEAM passed on every
+        # xcodebuild invocation before this. The retired Personal-team ID (U8D4Z8P4NA) must not be
+        # used anymore.
+        DEVELOPMENT_TEAM: 7CGZ2343AA
         INFOPLIST_FILE: iosApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -55,14 +60,15 @@ targets:
       configs:
         Debug:
           DEBUG_INFORMATION_FORMAT: dwarf
-          # SIGNING MODES (owner decision 2026-07-02): Debug signs with the no-push entitlements so
-          # local device builds work under a Personal (free) team — Personal teams cannot carry the
-          # Push Notifications capability, and automatic signing derives capabilities from the
-          # entitlements file, so any aps-environment key fails Debug provisioning outright.
-          # Developer-Program members who want push in a Debug DEVICE build: change this one line to
-          # iosApp/iosApp.entitlements and re-run `xcodegen generate` (APS_ENVIRONMENT below already
-          # selects sandbox APNs for Debug). Simulator builds don't validate entitlements either way.
-          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp-nopush.entitlements
+          # SIGNING MODES (updated 2026-07-09): Debug now signs with the FULL push entitlements —
+          # the team above is a real Developer Program team, so the App ID carries the Push
+          # Notifications capability and Debug device builds get sandbox APNs (APS_ENVIRONMENT
+          # below expands aps-environment to `development`). The previous no-push default existed
+          # only for the retired Personal (free) team, which could not carry the capability.
+          # Contributors on a Personal team: point this one line back at
+          # iosApp/iosApp-nopush.entitlements (kept in the repo) and re-run `xcodegen generate`.
+          # Simulator builds don't validate entitlements either way.
+          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
           # Sandbox APNs for dev builds — only consumed when Debug points at the full entitlements
           # file above (the default no-push file has no aps-environment key to expand it into).
           APS_ENVIRONMENT: development
