@@ -108,7 +108,7 @@ val detailsReworkModule: Module = module {
     // single because the classifier holds the legacy SourcesRepository reference and is
     // stateless beyond that — re-creating it per resolution would be wasteful. The use case
     // stays factory (stateless wrapper, cheap to construct).
-    single<AdultContentClassifier> { AdultContentClassifierImpl(sourcesRepository = get()) }
+    single<AdultContentClassifier> { AdultContentClassifierImpl(sourcesRepository = get(), sourceRegistry = get()) }
 
     factory { IsAdultContentUseCase(get()) }
 

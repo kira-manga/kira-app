@@ -30,6 +30,23 @@ class ConfigHostTrust(
         return configHosts(cfg).any { declared -> target == declared || target.endsWith(".$declared") }
     }
 
+    /**
+     * Reverse lookup (MangaSource decoupling, 2026-07): the api whose config-declared hosts match
+     * [host], or null when no stanza claims it. First match in document order wins — the same
+     * subdomain rule as [ownsHost]. Lets the Coil header interceptor resolve a cover URL's source
+     * without a compiled legacy repo.
+     */
+    fun apiForHost(host: String): String? {
+        if (host.isBlank()) return null
+        val target = host.lowercase()
+        return updateManager
+            .activeDocument()
+            .sources
+            .firstOrNull { cfg ->
+                configHosts(cfg).any { declared -> target == declared || target.endsWith(".$declared") }
+            }?.api
+    }
+
     private fun configHosts(cfg: SourceConfig): Sequence<String> =
         sequence {
             hostOf(cfg.baseUrl)?.let { yield(it) }

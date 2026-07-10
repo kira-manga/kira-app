@@ -21,7 +21,7 @@ import org.koin.dsl.module
  * cycle. Appended to [allReworkModules].
  */
 val legacySharedViewModelsModule: Module = module {
-    viewModel { WebViewViewModel(get()) }
+    viewModel { WebViewViewModel(get(), get()) }
     viewModel { SettingsViewModel(get()) }
     viewModel { WhatsNewViewModel(get(), get(), get(), get()) }
 }

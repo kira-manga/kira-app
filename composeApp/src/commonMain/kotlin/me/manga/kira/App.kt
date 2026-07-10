@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.runtime.SourceIconRegistry
 import me.manga.kira.ui.common.LocalSourceIconResolver
@@ -294,6 +295,9 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 private class CoilSourceHeaderInterceptor(
     private val sourcesRepository: SourcesRepository,
+    private val configHostTrust: ConfigHostTrust,
+    private val sourceRegistry: SourceRegistry,
+    private val dataStore: DataStoreHelper,
 ) : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val req = chain.request
@@ -307,6 +311,35 @@ private class CoilSourceHeaderInterceptor(
         val urlString = req.data as? String ?: req.data.toString()
         val host = runCatching { Url(urlString).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() }
         if (host == null) return chain.proceed()
+        // MangaSource decoupling (2026-07): CONFIG-FIRST host→api resolution. A config-backed
+        // source's hosts (baseUrl/imageBase/previousHosts/previousImageHosts/trustedHosts) resolve
+        // through the validated document, and its headers come from the same stores the generic
+        // engine uses — the stanza's static headers merged UNDER the captured per-api headers
+        // (cookies/UA/cf_clearance). Works with NO compiled legacy repo; previously a config-only
+        // source's plain-URL cover loads went out header-less (403 on Cloudflare-gated sources).
+        val configApi = configHostTrust.apiForHost(host)
+        if (configApi != null && sourceRegistry.isConfigBacked(configApi)) {
+            val static = sourceRegistry.descriptor(configApi)?.headers.orEmpty()
+            val captured =
+                try {
+                    dataStore.getHeadersForApi(configApi).orEmpty()
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (_: Throwable) {
+                    emptyMap()
+                }
+            val merged = static + captured
+            if (merged.isNotEmpty()) {
+                val configHeaders = NetworkHeaders.Builder().apply {
+                    merged.forEach { (k, v) -> add(k, v) }
+                }.build()
+                return chain.withRequest(req.newBuilder().httpHeaders(configHeaders).build()).proceed()
+            }
+            // Nothing to inject (no static headers, nothing captured yet) → raw URL, same as the
+            // legacy no-headers outcome below. Don't consult the legacy resolver for a config-backed
+            // api: its scraper's defaultHeaders belong to the LEGACY system.
+            return chain.proceed()
+        }
         // GAP-SHELL-04 (P3 cleanup): the per-request `[CoilDbg]` stdout `println`s (no-match / empty-
         // headers / injected-keys) are removed — they fired on every image load in production. The
         // header-injection logic itself is load-bearing (Bug-4-layer-3) and is preserved unchanged.
@@ -413,6 +446,9 @@ fun App() {
     // chapter pages from Cloudflare-protected AVIF CDNs decode at full quality. iOS / Desktop
     // registries return empty lists, so this is a no-op there.
     val imageDecoderRegistry: ImageDecoderRegistry = koinInject()
+    val coilConfigHostTrust: ConfigHostTrust = koinInject()
+    val coilHeaderStore: DataStoreHelper = koinInject()
+    val coilSourceRegistry: SourceRegistry = koinInject()
     val decoderFactories = remember { imageDecoderRegistry.registerAll() }
     val networkFetcherFactory = remember { platformNetworkFetcherFactory() }
     // r5-mem-1: root the Coil disk cache under the app's OWN cache dir on every platform. Coil's
@@ -433,7 +469,7 @@ fun App() {
                 // page-progress observer and the 30s/60s timeouts (no whole-request ceiling).
                 networkFetcherFactory?.let { add(it) }
                 decoderFactories.forEach { add(it) }
-                add(CoilSourceHeaderInterceptor(sourcesRepository))
+                add(CoilSourceHeaderInterceptor(sourcesRepository, coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
             }
             .diskCache { DiskCache.Builder().directory(imageCacheDir).build() }
             // Disable the default 4096×4096 maxBitmapSize cap. Coil 3.3+ tightened how this cap

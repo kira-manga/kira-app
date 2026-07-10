@@ -419,4 +419,5 @@ internal fun fakeDescriptor(
         iconResourceKey = null,
         iconRemoteUrl = null,
         blacklistGenres = emptyList(),
+        headers = emptyMap(),
     )

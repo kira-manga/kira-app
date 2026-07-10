@@ -2,6 +2,7 @@ package me.manga.kira.data.repository
 
 import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
+import me.manga.kira.sources.contracts.SourceRegistry
 
 /**
  * Source-backed [AdultContentClassifier] implementation.
@@ -33,11 +34,19 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepositor
  */
 class AdultContentClassifierImpl(
     private val sourcesRepository: SourcesRepository,
+    private val sourceRegistry: SourceRegistry,
 ) : AdultContentClassifier {
 
     override fun isAdultContent(api: String, genres: List<String>): Boolean {
         if (genres.isEmpty()) return false
-        val blacklist = sourcesRepository.getOrRepoByName(api)?.blackListGenres ?: return false
+        // MangaSource decoupling (2026-07): the config stanza's blacklist is consulted first, so a
+        // CONFIG-ONLY source keeps its adult gate (previously the lookup was legacy-repo-only and
+        // silently disappeared for an api with no compiled repo). A pilot whose stanza declares no
+        // blacklist falls back to its compiled repo's list — parity with the pre-decoupling gate.
+        val blacklist =
+            sourceRegistry.descriptor(api)?.blacklistGenres?.takeIf { it.isNotEmpty() }
+                ?: sourcesRepository.getOrRepoByName(api)?.blackListGenres
+                ?: return false
         if (blacklist.isEmpty()) return false
         return genres.any { it in blacklist }
     }

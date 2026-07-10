@@ -34,6 +34,11 @@ data class RuntimeSourceDescriptor(
     val iconRemoteUrl: String?,
     /** Genres the source suppresses — feeds the adult-content gate for generic sources. */
     val blacklistGenres: List<String>,
+    /**
+     * Static request headers the stanza declares (referer/UA/etc.) — what image loads inject for a
+     * config-backed source, merged UNDER any captured per-api headers (engine semantics).
+     */
+    val headers: Map<String, String>,
 ) {
     val isGeneric: Boolean get() = engine == ENGINE_GENERIC
 
@@ -57,4 +62,5 @@ fun SourceConfig.toRuntimeDescriptor(): RuntimeSourceDescriptor =
         iconResourceKey = icon?.resourceKey?.takeIf { it.isNotBlank() },
         iconRemoteUrl = icon?.remoteUrl?.takeIf { it.isNotBlank() },
         blacklistGenres = blacklistGenres,
+        headers = headers,
     )
