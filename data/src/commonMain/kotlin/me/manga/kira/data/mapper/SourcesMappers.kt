@@ -40,11 +40,12 @@ import me.manga.kira.domain.model.sources.Source
  * value as [Source.api] to make the intent obvious — the "name" column is semantically the API
  * identifier, not a display name.
  */
-internal fun SourcesEntity.toDomain(): Source = Source(
+internal fun SourcesEntity.toDomain(displayName: String = name): Source = Source(
     api = name,
     language = language,
     priority = priority,
     isEnabled = isEnabled,
+    displayName = displayName.ifBlank { name },
 )
 
 /**

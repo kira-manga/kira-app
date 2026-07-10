@@ -84,7 +84,7 @@ package me.manga.kira.domain.model.sources
  *  audit-trail-preservation convention.
  */
 data class Source(
-    /** Source API identifier (e.g. "mangakakalot"). Doubles as the user-visible row label. */
+    /** Source API identifier (e.g. "mangakakalot") — the stable persisted identity, never a label. */
     val api: String,
     /** ISO language code the source publishes in (e.g. "en", "ar"). Drives the language grouping. */
     val language: String,
@@ -92,4 +92,10 @@ data class Source(
     val priority: Int,
     /** Whether the user has enabled this source. Drives the row's `Switch` checked-state. */
     val isEnabled: Boolean,
+    /**
+     * User-visible name (MangaSource decoupling, 2026-07): joined from the validated config
+     * stanza's `displayName` by the `:data` repository; defaults to [api] for rows with no stanza
+     * (pre-config data) so the label is always non-blank. The UI renders THIS, never [api].
+     */
+    val displayName: String = api,
 )

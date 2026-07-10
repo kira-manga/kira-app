@@ -8,7 +8,6 @@ import me.manga.kira.domain.model.sources.Source
 import me.manga.kira.domain.repository.SourcesRepository
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.sources.contracts.SourceRegistry
-import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 
 /**
@@ -149,18 +148,17 @@ class SourcesRepositoryImpl(
     // U2 (new-sources badge): the `new_sources_added` cell lives in the shared prefs facade —
     // the What's-New pipeline writes true; the Home tab strip observes; edit-sources clears.
     private val dataStore: DataStoreHelper,
-    // SourceRegistry retirement §2 (completed by the 2026-07 audit): a stanza with
-    // lifecycle="disabled" is HIDDEN from the picker, not just force-disabled every sync — without
-    // the hide, a user could re-enable a killed source each session. The active config document is
-    // the authority (same one the catalog sync enforces).
-    private val updateManager: SourceUpdateManager,
+    // (SourceRegistry retirement §2: a stanza with lifecycle="disabled" is HIDDEN from the picker,
+    // not just force-disabled every sync — without the hide, a user could re-enable a killed source
+    // each session. Since the MangaSource decoupling (2026-07) that read goes through the registry's
+    // descriptor projection — the same validated document the catalog sync enforces — so this class
+    // no longer takes the SourceUpdateManager directly.)
 ) : SourcesRepository {
 
     /** apis whose active config stanza declares `lifecycle="disabled"` — hidden and never bulk-toggled. */
     private fun lifecycleDisabledApis(): Set<String> =
-        updateManager
-            .activeDocument()
-            .sources
+        sourceRegistry
+            .genericDescriptors()
             .filter { it.lifecycle == "disabled" }
             .mapTo(mutableSetOf()) { it.api }
 
@@ -175,7 +173,11 @@ class SourcesRepositoryImpl(
             val hidden = lifecycleDisabledApis()
             entities
                 .filter { sourceRegistry.isConfigBacked(it.name) && it.name !in hidden }
-                .map { it.toDomain() }
+                .map { entity ->
+                    // Join the row (user state) with the stanza's display metadata (MangaSource
+                    // decoupling, 2026-07): the config document owns the label; the api stays the key.
+                    entity.toDomain(displayName = sourceRegistry.descriptor(entity.name)?.displayName ?: entity.name)
+                }
         }
 
     override suspend fun setSourceEnabled(api: String, enabled: Boolean) {

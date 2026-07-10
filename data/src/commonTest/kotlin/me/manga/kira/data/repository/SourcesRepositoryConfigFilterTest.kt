@@ -7,8 +7,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.platform.storage.DataStoreHelper
-import me.manga.kira.sources.contracts.model.SourceConfig
-import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
@@ -34,21 +32,6 @@ class SourcesRepositoryConfigFilterTest {
             applicationScope = CoroutineScope(Dispatchers.Unconfined),
         )
 
-    /** Active config document for the lifecycle-hide rule; no stanzas → nothing hidden. */
-    private fun updateManager(vararg sources: SourceConfig) =
-        FixedUpdateManager(SourceConfigDocument(schemaVersion = 1, sources = sources.toList()))
-
-    private fun cfg(
-        api: String,
-        lifecycle: String = "active",
-    ) = SourceConfig(
-        api = api,
-        language = "(AR)",
-        baseUrl = "https://$api.test",
-        engine = "generic",
-        lifecycle = lifecycle,
-    )
-
     @Test
     fun observeSources_returnsOnlyPilotedSources() =
         runTest {
@@ -65,7 +48,6 @@ class SourcesRepositoryConfigFilterTest {
                     legacy(dao),
                     PilotRegistry(setOf("Azora", "Mangamello")),
                     testDataStore(),
-                    updateManager(),
                 )
 
             val visible =
@@ -89,7 +71,7 @@ class SourcesRepositoryConfigFilterTest {
                     ),
                 )
             val impl =
-                SourcesRepositoryImpl(legacy(dao), PilotRegistry(setOf("Azora")), testDataStore(), updateManager())
+                SourcesRepositoryImpl(legacy(dao), PilotRegistry(setOf("Azora")), testDataStore())
 
             impl.setLanguageEnabled("(AR)", true)
 
@@ -112,9 +94,12 @@ class SourcesRepositoryConfigFilterTest {
             val impl =
                 SourcesRepositoryImpl(
                     legacy(dao),
-                    PilotRegistry(setOf("Azora", "KilledSource")),
+                    PilotRegistry(
+                        setOf("Azora", "KilledSource"),
+                        descriptors =
+                            mapOf("KilledSource" to fakeDescriptor("KilledSource").copy(lifecycle = "disabled")),
+                    ),
                     testDataStore(),
-                    updateManager(cfg("Azora"), cfg("KilledSource", lifecycle = "disabled")),
                 )
 
             // A disabled-lifecycle source never reaches the picker — the sync force-disables it
@@ -140,13 +125,39 @@ class SourcesRepositoryConfigFilterTest {
             val impl =
                 SourcesRepositoryImpl(
                     legacy(dao),
-                    PilotRegistry(setOf("Azora", "KilledSource")),
+                    PilotRegistry(
+                        setOf("Azora", "KilledSource"),
+                        descriptors =
+                            mapOf("KilledSource" to fakeDescriptor("KilledSource").copy(lifecycle = "disabled")),
+                    ),
                     testDataStore(),
-                    updateManager(cfg("Azora"), cfg("KilledSource", lifecycle = "disabled")),
                 )
 
             impl.setLanguageEnabled("(AR)", true)
 
             assertEquals(listOf("Azora" to true), dao.enabledCalls)
+        }
+
+    // --- MangaSource decoupling (2026-07): display metadata joins from the config descriptor ------
+
+    @Test
+    fun observeSources_joinsDisplayNameFromTheConfigDescriptor() =
+        runTest {
+            val dao = StatefulSourcesDao(listOf(sourceRow("Team X", baseUrl = "https://teamx.test")))
+            val impl =
+                SourcesRepositoryImpl(
+                    legacy(dao),
+                    PilotRegistry(
+                        setOf("Team X"),
+                        descriptors =
+                            mapOf("Team X" to fakeDescriptor("Team X").copy(displayName = "Team-X Scans")),
+                    ),
+                    testDataStore(),
+                )
+
+            val row = impl.observeSources().first().single()
+
+            assertEquals("Team X", row.api, "api stays the stable key")
+            assertEquals("Team-X Scans", row.displayName, "label comes from the stanza, not the api")
         }
 }

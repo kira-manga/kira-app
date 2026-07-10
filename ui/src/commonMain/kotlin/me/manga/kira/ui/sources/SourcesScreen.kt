@@ -914,13 +914,13 @@ private fun SourceRow(
         // tinted (accent-soft) container showing the source's initials. Preserves the native
         // RepoToggleItem brand-icon semantics (enabled = full brand color; disabled = flat
         // onBackground-tinted silhouette) via the icon path's colorFilter.
-        SourceMedallion(api = source.api, isEnabled = source.isEnabled)
+        SourceMedallion(api = source.api, label = source.displayName, isEnabled = source.isEnabled)
         // Native parity (GAP-SRC-07): source name (mockup `.st .a`, 15.sp weight 700) + a
         // "manga · <lang>" sublabel (mockup `.st .b`, 12.5px muted) underneath. The lowercase
         // language code reuses the same parens-strip transform as the header.
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = source.api,
+                text = source.displayName,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -958,7 +958,7 @@ private fun SourceRow(
  * launches (MangaSource decoupling, 2026-07).
  */
 @Composable
-private fun SourceMedallion(api: String, isEnabled: Boolean) {
+private fun SourceMedallion(api: String, label: String, isEnabled: Boolean) {
     val resolution = LocalSourceIconResolver.current(api)
     val colorFilter = if (isEnabled) null else ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
     Box(
@@ -979,17 +979,17 @@ private fun SourceMedallion(api: String, isEnabled: Boolean) {
                 url = resolution.url,
                 modifier = Modifier.size(24.dp),
                 colorFilter = colorFilter,
-                fallback = { MedallionInitials(api) },
+                fallback = { MedallionInitials(label) },
             )
-            SourceIconResolution.None -> MedallionInitials(api)
+            SourceIconResolution.None -> MedallionInitials(label)
         }
     }
 }
 
 @Composable
-private fun MedallionInitials(api: String) {
+private fun MedallionInitials(label: String) {
     Text(
-        text = sourceInitials(api),
+        text = sourceInitials(label),
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,

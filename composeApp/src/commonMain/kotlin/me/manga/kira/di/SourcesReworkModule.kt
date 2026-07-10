@@ -113,7 +113,7 @@ val sourcesReworkModule: Module = module {
     // filters the legacy `sources` rows by SourceRegistry.isConfigBacked (bound in sourcesGenericModule,
     // resolved cross-module by Koin's single graph).
     single<SourcesRepository> {
-        SourcesRepositoryImpl(legacy = get(), sourceRegistry = get(), dataStore = get(), updateManager = get())
+        SourcesRepositoryImpl(legacy = get(), sourceRegistry = get(), dataStore = get())
     }
     factory { ObserveSourcesUseCase(get()) }
     factory { SetSourceEnabledUseCase(get()) }
