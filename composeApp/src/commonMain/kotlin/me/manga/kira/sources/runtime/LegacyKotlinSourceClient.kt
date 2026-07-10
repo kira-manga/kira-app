@@ -10,6 +10,7 @@ import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
@@ -56,10 +57,14 @@ class LegacyKotlinSourceClient(
         repo.fetchPopularManga(repo.getBaseUrl()).awaitTerminal().toResult { items -> items.map { it.toFeatured() } }
     }
 
-    override suspend fun search(query: String, page: Int): AppResult<List<HomeFeedItem>> = source {
+    override suspend fun search(query: String, page: Int, filters: FilterSelections): AppResult<List<HomeFeedItem>> = source {
         // The legacy BaseMangaRepository exposes no paged-search API (see featured() above) — fail
         // fast on page > 1 rather than silently returning page-1 results again.
         if (page > 1) return@source AppResult.Failure(AppError.Validation.OutOfRange("page"))
+        // Legacy FILTERED search is translated to SearchType in :data and never routed through this
+        // adapter (config-driven filters, 2026-07). Receiving selections here would mean a routing
+        // bug — fail closed rather than silently returning unfiltered results as Success.
+        if (!filters.isEmpty()) return@source AppResult.Failure(AppError.Validation.Required("filters:legacy-adapter"))
         repo.fetchSearchDataF(SearchType.Normal(query)).awaitTerminal().toResult { items -> items.map { it.toHomeFeedItem() } }
     }
 

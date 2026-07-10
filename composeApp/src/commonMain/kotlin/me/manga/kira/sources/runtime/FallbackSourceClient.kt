@@ -11,6 +11,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
@@ -61,9 +62,14 @@ class FallbackSourceClient(
         return result.orElse { fallback.featured(page) }
     }
 
-    override suspend fun search(query: String, page: Int): AppResult<List<HomeFeedItem>> {
-        val result = primary.search(query, page)
+    override suspend fun search(query: String, page: Int, filters: FilterSelections): AppResult<List<HomeFeedItem>> {
+        val result = primary.search(query, page, filters)
         if (disableFallback()) return result.also { diagnose("search('$query',page=$page)", it) { v -> v.size } }
+        // A FILTERED search must never fall back to the legacy client: the legacy adapter cannot
+        // apply the selections, so a fallback would silently drop them and return unfiltered
+        // results as Success — the one forbidden wrong-but-Success mode (config-driven filters,
+        // 2026-07). Plain searches keep the transient-failure floor unchanged.
+        if (!filters.isEmpty()) return result
         return result.orElse { fallback.search(query, page) }
     }
 

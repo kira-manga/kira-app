@@ -24,6 +24,7 @@ import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.MangaInfo
 import me.manga.kira.domain.model.MangaItem
 import me.manga.kira.domain.model.PopularManga
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
@@ -479,6 +480,7 @@ class AzoraHomeSearchRoutingTest {
         override suspend fun search(
             query: String,
             page: Int,
+            filters: FilterSelections,
         ) = search()
 
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("not used")
@@ -501,6 +503,7 @@ class AzoraHomeSearchRoutingTest {
         override suspend fun search(
             query: String,
             page: Int,
+            filters: FilterSelections,
         ) = AppResult.Success(emptyList<HomeFeedItem>())
 
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("not used")

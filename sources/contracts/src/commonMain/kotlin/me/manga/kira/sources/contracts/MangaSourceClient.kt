@@ -5,6 +5,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
@@ -32,7 +33,17 @@ interface MangaSourceClient {
 
     suspend fun featured(page: Int): AppResult<List<FeaturedManga>>
 
-    suspend fun search(query: String, page: Int): AppResult<List<HomeFeedItem>>
+    /**
+     * [filters] carries the user's advanced-filter selections (config-driven filters, 2026-07 —
+     * empty for a plain search). The generic engine maps them to the request via the source's
+     * validated filter spec; the legacy adapter must never receive a non-empty value (legacy
+     * filtered search is translated to `SearchType` in `:data`, not routed through this contract).
+     */
+    suspend fun search(
+        query: String,
+        page: Int,
+        filters: FilterSelections = FilterSelections(),
+    ): AppResult<List<HomeFeedItem>>
 
     suspend fun details(manga: Manga): AppResult<MangaDetails>
 

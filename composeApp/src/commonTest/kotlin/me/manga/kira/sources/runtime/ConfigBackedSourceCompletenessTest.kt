@@ -5,6 +5,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
@@ -139,6 +140,7 @@ class ConfigBackedSourceCompletenessTest {
         override suspend fun search(
             query: String,
             page: Int,
+            filters: FilterSelections,
         ): AppResult<List<HomeFeedItem>> = error("not exercised")
 
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("not exercised")

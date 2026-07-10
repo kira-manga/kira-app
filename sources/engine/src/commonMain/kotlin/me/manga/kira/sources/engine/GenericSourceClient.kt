@@ -9,6 +9,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
@@ -26,8 +27,10 @@ import me.manga.kira.sources.contracts.model.FieldSpec
 import me.manga.kira.sources.contracts.model.FilterSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.TransformSpec
+import me.manga.kira.sources.engine.internal.ComposedFilters
 import me.manga.kira.sources.engine.internal.DateStrategies
 import me.manga.kira.sources.engine.internal.Extractor
+import me.manga.kira.sources.engine.internal.FilterRequestComposer
 import me.manga.kira.sources.engine.internal.ItemScope
 import me.manga.kira.sources.engine.internal.JsonEscape
 import me.manga.kira.sources.engine.internal.Templates
@@ -86,8 +89,8 @@ class GenericSourceClient(
     override suspend fun featured(page: Int): AppResult<List<FeaturedManga>> =
         fetchList("featured", page, query = "", map = ::featuredFrom)
 
-    override suspend fun search(query: String, page: Int): AppResult<List<HomeFeedItem>> =
-        fetchList("search", page, query = query, map = ::homeFeedItemFrom)
+    override suspend fun search(query: String, page: Int, filters: FilterSelections): AppResult<List<HomeFeedItem>> =
+        fetchList("search", page, query = query, selections = filters, map = ::homeFeedItemFrom)
 
     override suspend fun details(manga: Manga): AppResult<MangaDetails> {
         val endpoint = config.endpoints["details"]
@@ -149,12 +152,19 @@ class GenericSourceClient(
         verb: String,
         page: Int,
         query: String,
+        selections: FilterSelections = FilterSelections(),
         map: (ItemScope, String) -> T,
     ): AppResult<List<T>> {
         val endpoint = config.endpoints[verb]
             ?: return AppResult.Failure(AppError.Validation.Required("endpoint:$verb"))
         resolveEffectiveBaseUrl()
-        return runRequest(endpoint, vars(page = page, query = query)) { resp ->
+        // Declarative filter → request mapping (CONFIG_DRIVEN_FILTERS_PLAN.md §3). Defaults apply
+        // even to an empty selection; a source with no declared filters composes to EMPTY.
+        val composed = when (val c = FilterRequestComposer.compose(config.filters, verb, selections)) {
+            is AppResult.Success -> c.value
+            is AppResult.Failure -> return c
+        }
+        return runRequest(endpoint, vars(page = page, query = query) + composed.templateVars, composed) { resp ->
             Extractor.listScopes(resp.body, effectiveBaseUrl, endpoint)
                 .filter { passesFilters(it, endpoint.listFilters) }
                 .filterNot { isBlacklistedByGenre(it, verb) }
@@ -206,15 +216,19 @@ class GenericSourceClient(
     private suspend fun <T> runRequest(
         endpoint: EndpointSpec,
         vars: Map<String, String>,
+        composed: ComposedFilters = ComposedFilters.EMPTY,
         precomputedHeaders: Map<String, String>? = null,
         extract: (SourceResponse) -> T,
     ): AppResult<T> {
         return try {
-            val url = Templates.expand(endpoint.url, vars)
-            val headers = precomputedHeaders ?: requestHeaders()
+            // Filter query pairs append AFTER template expansion (percent-encoded, ?/& aware);
+            // filter headers override same-name computed headers; filter form entries append after
+            // the static formBody in declaration order. All deterministic — see FilterRequestComposer.
+            val url = FilterRequestComposer.appendQueryPairs(Templates.expand(endpoint.url, vars), composed.queryPairs)
+            val headers = (precomputedHeaders ?: requestHeaders()) + composed.headerEntries
             val method = methodOf(endpoint.method)
             val form = if (method == SourceHttpMethod.POST_FORM) {
-                endpoint.formBody.mapValues { Templates.expand(it.value, vars) }
+                endpoint.formBody.map { (key, value) -> key to Templates.expand(value, vars) } + composed.formEntries
             } else {
                 null
             }

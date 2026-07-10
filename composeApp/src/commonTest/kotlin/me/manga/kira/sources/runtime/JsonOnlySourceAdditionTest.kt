@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
@@ -97,6 +98,7 @@ class JsonOnlySourceAdditionTest {
         override suspend fun search(
             query: String,
             page: Int,
+            filters: FilterSelections,
         ) = error("not exercised")
 
         override suspend fun details(manga: me.manga.kira.domain.model.Manga) = error("not exercised")

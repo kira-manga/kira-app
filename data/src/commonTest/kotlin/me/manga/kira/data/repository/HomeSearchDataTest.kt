@@ -23,6 +23,7 @@ import me.manga.kira.data.mapper.toSiteState
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SearchMode
@@ -282,7 +283,7 @@ class HomeSearchDataTest {
     ) : MangaSourceClient {
         override suspend fun home(page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun featured(page: Int) = AppResult.Success(emptyList<FeaturedManga>())
-        override suspend fun search(query: String, page: Int) = searchResult
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = searchResult
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("unused")
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = error("unused")
     }

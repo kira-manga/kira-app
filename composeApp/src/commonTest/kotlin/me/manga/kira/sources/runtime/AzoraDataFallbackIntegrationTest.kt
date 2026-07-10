@@ -15,6 +15,7 @@ import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.data.repository.HomeFeedRepositoryImpl
 import me.manga.kira.data.repository.MangaDetailsRepositoryImpl
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.sources_repositry.BaseMangaRepository
 import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import me.manga.kira.domain.model.Chapter
@@ -158,7 +159,7 @@ class AzoraDataFallbackIntegrationTest {
     private class FailingGenericClient(override val api: String) : MangaSourceClient {
         override suspend fun home(page: Int) = AppResult.Failure(AppError.Network.Http(403))
         override suspend fun featured(page: Int) = AppResult.Failure(AppError.Network.Http(403))
-        override suspend fun search(query: String, page: Int) = AppResult.Failure(AppError.Network.Http(403))
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = AppResult.Failure(AppError.Network.Http(403))
         override suspend fun details(manga: Manga) = AppResult.Failure(AppError.Network.Http(403))
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> =
             flowOf(AppResult.Failure(AppError.Network.Http(403)))
@@ -168,7 +169,7 @@ class AzoraDataFallbackIntegrationTest {
         private val details = MangaDetails(api, "(AR)", "GENERIC ENGINE", "u", "", "", "", "", "", emptyList(), emptyList())
         override suspend fun home(page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun featured(page: Int) = AppResult.Success(emptyList<FeaturedManga>())
-        override suspend fun search(query: String, page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun details(manga: Manga) = AppResult.Success(details)
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
     }

@@ -14,6 +14,7 @@ import me.manga.kira.core.states.State
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
@@ -61,7 +62,7 @@ class DefaultSourceRegistryTest {
         override suspend fun home(page: Int): AppResult<List<HomeFeedItem>> =
             result(listOf(HomeFeedItem(api, "x", "GENERIC", "u", "", null, emptyList(), emptyList())))
         override suspend fun featured(page: Int): AppResult<List<FeaturedManga>> = result(emptyList())
-        override suspend fun search(query: String, page: Int): AppResult<List<HomeFeedItem>> = result(emptyList())
+        override suspend fun search(query: String, page: Int, filters: FilterSelections): AppResult<List<HomeFeedItem>> = result(emptyList())
         override suspend fun details(manga: Manga): AppResult<MangaDetails> =
             result(MangaDetails(api, "x", "GENERIC", "u", "", "", "", "", "", emptyList(), emptyList()))
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> =

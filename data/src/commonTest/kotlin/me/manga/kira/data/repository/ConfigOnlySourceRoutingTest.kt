@@ -12,6 +12,7 @@ import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
@@ -139,6 +140,7 @@ class ConfigOnlySourceRoutingTest {
         override suspend fun search(
             query: String,
             page: Int,
+            filters: FilterSelections,
         ): AppResult<List<HomeFeedItem>> = AppResult.Success(listOf(item()))
 
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("not exercised")

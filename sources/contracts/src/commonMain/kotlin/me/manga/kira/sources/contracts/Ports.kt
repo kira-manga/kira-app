@@ -16,7 +16,12 @@ data class SourceRequest(
     val url: String,
     val method: SourceHttpMethod = SourceHttpMethod.GET,
     val headers: Map<String, String> = emptyMap(),
-    val formBody: Map<String, String>? = null,
+    /**
+     * Ordered form entries. A list of pairs (not a map) so a repeated key — `genre[]=a&genre[]=b`,
+     * the `repeat` filter encoding — is expressible; order is static-config entries first, then
+     * filter contributions in declaration order (deterministic wire order).
+     */
+    val formBody: List<Pair<String, String>>? = null,
     val jsonBody: String? = null,
 )
 

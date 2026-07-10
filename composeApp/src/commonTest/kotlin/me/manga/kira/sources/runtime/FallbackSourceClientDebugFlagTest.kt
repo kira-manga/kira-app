@@ -10,6 +10,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
@@ -164,7 +165,7 @@ class FallbackSourceClientDebugFlagTest {
             private set
         override suspend fun home(page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun featured(page: Int) = AppResult.Success(emptyList<FeaturedManga>())
-        override suspend fun search(query: String, page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun details(manga: Manga) =
             AppResult.Success(MangaDetails(api, "(AR)", "t", "u", "", "", "", "", "", emptyList(), emptyList()))
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> {
@@ -177,7 +178,7 @@ class FallbackSourceClientDebugFlagTest {
     private class FailingClient(override val api: String = "S") : MangaSourceClient {
         override suspend fun home(page: Int) = AppResult.Failure(AppError.Network.Http(403))
         override suspend fun featured(page: Int) = AppResult.Failure(AppError.Network.Http(403))
-        override suspend fun search(query: String, page: Int) = AppResult.Failure(AppError.Network.Http(403))
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = AppResult.Failure(AppError.Network.Http(403))
         override suspend fun details(manga: Manga) = AppResult.Failure(AppError.Network.Http(403))
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> =
             flowOf(AppResult.Failure(AppError.Network.Http(403)))
@@ -186,7 +187,7 @@ class FallbackSourceClientDebugFlagTest {
     private class EmptyOkClient(override val api: String = "S") : MangaSourceClient {
         override suspend fun home(page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun featured(page: Int) = AppResult.Success(emptyList<FeaturedManga>())
-        override suspend fun search(query: String, page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = AppResult.Success(emptyList<HomeFeedItem>())
         override suspend fun details(manga: Manga) =
             AppResult.Success(MangaDetails(api, "(AR)", "t", "u", "", "", "", "", "", emptyList(), emptyList()))
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
@@ -202,7 +203,7 @@ class FallbackSourceClientDebugFlagTest {
         }
         override suspend fun home(page: Int) = result(emptyList<HomeFeedItem>())
         override suspend fun featured(page: Int) = result(emptyList<FeaturedManga>())
-        override suspend fun search(query: String, page: Int) = result(emptyList<HomeFeedItem>())
+        override suspend fun search(query: String, page: Int, filters: FilterSelections) = result(emptyList<HomeFeedItem>())
         override suspend fun details(manga: Manga) =
             result(MangaDetails(api, "(AR)", "fallback", "u", "", "", "", "", "", emptyList(), emptyList()))
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> {
