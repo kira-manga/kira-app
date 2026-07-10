@@ -27,7 +27,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import me.manga.kira.domain.model.home.SourceTab
-import me.manga.kira.ui.sources.LocalSourceIconResolver
+import me.manga.kira.ui.common.LocalSourceIconResolver
+import me.manga.kira.ui.common.RemoteSourceIcon
+import me.manga.kira.ui.common.SourceIconResolution
 import org.jetbrains.compose.resources.painterResource
 import me.manga.kira.ui.components.KiraIconButton
 import me.manga.kira.ui.components.KiraIcons
@@ -88,22 +90,31 @@ fun SourceTabsRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    // U1 (Home tab brand icons): prefer the per-source brand drawable from the
+                    // U1 (Home tab brand icons): prefer the per-source brand icon from the
                     // app-wide [LocalSourceIconResolver] (provided at the App root; same seam the
-                    // Sources screens use) so each pill shows its real source icon. Falls back to
-                    // the caller's [iconForTab] slot (the neutral glyph) when no drawable ships
-                    // for this api. Full-colour Image (not a tinted Icon) — brand marks keep their
-                    // own palette on both the gradient (selected) and surfaceVariant pills.
-                    val brandIcon = LocalSourceIconResolver.current(tab.api)
-                    when {
-                        brandIcon != null -> Image(
-                            painter = painterResource(brandIcon),
+                    // Sources screens use) so each pill shows its real source icon — a packaged
+                    // drawable, or a config-declared remote URL rendered via [RemoteSourceIcon].
+                    // Falls back to the caller's [iconForTab] slot (the neutral glyph) when no icon
+                    // is declared for this api or the remote icon can't load. Full-colour Image
+                    // (not a tinted Icon) — brand marks keep their own palette on both the gradient
+                    // (selected) and surfaceVariant pills.
+                    val neutralGlyph: @Composable () -> Unit = { iconForTab?.invoke(tab, selected) }
+                    when (val brandIcon = LocalSourceIconResolver.current(tab.api)) {
+                        is SourceIconResolution.Packaged -> Image(
+                            painter = painterResource(brandIcon.drawable),
                             contentDescription = null, // decorative — the pill text names the source
                             modifier = Modifier
                                 .size(18.dp)
                                 .clip(CircleShape),
                         )
-                        iconForTab != null -> iconForTab(tab, selected)
+                        is SourceIconResolution.Remote -> RemoteSourceIcon(
+                            url = brandIcon.url,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape),
+                            fallback = neutralGlyph,
+                        )
+                        SourceIconResolution.None -> neutralGlyph()
                     }
                     Text(
                         text = tab.api,

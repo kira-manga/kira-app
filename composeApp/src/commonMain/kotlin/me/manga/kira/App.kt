@@ -26,8 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import me.manga.kira.presentation.common.componants.sources.RepoIconResolver
-import me.manga.kira.ui.sources.LocalSourceIconResolver
+import me.manga.kira.sources.contracts.SourceRegistry
+import me.manga.kira.sources.runtime.SourceIconRegistry
+import me.manga.kira.ui.common.LocalSourceIconResolver
+import me.manga.kira.ui.common.SourceIconResolution
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -482,6 +484,7 @@ fun App() {
     // mid-session change rebuilds the tree (returns to the start destination) — acceptable for a rare
     // settings action and analogous to native's activity recreate.
     val observeLanguage: ObserveSelectedLanguageUseCase = koinInject()
+    val iconSourceRegistry: SourceRegistry = koinInject()
     // Wait for the persisted language's FIRST emission before building the root `key(language)` tree
     // below, so the key is created ONCE with the real code instead of flipping ""→"<code>" on the
     // first frame. That flip disposed and recreated MainScreen (and its NavController), discarding a
@@ -517,10 +520,22 @@ fun App() {
     CompositionLocalProvider(
         LocalAppLocale provides language.ifBlank { null },
         LocalLayoutDirection provides layoutDirection,
-        // Per-source brand-icon resolver for the Sources screens. The brand drawables live in
-        // :composeApp's resources (out of :ui's reach), so :ui's SourceRow reads this resolver to
-        // render a leading icon (native RepoToggleItem parity) without a :ui→:composeApp dependency.
-        LocalSourceIconResolver provides { api -> RepoIconResolver.resolveByApi(api) },
+        // Per-source brand-icon resolver for the Sources screens + Home tab pills. Config-driven
+        // (MangaSource decoupling, 2026-07): the stanza's icon.resourceKey resolves through the
+        // packaged-drawable SourceIconRegistry (wins), its icon.remoteUrl loads through Coil, and
+        // no icon metadata → None (call sites render their deterministic fallback). The registry +
+        // config live in :composeApp (out of :ui's reach), so :ui reads this seam without a
+        // :ui→:composeApp dependency.
+        LocalSourceIconResolver provides { api ->
+            val descriptor = iconSourceRegistry.descriptor(api)
+            val packaged = descriptor?.iconResourceKey?.let(SourceIconRegistry::resolve)
+            val remoteUrl = descriptor?.iconRemoteUrl
+            when {
+                packaged != null -> SourceIconResolution.Packaged(packaged)
+                remoteUrl != null -> SourceIconResolution.Remote(remoteUrl)
+                else -> SourceIconResolution.None
+            }
+        },
     ) {
         key(language) {
             KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {

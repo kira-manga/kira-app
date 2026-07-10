@@ -63,7 +63,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,7 +112,9 @@ import me.manga.kira.ui.generated.resources.we_will_add_it_as_soon_it_possible
 import me.manga.kira.ui.generated.resources.you_ll_receive_a_prompt_response
 import me.manga.kira.ui.theme.LocalSpacing
 import me.manga.kira.ui.util.displayLanguageName
-import org.jetbrains.compose.resources.DrawableResource
+import me.manga.kira.ui.common.LocalSourceIconResolver
+import me.manga.kira.ui.common.RemoteSourceIcon
+import me.manga.kira.ui.common.SourceIconResolution
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -893,15 +894,6 @@ private fun LanguageHeader(
     }
 }
 
-/**
- * Resolver from a source `api` to its brand-icon [DrawableResource] (or `null` for none). Defaults to
- * no icon; the app root provides the real resolver (RepoIconResolver) — the brand drawables live in
- * :composeApp's resources, out of :ui's module reach — so [SourceRow] can render a leading source
- * icon (native RepoToggleItem parity) without :ui depending on :composeApp. Non-composable (a plain
- * `DrawableResource?` lookup); [SourceRow] turns it into a painter via `painterResource`.
- */
-val LocalSourceIconResolver = staticCompositionLocalOf<(api: String) -> DrawableResource?> { { null } }
-
 @Composable
 private fun SourceRow(
     source: Source,
@@ -957,15 +949,18 @@ private fun SourceRow(
 /**
  * Redesign 2026-06 — source brand-icon medallion (mockup `.si`): a 38dp rounded-corner container.
  *
- * When [LocalSourceIconResolver] resolves a [DrawableResource] for [api], the medallion renders the
+ * When [LocalSourceIconResolver] resolves a packaged drawable for [api], the medallion renders the
  * brand icon (native RepoToggleItem parity: enabled rows show full brand color; disabled rows render
- * a flat onBackground-tinted silhouette via `colorFilter`). When the resolver returns null, it falls
- * back to a tinted (primary @ accent-soft alpha) container showing the source's initials, so every
- * row carries a leading medallion even for sources with no shipped drawable.
+ * a flat onBackground-tinted silhouette via `colorFilter`). A config-declared remote icon URL renders
+ * through [RemoteSourceIcon] with the initials avatar as its loading/error fallback. When nothing
+ * resolves, the tinted (primary @ accent-soft alpha) container shows the source's initials, so every
+ * row carries a leading medallion even for sources with no shipped icon — deterministic across
+ * launches (MangaSource decoupling, 2026-07).
  */
 @Composable
 private fun SourceMedallion(api: String, isEnabled: Boolean) {
-    val iconRes = LocalSourceIconResolver.current(api)
+    val resolution = LocalSourceIconResolver.current(api)
+    val colorFilter = if (isEnabled) null else ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
     Box(
         modifier = Modifier
             .size(38.dp)
@@ -973,26 +968,32 @@ private fun SourceMedallion(api: String, isEnabled: Boolean) {
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)),
         contentAlignment = Alignment.Center,
     ) {
-        if (iconRes != null) {
-            Image(
-                painter = painterResource(iconRes),
+        when (resolution) {
+            is SourceIconResolution.Packaged -> Image(
+                painter = painterResource(resolution.drawable),
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                colorFilter = if (isEnabled) {
-                    null
-                } else {
-                    ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
-                },
+                colorFilter = colorFilter,
             )
-        } else {
-            Text(
-                text = sourceInitials(api),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+            is SourceIconResolution.Remote -> RemoteSourceIcon(
+                url = resolution.url,
+                modifier = Modifier.size(24.dp),
+                colorFilter = colorFilter,
+                fallback = { MedallionInitials(api) },
             )
+            SourceIconResolution.None -> MedallionInitials(api)
         }
     }
+}
+
+@Composable
+private fun MedallionInitials(api: String) {
+    Text(
+        text = sourceInitials(api),
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 /**

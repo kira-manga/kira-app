@@ -53,10 +53,11 @@ package me.manga.kira.sources.runtime
 const val CONFIG_BACKED_SOURCES_JSON: String = """
 {
   "schemaVersion": 1,
-  "revision": 2,
+  "revision": 3,
   "sources": [
     {
       "api": "Azora",
+      "icon": { "resourceKey": "azora" },
       "language": "(AR)",
       "displayName": "Azora",
       "baseUrl": "https://api.azorafly.com",
@@ -100,6 +101,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Mangamello",
+      "icon": { "resourceKey": "mangamello" },
       "language": "(AR)",
       "displayName": "Mangamello",
       "baseUrl": "https://plus.mangamello.com",
@@ -146,6 +148,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Mangamello Plus",
+      "icon": { "resourceKey": "mangamello_plus" },
       "language": "(AR)",
       "displayName": "Mangamello Plus",
       "baseUrl": "https://plus.mangamello.com",
@@ -192,6 +195,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "SwatManga",
+      "icon": { "resourceKey": "swatmanga" },
       "language": "(AR)",
       "displayName": "SwatManga",
       "baseUrl": "https://appswat.com/v2/api/v1",
@@ -231,6 +235,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Lekmanga",
+      "icon": { "resourceKey": "lekmanga" },
       "language": "(AR)",
       "displayName": "Lekmanga",
       "baseUrl": "https://lek-manga.net",
@@ -271,6 +276,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Team X",
+      "icon": { "resourceKey": "team_x" },
       "language": "(AR)",
       "displayName": "Team X",
       "baseUrl": "https://olympustaff.com",
@@ -311,6 +317,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "DilarV2",
+      "icon": { "resourceKey": "dilar" },
       "language": "(AR)",
       "displayName": "DilarV2",
       "baseUrl": "https://dilar.tube",
@@ -359,6 +366,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "3asq",
+      "icon": { "resourceKey": "3asq" },
       "language": "(AR)",
       "displayName": "3asq",
       "baseUrl": "https://3asq.org",
@@ -397,6 +405,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Demonicscans",
+      "icon": { "resourceKey": "demonicscans" },
       "language": "(EN)",
       "displayName": "Demonicscans",
       "baseUrl": "https://demonicscans.org",
@@ -440,6 +449,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Mangabuddy",
+      "icon": { "resourceKey": "mangabuddy" },
       "language": "(EN)",
       "displayName": "Mangabuddy",
       "baseUrl": "https://mangak.io",
@@ -478,6 +488,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Zazamanga",
+      "icon": { "resourceKey": "zazamanga" },
       "language": "(EN)",
       "displayName": "Zazamanga",
       "baseUrl": "https://www.zazamanga.com",
@@ -517,6 +528,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
     },
     {
       "api": "Tapas",
+      "icon": { "resourceKey": "tapas" },
       "language": "(EN)",
       "displayName": "Tapas",
       "baseUrl": "https://tapas.io",
