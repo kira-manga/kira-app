@@ -390,16 +390,15 @@ internal class FixedUpdateManager(
 internal class PilotRegistry(
     private val piloted: Set<String>,
     private val descriptors: Map<String, RuntimeSourceDescriptor> = emptyMap(),
+    private val client: (String) -> MangaSourceClient? = { null },
 ) : SourceRegistry {
-    override fun get(api: String): MangaSourceClient? = null
+    override fun get(api: String): MangaSourceClient? = if (api in piloted) client(api) else null
 
     override fun isConfigBacked(api: String): Boolean = api in piloted
 
-    override fun descriptor(api: String): RuntimeSourceDescriptor? =
-        descriptors[api] ?: if (api in piloted) fakeDescriptor(api) else null
+    override fun descriptor(api: String): RuntimeSourceDescriptor? = descriptors[api] ?: if (api in piloted) fakeDescriptor(api) else null
 
-    override fun genericDescriptors(): List<RuntimeSourceDescriptor> =
-        piloted.map { descriptors[it] ?: fakeDescriptor(it) }
+    override fun genericDescriptors(): List<RuntimeSourceDescriptor> = piloted.map { descriptors[it] ?: fakeDescriptor(it) }
 }
 
 /** Descriptor a fake registry synthesizes for a piloted api — mirrors `toRuntimeDescriptor` defaults. */

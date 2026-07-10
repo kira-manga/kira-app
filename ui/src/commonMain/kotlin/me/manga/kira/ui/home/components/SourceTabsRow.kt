@@ -117,7 +117,7 @@ fun SourceTabsRow(
                         SourceIconResolution.None -> neutralGlyph()
                     }
                     Text(
-                        text = tab.api,
+                        text = tab.displayName,
                         color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                     )

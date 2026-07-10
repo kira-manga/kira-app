@@ -122,11 +122,12 @@ class HomeFeedRepositoryImpl(
         sourcesRepository.allSources.map { entities ->
             // Sources Migration Phase 5/6: only config-backed sources are active/user-facing — a legacy
             // source never appears as a Home tab even if its row is enabled in the DB.
-            val enabled = entities.filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }.sortedBy { it.priority }
-            enabled.mapNotNull { entity ->
-                val repo = sourcesRepository.getOrRepoByName(entity.name) ?: return@mapNotNull null
-                repo.toSourceTab(siteState = entity.siteState.toSiteState())
-            }
+            // MangaSource decoupling (2026-07): the tab is built from the row + config descriptor —
+            // a config-only source (no compiled BaseMangaRepository) appears like any other.
+            entities
+                .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
+                .sortedBy { it.priority }
+                .map { entity -> entity.toSourceTab(descriptor = sourceRegistry.descriptor(entity.name)) }
         }
 
     // Index-space alignment (2026-07 audit): the tab strip is the FILTERED space (enabled ∧
@@ -139,8 +140,10 @@ class HomeFeedRepositoryImpl(
     // persisted format is unchanged). When the spaces align — the steady state after the config
     // sync's force-disable — both paths behave exactly as before.
     override fun observeActiveTabIndex(): Flow<Int> =
-        combine(observeSourceTabs(), sourcesRepository.activeRepo) { tabs, active ->
-            tabs.indexOfFirst { it.api == active.API }.takeIf { it >= 0 } ?: 0
+        combine(observeSourceTabs(), sourcesRepository.activeApiFlow) { tabs, activeApi ->
+            // Falling back to 0 matches [activeSource]'s first-config-backed substitution, so the
+            // highlighted pill is always the source the feed actually fetches from.
+            tabs.indexOfFirst { it.api == activeApi }.takeIf { it >= 0 } ?: 0
         }
 
     override fun observeSiteState(api: String): Flow<SiteState> =
@@ -181,14 +184,14 @@ class HomeFeedRepositoryImpl(
                     if (reset) clearAccumulatorsLocked()
                     accumulatorGeneration
                 }
-            val repo = when (val r = activeRepoResult()) {
+            val active = when (val r = activeSourceResult()) {
                 is AppResult.Success -> r.value
                 is AppResult.Failure -> return@withContext r // classify a thrown active-source resolution
             }
-            // Config-backed source (Azora) → the generic engine (page 1), which returns rich HomeFeedItems
+            // Config-backed source → the generic engine (page 1), which returns rich HomeFeedItems
             // incl. recentChapters. Else → unchanged legacy path.
-            if (sourceRegistry.isConfigBacked(repo.API)) {
-                sourceRegistry.get(repo.API)?.let { client ->
+            if (sourceRegistry.isConfigBacked(active.api)) {
+                sourceRegistry.get(active.api)?.let { client ->
                     val result = client.home(1)
                     // Discard the write-back if the accumulator was cleared mid-fetch (source switch /
                     // refresh) — check and write are atomic under the lock (2026-07 audit TOCTOU).
@@ -199,6 +202,10 @@ class HomeFeedRepositoryImpl(
                     }
                     return@withContext result
                 }
+            }
+            val repo = when (val r = active.legacyRepoOrFailure()) {
+                is AppResult.Success -> r.value
+                is AppResult.Failure -> return@withContext r
             }
             collectTerminal {
                 repo.initSite()
@@ -218,14 +225,14 @@ class HomeFeedRepositoryImpl(
             // legacy source's fetchMoreManga and the stale-path return view).
             val (generation, base) =
                 accumulatorMutex.withLock { accumulatorGeneration to genericAccumulated }
-            val repo = when (val r = activeRepoResult()) {
+            val active = when (val r = activeSourceResult()) {
                 is AppResult.Success -> r.value
                 is AppResult.Failure -> return@withContext r
             }
             // Config-backed source: the engine pages by page number; accumulate so the contract still returns
             // the full running list (matching the legacy fetchMoreManga(page, currentItems) shape).
-            if (sourceRegistry.isConfigBacked(repo.API)) {
-                sourceRegistry.get(repo.API)?.let { client ->
+            if (sourceRegistry.isConfigBacked(active.api)) {
+                sourceRegistry.get(active.api)?.let { client ->
                     return@withContext when (val result = client.home(page)) {
                         is AppResult.Success -> {
                             // Dedup by url: a no-op for properly-paginating sources, but it keeps a source
@@ -255,6 +262,10 @@ class HomeFeedRepositoryImpl(
                     }
                 }
             }
+            val repo = when (val r = active.legacyRepoOrFailure()) {
+                is AppResult.Success -> r.value
+                is AppResult.Failure -> return@withContext r
+            }
             val snapshot = accumulatorMutex.withLock { accumulated }
             collectTerminal {
                 repo.fetchMoreManga(page, snapshot)
@@ -274,12 +285,16 @@ class HomeFeedRepositoryImpl(
 
     override suspend fun fetchFeatured(): AppResult<List<FeaturedManga>> =
         withContext(dispatchers.io) {
-            val repo = when (val r = activeRepoResult()) {
+            val active = when (val r = activeSourceResult()) {
                 is AppResult.Success -> r.value
                 is AppResult.Failure -> return@withContext r
             }
-            if (sourceRegistry.isConfigBacked(repo.API)) {
-                sourceRegistry.get(repo.API)?.let { return@withContext it.featured(1) }
+            if (sourceRegistry.isConfigBacked(active.api)) {
+                sourceRegistry.get(active.api)?.let { return@withContext it.featured(1) }
+            }
+            val repo = when (val r = active.legacyRepoOrFailure()) {
+                is AppResult.Success -> r.value
+                is AppResult.Failure -> return@withContext r
             }
             try {
                 val terminal = repo.fetchPopularManga(repo.getBaseUrl())
@@ -297,34 +312,55 @@ class HomeFeedRepositoryImpl(
         }
 
     override suspend fun loadFilters(): AppResult<SearchFilters> = withContext(dispatchers.io) {
-        val repo = when (val r = activeRepoResult()) {
+        val active = when (val r = activeSourceResult()) {
             is AppResult.Success -> r.value
             is AppResult.Failure -> return@withContext r
         }
+        // Sort/genre filters are a LEGACY-repo capability (the config schema carries no filter
+        // spec yet — documented Stage-2 gap): the 12 converted pilots keep theirs via the compiled
+        // repo that still ships beside their config; a config-only source offers none (NORMAL
+        // search still works). Never a failure — an empty filter set is the honest answer.
+        val legacy = active.legacyRepo
         AppResult.Success(
             SearchFilters(
-                sortTypes = repo.sortTypes.toList(),
-                genres = repo.allGenres.toList(),
+                sortTypes = legacy?.sortTypes?.toList().orEmpty(),
+                genres = legacy?.allGenres?.toList().orEmpty(),
             ),
         )
     }
 
     /**
-     * Resolve the currently active source repo from the legacy active-repo flow (first emission).
-     *
-     * Sources Migration Phase 5/6: the active source must be config-backed. If a persisted active index
-     * resolves to a legacy source (e.g. a pre-migration install), substitute the first config-backed+enabled
-     * source so the home feed never fetches from a legacy source. (The config sync force-disables legacy
-     * rows, so in steady state the active flow is already config-only; this is the defensive floor.)
+     * The resolved active source: its stable [api] plus the compiled legacy repo when one exists
+     * ([legacyRepo] is null for a config-only source — every generic-path consumer keys on [api];
+     * the legacy fetch paths guard on the repo).
      */
-    private suspend fun activeRepo(): BaseMangaRepository {
-        val active = sourcesRepository.activeRepo.first()
-        if (sourceRegistry.isConfigBacked(active.API)) return active
-        return sourcesRepository.allSources.first()
+    private data class ActiveSource(
+        val api: String,
+        val legacyRepo: BaseMangaRepository?,
+    )
+
+    /**
+     * Resolve the currently active source (MangaSource decoupling, 2026-07 — api-string space).
+     *
+     * Sources Migration Phase 5/6: the active source must be config-backed. The persisted api wins
+     * when its row is enabled ∧ config-backed; otherwise substitute the first config-backed+enabled
+     * row (priority order — tab 0) so the home feed never fetches from a legacy source. (The config
+     * sync force-disables legacy rows, so in steady state the persisted api is already config-only;
+     * this is the defensive floor.) Catastrophic-floor parity: when NO config-backed source exists
+     * at all (bundled document rejected), fall back to the legacy active repo exactly as before.
+     */
+    private suspend fun activeSource(): ActiveSource? {
+        val persisted = sourcesRepository.activeApiFlow.value
+        val configBackedRows = sourcesRepository.allSources.first()
             .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
             .sortedBy { it.priority }
-            .firstNotNullOfOrNull { sourcesRepository.getOrRepoByName(it.name) }
-            ?: active
+        val chosen = configBackedRows.firstOrNull { it.name == persisted } ?: configBackedRows.firstOrNull()
+        if (chosen != null) {
+            return ActiveSource(api = chosen.name, legacyRepo = sourcesRepository.getOrRepoByName(chosen.name))
+        }
+        val legacyActive = sourcesRepository.activeRepo.first()
+        if (legacyActive.API.isNotBlank()) return ActiveSource(api = legacyActive.API, legacyRepo = legacyActive)
+        return null
     }
 
     /**
@@ -338,9 +374,9 @@ class HomeFeedRepositoryImpl(
      * source) is surfaced as a typed [AppResult.Failure] instead of letting the null-object's
      * empty-Success feed render a silent blank Home (2026-07 source-lifecycle hardening).
      */
-    private suspend fun activeRepoResult(): AppResult<BaseMangaRepository> = try {
-        val repo = activeRepo()
-        if (repo.API.isBlank()) {
+    private suspend fun activeSourceResult(): AppResult<ActiveSource> = try {
+        val active = activeSource()
+        if (active == null) {
             AppResult.Failure(
                 AppError.Unexpected(
                     "No enabled sources available — the source catalog is empty " +
@@ -348,13 +384,18 @@ class HomeFeedRepositoryImpl(
                 ),
             )
         } else {
-            AppResult.Success(repo)
+            AppResult.Success(active)
         }
     } catch (ce: CancellationException) {
         throw ce
     } catch (t: Throwable) {
         AppResult.Failure(classifyHomeThrowable(t))
     }
+
+    /** The legacy fetch paths need a compiled repo; a config-only api can never reach them. */
+    private fun ActiveSource.legacyRepoOrFailure(): AppResult<BaseMangaRepository> =
+        legacyRepo?.let { AppResult.Success(it) }
+            ?: AppResult.Failure(AppError.Unexpected("Unknown source api=$api (no compiled legacy repo)"))
 
     /**
      * Run a legacy `Flow<State<List<MangaItem>>>`-producing block, drop the `Loading` emissions,

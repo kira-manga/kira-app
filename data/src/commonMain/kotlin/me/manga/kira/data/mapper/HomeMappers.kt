@@ -12,9 +12,10 @@ import me.manga.kira.domain.model.home.SourceTab
 import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
 import me.manga.kira.domain.model.MangaItem as LegacyMangaItem
 import me.manga.kira.domain.model.PopularManga as LegacyPopularManga
+import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.presentation.features.home.data.SearchType
 import me.manga.kira.presentation.features.repo_settings.domain.SourceState
-import me.manga.kira.sources_repositry.BaseMangaRepository
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 
 /**
  * Mappers for the Home + Search slice (Epic H2).
@@ -90,26 +91,27 @@ internal fun LegacyPopularManga.toFeatured(): FeaturedManga = FeaturedManga(
 )
 
 /**
- * Map a legacy [BaseMangaRepository] (one enabled source) → the rework [SourceTab].
+ * Map an enabled sources row (+ its validated config descriptor) → the rework [SourceTab].
  *
- *  - `API` → [SourceTab.api] (the tab identity + fetch/search key).
- *  - `LANGUAGE` → [SourceTab.language] (label/grouping).
- *  - `API` also seeds [SourceTab.iconKey] — the legacy `ICON: Int` is an Android drawable resource
- *    id (not portable to commonMain / iOS / Desktop), so the rework carries the framework-free
- *    source-name handle the `:ui` `RepoIconResolver` resolves to an icon, per the [SourceTab]
- *    KDoc.
- *  - [siteState] is supplied by the caller (resolved from the legacy [SourceState] via
- *    [SourceState.toSiteState] — the per-source state lives in Room, not on the repo instance).
+ *  - row `name` → [SourceTab.api] (the tab identity + fetch/search key).
+ *  - row `language` → [SourceTab.language] (label/grouping).
+ *  - `name` also seeds the vestigial [SourceTab.iconKey]; icon resolution happens by api through
+ *    the app-root icon seam (`LocalSourceIconResolver`), per the [SourceTab] KDoc.
+ *  - [SourceTab.displayName] joins from the validated config descriptor (MangaSource decoupling,
+ *    2026-07) — the tab needs NO compiled BaseMangaRepository.
  */
-internal fun BaseMangaRepository.toSourceTab(siteState: SiteState): SourceTab = SourceTab(
-    api = API,
-    language = LANGUAGE,
-    iconKey = API,
-    siteState = siteState,
-    // The source's base URL — Home's "open in WebView" opens this (native parity). `baseUrl` is the
-    // live field (DB-updated by the source-registry refresh when initialised), defaulting to the
-    // source's BASE_URL constant otherwise.
-    baseUrl = baseUrl.ifBlank { BASE_URL },
+internal fun SourcesEntity.toSourceTab(descriptor: RuntimeSourceDescriptor?): SourceTab = SourceTab(
+    api = name,
+    language = language,
+    iconKey = name,
+    siteState = siteState.toSiteState(),
+    // The source's base URL — Home's "open in WebView" opens this (native parity). The Room row is
+    // the live field (asserted to config truth by the catalog sync, and user-mirror-editable);
+    // the descriptor's baseUrl is the fallback for a not-yet-synced row.
+    baseUrl = baseUrl.ifBlank { descriptor?.baseUrl.orEmpty() },
+    // MangaSource decoupling (2026-07): the tab is built from the row + the validated config
+    // descriptor — no BaseMangaRepository required, so a config-only source appears like any other.
+    displayName = descriptor?.displayName ?: name,
 )
 
 /**

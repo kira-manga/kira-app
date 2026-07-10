@@ -24,9 +24,15 @@ data class SourceTab(
     /**
      * The source's base/home URL — what Home's "open in WebView" opens (native parity:
      * `HomeViewModel.getCurrentBaseUrl()`). Defaulted empty for test/preview constructions; the
-     * `:data` mapper supplies the real value from the source repo.
+     * `:data` mapper supplies the real value from the sources row / config descriptor.
      */
     val baseUrl: String = "",
+    /**
+     * User-visible tab label (MangaSource decoupling, 2026-07): joined from the validated config
+     * stanza's `displayName` by the `:data` mapper; defaults to [api] so preview/test constructions
+     * and pre-config rows stay label-complete. The UI renders THIS, never [api].
+     */
+    val displayName: String = api,
 )
 
 /**

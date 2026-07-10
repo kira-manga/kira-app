@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.data.mapper.classifyHomeThrowable
@@ -76,17 +77,23 @@ class SearchRepositoryImpl(
         genres: List<String>,
     ): AppResult<List<HomeFeedItem>> = withContext(dispatchers.io) {
         try {
-            val repo = activeConfigBackedRepo()
-            // Config-backed source → the generic engine (query search, page 1), with its own legacy
-            // fallback — but ONLY for plain-text search. The MangaSourceClient contract carries no
-            // sort/genre axes, so a SORT/GENRES request (or a NORMAL one that still carries
-            // sort/genres) must drop to the legacy `fetchSearchDataF` path, which honours the
-            // source's real sortTypes/allGenres support (and naturally yields plain results for
-            // sources that expose none) instead of silently discarding the filters.
+            val active = activeConfigBackedSource()
+            // Config-backed source → the generic engine (query search, page 1) — but ONLY for
+            // plain-text search. The MangaSourceClient contract carries no sort/genre axes, so a
+            // SORT/GENRES request (or a NORMAL one that still carries sort/genres) must drop to the
+            // legacy `fetchSearchDataF` path, which honours the source's real sortTypes/allGenres
+            // support (and naturally yields plain results for sources that expose none) instead of
+            // silently discarding the filters. Sort/genre search is therefore a legacy-repo
+            // capability: the 12 pilots keep it via their compiled repos; a config-only source
+            // offers no filters (loadFilters returns empty) so this branch is unreachable for it.
             val isPlainTextSearch = mode == SearchMode.NORMAL && sort == null && genres.isEmpty()
-            if (isPlainTextSearch && sourceRegistry.isConfigBacked(repo.API)) {
-                sourceRegistry.get(repo.API)?.let { return@withContext it.search(query, page = 1) }
+            if (isPlainTextSearch && sourceRegistry.isConfigBacked(active.api)) {
+                sourceRegistry.get(active.api)?.let { return@withContext it.search(query, page = 1) }
             }
+            val repo = active.legacyRepo
+                ?: return@withContext AppResult.Failure(
+                    AppError.Unexpected("Source '${active.api}' has no legacy search path"),
+                )
             val searchType = searchTypeOf(query = query, mode = mode, sort = sort, genres = genres)
             when (val terminal = repo.fetchSearchDataF(searchType).awaitTerminalState()) {
                 is LegacyState.Success -> AppResult.Success(terminal.data.map { it.toHomeFeedItem() })
@@ -100,71 +107,88 @@ class SearchRepositoryImpl(
         }
     }
 
+    /** The resolved active search source: stable [api] + the compiled legacy repo when one exists. */
+    private data class ActiveSearchSource(
+        val api: String,
+        val legacyRepo: BaseMangaRepository?,
+    )
+
     /**
-     * The active source, guaranteed config-backed (Sources Migration Phase 5/6). If a persisted active
-     * index resolves to a legacy source (e.g. a pre-migration install), fall back to the first
-     * config-backed+enabled source so single-source search never targets a legacy source. (The config sync
-     * force-disables legacy rows, so in steady state the active repo is already config-backed.)
+     * The active source, guaranteed config-backed (Sources Migration Phase 5/6), resolved in
+     * api-string space (MangaSource decoupling, 2026-07) so a config-only source is searchable.
+     * The persisted api wins when its row is enabled ∧ config-backed; otherwise the first
+     * config-backed+enabled row substitutes — same resolution as Home's activeSource, so search
+     * always targets the source the feed shows. Catastrophic floor (no config-backed source at
+     * all): the legacy active repo, exactly as before.
      */
-    private suspend fun activeConfigBackedRepo(): BaseMangaRepository {
+    private suspend fun activeConfigBackedSource(): ActiveSearchSource {
+        val persisted = sourcesRepository.activeApiFlow.value
+        val configBackedRows = sourcesRepository.allSources.first()
+            .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
+            .sortedBy { it.priority }
+        val chosen = configBackedRows.firstOrNull { it.name == persisted } ?: configBackedRows.firstOrNull()
+        if (chosen != null) {
+            return ActiveSearchSource(api = chosen.name, legacyRepo = sourcesRepository.getOrRepoByName(chosen.name))
+        }
         val active = sourcesRepository.activeRepo.first()
-        if (sourceRegistry.isConfigBacked(active.API)) return active
-        return sourcesRepository.getEnabledRepos().firstOrNull { sourceRegistry.isConfigBacked(it.API) } ?: active
+        return ActiveSearchSource(api = active.API, legacyRepo = active.takeIf { it.API.isNotBlank() })
     }
 
     override fun searchAllRepos(query: String): Flow<Map<String, AppResult<List<HomeFeedItem>>?>> =
         flow {
-            // Snapshot enabled repos (cheap — just the registered repo objects; base-URL warming
-            // happens below). LinkedHashMap so the per-source sections render in enabled order.
-            // Sources Migration Phase 5/6: search-all only fans out over config-backed sources — a
-            // legacy source is never searched even if its DB row is enabled.
-            val repos = sourcesRepository.getEnabledRepos().filter { sourceRegistry.isConfigBacked(it.API) }
+            // Snapshot enabled ∧ config-backed rows in priority order (MangaSource decoupling,
+            // 2026-07: api strings from the sources table — a config-only source with no compiled
+            // repo is searched like any other). LinkedHashMap so the per-source sections render in
+            // enabled order. Sources Migration Phase 5/6: search-all only fans out over
+            // config-backed sources — a legacy source is never searched even if its row is enabled.
+            val apis = sourcesRepository.allSources.first()
+                .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
+                .sortedBy { it.priority }
+                .map { it.name }
 
-            // Seed every enabled repo as `null` (loading) and emit immediately, so the UI shows a
+            // Seed every source as `null` (loading) and emit immediately, so the UI shows a
             // per-source spinner section up front instead of a misleading empty "no results" panel
-            // while the fan-out (base-URL warm + initSite + first fetch) is still running.
+            // while the fan-out is still running. (The old legacy base-URL warm is gone with the
+            // repo objects — the generic engine resolves its live base URL per request through
+            // SourceBaseUrlProvider, so there is nothing to warm on an all-generic fan-out.)
             val accumulated = linkedMapOf<String, AppResult<List<HomeFeedItem>>?>()
-            repos.forEach { accumulated[it.API] = null }
+            apis.forEach { accumulated[it] = null }
             emit(accumulated.toMap())
 
-            // Warm each repo's base URL up-front (legacy parity: HomeViewModel.fetchAllSearchResults
-            // used `.onEach { it.getBaseUrl() }`). A single source throwing during warm-up must not
-            // cancel the whole fan-out — guard it (rethrowing CancellationException) so the failing
-            // source still surfaces as its own per-api Failure below.
-            repos.forEach { repo ->
-                try {
-                    repo.getBaseUrl()
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Throwable) {
-                    // Swallowed here; the per-repo flow below re-attempts and classifies the failure.
-                }
-            }
-
-            val perRepoFlows = repos.map { repo ->
-                val client = if (sourceRegistry.isConfigBacked(repo.API)) sourceRegistry.get(repo.API) else null
-                val repoFlow = if (client != null) {
-                    // Config-backed source (Azora) → the generic engine (with its own legacy fallback). One
-                    // terminal emission per repo, same (api, AppResult) shape as the legacy branch.
-                    flow { emit(repo.API to client.search(query, page = 1)) }
+            val perRepoFlows = apis.map { api ->
+                val client = sourceRegistry.get(api)
+                val repoFlow = if (client != null && sourceRegistry.isConfigBacked(api)) {
+                    // Config-backed source → the generic engine. One terminal emission per source,
+                    // same (api, AppResult) shape as the legacy branch.
+                    flow { emit(api to client.search(query, page = 1)) }
                 } else {
-                    flow {
-                        repo.initSite()
-                        repo.fetchSearchDataF(SearchType.Normal(query)).collect { state ->
-                            // Skip the legacy Loading state: the repo keeps its seeded `null` (loading)
-                            // marker until a terminal Success/Error lands, so a still-fetching source
-                            // keeps its spinner instead of flashing an empty-success "no results".
-                            state.toResultOrNull()?.let { emit(repo.API to it) }
+                    // Defensive floor — unreachable while the fan-out filter is config-backed-only,
+                    // kept for a compiled legacy repo should the filter ever widen.
+                    val repo = sourcesRepository.getOrRepoByName(api)
+                    if (repo == null) {
+                        flow {
+                            emit(api to AppResult.Failure(AppError.Unexpected("Unknown source api=$api")))
+                        }
+                    } else {
+                        flow {
+                            repo.initSite()
+                            repo.fetchSearchDataF(SearchType.Normal(query)).collect { state ->
+                                // Skip the legacy Loading state: the source keeps its seeded `null`
+                                // (loading) marker until a terminal Success/Error lands, so a
+                                // still-fetching source keeps its spinner instead of flashing an
+                                // empty-success "no results".
+                                state.toResultOrNull()?.let { emit(api to it) }
+                            }
                         }
                     }
                 }
-                // Independently catch-classify each repo: a throwing source (initSite/fetch/legacy
+                // Independently catch-classify each source: a throwing source (initSite/fetch/legacy
                 // flow that throws instead of emitting State.Error) surfaces as its own per-api
                 // Failure row instead of cancelling the whole fan-out (see class KDoc).
                 repoFlow
                     .catch { t ->
                         if (t is CancellationException) throw t
-                        emit(repo.API to AppResult.Failure(classifyHomeThrowable(t)))
+                        emit(api to AppResult.Failure(classifyHomeThrowable(t)))
                     }
                     .flowOn(dispatchers.io)
             }

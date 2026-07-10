@@ -37,6 +37,12 @@ object StorageKeys {
     // for the same reason as READ_MINUTES above.
     const val ACTIVE_TAB = "active_tab"
 
+    // MangaSource decoupling (2026-07): the active source is persisted as its stable api STRING.
+    // Replaces the ACTIVE_TAB int (an index into the enabled∧compiled legacy-repo list, which a
+    // config-only source could never join). ACTIVE_TAB stays written best-effort for rollback
+    // compatibility; SourcesRepository migrates int→string once on first read.
+    const val ACTIVE_SOURCE_API = "active_source_api"
+
     // Onboarding-complete flag: the Welcome → Theme → Sources wizard flips it to false. Verbatim from
     // upstream MainActivity / PrefsDelegate so existing installs round-trip without migration — do NOT
     // rename the string. Read for the start destination + the push deep-link onboarding gate; promoted

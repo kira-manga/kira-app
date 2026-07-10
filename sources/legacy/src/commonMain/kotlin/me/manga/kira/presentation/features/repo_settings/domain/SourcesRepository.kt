@@ -97,9 +97,24 @@ class SourcesRepository(
     // sources flow. Replaces the fresh Room query that [findRepoByHost] used to run per cache miss.
     private val sourcesSnapshot = atomic<List<SourcesEntity>?>(null)
 
+    // Declared ABOVE the init block: the applicationScope launch below runs the int→api active-
+    // source migration, which reads these — under an eager (Unconfined/test) dispatcher the launch
+    // executes DURING construction, so a later declaration would NPE (Kotlin initializes in
+    // declaration order).
+    private val _activeIndex = MutableStateFlow(prefs.getInt(StorageKeys.ACTIVE_TAB, 0))
+    val activeIndexFlow: StateFlow<Int> = _activeIndex
+
+    // MangaSource decoupling (2026-07): the active source's persisted identity is its stable api
+    // STRING (StorageKeys.ACTIVE_SOURCE_API). The int ACTIVE_TAB index only ever addressed the
+    // enabled∧compiled legacy-repo list, so a config-only source could never become active. Blank
+    // = not yet migrated/selected; [migrateActiveIndexToApiOnce] resolves the old index once.
+    private val _activeApi = MutableStateFlow(prefs.getString(StorageKeys.ACTIVE_SOURCE_API, ""))
+    val activeApiFlow: StateFlow<String> = _activeApi
+
     init {
         applicationScope.launch {
             saveSources()
+            migrateActiveIndexToApiOnce()
         }
         applicationScope.launch {
             try {
@@ -134,9 +149,6 @@ class SourcesRepository(
             SourceState.WORKING // Default fallback
         }
     }
-
-    private val _activeIndex = MutableStateFlow(prefs.getInt(StorageKeys.ACTIVE_TAB, 0))
-    val activeIndexFlow: StateFlow<Int> = _activeIndex
 
     val allSources: Flow<List<SourcesEntity>> by lazy { sourcesDao.getAllSources() }
     val enabledStates: Flow<Map<String, Boolean>> =
@@ -262,16 +274,43 @@ class SourcesRepository(
     }
 
     suspend fun updateActiveByApi(apiName: String) {
-        // 1) Get the list of enabled repos, in priority order
-        val enabled = getEnabledRepos()
+        // MangaSource decoupling (2026-07): the api string IS the persisted active-source identity
+        // now — a config-only source (no compiled repo) is fully selectable.
+        prefs.putString(StorageKeys.ACTIVE_SOURCE_API, apiName)
+        _activeApi.value = apiName
 
-        // 2) Find the index of the one matching our API name
+        // Legacy-space mirror (rollback compatibility + the index-based activeRepo consumers):
+        // keep the enabled-list index in sync when the api maps to a compiled repo; a config-only
+        // api keeps the old default-0 behavior.
+        val enabled = getEnabledRepos()
         val idx = enabled.indexOfFirst { it.API == apiName }
             .takeIf { it >= 0 }
-            ?: 0            // default to 0 if not found
-
-        // 3) Reuse your existing logic to clamp, save prefs, emit
+            ?: 0
         updateActiveIndex(idx)
+    }
+
+    /**
+     * One-time active-source migration (MangaSource decoupling, 2026-07): resolve the legacy
+     * ACTIVE_TAB index through the same enabled∧priority-ordered repo list it always addressed and
+     * persist that source's api string. Idempotent (runs only while the string key is blank) and
+     * safe to rerun — a fresh install with no enabled rows simply retries next launch, and a
+     * concurrent user selection wins (first-write checked again before persisting).
+     */
+    private suspend fun migrateActiveIndexToApiOnce() {
+        if (_activeApi.value.isNotBlank()) return
+        try {
+            val enabled = getEnabledRepos()
+            if (enabled.isEmpty()) return
+            val idx = _activeIndex.value.coerceIn(0, enabled.size - 1)
+            val api = enabled[idx].API
+            if (_activeApi.value.isBlank()) {
+                prefs.putString(StorageKeys.ACTIVE_SOURCE_API, api)
+                _activeApi.value = api
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Logger.withTag("SourcesRepository").e(e) { "active-source int→api migration failed: ${e.message}" }
+        }
     }
 
     suspend fun enableDisAbleSource(name: String, enabled: Boolean) {
