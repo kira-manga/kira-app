@@ -117,6 +117,13 @@ data class SourceConfig(
      * deterministic initials avatar derived from [displayName]/[api].
      */
     val icon: IconSpec? = null,
+    /**
+     * Ordered advanced-filter declarations (config-driven filters, 2026-07 —
+     * docs/sources/CONFIG_DRIVEN_FILTERS_PLAN.md). Declaration order IS both the UI order and the
+     * request-composition order. Absent → the source has no advanced filters (plain search only).
+     * Additive-optional: schemaVersion stays 1 and pre-filter parsers ignore the key.
+     */
+    val filters: List<FilterDefinition> = emptyList(),
 )
 
 /**
@@ -232,4 +239,84 @@ data class TransformSpec(
     val fn: String,
     val args: Map<String, String> = emptyMap(),
     val list: List<String> = emptyList(),
+)
+
+/**
+ * One user-facing search filter, fully declarative (config-driven filters, 2026-07). Runtime
+ * behavior binds ONLY to [id] and [FilterOptionSpec.value] — labels are display-only and safe to
+ * rename. Standard ids (`genres`, `sort`, `status`, `language`, `type`) are conventions the
+ * validator type-checks and the UI localizes; they run through the exact same pipeline as any
+ * custom filter. No expression language: the request contribution is fixed by [request] plus the
+ * deterministic composition algorithm in the engine (`FilterRequestComposer`).
+ */
+@Serializable
+data class FilterDefinition(
+    /** Stable identity, `[a-z0-9_]{1,64}`. Renaming a shipped id is a retire + re-add. */
+    val id: String,
+    /** Display label (required non-blank). Standard ids may be re-titled by localized UI headers. */
+    val label: String,
+    /** `"select"` | `"multiselect"` | `"toggle"` | `"text"` | `"number"` (`range`/`date` reserved). */
+    val type: String,
+    /** Required for select/multiselect; forbidden for toggle/text/number. */
+    val options: List<FilterOptionSpec> = emptyList(),
+    /** Scalar default: a select option value, toggle `"true"`/`"false"`, or a text/number literal. */
+    val default: String = "",
+    /** Multiselect default (option values). Mutually exclusive with [default]. */
+    val defaults: List<String> = emptyList(),
+    /** Must always reach the request → the validator demands a usable default. */
+    val required: Boolean = false,
+    val request: FilterRequestSpec,
+    /** ALL conditions must hold; a hidden filter is neither rendered nor sent. */
+    val visibleWhen: List<FilterConditionSpec> = emptyList(),
+    /**
+     * Multiselect only: marks this filter as the exclusion counterpart of filter [excludeOf]
+     * (include/exclude pairs, e.g. included vs excluded tags). A value selected on both sides is
+     * dropped from THIS (exclude) side — include wins, deterministically.
+     */
+    val excludeOf: String = "",
+    /** Endpoint verbs the filter is sent with. v1 whitelist: `search` only. */
+    val appliesTo: List<String> = listOf("search"),
+)
+
+/** One selectable option. [value] is the backend value that reaches the request; stable like an id. */
+@Serializable
+data class FilterOptionSpec(
+    val value: String,
+    /** Display label; defaults to [value]. */
+    val label: String = "",
+)
+
+/**
+ * How a filter's effective value is injected into the request. Targets `query`/`form`/`header`
+ * append parameters; `path`/`body-json` fill a `{param}` placeholder that must exist in the
+ * endpoint's url/jsonBody template (placeholders cannot be omitted, so [omitIfEmpty] applies only
+ * to the appending targets).
+ */
+@Serializable
+data class FilterRequestSpec(
+    /** `"query"` | `"path"` | `"form"` | `"header"` | `"body-json"`. */
+    val target: String,
+    /**
+     * query/form/header: the parameter name (may be `"genre[]"` — percent-encoded on the wire for
+     * query). path/body-json: the template placeholder name (`[a-zA-Z0-9_]+`, must not shadow a
+     * reserved engine var).
+     */
+    val param: String,
+    /** `"single"` | `"csv"` | `"repeat"` (query/form) | `"json-array"` (body-json). */
+    val encode: String = "single",
+    /** Join separator for `csv`. */
+    val delimiter: String = ",",
+    /** query/form/header only: skip the parameter entirely when the effective value is empty. */
+    val omitIfEmpty: Boolean = true,
+    /** Toggle only: value sent when on. */
+    val trueValue: String = "true",
+    /** Toggle only: value when off. `""` + [omitIfEmpty] ⇒ the parameter is absent when off. */
+    val falseValue: String = "",
+)
+
+/** Visibility condition: holds when the referenced filter's effective value intersects [anyOf]. */
+@Serializable
+data class FilterConditionSpec(
+    val filter: String,
+    val anyOf: List<String>,
 )

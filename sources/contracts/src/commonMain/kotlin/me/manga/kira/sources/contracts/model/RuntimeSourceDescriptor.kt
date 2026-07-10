@@ -1,5 +1,10 @@
 package me.manga.kira.sources.contracts.model
 
+import me.manga.kira.domain.model.filters.FilterCondition
+import me.manga.kira.domain.model.filters.FilterControlType
+import me.manga.kira.domain.model.filters.FilterOption
+import me.manga.kira.domain.model.filters.SourceFilter
+
 /**
  * The catalog-metadata projection of one validated [SourceConfig] stanza — everything the app
  * needs to DISPLAY, ENABLE, and ROUTE a source, and nothing of the executable spec
@@ -39,6 +44,13 @@ data class RuntimeSourceDescriptor(
      * config-backed source, merged UNDER any captured per-api headers (engine semantics).
      */
     val headers: Map<String, String>,
+    /**
+     * Ordered advanced-filter projection for the Search UI (config-driven filters, 2026-07).
+     * Display/selection model ONLY — request mapping stays engine-internal on [SourceConfig.filters],
+     * preserving this descriptor's "display/route, never executable spec" contract. Empty → the
+     * source exposes no advanced filters (plain search only).
+     */
+    val filters: List<SourceFilter> = emptyList(),
 ) {
     val isGeneric: Boolean get() = engine == ENGINE_GENERIC
 
@@ -63,4 +75,33 @@ fun SourceConfig.toRuntimeDescriptor(): RuntimeSourceDescriptor =
         iconRemoteUrl = icon?.remoteUrl?.takeIf { it.isNotBlank() },
         blacklistGenres = blacklistGenres,
         headers = headers,
+        filters = filters.map { it.toSourceFilter() },
+    )
+
+/**
+ * The single spec→display projection. The [FilterDefinition.request] block is intentionally NOT
+ * projected — the engine reads it from the config; the UI never sees request mapping.
+ */
+fun FilterDefinition.toSourceFilter(): SourceFilter =
+    SourceFilter(
+        id = id,
+        label = label,
+        type =
+            when (type) {
+                "multiselect" -> FilterControlType.MULTISELECT
+                "toggle" -> FilterControlType.TOGGLE
+                "text" -> FilterControlType.TEXT
+                "number" -> FilterControlType.NUMBER
+                else -> FilterControlType.SELECT // validator guarantees the whitelist; "select" is the base case
+            },
+        options = options.map { FilterOption(value = it.value, label = it.label.ifBlank { it.value }) },
+        defaultValues =
+            when {
+                defaults.isNotEmpty() -> defaults
+                default.isNotBlank() -> listOf(default)
+                else -> emptyList()
+            },
+        required = required,
+        visibleWhen = visibleWhen.map { FilterCondition(filterId = it.filter, anyOf = it.anyOf) },
+        excludeOf = excludeOf.takeIf { it.isNotBlank() },
     )

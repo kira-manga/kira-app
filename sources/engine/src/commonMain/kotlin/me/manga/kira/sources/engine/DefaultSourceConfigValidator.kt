@@ -3,6 +3,7 @@ package me.manga.kira.sources.engine
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.StrategyRegistry
 import me.manga.kira.sources.contracts.ValidationResult
+import me.manga.kira.sources.contracts.model.FilterDefinition
 import me.manga.kira.sources.contracts.model.IconSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
@@ -58,7 +59,12 @@ class DefaultSourceConfigValidator(
         validateLifecycleMetadata(source, tag, errors)
 
         // Legacy sources carry no config-driven behavior to validate.
-        if (!isGeneric) return
+        if (!isGeneric) {
+            if (source.filters.isNotEmpty()) {
+                errors += "$tag filters: declared on a non-generic engine — filters are a generic-engine capability"
+            }
+            return
+        }
 
         if (!strategies.hasPagination(source.pagination.type)) {
             errors += "$tag unknown pagination strategy '${source.pagination.type}'"
@@ -68,6 +74,7 @@ class DefaultSourceConfigValidator(
         }
         validateEndpoints(source, tag, errors)
         validateFields(source, tag, errors)
+        validateSearchFilters(source, tag, errors)
     }
 
     private fun validateLifecycleMetadata(
@@ -163,6 +170,323 @@ class DefaultSourceConfigValidator(
         }
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Config-driven search filters (docs/sources/CONFIG_DRIVEN_FILTERS_PLAN.md §4). Error paths
+    // follow "source '<api>': filters: filter '<id>': <field>: <message>" so a malformed filter is
+    // pinpointed, never silently ignored — the document is rejected all-or-nothing like everything
+    // else. Whitelists mirror FilterRequestComposer's string handling exactly (typo ⇒ rejection at
+    // validation, not silent degradation at request time).
+    // ---------------------------------------------------------------------------------------------
+    private fun validateSearchFilters(
+        source: SourceConfig,
+        tag: String,
+        errors: MutableList<String>,
+    ) {
+        if (source.filters.isEmpty()) return
+
+        val byId = mutableMapOf<String, FilterDefinition>()
+        for (filter in source.filters) {
+            val ftag = "$tag filters: filter '${filter.id}':"
+            if (filter.id.isBlank()) {
+                errors += "$tag filters: a filter has a blank id"
+            } else {
+                if (!filter.id.matches(FILTER_ID)) errors += "$ftag id: must match [a-z0-9_]{1,64}"
+                if (byId.put(filter.id, filter) != null) errors += "$ftag id: duplicate filter id"
+            }
+            if (filter.label.isBlank()) errors += "$ftag label: must not be blank"
+            if (filter.type !in SUPPORTED_FILTER_TYPES) {
+                errors += "$ftag type: unknown '${filter.type}' (expected one of $SUPPORTED_FILTER_TYPES)"
+            }
+            validateStandardFilterId(filter, ftag, errors)
+            validateFilterOptions(filter, ftag, errors)
+            validateFilterDefaults(filter, ftag, errors)
+            validateFilterRequest(source, filter, ftag, errors)
+        }
+        // Cross-filter rules need the complete id map first.
+        for (filter in source.filters) {
+            val ftag = "$tag filters: filter '${filter.id}':"
+            validateFilterConditions(filter, byId, ftag, errors)
+            validateFilterExcludeOf(filter, byId, ftag, errors)
+        }
+        detectVisibilityCycles(source.filters, tag, errors)
+    }
+
+    // Standard ids are conventions, not special code paths — but a `sort` rendered as a free-text
+    // box (or genres as a toggle) is always an authoring mistake, so the types are pinned.
+    private fun validateStandardFilterId(
+        filter: FilterDefinition,
+        ftag: String,
+        errors: MutableList<String>,
+    ) {
+        when (filter.id) {
+            "sort" ->
+                if (filter.type != "select") {
+                    errors += "$ftag type: standard id 'sort' must be select, not '${filter.type}'"
+                }
+            "genres", "status", "language", "type" ->
+                if (filter.type !in setOf("select", "multiselect")) {
+                    errors += "$ftag type: standard id '${filter.id}' must be select or multiselect, not '${filter.type}'"
+                }
+        }
+    }
+
+    private fun validateFilterOptions(
+        filter: FilterDefinition,
+        ftag: String,
+        errors: MutableList<String>,
+    ) {
+        val hasOptions = filter.type == "select" || filter.type == "multiselect"
+        if (hasOptions && filter.options.isEmpty()) {
+            errors += "$ftag options: ${filter.type} requires at least one option"
+        }
+        if (!hasOptions && filter.options.isNotEmpty()) {
+            errors += "$ftag options: not allowed on type '${filter.type}'"
+        }
+        val seenValues = mutableSetOf<String>()
+        for (option in filter.options) {
+            if (option.value.isBlank()) errors += "$ftag options: an option has a blank value"
+            if (option.value.isNotBlank() && !seenValues.add(option.value)) {
+                errors += "$ftag options: duplicate option value '${option.value}' (selection would be ambiguous)"
+            }
+        }
+    }
+
+    private fun validateFilterDefaults(
+        filter: FilterDefinition,
+        ftag: String,
+        errors: MutableList<String>,
+    ) {
+        val optionValues = filter.options.map { it.value }.toSet()
+        if (filter.type == "multiselect") {
+            if (filter.default.isNotBlank()) {
+                errors += "$ftag default: multiselect uses 'defaults', not 'default'"
+            }
+            for (value in filter.defaults) {
+                if (value !in optionValues) errors += "$ftag defaults: '$value' is not a declared option value"
+            }
+        } else {
+            if (filter.defaults.isNotEmpty()) {
+                errors += "$ftag defaults: only multiselect uses 'defaults' (use 'default')"
+            }
+            when (filter.type) {
+                "select" ->
+                    if (filter.default.isNotBlank() && filter.default !in optionValues) {
+                        errors += "$ftag default: '${filter.default}' is not a declared option value"
+                    }
+                "toggle" ->
+                    if (filter.default !in setOf("", "true", "false")) {
+                        errors += "$ftag default: toggle default must be 'true' or 'false', not '${filter.default}'"
+                    }
+                "number" ->
+                    if (filter.default.isNotBlank() && filter.default.toDoubleOrNull() == null) {
+                        errors += "$ftag default: '${filter.default}' is not numeric"
+                    }
+            }
+        }
+        if (filter.required) {
+            val hasUsableDefault =
+                if (filter.type == "multiselect") filter.defaults.isNotEmpty() else filter.default.isNotBlank()
+            if (!hasUsableDefault) {
+                errors += "$ftag required: a required filter needs a usable default (the runtime must always satisfy it)"
+            }
+        }
+    }
+
+    private fun validateFilterRequest(
+        source: SourceConfig,
+        filter: FilterDefinition,
+        ftag: String,
+        errors: MutableList<String>,
+    ) {
+        val request = filter.request
+        if (request.target !in SUPPORTED_FILTER_TARGETS) {
+            errors += "$ftag request.target: unknown '${request.target}' (expected one of $SUPPORTED_FILTER_TARGETS)"
+        }
+        if (request.param.isBlank()) errors += "$ftag request.param: must not be blank"
+        if (request.encode !in SUPPORTED_FILTER_ENCODINGS) {
+            errors += "$ftag request.encode: unknown '${request.encode}' (expected one of $SUPPORTED_FILTER_ENCODINGS)"
+        }
+
+        // Encoding ↔ target compatibility.
+        if (request.encode == "repeat" && request.target !in setOf("query", "form")) {
+            errors += "$ftag request.encode: 'repeat' is only valid for query/form targets"
+        }
+        if (request.encode == "json-array" && request.target != "body-json") {
+            errors += "$ftag request.encode: 'json-array' is only valid for the body-json target"
+        }
+        if (request.target == "body-json" && request.encode !in setOf("single", "json-array")) {
+            errors += "$ftag request.encode: body-json supports 'single' or 'json-array', not '${request.encode}'"
+        }
+        // Encoding ↔ control-type compatibility: only a multiselect can produce multiple values.
+        if (request.encode in setOf("csv", "repeat", "json-array") && filter.type != "multiselect") {
+            errors += "$ftag request.encode: '${request.encode}' requires type multiselect, not '${filter.type}'"
+        }
+
+        // Placeholder targets fill template holes — the hole can never be omitted, so the value
+        // must be guaranteed (path) and the placeholder must actually exist in the template.
+        val isPlaceholderTarget = request.target == "path" || request.target == "body-json"
+        if (isPlaceholderTarget) {
+            if (!request.param.matches(PLACEHOLDER_NAME)) {
+                errors += "$ftag request.param: placeholder name must match [a-zA-Z0-9_]+"
+            }
+            if (request.param in RESERVED_TEMPLATE_VARS) {
+                errors += "$ftag request.param: '${request.param}' shadows a reserved engine template var"
+            }
+        }
+        if (request.target == "path") {
+            val guaranteed =
+                if (filter.type == "multiselect") filter.defaults.isNotEmpty() else filter.default.isNotBlank()
+            if (!guaranteed) {
+                errors += "$ftag request.target: a path-target filter must declare a non-empty default " +
+                    "(a URL placeholder cannot be omitted)"
+            }
+        }
+
+        // Per-endpoint checks for every verb the filter applies to.
+        if (filter.appliesTo.isEmpty()) errors += "$ftag appliesTo: must not be empty"
+        for (verb in filter.appliesTo) {
+            val etag = "$ftag appliesTo '$verb':"
+            if (verb !in SUPPORTED_FILTER_VERBS) {
+                errors += "$etag unsupported verb (v1 supports $SUPPORTED_FILTER_VERBS)"
+                continue
+            }
+            val endpoint = source.endpoints[verb]
+            if (endpoint == null) {
+                errors += "$etag filter is mapped to an endpoint that does not exist"
+                continue
+            }
+            val method = endpoint.method.lowercase()
+            when (request.target) {
+                "form" -> {
+                    if (method !in POST_FORM_METHODS) {
+                        errors += "$etag form target requires a post-form endpoint (method is '${endpoint.method}')"
+                    }
+                    if (request.param in endpoint.formBody.keys) {
+                        errors += "$etag request.param '${request.param}' collides with a static formBody key"
+                    }
+                }
+                "body-json" -> {
+                    if (method !in POST_JSON_METHODS) {
+                        errors += "$etag body-json target requires a post-json endpoint (method is '${endpoint.method}')"
+                    }
+                    if (!endpoint.jsonBody.contains("{${request.param}}")) {
+                        errors += "$etag jsonBody template does not contain the placeholder {${request.param}}"
+                    }
+                }
+                "path" ->
+                    if (!endpoint.url.contains("{${request.param}}")) {
+                        errors += "$etag url template does not contain the placeholder {${request.param}}"
+                    }
+                "query" ->
+                    if (endpoint.url.contains("?${request.param}=") || endpoint.url.contains("&${request.param}=")) {
+                        errors += "$etag request.param '${request.param}' is already hardcoded in the url template"
+                    }
+            }
+        }
+    }
+
+    private fun validateFilterConditions(
+        filter: FilterDefinition,
+        byId: Map<String, FilterDefinition>,
+        ftag: String,
+        errors: MutableList<String>,
+    ) {
+        for (condition in filter.visibleWhen) {
+            val referenced = byId[condition.filter]
+            if (referenced == null) {
+                errors += "$ftag visibleWhen: references unknown filter '${condition.filter}'"
+                continue
+            }
+            if (condition.filter == filter.id) {
+                errors += "$ftag visibleWhen: a filter cannot depend on itself"
+            }
+            if (condition.anyOf.isEmpty()) {
+                errors += "$ftag visibleWhen: anyOf must not be empty"
+            }
+            // Enumerable referenced filters pin the value vocabulary; text/number can't be checked.
+            val possible =
+                when (referenced.type) {
+                    "select", "multiselect" -> referenced.options.map { it.value }.toSet()
+                    "toggle" -> setOf("true", "false")
+                    else -> null
+                }
+            if (possible != null) {
+                for (value in condition.anyOf) {
+                    if (value !in possible) {
+                        errors += "$ftag visibleWhen: anyOf value '$value' is not a possible value of " +
+                            "filter '${condition.filter}'"
+                    }
+                }
+            }
+        }
+    }
+
+    private fun validateFilterExcludeOf(
+        filter: FilterDefinition,
+        byId: Map<String, FilterDefinition>,
+        ftag: String,
+        errors: MutableList<String>,
+    ) {
+        if (filter.excludeOf.isBlank()) return
+        if (filter.type != "multiselect") {
+            errors += "$ftag excludeOf: only a multiselect can be an exclusion counterpart"
+        }
+        if (filter.excludeOf == filter.id) {
+            errors += "$ftag excludeOf: a filter cannot exclude against itself"
+            return
+        }
+        val included = byId[filter.excludeOf]
+        if (included == null) {
+            errors += "$ftag excludeOf: references unknown filter '${filter.excludeOf}'"
+            return
+        }
+        if (included.type != "multiselect") {
+            errors += "$ftag excludeOf: referenced filter '${filter.excludeOf}' must be a multiselect"
+        }
+        if (included.excludeOf.isNotBlank()) {
+            errors += "$ftag excludeOf: chained exclusion (referenced filter '${filter.excludeOf}' " +
+                "has excludeOf itself)"
+        }
+        val overlap = filter.defaults.toSet() intersect included.defaults.toSet()
+        if (overlap.isNotEmpty()) {
+            errors += "$ftag excludeOf: defaults overlap with filter '${filter.excludeOf}' ($overlap) — " +
+                "a value cannot default to included AND excluded"
+        }
+    }
+
+    // The visibleWhen graph must be acyclic: composition evaluates visibility against effective
+    // values in a single pass, which is only deterministic without cycles.
+    private fun detectVisibilityCycles(
+        filters: List<FilterDefinition>,
+        tag: String,
+        errors: MutableList<String>,
+    ) {
+        val edges = filters.associate { f -> f.id to f.visibleWhen.map { it.filter } }
+        val state = mutableMapOf<String, Int>() // 0/absent=unvisited, 1=in-stack, 2=done
+
+        fun visit(id: String): Boolean {
+            when (state[id]) {
+                1 -> return true // back edge — cycle
+                2 -> return false
+            }
+            state[id] = 1
+            for (next in edges[id].orEmpty()) {
+                if (next in edges && visit(next)) {
+                    return true
+                }
+            }
+            state[id] = 2
+            return false
+        }
+
+        for (filter in filters) {
+            if (state[filter.id] == null && visit(filter.id)) {
+                errors += "$tag filters: filter '${filter.id}': visibleWhen: dependency cycle detected"
+                return // one report is enough; the cycle names its entry point
+            }
+        }
+    }
+
     // The three host lists hold BARE hosts ("azoramoon.co"): matching against a stored URL's host
     // is exact, so a scheme/path/blank entry would silently never match — reject it at validation
     // (fail-closed) instead of letting a malformed entry neuter migration or trust.
@@ -214,5 +538,24 @@ class DefaultSourceConfigValidator(
         private val SUPPORTED_FORMATS = setOf("json", "html", "script-json")
         private val SUPPORTED_FILTER_OPS = setOf("equals", "notEquals", "contains", "notNull", "isNull")
         private val SUPPORTED_FILTER_MODES = setOf("include", "exclude")
+
+        // Config-driven search filters (CONFIG_DRIVEN_FILTERS_PLAN.md §4). `range`/`date` and
+        // non-search appliesTo verbs are reserved vocabulary: rejected here until an engine/UI
+        // consumer exists, so a config can never silently claim an unimplemented capability.
+        private val SUPPORTED_FILTER_TYPES = setOf("select", "multiselect", "toggle", "text", "number")
+        private val SUPPORTED_FILTER_TARGETS = setOf("query", "path", "form", "header", "body-json")
+        private val SUPPORTED_FILTER_ENCODINGS = setOf("single", "csv", "repeat", "json-array")
+        private val SUPPORTED_FILTER_VERBS = setOf("search")
+        private val POST_FORM_METHODS = setOf("post-form", "post_form", "postform")
+        private val POST_JSON_METHODS = setOf("post-json", "post_json", "postjson")
+        private val FILTER_ID = Regex("[a-z0-9_]{1,64}")
+        private val PLACEHOLDER_NAME = Regex("[a-zA-Z0-9_]+")
+
+        /** Vars `GenericSourceClient.vars()` always seeds — a filter placeholder must not shadow them. */
+        private val RESERVED_TEMPLATE_VARS =
+            setOf(
+                "baseUrl", "imageBase", "page", "pageOffset", "query",
+                "queryEncoded", "queryJson", "itemUrl", "chapterUrl", "id",
+            )
     }
 }
