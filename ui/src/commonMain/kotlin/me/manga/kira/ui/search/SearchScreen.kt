@@ -66,9 +66,11 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.core.error.AppError
+import me.manga.kira.domain.model.filters.FilterControlType
+import me.manga.kira.domain.model.filters.FilterOption
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.feedKey
-import me.manga.kira.domain.model.home.SearchFilters
 import me.manga.kira.presentation.mvi.UiState
 import me.manga.kira.presentation.search.SearchEffect
 import me.manga.kira.presentation.search.SearchIntent
@@ -278,14 +280,14 @@ internal fun SearchScreenContent(
     if (showFilters) {
         SearchFilterSheet(
             filters = state.filters,
-            selectedSort = state.selectedSort,
-            selectedGenres = state.selectedGenres,
-            // F1 (native parity): genre/sort selections fire an IMMEDIATE search and the sheet stays
-            // OPEN so results update live behind it (legacy `SearchBottomSheet` wired the chip/dropdown
-            // straight to `MangaViewModel.onGenreClicked` / `onSortClick`). `showFilters` is only
-            // flipped off by the Apply button (= `onDismiss`) or a sheet swipe-down.
-            onGenreClick = { onIntent(SearchIntent.OnGenreClick(it)) },
-            onSortSelect = { onIntent(SearchIntent.OnSortSelect(it)) },
+            selections = state.selections,
+            // F1 (native parity): filter changes fire an IMMEDIATE search and the sheet stays OPEN
+            // so results update live behind it (legacy `SearchBottomSheet` wired the chip/dropdown
+            // straight to `MangaViewModel.onGenreClicked` / `onSortClick`; the generic renderer
+            // generalizes that to every control type). `showFilters` is only flipped off by the
+            // bottom button (= `onDismiss`) or a sheet swipe-down.
+            onFilterChange = { id, values -> onIntent(SearchIntent.OnFilterChange(id, values)) },
+            onResetFilters = { onIntent(SearchIntent.OnResetFilters) },
             onDismiss = { showFilters = false },
         )
     }
@@ -829,7 +831,20 @@ private fun SearchScreenSinglePreview() {
             query = "naruto",
             mode = SearchModeTab.SINGLE,
             single = UiState.Success(previewResults(8)),
-            filters = SearchFilters(sortTypes = listOf("Latest", "Popular"), genres = listOf("Action", "Romance")),
+            filters = listOf(
+                SourceFilter(
+                    id = "genres",
+                    label = "genres",
+                    type = FilterControlType.MULTISELECT,
+                    options = listOf("Action", "Romance").map { FilterOption(it, it) },
+                ),
+                SourceFilter(
+                    id = "sort",
+                    label = "sort",
+                    type = FilterControlType.SELECT,
+                    options = listOf("Latest", "Popular").map { FilterOption(it, it) },
+                ),
+            ),
         ),
         effects = kotlinx.coroutines.flow.emptyFlow(),
         onIntent = {},

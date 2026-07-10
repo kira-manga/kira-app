@@ -1,7 +1,7 @@
 package me.manga.kira.presentation.search
 
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchFilters
 import me.manga.kira.presentation.mvi.MviState
 import me.manga.kira.presentation.mvi.UiState
 
@@ -15,7 +15,8 @@ enum class SearchModeTab {
 }
 
 /**
- * Immutable Search screen state (Epic H3b).
+ * Immutable Search screen state (Epic H3b; filters generalized by the config-driven filters
+ * campaign, 2026-07).
  *
  * UiState modelling:
  *  - [single] uses the [UiState] envelope (Loading / Success / Error) because the single-source
@@ -25,21 +26,24 @@ enum class SearchModeTab {
  *    only shape that fits a per-repo collection (the split-flag shape `DetailsState` uses cannot be
  *    stored as a map value).
  *
- * Legacy parity (`MangaViewModel` single-source search + `HomeViewModel` multi-repo fan-out):
- *  - [query] is the live search text; [mode] is the single/multi tab.
- *  - [filters] holds the source's available sort types + genres for the filter sheet; [selectedSort]
- *    and [selectedGenres] are the active selections applied to a single-source search.
- *  - [hasSearched] tracks whether a real search has run since the overlay opened (a genre/sort
- *    browse runs with a deliberately blank [query], so the idle/empty-state heuristic can't be
- *    derived from `query.isBlank()`).
+ * Filters (config-driven, one model for generic AND legacy sources):
+ *  - [filters] holds the active source's ORDERED filter descriptors — from the validated config
+ *    stanza for a config-backed source, from the legacy sortTypes/allGenres adapter otherwise. The
+ *    sheet renders them in list order; empty = plain search only.
+ *  - [selections] is the user's current values keyed by filter id (backend option values /
+ *    `"true"`/`"false"` for toggles / free text). Reconciled on every filter load: unknown ids and
+ *    values from a previous source are dropped, defaults are seeded for untouched filters — so
+ *    switching sources can never leak incompatible selections.
+ *  - [hasSearched] tracks whether a real search has run since the overlay opened (a filter browse
+ *    runs with a deliberately blank [query], so the idle/empty-state heuristic can't be derived
+ *    from `query.isBlank()`).
  */
 data class SearchState(
     val query: String = "",
     val mode: SearchModeTab = SearchModeTab.SINGLE,
     val single: UiState<List<HomeFeedItem>> = UiState.Success(emptyList()),
     val multi: Map<String, UiState<List<HomeFeedItem>>> = emptyMap(),
-    val filters: SearchFilters = SearchFilters(sortTypes = emptyList(), genres = emptyList()),
-    val selectedSort: String? = null,
-    val selectedGenres: List<String> = emptyList(),
+    val filters: List<SourceFilter> = emptyList(),
+    val selections: Map<String, List<String>> = emptyMap(),
     val hasSearched: Boolean = false,
 ) : MviState

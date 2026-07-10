@@ -10,6 +10,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.filters.FilterControlType
+import me.manga.kira.domain.model.filters.FilterOption
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.usecase.home.LoadSearchFiltersUseCase
 import me.manga.kira.domain.usecase.home.SearchAllReposUseCase
@@ -126,83 +129,105 @@ class SearchViewModelTest {
             assertTrue(searchRepo.calls.isEmpty(), "tab switch is view-only: ${searchRepo.calls}")
         }
 
-    // F1 (native parity): tapping a genre chip fires an IMMEDIATE genre-browse search even when no
-    // query is typed. F2: that search blanks the text query (genre-only browse) and runs the GENRES
-    // mode — mirrors `MangaViewModel.onGenreClicked { startSearch(GENRES(genres = type, query = "")) }`.
+    /** Load a genres+sort filter pair (the legacy-adapter shape) into the VM's state. */
+    private suspend fun SearchViewModel.loadStandardFilters() {
+        homeRepo.sourceFilters =
+            listOf(
+                SourceFilter(
+                    id = "genres",
+                    label = "genres",
+                    type = FilterControlType.SELECT,
+                    options = listOf("Action", "Drama").map { FilterOption(it, it) },
+                ),
+                SourceFilter(
+                    id = "sort",
+                    label = "sort",
+                    type = FilterControlType.SELECT,
+                    options = listOf("Latest", "Popular").map { FilterOption(it, it) },
+                ),
+            )
+        submit(SearchIntent.OnLoadFilters)
+    }
+
+    // F1 (native parity): a genre selection fires an IMMEDIATE genre-browse search even when no
+    // query is typed, with the text query blanked (genre-only browse) — mirrors
+    // `MangaViewModel.onGenreClicked { startSearch(GENRES(genres = type, query = "")) }`.
     @Test
-    fun genreClick_runsImmediateGenresSearch_withBlankQuery() =
+    fun genresChange_runsImmediateBrowse_withBlankQuery() =
         runTest {
             val vm = vm()
+            vm.loadStandardFilters()
             searchRepo.singleResult = AppResult.Success(listOf(sampleFeedItem(title = "Hit")))
-            vm.submit(SearchIntent.OnGenreClick("Action"))
-            assertEquals(listOf("Action"), vm.state.value.selectedGenres)
-            // Query is forced blank; mode is GENRES.
-            assertTrue(searchRepo.calls.contains("searchSource(,GENRES)"), searchRepo.calls.toString())
+            vm.submit(SearchIntent.OnFilterChange("genres", listOf("Action")))
+            assertEquals(listOf("Action"), vm.state.value.selections["genres"])
+            // Query is forced blank; the selections carry the genre.
+            assertTrue(searchRepo.calls.any { it.startsWith("searchSource(,") }, searchRepo.calls.toString())
+            assertEquals(mapOf("genres" to listOf("Action")), searchRepo.lastSelections?.byId)
         }
 
-    // F1: re-tapping the selected genre clears it (null), returning to a normal search with the
-    // live query.
+    // F1: clearing the genre selection returns to a normal search with the live query.
     @Test
-    fun genreReClick_clearsSelection_andRunsNormalSearch() =
+    fun genresCleared_runsPlainSearch_withLiveQuery() =
         runTest {
             val vm = vm()
+            vm.loadStandardFilters()
             searchRepo.singleResult = AppResult.Success(emptyList())
             vm.submit(SearchIntent.OnQueryChange("naruto"))
-            vm.submit(SearchIntent.OnGenreClick("Action"))
-            vm.submit(SearchIntent.OnGenreClick(null))
-            assertTrue(
-                vm.state.value.selectedGenres
-                    .isEmpty(),
-            )
-            assertTrue(searchRepo.calls.contains("searchSource(naruto,NORMAL)"), searchRepo.calls.toString())
+            vm.submit(SearchIntent.OnFilterChange("genres", listOf("Action")))
+            vm.submit(SearchIntent.OnFilterChange("genres", emptyList()))
+            assertTrue(vm.state.value.selections["genres"].orEmpty().isEmpty())
+            assertTrue(searchRepo.calls.any { it.startsWith("searchSource(naruto,") }, searchRepo.calls.toString())
+            assertEquals(emptyMap(), searchRepo.lastSelections?.byId)
         }
 
-    // F1: picking a sort option fires an IMMEDIATE sorted search, preserving the live query —
-    // mirrors `MangaViewModel.onSortClick { startSearch(SORT(query = query, sortType = type, genres)) }`.
+    // F1: picking a sort fires an IMMEDIATE sorted search, preserving the live query — mirrors
+    // `MangaViewModel.onSortClick { startSearch(SORT(query = query, sortType = type, genres)) }`.
     @Test
-    fun sortSelect_runsImmediateSortSearch_withLiveQuery() =
+    fun sortChange_runsImmediateSearch_withLiveQuery() =
         runTest {
             val vm = vm()
+            vm.loadStandardFilters()
             searchRepo.singleResult = AppResult.Success(emptyList())
             vm.submit(SearchIntent.OnQueryChange("one piece"))
-            vm.submit(SearchIntent.OnSortSelect("Popular"))
-            assertEquals("Popular", vm.state.value.selectedSort)
-            assertTrue(searchRepo.calls.contains("searchSource(one piece,SORT)"), searchRepo.calls.toString())
+            vm.submit(SearchIntent.OnFilterChange("sort", listOf("Popular")))
+            assertEquals(listOf("Popular"), vm.state.value.selections["sort"])
+            assertTrue(searchRepo.calls.any { it.startsWith("searchSource(one piece,") }, searchRepo.calls.toString())
+            assertEquals(mapOf("sort" to listOf("Popular")), searchRepo.lastSelections?.byId)
         }
 
-    // F2: after a genre browse, typing a new query fires a plain NORMAL search (the typed query is a
-    // fresh normal search, not a continuation of the GENRES filter that would blank it) — mirrors
+    // F2 (regression guard): a typed submit is a PLAIN search — the sheet's selections stay
+    // display-only on submit; they apply through the immediate-apply filter changes only. Mirrors
     // native `onSearchChange = { startSearch(SearchType.Normal(q)) }`.
     @Test
-    fun queryChange_afterGenre_runsNormalSearch_notGenres() =
+    fun submit_afterFilterSelection_runsPlainSearch() =
         runTest {
             val vm = vm()
+            vm.loadStandardFilters()
             searchRepo.singleResult = AppResult.Success(emptyList())
-            vm.submit(SearchIntent.OnGenreClick("Action"))
+            vm.submit(SearchIntent.OnFilterChange("genres", listOf("Action")))
             searchRepo.calls.clear()
             vm.submit(SearchIntent.OnQueryChange("bleach"))
             vm.submit(SearchIntent.OnSubmit)
-            assertTrue(searchRepo.calls.contains("searchSource(bleach,NORMAL)"), searchRepo.calls.toString())
-            assertFalse(searchRepo.calls.any { it.contains("GENRES") }, searchRepo.calls.toString())
+            assertTrue(searchRepo.calls.any { it.startsWith("searchSource(bleach,") }, searchRepo.calls.toString())
+            assertEquals(emptyMap(), searchRepo.lastSelections?.byId, "submit sends NO filter selections (F2)")
         }
 
-    // S-9 (native parity): native's SORT search carries the chosen genre ALONGSIDE the sort type
-    // (`SearchType.SORT(query, sortType, genres)`). On the derived path (applying both a sort and a
-    // genre), a selected sort takes precedence so the request runs in SORT mode — NOT GENRES, which
-    // would drop the sort. `searchSource(...)` is invoked with both `sort` and `genres` so the genre
-    // still reaches the source.
+    // Both a sort and a genre selected → ONE search carrying BOTH selections (the generic model
+    // sends the whole selection set; the legacy sort>genres precedence is a `:data` translation
+    // concern, pinned in GenericFilterRoutingTest).
     @Test
-    fun applyFilters_withSortAndGenre_runsSortNotGenres() =
+    fun sortAndGenre_bothTravelInTheSelections() =
         runTest {
             val vm = vm()
+            vm.loadStandardFilters()
             searchRepo.singleResult = AppResult.Success(emptyList())
             vm.submit(SearchIntent.OnQueryChange("one piece"))
-            searchRepo.calls.clear()
-            vm.submit(SearchIntent.OnApplyFilters(sort = "Popular", genres = listOf("Action")))
-            assertEquals("Popular", vm.state.value.selectedSort)
-            assertEquals(listOf("Action"), vm.state.value.selectedGenres)
-            assertTrue(searchRepo.calls.contains("searchSource(one piece,SORT)"), searchRepo.calls.toString())
-            assertFalse(searchRepo.calls.any { it.contains("GENRES") }, searchRepo.calls.toString())
+            vm.submit(SearchIntent.OnFilterChange("genres", listOf("Action")))
+            vm.submit(SearchIntent.OnFilterChange("sort", listOf("Popular")))
+            assertEquals(
+                mapOf("genres" to listOf("Action"), "sort" to listOf("Popular")),
+                searchRepo.lastSelections?.byId,
+            )
         }
 
     // S-6 (native parity): closing the overlay wipes the query + results + filter selections so a
@@ -211,17 +236,17 @@ class SearchViewModelTest {
     fun close_clearsQueryResultsAndSelections() =
         runTest {
             val vm = vm()
+            vm.loadStandardFilters()
             searchRepo.singleResult = AppResult.Success(listOf(sampleFeedItem(title = "Hit")))
             vm.submit(SearchIntent.OnQueryChange("naruto"))
-            vm.submit(SearchIntent.OnGenreClick("Action"))
-            vm.submit(SearchIntent.OnSortSelect("Popular"))
+            vm.submit(SearchIntent.OnFilterChange("genres", listOf("Action")))
+            vm.submit(SearchIntent.OnFilterChange("sort", listOf("Popular")))
 
             vm.submit(SearchIntent.OnClose)
 
             val state = vm.state.value
             assertEquals("", state.query)
-            assertTrue(state.selectedGenres.isEmpty(), state.selectedGenres.toString())
-            assertEquals(null, state.selectedSort)
+            assertTrue(state.selections.isEmpty(), state.selections.toString())
             val single = state.single
             assertTrue(single is me.manga.kira.presentation.mvi.UiState.Success && single.data.isEmpty())
             assertTrue(state.multi.isEmpty())

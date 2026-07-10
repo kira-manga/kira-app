@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Config-driven filters (2026-07): generic filter-sheet strings. Standard-id section titles for
+     status/language/type (genres/sort reuse the existing search keys) + the Reset action. -->
+<resources>
+    <string name="filters_pfix_reset">Réinitialiser</string>
+    <string name="filters_pfix_status">Statut</string>
+    <string name="filters_pfix_language">Langue</string>
+    <string name="filters_pfix_type">Type</string>
+</resources>
