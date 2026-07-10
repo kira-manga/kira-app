@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.filters.FilterSelections
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
@@ -93,6 +95,15 @@ class FakeHomeFeedRepository : HomeFeedRepository {
         calls += "loadFilters()"
         return filtersResult ?: AppResult.Success(filters)
     }
+
+    /** Config-driven filter descriptors (2026-07); [sourceFiltersResult] overrides for failure-path tests. */
+    var sourceFilters: List<SourceFilter> = emptyList()
+    var sourceFiltersResult: AppResult<List<SourceFilter>>? = null
+
+    override suspend fun loadSourceFilters(): AppResult<List<SourceFilter>> {
+        calls += "loadSourceFilters()"
+        return sourceFiltersResult ?: AppResult.Success(sourceFilters)
+    }
 }
 
 class FakeSearchRepository : SearchRepository {
@@ -112,6 +123,19 @@ class FakeSearchRepository : SearchRepository {
         genres: List<String>,
     ): AppResult<List<HomeFeedItem>> {
         calls += "searchSource($query,$mode)"
+        searchSourceThrows?.let { throw it }
+        return singleResult
+    }
+
+    /** The selections the last filtered [searchSource] received (config-driven filters, 2026-07). */
+    var lastSelections: FilterSelections? = null
+
+    override suspend fun searchSource(
+        query: String,
+        selections: FilterSelections,
+    ): AppResult<List<HomeFeedItem>> {
+        calls += "searchSource($query,filters=${selections.byId})"
+        lastSelections = selections
         searchSourceThrows?.let { throw it }
         return singleResult
     }

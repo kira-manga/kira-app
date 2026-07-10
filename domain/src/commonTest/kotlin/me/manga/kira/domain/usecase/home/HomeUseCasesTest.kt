@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.filters.FilterSelections
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SearchFilters
@@ -48,6 +50,7 @@ class HomeUseCasesTest {
         var moreResult: AppResult<List<HomeFeedItem>> = AppResult.Success(emptyList())
         var featuredResult: AppResult<List<FeaturedManga>> = AppResult.Success(emptyList())
         var filters = SearchFilters(emptyList(), emptyList())
+        var sourceFilters: List<SourceFilter> = emptyList()
         val selectedTabs = mutableListOf<Int>()
         val selectedSources = mutableListOf<String>()
         var lastFetchReset: Boolean? = null
@@ -64,6 +67,7 @@ class HomeUseCasesTest {
         override suspend fun fetchMore(page: Int): AppResult<List<HomeFeedItem>> = moreResult
         override suspend fun fetchFeatured(): AppResult<List<FeaturedManga>> = featuredResult
         override suspend fun loadFilters(): AppResult<SearchFilters> = AppResult.Success(filters)
+        override suspend fun loadSourceFilters(): AppResult<List<SourceFilter>> = AppResult.Success(sourceFilters)
     }
 
     private class FakeSearchRepository : SearchRepository {
@@ -75,6 +79,11 @@ class HomeUseCasesTest {
             mode: SearchMode,
             sort: String?,
             genres: List<String>,
+        ): AppResult<List<HomeFeedItem>> = sourceResult
+
+        override suspend fun searchSource(
+            query: String,
+            selections: FilterSelections,
         ): AppResult<List<HomeFeedItem>> = sourceResult
 
         override fun searchAllRepos(query: String): Flow<Map<String, AppResult<List<HomeFeedItem>>>> =

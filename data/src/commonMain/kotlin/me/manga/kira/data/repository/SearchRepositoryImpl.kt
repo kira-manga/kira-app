@@ -13,9 +13,11 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.data.mapper.classifyHomeThrowable
+import me.manga.kira.data.mapper.legacySearchTypeOf
 import me.manga.kira.data.mapper.searchTypeOf
 import me.manga.kira.data.mapper.toAppError
 import me.manga.kira.data.mapper.toHomeFeedItem
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SearchMode
 import me.manga.kira.domain.repository.SearchRepository
@@ -96,6 +98,43 @@ class SearchRepositoryImpl(
                 )
             val searchType = searchTypeOf(query = query, mode = mode, sort = sort, genres = genres)
             when (val terminal = repo.fetchSearchDataF(searchType).awaitTerminalState()) {
+                is LegacyState.Success -> AppResult.Success(terminal.data.map { it.toHomeFeedItem() })
+                is LegacyState.Error -> AppResult.Failure(terminal.toAppError())
+                LegacyState.Loading -> error("Filtered above")
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            AppResult.Failure(classifyHomeThrowable(t))
+        }
+    }
+
+    override suspend fun searchSource(
+        query: String,
+        selections: FilterSelections,
+    ): AppResult<List<HomeFeedItem>> = withContext(dispatchers.io) {
+        try {
+            val active = activeConfigBackedSource()
+            if (sourceRegistry.isConfigBacked(active.api)) {
+                // Config-backed → ALWAYS the generic engine, filtered or not (config-driven
+                // filters, 2026-07). There is deliberately NO drop-to-legacy here: the source's
+                // validated stanza is the only filter authority, and selections it doesn't declare
+                // are ignored by the request composer. Falling back to the legacy scraper for an
+                // "incomplete" filter config would silently apply DIFFERENT filter semantics — the
+                // forbidden wrong-but-Success mode.
+                val client = sourceRegistry.get(active.api)
+                    ?: return@withContext AppResult.Failure(
+                        AppError.Unexpected("Config-backed source '${active.api}' resolved no client"),
+                    )
+                return@withContext client.search(query, page = 1, filters = selections)
+            }
+            // Legacy floor: translate the standard sort/genres selections onto the legacy
+            // SearchType (sort > genres precedence, CSV genres — pre-generic semantics unchanged).
+            val repo = active.legacyRepo
+                ?: return@withContext AppResult.Failure(
+                    AppError.Unexpected("Source '${active.api}' has no legacy search path"),
+                )
+            when (val terminal = repo.fetchSearchDataF(legacySearchTypeOf(query, selections)).awaitTerminalState()) {
                 is LegacyState.Success -> AppResult.Success(terminal.data.map { it.toHomeFeedItem() })
                 is LegacyState.Error -> AppResult.Failure(terminal.toAppError())
                 LegacyState.Loading -> error("Filtered above")

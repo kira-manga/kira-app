@@ -2,6 +2,7 @@ package me.manga.kira.domain.repository
 
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SearchFilters
@@ -59,4 +60,12 @@ interface HomeFeedRepository {
 
     /** Read the active source's available sort types + genres for the search filter sheet. */
     suspend fun loadFilters(): AppResult<SearchFilters>
+
+    /**
+     * Read the active source's ORDERED advanced-filter descriptors (config-driven filters,
+     * 2026-07): a config-backed source serves them from its validated stanza; a legacy source's
+     * `sortTypes`/`allGenres` are adapted into the same shape in `:data`, so the UI renders one
+     * model for both worlds. Empty = the source supports plain text search only.
+     */
+    suspend fun loadSourceFilters(): AppResult<List<SourceFilter>>
 }

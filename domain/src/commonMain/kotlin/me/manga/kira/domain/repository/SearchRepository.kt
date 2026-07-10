@@ -2,6 +2,7 @@ package me.manga.kira.domain.repository
 
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SearchMode
 
@@ -32,6 +33,19 @@ interface SearchRepository {
         mode: SearchMode,
         sort: String?,
         genres: List<String>,
+    ): AppResult<List<HomeFeedItem>>
+
+    /**
+     * Search the active source with generic filter [selections] (config-driven filters, 2026-07).
+     *
+     * Routing invariant: a config-backed source ALWAYS runs through the generic engine — filtered
+     * or not — and never falls back to legacy filter code (selections its config doesn't declare
+     * simply don't exist). A legacy source has its `sort`/`genres` selections translated to the
+     * legacy `SearchType` inside `:data`, keeping every legacy source functional unchanged.
+     */
+    suspend fun searchSource(
+        query: String,
+        selections: FilterSelections,
     ): AppResult<List<HomeFeedItem>>
 
     /**

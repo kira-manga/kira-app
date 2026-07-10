@@ -16,7 +16,9 @@ import me.manga.kira.data.mapper.toAppError
 import me.manga.kira.data.mapper.toFeatured
 import me.manga.kira.data.mapper.toHomeFeedItem
 import me.manga.kira.data.mapper.toSiteState
+import me.manga.kira.data.mapper.toSourceFilters
 import me.manga.kira.data.mapper.toSourceTab
+import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SearchFilters
@@ -326,6 +328,24 @@ class HomeFeedRepositoryImpl(
                 sortTypes = legacy?.sortTypes?.toList().orEmpty(),
                 genres = legacy?.allGenres?.toList().orEmpty(),
             ),
+        )
+    }
+
+    override suspend fun loadSourceFilters(): AppResult<List<SourceFilter>> = withContext(dispatchers.io) {
+        val active = when (val r = activeSourceResult()) {
+            is AppResult.Success -> r.value
+            is AppResult.Failure -> return@withContext r
+        }
+        // Config-driven filters (2026-07): a config-backed source's filters come from its VALIDATED
+        // stanza (descriptor projection, ordered as authored) — never from a legacy repo, even when
+        // a compiled one still ships beside the config. A legacy source adapts sortTypes/allGenres
+        // into the same shape. Never a failure — an empty filter set is the honest answer.
+        AppResult.Success(
+            if (sourceRegistry.isConfigBacked(active.api)) {
+                sourceRegistry.descriptor(active.api)?.filters.orEmpty()
+            } else {
+                active.legacyRepo?.toSourceFilters().orEmpty()
+            },
         )
     }
 
