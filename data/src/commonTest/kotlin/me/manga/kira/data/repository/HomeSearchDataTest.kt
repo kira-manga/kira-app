@@ -16,7 +16,6 @@ import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.entity.SourcesEntity
-import me.manga.kira.data.mapper.searchTypeOf
 import me.manga.kira.data.mapper.toFeatured
 import me.manga.kira.data.mapper.toHomeFeedItem
 import me.manga.kira.data.mapper.toSiteState
@@ -26,7 +25,6 @@ import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchMode
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
@@ -237,24 +235,6 @@ class HomeSearchDataTest {
         assertEquals(SiteState.UNDER_MAINTENANCE, SourceState.UNDER_MAINTENANCE.toSiteState())
         assertEquals(SiteState.STOPPED, SourceState.STOPPED.toSiteState())
         assertEquals(SiteState.ADULT_18_PLUS, SourceState.ADULT_18_PLUS.toSiteState())
-    }
-
-    @Test
-    fun searchMode_maps_to_legacy_searchType() {
-        val normal = searchTypeOf("naruto", SearchMode.NORMAL, sort = null, genres = emptyList())
-        assertTrue(normal is SearchType.Normal)
-        assertEquals("naruto", (normal as SearchType.Normal).query)
-
-        val sort = searchTypeOf("q", SearchMode.SORT, sort = "Latest", genres = listOf("Action", "Drama"))
-        assertTrue(sort is SearchType.SORT)
-        sort as SearchType.SORT
-        assertEquals("q", sort.query)
-        assertEquals("Latest", sort.sortType)
-        assertEquals("Action,Drama", sort.genres)
-
-        val genres = searchTypeOf("", SearchMode.GENRES, sort = null, genres = listOf("Action"))
-        assertTrue(genres is SearchType.GENRES)
-        assertEquals("Action", (genres as SearchType.GENRES).genres)
     }
 
     // --- HomeFeedRepositoryImpl.fetchHome -------------------------------------------------------

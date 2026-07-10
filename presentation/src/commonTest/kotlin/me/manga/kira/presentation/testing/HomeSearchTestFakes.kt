@@ -10,8 +10,6 @@ import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchFilters
-import me.manga.kira.domain.model.home.SearchMode
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.home.SourceTab
 import me.manga.kira.domain.repository.HomeFeedRepository
@@ -59,7 +57,6 @@ class FakeHomeFeedRepository : HomeFeedRepository {
      */
     var fetchMoreGate: CompletableDeferred<Unit>? = null
     var featuredResult: AppResult<List<FeaturedManga>> = AppResult.Success(emptyList())
-    var filters: SearchFilters = SearchFilters(sortTypes = emptyList(), genres = emptyList())
 
     override fun observeSourceTabs(): Flow<List<SourceTab>> = sourceTabs.asStateFlow()
     override fun observeActiveTabIndex(): Flow<Int> = activeTabIndex.asStateFlow()
@@ -88,14 +85,6 @@ class FakeHomeFeedRepository : HomeFeedRepository {
         return featuredResult
     }
 
-    /** When set, [loadFilters] returns this instead of `AppResult.Success(filters)` (failure-path tests). */
-    var filtersResult: AppResult<SearchFilters>? = null
-
-    override suspend fun loadFilters(): AppResult<SearchFilters> {
-        calls += "loadFilters()"
-        return filtersResult ?: AppResult.Success(filters)
-    }
-
     /** Config-driven filter descriptors (2026-07); [sourceFiltersResult] overrides for failure-path tests. */
     var sourceFilters: List<SourceFilter> = emptyList()
     var sourceFiltersResult: AppResult<List<SourceFilter>>? = null
@@ -115,17 +104,6 @@ class FakeSearchRepository : SearchRepository {
 
     /** Per-query flows the multi-repo fan-out returns. New query → look up by query text. */
     val multiFlows: MutableMap<String, Flow<Map<String, AppResult<List<HomeFeedItem>>?>>> = mutableMapOf()
-
-    override suspend fun searchSource(
-        query: String,
-        mode: SearchMode,
-        sort: String?,
-        genres: List<String>,
-    ): AppResult<List<HomeFeedItem>> {
-        calls += "searchSource($query,$mode)"
-        searchSourceThrows?.let { throw it }
-        return singleResult
-    }
 
     /** The selections the last filtered [searchSource] received (config-driven filters, 2026-07). */
     var lastSelections: FilterSelections? = null

@@ -6,7 +6,6 @@ import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchMode
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.home.SourceTab
 import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
@@ -123,34 +122,6 @@ internal fun SourceState.toSiteState(): SiteState = when (this) {
     SourceState.UNDER_MAINTENANCE -> SiteState.UNDER_MAINTENANCE
     SourceState.STOPPED -> SiteState.STOPPED
     SourceState.ADULT_18_PLUS -> SiteState.ADULT_18_PLUS
-}
-
-/**
- * Build the legacy [SearchType] a single-source search dispatches on, from the rework
- * [SearchMode] + chosen sort/genres. Confined to `:data` — `:domain` never sees [SearchType]
- * (locked decision H-§87).
- *
- * The legacy `SearchType.SORT` / `SearchType.GENRES` carry genres as a single comma-joined String
- * (the per-source repos split it back out), so the rework `List<String>` is joined with `","`
- * here — matching the legacy `MangaViewModel.onSortClick` / `onGenreClicked` call shapes that
- * passed an already-joined `genres` string.
- */
-internal fun searchTypeOf(
-    query: String,
-    mode: SearchMode,
-    sort: String?,
-    genres: List<String>,
-): SearchType = when (mode) {
-    SearchMode.NORMAL -> SearchType.Normal(query = query)
-    SearchMode.SORT -> SearchType.SORT(
-        query = query,
-        sortType = sort.orEmpty(),
-        genres = genres.joinToString(","),
-    )
-    SearchMode.GENRES -> SearchType.GENRES(
-        query = query,
-        genres = genres.joinToString(","),
-    )
 }
 
 /**

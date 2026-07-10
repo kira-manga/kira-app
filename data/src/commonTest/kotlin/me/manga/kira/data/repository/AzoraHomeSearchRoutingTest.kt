@@ -113,7 +113,7 @@ class AzoraHomeSearchRoutingTest {
                 }
             val repo = searchRepo(FakeMangaRepo("Azora", search = legacySearch("LEGACY")), registry)
 
-            val result = repo.searchSource("one piece", me.manga.kira.domain.model.home.SearchMode.NORMAL, null, emptyList()).valueOrFail()
+            val result = repo.searchSource("one piece", FilterSelections()).valueOrFail()
             assertEquals(listOf("GENERIC"), result.map { it.title })
             assertEquals(listOf("Azora"), registry.getCalls)
         }
@@ -135,7 +135,7 @@ class AzoraHomeSearchRoutingTest {
             val registry = FakeRegistry(piloted = setOf("Azora")) { error("registry must not serve a non-pilot") }
             val repo = searchRepo(FakeMangaRepo("Other", search = legacySearch("LEGACY")), registry)
 
-            val result = repo.searchSource("q", me.manga.kira.domain.model.home.SearchMode.NORMAL, null, emptyList()).valueOrFail()
+            val result = repo.searchSource("q", FilterSelections()).valueOrFail()
             assertEquals(listOf("LEGACY"), result.map { it.title })
             assertEquals(emptyList(), registry.getCalls)
         }
@@ -166,7 +166,7 @@ class AzoraHomeSearchRoutingTest {
             val legacyAzora = FakeMangaRepo("Azora", search = legacySearch("LEGACY"))
             val repo = searchRepo(legacyAzora, registry)
 
-            val result = repo.searchSource("q", me.manga.kira.domain.model.home.SearchMode.NORMAL, null, emptyList())
+            val result = repo.searchSource("q", FilterSelections())
             assertTrue(result is AppResult.Failure && (result.error as? AppError.Network.Http)?.statusCode == 403)
             assertEquals(0, legacyAzora.searchCalls) // legacy Search scraper never invoked for a config-backed source
         }

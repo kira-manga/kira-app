@@ -5,7 +5,6 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchFilters
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.home.SourceTab
 
@@ -24,9 +23,9 @@ import me.manga.kira.domain.model.home.SourceTab
  *    [Flow]s — they don't fail, so they aren't wrapped.
  *  - Home feed / featured fetches are one-shot network calls that can fail, so they return
  *    [AppResult] carrying a typed `AppError` on the failure branch.
- *  - [loadFilters] reads the active source's sort/genre lists, but active-source resolution can
- *    throw (e.g. a Room read error in the active-repo flow), so it returns [AppResult] carrying a
- *    typed `AppError` on failure rather than letting the throw escape raw at this rework boundary.
+ *  - [loadSourceFilters] reads the active source's filter descriptors, but active-source
+ *    resolution can throw (e.g. a Room read error in the active-repo flow), so it returns
+ *    [AppResult] carrying a typed `AppError` on failure rather than letting the throw escape raw.
  */
 interface HomeFeedRepository {
 
@@ -57,9 +56,6 @@ interface HomeFeedRepository {
 
     /** Fetch the active source's popular carousel items. */
     suspend fun fetchFeatured(): AppResult<List<FeaturedManga>>
-
-    /** Read the active source's available sort types + genres for the search filter sheet. */
-    suspend fun loadFilters(): AppResult<SearchFilters>
 
     /**
      * Read the active source's ORDERED advanced-filter descriptors (config-driven filters,

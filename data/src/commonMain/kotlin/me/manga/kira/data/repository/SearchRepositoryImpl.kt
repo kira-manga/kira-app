@@ -14,12 +14,10 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.data.mapper.classifyHomeThrowable
 import me.manga.kira.data.mapper.legacySearchTypeOf
-import me.manga.kira.data.mapper.searchTypeOf
 import me.manga.kira.data.mapper.toAppError
 import me.manga.kira.data.mapper.toHomeFeedItem
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchMode
 import me.manga.kira.domain.repository.SearchRepository
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources_repositry.BaseMangaRepository
@@ -31,17 +29,18 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * Source-backed [SearchRepository] strangler-fig implementation (Epic H2).
  *
- * SRP (contract §6): owns ONE rule — "build the legacy `SearchType` from the rework search axes,
- * dispatch it onto the active source's `fetchSearchDataF` for single-source search, and fan the
- * plain-text query out across all enabled sources merging per-repo results for the aggregated
- * tab". Source-routing + the per-source search-URL shape live in the legacy `:shared`
- * [BaseMangaRepository] / [LegacySourcesRepository]; this impl is a thin builder + classifier on top.
+ * SRP (contract §6): owns ONE rule — "route a single-source search (query + generic filter
+ * selections) onto the right engine — the generic client for a config-backed source, the legacy
+ * `fetchSearchDataF` (selections translated to `SearchType`) otherwise — and fan the plain-text
+ * query out across all enabled sources merging per-repo results for the aggregated tab".
+ * Source-routing + the per-source search-URL shape live in the generic engine / the legacy
+ * [BaseMangaRepository]; this impl is a thin router + classifier on top.
  *
  * **Temporary `:data` → `:shared` seam**: same boundary as [HomeFeedRepositoryImpl] —
  * [LegacySourcesRepository], [BaseMangaRepository], [SearchType], [LegacyState], [LegacyMangaItem]
- * all live in `:shared`. The `:domain` [SearchRepository] interface never sees [SearchType]
- * (locked decision H-§87 — the rework [SearchMode] + sort/genres are translated to [SearchType]
- * inside `searchTypeOf`).
+ * all live in `:sources:legacy`. The `:domain` [SearchRepository] interface never sees
+ * [SearchType] (locked decision H-§87 — generic filter selections are translated to [SearchType]
+ * inside `legacySearchTypeOf` for legacy sources only).
  *
  * **Legacy method binding**:
  *  - [searchSource] ← the active [BaseMangaRepository.fetchSearchDataF] (BaseMangaRepository.kt:48),
@@ -71,43 +70,6 @@ class SearchRepositoryImpl(
     private val dispatchers: DispatcherProvider,
     private val sourceRegistry: SourceRegistry,
 ) : SearchRepository {
-
-    override suspend fun searchSource(
-        query: String,
-        mode: SearchMode,
-        sort: String?,
-        genres: List<String>,
-    ): AppResult<List<HomeFeedItem>> = withContext(dispatchers.io) {
-        try {
-            val active = activeConfigBackedSource()
-            // Config-backed source → the generic engine (query search, page 1) — but ONLY for
-            // plain-text search. The MangaSourceClient contract carries no sort/genre axes, so a
-            // SORT/GENRES request (or a NORMAL one that still carries sort/genres) must drop to the
-            // legacy `fetchSearchDataF` path, which honours the source's real sortTypes/allGenres
-            // support (and naturally yields plain results for sources that expose none) instead of
-            // silently discarding the filters. Sort/genre search is therefore a legacy-repo
-            // capability: the 12 pilots keep it via their compiled repos; a config-only source
-            // offers no filters (loadFilters returns empty) so this branch is unreachable for it.
-            val isPlainTextSearch = mode == SearchMode.NORMAL && sort == null && genres.isEmpty()
-            if (isPlainTextSearch && sourceRegistry.isConfigBacked(active.api)) {
-                sourceRegistry.get(active.api)?.let { return@withContext it.search(query, page = 1) }
-            }
-            val repo = active.legacyRepo
-                ?: return@withContext AppResult.Failure(
-                    AppError.Unexpected("Source '${active.api}' has no legacy search path"),
-                )
-            val searchType = searchTypeOf(query = query, mode = mode, sort = sort, genres = genres)
-            when (val terminal = repo.fetchSearchDataF(searchType).awaitTerminalState()) {
-                is LegacyState.Success -> AppResult.Success(terminal.data.map { it.toHomeFeedItem() })
-                is LegacyState.Error -> AppResult.Failure(terminal.toAppError())
-                LegacyState.Loading -> error("Filtered above")
-            }
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            AppResult.Failure(classifyHomeThrowable(t))
-        }
-    }
 
     override suspend fun searchSource(
         query: String,

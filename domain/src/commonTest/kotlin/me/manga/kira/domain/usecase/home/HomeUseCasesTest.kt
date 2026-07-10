@@ -10,8 +10,6 @@ import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchFilters
-import me.manga.kira.domain.model.home.SearchMode
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.home.SourceTab
 import me.manga.kira.domain.repository.HomeFeedRepository
@@ -49,7 +47,6 @@ class HomeUseCasesTest {
         var homeResult: AppResult<List<HomeFeedItem>> = AppResult.Success(emptyList())
         var moreResult: AppResult<List<HomeFeedItem>> = AppResult.Success(emptyList())
         var featuredResult: AppResult<List<FeaturedManga>> = AppResult.Success(emptyList())
-        var filters = SearchFilters(emptyList(), emptyList())
         var sourceFilters: List<SourceFilter> = emptyList()
         val selectedTabs = mutableListOf<Int>()
         val selectedSources = mutableListOf<String>()
@@ -66,20 +63,12 @@ class HomeUseCasesTest {
         }
         override suspend fun fetchMore(page: Int): AppResult<List<HomeFeedItem>> = moreResult
         override suspend fun fetchFeatured(): AppResult<List<FeaturedManga>> = featuredResult
-        override suspend fun loadFilters(): AppResult<SearchFilters> = AppResult.Success(filters)
         override suspend fun loadSourceFilters(): AppResult<List<SourceFilter>> = AppResult.Success(sourceFilters)
     }
 
     private class FakeSearchRepository : SearchRepository {
         var sourceResult: AppResult<List<HomeFeedItem>> = AppResult.Success(emptyList())
         val allReposResult = MutableStateFlow<Map<String, AppResult<List<HomeFeedItem>>>>(emptyMap())
-
-        override suspend fun searchSource(
-            query: String,
-            mode: SearchMode,
-            sort: String?,
-            genres: List<String>,
-        ): AppResult<List<HomeFeedItem>> = sourceResult
 
         override suspend fun searchSource(
             query: String,

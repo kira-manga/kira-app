@@ -4,36 +4,19 @@ import kotlinx.coroutines.flow.Flow
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchMode
 
 /**
  * Source of search results — single-source and multi-repo aggregated.
  *
  * Strangler-fig boundary over the legacy `BaseMangaRepository.fetchSearchDataF` (single-source,
  * dispatched on the legacy `SearchType`) and the legacy `HomeViewModel`'s multi-repo fan-out. The
- * `:data` impl maps the rework [SearchMode] + sort/genres onto the legacy `SearchType` variants
- * and owns the fan-out cancellation of the previous query (locked decision H-§77-(4)).
+ * `:data` impl routes config-backed sources through the generic engine and maps legacy sources'
+ * selections onto the legacy `SearchType`; it owns the fan-out cancellation of the previous query
+ * (locked decision H-§77-(4)).
  *
  * Results reuse [HomeFeedItem] so search rows render identically to home-feed rows.
  */
 interface SearchRepository {
-
-    /**
-     * Search a single source.
-     *
-     * @param query the text query.
-     * @param mode which legacy `SearchType` variant this maps to ([SearchMode.NORMAL] /
-     *  [SearchMode.SORT] / [SearchMode.GENRES]).
-     * @param sort chosen sort label for [SearchMode.SORT]; null otherwise.
-     * @param genres chosen genre labels for SORT/GENRES; empty otherwise.
-     * @return [AppResult] carrying the matching items, or a typed `AppError` on failure.
-     */
-    suspend fun searchSource(
-        query: String,
-        mode: SearchMode,
-        sort: String?,
-        genres: List<String>,
-    ): AppResult<List<HomeFeedItem>>
 
     /**
      * Search the active source with generic filter [selections] (config-driven filters, 2026-07).

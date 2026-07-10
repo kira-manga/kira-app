@@ -21,7 +21,6 @@ import me.manga.kira.data.mapper.toSourceTab
 import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
-import me.manga.kira.domain.model.home.SearchFilters
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.home.SourceTab
 import me.manga.kira.domain.repository.HomeFeedRepository
@@ -312,24 +311,6 @@ class HomeFeedRepositoryImpl(
                 AppResult.Failure(classifyHomeThrowable(t))
             }
         }
-
-    override suspend fun loadFilters(): AppResult<SearchFilters> = withContext(dispatchers.io) {
-        val active = when (val r = activeSourceResult()) {
-            is AppResult.Success -> r.value
-            is AppResult.Failure -> return@withContext r
-        }
-        // Sort/genre filters are a LEGACY-repo capability (the config schema carries no filter
-        // spec yet — documented Stage-2 gap): the 12 converted pilots keep theirs via the compiled
-        // repo that still ships beside their config; a config-only source offers none (NORMAL
-        // search still works). Never a failure — an empty filter set is the honest answer.
-        val legacy = active.legacyRepo
-        AppResult.Success(
-            SearchFilters(
-                sortTypes = legacy?.sortTypes?.toList().orEmpty(),
-                genres = legacy?.allGenres?.toList().orEmpty(),
-            ),
-        )
-    }
 
     override suspend fun loadSourceFilters(): AppResult<List<SourceFilter>> = withContext(dispatchers.io) {
         val active = when (val r = activeSourceResult()) {
