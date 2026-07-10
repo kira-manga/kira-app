@@ -37,6 +37,7 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourceState
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 import me.manga.kira.sources_repositry.BaseMangaRepository
 import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import kotlin.test.Test
@@ -260,15 +261,18 @@ class HomeSearchDataTest {
     /** A registry where nothing is piloted — Home/Search take the unchanged legacy path. */
     private object NoPilotRegistry : SourceRegistry {
         override fun get(api: String): MangaSourceClient? = null
-        override fun availableApis(): List<String> = emptyList()
         override fun isConfigBacked(api: String): Boolean = false
+        override fun descriptor(api: String): RuntimeSourceDescriptor? = null
+        override fun genericDescriptors(): List<RuntimeSourceDescriptor> = emptyList()
     }
 
     /** A registry whose given apis are piloted, each served by a fixed stub client. */
     private class PilotedRegistry(private val clients: Map<String, MangaSourceClient>) : SourceRegistry {
         override fun get(api: String): MangaSourceClient? = clients[api]
-        override fun availableApis(): List<String> = clients.keys.toList()
         override fun isConfigBacked(api: String): Boolean = api in clients
+        override fun descriptor(api: String): RuntimeSourceDescriptor? =
+            if (api in clients) fakeDescriptor(api) else null
+        override fun genericDescriptors(): List<RuntimeSourceDescriptor> = clients.keys.map(::fakeDescriptor)
     }
 
     /** Minimal config-backed client returning a fixed search result. */

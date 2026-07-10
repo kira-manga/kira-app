@@ -24,6 +24,7 @@ import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /**
@@ -391,7 +392,29 @@ internal class PilotRegistry(
 ) : SourceRegistry {
     override fun get(api: String): MangaSourceClient? = null
 
-    override fun availableApis(): List<String> = piloted.toList()
-
     override fun isConfigBacked(api: String): Boolean = api in piloted
+
+    override fun descriptor(api: String): RuntimeSourceDescriptor? = if (api in piloted) fakeDescriptor(api) else null
+
+    override fun genericDescriptors(): List<RuntimeSourceDescriptor> = piloted.map(::fakeDescriptor)
 }
+
+/** Descriptor a fake registry synthesizes for a piloted api — mirrors `toRuntimeDescriptor` defaults. */
+internal fun fakeDescriptor(
+    api: String,
+    language: String = "(AR)",
+): RuntimeSourceDescriptor =
+    RuntimeSourceDescriptor(
+        api = api,
+        displayName = api,
+        language = language,
+        engine = "generic",
+        baseUrl = "https://$api.test",
+        priority = 0,
+        enabledByDefault = false,
+        siteState = "WORKING",
+        lifecycle = "active",
+        iconResourceKey = null,
+        iconRemoteUrl = null,
+        blacklistGenres = emptyList(),
+    )

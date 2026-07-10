@@ -3,6 +3,7 @@ package me.manga.kira.sources.engine
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.StrategyRegistry
 import me.manga.kira.sources.contracts.ValidationResult
+import me.manga.kira.sources.contracts.model.IconSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
@@ -83,6 +84,26 @@ class DefaultSourceConfigValidator(
         validateHostList(tag, "previousHosts", source.previousHosts, errors)
         validateHostList(tag, "previousImageHosts", source.previousImageHosts, errors)
         validateHostList(tag, "trustedHosts", source.trustedHosts, errors)
+        source.icon?.let { validateIcon(it, tag, errors) }
+    }
+
+    // Icons are render-only, but a malformed descriptor must die at validation (fail-closed), not
+    // silently never resolve: a key outside the registry's `[a-z0-9_]` vocabulary or a non-https
+    // URL would look authored-and-working while always falling through to the fallback avatar.
+    private fun validateIcon(
+        icon: IconSpec,
+        tag: String,
+        errors: MutableList<String>,
+    ) {
+        if (icon.resourceKey.isNotEmpty() && !icon.resourceKey.matches(ICON_RESOURCE_KEY)) {
+            errors += "$tag icon resourceKey '${icon.resourceKey}' must match [a-z0-9_]{1,64}"
+        }
+        if (icon.remoteUrl.isNotEmpty() && !icon.remoteUrl.startsWith("https://")) {
+            errors += "$tag icon remoteUrl must be an absolute https URL (no cleartext icons)"
+        }
+        if (icon.resourceKey.isEmpty() && icon.remoteUrl.isEmpty()) {
+            errors += "$tag icon block is present but empty — set resourceKey and/or remoteUrl, or omit it"
+        }
     }
 
     private fun validateEndpoints(
@@ -175,6 +196,7 @@ class DefaultSourceConfigValidator(
         // to the enum, and an unknown value must die here, not silently no-op there.
         private val SUPPORTED_SITE_STATES = setOf("WORKING", "UNDER_MAINTENANCE", "STOPPED", "ADULT_18_PLUS")
         private val SUPPORTED_LIFECYCLES = setOf("active", "disabled", "removed")
+        private val ICON_RESOURCE_KEY = Regex("[a-z0-9_]{1,64}")
 
         // Whitelists mirror the engine's own string handling so a typo in a cached/remote document
         // is rejected at validation rather than silently degrading at runtime (unknown op drops every

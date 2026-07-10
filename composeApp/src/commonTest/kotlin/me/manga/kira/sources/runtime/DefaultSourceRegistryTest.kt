@@ -91,9 +91,34 @@ class DefaultSourceRegistryTest {
     }
 
     @Test
-    fun available_apis_lists_legacy_and_pilots() {
-        val reg = registry(apis = listOf("a", "b"), configBackedApis = setOf("a", "c"))
-        assertEquals(setOf("a", "b", "c"), reg.availableApis().toSet())
+    fun descriptor_projects_the_active_stanza_for_any_engine() {
+        val doc = SourceConfigDocument(
+            schemaVersion = 1,
+            sources = listOf(
+                SourceConfig(api = "gen", language = "(AR)", baseUrl = "https://gen.test", engine = "generic"),
+                SourceConfig(api = "leg", language = "(EN)", baseUrl = "https://leg.test", engine = "legacy"),
+            ),
+        )
+        val reg = registry(document = doc, configBackedApis = setOf("gen"))
+        val generic = reg.descriptor("gen") ?: fail("generic stanza must have a descriptor")
+        assertEquals("gen", generic.displayName) // displayName defaults to api
+        assertTrue(generic.isGeneric)
+        val legacy = reg.descriptor("leg") ?: fail("metadata-only legacy stanza must have a descriptor")
+        assertEquals("legacy", legacy.engine)
+        assertNull(reg.descriptor("nope"))
+    }
+
+    @Test
+    fun generic_descriptors_lists_only_generic_stanzas() {
+        val doc = SourceConfigDocument(
+            schemaVersion = 1,
+            sources = listOf(
+                SourceConfig(api = "gen", language = "(AR)", baseUrl = "https://gen.test", engine = "generic"),
+                SourceConfig(api = "leg", language = "(EN)", baseUrl = "https://leg.test", engine = "legacy"),
+            ),
+        )
+        val reg = registry(document = doc, configBackedApis = setOf("gen"))
+        assertEquals(listOf("gen"), reg.genericDescriptors().map { it.api })
     }
 
     @Test

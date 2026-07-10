@@ -33,6 +33,7 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourceState
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 import me.manga.kira.sources_repositry.BaseMangaRepository
 import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import kotlin.test.Test
@@ -458,9 +459,12 @@ class AzoraHomeSearchRoutingTest {
             return client(api)
         }
 
-        override fun availableApis(): List<String> = piloted.toList()
-
         override fun isConfigBacked(api: String): Boolean = api in piloted
+
+        override fun descriptor(api: String): RuntimeSourceDescriptor? =
+            if (api in piloted) fakeDescriptor(api) else null
+
+        override fun genericDescriptors(): List<RuntimeSourceDescriptor> = piloted.map(::fakeDescriptor)
     }
 
     private class StubClient(

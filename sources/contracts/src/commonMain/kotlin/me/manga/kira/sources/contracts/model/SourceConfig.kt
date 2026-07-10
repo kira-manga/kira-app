@@ -111,6 +111,26 @@ data class SourceConfig(
      * Trust-only — never drives migration.
      */
     val trustedHosts: List<String> = emptyList(),
+    /**
+     * Optional icon descriptor (MangaSource decoupling, 2026-07). Render-only metadata — icon
+     * failures never affect discovery, enabling, or routing. Omitted → the UI renders a
+     * deterministic initials avatar derived from [displayName]/[api].
+     */
+    val icon: IconSpec? = null,
+)
+
+/**
+ * How a source's brand icon is resolved, in strict order: a packaged drawable looked up by
+ * [resourceKey] in the app's icon registry wins; otherwise [remoteUrl] is loaded through the
+ * app's existing image stack; otherwise the deterministic fallback avatar renders. JSON carries
+ * only the stable string key, never a generated Kotlin resource identifier.
+ */
+@Serializable
+data class IconSpec(
+    /** Key into the packaged-drawable registry (`[a-z0-9_]{1,64}`), or empty for none. */
+    val resourceKey: String = "",
+    /** Absolute HTTPS icon URL, or empty for none. Rejected at validation unless https. */
+    val remoteUrl: String = "",
 )
 
 /**

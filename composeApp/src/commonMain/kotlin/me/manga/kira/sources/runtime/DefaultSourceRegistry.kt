@@ -3,7 +3,9 @@ package me.manga.kira.sources.runtime
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.SourceUpdateManager
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 import me.manga.kira.sources.contracts.model.SourceConfig
+import me.manga.kira.sources.contracts.model.toRuntimeDescriptor
 import me.manga.kira.sources_repositry.BaseMangaRepository
 
 /**
@@ -31,7 +33,6 @@ class DefaultSourceRegistry(
     private val genericClientFactory: (SourceConfig) -> MangaSourceClient,
     private val configBackedApis: Set<String> = emptySet(),
 ) : SourceRegistry {
-
     private val legacyClients: Map<String, MangaSourceClient> =
         legacyRepos.associate { it.API to LegacyKotlinSourceClient(it) }
 
@@ -48,10 +49,21 @@ class DefaultSourceRegistry(
         return legacy // fail-closed: no valid generic config → legacy adapter (inert for non-config sources)
     }
 
-    override fun availableApis(): List<String> = (legacyClients.keys + configBackedApis).distinct()
+    override fun isConfigBacked(api: String): Boolean = api in configBackedApis && genericConfigFor(api) != null
 
-    override fun isConfigBacked(api: String): Boolean =
-        api in configBackedApis && genericConfigFor(api) != null
+    override fun descriptor(api: String): RuntimeSourceDescriptor? =
+        updateManager
+            .activeDocument()
+            .sources
+            .firstOrNull { it.api == api }
+            ?.toRuntimeDescriptor()
+
+    override fun genericDescriptors(): List<RuntimeSourceDescriptor> =
+        updateManager
+            .activeDocument()
+            .sources
+            .filter { it.engine == "generic" }
+            .map { it.toRuntimeDescriptor() }
 
     private fun genericConfigFor(api: String): SourceConfig? =
         updateManager.activeDocument().sources.firstOrNull { it.api == api && it.engine == "generic" }

@@ -3,6 +3,7 @@ package me.manga.kira.sources.engine
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.model.EndpointSpec
 import me.manga.kira.sources.contracts.model.FieldSpec
+import me.manga.kira.sources.contracts.model.IconSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import me.manga.kira.sources.contracts.model.TransformSpec
@@ -295,5 +296,59 @@ class DefaultSourceConfigValidatorTest {
             )
         assertFalse(bad.isValid)
         assertTrue(bad.errors.any { it.contains("lifecycle") && it.contains("deleted") })
+    }
+
+    @Test
+    fun valid_icon_descriptors_pass_packaged_remote_and_both() {
+        val doc =
+            SourceConfigDocument(
+                schemaVersion = 1,
+                sources =
+                    listOf(
+                        genericSource(api = "packaged").copy(icon = IconSpec(resourceKey = "azora_2")),
+                        genericSource(api = "remote").copy(icon = IconSpec(remoteUrl = "https://cdn.test/icon.png")),
+                        genericSource(api = "both").copy(
+                            icon = IconSpec(resourceKey = "x", remoteUrl = "https://cdn.test/x.png"),
+                        ),
+                        genericSource(api = "none"),
+                    ),
+            )
+        assertEquals(emptyList(), validator.validate(doc).errors)
+    }
+
+    @Test
+    fun icon_with_cleartext_remote_url_is_rejected() {
+        val doc =
+            SourceConfigDocument(
+                schemaVersion = 1,
+                sources = listOf(genericSource().copy(icon = IconSpec(remoteUrl = "http://cdn.test/icon.png"))),
+            )
+        val result = validator.validate(doc)
+        assertFalse(result.isValid)
+        assertTrue(result.errors.any { it.contains("remoteUrl") && it.contains("https") })
+    }
+
+    @Test
+    fun icon_with_malformed_resource_key_is_rejected() {
+        val doc =
+            SourceConfigDocument(
+                schemaVersion = 1,
+                sources = listOf(genericSource().copy(icon = IconSpec(resourceKey = "Res.drawable.ic_azora"))),
+            )
+        val result = validator.validate(doc)
+        assertFalse(result.isValid)
+        assertTrue(result.errors.any { it.contains("resourceKey") })
+    }
+
+    @Test
+    fun empty_icon_block_is_rejected() {
+        val doc =
+            SourceConfigDocument(
+                schemaVersion = 1,
+                sources = listOf(genericSource().copy(icon = IconSpec())),
+            )
+        val result = validator.validate(doc)
+        assertFalse(result.isValid)
+        assertTrue(result.errors.any { it.contains("icon block is present but empty") })
     }
 }
