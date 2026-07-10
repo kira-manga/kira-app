@@ -53,7 +53,7 @@ package me.manga.kira.sources.runtime
 const val CONFIG_BACKED_SOURCES_JSON: String = """
 {
   "schemaVersion": 1,
-  "revision": 3,
+  "revision": 4,
   "sources": [
     {
       "api": "Azora",
@@ -251,6 +251,54 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
         "details":  { "url": "{itemUrl}", "format": "html" },
         "pages":    { "url": "{chapterUrl}", "format": "html", "listSelector": "div.reading-content img.wp-manga-chapter-img" }
       },
+      "filters": [
+        { "id": "genres", "label": "التصنيفات", "type": "multiselect",
+          "request": { "target": "form", "param": "vars[wp-manga-genre]", "encode": "csv" },
+          "options": [
+            { "value": "fantasy" }, { "value": "إدارة المناطق" }, { "value": "إنتقام" }, { "value": "ابراج" }, { "value": "اثاره" },
+            { "value": "ارتقاء" }, { "value": "ارواح" }, { "value": "ازياء" }, { "value": "اساطير" }, { "value": "اساطيز" },
+            { "value": "اسبوعى" }, { "value": "اشباح" }, { "value": "اضطهاد" }, { "value": "اطظهاد" }, { "value": "اعادة احياء" },
+            { "value": "اعاده بحث" }, { "value": "اعمار" }, { "value": "اقتصاد" }, { "value": "اكاديميه" }, { "value": "اكشن" },
+            { "value": "الات" }, { "value": "الالوان الممتلئه" }, { "value": "البقاء علي قيد الحياه" }, { "value": "الجانب المظلم من الحياه" }, { "value": "الحريم العكسي" },
+            { "value": "الحياة المدرسيه" }, { "value": "الحياة اليومية" }, { "value": "الحيوانات الأليفة" }, { "value": "الخيال العلمي" }, { "value": "السفر عبر الزمن" },
+            { "value": "العاب" }, { "value": "العاب الكترونية" }, { "value": "العاب تقليدية" }, { "value": "العاب رعب" }, { "value": "العاب فيديو" },
+            { "value": "العصور الوسطى" }, { "value": "الغموض" }, { "value": "الفتاة الوحش" }, { "value": "الفنون العسكرية" }, { "value": "المخالفون للقانون" },
+            { "value": "النجاة" }, { "value": "الهة" }, { "value": "الهه" }, { "value": "الواقع الافتراضي" }, { "value": "اليات" },
+            { "value": "امرأة شريرة" }, { "value": "انتقال" }, { "value": "انتقام" }, { "value": "انمى" }, { "value": "ايسكاى" },
+            { "value": "ايشى" }, { "value": "بالغ" }, { "value": "بطل خارق" }, { "value": "بطل غير اعتيادى" }, { "value": "بطل غير اعتيادي" },
+            { "value": "بطل مجنون" }, { "value": "بطل وحش" }, { "value": "بعد الكارثه" }, { "value": "بوليسي" }, { "value": "تاريخ" },
+            { "value": "تاريخى" }, { "value": "تجسيد" }, { "value": "تحديث" }, { "value": "تحري" }, { "value": "تحقيق" },
+            { "value": "تحقيقات" }, { "value": "تخطيط" }, { "value": "تدريب" }, { "value": "تراجع" }, { "value": "تراجيدي" },
+            { "value": "ترويض" }, { "value": "ترويض وحوش" }, { "value": "تشويق" }, { "value": "تلوين رسم" }, { "value": "تلوين رسمي" },
+            { "value": "تلوين هواة" }, { "value": "تملك" }, { "value": "تناسخ" }, { "value": "تناسخ الارواح" }, { "value": "تنانين" },
+            { "value": "تنايخ" }, { "value": "ثأر" }, { "value": "جانحون" }, { "value": "جريمة" }, { "value": "جريمه" },
+            { "value": "جندر اسواب" }, { "value": "جندر بندر" }, { "value": "جوسى" }, { "value": "جوسين" }, { "value": "جوسيه" },
+            { "value": "حائز علي جائزة" }, { "value": "حديث" }, { "value": "حرب" }, { "value": "حربى" }, { "value": "حريم" },
+            { "value": "حريم عكسى" }, { "value": "حياة مدرسية" }, { "value": "حياة يومية" }, { "value": "حيوانات" }, { "value": "حيوانات اليفه" },
+            { "value": "خارق" }, { "value": "خارق للطبيعه" }, { "value": "خيار" }, { "value": "خيال" }, { "value": "خيال علمى" },
+            { "value": "خيالي" }, { "value": "داخل اللعبه" }, { "value": "داخل روايه" }, { "value": "دراما" }, { "value": "دماء" },
+            { "value": "دموى" }, { "value": "ذكريات من عالم آخر" }, { "value": "راشد" }, { "value": "رعاية اطفال" }, { "value": "رعب" },
+            { "value": "رواية عربية" }, { "value": "روايه" }, { "value": "رومانسى" }, { "value": "رياضه" }, { "value": "رياضى" },
+            { "value": "زراعة" }, { "value": "زمكانى" }, { "value": "زمنكاني" }, { "value": "زنزانات" }, { "value": "زواج مدبر" },
+            { "value": "زومبي" }, { "value": "ساموراي" }, { "value": "ساموري" }, { "value": "سايكوباث" }, { "value": "سحر" },
+            { "value": "سفر عبر الزمن" }, { "value": "سم" }, { "value": "سوردا عربية" }, { "value": "سياسي" }, { "value": "سينين" },
+            { "value": "شرطة" }, { "value": "شريحة من الحياة" }, { "value": "شرير" }, { "value": "شوجو" }, { "value": "شونين" },
+            { "value": "شياطين" }, { "value": "شينين" }, { "value": "صقل" }, { "value": "طبخ" }, { "value": "طبي" },
+            { "value": "طرد الارواح الشريره" }, { "value": "عائلى" }, { "value": "عالم مختلف" }, { "value": "عامل مكتبي" }, { "value": "عسكري" },
+            { "value": "عسكريه" }, { "value": "عصر حديث" }, { "value": "عصور وسطى" }, { "value": "علم نفس" }, { "value": "علمى" },
+            { "value": "عنن" }, { "value": "فانتازيا" }, { "value": "غموض" }, { "value": "فتاة وحش" }, { "value": "قصة مصورة" },
+            { "value": "قصص قصيرة" }, { "value": "كوميديا" }, { "value": "مأساوي" }, { "value": "مغامرات" }, { "value": "ميكا" },
+            { "value": "ميلودراما" }, { "value": "موسيقى" }, { "value": "ناروتو" }, { "value": "نفسى" }, { "value": "نهاية العالم" },
+            { "value": "نينجا" }, { "value": "هندسة" }, { "value": "هواه" }, { "value": "هوس" }, { "value": "واقع افتراضى" },
+            { "value": "واقعى" }, { "value": "وبيتون" }, { "value": "وحوش" }, { "value": "ون شوت" }, { "value": "ويب تون" }
+          ] },
+        { "id": "sort", "label": "ترتيب حسب", "type": "select",
+          "request": { "target": "form", "param": "vars[meta_key]" },
+          "options": [
+            { "value": "_latest_update", "label": "الاحدث" },
+            { "value": "_wp_manga_views", "label": "شائع" }
+          ] }
+      ],
       "fields": {
         "item.title":  { "selector": ".post-title a", "attr": "text" },
         "item.url":    { "selector": ".post-title a", "attr": "abs:href" },
