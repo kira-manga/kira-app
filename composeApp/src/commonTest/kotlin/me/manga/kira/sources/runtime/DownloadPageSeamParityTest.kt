@@ -63,7 +63,6 @@ class DownloadPageSeamParityTest {
                 remote = null,
             ),
             genericClientFactory = { cfg -> GenericSourceClient(cfg, MapFakeHttp(fixtures), NoopHeaderStore()) },
-            configBackedApis = CONFIG_BACKED_APIS,
         )
         return RegistryChapterPageProvider(registry)
     }

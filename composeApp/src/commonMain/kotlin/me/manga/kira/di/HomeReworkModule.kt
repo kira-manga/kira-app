@@ -69,12 +69,12 @@ import org.koin.dsl.module
  */
 val homeReworkModule: Module = module {
     single<HomeFeedRepository> {
-        // 4th arg: SourceRegistry — routes ONLY config-backed sources (CONFIG_BACKED_APIS) Home/Featured through
+        // 4th arg: SourceRegistry — routes ONLY config-backed sources (engine="generic" stanzas) Home/Featured through
         // the generic engine; every other source stays on the legacy SourcesRepository path.
         HomeFeedRepositoryImpl(get(), get(), get(), get())
     }
     single<SearchRepository> {
-        // 3rd arg: SourceRegistry — routes ONLY config-backed sources (CONFIG_BACKED_APIS) search through the engine.
+        // 3rd arg: SourceRegistry — routes ONLY config-backed sources (engine="generic" stanzas) search through the engine.
         SearchRepositoryImpl(get(), get(), get())
     }
 

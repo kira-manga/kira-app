@@ -12,16 +12,22 @@ import kotlin.test.assertTrue
 /**
  * SourceRegistry retirement Phase 4 (Option A): the bundled config document is the literal single
  * authority for EVERY source the app has ever shipped — each legacy api carries a metadata-only
- * `engine:"legacy"` stanza (lifecycle/host metadata, no behavior). This test is the completeness
- * gate: adding a source to the [MangaSource] registry without a config stanza (or vice versa)
- * fails the build, so authority can never silently fragment again.
+ * `engine:"legacy"` stanza (lifecycle/host metadata, no behavior). This test is the LEGACY
+ * completeness gate: a [MangaSource] scraper without a stanza, or a legacy stanza without a
+ * scraper, fails the build, so authority can never silently fragment for the legacy set.
+ *
+ * MangaSource decoupling (2026-07): GENERIC stanzas are deliberately exempt from the enum — adding
+ * a config-backed source requires ONLY a JSON stanza, never a [MangaSource] entry
+ * (docs/sources/MANGASOURCE_DECOUPLING_PLAN.md). Where a generic stanza happens to share an api
+ * with a legacy scraper (the 12 converted pilots), the language must still agree with the enum so
+ * stored rows keyed on (api, language) stay coherent.
  */
 class LegacyStanzaCompletenessTest {
     private val document =
         (SourceConfigParser.parse(CONFIG_BACKED_SOURCES_JSON) as AppResult.Success).value
 
     @Test
-    fun every_registry_api_has_exactly_one_stanza_with_the_right_engine_and_language() {
+    fun every_registry_api_has_exactly_one_stanza_with_a_matching_language() {
         val byApi = document.sources.groupBy { it.api }
 
         val missing = MangaSource.entries.map { it.API }.filter { byApi[it]?.size != 1 }
@@ -29,12 +35,6 @@ class LegacyStanzaCompletenessTest {
 
         for (source in MangaSource.entries) {
             val stanza = byApi.getValue(source.API).single()
-            val expectGeneric = source.API in CONFIG_BACKED_APIS
-            assertEquals(
-                expectGeneric,
-                stanza.engine == "generic",
-                "engine mismatch for ${source.API} (config-backed apis are generic, all others legacy)",
-            )
             assertEquals(source.LANGUAGE.Language, stanza.language, "language mismatch for ${source.API}")
         }
     }
@@ -46,12 +46,9 @@ class LegacyStanzaCompletenessTest {
     }
 
     @Test
-    fun legacy_stanzas_are_metadata_only_and_never_config_backed() {
+    fun legacy_stanzas_are_metadata_only() {
         val legacy = document.sources.filter { it.engine == "legacy" }
-        val expectedCount = MangaSource.entries.count { it.API !in CONFIG_BACKED_APIS }
-        assertEquals(expectedCount, legacy.size)
         for (stanza in legacy) {
-            assertTrue(stanza.api !in CONFIG_BACKED_APIS, "${stanza.api} must not be config-backed")
             assertTrue(
                 stanza.endpoints.isEmpty() && stanza.fields.isEmpty(),
                 "${stanza.api} must carry lifecycle metadata only, no executable behavior",
@@ -60,20 +57,16 @@ class LegacyStanzaCompletenessTest {
     }
 
     @Test
-    fun every_stanza_api_is_a_known_source_and_every_generic_stanza_is_config_backed() {
-        // The reverse direction (2026-07 audit — previously one-directional): a stanza for an api
-        // in NEITHER the registry NOR CONFIG_BACKED_APIS passed all gates, yet an engine="generic"
-        // ghost stanza would be seeded into the catalog by the sync (seedIfGeneric). Every stanza
-        // must name a known source, and every generic stanza must be in CONFIG_BACKED_APIS.
+    fun every_legacy_stanza_names_a_shipped_scraper() {
+        // A metadata-only legacy stanza whose api matches NO compiled scraper is a ghost: the
+        // catalog sync would manage a row for a source that can never run. Generic stanzas are
+        // exempt — they ARE the source (no Kotlin required).
         val registryApis = MangaSource.entries.mapTo(mutableSetOf()) { it.API }
-        val ghosts = document.sources.map { it.api }.filter { it !in registryApis }
-        assertEquals(emptyList(), ghosts, "config stanzas naming no known source")
-
-        val strayGeneric =
+        val ghosts =
             document.sources
-                .filter { it.engine == "generic" }
+                .filter { it.engine != "generic" }
                 .map { it.api }
-                .filter { it !in CONFIG_BACKED_APIS }
-        assertEquals(emptyList(), strayGeneric, "generic stanzas not declared in CONFIG_BACKED_APIS")
+                .filter { it !in registryApis }
+        assertEquals(emptyList(), ghosts, "legacy stanzas naming no shipped scraper")
     }
 }

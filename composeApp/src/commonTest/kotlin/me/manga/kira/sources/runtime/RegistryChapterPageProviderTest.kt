@@ -77,13 +77,11 @@ class RegistryChapterPageProviderTest {
     private fun registry(
         legacy: FakeLegacyRepo,
         document: SourceConfigDocument = genericDoc("Azora"),
-        configBackedApis: Set<String> = setOf("Azora"),
         genericFailing: Boolean = false,
     ) = DefaultSourceRegistry(
         legacyRepos = setOf(legacy),
         updateManager = FakeUpdateManager(document),
         genericClientFactory = { config -> StubGenericPagesClient(config.api, genericPages, failing = genericFailing) },
-        configBackedApis = configBackedApis,
     )
 
     @Test
@@ -115,8 +113,8 @@ class RegistryChapterPageProviderTest {
 
     @Test
     fun non_config_source_returns_null_so_caller_keeps_legacy() = runTest {
-        // "Other" is not in configBackedApis → not config-backed → provider returns null without routing.
-        val provider = RegistryChapterPageProvider(registry(CountingLegacyRepo("Other"), configBackedApis = setOf("Azora")))
+        // "Other" has no generic stanza → not config-backed → provider returns null without routing.
+        val provider = RegistryChapterPageProvider(registry(CountingLegacyRepo("Other")))
 
         val pages = provider.pagesOrNull("Other", "https://other.test/m/1", "ar", "https://other.test/m/1/c/1")
 
@@ -145,7 +143,6 @@ class RegistryChapterPageProviderTest {
             legacyRepos = setOf(legacy),
             updateManager = FakeUpdateManager(genericDoc("Azora")),
             genericClientFactory = { StubGenericPagesClient(it.api, pages = emptyList()) },
-            configBackedApis = setOf("Azora"),
         )
         val provider = RegistryChapterPageProvider(emptyRegistry)
 

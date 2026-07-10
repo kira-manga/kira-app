@@ -20,7 +20,6 @@ import me.manga.kira.sources.contracts.StrategyRegistry
 import me.manga.kira.sources.engine.DefaultSourceConfigValidator
 import me.manga.kira.sources.engine.DefaultStrategyRegistry
 import me.manga.kira.sources.engine.GenericSourceClient
-import me.manga.kira.sources.runtime.CONFIG_BACKED_APIS
 import me.manga.kira.sources.runtime.CONFIG_BACKED_SOURCES_JSON
 import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.sources.runtime.DataStoreHeaderStore
@@ -41,8 +40,9 @@ import org.koin.dsl.module
  * **Stage-1 posture — registry live for the config-backed sources, remote config still disabled:**
  *  - The registry is BOUND and CONSUMED by four `:data` repositories (HomeFeed / Search /
  *    MangaDetails / ChapterPages), each branching on `sourceRegistry.isConfigBacked(api)`.
- *  - The config-backed sources ([CONFIG_BACKED_APIS], 12 apis) are served by the generic engine over the bundled
- *    config, generic-ONLY (no legacy fallback — see [DefaultSourceRegistry]); every other source
+ *  - The config-backed sources (every `engine="generic"` stanza in the validated bundled document —
+ *    the single authority, no in-binary api allow-list) are served by the generic engine,
+ *    generic-ONLY (no legacy fallback — see [DefaultSourceRegistry]); every other source
  *    stays on the legacy adapter.
  *  - The bundled config ([CONFIG_BACKED_SOURCES_JSON]) ships in the signed binary (trusted, no detached
  *    signature). Remote config is DISABLED (`remote = null`); signatures are denied
@@ -109,7 +109,8 @@ val sourcesGenericModule =
             )
         }
 
-        // The registry: generic-ONLY for the config-backed apis ([CONFIG_BACKED_APIS]); legacy adapter for the rest.
+        // The registry: generic-ONLY for every engine="generic" stanza in the validated active
+        // document (the single authority — no in-binary api allow-list); legacy adapter for the rest.
         single<SourceRegistry> {
             val httpExecutor = get<HttpExecutor>()
             val headerStore = get<HeaderStore>()
@@ -127,7 +128,6 @@ val sourcesGenericModule =
                         baseUrlProvider = baseUrlProvider,
                     )
                 },
-                configBackedApis = CONFIG_BACKED_APIS,
             )
         }
 

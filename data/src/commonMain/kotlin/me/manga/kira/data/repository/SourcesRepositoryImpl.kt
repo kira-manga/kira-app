@@ -142,8 +142,8 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepositor
 class SourcesRepositoryImpl(
     private val legacy: LegacySourcesRepository,
     // Sources Migration Phase 2: the catalog shows ONLY config-backed sources. The registry's
-    // isConfigBacked(api) is true exactly for sources served by the generic config engine (in CONFIG_BACKED_APIS
-    // with a valid engine="generic" config), so legacy-only sources are hidden from the UI. Language
+    // isConfigBacked(api) is true exactly for sources served by the generic config engine (a valid
+    // engine="generic" stanza in the active document), so legacy-only sources are hidden from the UI. Language
     // bulk-toggles likewise only touch config-backed sources (never enable a hidden legacy source).
     private val sourceRegistry: SourceRegistry,
     // U2 (new-sources badge): the `new_sources_added` cell lives in the shared prefs facade —

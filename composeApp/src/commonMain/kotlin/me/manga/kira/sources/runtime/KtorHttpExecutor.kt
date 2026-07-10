@@ -25,7 +25,7 @@ import me.manga.kira.sources.contracts.SourceResponse
  *
  * Living here (the composition root) rather than in `:sources:engine` is deliberate: it keeps the
  * engine free of any HTTP-library dependency, so the engine stays unit-testable with a fake executor.
- * It is the live transport for every config-backed generic source ([CONFIG_BACKED_APIS]) — exercised on each
+ * It is the live transport for every config-backed generic source (engine="generic" stanza) — exercised on each
  * generic home/featured/search/details/pages call.
  */
 class KtorHttpExecutor(

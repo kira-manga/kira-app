@@ -4,8 +4,9 @@ package me.manga.kira.sources.runtime
  * The bundled, in-binary source-config document for the Stage-1 config-backed. It ships inside the signed app
  * binary (so it needs no detached signature — it is trusted by virtue of the binary's own signing),
  * is pure DATA (a JSON descriptor the engine interprets — no source-specific Kotlin), and ships the
- * generic-engine config-backed config: every source whose `api` is in [CONFIG_BACKED_APIS] (see that KDoc for the
- * per-source derivation/divergence notes). Every other source stays on the legacy adapter.
+ * generic-engine config-backed config: every stanza declaring `engine:"generic"` (the validated
+ * document is the SINGLE authority for the generic set — see the per-source derivation/divergence
+ * notes at the bottom of this file). Every other source stays on the legacy adapter.
  *
  * Reading this from a `composeResources` asset or a signed remote feed is deferred (Stage-2 / remote);
  * a string constant is the minimal correct "bundled config" for the config-backed and keeps the store sync.
@@ -15,8 +16,8 @@ package me.manga.kira.sources.runtime
  * registry now has an `engine:"legacy"` stanza carrying ONLY lifecycle metadata (baseUrl,
  * imageBase, siteState, previousHosts) — no endpoints/fields, nothing executable. They make the
  * config document the single authority for legacy sources' host moves / status / removal too
- * (`SourceCatalogSyncRepositoryImpl` manages their rows; they are never seeded, never join
- * [CONFIG_BACKED_APIS], and stay force-disabled). Values captured VERBATIM from the production
+ * (`SourceCatalogSyncRepositoryImpl` manages their rows; they are never seeded, never declare
+ * `engine:"generic"`, and stay force-disabled). Values captured VERBATIM from the production
  * registry feed (`/source/35`, 2026-07-04) so existing endpoint-written rows match byte-for-byte
  * (zero first-launch churn); the 4 apis absent from that feed (Comick, مانجا بارك, Mangapark-It,
  * Batcave) carry their MangaSource code constants. previousHosts declares the 3 live host moves
@@ -795,12 +796,17 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
 }
 """
 
-/**
- * API keys served by the generic engine. Everything else routes through the legacy adapter. The owner's
- * rule is **no per-verb legacy split**: each source here is migrated FULLY generic (every verb it supports
- * goes through the engine) or stays fully legacy — never half-and-half. Since the registry went
- * generic-ONLY (see `DefaultSourceRegistry`), `FallbackSourceClient` is UNWIRED — a generic failure
- * surfaces as a classified error; no migrated source's operation depends on any legacy fallback.
+/*
+ * ## Per-source conversion notes (the generic set)
+ *
+ * Which sources are generic is declared IN the JSON above — every stanza with `engine:"generic"`
+ * (12 as of 2026-07). There is deliberately no compiled api allow-list any more (MangaSource
+ * decoupling, 2026-07): the validated document is the single authority, and
+ * `DefaultSourceRegistry.isConfigBacked` derives from it. The owner's rule is **no per-verb legacy
+ * split**: each generic source is migrated FULLY generic (every verb it supports goes through the
+ * engine) or stays fully legacy — never half-and-half. Since the registry went generic-ONLY,
+ * `FallbackSourceClient` is UNWIRED — a generic failure surfaces as a classified error; no migrated
+ * source's operation depends on any legacy fallback.
  *
  * All 12 are fully generic: Azora, Mangamello, Mangamello Plus, SwatManga, DilarV2, 3asq, Lekmanga, Team X,
  * Zazamanga, Demonicscans, Mangabuddy, Tapas. Per-source notes:
@@ -849,18 +855,3 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
  *  - **Comick** — legacy host `api.comick.fun` is dead (NXDOMAIN); live hosts (`api.comick.io`/`.dev`) are Cloudflare-gated.
  *  - **Manhwatop / Batcave** — Cloudflare-blocked (couldn't verify selectors). **Batoto** — unreachable from the build host.
  */
-val CONFIG_BACKED_APIS: Set<String> =
-    setOf(
-        "Azora",
-        "Mangamello",
-        "Mangamello Plus",
-        "SwatManga",
-        "Lekmanga",
-        "Team X",
-        "DilarV2",
-        "3asq",
-        "Demonicscans",
-        "Mangabuddy",
-        "Zazamanga",
-        "Tapas",
-    )

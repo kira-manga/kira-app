@@ -25,7 +25,7 @@ import kotlin.test.fail
  *
  * Fixtures are REAL HTML snippets captured from the live sites by the verification workflow. Expected
  * values are the live-observed domain values. (Mangatuk and Lavatoons are intentionally NOT in
- * CONFIG_BACKED_APIS — Mangatuk was rebuilt to a client-rendered SPA with no extractable verb, Lavatoons is
+ * the generic set — Mangatuk was rebuilt to a client-rendered SPA with no extractable verb, Lavatoons is
  * Cloudflare-blocked; both stay fully legacy.)
  */
 class MadaraHtmlPilotParityTest {

@@ -27,9 +27,11 @@ import kotlin.test.fail
  *  1. the bundled document parses, with a readable error when it does not;
  *  2. the bundled document passes the shipping validator ([DefaultSourceConfigValidator]), with the
  *     per-stanza error list in the failure message;
- *  3. every [CONFIG_BACKED_APIS] entry resolves through the REAL production assembly
+ *  3. every `engine:"generic"` stanza resolves through the REAL production assembly
  *     ([RemoteSourceConfigManager] over [BundledSourceConfigStore] → [DefaultSourceRegistry]) —
- *     `isConfigBacked(api)` is true and `get(api)` returns the generic client;
+ *     `isConfigBacked(api)` is true and `get(api)` returns the generic client. (The stanzas ARE the
+ *     authority — the compiled CONFIG_BACKED_APIS allow-list was removed, MangaSource decoupling
+ *     2026-07 — so this pins document ⇒ registry reachability.);
  *  4. every config-backed stanza defines every user-facing endpoint: home or featured, search,
  *     details, pages.
  *
@@ -46,6 +48,12 @@ class ConfigBackedSourceCompletenessTest {
                         "EMPTY document and lose every generic source: ${parsed.error}",
                 )
         }
+
+    /** The generic set, derived from the document itself — the single authority. */
+    private val genericApis =
+        document.sources
+            .filter { it.engine == "generic" }
+            .map { it.api }
 
     @Test
     fun bundled_document_passes_the_shipping_validator() {
@@ -75,19 +83,17 @@ class ConfigBackedSourceCompletenessTest {
                 legacyRepos = emptySet(),
                 updateManager = manager,
                 genericClientFactory = { config -> MarkerClient("generic:${config.api}") },
-                configBackedApis = CONFIG_BACKED_APIS,
             )
 
-        val unreachable = CONFIG_BACKED_APIS.filterNot(registry::isConfigBacked)
+        val unreachable = genericApis.filterNot(registry::isConfigBacked)
         assertEquals(
             emptyList(),
             unreachable,
-            "apis declared in CONFIG_BACKED_APIS that isConfigBacked() cannot reach — the api has no " +
-                "valid engine:\"generic\" stanza in the (validated) bundled document, so the app would " +
-                "silently serve it from the legacy scraper instead of the generic engine",
+            "generic stanzas that isConfigBacked() cannot reach — the stanza failed validation (the " +
+                "whole document would be rejected at runtime) or the registry assembly regressed",
         )
 
-        val notGeneric = CONFIG_BACKED_APIS.filter { api -> registry.get(api)?.api != "generic:$api" }
+        val notGeneric = genericApis.filter { api -> registry.get(api)?.api != "generic:$api" }
         assertEquals(
             emptyList(),
             notGeneric,
@@ -97,19 +103,12 @@ class ConfigBackedSourceCompletenessTest {
 
     @Test
     fun every_config_backed_source_defines_all_user_facing_endpoints() {
-        val stanzasByApi =
-            document.sources
-                .filter { it.engine == "generic" }
-                .associateBy { it.api }
+        val stanzas = document.sources.filter { it.engine == "generic" }
 
         val problems =
             buildList {
-                for (api in CONFIG_BACKED_APIS) {
-                    val stanza = stanzasByApi[api]
-                    if (stanza == null) {
-                        add("$api: no engine:\"generic\" stanza in the bundled document")
-                        continue
-                    }
+                for (stanza in stanzas) {
+                    val api = stanza.api
                     val endpoints = stanza.endpoints.keys
                     if ("home" !in endpoints && "featured" !in endpoints) {
                         add("$api: defines neither \"home\" nor \"featured\" (one is required)")

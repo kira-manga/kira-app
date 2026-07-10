@@ -71,13 +71,11 @@ class DefaultSourceRegistryTest {
     private fun registry(
         apis: List<String> = listOf("fake"),
         document: SourceConfigDocument = SourceConfigDocument(schemaVersion = 1),
-        configBackedApis: Set<String> = emptySet(),
         genericFailing: Boolean = false,
     ) = DefaultSourceRegistry(
         legacyRepos = apis.map { FakeLegacyRepo(it) }.toSet(),
         updateManager = FakeUpdateManager(document),
         genericClientFactory = { config -> MarkerGenericClient("generic:${config.api}", failing = genericFailing) },
-        configBackedApis = configBackedApis,
     )
 
     private fun genericDoc(api: String = "fake") = SourceConfigDocument(
@@ -99,7 +97,7 @@ class DefaultSourceRegistryTest {
                 SourceConfig(api = "leg", language = "(EN)", baseUrl = "https://leg.test", engine = "legacy"),
             ),
         )
-        val reg = registry(document = doc, configBackedApis = setOf("gen"))
+        val reg = registry(document = doc)
         val generic = reg.descriptor("gen") ?: fail("generic stanza must have a descriptor")
         assertEquals("gen", generic.displayName) // displayName defaults to api
         assertTrue(generic.isGeneric)
@@ -117,7 +115,7 @@ class DefaultSourceRegistryTest {
                 SourceConfig(api = "leg", language = "(EN)", baseUrl = "https://leg.test", engine = "legacy"),
             ),
         )
-        val reg = registry(document = doc, configBackedApis = setOf("gen"))
+        val reg = registry(document = doc)
         assertEquals(listOf("gen"), reg.genericDescriptors().map { it.api })
     }
 
@@ -152,7 +150,7 @@ class DefaultSourceRegistryTest {
     @Test
     fun config_backed_api_uses_bare_generic_client_no_fallback_wrapper() = runTest {
         // Config-backed → the bare generic client (NOT wrapped in FallbackSourceClient): generic-only.
-        val client = registry(document = genericDoc(), configBackedApis = setOf("fake")).get("fake")!!
+        val client = registry(document = genericDoc()).get("fake")!!
         assertTrue(client !is FallbackSourceClient)
         assertEquals("generic:fake", client.api)
         assertEquals(listOf("GENERIC"), client.home(1).valueOrFail().map { it.title })
@@ -162,15 +160,15 @@ class DefaultSourceRegistryTest {
     fun config_backed_generic_failure_is_surfaced_not_fallen_back_to_legacy() = runTest {
         // generic fails (e.g. Cloudflare 403) → the FAILURE is surfaced as-is; the legacy adapter's
         // result ("Home One"/"Home Two") is NEVER served — legacy is not executed for a config-backed source.
-        val client = registry(document = genericDoc(), configBackedApis = setOf("fake"), genericFailing = true).get("fake")!!
+        val client = registry(document = genericDoc(), genericFailing = true).get("fake")!!
         val result = client.home(1)
         assertTrue(result is AppResult.Failure)
     }
 
     @Test
-    fun piloted_api_without_generic_config_falls_back_to_legacy() {
-        // pilot flag on for "fake", but the active document has no generic source for it -> legacy (fail-closed).
-        val client = registry(configBackedApis = setOf("fake")).get("fake")!!
+    fun api_without_a_generic_stanza_gets_the_legacy_adapter() {
+        // The active document has no generic stanza for "fake" -> legacy (fail-closed).
+        val client = registry().get("fake")!!
         assertEquals("fake", client.api) // the legacy adapter, not the marker/fallback
         assertTrue(client !is FallbackSourceClient)
     }
@@ -222,7 +220,6 @@ class DefaultSourceRegistryTest {
         legacyRepos = setOf(FakeLegacyRepo("Azora"), FakeLegacyRepo("Other")),
         updateManager = realManager(bundled),
         genericClientFactory = { MarkerGenericClient("generic:${it.api}") },
-        configBackedApis = CONFIG_BACKED_APIS,
     )
 
     @Test

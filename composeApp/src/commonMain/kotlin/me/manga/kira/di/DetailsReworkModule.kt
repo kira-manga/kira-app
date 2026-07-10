@@ -97,7 +97,7 @@ val detailsReworkModule: Module = module {
         MangaDetailsRepositoryImpl(
             sourcesRepository = get(),
             dispatchers = get(),
-            // Routes ONLY config-backed sources (CONFIG_BACKED_APIS) through the generic engine; all others stay legacy.
+            // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic engine; all others stay legacy.
             sourceRegistry = get(),
         )
     }

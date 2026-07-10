@@ -64,7 +64,6 @@ class AzoraDataFallbackIntegrationTest {
         legacyRepos = setOf(FakeLegacyRepo("Azora")),
         updateManager = FixedUpdateManager(azoraGenericDoc),
         genericClientFactory = { FailingGenericClient(it.api) },
-        configBackedApis = setOf("Azora"),
     )
 
     private fun registryWith(repo: FakeLegacyRepo, factory: (me.manga.kira.sources.contracts.model.SourceConfig) -> MangaSourceClient) =
@@ -72,7 +71,6 @@ class AzoraDataFallbackIntegrationTest {
             legacyRepos = setOf(repo),
             updateManager = FixedUpdateManager(azoraGenericDoc),
             genericClientFactory = factory,
-            configBackedApis = setOf("Azora"),
         )
 
     /** A SourcesRepository whose single active source is [repo] (so HomeFeedRepositoryImpl resolves it). */
@@ -107,7 +105,6 @@ class AzoraDataFallbackIntegrationTest {
             legacyRepos = setOf(FakeLegacyRepo("Azora")),
             updateManager = FixedUpdateManager(azoraGenericDoc),
             genericClientFactory = { GenericOk(it.api) },
-            configBackedApis = setOf("Azora"),
         )
         val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), dispatchers, registry)
 
