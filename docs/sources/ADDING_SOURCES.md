@@ -369,6 +369,146 @@ library entries (or migrate via backup export/import, which keeps working offlin
 
 ---
 
+
+## 11. Filters — fully config-driven (2026-07)
+
+A generic source declares its complete advanced-filter surface in its stanza: the UI renders from
+it, the request mapping executes from it, and the validator gates it. Adding or changing a
+source's filters is a JSON edit + release — never a `MangaSource` entry, a compiled roster, a
+source-specific Kotlin filter class, or a `when(api)` branch. Design record:
+`docs/sources/CONFIG_DRIVEN_FILTERS_PLAN.md`; pilot: Lekmanga (`LekmangaFilterParityTest`).
+
+### 11.1 Schema reference
+
+`"filters"` is an ORDERED array on the source stanza — declaration order is both the sheet's
+render order and the request-composition order. A stanza without `filters` simply has no advanced
+filters (plain search unaffected).
+
+Each filter:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | Stable identity, `[a-z0-9_]{1,64}`. Behavior binds to it; renaming = retire + re-add. |
+| `label` | yes | Display label (non-blank). Standard ids get localized section titles; custom ids show this verbatim. |
+| `type` | yes | `select` \| `multiselect` \| `toggle` \| `text` \| `number` (`range`/`date` reserved — rejected until implemented). |
+| `options` | select/multiselect | `{ "value", "label"? }` — `value` is the stable backend string that reaches the request; `label` (default = value) is display-only. Forbidden on toggle/text/number. |
+| `default` | no | Scalar default: a declared option value / toggle `"true"`\|`"false"` / a text or number literal. |
+| `defaults` | multiselect only | Default option values. Mutually exclusive with `default`. |
+| `required` | no | Must always reach the request → validator demands a usable default. |
+| `request` | yes | The mapping block (below). |
+| `visibleWhen` | no | `[{ "filter": "<id>", "anyOf": ["v", …] }]` — ALL must hold; a hidden filter is neither rendered nor sent. Values are LOGICAL (`true`/`false` for toggles, option values otherwise). Cycles are validation errors. |
+| `excludeOf` | multiselect only | Marks this filter as the exclusion counterpart of filter `<id>` (include/exclude pairs). A value selected on both sides is dropped from the exclude side. |
+| `appliesTo` | no | Endpoint verbs, default `["search"]` — the only supported verb today. |
+
+`request` block:
+
+| Field | Meaning |
+|---|---|
+| `target` | `query` (URL parameter, appended after template expansion, percent-encoded) \| `form` (post-form entry, appended after the static `formBody`) \| `header` \| `path` (fills a `{param}` hole in the endpoint url — needs a guaranteed non-empty default) \| `body-json` (fills a `{param}` hole in `jsonBody`) |
+| `param` | query/form/header: the parameter name (`"genre[]"` is fine — it percent-encodes on the wire). path/body-json: the template placeholder name (`[a-zA-Z0-9_]+`, must not shadow a reserved engine var). |
+| `encode` | `single` (first value) \| `csv` (join with `delimiter`, default `,`) \| `repeat` (one `param=value` per value; query/form only) \| `json-array` (JSON array literal; body-json only). `csv`/`repeat`/`json-array` require `multiselect`. |
+| `omitIfEmpty` | default `true`: an empty effective value drops the parameter entirely (query/form/header). `false` sends an empty-valued parameter. Placeholder targets always expand (`[]`/`""`). |
+| `trueValue` / `falseValue` | toggle wire values (defaults `"true"` / `""` — empty + omit = the parameter vanishes when off). |
+
+Deterministic composition rules (all pinned in `FilterRequestComposerTest`): defaults apply when
+nothing is selected; unknown selection ids and unknown option values are DROPPED (stale UI state
+can never inject parameters); select conflicts resolve to the first value by option order;
+multiselect values re-order to option-declaration order; a required filter resolving empty fails
+closed (`Validation.Required("filter:<id>")`) without issuing a request.
+
+### 11.2 Standard filter conventions
+
+`genres`, `sort`, `status`, `language`, `type` are CONVENTIONS on `id`, not special code paths:
+the validator pins their control types (`sort` = select; the rest = select or multiselect), and
+the sheet gives them localized section titles (`strings_pfix_filters.xml` + the existing search
+keys) — request behavior is 100% the generic pipeline. One source's `genre=action,drama` vs
+another's `genre[]=action&genre[]=drama` vs a JSON body array is purely a different `request`
+block on the same standard filter.
+
+### 11.3 Custom filters
+
+Any other id is a custom filter and flows through the exact same parse → validate → render →
+state → compose pipeline. Example (a minimum-rating number + an adult toggle gating a demographic
+select):
+
+```jsonc
+{ "id": "min_rating", "label": "Minimum rating", "type": "number",
+  "request": { "target": "query", "param": "min_rating" } },
+{ "id": "adult", "label": "Adult content", "type": "toggle", "default": "false",
+  "request": { "target": "query", "param": "adult", "trueValue": "1", "falseValue": "0" } },
+{ "id": "demographic", "label": "Demographic", "type": "select",
+  "options": [ { "value": "seinen" }, { "value": "josei" } ],
+  "visibleWhen": [ { "filter": "adult", "anyOf": ["true"] } ],
+  "request": { "target": "query", "param": "demo" } }
+```
+
+### 11.4 Validation (all-or-nothing, like everything else)
+
+`DefaultSourceConfigValidator.validateSearchFilters` rejects — with a
+`source '<api>': filters: filter '<id>': <field>: <message>` path — duplicate ids, blank
+ids/labels/option values, duplicate option values, unknown types/targets/encodings,
+type-incompatible encodings, invalid defaults (not in options / non-numeric / bad toggle),
+`defaults`-vs-`default` misuse, required-without-default, unknown `visibleWhen`/`excludeOf`
+references, self-references, impossible `anyOf` values, dependency cycles, chained/overlapping
+exclude pairs, filters mapped to missing or unsupported endpoints, `form`/`body-json` targets on
+the wrong endpoint method, placeholders missing from templates or shadowing reserved vars, param
+collisions with static formBody keys or hardcoded url query keys, standard-id type mismatches, and
+`filters` on a non-generic engine. Test spec: `DefaultSourceConfigValidatorFilterTest`.
+
+### 11.5 Evolving a source's filters safely
+
+- **Add an option**: append `{ "value", "label" }` — additive, nothing else changes.
+- **Rename a label** (filter `label` or option `label`): always safe — behavior binds only to
+  `id`/`option.value`. NEVER rename a shipped `id` or `option.value` in place; that is a retire +
+  re-add (in-flight UI state for the old identity is pruned harmlessly on the next filter load).
+- **Retire a filter or option**: delete it from the JSON. The reconciliation step drops any held
+  selection referencing it; nothing persists filter state today, so there is no migration.
+- **Filter state scoping**: selections live in Search MVI state only — cleared when the overlay
+  closes, reconciled against the freshly loaded filter list on every open (unknown ids/values
+  dropped, defaults seeded). Switching sources can never leak selections
+  (`SearchViewModelFilterTest`).
+- Legacy (non-generic) sources keep their compiled `sortTypes`/`allGenres`: `:data` adapts them
+  into the same `SourceFilter` shape (genres, then sort — `toSourceFilters()`) and translates
+  selections back onto the legacy `SearchType` (`legacySearchTypeOf`, sort > genres, CSV). A
+  GENERIC source never falls back to legacy filter code — its stanza is the only filter authority.
+
+### 11.6 Complete example
+
+```jsonc
+"filters": [
+  { "id": "genres", "label": "Genres", "type": "multiselect",
+    "options": [ { "value": "action" }, { "value": "drama" }, { "value": "isekai" } ],
+    "request": { "target": "query", "param": "genre[]", "encode": "repeat" } },
+  { "id": "sort", "label": "Sort", "type": "select", "default": "latest",
+    "options": [ { "value": "latest", "label": "Latest" }, { "value": "views", "label": "Most viewed" } ],
+    "request": { "target": "query", "param": "orderby" } },
+  { "id": "status", "label": "Status", "type": "select",
+    "options": [ { "value": "ongoing" }, { "value": "completed" } ],
+    "request": { "target": "query", "param": "status" } },
+  { "id": "language", "label": "Language", "type": "select",
+    "options": [ { "value": "en" }, { "value": "ar" } ],
+    "request": { "target": "query", "param": "lang" } },
+  { "id": "type", "label": "Type", "type": "multiselect",
+    "options": [ { "value": "manga" }, { "value": "manhwa" } ],
+    "request": { "target": "query", "param": "type", "encode": "csv" } },
+  { "id": "completed_only", "label": "Completed only", "type": "toggle",
+    "request": { "target": "query", "param": "completed", "trueValue": "yes" } }
+]
+```
+
+For a POST-form (madara) source, see the shipped Lekmanga stanza: `form` targets appending after
+the static `formBody` (`vars[wp-manga-genre]` CSV + `vars[meta_key]` mapped sort values).
+
+**Versioning**: `filters` is additive-optional — `schemaVersion` stays 1 and pre-filter parsers
+ignore the key. Bump `SUPPORTED_SCHEMA_VERSION` only for changes to the MEANING of existing
+fields.
+
+> **Invariant**: a generic source's discovery, icon, endpoints, filters, filter UI, and request
+> mapping are fully defined by validated configuration. Adding or changing its filters must not
+> require editing `MangaSource`, a compiled source roster, a source-specific Kotlin filter class,
+> or a `when(api)` branch. (Build gate: `GenericSourcesDecouplingGuardTest`, incl. the
+> `when(api)` scan over the generic pipeline modules.)
+
 *Invariants recap: api strings are immutable once shipped · retirement is `disabled` → `removed`,
 never silent stanza deletion · `previousHosts` is append-only · validation is all-or-nothing
 (build gate: `ConfigBackedSourceCompletenessTest`) · generic sources have no legacy fallback —
