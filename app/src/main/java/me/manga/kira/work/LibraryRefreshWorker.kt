@@ -29,6 +29,11 @@ import kotlinx.datetime.todayIn
 import kotlinx.datetime.toLocalDateTime
 import me.manga.kira.R
 import me.manga.kira.core.dispatchers.platformIoDispatcher
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.Manga
+import kotlinx.datetime.LocalDate
+import me.manga.kira.sources.contracts.MangaSourceClient
+import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.core.states.State
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
@@ -74,6 +79,7 @@ class LibraryRefreshWorker(
     private val prefs: SharedPrefsHelper,
     private val chapterNotificationHelper: ChapterNotificationHelper,
     private val sourcesRepository: SourcesRepository,
+    private val sourceRegistry: SourceRegistry,
 ) : CoroutineWorker(context, params) {
 
     private val log = Logger.withTag(TAG)
@@ -227,6 +233,14 @@ class LibraryRefreshWorker(
     private suspend fun refreshSingleManga(manga: SavedMangaEntity): Boolean {
         return try {
             if (manga.id == 0L) return false
+            // MangaSource decoupling (2026-07): a config-backed source refreshes through the
+            // GENERIC engine (details verb) — the same system that serves its Home/Details/Pages.
+            // Previously refresh was 100% legacy-scraper: the 12 pilots refreshed via their rotting
+            // legacy parsers, and a config-only source (no compiled repo) never refreshed at all.
+            if (sourceRegistry.isConfigBacked(manga.api)) {
+                val client = sourceRegistry.get(manga.api) ?: return false
+                return fetchGenericUpdates(manga, client)
+            }
             // Strict lookup: an unknown/retired api must count as a failed refresh, NOT resolve to
             // EmptyMangaRepository — its empty-Success (imageUrl="") used to blank the saved cover
             // via the reconcile in fetchMangaUpdates (2026-07 source-lifecycle hardening).
@@ -238,6 +252,53 @@ class LibraryRefreshWorker(
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /** One remote chapter, source-system-neutral — legacy MangaInfo and generic MangaDetails both project into it. */
+    private data class RemoteChapter(
+        val name: String,
+        val number: String,
+        val url: String,
+        val date: LocalDate?,
+    )
+
+    /**
+     * Generic-engine refresh for a config-backed api: `details()` carries the cover + full chapter
+     * list. Same 20s per-manga budget as the legacy flow timeout; a Failure/timeout counts as a
+     * failed refresh (never a cover blank — reconcile guards below).
+     */
+    private suspend fun fetchGenericUpdates(manga: SavedMangaEntity, client: MangaSourceClient): Boolean {
+        val result = withContext(platformIoDispatcher) {
+            withTimeoutOrNull(20.seconds) {
+                client.details(
+                    Manga(
+                        api = manga.api,
+                        language = manga.language,
+                        title = manga.title,
+                        url = manga.url,
+                        coverUrl = manga.imageUrl,
+                        rating = null,
+                        genres = manga.genres,
+                    ),
+                )
+            }
+        } ?: return false
+        return when (result) {
+            is AppResult.Success -> {
+                reconcileRemote(
+                    manga = manga,
+                    remoteImageUrl = result.value.coverUrl,
+                    remoteChapters = result.value.chapters.map {
+                        RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
+                    },
+                )
+                true
+            }
+            is AppResult.Failure -> {
+                log.w { "Generic refresh failed for '${manga.title}' (${manga.api}): ${result.error}" }
+                false
+            }
         }
     }
 
@@ -254,46 +315,64 @@ class LibraryRefreshWorker(
             }
 
             state.toData()?.let { mangaInfo ->
-                // Never reconcile a blank cover over an existing one — a source that fails to parse
-                // its details page (or a null-object repo) reports imageUrl="" and must not wipe the
-                // stored cover across saved_manga/history/notifications.
-                if (mangaInfo.imageUrl.isNotBlank() && mangaInfo.imageUrl != manga.imageUrl) {
-                    libraryRepository.updateMangaImageUrlEverywhere(manga.id, mangaInfo.imageUrl)
-                }
-
-                val localChapters = withTimeoutOrNull(10.seconds) {
-                    libraryRepository.getChaptersByMangaId(manga.id).first()
-                } ?: run {
-                    log.w { "Timeout getting local chapters for ${manga.title}" }
-                    return
-                }
-
-                val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
-                // Discovery timestamp for the NEW-badge 4-day expiry (DB v10). Without it the badge
-                // would be hidden immediately (fetchedAt==0 is treated as outside the window).
-                val now = Clock.System.now().toEpochMilliseconds()
-                val newChapters = mangaInfo.chapters
-                    .filterNot { remote -> localChapters.any { it.url == remote.url } }
-                    .map { remote ->
-                        SavedChapterEntity(
-                            mangaId = manga.id,
-                            name = remote.name,
-                            number = remote.number,
-                            url = remote.url,
-                            date = remote.date ?: today,
-                            isNew = true,
-                            fetchedAt = now,
-                        )
-                    }
-                    .reversed()
-
-                if (newChapters.isNotEmpty()) {
-                    libraryRepository.insertChapterList(newChapters)
-                    chapterNotificationHelper.addNewChapterNotification(manga, newChapters)
-                }
+                reconcileRemote(
+                    manga = manga,
+                    remoteImageUrl = mangaInfo.imageUrl,
+                    remoteChapters = mangaInfo.chapters.map {
+                        RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
+                    },
+                )
             }
         } catch (e: Exception) {
             log.e(e) { "Error fetching updates for ${manga.title}" }
+        }
+    }
+
+    /**
+     * Source-system-neutral reconcile (shared by the legacy and generic fetchers): guard-checked
+     * cover update + insert-only new-chapter detection + NEW-badge notification.
+     */
+    private suspend fun reconcileRemote(
+        manga: SavedMangaEntity,
+        remoteImageUrl: String,
+        remoteChapters: List<RemoteChapter>,
+    ) {
+        // Never reconcile a blank cover over an existing one — a source that fails to parse
+        // its details page (or a null-object repo) reports imageUrl="" and must not wipe the
+        // stored cover across saved_manga/history/notifications.
+        if (remoteImageUrl.isNotBlank() && remoteImageUrl != manga.imageUrl) {
+            libraryRepository.updateMangaImageUrlEverywhere(manga.id, remoteImageUrl)
+        }
+
+        val localChapters = withTimeoutOrNull(10.seconds) {
+            libraryRepository.getChaptersByMangaId(manga.id).first()
+        } ?: run {
+            log.w { "Timeout getting local chapters for ${manga.title}" }
+            return
+        }
+
+        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+        // Discovery timestamp for the NEW-badge 4-day expiry (DB v10). Without it the badge
+        // would be hidden immediately (fetchedAt==0 is treated as outside the window).
+        val now = Clock.System.now().toEpochMilliseconds()
+        val newChapters = remoteChapters
+            .filterNot { remote -> localChapters.any { it.url == remote.url } }
+            .map { remote ->
+                SavedChapterEntity(
+                    mangaId = manga.id,
+                    name = remote.name,
+                    number = remote.number,
+                    url = remote.url,
+                    date = remote.date ?: today,
+                    isNew = true,
+                    fetchedAt = now,
+                )
+            }
+            .reversed()
+
+        if (newChapters.isNotEmpty()) {
+            libraryRepository.insertChapterList(newChapters)
+            chapterNotificationHelper.addNewChapterNotification(manga, newChapters)
         }
     }
 

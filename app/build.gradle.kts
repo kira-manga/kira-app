@@ -138,6 +138,11 @@ dependencies {
     // interface (moved here from :shared, package preserved).
     implementation(project(":data:download"))
     implementation(project(":sources:legacy"))
+    // MangaSource decoupling (2026-07): LibraryRefreshWorker routes config-backed sources through
+    // the SourceRegistry's generic client (details verb) — contracts carries the registry seam and
+    // :domain the entities the client speaks.
+    implementation(project(":sources:contracts"))
+    implementation(project(":domain"))
 
     // Koin Android
     implementation(libs.koin.android)
