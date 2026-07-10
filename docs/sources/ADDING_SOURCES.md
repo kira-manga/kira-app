@@ -17,9 +17,12 @@
   It contains every source the app has ever shipped: the **generic** stanzas (`engine:"generic"`,
   executed by the config-driven engine) and the metadata-only **legacy** stanzas
   (`engine:"legacy"`, lifecycle/host metadata for the hand-written Kotlin scrapers).
-- **`CONFIG_BACKED_APIS`** (same file) is the allow-list of apis served by the generic engine.
-  A source runs generic **only** when its api is in this set AND its stanza says
-  `engine:"generic"` — both are required (`DefaultSourceRegistry.isConfigBacked`).
+- **The validated document is the single authority** for which sources are generic
+  (MangaSource decoupling, 2026-07): a source runs generic exactly when its stanza says
+  `engine:"generic"` and the whole document passes validation
+  (`DefaultSourceRegistry.isConfigBacked`). The former compiled `CONFIG_BACKED_APIS` allow-list
+  was deleted — do not reintroduce one (the `GenericSourcesDecouplingGuardTest` build gate
+  fails on it).
 - The app **never scans a directory, never reads a `.json` file, and never fetches configs from
   the network**. The remote-config channel exists in code (`RemoteSourceConfigManager`) but is
   double-locked off: `remote = null` in `di/SourcesGenericModule.kt`, and
@@ -42,8 +45,13 @@ Checklist (details below):
 
 1. Choose a **stable api string** — this is the source's permanent identity (see §3). Not a
    display name; never reused; never renamed.
-2. Add an `engine:"generic"` stanza to `CONFIG_BACKED_SOURCES_JSON`.
-3. Add the api to `CONFIG_BACKED_APIS`.
+2. Add an `engine:"generic"` stanza to `CONFIG_BACKED_SOURCES_JSON`. **That is the whole
+   registration** — no allow-list, no enum entry, no Kotlin wiring (the decoupling invariant,
+   pinned by `JsonOnlySourceAdditionTest` + `ConfigOnlySourceRoutingTest`).
+3. Optionally give it an icon (see "Icons" below): `"icon": { "resourceKey": "x" }` for a
+   packaged drawable (one generic entry in `SourceIconRegistry` maps the key), or
+   `"icon": { "remoteUrl": "https://…" }` for a config-delivered icon (no Kotlin at all), or
+   omit the block for the deterministic initials avatar.
 4. Set `"enabled": true` if the source should be default-enabled when first seeded, and
    `"lifecycle": "active"` (the default). **Note the current reality: seeding honors
    `isEnabled = enabled && lifecycle == "active"`, and all shipped stanzas leave `enabled` unset
@@ -62,12 +70,12 @@ Checklist (details below):
 8. `previousHosts` / `previousImageHosts`: leave empty for a new source. They exist for **domain
    moves** (§7) — append the OLD host when `baseUrl` changes so stored library/chapter/history
    URLs are rewritten and user-configured mirrors are protected.
-9. **Registry pin**: every stanza api must name a source known to the `MangaSource` enum
-   (`sources/legacy/.../sources_repositry/data/MangaSource.kt`) — `LegacyStanzaCompletenessTest`
-   fails the build otherwise ("ghost stanza" gate). All 12 existing generic sources are
-   *conversions* of legacy sources, so the entry already existed. A **brand-new** source therefore
-   also needs a `MangaSource` enum entry (api, language, baseUrl, priority). ⚠️ That file is a
-   standing owner-WIP untouchable — coordinate with the owner before editing it.
+9. **No enum entry** (MangaSource decoupling, 2026-07): a generic stanza needs NO `MangaSource`
+   entry — `LegacyStanzaCompletenessTest` now pins the enum⇄stanza completeness for LEGACY
+   stanzas only (a metadata-only legacy stanza must still name a shipped scraper). Where a
+   generic stanza shares an api with a converted legacy scraper (the 12 pilots), its `language`
+   must still match the enum's. `GenericSourcesDecouplingGuardTest` fails the build if
+   production code outside `:sources:legacy` references the enum again.
 10. Add a `<Source>PilotParityTest.kt` in `:composeApp` commonTest with real captured HTML/JSON
     fixtures asserting each verb's parsed output (see any existing `*PilotParityTest.kt`).
 11. If the site needs an engine capability that doesn't exist yet (new transform, new pagination
@@ -83,7 +91,7 @@ is the read-only spec).
 
 The `api` string is the **primary key of the entire system**. It is:
 
-- the stanza key in the config document and the `CONFIG_BACKED_APIS` entry;
+- the stanza key in the config document (`engine:"generic"` IS the registration);
 - the `sources` table primary key (`SourcesEntity.name`);
 - the `saved_manga.api` / `history_items.api` / `chapter_downloads.api` column value on every row
   a user ever created from this source (plain strings — **no foreign key, no cascade**);
@@ -154,9 +162,11 @@ generic source disappears at once** (Home shows its error pane; the catalog sync
 DB damage). Unknown JSON fields are silently ignored (`ignoreUnknownKeys`), so typo'd *field
 names* don't fail validation — they just don't do anything. Two safety nets exist:
 
-- **Build time**: `ConfigBackedSourceCompletenessTest` (+ `LegacyStanzaCompletenessTest`) in
-  `:composeApp` commonTest — parses the bundled JSON, runs the shipping validator, verifies every
-  `CONFIG_BACKED_APIS` entry is registry-reachable and defines all required endpoints. Runs in CI
+- **Build time**: `ConfigBackedSourceCompletenessTest` (+ `LegacyStanzaCompletenessTest`,
+  `JsonOnlySourceAdditionTest`, `GenericSourcesDecouplingGuardTest`) in `:composeApp` tests —
+  parse the bundled JSON, run the shipping validator, verify every generic stanza is
+  registry-reachable with all required endpoints, and fail the build if production code
+  re-couples to the `MangaSource` enum or a compiled api allow-list. Run in CI
   (`:composeApp:desktopTest`).
 - **Runtime**: the manager's `onDocumentRejected` hook logs every rejection with per-stanza
   reasons (tag `SourceConfig`), and `App.kt` logs a startup alarm if the active document contains
@@ -255,7 +265,7 @@ design):
 
 | Symptom | Likely cause → what to check |
 |---|---|
-| **Source doesn't appear in the UI** | (a) not enabled — sources seed disabled by default; enable it in the Sources screen, or ship `"enabled": true` for the first-seed default; (b) api missing from `CONFIG_BACKED_APIS` (stanza alone isn't enough); (c) stanza engine isn't `generic`; (d) the WHOLE document got rejected — see the last row |
+| **Source doesn't appear in the UI** | (a) not enabled — sources seed disabled by default; enable it in the Sources screen, or ship `"enabled": true` for the first-seed default; (b) stanza engine isn't `generic` (the stanza IS the registration since the 2026-07 decoupling); (c) the WHOLE document got rejected — see the last row |
 | **Tab shows but Home/featured fails** | wrong `home`/`featured` endpoint url/format/root; check Kermit + the parity test fixtures; Cloudflare → see below |
 | **Search fails or returns nothing** | missing `search` endpoint (`Validation.Required("endpoint:search")` — no fallback!); raw `{query}` instead of `{queryEncoded}`; site expects POST (set `method`) |
 | **Details fail** | `details` endpoint or `detail.*` fields wrong; if a separate `chapters` endpoint exists, ITS failure fails all of details (deliberate) |
@@ -307,9 +317,13 @@ design):
 }
 ```
 
-…plus `"Example"` added to `CONFIG_BACKED_APIS`, a `MangaSource` enum entry (owner coordination,
-§2.9), and an `ExamplePilotParityTest`. The real 12 stanzas in `BundledSourcesConfig.kt` are the
-best reference — Azora is the cleanest JSON-API example, the Madara-family sources the HTML ones.
+…plus an `ExamplePilotParityTest`. Nothing else: no allow-list entry, no `MangaSource` enum
+entry, no Kotlin wiring (the 2026-07 decoupling invariant). Optional icon flows: packaged —
+drop the drawable in `composeResources/drawable/`, add one `SourceIconRegistry` entry, reference
+its key from `"icon": { "resourceKey": … }`; remote — `"icon": { "remoteUrl": "https://…" }`
+(validated https-only) with the deterministic initials avatar as the loading/error fallback; none —
+omit the block. The real 12 stanzas in `BundledSourcesConfig.kt` are the best reference — Azora is
+the cleanest JSON-API example, the Madara-family sources the HTML ones.
 
 **Source after a domain move** (`previousHosts` carries the history, append-only):
 

@@ -10,7 +10,7 @@
 
 ### Ownership model (since the SourceRegistry endpoint retirement, 2026-07-04)
 
-The bundled JSON config document (`CONFIG_BACKED_SOURCES_JSON` + `CONFIG_BACKED_APIS` in
+The bundled JSON config document (`CONFIG_BACKED_SOURCES_JSON` in
 `composeApp/.../sources/runtime/BundledSourcesConfig.kt`) is the **only authority** for every
 source — existence, metadata, baseUrl/imageBase, `siteState`, `lifecycle`, host-migration history,
 deep-link trust hosts. Room's `sources` table is a local cache/projection (plus the user-owned
@@ -73,8 +73,10 @@ Flowermanga (PT), Timenaight + Webtoontr + Webtoonhatti (TR).
 > steps below are the short form.
 
 1. Author its `SourceConfig` (`engine="generic"`) in `CONFIG_BACKED_SOURCES_JSON`, deriving fields
-   from the legacy parser in `sources_repositry/` (read-only spec); add the api to
-   `CONFIG_BACKED_APIS`.
+   from the legacy parser in `sources_repositry/` (read-only spec). The stanza IS the whole
+   registration: the compiled `CONFIG_BACKED_APIS` allow-list and the `MangaSource`-enum
+   requirement were deleted in the 2026-07 MangaSource decoupling — the validated document is the
+   single authority (guarded by `GenericSourcesDecouplingGuardTest`).
 2. Add a `*PilotParityTest.kt` in `:composeApp` commonTest with real captured HTML/JSON fixtures.
 3. Any new engine capability needs a golden test in `:sources:engine` plus a
    `DefaultStrategyRegistry` whitelist entry.
