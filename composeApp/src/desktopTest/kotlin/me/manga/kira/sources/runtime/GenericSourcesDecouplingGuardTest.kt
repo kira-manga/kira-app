@@ -92,6 +92,52 @@ class GenericSourcesDecouplingGuardTest {
         assertEquals(emptyList(), gone, "stale decoupling-guard allow-list entries — prune them")
     }
 
+    /**
+     * Config-driven filters guard (2026-07, CONFIG_DRIVEN_FILTERS_PLAN.md §8 item 18): the generic
+     * source pipeline — contracts, engine, config — must stay api-AGNOSTIC. A `when (api)` (or a
+     * `when (config.api)` / `when (source.api)` / `when (request.api)` etc. — any `when` subject
+     * ending in `.api)` or being exactly `api)`) inside these modules means per-source behavior
+     * crept back into compiled code instead of the declarative schema. Wider modules legitimately
+     * branch on api for legacy routing, so the scan is scoped to the generic pipeline only.
+     */
+    @Test
+    fun the_generic_pipeline_never_branches_on_a_source_api() {
+        val root = repoRoot()
+        val violations = mutableListOf<String>()
+        val whenOnApi = Regex("""when\s*\((\w+\.)*api\)""")
+
+        for (module in listOf("sources/contracts", "sources/engine", "sources/config")) {
+            val srcDir = root.resolve(module).resolve("src")
+            if (!srcDir.isDirectory) fail("expected source dir missing: $srcDir — module layout changed?")
+            srcDir
+                .listFiles { f -> f.isDirectory && f.name.endsWith("Main") }
+                .orEmpty()
+                .forEach { sourceSet ->
+                    sourceSet
+                        .walkTopDown()
+                        .filter { it.isFile && it.extension == "kt" }
+                        .forEach { file ->
+                            val relative = file.relativeTo(root).path.replace(File.separatorChar, '/')
+                            file.readLines().forEachIndexed { index, raw ->
+                                val line = raw.trim()
+                                if (line.startsWith("*") || line.startsWith("//") || line.startsWith("/*")) return@forEachIndexed
+                                if (whenOnApi.containsMatchIn(line.substringBefore("//"))) {
+                                    violations += "$relative:${index + 1}: when(api) branching"
+                                }
+                            }
+                        }
+                }
+        }
+
+        assertEquals(
+            emptyList(),
+            violations,
+            "the generic pipeline branched on a source api — filter/request behavior must come " +
+                "from the validated config schema, never per-source Kotlin. See " +
+                "docs/sources/CONFIG_DRIVEN_FILTERS_PLAN.md",
+        )
+    }
+
     private fun scanFile(
         file: File,
         relative: String,

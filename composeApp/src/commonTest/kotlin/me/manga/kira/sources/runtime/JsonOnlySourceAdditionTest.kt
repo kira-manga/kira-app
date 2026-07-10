@@ -8,7 +8,11 @@ import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
+import me.manga.kira.domain.model.filters.FilterControlType
 import me.manga.kira.sources.contracts.model.EndpointSpec
+import me.manga.kira.sources.contracts.model.FilterDefinition
+import me.manga.kira.sources.contracts.model.FilterOptionSpec
+import me.manga.kira.sources.contracts.model.FilterRequestSpec
 import me.manga.kira.sources.contracts.model.IconSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
@@ -45,6 +49,53 @@ class JsonOnlySourceAdditionTest {
                     "search" to EndpointSpec(url = "{baseUrl}/search?q={queryEncoded}", listSelector = "div.item"),
                     "details" to EndpointSpec(url = "{itemUrl}", listSelector = "div.detail"),
                     "pages" to EndpointSpec(url = "{chapterUrl}", listSelector = "img.page"),
+                ),
+            // The full standard-filter convention set + one custom filter, declared by JSON alone
+            // (config-driven filters, 2026-07 — CONFIG_DRIVEN_FILTERS_PLAN.md §8 items 1/17).
+            filters =
+                listOf(
+                    FilterDefinition(
+                        id = "genres",
+                        label = "Genres",
+                        type = "multiselect",
+                        options = listOf(FilterOptionSpec("action"), FilterOptionSpec("drama")),
+                        request = FilterRequestSpec(target = "query", param = "genre[]", encode = "repeat"),
+                    ),
+                    FilterDefinition(
+                        id = "sort",
+                        label = "Sort",
+                        type = "select",
+                        options = listOf(FilterOptionSpec("latest", "Latest"), FilterOptionSpec("views", "Views")),
+                        default = "latest",
+                        request = FilterRequestSpec(target = "query", param = "orderby"),
+                    ),
+                    FilterDefinition(
+                        id = "status",
+                        label = "Status",
+                        type = "select",
+                        options = listOf(FilterOptionSpec("ongoing"), FilterOptionSpec("completed")),
+                        request = FilterRequestSpec(target = "query", param = "status"),
+                    ),
+                    FilterDefinition(
+                        id = "language",
+                        label = "Language",
+                        type = "select",
+                        options = listOf(FilterOptionSpec("en"), FilterOptionSpec("ar")),
+                        request = FilterRequestSpec(target = "query", param = "lang"),
+                    ),
+                    FilterDefinition(
+                        id = "type",
+                        label = "Type",
+                        type = "multiselect",
+                        options = listOf(FilterOptionSpec("manga"), FilterOptionSpec("manhwa")),
+                        request = FilterRequestSpec(target = "query", param = "type", encode = "csv"),
+                    ),
+                    FilterDefinition(
+                        id = "min_rating",
+                        label = "Minimum rating",
+                        type = "number",
+                        request = FilterRequestSpec(target = "query", param = "min_rating"),
+                    ),
                 ),
         )
 
@@ -85,6 +136,33 @@ class JsonOnlySourceAdditionTest {
         assertEquals("Synthetic Scans", descriptor.displayName)
         assertEquals("https://synthetic.example/icon.png", descriptor.iconRemoteUrl)
         assertTrue(registry.genericDescriptors().any { it.api == syntheticApi })
+    }
+
+    @Test
+    fun a_json_only_stanza_exposes_its_full_ordered_filter_set_through_the_descriptor() {
+        // Items 1 + 17 of the filters test matrix: genres/sort/status/language/type + a CUSTOM
+        // filter, all declared by the stanza alone, surface as ordered render-ready descriptors —
+        // this list is exactly what SearchState.filters holds and the sheet renders. No enum entry,
+        // no Kotlin filter class, no when(api) anywhere (the request side is pinned by the engine's
+        // FilterRequestComposer / GenericSourceClientFilterRequestTest suites).
+        val registry =
+            DefaultSourceRegistry(
+                legacyRepos = emptySet(),
+                updateManager = FixedManager(documentWithSynthetic()),
+                genericClientFactory = { config -> MarkerPagesClient("generic:${config.api}") },
+            )
+
+        val filters = registry.descriptor(syntheticApi)?.filters ?: fail("descriptor must resolve")
+        assertEquals(
+            listOf("genres", "sort", "status", "language", "type", "min_rating"),
+            filters.map { it.id },
+            "declaration order is render order",
+        )
+        assertEquals(FilterControlType.MULTISELECT, filters[0].type)
+        assertEquals(listOf("action", "drama"), filters[0].options.map { it.value })
+        assertEquals(listOf("latest"), filters[1].defaultValues)
+        assertEquals("Minimum rating", filters[5].label)
+        assertEquals(FilterControlType.NUMBER, filters[5].type)
     }
 
     /** Never exercised — the test only inspects [me.manga.kira.sources.contracts.MangaSourceClient.api]. */
