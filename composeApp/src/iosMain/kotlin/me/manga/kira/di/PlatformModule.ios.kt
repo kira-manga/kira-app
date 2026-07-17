@@ -191,11 +191,12 @@ actual fun platformModule(): Module = module {
 }
 
 /**
+ *
  * **Audit-trail postscript** (Phase 9.x.cluster169.staleKdocSweep.cascade,
- * Task #625, 2026-05-29): classified as follows after recursive symbol
- * verification (two-hundred-and-thirty-sixth sibling of the cluster57-168
- * sweep — single-leaf file of the wave-41 shared/iosMain platform-DI-graph
- * batch; SOLE shared/iosMain platform-graph file 1/1):
+ *  Task #625, 2026-05-29): classified as follows after recursive symbol
+ *  verification (two-hundred-and-thirty-sixth sibling of the cluster57-168
+ *  sweep — single-leaf file of the wave-41 shared/iosMain platform-DI-graph
+ *  batch; SOLE shared/iosMain platform-graph file 1/1):
  *  (a) top-KDoc "iOS-platform-module-provides-every-per-target-actual-that-
  *  the-shared-graph-requires + The-iOS-shape-mirrors-the-Android-module-but-
  *  drops-the-Context-plumbing-every-iOS-actual-is-no-arg-because-the-
@@ -302,4 +303,5 @@ actual fun platformModule(): Module = module {
  *  rationale, Complaint architectural decision, Complaint behavioural-
  *  parity contract). Original Phase 8.x/10.x/14.x platform-module prose
  *  preserved verbatim per the audit-trail-preservation convention.
+ *
  */
