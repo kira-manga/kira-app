@@ -1,7 +1,12 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.toRoute
@@ -9,7 +14,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import me.manga.kira.core.platform.rememberBackupFilePicker
+import me.manga.kira.core.storage.SharedPrefsHelper
+import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.model.backup.BackupImportResult
 import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safePopBackStack
@@ -17,6 +25,7 @@ import me.manga.kira.presentation.backup.BackupIntent
 import me.manga.kira.presentation.backup.BackupViewModel
 import me.manga.kira.ui.backup.BackupScreen
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 /**
@@ -62,10 +71,30 @@ fun BackupReworkScreenRoute(
     val args = backStackEntry.toRoute<Screen.BackupRework>()
     val scope = remember(args.scopeJson) { decodeBackupScope(args.scopeJson) }
     val viewModel: BackupViewModel = koinViewModel { parametersOf(scope) }
+    val prefs: SharedPrefsHelper = koinInject()
     val picker = rememberBackupFilePicker()
+    val state by viewModel.state.collectAsState()
+    var completedStartFlowImport by remember { mutableStateOf(false) }
+
+    LaunchedEffect(args.completeStartFlowOnImport, state.progress.importResult) {
+        if (shouldCompleteStartFlowOnImport(args.completeStartFlowOnImport, state.progress.importResult)) {
+            prefs.putBoolean(StorageKeys.FIRST_LAUNCH, false)
+            completedStartFlowImport = true
+        }
+    }
+
     BackupScreen(
         viewModel = viewModel,
-        onNavigateBack = { navController.safePopBackStack() },
+        onNavigateBack = {
+            if (completedStartFlowImport) {
+                navController.navigate(Screen.Library) {
+                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    launchSingleTop = true
+                }
+            } else {
+                navController.safePopBackStack()
+            }
+        },
         onLaunchExportPicker = { archivePath, suggestedName ->
             picker.launchExport(archivePath, suggestedName) { delivered ->
                 viewModel.submit(BackupIntent.OnExportDelivered(delivered))
@@ -78,3 +107,8 @@ fun BackupReworkScreenRoute(
         },
     )
 }
+
+internal fun shouldCompleteStartFlowOnImport(
+    requestedFromStartFlow: Boolean,
+    importResult: BackupImportResult?,
+): Boolean = requestedFromStartFlow && importResult != null

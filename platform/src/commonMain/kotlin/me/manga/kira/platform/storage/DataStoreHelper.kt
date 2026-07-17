@@ -137,6 +137,16 @@ class DataStoreHelper(
         settings.putBoolean(StorageKeys.KEY_AUTO_CONVERT_TO_CBZ, value)
     }
 
+    // iOS Low Power Mode compression opt-in (default false = respect battery intent). Consumed by the
+    // iOS background-download finalize gate; a false→true flip re-drives deferred CBZ work.
+    @OptIn(ExperimentalSettingsApi::class)
+    val allowCompressionInLowPowerFlow: Flow<Boolean> =
+        settings.getBooleanFlow(StorageKeys.KEY_ALLOW_COMPRESSION_IN_LOW_POWER, defaultValue = false)
+
+    suspend fun setAllowCompressionInLowPower(value: Boolean) {
+        settings.putBoolean(StorageKeys.KEY_ALLOW_COMPRESSION_IN_LOW_POWER, value)
+    }
+
     @OptIn(ExperimentalSettingsApi::class)
     val readMinutesFlow: Flow<Int> =
         settings.getIntFlow(StorageKeys.READ_MINUTES, defaultValue = 0)

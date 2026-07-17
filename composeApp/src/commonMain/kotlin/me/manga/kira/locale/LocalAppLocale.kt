@@ -9,13 +9,12 @@ import androidx.compose.runtime.ProvidedValue
  * `stringResource` resolves against the *platform* locale. The per-platform `LocaleSwitcher` only
  * changes that on Android (activity recreate); on iOS/Desktop it is a no-op, so selecting a language
  * in Settings persisted the choice but never changed the UI language. Providing this at the app root
- * (keyed on the persisted language code so the subtree recomposes) re-resolves strings in the chosen
- * language on every platform:
+ * re-resolves strings in the chosen language without disposing remembered app state:
  *  - **Android** — overrides `LocalConfiguration`'s locale (which compose-resources reads).
- *  - **Desktop (JVM)** — `Locale.setDefault(...)`; the keyed recomposition re-reads it.
+ *  - **Desktop (JVM)** — `Locale.setDefault(...)`; provider recomposition re-reads it.
  *  - **iOS** — sets `NSUserDefaults["AppleLanguages"]`; `NSLocale.preferredLanguages` (what
  *    compose-resources string resolution reads, uncached) reflects the write within the running
- *    process, so the keyed recomposition switches live (PI2 — pinned by
+ *    process, so provider recomposition switches live (PI2 — pinned by
  *    `AppleLanguagesLiveSwitchContractTest`). Swift-side `NSBundle` strings catch up on relaunch.
  *
  * `provides(null)` (or a blank code) restores the original system default.

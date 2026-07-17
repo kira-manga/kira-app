@@ -1,5 +1,8 @@
 package me.manga.kira.di
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import me.manga.kira.data.repository.AdultContentClassifierImpl
 import me.manga.kira.data.repository.AnalyticsRepositoryImpl
 import me.manga.kira.data.repository.ChapterDeletionRepositoryImpl
@@ -13,6 +16,7 @@ import me.manga.kira.domain.repository.AnalyticsPort
 import me.manga.kira.domain.repository.ChapterDeletionRepository
 import me.manga.kira.domain.repository.ChapterIdResolver
 import me.manga.kira.domain.repository.ConnectivityRepository
+import me.manga.kira.domain.repository.CompressionDeferralRepository
 import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
@@ -31,10 +35,14 @@ import me.manga.kira.domain.usecase.downloads.CancelChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
+import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.library.MarkMangaOpenedUseCase
 import me.manga.kira.domain.usecase.library.ObserveInLibraryUseCase
 import me.manga.kira.domain.usecase.reader.MarkChaptersReadUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterReadUseCase
+import me.manga.kira.core.platform.backupPlatformName
+import me.manga.kira.platform.download.BackgroundWorkSignal
+import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.details.DetailsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -193,6 +201,26 @@ val detailsReworkModule: Module = module {
     single<ConnectivityRepository> { ConnectivityRepositoryImpl(observer = get()) }
     factory { ObserveConnectivityUseCase(get()) }
 
+    // iOS-only compression deferral projection. The platform signal is intentionally resolved only
+    // on iOS: Android/Desktop do not bind BackgroundWorkSignal and must receive a constant false.
+    // Keeping this adapter in the composition root preserves the domain/presentation dependency
+    // direction while combining the live Low Power Mode signal with the persisted opt-in toggle.
+    single<CompressionDeferralRepository> {
+        val deferred: Flow<Boolean> = if (backupPlatformName() == "ios") {
+            val signal = get<BackgroundWorkSignal>()
+            val dataStore = get<DataStoreHelper>()
+            combine(signal.lowPowerMode, dataStore.allowCompressionInLowPowerFlow) { lowPower, allow ->
+                lowPower && !allow
+            }
+        } else {
+            flowOf(false)
+        }
+        object : CompressionDeferralRepository {
+            override fun observeLowPowerDeferral(): Flow<Boolean> = deferred
+        }
+    }
+    factory { ObserveCompressionDeferredUseCase(get()) }
+
     // #11: native-parity analytics. AnalyticsPort (:domain) → AnalyticsRepositoryImpl delegating to
     // the `:platform` AnalyticsClient (bound `single` per platform). LogMangaOpen fired from the
     // Details VM; LogAppOpen koinInject()'d in App.kt's launch effect.
@@ -243,6 +271,7 @@ val detailsReworkModule: Module = module {
             observeConnectivity = get(),
             // #11: manga_open analytics.
             logMangaOpen = get(),
+            observeCompressionDeferred = get(),
         )
     }
 }

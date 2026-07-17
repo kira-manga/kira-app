@@ -1,10 +1,14 @@
 package me.manga.kira.di
 
 import me.manga.kira.data.repository.SourceCatalogSyncRepositoryImpl
+import me.manga.kira.data.repository.SourceAccessRepositoryImpl
 import me.manga.kira.data.repository.SourceUrlMigrator
 import me.manga.kira.data.repository.SourcesRepositoryImpl
+import me.manga.kira.domain.repository.SourceAccessRepository
 import me.manga.kira.domain.repository.SourceCatalogSyncRepository
 import me.manga.kira.domain.repository.SourcesRepository
+import me.manga.kira.domain.usecase.sourceaccess.ActivateSourceAccessUseCase
+import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.domain.usecase.sources.EnableDefaultLanguageSourcesUseCase
 import me.manga.kira.domain.usecase.sources.ClearNewSourcesBadgeUseCase
 import me.manga.kira.domain.usecase.sources.ObserveNewSourcesBadgeUseCase
@@ -12,6 +16,8 @@ import me.manga.kira.domain.usecase.sources.ObserveSourcesUseCase
 import me.manga.kira.domain.usecase.sources.SetLanguageEnabledUseCase
 import me.manga.kira.domain.usecase.sources.SetSourceEnabledUseCase
 import me.manga.kira.domain.usecase.sources.SyncSourceCatalogUseCase
+import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
+import me.manga.kira.presentation.sourceaccess.StartReadingViewModel
 import me.manga.kira.presentation.sources.SourcesViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -109,6 +115,12 @@ import org.koin.dsl.module
  * across §285 + §305.
  */
 val sourcesReworkModule: Module = module {
+    single<SourceAccessRepository> { SourceAccessRepositoryImpl(get()) }
+    factory { ObserveSourceAccessUseCase(get()) }
+    factory { ActivateSourceAccessUseCase(get()) }
+    single { SourceActivationRequestRouter() }
+    viewModel { StartReadingViewModel(get()) }
+
     // Sources Migration Phase 2: the catalog shows only config-backed sources — SourcesRepositoryImpl
     // filters the legacy `sources` rows by SourceRegistry.isConfigBacked (bound in sourcesGenericModule,
     // resolved cross-module by Koin's single graph).
@@ -116,8 +128,8 @@ val sourcesReworkModule: Module = module {
         SourcesRepositoryImpl(legacy = get(), sourceRegistry = get(), dataStore = get())
     }
     factory { ObserveSourcesUseCase(get()) }
-    factory { SetSourceEnabledUseCase(get()) }
-    factory { SetLanguageEnabledUseCase(get()) }
+    factory { SetSourceEnabledUseCase(get(), get()) }
+    factory { SetLanguageEnabledUseCase(get(), get()) }
     // U2 (new-sources badge): Home tab strip observes; edit-tabs clears.
     factory { ObserveNewSourcesBadgeUseCase(get()) }
     factory { ClearNewSourcesBadgeUseCase(get()) }
@@ -145,7 +157,7 @@ val sourcesReworkModule: Module = module {
     // Added in Phase 7.x.sources.onboardingseed — backs SourcesViewModel's 5th ctor dep
     // and SourcesIntent.OnSeedDefaultLanguage. The use case owns the tag-format + EN-
     // fallback policy; the repository owns the snapshot + fan-out mechanism.
-    factory { EnableDefaultLanguageSourcesUseCase(get()) }
+    factory { EnableDefaultLanguageSourcesUseCase(get(), get()) }
     // [SubmitFeedbackUseCase] is bound `factory` by the settings rework module
     // (see [settingsReworkModule] / `feedbackReworkModule`); we resolve via `get()` —
     // Koin's container is global across all `:composeApp` rework modules.

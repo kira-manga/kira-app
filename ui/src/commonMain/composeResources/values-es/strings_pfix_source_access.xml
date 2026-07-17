@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_reading_title">Empezar a leer</string>
+    <string name="start_reading_intro">Aprende a leer manga con Kira en nuestro sitio web o síguenos para ver guías y novedades.</string>
+    <string name="start_reading_activation_discovery">Para saber cómo activar las fuentes, visita nuestro sitio web o cualquiera de nuestras redes sociales.</string>
+    <string name="start_reading_guide">Guía de lectura</string>
+    <string name="start_reading_website">Visitar kiramanga.me</string>
+    <string name="start_reading_activation_label">Enlace de activación</string>
+    <string name="start_reading_activation_placeholder">Pega tu enlace de activación de Kira</string>
+    <string name="start_reading_activation_help">La activación muestra permanentemente la gestión de fuentes en este dispositivo.</string>
+    <string name="start_reading_activate">Activar fuentes</string>
+    <string name="start_reading_invalid_link">Introduce un enlace del dominio kiramanga.me.</string>
+    <string name="start_reading_import">Importar desde Kira</string>
+    <string name="start_reading_continue">Continuar a la biblioteca</string>
+    <string name="start_reading_social">Seguir a Kira</string>
+    <string name="start_reading_settings_locked_description">Activa para ver y gestionar las fuentes.</string>
+    <string name="start_reading_settings_activated_description">Activa, desactiva y configura las fuentes.</string>
+    <string name="home_no_sources_locked_title">Empieza a leer con Kira</string>
+    <string name="home_no_sources_locked_body">No hay ninguna fuente utilizable activada. Activa las fuentes o importa una copia de Kira o un paquete de manga.</string>
+    <string name="home_no_sources_activated_title">No hay fuentes activadas</string>
+    <string name="home_no_sources_activated_body">Activa al menos una fuente para explorar manga en Inicio.</string>
+</resources>

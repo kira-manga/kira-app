@@ -1,5 +1,8 @@
 package me.manga.kira
 
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.uikit.ComposeUIViewControllerConfiguration
+import androidx.compose.ui.uikit.EndEdgePanGestureBehavior
 import androidx.compose.ui.window.ComposeUIViewController
 import platform.UIKit.UIViewController
 
@@ -15,9 +18,32 @@ import platform.UIKit.UIViewController
  *
  * Koin must be initialized BEFORE this view controller mounts (see `KoinHelper.doInitKoin()`
  * called from `iOSApp.init` in the Swift app).
+ *
+ * Navigation remains the standard Compose Navigation [androidx.navigation.compose.NavHost]. The
+ * host publishes native back events from both physical edges, then the default NavHost accepts the
+ * correct edge for its current [androidx.compose.ui.platform.LocalLayoutDirection]. This matters
+ * when Kira changes language inside the running process: UIKit's native direction can lag the
+ * Compose-local direction that NavHost already sees. [IosHostLayoutDirection] also keeps the UIKit
+ * host semantics aligned for subsequent recognizer refreshes and other native behavior.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 fun MainViewController(): UIViewController {
-    return ComposeUIViewController { App() }
+    val controller =
+        ComposeUIViewController(
+            configure = { configureKiraNavigationHost() },
+        ) {
+            App()
+        }
+    IosHostLayoutDirection.bind(controller.view)
+    return controller
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun ComposeUIViewControllerConfiguration.configureKiraNavigationHost() {
+    // Compose Navigation's untouched iOS NavHost filters these events to LEFT in LTR and RIGHT in
+    // RTL. Publishing the end edge as Back prevents a live app-language switch from losing the RTL
+    // event when UIKit has not re-sampled its start edge.
+    endEdgePanGestureBehavior = EndEdgePanGestureBehavior.Back
 }
 
 /**
@@ -41,9 +67,11 @@ fun MainViewController(): UIViewController {
  *  precondition is therefore satisfied through the bootstrapIosKoin path
  *  rather than calling doInitKoin directly, but the KDoc's prose remains
  *  load-bearing as the precondition is unchanged). Verified: fun
- *  MainViewController(): UIViewController = ComposeUIViewController {
- *  App() }. No state, no remember-keyed config — pure ComposeUIViewController
- *  factory. Sibling: IosKoin.kt (closing-sibling per IosKoin.kt — the
+ *  MainViewController(): UIViewController still owns one ComposeUIViewController;
+ *  its root view is additionally registered for UIKit/Compose layout-direction parity.
+ *  The standard NavHost remains direct and keeps its default transitions; the Compose UIKit host
+ *  only publishes back events from both edges so that NavHost can select the locale-correct edge.
+ *  No navigation wrapper or remember-keyed config is introduced. Sibling: IosKoin.kt (closing-sibling per IosKoin.kt — the
  *  bootstrapIosKoin Swift-entry that delegates into KoinHelper.doInitKoin
  *  with allReworkModules()). OPENING FILE of the cluster166 iOS host-entry
  *  2-leaf batch (1 of 2). One classification. Original Phase 8.x iOS-

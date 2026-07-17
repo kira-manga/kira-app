@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS Low Power Mode compression toggle + deferred-state strings (2026-07). -->
+<resources>
+    <string name="lpm_compress_toggle">Kompres saat Mode Daya Rendah</string>
+    <string name="lpm_compress_toggle_desc">Izinkan kompresi bab berjalan saat Mode Daya Rendah aktif. Nonaktif secara bawaan untuk menghemat baterai.</string>
+    <string name="pfix_dl_paused_low_power">Dijeda — Mode Daya Rendah</string>
+</resources>

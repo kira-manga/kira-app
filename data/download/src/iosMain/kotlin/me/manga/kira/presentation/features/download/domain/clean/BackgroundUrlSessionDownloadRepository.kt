@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -103,6 +104,12 @@ class BackgroundUrlSessionDownloadRepository(
      *  never collides with launch/reopen warm-up (the confirmed freeze). Null until the first foregrounding. */
     private var foregroundedAtMark: TimeSource.Monotonic.ValueTimeMark? = null
 
+    /** User opt-in to compress even while iOS Low Power Mode is active (settings toggle; default false =
+     *  respect the battery-saving intent). Mirrors [DataStoreHelper.allowCompressionInLowPowerFlow]; kept as a
+     *  plain cached field for the synchronous [canCompressNow] read (same advisory cross-thread pattern as
+     *  [appActive]) and refreshed by the compression-gate watcher in `init`. */
+    private var allowLowPowerCompression = false
+
     // ---- per-chapter hot-path caches (all access under [mutex]) ----
     //
     // Page completion fires once per page (hundreds of times for a long webtoon chapter). Each call
@@ -173,6 +180,30 @@ class BackgroundUrlSessionDownloadRepository(
                     backgroundScheduler.scheduleProcessing()
                 }
                 lastPending = s.pending
+            }
+        }
+        // Compression-gate watcher — the SINGLE owner of deferred-finalize re-drives (the host bridge no
+        // longer edge-pumps on stress changes). Collects the two device-stress flags + the user's Low-Power
+        // opt-in: caches the opt-in for the synchronous [canCompressNow] read, and when the effective
+        // deferral CLEARS (thermal cooled, Low Power Mode turned off, OR the user opted in) with work still
+        // pending, re-drives the finalize sweep so a chapter parked as "paused (Low Power Mode)" starts
+        // compressing immediately instead of waiting for the next app background/foreground cycle.
+        applicationScope.launch {
+            var wasDeferred = false
+            combine(
+                workSignal.thermallyStressed,
+                workSignal.lowPowerMode,
+                dataStoreHelper.allowCompressionInLowPowerFlow,
+            ) { thermal, lowPower, allowLpm ->
+                allowLowPowerCompression = allowLpm
+                CompressionGateRules.isDeferred(thermal, lowPower, allowLpm)
+            }.collect { deferred ->
+                if (wasDeferred && !deferred && workSignal.hasPendingWork) {
+                    BgDownloadLog.log("compressionGate.clearedPump")
+                    runCatching { reconcileInterruptedDownloads() }
+                        .onFailure { BgDownloadLog.error(it, "compressionGate.pumpFailed", "msg" to it.message) }
+                }
+                wasDeferred = deferred
             }
         }
     }
@@ -812,11 +843,24 @@ class BackgroundUrlSessionDownloadRepository(
             .getOrElse { t -> BgDownloadLog.error(t, "markReadable.failed", "chapterId" to chapterId, "msg" to t.message); true }
         BgDownloadLog.log("downloaded.readable", "chapterId" to chapterId, "pages" to loosePaths.size, "cbzPending" to cbzPending)
 
-        // SILENT "finalizing" update (readable, still being packaged) — the alerting "complete" fires at
-        // finalize.success (see launchFinalize), so "complete" still means the durable CBZ is ready. Posted
-        // once (the readableMarked guard above ensures this whole block runs once per chapter).
-        BgDownloadLog.log("notif.finalizing.posted", "chapterId" to chapterId)
-        runCatching { downloadNotifier.onFinalizing(chapterId.toInt(), notifTitle(entity)) }
+        // SILENT "finalizing"/"paused" update (readable, still being packaged) — the alerting "complete"
+        // fires at finalize.success (see launchFinalize), so "complete" still means the durable CBZ is ready.
+        // Posted once (the readableMarked guard above ensures this whole block runs once per chapter). When the
+        // CBZ is deferred SPECIFICALLY by Low Power Mode (user opt-out), post the settled "paused (Low Power
+        // Mode)" notice instead of "Finalizing…" — that defer can last the whole session, so it must never look
+        // like an endless load. (A thermal defer is transient — the device cools — and keeps "Finalizing…".)
+        val lowPowerDeferred = cbzPending && !canCompressNow() && CompressionGateRules.isLowPowerDeferred(
+            thermallyStressed = workSignal.thermallyStressed.value,
+            lowPowerMode = workSignal.lowPowerMode.value,
+            allowLowPowerCompression = allowLowPowerCompression,
+        )
+        if (lowPowerDeferred) {
+            BgDownloadLog.log("notif.finalizeDeferred.posted", "chapterId" to chapterId, "reason" to "lowPowerMode")
+            runCatching { downloadNotifier.onFinalizeDeferred(chapterId.toInt(), notifTitle(entity)) }
+        } else {
+            BgDownloadLog.log("notif.finalizing.posted", "chapterId" to chapterId)
+            runCatching { downloadNotifier.onFinalizing(chapterId.toInt(), notifTitle(entity)) }
+        }
 
         // Free the slot NOW (DOWNLOADED no longer occupies it) so the next QUEUED chapter starts transferring
         // — independent of whether this chapter's CBZ can be built yet.
@@ -844,26 +888,33 @@ class BackgroundUrlSessionDownloadRepository(
 
     /**
      * Admission control for the heavy CBZ encode — one gate for BOTH the just-completed path
-     * ([markDownloadedAndMaybeFinalizeLocked]) and the catch-up sweep ([pumpLocked]).
+     * ([markDownloadedAndMaybeFinalizeLocked]) and the catch-up sweep ([pumpLocked]). Pure decision in
+     * [CompressionGateRules.canCompress]; this only feeds it the live inputs.
      *
      * - **Foreground** (`appActive`): allowed ONLY once the app is *settled* ([appSettled] — foreground for
      *   [FOREGROUND_SETTLE], so the encode never collides with launch/reopen warm-up: Compose first frame,
-     *   Coil/Room init, a churning heap → K/N stop-the-world GC = the confirmed freeze) AND the device is
-     *   *healthy* ([deviceUnderStress] — not thermally serious/critical, not low-power mode). Device evidence:
-     *   compressing a chapter that finishes while you're already using a healthy, settled app ran without
-     *   obvious jank; the freezes were always the launch-time encode.
+     *   Coil/Room init, a churning heap → K/N stop-the-world GC = the confirmed freeze) AND the device is not
+     *   deferring: thermally serious/critical ALWAYS defers, and Low Power Mode defers UNLESS the user opted
+     *   in ([allowLowPowerCompression]).
      * - **Background**: allowed only inside a real OS-granted window ([BackgroundWorkSignal.backgroundProcessingActive]);
      *   there's no UI to jank, so it runs full speed.
      *
      * When this returns false the chapter stays `DOWNLOADED` (readable from loose pages), NEVER a stuck
      * `COMPRESSING` (the row only flips to COMPRESSING inside `finalize()`, which runs only when this passed).
-     * A deferred chapter compresses on the next completion, the next background window, or a manual Yami
-     * Compressor run. (`appActive` is false during background execution — didBecomeActive only fires
+     * A deferred chapter compresses when the gate clears (the compression-gate watcher in `init` re-drives on
+     * Low-Power-off / opt-in / thermal-cooled), on the next completion, the next background window, or a manual
+     * Yami Compressor run. (`appActive` is false during background execution — didBecomeActive only fires
      * foreground — so a continued task that crosses into the background compresses there.)
      */
     private fun canCompressNow(): Boolean =
-        if (appActive) appSettled() && !deviceUnderStress()
-        else workSignal.backgroundProcessingActive
+        CompressionGateRules.canCompress(
+            appActive = appActive,
+            appSettled = appSettled(),
+            thermallyStressed = workSignal.thermallyStressed.value,
+            lowPowerMode = workSignal.lowPowerMode.value,
+            allowLowPowerCompression = allowLowPowerCompression,
+            backgroundWindowActive = workSignal.backgroundProcessingActive,
+        )
 
     /** True once the app has been foreground for at least [FOREGROUND_SETTLE] (launch/reopen warm-up done). */
     private fun appSettled(): Boolean = foregroundedAtMark?.let { it.elapsedNow() >= FOREGROUND_SETTLE } ?: false
@@ -877,8 +928,8 @@ class BackgroundUrlSessionDownloadRepository(
      * DOWNLOADED row found by the launch pump) inside the settle window stays readable-but-"Finalizing…"
      * for the whole session — no later event re-drives the sweep while the user stays foreground.
      * Deliberately NOT armed for the stress deferral (thermal/Low Power Mode has no deadline — that
-     * re-kick is edge-triggered by the host via setDownloadDeviceUnderStress) or in background
-     * (the BG-task window path owns that), so this can never poll in a loop.
+     * re-kick is owned by the compression-gate watcher in `init`, which re-drives finalize when the
+     * deferral clears) or in background (the BG-task window path owns that), so this can never poll in a loop.
      */
     private fun scheduleSettleRetryLocked() {
         if (settleRetryScheduled || !appActive) return
@@ -896,13 +947,6 @@ class BackgroundUrlSessionDownloadRepository(
             }
         }
     }
-
-    /** Defer foreground compression when the device is stressed: thermal serious/critical (heavy CPU would
-     *  worsen it) or low-power mode (respect the user's battery intent). Read from [BackgroundWorkSignal],
-     *  which the Swift host updates from `ProcessInfo.thermalState` / `isLowPowerModeEnabled` on the relevant
-     *  notifications (those APIs aren't in the Kotlin/Native Foundation binding, but are trivial in Swift —
-     *  same pattern as backgroundProcessingActive). Defaults false, so behavior is unchanged until wired. */
-    private fun deviceUnderStress(): Boolean = workSignal.deviceUnderStress
 
     /**
      * Finalize (CBZ + bookkeeping) in its OWN coroutine — **never holding [mutex]** — so the heavy Skia

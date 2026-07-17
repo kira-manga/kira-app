@@ -49,7 +49,7 @@ import me.manga.kira.ui.about.X
  *
  * **Callback-only `:ui`**: the row never opens a URL itself — each tappable button invokes
  * [onOpenUrl] with one of the brand URL constants ([TwitterUrl] / [FacebookUrl] / [InstagramUrl] /
- * [WhatsAppUrl] / [WebsiteUrl], all verbatim from the legacy `SocialMediaRow.kt`). The host route
+ * [WhatsAppUrl] / [WEBSITE_URL]). The host route
  * adapter forwards the URL to the platform `IntentLauncher.openUrl`. The Discord button has no
  * landing page in the source (legacy `default: no-op`) and dispatches nothing.
  *
@@ -118,7 +118,7 @@ fun KiraSocialMediaRow(
                 contentDescription = "Website",
                 buttonSize = buttonSize,
                 iconSize = iconSize,
-                onClick = { onOpenUrl(WebsiteUrl) },
+                onClick = { onOpenUrl(WEBSITE_URL) },
             )
         }
     }
@@ -195,5 +195,8 @@ const val InstagramUrl: String = "https://www.instagram.com/yami_manga_me"
 const val WhatsAppUrl: String =
     "https://api.whatsapp.com/send?phone=201558657735&text=Hey%20from%20Kira!"
 
-/** Project website URL — matches legacy `SocialMediaRow.kt:145` literal. */
-const val WebsiteUrl: String = "https://yamimanga.me/"
+/** Official project website URL. */
+const val WEBSITE_URL: String = "https://kiramanga.me"
+
+/** Official guide destination used by the Start Reading flow. */
+const val KIRA_GUIDE_URL: String = "$WEBSITE_URL/guide"

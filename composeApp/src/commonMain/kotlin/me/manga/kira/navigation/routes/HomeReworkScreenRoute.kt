@@ -3,9 +3,14 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.home.HomeFeedItem
+import me.manga.kira.domain.model.sources.SourceAccessState
+import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.presentation.home.HomeIntent
@@ -13,6 +18,9 @@ import me.manga.kira.presentation.home.HomeViewModel
 import me.manga.kira.presentation.search.SearchViewModel
 import me.manga.kira.ui.home.HomeScreen
 import me.manga.kira.ui.search.SearchScreen
+import me.manga.kira.ui.sourceaccess.ActivatedHomeSourcePrompt
+import me.manga.kira.ui.sourceaccess.LockedHomeSourcePrompt
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -69,8 +77,8 @@ import org.koin.compose.viewmodel.koinViewModel
  * `ImageRequest` (so `rememberSourceImageRequest` flows end-to-end) is a follow-on `:ui` change.
  *
  * **Bottom bar**: Home is a bottom-nav destination, so the bar stays visible on both the Home grid
- * and the Search overlay (the overlay is the same backstack entry) — `onBottomBarVisibleChange(true)`
- * is set by the `App.kt` `composable<Screen.Home>` block, matching legacy behaviour.
+ * and the Search overlay (the overlay is the same backstack entry). `App.kt` derives this directly
+ * from the active destination hierarchy.
  *
  * @param navController parent nav controller for forwarding Details / Reader / WebView / Sources.
  * @param backStackEntry passed for parity with sibling adapters; both VMs are `koinViewModel()`-scoped.
@@ -78,19 +86,41 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun HomeReworkScreenRoute(
     navController: NavController,
-    @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
+    backStackEntry: NavBackStackEntry,
 ) {
     val homeViewModel: HomeViewModel = koinViewModel()
     val searchViewModel: SearchViewModel = koinViewModel()
+    val observeSourceAccess: ObserveSourceAccessUseCase = koinInject()
 
     val homeState by homeViewModel.state.collectAsState()
+    val sourceAccessState by observeSourceAccess().collectAsState()
+    // A destination is composed at STARTED while the default NavHost transition is still running.
+    // safeNavigate intentionally rejects actions before RESUMED, so keep the CTA disabled for that
+    // brief interval instead of accepting a tap that would appear to do nothing.
+    val lifecycleState by backStackEntry.lifecycle.currentStateAsState()
+    val startReadingEnabled = lifecycleState == Lifecycle.State.RESUMED
 
     // Source-aware cover slot kept in :composeApp (legacy types). The H4 leaf components honor only
     // a String result today, so the raw cover URL is what flows through; per-source auth headers
     // attach at the Coil ImageLoader level (App.kt). See file KDoc.
     val coverModel: (HomeFeedItem) -> Any? = { it.coverUrl }
 
-    if (homeState.isSearching) {
+    if (shouldShowNoSourceFallback(homeState)) {
+        when (sourceAccessState) {
+            SourceAccessState.LOCKED -> LockedHomeSourcePrompt(
+                startReadingEnabled = startReadingEnabled,
+                onStartReading = {
+                    navController.safeNavigate(Screen.StartReading(onboarding = false))
+                },
+            )
+
+            SourceAccessState.ACTIVATED -> ActivatedHomeSourcePrompt(
+                onEditSources = {
+                    navController.safeNavigate(Screen.RepoSettings(isFirstOpen = false))
+                },
+            )
+        }
+    } else if (homeState.isSearching) {
         SearchScreen(
             viewModel = searchViewModel,
             onNavigateToDetails = { dest ->
@@ -130,7 +160,7 @@ fun HomeReworkScreenRoute(
             },
             onHelp = {
                 navController.safeNavigate(
-                    Screen.WebView(url = "https://yamimanga.me/video/help_video.mp4", api = ""),
+                    Screen.WebView(url = "https://kiramanga.me/video/help_video.mp4", api = ""),
                 )
             },
             coverModel = coverModel,
@@ -178,7 +208,12 @@ fun HomeReworkScreenRoute(
                 navController.safeNavigate(Screen.WebView(url = url, api = api))
             },
             onNavigateToSources = {
-                navController.safeNavigate(Screen.RepoSettings(false))
+                val destination = if (sourceAccessState == SourceAccessState.ACTIVATED) {
+                    Screen.RepoSettings(false)
+                } else {
+                    Screen.StartReading(onboarding = false)
+                }
+                navController.safeNavigate(destination)
             },
             onHelp = {
                 // GAP-HOME-01 / GAP-HOME-26: the legacy Help affordance opened a full-screen
@@ -186,10 +221,16 @@ fun HomeReworkScreenRoute(
                 // cross-platform substitute opens the help video URL in the in-app WebView — same
                 // content, no KMP media stack. `api` is left blank (the help URL is source-agnostic).
                 navController.safeNavigate(
-                    Screen.WebView(url = "https://yamimanga.me/video/help_video.mp4", api = ""),
+                    Screen.WebView(url = "https://kiramanga.me/video/help_video.mp4", api = ""),
                 )
             },
             coverModel = coverModel,
         )
     }
 }
+
+internal fun shouldShowNoSourceFallback(
+    state: me.manga.kira.presentation.home.HomeState,
+): Boolean =
+    state.feed.isEmpty() &&
+        state.feedError is AppError.Validation.NoEnabledSources

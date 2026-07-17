@@ -1,5 +1,7 @@
 package me.manga.kira.domain.usecase.sources
 
+import me.manga.kira.domain.model.sources.SourceAccessState
+import me.manga.kira.domain.repository.SourceAccessRepository
 import me.manga.kira.domain.repository.SourcesRepository
 
 /**
@@ -80,7 +82,11 @@ import me.manga.kira.domain.repository.SourcesRepository
  */
 class SetSourceEnabledUseCase(
     private val repository: SourcesRepository,
+    private val sourceAccessRepository: SourceAccessRepository,
 ) {
-    suspend operator fun invoke(api: String, enabled: Boolean) =
+    suspend operator fun invoke(api: String, enabled: Boolean): Boolean {
+        if (sourceAccessRepository.state.value != SourceAccessState.ACTIVATED) return false
         repository.setSourceEnabled(api, enabled)
+        return true
+    }
 }

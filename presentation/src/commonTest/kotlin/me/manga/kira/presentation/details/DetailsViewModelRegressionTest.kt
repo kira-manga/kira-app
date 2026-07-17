@@ -21,6 +21,7 @@ import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.ChapterIdResolver
 import me.manga.kira.domain.repository.AnalyticsPort
 import me.manga.kira.domain.repository.ConnectivityRepository
+import me.manga.kira.domain.repository.CompressionDeferralRepository
 import me.manga.kira.domain.repository.DownloadsActionRepository
 import me.manga.kira.domain.repository.DownloadsRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
@@ -46,6 +47,7 @@ import me.manga.kira.domain.usecase.downloads.EnqueueDownloadUseCase
 import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
 import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
+import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.library.MarkMangaOpenedUseCase
 import me.manga.kira.domain.usecase.library.ObserveInLibraryUseCase
 import me.manga.kira.domain.usecase.library.PersistNewChaptersUseCase
@@ -58,6 +60,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -150,6 +153,12 @@ class DetailsViewModelRegressionTest {
     private class FakeConnectivityRepository(online: Boolean = true) : ConnectivityRepository {
         private val flow = MutableStateFlow(online)
         override fun observeIsOnline(): Flow<Boolean> = flow
+    }
+
+    private class FakeCompressionDeferralRepository(
+        private val deferred: Flow<Boolean>,
+    ) : CompressionDeferralRepository {
+        override fun observeLowPowerDeferral(): Flow<Boolean> = deferred
     }
 
     /** #11: records manga_open events so a test can assert it fires once per identity. */
@@ -276,6 +285,7 @@ class DetailsViewModelRegressionTest {
         markReadRepo: MarkChapterReadRepository = NoopMarkChapterReadRepository,
         connectivity: ConnectivityRepository = FakeConnectivityRepository(online = true),
         analytics: AnalyticsPort = RecordingAnalyticsPort(),
+        compressionDeferred: Flow<Boolean> = MutableStateFlow(false),
     ): Pair<DetailsViewModel, FakeMangaDetailsRepository> {
         val fetchFake = FakeMangaDetailsRepository(fetch)
         val vm = DetailsViewModel(
@@ -311,6 +321,9 @@ class DetailsViewModelRegressionTest {
             deleteChapter = DeleteChapterUseCase(deletionRepo),
             observeConnectivity = ObserveConnectivityUseCase(connectivity),
             logMangaOpen = LogMangaOpenUseCase(analytics),
+            observeCompressionDeferred = ObserveCompressionDeferredUseCase(
+                FakeCompressionDeferralRepository(compressionDeferred),
+            ),
         )
         return vm to fetchFake
     }
@@ -362,6 +375,24 @@ class DetailsViewModelRegressionTest {
         val s = vm.state.value
         assertNotNull(s.details)
         assertEquals(3, s.details!!.chapters.size, "non-saved manga still renders the full network list")
+    }
+
+    @Test
+    fun compressionDeferral_isProjectedIntoDetailsState() = runTest {
+        val saved = FakeSavedMangaDetailsRepository()
+        saved.saved.value = details(listOf(chapter("c/1")))
+        val deferred = MutableStateFlow(false)
+        val (vm, _) = vmWithFetchFake(
+            fetch = AppResult.Success(details(listOf(chapter("c/1")))),
+            saved = saved,
+            compressionDeferred = deferred,
+        )
+
+        vm.submit(DetailsIntent.OnEnter(manga()))
+        assertFalse(vm.state.value.compressionDeferred)
+
+        deferred.value = true
+        assertTrue(vm.state.value.compressionDeferred)
     }
 
     // ---- LAST_READ last-open bump fires on chapter-open, NOT on Details view (native parity) ----

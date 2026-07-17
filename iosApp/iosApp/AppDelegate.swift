@@ -166,6 +166,25 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
+    // MARK: - Source activation links
+
+    func application(
+        _ application: UIApplication,
+        continue userActivity: NSUserActivity,
+        restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+    ) -> Bool {
+        guard let link = userActivity.webpageURL?.absoluteString else { return false }
+        return IosSourceActivationBridgeKt.onSourceActivationLink(link: link)
+    }
+
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        IosSourceActivationBridgeKt.onSourceActivationLink(link: url.absoluteString)
+    }
+
     func application(
         _ application: UIApplication,
         handleEventsForBackgroundURLSession identifier: String,
@@ -200,9 +219,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     private func refreshDeviceStress() {
         let info = ProcessInfo.processInfo
         let thermal = info.thermalState
-        let stressed = thermal == .serious || thermal == .critical || info.isLowPowerModeEnabled
-        bgLog("deviceStress thermal=\(thermal.rawValue) lowPower=\(info.isLowPowerModeEnabled) stressed=\(stressed)")
-        IosBackgroundBridgeKt.setDownloadDeviceUnderStress(stressed: stressed)
+        // Split into the two independent causes. Thermal serious/critical ALWAYS defers compression;
+        // Low Power Mode defers by default but is user-overridable via a settings toggle (engine-side).
+        let thermalStressed = thermal == .serious || thermal == .critical
+        let lowPower = info.isLowPowerModeEnabled
+        bgLog("deviceStress thermal=\(thermal.rawValue) thermalStressed=\(thermalStressed) lowPower=\(lowPower)")
+        IosBackgroundBridgeKt.setDownloadDeviceStressState(thermalStressed: thermalStressed, lowPowerMode: lowPower)
     }
 
     private func handleEnteredBackground() {

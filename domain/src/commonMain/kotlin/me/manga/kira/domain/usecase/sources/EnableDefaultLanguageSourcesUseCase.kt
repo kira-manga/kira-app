@@ -1,5 +1,7 @@
 package me.manga.kira.domain.usecase.sources
 
+import me.manga.kira.domain.model.sources.SourceAccessState
+import me.manga.kira.domain.repository.SourceAccessRepository
 import me.manga.kira.domain.repository.SourcesRepository
 
 /**
@@ -120,13 +122,16 @@ import me.manga.kira.domain.repository.SourcesRepository
  */
 class EnableDefaultLanguageSourcesUseCase(
     private val repository: SourcesRepository,
+    private val sourceAccessRepository: SourceAccessRepository,
 ) {
-    suspend operator fun invoke(languageTag: String) {
+    suspend operator fun invoke(languageTag: String): Boolean {
+        if (sourceAccessRepository.state.value != SourceAccessState.ACTIVATED) return false
         val tag = languageTag.ifBlank { "en" }.uppercase()
         repository.setLanguageEnabledWithFallback(
             primary = "($tag)",
             fallback = "(EN)",
             enabled = true,
         )
+        return true
     }
 }

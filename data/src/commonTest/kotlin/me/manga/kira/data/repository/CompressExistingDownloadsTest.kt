@@ -20,6 +20,7 @@ import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.domain.model.settings.SettingsToggle
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -253,17 +254,33 @@ class CompressExistingDownloadsTest {
         // B4: default fake returns null for getDownloadByChapter → no chapter has an active download
         // row, so every loose chapter still converts (existing assertions unchanged).
         downloadDao: ChapterDownloadDao = FakeChapterDownloadDao(),
+        dataStore: DataStoreHelper = DataStoreHelper(MapSettings()),
     ): SettingsRepositoryImpl =
         SettingsRepositoryImpl(
             legacy = legacySettings(),
             dispatchers = testDispatchers,
-            dataStore = DataStoreHelper(MapSettings()),
+            dataStore = dataStore,
             chapterDao = dao,
             cbzWriter = writer,
             mangaDao = FakeMangaDao,
             chapterDownloadDao = downloadDao,
             appFileSystem = FakeAppFileSystem,
         )
+
+    @Test
+    fun lowPowerCompressionToggle_mapsThroughSettingsRepository() =
+        runTest {
+            val dataStore = DataStoreHelper(MapSettings())
+            val result =
+                repo(
+                    dao = FakeChapterDao(emptyList()),
+                    writer = FakeCbzWriter(),
+                    dataStore = dataStore,
+                ).setToggle(SettingsToggle.ALLOW_COMPRESSION_IN_LOW_POWER, true)
+
+            assertTrue(result.isSuccess)
+            assertTrue(dataStore.allowCompressionInLowPowerFlow.first())
+        }
 
     /** [FakeChapterDownloadDao] whose [getDownloadByChapter] serves a per-chapter download state (B4). */
     private class StateServingDownloadDao(

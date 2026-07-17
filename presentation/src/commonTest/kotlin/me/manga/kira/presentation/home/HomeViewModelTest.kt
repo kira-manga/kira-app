@@ -239,6 +239,46 @@ class HomeViewModelTest {
             )
         }
 
+    @Test
+    fun noEnabledSources_setsTypedHomeState_withoutGenericErrorEffect() = runTest {
+        val vm = vm()
+        homeRepo.homePages.addLast(
+            AppResult.Failure(AppError.Validation.NoEnabledSources()),
+        )
+        homeRepo.featuredResult = AppResult.Failure(AppError.Validation.NoEnabledSources())
+        val effects = mutableListOf<HomeEffect>()
+        val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+
+        vm.submit(HomeIntent.OnEnter)
+
+        assertTrue(vm.state.value.feedError is AppError.Validation.NoEnabledSources)
+        assertTrue(effects.none { it is HomeEffect.ShowError })
+        collector.cancel()
+    }
+
+    @Test
+    fun enablingFirstSource_afterNoSourceState_refetchesHomeAutomatically() = runTest {
+        val vm = vm()
+        homeRepo.sourceTabs.value = emptyList()
+        homeRepo.homePages.addLast(
+            AppResult.Failure(AppError.Validation.NoEnabledSources()),
+        )
+        homeRepo.featuredResult = AppResult.Failure(AppError.Validation.NoEnabledSources())
+
+        vm.submit(HomeIntent.OnEnter)
+        assertTrue(vm.state.value.feedError is AppError.Validation.NoEnabledSources)
+
+        homeRepo.homePages.addLast(
+            AppResult.Success(listOf(sampleFeedItem(api = "a", title = "Ready"))),
+        )
+        homeRepo.featuredResult = AppResult.Success(emptyList())
+        homeRepo.sourceTabs.value = listOf(sampleSourceTab(api = "a"))
+
+        assertEquals(listOf("Ready"), vm.state.value.feed.map { it.title })
+        assertEquals(null, vm.state.value.feedError)
+        assertEquals(2, homeRepo.calls.count { it.startsWith("fetchHome") })
+    }
+
     private fun testChapter(url: String) =
         Chapter(
             number = url.substringAfterLast('/'),

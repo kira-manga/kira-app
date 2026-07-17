@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_reading_title">読書を始める</string>
+    <string name="start_reading_intro">Kira でマンガを読む方法はウェブサイトで確認できます。ガイドや更新情報もフォローしてください。</string>
+    <string name="start_reading_activation_discovery">ソースを有効化する方法については、ウェブサイトまたはいずれかの公式SNSをご覧ください。</string>
+    <string name="start_reading_guide">読書ガイド</string>
+    <string name="start_reading_website">kiramanga.me を開く</string>
+    <string name="start_reading_activation_label">有効化リンク</string>
+    <string name="start_reading_activation_placeholder">Kira の有効化リンクを貼り付け</string>
+    <string name="start_reading_activation_help">有効化すると、この端末でソース管理が常に表示されます。</string>
+    <string name="start_reading_activate">ソースを有効化</string>
+    <string name="start_reading_invalid_link">kiramanga.me ドメインのリンクを入力してください。</string>
+    <string name="start_reading_import">Kira からインポート</string>
+    <string name="start_reading_continue">ライブラリへ進む</string>
+    <string name="start_reading_social">Kira をフォロー</string>
+    <string name="start_reading_settings_locked_description">有効化してソースを表示・管理します。</string>
+    <string name="start_reading_settings_activated_description">ソースの有効化、無効化、設定を行います。</string>
+    <string name="home_no_sources_locked_title">Kira で読み始める</string>
+    <string name="home_no_sources_locked_body">利用可能なソースが有効になっていません。ソースを有効化するか、Kira バックアップまたはマンガパッケージをインポートしてください。</string>
+    <string name="home_no_sources_activated_title">有効なソースがありません</string>
+    <string name="home_no_sources_activated_body">ホームでマンガを閲覧するには、少なくとも1つのソースを有効にしてください。</string>
+</resources>

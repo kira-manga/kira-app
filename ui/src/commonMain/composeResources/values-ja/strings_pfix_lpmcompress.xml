@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS Low Power Mode compression toggle + deferred-state strings (2026-07). -->
+<resources>
+    <string name="lpm_compress_toggle">低電力モードで圧縮</string>
+    <string name="lpm_compress_toggle_desc">低電力モードが有効なときもチャプターの圧縮を実行します。バッテリーを節約するため、初期設定ではオフです。</string>
+    <string name="pfix_dl_paused_low_power">一時停止 — 低電力モード</string>
+</resources>

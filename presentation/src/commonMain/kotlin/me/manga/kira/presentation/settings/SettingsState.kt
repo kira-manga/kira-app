@@ -7,7 +7,8 @@ import me.manga.kira.presentation.mvi.MviState
 /**
  * Settings hub MVI state.
  *
- * Phase 7.x.settings.foundation rework. Holds the 5 toggle booleans (general 2 + theme 3) +
+ * Phase 7.x.settings.foundation rework. Holds the visible toggle booleans (general/theme plus
+ * the iOS Low Power Mode opt-in) +
  * the formatted cache-size string + flags covering the gap between subscription and the first
  * [me.manga.kira.domain.model.settings.SettingsSnapshot] emission ([isLoading]) and the
  * in-flight clear-cache action ([isClearingCache]).
@@ -77,7 +78,7 @@ import me.manga.kira.presentation.mvi.MviState
  * the same cold start as the toggle defaults).
  *
  * Contract §6 SRP: one rule — "what the Settings hub renders right now". No business logic,
- * no derivation; the 5 boolean fields + cache-size string come verbatim from the upstream
+ * no derivation; the visible boolean fields + cache-size string come verbatim from the upstream
  * [SettingsSnapshot].
  *
  * Contract §17: no `Any`, no `!!`, no `lateinit`. All fields are concrete value types with
@@ -148,6 +149,9 @@ data class SettingsState(
     val useCbzFormat: Boolean = true,
     val autoConvertToCbz: Boolean = false,
     val isCompressingDownloads: Boolean = false,
+    // iOS-only opt-in mirrored from SettingsSnapshot.allowCompressionInLowPower (default false). Drives the
+    // "compress during Low Power Mode" toggle row, which the route adapter shows only on iOS.
+    val allowCompressionInLowPower: Boolean = false,
     // GAP-SET-16 — live CBZ conversion progress (native parity with the native
     // `CbzConversionViewModel.conversionProgress` StateFlow). Driven by the VM's third `init {}`
     // collector subscribed to ObserveCbzConversionUseCase; projects the per-chapter counts +

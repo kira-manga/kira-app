@@ -93,8 +93,8 @@ import me.manga.kira.domain.model.settings.SettingsToggle
 interface SettingsRepository {
 
     /**
-     * Reactive Settings snapshot. Emits the latest [SettingsSnapshot] whenever any of the 6
-     * underlying sources change (2 DataStore prefs + 3 SharedPrefs booleans + cache-size
+     * Reactive Settings snapshot. Emits the latest [SettingsSnapshot] whenever any of the 9
+     * underlying sources change (3 DataStore prefs + 5 SharedPrefs booleans + cache-size
      * recomputation on subscription / cache-clear).
      *
      * First-run defaults (mirroring legacy):

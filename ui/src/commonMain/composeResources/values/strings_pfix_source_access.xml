@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_reading_title">Start Reading</string>
+    <string name="start_reading_intro">Learn how to read manga with Kira on our website, or follow us for guides and updates.</string>
+    <string name="start_reading_activation_discovery">To learn how to activate Sources, visit our website or any of our social media pages.</string>
+    <string name="start_reading_guide">Reading guide</string>
+    <string name="start_reading_website">Visit kiramanga.me</string>
+    <string name="start_reading_activation_label">Activation link</string>
+    <string name="start_reading_activation_placeholder">Paste your Kira activation link</string>
+    <string name="start_reading_activation_help">Activation permanently reveals source management on this device.</string>
+    <string name="start_reading_activate">Activate Sources</string>
+    <string name="start_reading_invalid_link">Enter a link from the kiramanga.me domain.</string>
+    <string name="start_reading_import">Import from Kira</string>
+    <string name="start_reading_continue">Continue to Library</string>
+    <string name="start_reading_social">Follow Kira</string>
+    <string name="start_reading_settings_locked_description">Activate to view and manage Sources.</string>
+    <string name="start_reading_settings_activated_description">Enable, disable, and configure Sources.</string>
+    <string name="home_no_sources_locked_title">Start reading with Kira</string>
+    <string name="home_no_sources_locked_body">No usable source is enabled. Activate Sources or import a Kira backup or manga package.</string>
+    <string name="home_no_sources_activated_title">No sources enabled</string>
+    <string name="home_no_sources_activated_body">Enable at least one source to browse manga on Home.</string>
+</resources>

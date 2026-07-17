@@ -1,12 +1,8 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.text.intl.Locale
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
-import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.navigation.Screen
@@ -160,22 +156,14 @@ fun SourcesScreenRoute(
     navController: NavController,
     @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
 ) {
-    val ds: DataStoreHelper = koinInject()
     val prefs: SharedPrefsHelper = koinInject()
     val viewModel: SourcesViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
-    val userLanguageCode by ds.languageFlow.collectAsState(initial = "")
-    // NP onboarding parity (#r6-sf-1): native seeds the default-enabled sources from the DEVICE
-    // locale (SourcesScreen.kt:71-78 `configuration.locales[0].language`), not the in-app language
-    // pref. On a fresh install nothing has written SELECTED_LANGUAGE, so `userLanguageCode` is always
-    // "" and the screen's `.ifBlank { "en" }` fallback would enable only English sources regardless of
-    // device locale. Fall back to the platform locale's language code when the user has not explicitly
-    // chosen an app language — same posture as LanguageScreen.kt:229 (`Locale.current.language`).
-    val onboardingLanguageTag = userLanguageCode.ifBlank { Locale.current.language }
 
     SourcesScreen(
         viewModel = viewModel,
-        onboardingLanguageTag = onboardingLanguageTag,
+        // Activation reveals the stored source state exactly as-is. Do not auto-enable a locale here.
+        onboardingLanguageTag = null,
         // Request-Source dialog social-media row forwards each brand URL to the platform
         // IntentLauncher (fire-and-forget; same posture as SettingsReworkScreenRoute's onOpenUrl).
         onOpenUrl = { url -> launcher.openUrl(url) },

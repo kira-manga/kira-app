@@ -33,13 +33,13 @@ import me.manga.kira.presentation.features.settings.domain.SettingsRepository as
  * [SettingsRepository] strangler-fig delegate over the legacy `:shared`
  * [LegacySettingsRepository].
  *
- * Phase 7.x.settings.foundation rework. Combines the 5 upstream toggle flows (2 DataStore +
- * 3 SharedPreferences) + a derived cache-size flow into a single [SettingsSnapshot]. Mirrors
+ * Phase 7.x.settings.foundation rework. Combines the 8 upstream toggle flows (3 DataStore +
+ * 5 SharedPreferences) + a derived cache-size flow into a single [SettingsSnapshot]. Mirrors
  * [ThemeRepositoryImpl] / [ReadingStatisticsRepositoryImpl]'s strangler-fig posture — the legacy
  * facade remains the cell of truth for `SharedPreferences` / `DataStore` / `AppFileSystem` reads
  * until the Phase 9.x route-swap retires the legacy Settings screen.
  *
- * **SRP (contract §6)**: owns ONE rule — "bundle the legacy Settings facade's 5 toggle flows +
+ * **SRP (contract §6)**: owns ONE rule — "bundle the legacy Settings facade's 8 toggle flows +
  * the cache-size derivation into a single coherent snapshot stream, and dispatch toggle / clear
  * writes through the same facade". The DataStore / SharedPrefs / okio plumbing lives in the
  * legacy facade and its `prefsHelper` / `dataStoreHelper` / `appFileSystem` collaborators.
@@ -55,14 +55,11 @@ import me.manga.kira.presentation.features.settings.domain.SettingsRepository as
  * with the same simple name. The `as LegacySettingsRepository` alias keeps the boundary visible
  * — every reference to the legacy facade in this file is grep-able by the alias prefix.
  *
- * **Why two chained `combine` calls** (rather than one vararg combine of all 6 sources):
- *  - `kotlinx.coroutines.flow.combine(vararg flows: Flow<T>)` requires all flows share element
- *    type `T`. The 6 sources are 5 `Flow<Boolean>` + 1 derived `Flow<String>` — a vararg
- *    collapse would force `Flow<Any>` (banned per contract §17).
- *  - Two chained `combine` calls — first the 5 booleans into a typed `BooleansBundle`, then a
- *    2-arity `combine` with the cache-size flow — keeps every step typed; no `Any` anywhere.
- *  - The stdlib also exposes a 5-arg `combine` overload, which lets the booleans collapse in
- *    a single typed call. Going to 6 sources directly would have required the `Any` workaround.
+ * **Why typed chained `combine` calls** (rather than one vararg combine of all 9 sources):
+ *  - The 5 legacy `Flow<Boolean>` values are combined into `BooleansBundle`, the 3 compressor
+ *    values into `CbzBundle`, and those typed bundles are combined with the cache-size flow.
+ *  - Keeping the bundles typed avoids a `Flow<Any>` workaround (banned by contract §17) while
+ *    preserving one coherent snapshot emission per preference change.
  *
  * **Cache-size flow** — neither the legacy `AppFileSystem.getCacheFolderSize()` nor the legacy
  * `clearFilesLargerThan1MB()` are flow-shaped (both are synchronous okio file-walks). To still
@@ -190,8 +187,9 @@ class SettingsRepositoryImpl(
             combine(
                 dataStore.useCbzFormatFlow,
                 dataStore.autoConvertToCbzFlow,
-            ) { useCbz, autoConvert ->
-                CbzBundle(useCbz, autoConvert)
+                dataStore.allowCompressionInLowPowerFlow,
+            ) { useCbz, autoConvert, allowLpm ->
+                CbzBundle(useCbz, autoConvert, allowLpm)
             }
         // Typed wire (2026-07 backlog L15): the snapshot carries RAW bytes; the localized
         // "1.23 GB"-style rendering happens in :ui (formatByteSize + the size_* patterns).
@@ -210,6 +208,7 @@ class SettingsRepositoryImpl(
                 cacheSizeBytes = size,
                 useCbzFormat = c.useCbz,
                 autoConvertToCbz = c.autoConvert,
+                allowCompressionInLowPower = c.allowLowPower,
             )
         }
     }
@@ -232,6 +231,7 @@ class SettingsRepositoryImpl(
                 SettingsToggle.PURE_BLACK -> legacy.setPureBlack(value)
                 SettingsToggle.USE_CBZ_FORMAT -> dataStore.setUseCbzFormat(value)
                 SettingsToggle.AUTO_CONVERT_TO_CBZ -> dataStore.setAutoConvertToCbz(value)
+                SettingsToggle.ALLOW_COMPRESSION_IN_LOW_POWER -> dataStore.setAllowCompressionInLowPower(value)
             }
         }
 
@@ -434,6 +434,7 @@ class SettingsRepositoryImpl(
     private data class CbzBundle(
         val useCbz: Boolean,
         val autoConvert: Boolean,
+        val allowLowPower: Boolean,
     )
 
     private companion object {

@@ -54,7 +54,7 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * **`isLoading` clears on the FIRST emission**: the upstream `combine` waits for every source
  * to emit once before emitting downstream (standard `combine` semantics — see
  * [kotlinx.coroutines.flow.combine] KDoc). Once the first joint emission arrives, the screen
- * has real values for all 5 toggles + the cache size; setting `isLoading = false` on that
+ * has real values for all visible toggles + the cache size; setting `isLoading = false` on that
  * emission is correct.
  *
  * **`OnToggle` handler**: launches fire-and-forget in `viewModelScope`. The upstream pref
@@ -88,7 +88,7 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * Constructor: per contract §6 DIP — 3 use case classes (NOT impl types), injected by Koin
  * `viewModel` binding in `settingsReworkModule`.
  *
- * **SRP (contract §6)**: orchestrates Settings hub presentation state + 5 toggles + cache
+ * **SRP (contract §6)**: orchestrates Settings hub presentation state + visible toggles + cache
  * clear + nav routing, nothing else. No business logic — the use cases own that. No
  * preference-shape translation — the `:data` impl owns the legacy ↔ snapshot translation.
  * No styling — the `:ui` composable owns the MaterialTheme/icon lookup. No Admin routing —
@@ -174,6 +174,7 @@ class SettingsViewModel(
                         cacheSizeBytes = snapshot.cacheSizeBytes,
                         useCbzFormat = snapshot.useCbzFormat,
                         autoConvertToCbz = snapshot.autoConvertToCbz,
+                        allowCompressionInLowPower = snapshot.allowCompressionInLowPower,
                     )
                 }
             }

@@ -27,6 +27,11 @@ internal object StorageKeys {
     const val KEY_USE_CBZ_FORMAT = "use_cbz_format"
     const val KEY_AUTO_CONVERT_TO_CBZ = "auto_convert_to_cbz"
 
+    // iOS Low Power Mode compression opt-in. Default false = respect the user's battery-saving intent
+    // (CBZ finalize stays deferred while Low Power Mode is active). When true, the iOS finalize engine
+    // may compress even in Low Power Mode. Thermal serious/critical always defers regardless of this.
+    const val KEY_ALLOW_COMPRESSION_IN_LOW_POWER = "allow_compression_low_power"
+
     const val HEADERS_MAP_JSON = "headers_map_json"
 
     const val READ_MINUTES = "read_minutes"

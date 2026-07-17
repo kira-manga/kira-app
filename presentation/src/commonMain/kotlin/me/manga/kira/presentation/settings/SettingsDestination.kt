@@ -101,6 +101,7 @@ package me.manga.kira.presentation.settings
  * §§276-281 + 295 + 352 + 354.
  */
 enum class SettingsDestination {
+    SOURCE_MANAGEMENT,
     THEME,
     STATISTICS,
     LANGUAGE,

@@ -170,7 +170,7 @@ fun ThemeSelectionScreenRoute(
 
     ThemeScreen(
         viewModel = viewModel,
-        onContinue = { navController.safeNavigate(Screen.Sources) },
+        onContinue = { navController.safeNavigate(Screen.StartReading(onboarding = true)) },
         hasNotificationPermission = hasPermission,
         onRequestNotificationPermission = { permissionRequester.request(onPermissionResult) },
     )

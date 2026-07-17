@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -11,7 +12,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.model.sources.Source
+import me.manga.kira.domain.model.sources.SourceAccessState
 import me.manga.kira.domain.repository.FeedbackRepository
+import me.manga.kira.domain.repository.SourceAccessRepository
 import me.manga.kira.domain.repository.SourcesRepository
 import me.manga.kira.domain.usecase.feedback.SubmitFeedbackUseCase
 import me.manga.kira.domain.usecase.sources.EnableDefaultLanguageSourcesUseCase
@@ -64,6 +67,14 @@ class SourcesViewModelTest {
         }
     }
 
+    private class FakeSourceAccessRepository(activated: Boolean) : SourceAccessRepository {
+        override val state = MutableStateFlow(
+            if (activated) SourceAccessState.ACTIVATED else SourceAccessState.LOCKED,
+        )
+
+        override suspend fun activatePermanently(): Boolean = false
+    }
+
     /** Feedback repo whose submit can be gated open (in-flight) and resolved on demand. */
     private class GatedFeedbackRepository(
         private val result: Result<Unit> = Result.success(Unit),
@@ -81,12 +92,13 @@ class SourcesViewModelTest {
         upstream: Flow<List<Source>> = MutableSharedFlow(replay = 1),
         sources: RecordingSourcesRepository = RecordingSourcesRepository(upstream),
         feedback: GatedFeedbackRepository = GatedFeedbackRepository(),
+        activated: Boolean = true,
     ) = SourcesViewModel(
         ObserveSourcesUseCase(sources),
-        SetSourceEnabledUseCase(sources),
-        SetLanguageEnabledUseCase(sources),
+        SetSourceEnabledUseCase(sources, FakeSourceAccessRepository(activated)),
+        SetLanguageEnabledUseCase(sources, FakeSourceAccessRepository(activated)),
         SubmitFeedbackUseCase(feedback),
-        EnableDefaultLanguageSourcesUseCase(sources),
+        EnableDefaultLanguageSourcesUseCase(sources, FakeSourceAccessRepository(activated)),
     )
 
     @Test
@@ -110,6 +122,19 @@ class SourcesViewModelTest {
         vm.submit(SourcesIntent.OnToggleLanguage("ar", enabled = true))
 
         assertEquals(listOf("source:Azora:false", "language:ar:true"), sources.calls)
+    }
+
+    @Test
+    fun locked_state_drops_toggle_intents_without_modifying_sources() = runTest {
+        val upstream = MutableSharedFlow<List<Source>>(replay = 1)
+        val sources = RecordingSourcesRepository(upstream)
+        val vm = viewModel(upstream = upstream, sources = sources, activated = false)
+
+        vm.submit(SourcesIntent.OnToggleSource(source("Azora"), enabled = false))
+        vm.submit(SourcesIntent.OnToggleLanguage("ar", enabled = true))
+        vm.submit(SourcesIntent.OnSeedDefaultLanguage("ar"))
+
+        assertTrue(sources.calls.isEmpty())
     }
 
     @Test

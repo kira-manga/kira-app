@@ -48,6 +48,7 @@ class RecordHistoryUseCaseTest {
                 cacheSizeBytes = 0L,
                 useCbzFormat = true,
                 autoConvertToCbz = false,
+                allowCompressionInLowPower = false,
             ),
         )
         override fun observeSettings(): Flow<SettingsSnapshot> = snapshot

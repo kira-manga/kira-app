@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS Low Power Mode compression toggle + deferred-state strings (2026-07). -->
+<resources>
+    <string name="lpm_compress_toggle">Im Stromsparmodus komprimieren</string>
+    <string name="lpm_compress_toggle_desc">Erlaubt das Komprimieren von Kapiteln, während der Stromsparmodus aktiv ist. Standardmäßig aus, um Akku zu sparen.</string>
+    <string name="pfix_dl_paused_low_power">Pausiert — Stromsparmodus</string>
+</resources>

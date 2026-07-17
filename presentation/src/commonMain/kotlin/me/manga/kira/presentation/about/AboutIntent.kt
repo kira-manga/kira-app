@@ -19,8 +19,8 @@ import me.manga.kira.presentation.mvi.MviIntent
  * - [OnOpenUrl] — user tapped a row that opens an external URL (Privacy policy in this
  *   slice). Carries the target URL string; the VM emits [AboutEffect.OpenUrl] verbatim.
  *   The URL string is hardcoded by the :ui composable per legacy parity (the legacy
- *   `AboutScreen.kt` line 172 literal `"https://yamimanga.me/privacy"`) — the rework keeps
- *   the same value at the same call site. Future URL rows (e.g., source code link once it
+ *   `AboutScreen.kt` privacy-link literal) — the rework keeps the value at the same call site.
+ *   Future URL rows (e.g., source code link once it
  *   goes public) add to this same intent without growing the hierarchy.
  * - [OnOpenWhatsNew] — user tapped the "What's new" row added by Phase 7.x.about.whatsnewrow.
  *   The VM emits [AboutEffect.NavigateToWhatsNew] and the route adapter routes the

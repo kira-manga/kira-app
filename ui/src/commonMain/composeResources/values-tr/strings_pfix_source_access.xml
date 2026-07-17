@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_reading_title">Okumaya Başla</string>
+    <string name="start_reading_intro">Kira ile manga okumayı web sitemizden öğrenin veya rehberler ve güncellemeler için bizi takip edin.</string>
+    <string name="start_reading_activation_discovery">Kaynakları nasıl etkinleştireceğinizi öğrenmek için web sitemizi veya sosyal medya hesaplarımızdan birini ziyaret edin.</string>
+    <string name="start_reading_guide">Okuma rehberi</string>
+    <string name="start_reading_website">kiramanga.me adresini ziyaret et</string>
+    <string name="start_reading_activation_label">Etkinleştirme bağlantısı</string>
+    <string name="start_reading_activation_placeholder">Kira etkinleştirme bağlantınızı yapıştırın</string>
+    <string name="start_reading_activation_help">Etkinleştirme, bu cihazda kaynak yönetimini kalıcı olarak gösterir.</string>
+    <string name="start_reading_activate">Kaynakları etkinleştir</string>
+    <string name="start_reading_invalid_link">kiramanga.me alan adına ait bir bağlantı girin.</string>
+    <string name="start_reading_import">Kira’dan içe aktar</string>
+    <string name="start_reading_continue">Kitaplığa devam et</string>
+    <string name="start_reading_social">Kira’yı takip et</string>
+    <string name="start_reading_settings_locked_description">Kaynakları görmek ve yönetmek için etkinleştirin.</string>
+    <string name="start_reading_settings_activated_description">Kaynakları etkinleştirin, devre dışı bırakın ve yapılandırın.</string>
+    <string name="home_no_sources_locked_title">Kira ile okumaya başlayın</string>
+    <string name="home_no_sources_locked_body">Kullanılabilir etkin kaynak yok. Kaynakları etkinleştirin veya bir Kira yedeği ya da manga paketi içe aktarın.</string>
+    <string name="home_no_sources_activated_title">Etkin kaynak yok</string>
+    <string name="home_no_sources_activated_body">Ana Sayfa’da manga keşfetmek için en az bir kaynağı etkinleştirin.</string>
+</resources>

@@ -12,6 +12,11 @@ sealed class Screen(val route: String) {
     object Theme : Screen("me.manga.kira.navigation.Screen.Theme")
 
     @Serializable
+    data class StartReading(
+        val onboarding: Boolean = false,
+    ) : Screen("me.manga.kira.navigation.Screen.StartReading")
+
+    @Serializable
     object Sources : Screen("me.manga.kira.navigation.Screen.Sources")
 
     @Serializable
@@ -158,6 +163,7 @@ sealed class Screen(val route: String) {
     @Serializable
     data class BackupRework(
         val scopeJson: String = "",
+        val completeStartFlowOnImport: Boolean = false,
     ) : Screen("me.manga.kira.navigation.Screen.BackupRework")
 
     /**

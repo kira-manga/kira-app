@@ -2,7 +2,9 @@ package me.manga.kira.locale
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidedValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
+import me.manga.kira.IosHostLayoutDirection
 import platform.Foundation.NSLocale
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.currentLocale
@@ -11,18 +13,20 @@ import platform.Foundation.languageCode
 /**
  * iOS [LocalAppLocale] — writes the chosen language to `NSUserDefaults["AppleLanguages"]` (the key
  * iOS resolves preferred-language order from) and exposes the code through a composition local. The
- * app root keys its content on the language code so the keyed recomposition re-reads resources.
+ * app root provides the language code so provider-driven recomposition re-reads resources.
  * Blank/null restores the captured system default.
  *
  * **Live switch (PI2, 2026-07): the write IS visible within the running process.** String
  * resolution goes compose-resources → `androidx.compose.ui.text.intl.Locale.current` → darwin
  * `platformLocaleDelegate` → `NSLocale.preferredLanguages`, re-read on EVERY access with no
  * compose-side cache — and `preferredLanguages` reflects a same-process `AppleLanguages` write
- * (pinned empirically by `AppleLanguagesLiveSwitchContractTest`). The app root's `key(language)`
+ * (pinned empirically by `AppleLanguagesLiveSwitchContractTest`). The app root's locale-provider
  * recomposition therefore re-resolves every `stringResource` in the new language immediately,
  * exactly like Android/Desktop. Known residual gap: SWIFT-side text (the native reader's
  * `ReaderStrings`, notification strings) resolves through `NSBundle`, which caches its
  * localization at launch — those few strings still catch up on the next launch.
+ * The same provider also synchronizes the UIKit host view's semantic direction so Compose
+ * Navigation's default iOS edge recognizer and `LocalLayoutDirection` select the same back edge.
  *
  * Two correctness details vs. the Android/Desktop actuals:
  *  - **True system default (A17).** [provides] overwrites `AppleLanguages`, so reading that key
@@ -70,7 +74,7 @@ actual object LocalAppLocale {
 
     // Live since PI2 (2026-07): `NSLocale.preferredLanguages` — the value compose-resources'
     // string resolution reads per access (via compose `Locale.current`, uncached) — reflects the
-    // AppleLanguages write within the running process, so the root `key(language)` recomposition
+    // AppleLanguages write within the running process, so the root locale-provider recomposition
     // re-resolves every string immediately. This OS behavior is load-bearing and pinned by
     // `AppleLanguagesLiveSwitchContractTest` (:composeApp iosSimulatorArm64Test); if a future
     // iOS/CMP version breaks it, that test fails and this flag must flip back to false (the
@@ -83,6 +87,10 @@ actual object LocalAppLocale {
     @Composable
     actual infix fun provides(value: String?): ProvidedValue<*> {
         val defaults = NSUserDefaults.standardUserDefaults
+        val effectiveLanguage = value?.trim().takeUnless { it.isNullOrEmpty() } ?: systemDefaultTag
+        SideEffect {
+            IosHostLayoutDirection.synchronize(isRtlLanguageTag(effectiveLanguage))
+        }
         // Guard the persistent AppleLanguages write so repeated/speculative compositions stay
         // idempotent (mirrors the Android/Desktop siblings' Locale.getDefault() guard): only touch
         // NSUserDefaults when the chosen order actually differs from what's already stored.

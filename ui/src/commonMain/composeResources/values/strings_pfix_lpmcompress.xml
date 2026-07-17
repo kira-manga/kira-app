@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS Low Power Mode compression toggle + deferred-state strings (2026-07). The Settings toggle
+  (iOS-only, default OFF) lets the user allow CBZ compression/finalize to run even during Low Power
+  Mode; `pfix_dl_paused_low_power` is the Details chapter-row status shown when a finished download's
+  compression is deferred by Low Power Mode, so it reads as a clear paused state instead of an endless
+  "Finalizing…". Keys mirrored across all 11 locale folders for the :ui locale-parity gate.
+-->
+<resources>
+    <string name="lpm_compress_toggle">Compress in Low Power Mode</string>
+    <string name="lpm_compress_toggle_desc">Allow chapter compression to run while Low Power Mode is on. Off by default to save battery.</string>
+    <string name="pfix_dl_paused_low_power">Paused — Low Power Mode</string>
+</resources>

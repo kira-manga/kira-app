@@ -32,6 +32,7 @@ import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
+import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.library.ObserveInLibraryUseCase
 import me.manga.kira.domain.usecase.library.MarkMangaOpenedUseCase
 import me.manga.kira.domain.usecase.library.PersistNewChaptersUseCase
@@ -158,6 +159,9 @@ class DetailsViewModel(
     private val observeConnectivity: ObserveConnectivityUseCase,
     // #11: native-parity manga_open analytics event, fired once per opened identity.
     private val logMangaOpen: LogMangaOpenUseCase,
+    // iOS Low Power Mode compression deferral, exposed through a domain use case so the VM stays
+    // independent of the platform signal and settings implementation.
+    private val observeCompressionDeferred: ObserveCompressionDeferredUseCase,
 ) : MviViewModel<DetailsState, DetailsIntent, DetailsEffect>(
     initialState = DetailsState(),
 ) {
@@ -238,6 +242,13 @@ class DetailsViewModel(
         observeConnectivity()
             .onEach { online -> updateState { it.copy(isOnline = online) } }
             .catch { /* connectivity is a best-effort gate; on observer failure stay optimistic. */ }
+            .launchIn(viewModelScope)
+
+        // Keep the chapter rows honest while iOS Low Power Mode is active. This is a global
+        // signal rather than a manga-specific observation, so it starts once for the VM lifetime.
+        observeCompressionDeferred()
+            .onEach { deferred -> updateState { it.copy(compressionDeferred = deferred) } }
+            .catch { /* deferral is advisory; retain the safe default false on observer failure. */ }
             .launchIn(viewModelScope)
     }
 

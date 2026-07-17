@@ -13,7 +13,7 @@ import me.manga.kira.presentation.mvi.MviIntent
  * enforcement that the reducer handles every case).
  *
  * **Foundation variants**:
- *  - [OnToggle] — flip one of the 5 boolean toggles (general doublet + theme triplet).
+ *  - [OnToggle] — flip one of the visible boolean toggles (general/theme or iOS Low Power Mode).
  *  - [OnClearCache] — invoke the cache-clear action.
  *  - [OnNavigate] — tap one of the 6 nav rows.
  *
@@ -95,7 +95,7 @@ sealed interface SettingsIntent : MviIntent {
      * DataStore's `edit` produces no emission for an unchanged value). Same posture as
      * [me.manga.kira.presentation.theme.ThemeIntent.OnTogglePureBlack].
      *
-     * The 5 [SettingsToggle] variants are the 5 boolean fields of
+     * The [SettingsToggle] variants are the boolean fields of
      * [me.manga.kira.domain.model.settings.SettingsSnapshot] — the `:data` impl's
      * exhaustive `when` mapper translates each to the matching legacy setter.
      */

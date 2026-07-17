@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_reading_title">ابدأ القراءة</string>
+    <string name="start_reading_intro">تعرّف على طريقة قراءة المانجا باستخدام Kira عبر موقعنا، أو تابعنا للحصول على الأدلة والتحديثات.</string>
+    <string name="start_reading_activation_discovery">لمعرفة كيفية تفعيل المصادر، زُر موقعنا أو أيًّا من صفحاتنا على وسائل التواصل الاجتماعي.</string>
+    <string name="start_reading_guide">دليل القراءة</string>
+    <string name="start_reading_website">زيارة kiramanga.me</string>
+    <string name="start_reading_activation_label">رابط التفعيل</string>
+    <string name="start_reading_activation_placeholder">الصق رابط تفعيل Kira</string>
+    <string name="start_reading_activation_help">يكشف التفعيل إدارة المصادر بشكل دائم على هذا الجهاز.</string>
+    <string name="start_reading_activate">تفعيل المصادر</string>
+    <string name="start_reading_invalid_link">أدخل رابطًا من نطاق kiramanga.me.</string>
+    <string name="start_reading_import">استيراد من Kira</string>
+    <string name="start_reading_continue">المتابعة إلى المكتبة</string>
+    <string name="start_reading_social">تابع Kira</string>
+    <string name="start_reading_settings_locked_description">فعّل لعرض المصادر وإدارتها.</string>
+    <string name="start_reading_settings_activated_description">فعّل المصادر أو عطّلها واضبط إعداداتها.</string>
+    <string name="home_no_sources_locked_title">ابدأ القراءة مع Kira</string>
+    <string name="home_no_sources_locked_body">لا يوجد مصدر صالح مفعّل. فعّل المصادر أو استورد نسخة Kira احتياطية أو حزمة مانجا.</string>
+    <string name="home_no_sources_activated_title">لا توجد مصادر مفعّلة</string>
+    <string name="home_no_sources_activated_body">فعّل مصدرًا واحدًا على الأقل لتصفح المانجا في الصفحة الرئيسية.</string>
+</resources>

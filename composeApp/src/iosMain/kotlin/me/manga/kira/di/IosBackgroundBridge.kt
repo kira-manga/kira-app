@@ -104,28 +104,23 @@ fun hasTransferWork(): Boolean {
 }
 
 /**
- * Host → engine: report device stress (thermal serious/critical OR Low Power Mode). The engine defers
- * FOREGROUND CBZ compression while stressed (background compression is unaffected). Called by the Swift
- * host from `ProcessInfo.thermalState` / `isLowPowerModeEnabled` on the thermal/power-state notifications
- * + foreground — those APIs aren't in the Kotlin/Native Foundation binding, so the host owns the read.
+ * Host → engine: report device stress split into its two independent causes — thermal pressure
+ * (`ProcessInfo.thermalState` serious/critical) and Low Power Mode (`ProcessInfo.isLowPowerModeEnabled`).
+ * The engine defers FOREGROUND CBZ compression while thermally stressed (ALWAYS) or in Low Power Mode
+ * (unless the user opted in via the settings toggle); background compression is unaffected. Called by the
+ * Swift host on the thermal/power-state change notifications + foreground — those APIs aren't in the
+ * Kotlin/Native Foundation binding, so the host owns the read.
+ *
+ * Pure state push: the engine observes these two flags (and the user toggle) and OWNS re-driving any
+ * deferred finalize when a gate clears (see `BackgroundUrlSessionDownloadRepository`), so — unlike the
+ * previous combined setter — there is deliberately no edge-pump here.
  */
-fun setDownloadDeviceUnderStress(stressed: Boolean) {
+fun setDownloadDeviceStressState(thermalStressed: Boolean, lowPowerMode: Boolean) {
     if (!DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) return
-    val koin = KoinPlatform.getKoin()
-    val signal = koin.get<BackgroundWorkSignal>()
-    val wasStressed = signal.deviceUnderStress
-    signal.setDeviceUnderStress(stressed)
-    BgDownloadLog.log("bridge.deviceUnderStress", "stressed" to stressed)
-    // Stress CLEARED with work still pending → the engine's foreground finalize was deferred on this
-    // very flag and nothing else re-drives it (Low Power Mode also suppresses BGProcessingTask grants,
-    // so the background path can't be counted on either). Edge-trigger one pump so the deferred CBZ
-    // work starts now instead of at the next app background/foreground cycle.
-    if (wasStressed && !stressed && signal.hasPendingWork) {
-        BgDownloadLog.log("bridge.deviceUnderStress.clearedPump")
-        bridgeScope.launch {
-            runCatching { koin.get<DownloadRepository>().reconcileInterruptedDownloads() }
-        }
-    }
+    val signal = KoinPlatform.getKoin().get<BackgroundWorkSignal>()
+    signal.setThermallyStressed(thermalStressed)
+    signal.setLowPowerMode(lowPowerMode)
+    BgDownloadLog.log("bridge.deviceStress", "thermal" to thermalStressed, "lowPower" to lowPowerMode)
 }
 
 fun currentDownloadProgress(): Float {

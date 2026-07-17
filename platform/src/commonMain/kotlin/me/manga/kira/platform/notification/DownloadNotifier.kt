@@ -29,6 +29,16 @@ interface DownloadNotifier {
      */
     suspend fun onFinalizing(key: Int, title: String) {}
 
+    /**
+     * Silent, in-place "compression paused" update: all pages are downloaded and the chapter is READABLE,
+     * but the durable CBZ is deferred because iOS Low Power Mode is active and the user has not opted in to
+     * compress during Low Power Mode. Presented exactly like [onProgress]/[onFinalizing] (no banner, no
+     * sound), but with copy that reads as a settled *paused* state — NOT an in-progress "Finalizing…" — so a
+     * finished download never looks stuck. The alerting [onComplete] still fires only once the CBZ is
+     * actually built (after Low Power Mode ends or the user opts in). Default no-op (Desktop).
+     */
+    suspend fun onFinalizeDeferred(key: Int, title: String) {}
+
     /** Alerting completion notice (banner + sound) — post ONLY when the chapter is truly ready to read. */
     suspend fun onComplete(key: Int, title: String)
 
@@ -42,6 +52,7 @@ interface DownloadNotifier {
     object NoOp : DownloadNotifier {
         override suspend fun onProgress(key: Int, title: String, current: Int, total: Int) {}
         override suspend fun onFinalizing(key: Int, title: String) {}
+        override suspend fun onFinalizeDeferred(key: Int, title: String) {}
         override suspend fun onComplete(key: Int, title: String) {}
         override suspend fun onFailed(key: Int, title: String) {}
         override suspend fun clear(key: Int) {}

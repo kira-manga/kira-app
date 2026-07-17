@@ -214,8 +214,36 @@ class AzoraHomeSearchRoutingTest {
             val result = repo.fetchHome(reset = true)
 
             assertTrue(result is AppResult.Failure, "expected a typed Failure, got $result")
+            assertTrue(
+                result.error is AppError.Unexpected,
+                "a missing/rejected catalog remains a real configuration failure: $result",
+            )
             assertEquals(emptyList(), registry.getCalls) // nothing was fetched
         }
+
+    @Test
+    fun configured_but_disabled_sources_return_the_narrow_no_enabled_sources_error() = runTest {
+        val source = FakeMangaRepo("Azora")
+        val enabledLegacySource = FakeMangaRepo("Other", home = legacyHome("STALE"))
+        val registry = FakeRegistry(piloted = setOf("Azora")) { error("disabled source must not fetch") }
+        val repo = HomeFeedRepositoryImpl(
+            sourcesRepository = legacySources(
+                repos = listOf(source, enabledLegacySource),
+                scope = this,
+                enabledByApi = mapOf("Azora" to false, "Other" to true),
+            ),
+            dadosStore = ManhastroDadosStore(),
+            dispatchers = testDispatchers,
+            sourceRegistry = registry,
+        )
+
+        val result = repo.fetchHome(reset = true)
+
+        assertTrue(result is AppResult.Failure)
+        assertTrue(result.error is AppError.Validation.NoEnabledSources)
+        assertEquals(emptyList(), registry.getCalls)
+        assertEquals(0, enabledLegacySource.homeCalls)
+    }
 
     // --- Phase 5/6: legacy isolation from the active flow ----------------------------------------
 
@@ -442,8 +470,10 @@ class AzoraHomeSearchRoutingTest {
     private fun CoroutineScope.legacySources(
         repos: List<BaseMangaRepository>,
         scope: CoroutineScope,
+        enabled: Boolean = true,
+        enabledByApi: Map<String, Boolean> = emptyMap(),
     ) = SourcesRepository(
-        sourcesDao = SeededSourcesDao(repos),
+        sourcesDao = SeededSourcesDao(repos, enabled, enabledByApi),
         repos = repos.toSet(),
         prefs = SharedPrefsHelper(MapSettings()),
         applicationScope = scope,
@@ -615,12 +645,14 @@ class AzoraHomeSearchRoutingTest {
 
     private class SeededSourcesDao(
         repos: List<BaseMangaRepository>,
+        enabled: Boolean = true,
+        enabledByApi: Map<String, Boolean> = emptyMap(),
     ) : SourcesDao {
         private val rows =
             repos.mapIndexed { i, repo ->
                 SourcesEntity(
                     name = repo.API,
-                    isEnabled = true,
+                    isEnabled = enabledByApi[repo.API] ?: enabled,
                     priority = i,
                     language = repo.LANGUAGE,
                     siteState = SourceState.WORKING,

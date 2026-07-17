@@ -1,5 +1,9 @@
 package me.manga.kira.platform.download
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 /**
  * A lightweight snapshot of background-download progress the host's BG-task layer can read
  * **synchronously** — to decide "is there work, so should I submit a continued task?" and to drive a
@@ -44,14 +48,25 @@ class BackgroundWorkSignal {
         private set
 
     /**
-     * True when the device is under stress and a heavy foreground CBZ encode should be deferred: thermal
-     * state serious/critical, or Low Power Mode on. Written by the iOS host from `ProcessInfo.thermalState`
-     * / `isLowPowerModeEnabled` (those aren't in the Kotlin/Native Foundation binding, but are trivial in
-     * Swift) on the thermal/power-state change notifications + foreground. Advisory; only gates foreground
-     * compression admission, never correctness. Defaults false (no gating until the host wires it).
+     * True when the device is thermally stressed (`ProcessInfo.thermalState` serious/critical). A heavy
+     * foreground CBZ encode is ALWAYS deferred while this is true, regardless of any user setting (running
+     * the encoder would only worsen the thermal state). Written by the iOS host on the thermal-state change
+     * notification + foreground. Observable (StateFlow) so the engine can re-drive deferred work when it
+     * clears. Advisory; only gates foreground compression admission, never correctness. Defaults false.
      */
-    var deviceUnderStress: Boolean = false
-        private set
+    private val _thermallyStressed = MutableStateFlow(false)
+    val thermallyStressed: StateFlow<Boolean> = _thermallyStressed.asStateFlow()
+
+    /**
+     * True when iOS Low Power Mode is enabled (`ProcessInfo.isLowPowerModeEnabled`). By default foreground
+     * compression is deferred while this is true (respect the user's battery-saving intent); the user may
+     * opt in via a settings toggle to compress anyway. Separated from [thermallyStressed] so ONLY the
+     * Low-Power half is user-overridable. Written by the iOS host on the power-state change notification +
+     * foreground; observable so the engine can re-drive deferred work and the UI can surface a clear
+     * "paused (Low Power Mode)" state instead of an endless "Finalizing…". Defaults false.
+     */
+    private val _lowPowerMode = MutableStateFlow(false)
+    val lowPowerMode: StateFlow<Boolean> = _lowPowerMode.asStateFlow()
 
     fun update(
         hasPendingWork: Boolean,
@@ -71,7 +86,11 @@ class BackgroundWorkSignal {
         backgroundProcessingActive = active
     }
 
-    fun setDeviceUnderStress(stressed: Boolean) {
-        deviceUnderStress = stressed
+    fun setThermallyStressed(stressed: Boolean) {
+        _thermallyStressed.value = stressed
+    }
+
+    fun setLowPowerMode(enabled: Boolean) {
+        _lowPowerMode.value = enabled
     }
 }

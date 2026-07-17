@@ -32,6 +32,12 @@ class IosDownloadNotifier : DownloadNotifier {
     override suspend fun onFinalizing(key: Int, title: String) =
         post(key, title, body = "Finalizing chapter…", category = CATEGORY_PROGRESS, alerting = false)
 
+    // Pages downloaded + chapter readable, but the CBZ is deferred by Low Power Mode (user opt-out). Silent,
+    // in-place (reuses "dl-$key") — the copy reads as a settled "paused", NOT "Finalizing…", so a finished
+    // download never looks stuck. onComplete still fires only when the CBZ is actually built (LPM ends / opt-in).
+    override suspend fun onFinalizeDeferred(key: Int, title: String) =
+        post(key, title, body = "Chapter ready — compression paused (Low Power Mode)", category = CATEGORY_PROGRESS, alerting = false)
+
     override suspend fun onComplete(key: Int, title: String) =
         post(key, title, body = "Download complete", category = CATEGORY_DONE, alerting = true)
 

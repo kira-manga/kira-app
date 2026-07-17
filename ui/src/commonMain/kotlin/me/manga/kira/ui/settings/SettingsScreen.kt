@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Info
@@ -155,6 +156,8 @@ import me.manga.kira.ui.generated.resources.ic_reader_setting
 import me.manga.kira.ui.generated.resources.incognito_svgrepo_com
 import me.manga.kira.ui.generated.resources.switchthemes
 import me.manga.kira.ui.generated.resources.language
+import me.manga.kira.ui.generated.resources.lpm_compress_toggle
+import me.manga.kira.ui.generated.resources.lpm_compress_toggle_desc
 import me.manga.kira.ui.generated.resources.minimum_5_characters_required
 import me.manga.kira.ui.generated.resources.please_don_t_close_the_app_until_conversion_is_complete
 import me.manga.kira.ui.generated.resources.pure_black_mode_title
@@ -176,6 +179,10 @@ import me.manga.kira.ui.generated.resources.setting_downloaded_only_desc
 import me.manga.kira.ui.generated.resources.setting_incognito
 import me.manga.kira.ui.generated.resources.setting_incognito_desc
 import me.manga.kira.ui.generated.resources.settings_screen_title
+import me.manga.kira.ui.generated.resources.sources_title
+import me.manga.kira.ui.generated.resources.start_reading_settings_activated_description
+import me.manga.kira.ui.generated.resources.start_reading_settings_locked_description
+import me.manga.kira.ui.generated.resources.start_reading_title
 import me.manga.kira.ui.generated.resources.start_conversion
 import me.manga.kira.ui.generated.resources.statistics
 import me.manga.kira.ui.generated.resources.stop_conversion
@@ -204,7 +211,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * Settings hub screen — Compose entry point for the Settings MVI slice.
  *
- * Phase 7.x.settings.foundation rework. Renders [SettingsState]'s 5 toggle booleans + the
+ * Phase 7.x.settings.foundation rework. Renders [SettingsState]'s visible toggle booleans + the
  * formatted cache-size string in three sections (General toggles / Theme toggles / Navigation
  * rows) plus a clear-cache action row. Dispatches the 3 [SettingsIntent] variants and routes
  * the 2 [SettingsEffect] variants — [SettingsEffect.NavigateTo] flows out through the
@@ -308,10 +315,14 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigate: (SettingsDestination) -> Unit,
     modifier: Modifier = Modifier,
+    sourceAccessActivated: Boolean = false,
     // GAP-SET-12 — Feedback dialog social-media row. `:ui` is callback-only; the route adapter
     // forwards each URL to the platform `IntentLauncher.openUrl`. Defaults to a no-op so existing
     // callers compile unchanged.
     onOpenUrl: (String) -> Unit = {},
+    // iOS-only: whether to show the "compress during Low Power Mode" toggle in the Downloads section.
+    // The route adapter passes true only on iOS; defaults false so other callers / previews compile.
+    lowPowerCompressionToggleVisible: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     SettingsScreenContent(
@@ -320,7 +331,9 @@ fun SettingsScreen(
         onIntent = viewModel::submit,
         onNavigate = onNavigate,
         modifier = modifier,
+        sourceAccessActivated = sourceAccessActivated,
         onOpenUrl = onOpenUrl,
+        lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
     )
 }
 
@@ -332,7 +345,9 @@ internal fun SettingsScreenContent(
     onIntent: (SettingsIntent) -> Unit,
     onNavigate: (SettingsDestination) -> Unit,
     modifier: Modifier = Modifier,
+    sourceAccessActivated: Boolean = false,
     onOpenUrl: (String) -> Unit = {},
+    lowPowerCompressionToggleVisible: Boolean = false,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // Launch snackbars off the effect collector so showing one never blocks a later navigation
@@ -399,6 +414,8 @@ internal fun SettingsScreenContent(
                 SettingsList(
                     state = state,
                     onIntent = onIntent,
+                    sourceAccessActivated = sourceAccessActivated,
+                    lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
                 )
             }
         }
@@ -441,6 +458,8 @@ internal fun SettingsScreenContent(
 private fun SettingsList(
     state: SettingsState,
     onIntent: (SettingsIntent) -> Unit,
+    sourceAccessActivated: Boolean = false,
+    lowPowerCompressionToggleVisible: Boolean = false,
 ) {
     val spacing = LocalSpacing.current
     LazyColumn(
@@ -569,6 +588,24 @@ private fun SettingsList(
                         isCompressing = state.isCompressingDownloads,
                         onCompress = { onIntent(SettingsIntent.OnCompressExistingDownloads) },
                     )
+                    // iOS-only: allow the background CBZ compression/finalize to run during Low Power
+                    // Mode (default off = respect battery intent). Hidden on Android/Desktop via the
+                    // route-adapter visibility flag. When off, a finished download whose compression is
+                    // deferred by Low Power Mode shows a clear "Paused" state (Details row + notification)
+                    // instead of an endless "Finalizing…".
+                    if (lowPowerCompressionToggleVisible) {
+                        SectionDivider()
+                        ToggleRow(
+                            label = stringResource(Res.string.lpm_compress_toggle),
+                            description = stringResource(Res.string.lpm_compress_toggle_desc),
+                            checked = state.allowCompressionInLowPower,
+                            onCheckedChange = {
+                                onIntent(
+                                    SettingsIntent.OnToggle(SettingsToggle.ALLOW_COMPRESSION_IN_LOW_POWER, it),
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -576,6 +613,23 @@ private fun SettingsList(
         item(key = "section-navigation") {
             // Redesign 2026-06 — `.glabel` group label (mockup). Literal (no key); group unchanged.
             SectionCard(label = "Navigation") {
+                NavRow(
+                    label = if (sourceAccessActivated) {
+                        stringResource(Res.string.sources_title)
+                    } else {
+                        stringResource(Res.string.start_reading_title)
+                    },
+                    description = if (sourceAccessActivated) {
+                        stringResource(Res.string.start_reading_settings_activated_description)
+                    } else {
+                        stringResource(Res.string.start_reading_settings_locked_description)
+                    },
+                    onClick = {
+                        onIntent(SettingsIntent.OnNavigate(SettingsDestination.SOURCE_MANAGEMENT))
+                    },
+                    leadingIcon = { RowIcon(Icons.Outlined.AutoStories) },
+                )
+                SectionDivider()
                 // GAP-SET-04 — native Navigation group: feedbacks&complaints → default reading
                 // mode → statistics → app language → downloads. Reading-mode is a dialog-opening
                 // nav-style row here (native places it in Navigation, not its own section).
@@ -1177,6 +1231,7 @@ private fun settingsToggleLabel(toggle: SettingsToggle): String = when (toggle) 
     // string-resource key (en-only inline literals, matching the section copy).
     SettingsToggle.USE_CBZ_FORMAT -> stringResource(Res.string.use_kira_compressor)
     SettingsToggle.AUTO_CONVERT_TO_CBZ -> stringResource(Res.string.auto_convert_on_download)
+    SettingsToggle.ALLOW_COMPRESSION_IN_LOW_POWER -> stringResource(Res.string.lpm_compress_toggle)
 }
 
 /**
@@ -1192,6 +1247,7 @@ private fun settingsToggleLabel(toggle: SettingsToggle): String = when (toggle) 
  */
 @Composable
 private fun settingsDestinationLabel(destination: SettingsDestination): String = when (destination) {
+    SettingsDestination.SOURCE_MANAGEMENT -> stringResource(Res.string.sources_title)
     SettingsDestination.THEME -> stringResource(Res.string.theme_screen_title)
     SettingsDestination.STATISTICS -> stringResource(Res.string.statistics)
     SettingsDestination.LANGUAGE -> stringResource(Res.string.language)

@@ -24,6 +24,7 @@ import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.navigation.push.NotificationRouter
 import me.manga.kira.navigation.push.PushPayloadParser
+import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
 import me.manga.kira.platform.consent.ConsentFlowClient
 import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.platform.storage.SecureStorage
@@ -98,6 +99,7 @@ class MainActivity : ComponentActivity() {
         // change, process-death restore) the same launch intent is re-delivered and would otherwise
         // re-navigate to the pushed screen (#2). handlePushIntent also clears the handled extras.
         if (savedInstanceState == null) {
+            handleSourceActivationIntent(intent)
             handlePushIntent(intent)
         }
         maybeRequestNotificationPermission()
@@ -111,6 +113,7 @@ class MainActivity : ComponentActivity() {
         // launchMode=singleTop → a tap while the app is already running re-delivers here rather than
         // creating a fresh Activity. Update the stored intent and route the deep link.
         setIntent(intent)
+        handleSourceActivationIntent(intent)
         handlePushIntent(intent)
     }
 
@@ -262,6 +265,17 @@ class MainActivity : ComponentActivity() {
             intent.replaceExtras(null as Bundle?)
         } catch (t: Throwable) {
             log.e(t) { "failed to submit push deep-link" }
+        }
+    }
+
+    /** Forward a validated activation URL without retaining or logging its raw value. */
+    private fun handleSourceActivationIntent(intent: Intent?) {
+        val link = intent?.dataString ?: return
+        try {
+            val accepted = GlobalContext.get().get<SourceActivationRequestRouter>().submit(link)
+            if (accepted) intent.data = null
+        } catch (t: Throwable) {
+            log.e(t) { "failed to submit source activation link" }
         }
     }
 

@@ -39,6 +39,7 @@ class FakeSettingsRepository : SettingsRepository {
                 cacheSizeBytes = 0L,
                 useCbzFormat = true,
                 autoConvertToCbz = false,
+                allowCompressionInLowPower = false,
             )
         }
 

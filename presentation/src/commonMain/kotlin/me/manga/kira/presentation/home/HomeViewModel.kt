@@ -5,6 +5,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.flatMap
 import me.manga.kira.core.result.onFailure
 import me.manga.kira.core.result.onSuccess
@@ -73,6 +74,7 @@ class HomeViewModel(
     private var homeFetchJob: Job? = null
     private var featuredFetchJob: Job? = null
     private var libraryKeysJob: Job? = null
+    private var hasStartedFeedFetch = false
 
     /**
      * The source api the currently-displayed feed was fetched for. Tracked so the [observeSourceTabs]
@@ -179,17 +181,19 @@ class HomeViewModel(
      */
     private suspend fun resyncFeedForActiveTab() {
         // Skip until the initial feed fetch has been kicked off (onEnter fetches AFTER wiring this
-        // collector). Without this guard the first tab-strip emission would trigger a redundant
-        // second fetch racing onEnter's own. Once a fetch has run, [feedApi] is non-null and a later
-        // Sources-toggle round-trip can re-sync.
-        if (feedApi == null) return
+        // collector). A separate flag is required because a completed no-source fetch legitimately
+        // leaves [feedApi] null; after the user enables their first source that null must be compared
+        // with the new active api so Home refetches immediately.
+        if (!hasStartedFeedFetch) return
         val tabs = state.value.sourceTabs
         if (tabs.isEmpty()) {
-            // No enabled sources at all: clear the feed so a now-disabled source's items don't linger.
-            // Keep [feedApi] as the last-fetched source (don't null it) so that when a source is
-            // re-enabled the next emission detects the active-source mismatch and refetches.
-            if (state.value.feed.isNotEmpty() || state.value.featured.isNotEmpty()) {
+            // No enabled sources at all: clear stale items and run the normal repository fetch once
+            // so it supplies the typed NoEnabledSources state used by the route. That fetch leaves
+            // [feedApi] null, so re-enabling a source triggers the mismatch/refetch below.
+            if (state.value.feedError !is AppError.Validation.NoEnabledSources) {
                 updateState { it.copy(feed = emptyList(), featured = emptyList(), feedError = null) }
+                fetchHome(reset = true)
+                fetchFeaturedFeed()
             }
             return
         }
@@ -297,6 +301,7 @@ class HomeViewModel(
         // Record the source this feed is being fetched for so the tabs collector can detect an
         // active-source shift (aNum 11). Captured here (not on success) so a slow/failed fetch still
         // marks the feed as belonging to the current source.
+        hasStartedFeedFetch = true
         feedApi = state.value.activeTab?.api
         if (reset) {
             // Clear any stuck pagination flag. A reset fetch cancels the shared `homeFetchJob`
@@ -330,7 +335,9 @@ class HomeViewModel(
                     updateState {
                         it.copy(isFeedLoading = false, isRefreshing = false, feedError = error)
                     }
-                    emit(HomeEffect.ShowError(error))
+                    if (error !is AppError.Validation.NoEnabledSources) {
+                        emit(HomeEffect.ShowError(error))
+                    }
                 }
         }
     }
@@ -343,7 +350,11 @@ class HomeViewModel(
                 // source's "popular" list can repeat a manga or carry a null title, which would crash
                 // the carousel with a duplicate Compose key.
                 .onSuccess { featured -> updateState { it.copy(featured = featured.distinctBy(FeaturedManga::feedKey)) } }
-                .onFailure { error -> emit(HomeEffect.ShowError(error)) }
+                .onFailure { error ->
+                    if (error !is AppError.Validation.NoEnabledSources) {
+                        emit(HomeEffect.ShowError(error))
+                    }
+                }
         }
     }
 

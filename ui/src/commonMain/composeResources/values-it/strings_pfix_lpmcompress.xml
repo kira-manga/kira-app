@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS Low Power Mode compression toggle + deferred-state strings (2026-07). -->
+<resources>
+    <string name="lpm_compress_toggle">Comprimi in Risparmio energetico</string>
+    <string name="lpm_compress_toggle_desc">Consenti la compressione dei capitoli mentre il Risparmio energetico è attivo. Disattivato per impostazione predefinita per risparmiare batteria.</string>
+    <string name="pfix_dl_paused_low_power">In pausa — Risparmio energetico</string>
+</resources>

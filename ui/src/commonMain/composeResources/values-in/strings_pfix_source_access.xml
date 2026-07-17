@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="start_reading_title">Mulai Membaca</string>
+    <string name="start_reading_intro">Pelajari cara membaca manga dengan Kira di situs kami, atau ikuti kami untuk panduan dan pembaruan.</string>
+    <string name="start_reading_activation_discovery">Untuk mengetahui cara mengaktifkan Sumber, kunjungi situs web kami atau salah satu media sosial kami.</string>
+    <string name="start_reading_guide">Panduan membaca</string>
+    <string name="start_reading_website">Kunjungi kiramanga.me</string>
+    <string name="start_reading_activation_label">Tautan aktivasi</string>
+    <string name="start_reading_activation_placeholder">Tempel tautan aktivasi Kira</string>
+    <string name="start_reading_activation_help">Aktivasi menampilkan pengelolaan sumber secara permanen di perangkat ini.</string>
+    <string name="start_reading_activate">Aktifkan Sumber</string>
+    <string name="start_reading_invalid_link">Masukkan tautan dari domain kiramanga.me.</string>
+    <string name="start_reading_import">Impor dari Kira</string>
+    <string name="start_reading_continue">Lanjut ke Perpustakaan</string>
+    <string name="start_reading_social">Ikuti Kira</string>
+    <string name="start_reading_settings_locked_description">Aktifkan untuk melihat dan mengelola Sumber.</string>
+    <string name="start_reading_settings_activated_description">Aktifkan, nonaktifkan, dan atur Sumber.</string>
+    <string name="home_no_sources_locked_title">Mulai membaca dengan Kira</string>
+    <string name="home_no_sources_locked_body">Tidak ada sumber yang dapat digunakan. Aktifkan Sumber atau impor cadangan Kira atau paket manga.</string>
+    <string name="home_no_sources_activated_title">Tidak ada sumber yang diaktifkan</string>
+    <string name="home_no_sources_activated_body">Aktifkan setidaknya satu sumber untuk menjelajahi manga di Beranda.</string>
+</resources>

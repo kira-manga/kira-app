@@ -121,9 +121,9 @@ import org.jetbrains.compose.resources.stringResource
  *  - **Localized strings (Phase 11.ui.UP-3d)** — row labels resolve through `stringResource`
  *    (reused legacy keys, en + ar). Social-button contentDescriptions stay literal brand names
  *    (proper nouns, conventionally not localized).
- *  - **Privacy URL is a literal** here (`"https://yamimanga.me/privacy"`) — matches the
- *    legacy's literal at `AboutScreen.kt:172`. Centralising URL constants is a Phase 10
- *    concern (a future `:domain.config.RemoteUrls` value object) that lifts both consumers
+ *  - **Privacy URL is a literal** here (`"https://kiramanga.me/privacy"`). Centralising URL
+ *    constants is a Phase 10 concern (a future `:domain.config.RemoteUrls` value object) that
+ *    lifts both consumers
  *    in one pass. The six SocialMediaRow URLs ([TWITTER_URL] / [FACEBOOK_URL] /
  *    [INSTAGRAM_URL] / [WHATSAPP_URL] / [WEBSITE_URL]) are also inline literals —
  *    same Phase 10 lift target.
@@ -501,4 +501,4 @@ private fun AboutRowDivider() {
  * into a `:domain.config.RemoteUrls` value object is a Phase 10 concern that lifts both
  * legacy and rework consumers in one pass.
  */
-private const val PRIVACY_POLICY_URL = "https://yamimanga.me/privacy"
+private const val PRIVACY_POLICY_URL = "https://kiramanga.me/privacy"

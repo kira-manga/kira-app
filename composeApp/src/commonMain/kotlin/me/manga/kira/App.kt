@@ -19,11 +19,9 @@ import me.manga.kira.ui.theme.LocalBottomBarPadding
 import me.manga.kira.ui.theme.KiraTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import me.manga.kira.platform.storage.DataStoreHelper
@@ -31,10 +29,8 @@ import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.runtime.SourceIconRegistry
 import me.manga.kira.ui.common.LocalSourceIconResolver
 import me.manga.kira.ui.common.SourceIconResolution
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -54,11 +50,13 @@ import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.presentation.common.componants.images.platformNetworkFetcherFactory
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources_repositry.common.BaseManga
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import me.manga.kira.platform.toast.ToastRelay
 import me.manga.kira.core.logging.KermitLoggerAdapter
 import me.manga.kira.core.storage.SharedPrefsHelper
@@ -67,15 +65,22 @@ import kotlinx.coroutines.launch
 import me.manga.kira.domain.usecase.downloads.ReconcileDownloadsUseCase
 import me.manga.kira.domain.usecase.language.ObserveSelectedLanguageUseCase
 import me.manga.kira.domain.usecase.analytics.LogAppOpenUseCase
+import me.manga.kira.domain.model.sources.SourceAccessState
+import me.manga.kira.domain.model.sources.SourceActivationResult
+import me.manga.kira.domain.usecase.sourceaccess.ActivateSourceAccessUseCase
+import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.domain.usecase.sources.SyncSourceCatalogUseCase
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.locale.LocalAppLocale
+import me.manga.kira.locale.isRtlLanguageTag
 import me.manga.kira.navigation.Screen
+import me.manga.kira.navigation.shouldShowBottomBar
 import me.manga.kira.navigation.push.NotificationRouter
 import me.manga.kira.navigation.push.PushDestination
 import me.manga.kira.navigation.push.isHostTrustedFor
 import me.manga.kira.navigation.push.toScreen
+import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
 import me.manga.kira.admin.Admin
 import me.manga.kira.navigation.routes.AboutReworkScreenRoute
 import me.manga.kira.navigation.routes.AdminComplaintReworkScreenRoute
@@ -93,6 +98,7 @@ import me.manga.kira.navigation.routes.MangaDetailsByUrlReworkScreenRoute
 import me.manga.kira.navigation.routes.MangaDetailsReworkScreenRoute
 import me.manga.kira.navigation.routes.RepoSettingsScreenRoute
 import me.manga.kira.navigation.routes.SettingsRoute
+import me.manga.kira.navigation.routes.StartReadingScreenRoute
 import me.manga.kira.navigation.routes.SourcesScreenRoute
 import me.manga.kira.navigation.routes.BackupReworkScreenRoute
 import me.manga.kira.navigation.routes.StatisticsReworkScreenRoute
@@ -114,9 +120,9 @@ import org.koin.compose.viewmodel.koinViewModel
  *
  * Phase 10.4 wiring — port of upstream `app/.../navigation/NavGraphV2.kt` + `MainActivity.MainScreen`:
  *  1. Hosts a Material 3 [Scaffold] with the [BottomNavigationBar] for the five primary tabs
- *     (Library / Updates / Home / History / Setting). The bar's visibility is driven by per-route
- *     `SideEffect { showBottomBar = ... }` calls inside each [composable] block — same pattern as
- *     upstream's `onBottomBarVisibleChange` callback.
+ *     (Library / Updates / Home / History / Setting). The active destination hierarchy is the
+ *     single source of truth for bar visibility, including while NavHost transitions compose both
+ *     the outgoing and incoming destinations.
  *  2. Chooses the start destination based on the `first_launch` boolean in [SharedPrefsHelper]
  *     (defaults to `true`, i.e. first-run users land on [Screen.Welcome]; subsequent launches go
  *     straight to [Screen.Library]). Persists nothing here — the Welcome→Theme→Sources→RepoSettings
@@ -183,7 +189,7 @@ import org.koin.compose.viewmodel.koinViewModel
  *  (`material3.HorizontalDivider` plus `Scaffold` plus
  *  `presentation.common.componants.BottomNavigationBar`) plus L248-
  *  274 (`Scaffold` plus `BottomNavigationBar(navController)`) plus
- *  per-route `SideEffect { onBottomBarVisibleChange(...) }` calls.
+ *  route-derived visibility from the active destination hierarchy.
  *  (b) Item 2 — start destination from `first_launch` SharedPrefs
  *  flag — LIVE-NOT-STALE. L300-301 (`val firstLaunch = remember {
  *  prefs.getBoolean("first_launch", true) }` plus `val rootStart:
@@ -514,19 +520,15 @@ fun App() {
     // App-language override (GAP-LANG): selecting a language persisted the code, but compose-resources
     // kept resolving the system locale on iOS/Desktop (the per-platform LocaleSwitcher is a no-op
     // there), so the UI never switched language. Provide the chosen language at the root via
-    // [LocalAppLocale] and `key` the content on it so every `stringResource` re-resolves in that
-    // language across all platforms. The flow's first emission is the persisted code (or "" → system
-    // default); the startup key flip is invisible (the NavHost is still at its start destination). A
-    // mid-session change rebuilds the tree (returns to the start destination) — acceptable for a rare
-    // settings action and analogous to native's activity recreate.
+    // [LocalAppLocale]; changing that provider invalidates the compose-resources environment so every
+    // `stringResource` re-resolves without disposing [MainScreen]. Keeping MainScreen alive is
+    // load-bearing: it preserves the NavController and its back stack across a live language change.
     val observeLanguage: ObserveSelectedLanguageUseCase = koinInject()
     val iconSourceRegistry: SourceRegistry = koinInject()
-    // Wait for the persisted language's FIRST emission before building the root `key(language)` tree
-    // below, so the key is created ONCE with the real code instead of flipping ""→"<code>" on the
-    // first frame. That flip disposed and recreated MainScreen (and its NavController), discarding a
-    // push deep-link the first composition had already navigated to (#1). `null` = not yet read; ""
-    // = read, system default. The DataStore-backed flow always emits promptly and the splash is still
-    // up on Android, so the wait is imperceptible (and it removes the old startup locale flash).
+    // Wait for the persisted language's FIRST emission before building the app tree, avoiding a
+    // startup locale flash and ensuring a cold-start deep link is handled only after the resource
+    // environment is ready. `null` = not yet read; "" = read, system default. The DataStore-backed
+    // flow always emits promptly while the Android splash is still visible.
     val appLanguage: String? by remember { observeLanguage() }.collectAsState(initial = null)
     val language = appLanguage
     if (language == null) {
@@ -573,19 +575,11 @@ fun App() {
             }
         },
     ) {
-        key(language) {
-            KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {
-                MainScreen()
-            }
+        KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {
+            MainScreen()
         }
     }
 }
-
-/** BCP-47 language subtags that render right-to-left (used to mirror layout when a locale is picked). */
-private val RTL_LANGUAGE_SUBTAGS = setOf("ar", "fa", "he", "iw", "ur", "ps", "sd", "ug", "yi", "dv")
-
-private fun isRtlLanguageTag(tag: String): Boolean =
-    RTL_LANGUAGE_SUBTAGS.contains(tag.substringBefore('-').substringBefore('_').lowercase())
 
 // The #8 intent-redirection trust gate (`PushDestination.isHostTrustedFor`) lives in
 // `navigation/push/PushDeepLinkTrust.kt` (extracted 2026-07 so the gate is unit-testable; it now
@@ -594,12 +588,16 @@ private fun isRtlLanguageTag(tag: String): Boolean =
 @Composable
 private fun MainScreen() {
     val navController = rememberNavController()
-    var showBottomBar by remember { mutableStateOf(false) }
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    val showBottomBar =
+        shouldShowBottomBar(
+            currentDestination?.hierarchy?.map { it.route } ?: emptySequence(),
+        )
     // Full-bleed immersive routes (the reader) draw the page edge-to-edge under the system bars, so
     // they get NO root bottom inset (the screen re-applies its own chrome insets). Derived from the
     // current route so no per-route plumbing is needed — both reader routes contain "ChapterImages".
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val fullBleed = navBackStackEntry?.destination?.route?.contains("ChapterImages") == true
+    val fullBleed = currentDestination?.route?.contains("ChapterImages") == true
 
     // ---- Push-notification deep linking ----
     // A tapped push notification lands a PushDestination in the NotificationRouter (put there by the
@@ -609,9 +607,23 @@ private fun MainScreen() {
     // nothing to do). Note: FIAM in-app messages are NOT routed here — the SDK displays them itself.
     val notificationRouter: NotificationRouter = koinInject()
     val onboardingPrefs: SharedPrefsHelper = koinInject()
+    val sourceActivationRouter: SourceActivationRequestRouter = koinInject()
+    val activateSourceAccess: ActivateSourceAccessUseCase = koinInject()
     val deepLinkSources: SourcesRepository = koinInject()
     val configHostTrust: ConfigHostTrust = koinInject()
     val pendingDeepLink by notificationRouter.pending.collectAsState()
+    val pendingSourceActivation by sourceActivationRouter.pending.collectAsState()
+
+    LaunchedEffect(pendingSourceActivation) {
+        processSourceActivationRequest(
+            pending = pendingSourceActivation,
+            prefs = onboardingPrefs,
+            router = sourceActivationRouter,
+            activate = activateSourceAccess,
+            navController = navController,
+        )
+    }
+
     LaunchedEffect(pendingDeepLink) {
         val pending = pendingDeepLink ?: return@LaunchedEffect
         val destination = pending.destination
@@ -702,10 +714,7 @@ private fun MainScreen() {
                     LocalBottomBarPadding provides
                         if (showBottomBar) systemBottom + FloatingNavBarSpace else 0.dp,
                 ) {
-                    AppNavHost(
-                        navController = navController,
-                        onBottomBarVisibleChange = { showBottomBar = it },
-                    )
+                    AppNavHost(navController = navController)
                 }
             }
             if (showBottomBar) {
@@ -715,6 +724,37 @@ private fun MainScreen() {
                 )
             }
         }
+    }
+}
+
+private suspend fun processSourceActivationRequest(
+    pending: Boolean,
+    prefs: SharedPrefsHelper,
+    router: SourceActivationRequestRouter,
+    activate: ActivateSourceAccessUseCase,
+    navController: NavHostController,
+) {
+    if (!pending) return
+    try {
+        val wasOnboarding = prefs.getBoolean(StorageKeys.FIRST_LAUNCH, true)
+        when (activate("kiramanga")) {
+            SourceActivationResult.INVALID_LINK -> Unit // Impossible: the bridge already validated.
+            SourceActivationResult.ACTIVATED,
+            SourceActivationResult.ALREADY_ACTIVATED,
+            -> {
+                val destination = if (wasOnboarding) Screen.Sources else Screen.RepoSettings()
+                runCatching {
+                    navController.navigate(destination) {
+                        if (wasOnboarding) {
+                            popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                        }
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
+    } finally {
+        router.consume()
     }
 }
 
@@ -728,9 +768,10 @@ private val FloatingNavBarSpace = 88.dp
 @Composable
 private fun AppNavHost(
     navController: NavHostController,
-    onBottomBarVisibleChange: (Boolean) -> Unit,
 ) {
     val prefs: SharedPrefsHelper = koinInject()
+    val observeSourceAccess: ObserveSourceAccessUseCase = koinInject()
+    val sourceAccessState by observeSourceAccess().collectAsState()
 
     // Epic H5b (Phase 9.x): the NavHost-scoped `sharedChaptersVm: SharedChaptersViewModel` val
     // (formerly resolved here via `koinViewModel()`) was retired alongside the legacy Home
@@ -739,8 +780,8 @@ private fun AppNavHost(
     // chapter lists through any shared chapter-list VM. An earlier sibling val (`downloadViewModel:
     // DownloadViewModelv2`) was retired in Phase 9.x.downloadvmv2.retire (Task #439).
 
-    // first_launch flag — read once at composition entry. Onboarding (Welcome → Theme → RepoSettings)
-    // is responsible for flipping it to false via `RepoSettingsScreenRoute.onFinish`. Key string is
+    // first_launch flag — read once to choose the graph's root. The onboarding Start Reading flow
+    // is responsible for flipping it after Continue, a successful import, or Sources Finish. Key string is
     // verbatim from upstream `MainActivity` / `PrefsDelegate` so existing installs round-trip
     // without migration.
     val firstLaunch = remember { prefs.getBoolean(StorageKeys.FIRST_LAUNCH, true) }
@@ -752,7 +793,6 @@ private fun AppNavHost(
     ) {
 
         composable<Screen.Welcome> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             WelcomeScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -760,19 +800,32 @@ private fun AppNavHost(
         }
 
         composable<Screen.Theme> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             ThemeSelectionScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
             )
         }
 
-        composable<Screen.Sources> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
-            SourcesScreenRoute(
+        composable<Screen.StartReading> { backStackEntry ->
+            val args = backStackEntry.toRoute<Screen.StartReading>()
+            StartReadingScreenRoute(
                 navController = navController,
-                backStackEntry = backStackEntry,
+                onboarding = args.onboarding,
             )
+        }
+
+        composable<Screen.Sources> { backStackEntry ->
+            if (sourceAccessState == SourceAccessState.ACTIVATED) {
+                SourcesScreenRoute(
+                    navController = navController,
+                    backStackEntry = backStackEntry,
+                )
+            } else {
+                StartReadingScreenRoute(
+                    navController = navController,
+                    onboarding = prefs.getBoolean(StorageKeys.FIRST_LAUNCH, true),
+                )
+            }
         }
 
         // Epic H5a route-swap: the user-facing Home tab now renders the rework Home + Search
@@ -783,7 +836,6 @@ private fun AppNavHost(
         // `sharedChaptersVm` chapter-list bridge are retired in H5b (the rework Reader doesn't route
         // through `SharedChaptersViewModel`, so the dropped bridge call is a no-op).
         composable<Screen.Home> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(true) }
             HomeReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -797,7 +849,6 @@ private fun AppNavHost(
         // (downloadViewModel / onOpenRandomClick / onLibraryMangaClick) are gone — random,
         // refresh, and delete are now internal to the rework VM/screen.
         composable<Screen.Library> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(true) }
             LibraryScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -805,7 +856,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.History> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(true) }
             HistoryScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -813,7 +863,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.Updates> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(true) }
             UpdatesScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -839,7 +888,6 @@ private fun AppNavHost(
             // route through sharedChaptersVm). Downloads click routes to Screen.DownloadsRework
             // (intentional UX change documented in Slice 2 ADR-3 / ADR-4); WebView click routes
             // to Screen.WebView (Slice 3 ADR-5).
-            SideEffect { onBottomBarVisibleChange(false) }
             MangaDetailsByUrlReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -847,7 +895,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.ChapterImagesFragment> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             // Reader-convergence slice R4 (ADR-8 route-swap): the user-facing
             // Screen.ChapterImagesFragment route key now hosts the REWORK Reader via the
             // by-legacy-args adapter, instead of the legacy `:shared` ChapterImagesScreenRoute.
@@ -862,7 +909,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.Setting> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(true) }
             SettingsRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -870,7 +916,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.WebView> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             WebViewScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -878,11 +923,14 @@ private fun AppNavHost(
         }
 
         composable<Screen.RepoSettings> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
-            RepoSettingsScreenRoute(
-                navController = navController,
-                backStackEntry = backStackEntry,
-            )
+            if (sourceAccessState == SourceAccessState.ACTIVATED) {
+                RepoSettingsScreenRoute(
+                    navController = navController,
+                    backStackEntry = backStackEntry,
+                )
+            } else {
+                StartReadingScreenRoute(navController = navController, onboarding = false)
+            }
         }
 
         // Architecture-rework Downloads screen (Phase 7.x.downloads.foundation +
@@ -900,7 +948,6 @@ private fun AppNavHost(
         // intent dispatch + snackbar effect on failure.
         // Bottom bar visibility false to mirror the legacy Downloads screen experience above.
         composable<Screen.DownloadsRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             DownloadsReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -908,7 +955,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.Complaint> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             ComplaintScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -916,7 +962,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.WhatsNewScreen> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             WhatsNewScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -924,7 +969,6 @@ private fun AppNavHost(
         }
 
         composable<Screen.ComplaintAdmin> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             AdminComplaintScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -940,7 +984,6 @@ private fun AppNavHost(
         // route lands in a later phase once Reader rework + image loading + parity actions arrive.
         // Bottom bar visibility false to mirror the legacy Details screen experience.
         composable<Screen.MangaDetailsRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             MangaDetailsReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -956,7 +999,6 @@ private fun AppNavHost(
         // legacy Reader path is unchanged. Bottom bar visibility false to mirror the legacy
         // Reader screen experience (full-screen page list).
         composable<Screen.ChapterImagesRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             ChapterImagesReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -974,7 +1016,6 @@ private fun AppNavHost(
         // Screen.StatisticsRework)` from a future developer trigger. Bottom bar visibility
         // false to mirror the legacy Statistics screen experience.
         composable<Screen.StatisticsRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             StatisticsReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -986,7 +1027,6 @@ private fun AppNavHost(
         // the Details top-bar / Library multi-select export actions (scoped mode). Bottom bar
         // hidden like the other Settings sub-screens.
         composable<Screen.BackupRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             BackupReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -1010,7 +1050,6 @@ private fun AppNavHost(
         // an `onBack` pop for the screen's TopAppBar back arrow. Bottom bar visibility false to
         // mirror the legacy Theme onboarding step (which also hides the bottom bar).
         composable<Screen.ThemeRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             ThemeReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -1032,7 +1071,6 @@ private fun AppNavHost(
         // trigger. Bottom bar visibility false to mirror the legacy About route (which also
         // hides the bottom bar).
         composable<Screen.AboutRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             AboutReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -1053,7 +1091,6 @@ private fun AppNavHost(
         // via `navController.navigate(Screen.WhatsNewRework)` from a future developer trigger.
         // Bottom bar visibility false to mirror the legacy WhatsNew screen experience.
         composable<Screen.WhatsNewRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             WhatsNewReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -1077,7 +1114,6 @@ private fun AppNavHost(
         // future developer trigger. Bottom bar visibility false to mirror the legacy Language
         // screen experience (line 506 sibling).
         composable<Screen.LanguageRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             LanguageReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -1100,7 +1136,6 @@ private fun AppNavHost(
         // trigger. Bottom bar visibility false to mirror the legacy Complaint screen experience
         // (line 531 sibling).
         composable<Screen.ComplaintRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             ComplaintReworkScreenRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
@@ -1124,7 +1159,6 @@ private fun AppNavHost(
         // `SettingsReworkScreenRoute`). Bottom bar visibility false to mirror the legacy admin
         // Complaint screen experience (line 549 sibling).
         composable<Screen.ComplaintAdminRework> { backStackEntry ->
-            SideEffect { onBottomBarVisibleChange(false) }
             // C1 defense-in-depth: the Settings hub already picks the admin vs user screen off
             // Admin.isAdmin (fail-closed, debug-only — see Admin.kt), but re-check here so any
             // future navigate to this route from a non-admin build degrades to the user-side

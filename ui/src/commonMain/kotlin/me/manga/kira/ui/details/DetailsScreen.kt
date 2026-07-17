@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
@@ -253,6 +254,7 @@ import me.manga.kira.ui.generated.resources.details_downloaded_header
 // (strings_pfix_dlprogress.xml). New key — not a duplicate of details_cancel_chapter_download.
 import me.manga.kira.ui.generated.resources.pfix_dl_compressing
 import me.manga.kira.ui.generated.resources.pfix_dl_downloading_format
+import me.manga.kira.ui.generated.resources.pfix_dl_paused_low_power
 import me.manga.kira.ui.generated.resources.pfix_dl_queued
 import me.manga.kira.ui.generated.resources.pfix_dlprogress_cancel_chapter_download
 import me.manga.kira.ui.generated.resources.pfix_dlsize_total_format
@@ -643,6 +645,7 @@ internal fun DetailsScreenContent(
                     onRefresh = { onIntent(DetailsIntent.OnRetry) },
                     shouldBlurCover = shouldBlurCover,
                     isInLibrary = state.isInLibrary,
+                    compressionDeferred = state.compressionDeferred,
                     sortAscending = state.sortAscending,
                     selectedChapterUrls = state.selectedChapterUrls,
                     // PFIX-DLPROGRESS: pass the live per-chapter download status+progress map
@@ -991,6 +994,7 @@ private fun DetailsBody(
     onRefresh: () -> Unit,
     shouldBlurCover: Boolean,
     isInLibrary: Boolean,
+    compressionDeferred: Boolean,
     sortAscending: Boolean,
     selectedChapterUrls: Set<String>,
     chapterDownloads: Map<String, ChapterDownloadProgress>,
@@ -1120,6 +1124,7 @@ private fun DetailsBody(
                     isSelected = chapter.url in selectedChapterUrls,
                     download = chapterDownloads[chapter.url],
                     isInLibrary = isInLibrary,
+                    compressionDeferred = compressionDeferred,
                     onClick = { onChapterClick(chapter) },
                     onLongClick = { onChapterLongClick(chapter) },
                     onToggleRead = { onToggleChapterRead(chapter) },
@@ -1773,6 +1778,9 @@ private fun ChapterRow(
     // the row never flashes the idle Download button on completion.
     download: ChapterDownloadProgress?,
     isInLibrary: Boolean,
+    // Global iOS Low Power Mode deferral marker. It only changes the DOWNLOADED/CBZ-pending
+    // presentation; normal COMPRESSING progress remains a spinner and can still be cancelled.
+    compressionDeferred: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onToggleRead: () -> Unit,
@@ -1900,9 +1908,12 @@ private fun ChapterRow(
                 val statusText = when (download.state) {
                     DownloadState.RUNNING ->
                         stringResource(Res.string.pfix_dl_downloading_format, "${download.progress.coerceIn(0, 100)}%")
-                    // COMPRESSING + DOWNLOADED (iOS background: pages on disk, finalization pending)
-                    // both render the "finishing/compressing" label — reuses the existing string.
-                    DownloadState.COMPRESSING, DownloadState.DOWNLOADED -> stringResource(Res.string.pfix_dl_compressing)
+                    DownloadState.DOWNLOADED -> if (compressionDeferred) {
+                        stringResource(Res.string.pfix_dl_paused_low_power)
+                    } else {
+                        stringResource(Res.string.pfix_dl_compressing)
+                    }
+                    DownloadState.COMPRESSING -> stringResource(Res.string.pfix_dl_compressing)
                     else -> stringResource(Res.string.pfix_dl_queued)
                 }
                 Text(
@@ -1956,7 +1967,16 @@ private fun ChapterRow(
                             .semantics { contentDescription = cancelLabel },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (determinate) {
+                        if (download.state == DownloadState.DOWNLOADED && compressionDeferred) {
+                            // Pages are already readable, but CBZ finalization is intentionally
+                            // paused. Keep cancellation available while replacing the endless
+                            // spinner with a stable pause affordance.
+                            Icon(
+                                imageVector = Icons.Filled.PauseCircle,
+                                contentDescription = stringResource(Res.string.pfix_dl_paused_low_power),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        } else if (determinate) {
                             CircularProgressIndicator(
                                 progress = { progressFraction },
                                 modifier = Modifier.size(24.dp),

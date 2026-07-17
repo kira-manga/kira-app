@@ -176,6 +176,12 @@ data class DetailsState(
      */
     val isOnline: Boolean = true,
     /**
+     * True while iOS Low Power Mode is deferring CBZ compression because the user has left the
+     * opt-in setting disabled. Android/Desktop emit the default `false` through the composition
+     * root, so the Details UI remains platform-neutral.
+     */
+    val compressionDeferred: Boolean = false,
+    /**
      * PFIX-DLPROGRESS (2026-06-01) + restart of the completion-freeze fix (2026-06-02): live
      * per-chapter download status, keyed by chapter `url`, projected from `ObserveDownloadsUseCase`
      * joined to the displayed chapters DIRECTLY by `url` (`DownloadedChapter.url`) — no per-row

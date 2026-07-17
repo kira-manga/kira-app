@@ -1,7 +1,7 @@
 package me.manga.kira.domain.model.settings
 
 /**
- * Bundle value type — the 8 observable fields of the user-side Settings screen, as a single
+ * Bundle value type — the 9 observable fields of the user-side Settings screen, as a single
  * coherent snapshot emitted by [me.manga.kira.domain.usecase.settings.ObserveSettingsUseCase].
  *
  * Phase 7.x.settings.foundation rework.
@@ -9,7 +9,7 @@ package me.manga.kira.domain.model.settings
  * **Why a bundle vs separate flows?** The legacy `SettingsViewModel` exposes independent
  * `StateFlow<*>`s, which the legacy composable collects one-by-one via `collectAsState()`. That
  * works but creates recomposition pressure (each pref change triggers an independent re-render
- * scope). The rework combines all 8 into one `Flow<SettingsSnapshot>` via `combine(...)` in the
+ * scope). The rework combines all 9 into one `Flow<SettingsSnapshot>` via `combine(...)` in the
  * `:data` impl — exactly one emission per pref change (no matter which one), exactly one state
  * update in the VM, exactly one recomposition of the `SettingsScreen`. Same data, fewer recomposes.
  *
@@ -18,15 +18,15 @@ package me.manga.kira.domain.model.settings
  * Phase 7.x.statistics rework's `readDuration: String` posture — defer the i18n lift to Phase 10,
  * keep the formatting on the legacy side until then.
  *
- * **Field ordering**: General toggles first (the 2 DataStore-backed prefs the user toggles most
- * often), then theme toggles (3 SharedPrefs-backed), then cache (1 derived).
+ * **Field ordering**: General/theme toggles first, then cache (1 derived), then the three
+ * compressor controls (including the iOS-only Low Power Mode opt-in).
  *
  * Contract §6 SRP: ONE rule — "the projection of one Settings screen at one instant". No
  * mutations, no derivations, no logic. The `cacheSize` field is the only non-toggle; it's
  * grouped here because it shares the screen's lifecycle (refreshes on the same observe-stream).
  *
  * Contract §6 DIP: pure `:domain` value type. No `:data` / `:shared` reach. The `:data` impl
- * maps from 7 legacy `SharedPrefs`/`DataStore` toggle flows + 1 derived cache-size flow into this
+ * maps from 8 legacy `SharedPrefs`/`DataStore` toggle flows + 1 derived cache-size flow into this
  * snapshot.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster137.staleKdocSweep.cascade,
@@ -111,15 +111,19 @@ data class SettingsSnapshot(
     // DataStoreHelper KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ defaults — see DataStoreHelper).
     val useCbzFormat: Boolean,
     val autoConvertToCbz: Boolean,
+    // iOS-only opt-in: allow CBZ compression/finalize to run even while Low Power Mode is active
+    // (default false = respect the user's battery-saving intent). Consumed by the iOS finalize gate;
+    // irrelevant on Android/Desktop (the settings row is surfaced only on iOS).
+    val allowCompressionInLowPower: Boolean,
 )
 
 /**
- * Identifies which of the 7 toggle fields a [me.manga.kira.domain.usecase.settings.
- * UpdateSettingsToggleUseCase] call mutates. Exhaustively maps to the [SettingsSnapshot]'s 7
+ * Identifies which of the 8 toggle fields a [me.manga.kira.domain.usecase.settings.
+ * UpdateSettingsToggleUseCase] call mutates. Exhaustively maps to the [SettingsSnapshot]'s 8
  * boolean fields (excluding `cacheSizeBytes` — that's not a toggle).
  *
  * Variant order matches [SettingsSnapshot]'s field order: 2 general toggles first, then 3 theme
- * toggles, then the 2 CBZ download toggles. Makes a `when` on the enum read the snapshot fields in
+ * toggles, then the 3 CBZ download toggles. Makes a `when` on the enum read the snapshot fields in
  * the same order.
  *
  * Contract §6 OCP: adding a further toggle (e.g., `NOTIFICATION_SOUND`) is a new variant; the
@@ -135,4 +139,8 @@ enum class SettingsToggle {
     // DataStoreHelper KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ cells via the :data impl.
     USE_CBZ_FORMAT,
     AUTO_CONVERT_TO_CBZ,
+
+    // iOS Low Power Mode compression opt-in — persists to DataStoreHelper
+    // KEY_ALLOW_COMPRESSION_IN_LOW_POWER. Surfaced as a Settings row only on iOS.
+    ALLOW_COMPRESSION_IN_LOW_POWER,
 }

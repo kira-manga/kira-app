@@ -26,7 +26,7 @@ actual object LocalAppLocale {
         val locale = if (value.isNullOrBlank()) default!! else Locale.forLanguageTag(value)
         // Deliberate composition-phase mutation of the JVM-global default (mirrors the Desktop
         // sibling): compose-resources resolves strings off Locale.getDefault() in this same pass, so
-        // the default must be set before the keyed recomposition re-reads it. The guard keeps
+        // the default must be set before provider-driven recomposition re-reads it. The guard keeps
         // repeated/speculative compositions idempotent (no needless setDefault when already matching).
         if (Locale.getDefault() != locale) Locale.setDefault(locale)
         val newConfig = Configuration(configuration).apply { setLocale(locale) }

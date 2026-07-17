@@ -340,6 +340,11 @@ class HomeFeedRepositoryImpl(
         val legacyRepo: BaseMangaRepository?,
     )
 
+    private data class ActiveSourceLookup(
+        val source: ActiveSource?,
+        val hasConfigBackedSources: Boolean,
+    )
+
     /**
      * Resolve the currently active source (MangaSource decoupling, 2026-07 — api-string space).
      *
@@ -350,18 +355,36 @@ class HomeFeedRepositoryImpl(
      * this is the defensive floor.) Catastrophic-floor parity: when NO config-backed source exists
      * at all (bundled document rejected), fall back to the legacy active repo exactly as before.
      */
-    private suspend fun activeSource(): ActiveSource? {
+    private suspend fun activeSource(): ActiveSourceLookup {
         val persisted = sourcesRepository.activeApiFlow.value
-        val configBackedRows = sourcesRepository.allSources.first()
-            .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
+        val sourceRows = sourcesRepository.allSources.first()
+        val configBackedRows = sourceRows
+            .filter { sourceRegistry.isConfigBacked(it.name) }
             .sortedBy { it.priority }
-        val chosen = configBackedRows.firstOrNull { it.name == persisted } ?: configBackedRows.firstOrNull()
+        val enabledRows = configBackedRows.filter { it.isEnabled }
+        val chosen = enabledRows.firstOrNull { it.name == persisted } ?: enabledRows.firstOrNull()
         if (chosen != null) {
-            return ActiveSource(api = chosen.name, legacyRepo = sourcesRepository.getOrRepoByName(chosen.name))
+            return ActiveSourceLookup(
+                source = ActiveSource(
+                    api = chosen.name,
+                    legacyRepo = sourcesRepository.getOrRepoByName(chosen.name),
+                ),
+                hasConfigBackedSources = true,
+            )
+        }
+        if (configBackedRows.isNotEmpty()) {
+            return ActiveSourceLookup(source = null, hasConfigBackedSources = true)
         }
         val legacyActive = sourcesRepository.activeRepo.first()
-        if (legacyActive.API.isNotBlank()) return ActiveSource(api = legacyActive.API, legacyRepo = legacyActive)
-        return null
+        val fallback = if (legacyActive.API.isNotBlank()) {
+            ActiveSource(api = legacyActive.API, legacyRepo = legacyActive)
+        } else {
+            null
+        }
+        return ActiveSourceLookup(
+            source = fallback,
+            hasConfigBackedSources = configBackedRows.isNotEmpty(),
+        )
     }
 
     /**
@@ -370,22 +393,23 @@ class HomeFeedRepositoryImpl(
      * the `activeRepo()` call sat inside each method's error-classifying try/catch.
      * [CancellationException] still propagates.
      *
-     * A resolution that lands on the [EmptyMangaRepository] null-object (blank api — no enabled
-     * source rows at all: the bundled config was rejected wholesale, or the user disabled every
-     * source) is surfaced as a typed [AppResult.Failure] instead of letting the null-object's
-     * empty-Success feed render a silent blank Home (2026-07 source-lifecycle hardening).
+     * When config-backed rows exist but none is enabled, resolution is surfaced as a typed
+     * [AppResult.Failure] instead of letting the [EmptyMangaRepository] null-object render a silent
+     * blank Home. A missing/unusable catalog remains an unexpected failure so the activation UI
+     * cannot mask configuration faults.
      */
     private suspend fun activeSourceResult(): AppResult<ActiveSource> = try {
-        val active = activeSource()
-        if (active == null) {
+        val lookup = activeSource()
+        if (lookup.source != null) {
+            AppResult.Success(lookup.source)
+        } else if (lookup.hasConfigBackedSources) {
             AppResult.Failure(
-                AppError.Unexpected(
-                    "No enabled sources available — the source catalog is empty " +
-                        "(bundled source config rejected, or every source is disabled)",
-                ),
+                AppError.Validation.NoEnabledSources(),
             )
         } else {
-            AppResult.Success(active)
+            AppResult.Failure(
+                AppError.Unexpected("No usable source configuration is available"),
+            )
         }
     } catch (ce: CancellationException) {
         throw ce

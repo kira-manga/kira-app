@@ -1,9 +1,14 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import me.manga.kira.admin.Admin
+import me.manga.kira.core.platform.backupPlatformName
+import me.manga.kira.domain.model.sources.SourceAccessState
+import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.platform.intent.IntentLauncher
@@ -144,10 +149,19 @@ fun SettingsRoute(
 ) {
     val viewModel: SettingsViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
+    val observeSourceAccess: ObserveSourceAccessUseCase = koinInject()
+    val sourceAccessState by observeSourceAccess().collectAsState()
     SettingsScreen(
         viewModel = viewModel,
+        sourceAccessActivated = sourceAccessState == SourceAccessState.ACTIVATED,
+        // The "compress during Low Power Mode" toggle is an iOS-only concern (iOS Low Power Mode + the
+        // iOS background finalize engine); show it only there. `backupPlatformName()` is the app's
+        // canonical per-target platform-name seam (also used by BackupReworkModule).
+        lowPowerCompressionToggleVisible = backupPlatformName() == "ios",
         onNavigate = { destination ->
             val target: Screen = when (destination) {
+                SettingsDestination.SOURCE_MANAGEMENT ->
+                    sourceManagementDestination(sourceAccessState)
                 SettingsDestination.THEME -> Screen.ThemeRework
                 SettingsDestination.STATISTICS -> Screen.StatisticsRework
                 SettingsDestination.LANGUAGE -> Screen.LanguageRework
@@ -167,3 +181,10 @@ fun SettingsRoute(
         onOpenUrl = { url -> launcher.openUrl(url) },
     )
 }
+
+internal fun sourceManagementDestination(sourceAccessState: SourceAccessState): Screen =
+    if (sourceAccessState == SourceAccessState.ACTIVATED) {
+        Screen.RepoSettings(false)
+    } else {
+        Screen.StartReading(onboarding = false)
+    }

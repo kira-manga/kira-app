@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS Low Power Mode compression toggle + deferred-state strings (2026-07). -->
+<resources>
+    <string name="lpm_compress_toggle">Сжатие в режиме энергосбережения</string>
+    <string name="lpm_compress_toggle_desc">Разрешить сжатие глав при включённом режиме энергосбережения. По умолчанию выключено для экономии заряда.</string>
+    <string name="pfix_dl_paused_low_power">Приостановлено — режим энергосбережения</string>
+</resources>
