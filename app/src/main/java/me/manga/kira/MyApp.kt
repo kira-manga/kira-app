@@ -11,14 +11,14 @@ import co.touchlab.kermit.crashlytics.CrashlyticsLogWriter
 import co.touchlab.kermit.platformLogWriter
 import com.google.firebase.FirebaseApp
 import me.manga.kira.admin.Admin
-import me.manga.kira.platform.activity.ActivityHolder
-import me.manga.kira.platform.notification.NotificationPresenter
-import me.manga.kira.platform.update.AppUpdateClient
 import me.manga.kira.core.android.setAndroidAppContext
-import me.manga.kira.firebase_cores.messaging.MessagingNotificationChannels
 import me.manga.kira.di.allReworkModules
 import me.manga.kira.di.appKoinModule
 import me.manga.kira.di.initKoin
+import me.manga.kira.firebase_cores.messaging.MessagingNotificationChannels
+import me.manga.kira.platform.activity.ActivityHolder
+import me.manga.kira.platform.notification.NotificationPresenter
+import me.manga.kira.platform.update.AppUpdateClient
 import me.manga.kira.work.LibraryRefreshScheduling
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -59,8 +59,9 @@ import org.koin.androidx.workmanager.koin.workManagerFactory
  * NotificationWorker + MangaDownloadWorker deferrals are documented in [appKoinModule]'s KDoc —
  * the former is an upstream debug stub never enqueued, the latter is upstream-commented-out code.
  */
-class MyApp : Application(), Configuration.Provider {
-
+class MyApp :
+    Application(),
+    Configuration.Provider {
     private val log = Logger.withTag("MyApp")
 
     @OptIn(ExperimentalKermitApi::class)
@@ -184,11 +185,8 @@ class MyApp : Application(), Configuration.Provider {
             log.e(t) { "CrashlyticsLogWriter install failed" }
         }
 
-        // NOTE: MobileAds is intentionally NOT initialized here. The Google Mobile Ads SDK is
-        // initialized once-per-process only after UMP consent permits ad requests, in
-        // MainActivity.startConsentFlow() gated on canRequestAds() — initializing unconditionally
-        // here defeated that gate (EEA users who declined would still have the SDK initialized).
-        // Deliberate divergence from native, which initializes unconditionally.
+        // The unused AdMob/UMP stack was removed for the first release. No advertising SDK is
+        // initialized by the application process.
     }
 
     /**
@@ -197,15 +195,28 @@ class MyApp : Application(), Configuration.Provider {
      * is still the held one (identity guard in [ActivityHolder.clear]) so Activity-to-Activity
      * transitions don't null out a newer Activity that already resumed.
      */
-    private val activityLifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
-        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-        override fun onActivityStarted(activity: Activity) = Unit
-        override fun onActivityResumed(activity: Activity) = ActivityHolder.set(activity)
-        override fun onActivityPaused(activity: Activity) = ActivityHolder.clear(activity)
-        override fun onActivityStopped(activity: Activity) = Unit
-        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-        override fun onActivityDestroyed(activity: Activity) = ActivityHolder.clear(activity)
-    }
+    private val activityLifecycleCallbacks =
+        object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(
+                activity: Activity,
+                savedInstanceState: Bundle?,
+            ) = Unit
+
+            override fun onActivityStarted(activity: Activity) = Unit
+
+            override fun onActivityResumed(activity: Activity) = ActivityHolder.set(activity)
+
+            override fun onActivityPaused(activity: Activity) = ActivityHolder.clear(activity)
+
+            override fun onActivityStopped(activity: Activity) = Unit
+
+            override fun onActivitySaveInstanceState(
+                activity: Activity,
+                outState: Bundle,
+            ) = Unit
+
+            override fun onActivityDestroyed(activity: Activity) = ActivityHolder.clear(activity)
+        }
 
     /**
      * Required by [Configuration.Provider]. The `KoinWorkerFactory` is installed in [onCreate]
@@ -213,9 +224,11 @@ class MyApp : Application(), Configuration.Provider {
      * there when it first initializes.
      */
     override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setMinimumLoggingLevel(android.util.Log.INFO)
-            .build()
+        get() =
+            Configuration
+                .Builder()
+                .setMinimumLoggingLevel(android.util.Log.INFO)
+                .build()
 }
 
 /*

@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: me.manga.kira
   deploymentTarget:
     # Raised 14.0 -> 15.0 for the latest Firebase iOS SDK (12.x requires iOS 15 minimum). Accepted
-    # to use the current Firebase line and prepare for AdMob/ads next.
+    # to use the current Firebase line.
     iOS: "15.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
@@ -18,13 +18,14 @@ settings:
     # producing a confusing "Operation not permitted" error during link.
     SWIFT_VERSION: "5.0"
 
-# Firebase iOS SDK via Swift Package Manager, latest line ("up to next major" = 12.x). 12.x requires
-# a minimum deployment target of iOS 15 (raised in options.deploymentTarget above). Products linked:
-# Analytics + Crashlytics (ready for AdMob), plus Messaging (FCM push) and InAppMessaging (FIAM).
+# Firebase iOS SDK via Swift Package Manager. Pin the exact version validated by the signed release
+# archive so TestFlight rebuilds cannot silently resolve a different SDK. Firebase 12.x requires a
+# minimum deployment target of iOS 15 (raised in options.deploymentTarget above). Products linked:
+# Analytics without advertising-identifier support, Crashlytics, Messaging, and In-App Messaging.
 packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    from: "12.0.0"
+    exactVersion: "12.15.0"
 
 targets:
   iosApp:
@@ -40,6 +41,22 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira
         PRODUCT_NAME: Kira
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Numeric App Store Connect listing ID for me.manga.kira.
+        KIRA_APP_STORE_ID: "6792232678"
+        # Fail-closed by default. The protected internal TestFlight workflow overrides this to YES.
+        KIRA_CRASH_DIAGNOSTICS_ENABLED: "NO"
+        # Release signing values are routed through app-target-only variables. The TestFlight
+        # xcconfig overrides these KIRA_* values globally, while the standard Xcode signing keys
+        # below are resolved only on this application target (never on Swift Package targets).
+        KIRA_CODE_SIGN_STYLE: Automatic
+        KIRA_CODE_SIGN_IDENTITY: ""
+        KIRA_PROVISIONING_PROFILE_SPECIFIER: ""
+        KIRA_OTHER_CODE_SIGN_FLAGS: ""
+        # Compose Multiplatform no longer publishes Apple x86_64 artifacts. Keep generic simulator
+        # destinations arm64-only instead of letting Xcode request an unsupported architecture.
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
         # Apple Developer Program team (2026-07-09). Set here so `xcodegen generate` no longer wipes
         # the team out of the project — device builds needed DEVELOPMENT_TEAM passed on every
         # xcodebuild invocation before this. The retired Personal-team ID (U8D4Z8P4NA) must not be
@@ -74,6 +91,10 @@ targets:
           APS_ENVIRONMENT: development
         Release:
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+          CODE_SIGN_STYLE: "$(KIRA_CODE_SIGN_STYLE)"
+          CODE_SIGN_IDENTITY: "$(KIRA_CODE_SIGN_IDENTITY)"
+          PROVISIONING_PROFILE_SPECIFIER: "$(KIRA_PROVISIONING_PROFILE_SPECIFIER)"
+          OTHER_CODE_SIGN_FLAGS: "$(inherited) $(KIRA_OTHER_CODE_SIGN_FLAGS)"
           # Full push entitlements for TestFlight/App Store — these builds require a real Apple
           # Developer Program team anyway (Personal teams can't distribute), so the Push
           # Notifications capability + aps-environment are always available here. Push is therefore
@@ -91,17 +112,13 @@ targets:
         implicit: true
       # Firebase products:
       #  - FirebaseCore: FirebaseApp.configure().
-      #  - FirebaseAnalytics: the NORMAL (full) Analytics, which links GoogleAppMeasurement WITH IDFA
-      #    support — chosen deliberately to be ready for AdMob/ads next (ad attribution can use the
-      #    advertising identifier). ATT IMPLICATION: when ads ship, add NSUserTrackingUsageDescription
-      #    to Info.plist and call ATTrackingManager.requestTrackingAuthorization; the IDFA is only read
-      #    after the user authorizes ATT (otherwise it returns zeros), and the App Store privacy form
-      #    must then declare IDFA use. No ATT prompt is added yet (no ad UI yet).
+      #  - FirebaseAnalyticsCore: Firebase's SPM product without AdSupport/IDFA capability. The app
+      #    has no advertising UI or SDK in this release, so no ATT purpose string or prompt is needed.
       #  - FirebaseCrashlytics: crash reporting; auto-initializes on FirebaseApp.configure().
       - package: Firebase
         product: FirebaseCore
       - package: Firebase
-        product: FirebaseAnalytics
+        product: FirebaseAnalyticsCore
       - package: Firebase
         product: FirebaseCrashlytics
       #  - FirebaseMessaging: FCM push — APNs token registration + the FCM registration token bridged
@@ -154,18 +171,17 @@ targets:
           fi
           UPLOAD="${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols"
           GSP="${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/GoogleService-Info.plist"
-          DSYM="${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}"
-          [ -d "$DSYM" ]   || { echo "error: Crashlytics — no dSYM at $DSYM (need DEBUG_INFORMATION_FORMAT=dwarf-with-dsym)"; exit 1; }
-          DSYM_SIZE="$(du -sh "$DSYM" 2>/dev/null | cut -f1)"; echo "note: Crashlytics dSYM size: $DSYM_SIZE  ($DSYM)"
+          DSYM_ROOT="${DWARF_DSYM_FOLDER_PATH}"
+          [ -d "$DSYM_ROOT" ] || { echo "error: Crashlytics — dSYM output directory is missing"; exit 1; }
           [ -x "$UPLOAD" ] || { echo "error: Crashlytics — upload-symbols not found at $UPLOAD"; exit 1; }
           [ -f "$GSP" ]    || { echo "error: Crashlytics — GoogleService-Info.plist not bundled at $GSP"; exit 1; }
-          OUT="$("$UPLOAD" -gsp "$GSP" -p ios "$DSYM" 2>&1)"; RC=$?
-          echo "$OUT"
-          if [ "$RC" -ne 0 ] || ! printf '%s\n' "$OUT" | grep -q "Successfully uploaded Crashlytics symbols"; then
-            echo "error: Crashlytics dSYM upload FAILED (rc=$RC) — build blocked so no un-uploaded build is used. Fix network / GoogleService-Info.plist and rebuild (or set CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1 for an offline build)."
+          UPLOAD_RUNNER="$SRCROOT/../release/ios/upload_crashlytics_dsyms.rb"
+          [ -f "$UPLOAD_RUNNER" ] || { echo "error: Crashlytics — protected upload runner is missing"; exit 1; }
+          if ! /usr/bin/ruby "$UPLOAD_RUNNER" "$UPLOAD" "$GSP" "$DSYM_ROOT"; then
+            echo "error: Crashlytics dSYM upload FAILED — provider output is withheld to protect Firebase configuration. Fix network / GoogleService-Info.plist and rebuild (or set CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1 for an offline build)."
             exit 1
           fi
-          echo "note: Crashlytics dSYM uploaded and confirmed ✅  size=$DSYM_SIZE  ($DSYM)"
+          echo "note: Crashlytics dSYM upload completed and confirmed"
 
 # A SHARED scheme is required for the `iosApp` run configuration to work in Android Studio /
 # Xcode. xcodegen does NOT auto-create schemes — without this block the generated .xcodeproj has

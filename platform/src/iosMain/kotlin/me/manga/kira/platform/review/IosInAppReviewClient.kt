@@ -1,27 +1,22 @@
 package me.manga.kira.platform.review
 
-import co.touchlab.kermit.Logger
+import platform.StoreKit.SKStoreReviewController
+import platform.UIKit.UIApplication
+import platform.UIKit.UISceneActivationStateForegroundActive
+import platform.UIKit.UIWindowScene
 
 /**
- * iOS actual for [InAppReviewClient] — no-op.
- *
- * iOS has its own `SKStoreReviewController.requestReview()` API, which can be wired in a later
- * phase from the iosApp side. For now `requestReview()` logs a debug breadcrumb and returns
- * `false` so consumer code falls through to its "review not shown" branch.
- *
- * Verbatim port from legacy `:shared/iosMain/.../core/review/InAppReviewClient.ios.kt`.
+ * iOS implementation backed by StoreKit's scene-aware review API.
  */
 class IosInAppReviewClient : InAppReviewClient {
-
-    private val log = Logger.withTag(TAG)
-
     override suspend fun requestReview(): Boolean {
-        log.d { "requestReview() — no-op on iOS, returning false" }
-        return false
-    }
-
-    private companion object {
-        const val TAG = "InAppReviewClient.ios"
+        val foregroundScene =
+            UIApplication.sharedApplication.connectedScenes
+                .filterIsInstance<UIWindowScene>()
+                .firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
+                ?: return false
+        SKStoreReviewController.requestReviewInScene(foregroundScene)
+        return true
     }
 }
 

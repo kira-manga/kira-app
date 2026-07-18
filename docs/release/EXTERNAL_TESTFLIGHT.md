@@ -1,0 +1,135 @@
+# External TestFlight release
+
+## Automated release contract
+
+- Git branch: `internal-testing`.
+- Workflow: `.github/workflows/testflight.yml`; pushes to any other branch cannot trigger it.
+- App Store Connect app: `6792232678`.
+- Bundle ID: `me.manga.kira`.
+- Apple Team ID: `7CGZ2343AA`.
+- Marketing version: `1.0.0`.
+- Build number: highest App Store Connect number for `1.0.0` across both upload records and processed
+  TestFlight builds, plus one; starts at `1` only when both sources are empty.
+- Distribution: private external group `External Testing`; approved builds are assigned and external
+  tester notifications are enabled.
+- Review: English beta description, What to Test, reviewer notes, feedback email, and protected
+  reviewer contact values are submitted through Fastlane/App Store Connect API.
+- Signing: manual App Store Connect distribution signing in a temporary keychain. The workflow
+  checks the certificate, profile, final archive, and final IPA rather than trusting project values.
+- Symbols: the Xcode Release build hard-gates on a confirmed Firebase Crashlytics dSYM upload, then
+  verifies the app executable UUIDs exactly match `Kira.app.dSYM`.
+- Crash verification: the protected workflow enables a five-scenario **Crash diagnostics** screen
+  under Settings. Every action requires confirmation and deliberately terminates the process. The
+  flag defaults off in project configuration, so ordinary production builds do not expose it.
+
+The workflow does not create a public TestFlight link and does not add tester addresses. This avoids
+accidentally distributing an unreviewed build. It creates an empty, non-distributing internal group
+only if App Store Connect requires one before it permits the external group.
+
+## Protected local inputs
+
+Place binary files anywhere under the workspace; keep them gitignored. Place one value, with no
+extra newline, in each protected file below:
+
+```text
+.secrets/ios-certificate-password
+.secrets/app-store-connect-key-id
+.secrets/app-store-connect-issuer-id
+.secrets/testflight-feedback-email
+.secrets/beta-review-contact-first-name
+.secrets/beta-review-contact-last-name
+.secrets/beta-review-contact-email
+.secrets/beta-review-contact-phone
+```
+
+The binary inputs are an Apple Distribution `.p12`, an App Store Connect distribution
+`.mobileprovision`, the production `GoogleService-Info.plist`, and `AuthKey_*.p8`. Originals remain
+local. Temporary encodings and decoded copies are deleted after use.
+
+## Export-compliance technical evidence
+
+`Info.plist` currently declares `ITSAppUsesNonExemptEncryption = false`. Most network encryption is
+standard HTTPS/TLS supplied by Apple, Ktor, and Firebase. The iOS source implementation also contains
+CommonCrypto AES-256/CBC code used to decrypt a source site's manga payload; it is not an
+authentication system and does not protect user/private backend data. This custom AES use must be
+included in the owner's export-compliance assessment.
+
+The project appears technically consistent with an exempt/mass-market declaration, and no evidence
+of proprietary access-control or military cryptography was found. This is not a legal determination.
+The Account Holder must confirm that the actual distribution qualifies before retaining `false`.
+
+## Exact manual checks and remaining actions
+
+### Apple Developer capabilities
+
+Path: **Apple Developer → Account → Certificates, Identifiers & Profiles → Identifiers → App IDs →
+`me.manga.kira`**.
+
+Inspect **Push Notifications** and **Associated Domains**. Both must be enabled. This blocks archive
+signing when absent from the profile. The workflow independently requires `aps-environment =
+production` and `applinks:kiramanga.me` in both the embedded profile and final signed app.
+
+### App Store Connect agreements
+
+Path: **App Store Connect → Business → Agreements**.
+
+Inspect every agreement banner/status. Expected: no pending agreement that prevents build uploads or
+TestFlight. A pending developer agreement blocks API/upload operations; tax or banking setup can
+block paid App Store distribution but normally does not block a free TestFlight beta.
+
+### Beta App Review status
+
+Path: **App Store Connect → Apps → Kira Manga → TestFlight → iOS → 1.0.0 → selected build**.
+
+Inspect **External Testing** / **Beta App Review**. Expected after the workflow: `Waiting for Review`
+or `In Review`; final expected state: `Approved` / `Testing`. Upload and processing can succeed while
+review is pending, but external testers cannot install until Apple approves the build.
+
+### Add external testers after approval
+
+Path: **App Store Connect → Apps → Kira Manga → TestFlight → External Testing → Testers → +**.
+
+Add the intended tester email addresses (or explicitly enable a public link only if broad access is
+desired). Expected: testers appear in the group and the approved build is selected. This is the one
+manual distribution action the workflow intentionally does not infer. It blocks availability to
+actual external people, not build upload or Beta App Review.
+
+### App privacy
+
+Path: **App Store Connect → Apps → Kira Manga → App Privacy → Manage**.
+
+Inspect the published privacy-policy URL and every collected-data answer. Expected URL:
+`https://kiramanga.me/privacy`; answers must cover Firebase Analytics, Crashlytics, Messaging/device
+identifiers, and optional complaint content consistently with the signed binary. Incomplete privacy
+metadata can block App Store submission and may delay Beta App Review, but does not normally block
+binary upload.
+
+### Content rights and age rating
+
+Paths:
+
+- **App Store Connect → Apps → Kira Manga → App Information → Content Rights**.
+- **App Store Connect → Apps → Kira Manga → App Information → Age Ratings**.
+
+Inspect that the owner has declared the right to display third-party content and completed the current
+age questionnaire for manga/source content. These answers primarily block App Store submission; Apple
+may still request clarification during Beta App Review.
+
+### Encryption prompt
+
+Path: **App Store Connect → Apps → Kira Manga → TestFlight → iOS → selected build → Export
+Compliance** (only shown when Apple requires an answer).
+
+Expected technical selection: the app does not use **non-exempt** encryption, subject to the Account
+Holder's legal confirmation described above. A missing export-compliance answer blocks testing for
+that build, though it does not prevent the binary upload itself.
+
+### Production Firebase identity
+
+Path: **Firebase console → intended production project → Project settings → General → Your apps →
+iOS app**.
+
+Inspect the bundle ID. Expected: `me.manga.kira`. Also confirm this is the intended production
+project and that its APNs authentication key is configured under **Project settings → Cloud
+Messaging → Apple app configuration**. The workflow validates the plist bundle ID and rejects
+placeholder fields, but only the owner can identify which Firebase project is intended for production.

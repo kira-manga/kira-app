@@ -34,6 +34,10 @@ sealed class Screen(val route: String) {
     @Serializable
     object Setting : Screen("me.manga.kira.navigation.Screen.Setting")
 
+    /** Internal-release-only fatal-crash harness used to verify Firebase Crashlytics delivery. */
+    @Serializable
+    object CrashDiagnostics : Screen("me.manga.kira.navigation.Screen.CrashDiagnostics")
+
     @Serializable
     data class WhatsNewScreen(
         val isFirstOpen: Boolean = false

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Diagnose</string>
+    <string name="crash_diagnostics_title">Absturzdiagnose</string>
+    <string name="crash_diagnostics_settings_description">Kontrollierte fatale Abstürze ausführen, um Firebase Crashlytics zu prüfen.</string>
+    <string name="crash_diagnostics_warning_title">Nur für interne Tests</string>
+    <string name="crash_diagnostics_warning_body">Jede bestätigte Aktion schließt die App sofort. Öffne sie vor dem nächsten Test erneut.</string>
+    <string name="crash_diagnostics_intro">Crashlytics sendet nach dem nächsten Start einen fatalen Bericht. Führe jeweils ein Szenario aus und prüfe fünf getrennte Probleme in Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Absturz: ungültiger Zustand</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Absturz: ungültiges Argument</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Absturz: außerhalb des Bereichs</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Arithmetischer Absturz</string>
+    <string name="crash_diagnostics_scenario_custom">5. Benutzerdefinierter Kira-Absturz</string>
+    <string name="crash_diagnostics_confirm_title">App abstürzen lassen?</string>
+    <string name="crash_diagnostics_confirm_message">„%1$s“ ausführen? Die App wird sofort geschlossen und ungespeicherte Arbeit kann verloren gehen.</string>
+    <string name="crash_diagnostics_confirm_action">App abstürzen lassen</string>
+</resources>

@@ -1,0 +1,1 @@
+Kira Manga is a multilingual manga reader for managing a local library, browsing configured sources, downloading chapters, importing Kira backups, and reading online or offline.

@@ -6,7 +6,7 @@
          Compose-MP resource accessors from a worker/Service context). These keys mirror the native app's
          res/values/strings.xml verbatim so the background-refresh + new-chapter notifications localize the
          same way native does (including the shipped Arabic/RTL locale). -->
-    <string name="app_name">Kira Manga</string>
+    <string name="app_name" translatable="false">Kira Manga</string>
 
     <!-- New-chapter notifications (ChapterNotificationHelper) — mirror native res/values/strings.xml. -->
     <string name="new_chapters">New Chapters</string>

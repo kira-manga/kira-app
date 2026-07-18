@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "ktlint:standard:function-naming")
+
 package me.manga.kira.ui.about
 
 import androidx.compose.foundation.Image
@@ -39,10 +41,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -59,8 +59,8 @@ import me.manga.kira.ui.components.KiraSocialMediaRow
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.about
 import me.manga.kira.ui.generated.resources.back
-import me.manga.kira.ui.generated.resources.ic_launcher_foreground
 import me.manga.kira.ui.generated.resources.check_for_update
+import me.manga.kira.ui.generated.resources.ic_launcher_foreground
 import me.manga.kira.ui.generated.resources.np_soon
 import me.manga.kira.ui.generated.resources.np_source_code
 import me.manga.kira.ui.generated.resources.privacy_policy
@@ -219,7 +219,10 @@ fun AboutScreen(
 }
 
 @Composable
-private fun EffectBridge(effects: Flow<AboutEffect>, onEffect: (AboutEffect) -> Unit) {
+private fun EffectBridge(
+    effects: Flow<AboutEffect>,
+    onEffect: (AboutEffect) -> Unit,
+) {
     LaunchedEffect(effects) {
         effects.collectLatest(onEffect)
     }
@@ -263,17 +266,19 @@ internal fun AboutScreenContent(
                     }
                 },
                 // Native `TopAppBarCom.kt:29-31` sets the container color to background.
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
             )
         },
     ) { padding ->
         if (state.isLoading) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(padding),
             ) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
@@ -290,22 +295,24 @@ internal fun AboutScreenContent(
         // supplies the top gap). The earlier KMP modifier applied the full Scaffold insets
         // (incl. bottom) plus a uniform 16.dp on all sides, breaking the native vertical rhythm.
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = padding.calculateTopPadding())
-                .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = spacing.lg),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = padding.calculateTopPadding())
+                    .background(MaterialTheme.colorScheme.background)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             // GAP-ABT-03 — logo renders at native 250.dp with vertical padding 24 (was 120.dp).
             Image(
                 painter = painterResource(Res.drawable.ic_launcher_foreground),
                 contentDescription = null,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(vertical = 24.dp)
-                    .size(250.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 24.dp)
+                        .size(250.dp),
             )
 
             // GAP-ABT-04 — under-logo divider (Gray .3α) matching native `AboutScreen.kt:108`,
@@ -337,7 +344,7 @@ internal fun AboutScreenContent(
                     title = stringResource(Res.string.rate_our_app),
                     description = null,
                     leadingIcon = Icons.Outlined.StarRate,
-                    onClick = { onIntent(AboutIntent.OnOpenPlayStore) },
+                    onClick = { onIntent(AboutIntent.OnRequestReview) },
                 )
                 AboutRowDivider()
                 AboutRow(
@@ -394,13 +401,13 @@ internal fun AboutScreenContent(
 @Composable
 private fun AboutItemsGroup(content: @Composable () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(16.dp),
-            )
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(16.dp),
+                ).padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         content()
     }
@@ -438,12 +445,12 @@ private fun AboutRow(
     // Native `SettingsNavigationItem.kt:47` pads only vertically (16.dp); the row's
     // horizontal inset comes from the enclosing `AboutItemsGroup` (native `ItemsGroup`'s
     // horizontal=16.dp). Match that — vertical 16.dp here, no horizontal row padding.
-    val rowModifier = Modifier
-        .fillMaxWidth()
-        .let { base ->
-            if (onClick != null) base.clickable(onClick = onClick) else base
-        }
-        .padding(vertical = spacing.lg)
+    val rowModifier =
+        Modifier
+            .fillMaxWidth()
+            .let { base ->
+                if (onClick != null) base.clickable(onClick = onClick) else base
+            }.padding(vertical = spacing.lg)
     Row(
         modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically,

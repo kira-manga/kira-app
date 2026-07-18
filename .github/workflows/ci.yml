@@ -46,6 +46,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Android CI build number. The dedicated TestFlight workflow queries App Store Connect instead.
+  KIRA_BUILD_NUMBER: ${{ github.run_number }}
+
 jobs:
   jvm-android:
     name: JVM/Android compile + :domain tests
@@ -89,11 +93,17 @@ jobs:
         run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --stacktrace
       - name: Assemble debug APK (packaging + dex + manifest/resource merge)
         run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Upload installable internal-test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
 
   ios:
-    name: iOS klib compile
+    name: iOS compile + Release framework
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -103,15 +113,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compile iOS (Arm64 + SimulatorArm64)
         run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 --stacktrace
+      - name: Link arm64 device Release framework
+        run: ./gradlew :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
 
   release-verify:
-    name: Release artifact build (R8 fullMode + minify + shrink + sign)
+    name: Android lint + R8 + AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    # Runs on pushes to the `release` branch and on-demand. Skips automatically when the signing
-    # secret is absent (e.g. before the repo secrets are configured) so it never blocks the main
-    # gate, but it MUST be exercised before any production release. Verified to build a signed,
-    # R8-fullMode-shrunk app-release.apk locally (2026-06-04); this job makes that repeatable in CI.
+    timeout-minutes: 90
     if: ${{ github.ref == 'refs/heads/release' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
@@ -120,58 +128,117 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      # The release variant pulls release-only deps (e.g. kermit-crashlytics) not present in the
-      # debug cache, so this job resolves online (no --offline).
-      - name: Provision google-services.json (placeholder if no real config secret)
-        # Gated on the keystore secret too: without it every build/upload step skips, so there is
-        # nothing to provision — and the job would otherwise report a misleading green "verified"
-        # while having built nothing (see the warning step below).
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
+      - name: Determine whether the protected Android release path is available
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json
-          else
-            cp app/google-services.json.example app/google-services.json
+          set +x
+          ruby -e '
+            names = %w[
+              KEYSTORE_BASE64 SIGNING_KEYSTORE_PASSWORD SIGNING_KEY_ALIAS
+              SIGNING_KEY_PASSWORD GOOGLE_SERVICES_JSON
+            ]
+            available = names.all? { |name| !ENV[name].to_s.empty? }
+            File.open(ENV.fetch("GITHUB_ENV"), "a") do |file|
+              file.puts("KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE=#{available}")
+            end
+            puts available ? "Protected Android release path is configured" : "Protected Android release path is not fully configured"
+          '
+      # This path is deliberately credential-free. It always exercises lint, R8 full mode,
+      # shrinking, packaging, and AAB generation against the inert committed Firebase placeholder.
+      - name: Provision inert Firebase config for unsigned validation
+        run: cp app/google-services.json.example app/google-services.json
+      - name: Unit, lint, R8, APK, and unsigned AAB validation
+        run: ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease -PallowPlaceholderGoogleServices=true --stacktrace
+      - name: Verify advertising identifiers stay disabled
+        run: |
+          manifest="app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml"
+          if grep -E 'com\.google\.android\.gms\.permission\.AD_ID|android\.permission\.ACCESS_ADSERVICES_(AD_ID|ATTRIBUTION)|com\.google\.android\.gms\.ads\.APPLICATION_ID' "$manifest"; then
+            echo "::error::An advertising permission or SDK declaration re-entered the release manifest."
+            exit 1
           fi
+          if ! grep -A2 'android:name="google_analytics_adid_collection_enabled"' "$manifest" | grep -q 'android:value="false"'; then
+            echo "::error::Firebase Analytics advertising-ID collection is not explicitly disabled."
+            exit 1
+          fi
+          if ! grep -A2 'android:name="google_analytics_default_allow_ad_personalization_signals"' "$manifest" | grep -q 'android:value="false"'; then
+            echo "::error::Firebase Analytics ad personalization is not disabled by default."
+            exit 1
+          fi
+      - name: Preserve unsigned validation bundle
+        run: cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/kira-release-unsigned.aab"
+      - name: Upload unsigned validation outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-validation-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/kira-release-unsigned.aab
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/mapping/release/mapping.txt
+            app/build/reports/lint-results-release.html
+          retention-days: 14
       - name: Decode release keystore
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/release.keystore"
-      - name: Assemble signed release (exercises signing + R8 fullMode + minify + resource shrink)
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        run: |
+          set +x
+          umask 077
+          ruby -rbase64 -e '
+            encoded = ENV.fetch("KEYSTORE_BASE64").gsub(/\s+/, "")
+            decoded = Base64.strict_decode64(encoded)
+            abort("Android keystore secret decoded to an empty file") if decoded.empty?
+            path = File.join(ENV.fetch("GITHUB_WORKSPACE"), "release.keystore")
+            File.binwrite(path, decoded)
+            File.chmod(0o600, path)
+          '
+      - name: Provision real Firebase config for signed bundle
+        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set +x
+          umask 077
+          ruby -rbase64 -e '
+            encoded = ENV.fetch("GOOGLE_SERVICES_JSON").gsub(/\s+/, "")
+            decoded = Base64.strict_decode64(encoded)
+            abort("Android Firebase secret decoded to an empty file") if decoded.empty?
+            path = File.join(ENV.fetch("GITHUB_WORKSPACE"), "app/google-services.json")
+            File.binwrite(path, decoded)
+            File.chmod(0o600, path)
+          '
+      - name: Build and verify signed production-shaped AAB
+        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
+        env:
           KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          ADMOB_REWARDED_ID: ${{ secrets.ADMOB_REWARDED_ID }}
-          ADMOB_NATIVE_ID: ${{ secrets.ADMOB_NATIVE_ID }}
-          ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
-        # -PallowPlaceholderGoogleServices=true: this job validates the build PATH (R8/sign/shrink),
-        # so it may run against the placeholder google-services.json. A real release pipeline that
-        # ships to a store MUST omit this flag so the placeholder guard fails the build.
-        run: ./gradlew :app:assembleRelease -PallowPlaceholderGoogleServices=true --stacktrace
-      - name: Upload release APK + R8 mapping
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          ./gradlew :app:bundleRelease --rerun-tasks --stacktrace
+          jarsigner -verify -strict -certs app/build/outputs/bundle/release/app-release.aab
+      - name: Upload signed AAB
+        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/mapping/release/mapping.txt
-          retention-days: 7
-      - name: Warn if keystore secret missing
-        if: ${{ env.KEYSTORE_BASE64 == '' }}
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: echo "::warning::KEYSTORE_BASE64 not set — release build skipped. Set the signing secrets to validate the production artifact path."
+          name: android-signed-aab-${{ github.run_number }}
+          path: app/build/outputs/bundle/release/app-release.aab
+          retention-days: 14
+      - name: Report unavailable signed path
+        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE != 'true' }}
+        run: echo "::warning::Complete Android signing and real Firebase secrets are not configured; unsigned release validation succeeded, but no signed AAB was produced."
+      - name: Remove decoded Android credentials
+        if: ${{ always() }}
+        run: |
+          set +x
+          ruby -rfileutils -e '
+            FileUtils.rm_f(File.join(ENV.fetch("GITHUB_WORKSPACE"), "release.keystore"))
+            FileUtils.rm_f(File.join(ENV.fetch("GITHUB_WORKSPACE"), "app/google-services.json"))
+          '
 
   static-analysis:
     name: Static analysis (ktlint + detekt) — blocking, baselined

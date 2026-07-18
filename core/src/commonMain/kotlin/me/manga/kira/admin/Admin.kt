@@ -26,10 +26,10 @@ package me.manga.kira.admin
  *
  * Because a host that forgets to assign gets `false`, a new platform fails CLOSED — pinned by
  * `AdminDefaultsTest`. A production admin mechanism (Firebase custom claims / allow-list) is
- * deliberately NOT implemented (owner decision 2026-07-03). **C2 — Firestore security rules —
- * remains intentionally deferred**: with the console debug-gated, the Firestore backend still
- * accepts writes from any client speaking the API; the owner accepts this residual risk because
- * a migration off Firebase is planned, so rules work would be thrown away.
+ * deliberately NOT implemented. **C2 — Firestore security rules remain a public-release
+ * blocker**: hiding the console in release builds is not authorization, and the repository does
+ * not contain the deployed Firestore rules. The complaint feature may remain enabled for internal
+ * testing, but it must be secured server-side (or disabled) before a public build ships.
  *
  * Migration notes (Phase 8.13 batch B):
  *  - The source `Admin` object additionally exposed

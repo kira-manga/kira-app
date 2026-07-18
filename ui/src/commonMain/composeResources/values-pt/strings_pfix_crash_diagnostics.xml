@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Diagnóstico</string>
+    <string name="crash_diagnostics_title">Diagnóstico de falhas</string>
+    <string name="crash_diagnostics_settings_description">Execute falhas fatais controladas para verificar o Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">Apenas para testes internos</string>
+    <string name="crash_diagnostics_warning_body">Cada ação confirmada fecha o app imediatamente. Abra-o novamente antes de executar o próximo teste.</string>
+    <string name="crash_diagnostics_intro">O Crashlytics envia um relatório fatal após a próxima inicialização. Execute um cenário por vez e verifique cinco problemas separados no Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Falha de estado inválido</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Falha de argumento inválido</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Falha fora dos limites</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Falha aritmética</string>
+    <string name="crash_diagnostics_scenario_custom">5. Falha personalizada do Kira</string>
+    <string name="crash_diagnostics_confirm_title">Provocar falha no app?</string>
+    <string name="crash_diagnostics_confirm_message">Executar “%1$s”? O app será fechado imediatamente e o trabalho não salvo poderá ser perdido.</string>
+    <string name="crash_diagnostics_confirm_action">Provocar falha</string>
+</resources>

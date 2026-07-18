@@ -113,7 +113,7 @@ kotlin {
             // `implementation` — the annotation is consumed only inside this module's preview funs;
             // no public composable surface re-exposes a preview type.
             implementation(libs.compose.components.ui.tooling.preview)
-            implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.11.1")
+            implementation(libs.compose.ui.tooling.preview)
 
             // #7 reader lifecycle bracket: LocalLifecycleOwner / Lifecycle.Event /
             // LifecycleEventObserver (JetBrains Compose-MP lifecycle, common across all targets) so
@@ -150,9 +150,9 @@ kotlin {
         // Compose UI tests on the JVM/desktop target (backlog T2/L4): runComposeUiTest +
         // semantics finders/assertions + captureToImage for pixel-level visibility checks.
         // `currentOs` supplies the Skiko runtime the headless test surface renders through.
-        val desktopTest by getting {
+        val desktopTest = getByName("desktopTest") {
             dependencies {
-                implementation(compose.desktop.uiTestJUnit4)
+                implementation(libs.compose.ui.test.junit4)
                 implementation(compose.desktop.currentOs)
             }
         }

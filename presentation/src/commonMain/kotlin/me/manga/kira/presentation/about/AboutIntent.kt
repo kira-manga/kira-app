@@ -59,7 +59,7 @@ import me.manga.kira.presentation.mvi.MviIntent
  *    legacy screen (`launcher.openPlayStorePage(versionProvider.
  *    packageName)` in two click handlers)").
  *  - Lines 21-22 ([OnOpenUrl] descriptor, "the legacy `AboutScreen.
- *    kt` line 172 literal `\"https://yamimanga.me/privacy\"`").
+ *    kt` line 172 privacy-link literal, now centralized on `https://kiramanga.me/privacy`).
  *  - Line 46 (member-list rationale, "Source code was already
  *    disabled in the legacy (no-op click + 'soon' subtitle)").
  *  All four classified as STALE-SYMBOL-REFERENCE — Phase 9.x.
@@ -92,12 +92,16 @@ import me.manga.kira.presentation.mvi.MviIntent
  *  fulfilled (legacy about chain retired) across §354.
  */
 sealed interface AboutIntent : MviIntent {
-
-    /** User tapped "Check for update" or "Rate our app". */
+    /** User tapped "Check for update". */
     data object OnOpenPlayStore : AboutIntent
 
+    /** User tapped "Rate our app". */
+    data object OnRequestReview : AboutIntent
+
     /** User tapped a row that opens an external URL. Carries the target. */
-    data class OnOpenUrl(val url: String) : AboutIntent
+    data class OnOpenUrl(
+        val url: String,
+    ) : AboutIntent
 
     /**
      * User tapped the "What's new" row. The VM emits [AboutEffect.NavigateToWhatsNew] and

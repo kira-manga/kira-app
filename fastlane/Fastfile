@@ -1,0 +1,295 @@
+require "json"
+require "rubygems"
+
+opt_out_usage
+default_platform(:ios)
+
+APP_IDENTIFIER = "me.manga.kira"
+APP_STORE_ID = "6792232678"
+MARKETING_VERSION = "1.0.0"
+EXTERNAL_GROUP_NAME = "External Testing"
+INTERNAL_PREREQUISITE_GROUP_NAME = "Internal Prerequisite"
+
+def protected_env(name)
+  value = ENV[name].to_s.strip
+  UI.user_error!("Missing protected environment value: #{name}") if value.empty?
+  value
+end
+
+def connect_api_key
+  key_path = protected_env("APP_STORE_CONNECT_KEY_PATH")
+  UI.user_error!("App Store Connect private-key file is unavailable") unless File.file?(key_path)
+
+  app_store_connect_api_key(
+    key_id: protected_env("APP_STORE_CONNECT_KEY_ID"),
+    issuer_id: protected_env("APP_STORE_CONNECT_ISSUER_ID"),
+    key_filepath: key_path,
+    duration: 1_200,
+    in_house: false,
+    set_spaceship_token: true
+  )
+end
+
+def verified_app
+  app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+  UI.user_error!("App Store Connect has no app for #{APP_IDENTIFIER}") unless app
+  UI.user_error!("App Store Connect app ID does not match #{APP_STORE_ID}") unless app.id.to_s == APP_STORE_ID
+  UI.user_error!("App Store Connect bundle ID does not match #{APP_IDENTIFIER}") unless app.bundle_id == APP_IDENTIFIER
+  app
+end
+
+def ensure_testflight_groups(app)
+  groups = app.get_beta_groups
+  unless groups.any?(&:is_internal_group)
+    UI.message("Creating the non-distributing internal group required by App Store Connect")
+    app.create_beta_group(
+      group_name: INTERNAL_PREREQUISITE_GROUP_NAME,
+      is_internal_group: true,
+      public_link_enabled: false,
+      has_access_to_all_builds: false
+    )
+    groups = app.get_beta_groups
+  end
+
+  matching_external_groups = groups.select { |group| group.name == EXTERNAL_GROUP_NAME }
+  if matching_external_groups.any?(&:is_internal_group)
+    UI.user_error!("A TestFlight group named '#{EXTERNAL_GROUP_NAME}' exists but is internal")
+  end
+
+  unless matching_external_groups.any?
+    UI.message("Creating external TestFlight group '#{EXTERNAL_GROUP_NAME}'")
+    app.create_beta_group(
+      group_name: EXTERNAL_GROUP_NAME,
+      is_internal_group: false,
+      public_link_enabled: false
+    )
+  end
+
+  external_group = app.get_beta_groups.find do |group|
+    group.name == EXTERNAL_GROUP_NAME && !group.is_internal_group
+  end
+  UI.user_error!("External TestFlight group could not be verified") unless external_group
+  external_group
+end
+
+def parsed_build_numbers(values)
+  values.compact.map do |value|
+    Gem::Version.new(value.to_s)
+  rescue ArgumentError
+    UI.user_error!("App Store Connect contains an unsupported build-number format")
+  end
+end
+
+def uploaded_build_numbers(app)
+  filter = {
+    state: "PROCESSING,FAILED,COMPLETE",
+    cfBundleShortVersionString: MARKETING_VERSION,
+    platform: Spaceship::ConnectAPI::Platform::IOS
+  }
+  responses = Spaceship::ConnectAPI.get_build_uploads(
+    app_id: app.id,
+    filter: filter,
+    sort: "-uploadedDate",
+    limit: 200
+  ).all_pages
+
+  parsed_build_numbers(responses.flat_map(&:to_models).map(&:cf_build_version))
+end
+
+def processed_build_numbers(app)
+  builds = Spaceship::ConnectAPI::Build.all(
+    app_id: app.id,
+    version: MARKETING_VERSION,
+    platform: Spaceship::ConnectAPI::Platform::IOS,
+    limit: 200
+  )
+  parsed_build_numbers(builds.map(&:version))
+end
+
+def next_integer_build_number(app)
+  # Build uploads include in-flight/failed uploads, while Build records cover every processed
+  # TestFlight build. Taking the union prevents reuse if either App Store Connect endpoint omits a
+  # lifecycle state or has not yet converged after a recent upload.
+  highest = (uploaded_build_numbers(app) + processed_build_numbers(app)).max
+  return 1 unless highest
+
+  # Kira publishes whole-number CFBundleVersion values. If an older dotted value exists,
+  # moving to the next major integer is greater under Apple's component-wise comparison.
+  highest.segments.first.to_i + 1
+end
+
+def write_private_result(path, contents)
+  File.write(path, contents)
+  File.chmod(0o600, path)
+end
+
+platform :ios do
+  desc "Verify App Store Connect, create required TestFlight groups, and reserve the next build number"
+  lane :prepare_testflight do
+    UI.message("Preflight stage: authenticate App Store Connect")
+    connect_api_key
+    UI.message("Preflight stage: verify app identity")
+    app = verified_app
+    UI.message("Preflight stage: verify TestFlight groups")
+    ensure_testflight_groups(app)
+    UI.message("Preflight stage: query uploaded build numbers")
+    build_number = next_integer_build_number(app)
+    UI.user_error!("Generated build number must be positive") unless build_number.positive?
+
+    output_path = protected_env("KIRA_BUILD_NUMBER_FILE")
+    write_private_result(output_path, "#{build_number}\n")
+    UI.success("App Store Connect verified; selected build #{build_number} for version #{MARKETING_VERSION}")
+  end
+
+  desc "Upload, process, and submit the signed IPA for external TestFlight review"
+  lane :upload_external do
+    api_key = connect_api_key
+    app = verified_app
+    ensure_testflight_groups(app)
+
+    ipa_path = protected_env("KIRA_IPA_PATH")
+    UI.user_error!("Signed IPA is unavailable") unless File.file?(ipa_path)
+    build_number = protected_env("KIRA_BUILD_NUMBER")
+    UI.user_error!("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
+
+    feedback_email = protected_env("TESTFLIGHT_FEEDBACK_EMAIL")
+    review_info = {
+      contact_first_name: protected_env("BETA_REVIEW_CONTACT_FIRST_NAME"),
+      contact_last_name: protected_env("BETA_REVIEW_CONTACT_LAST_NAME"),
+      contact_email: protected_env("BETA_REVIEW_CONTACT_EMAIL"),
+      contact_phone: protected_env("BETA_REVIEW_CONTACT_PHONE"),
+      demo_account_required: false,
+      notes: File.read(File.expand_path("../release/testflight/beta-review-notes.txt", __dir__)).strip
+    }
+
+    upload_to_testflight(
+      api_key: api_key,
+      apple_id: APP_STORE_ID,
+      app_identifier: APP_IDENTIFIER,
+      app_platform: "ios",
+      app_version: MARKETING_VERSION,
+      build_number: build_number,
+      ipa: ipa_path,
+      distribute_external: true,
+      groups: [EXTERNAL_GROUP_NAME],
+      submit_beta_review: true,
+      notify_external_testers: true,
+      skip_waiting_for_build_processing: false,
+      wait_processing_interval: 30,
+      wait_processing_timeout_duration: 3_600,
+      uses_non_exempt_encryption: false,
+      expire_previous_builds: false,
+      reject_build_waiting_for_review: false,
+      beta_app_review_info: review_info,
+      localized_app_info: {
+        "en-US" => {
+          feedback_email: feedback_email,
+          marketing_url: "https://kiramanga.me",
+          privacy_policy_url: "https://kiramanga.me/privacy",
+          description: File.read(File.expand_path("../release/testflight/beta-description.txt", __dir__)).strip
+        }
+      },
+      localized_build_info: {
+        "en-US" => {
+          whats_new: File.read(File.expand_path("../release/testflight/what-to-test.txt", __dir__)).strip
+        }
+      }
+    )
+  end
+
+  desc "Process and submit an already-uploaded build for external TestFlight review"
+  lane :finalize_external do
+    api_key = connect_api_key
+    app = verified_app
+    ensure_testflight_groups(app)
+
+    build_number = protected_env("KIRA_BUILD_NUMBER")
+    UI.user_error!("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
+
+    feedback_email = protected_env("TESTFLIGHT_FEEDBACK_EMAIL")
+    review_info = {
+      contact_first_name: protected_env("BETA_REVIEW_CONTACT_FIRST_NAME"),
+      contact_last_name: protected_env("BETA_REVIEW_CONTACT_LAST_NAME"),
+      contact_email: protected_env("BETA_REVIEW_CONTACT_EMAIL"),
+      contact_phone: protected_env("BETA_REVIEW_CONTACT_PHONE"),
+      demo_account_required: false,
+      notes: File.read(File.expand_path("../release/testflight/beta-review-notes.txt", __dir__)).strip
+    }
+
+    upload_to_testflight(
+      api_key: api_key,
+      apple_id: APP_STORE_ID,
+      app_identifier: APP_IDENTIFIER,
+      app_platform: "ios",
+      app_version: MARKETING_VERSION,
+      build_number: build_number,
+      distribute_only: true,
+      distribute_external: true,
+      groups: [EXTERNAL_GROUP_NAME],
+      submit_beta_review: true,
+      notify_external_testers: true,
+      skip_waiting_for_build_processing: false,
+      wait_processing_interval: 30,
+      wait_processing_timeout_duration: 3_600,
+      uses_non_exempt_encryption: false,
+      expire_previous_builds: false,
+      reject_build_waiting_for_review: false,
+      beta_app_review_info: review_info,
+      localized_app_info: {
+        "en-US" => {
+          feedback_email: feedback_email,
+          marketing_url: "https://kiramanga.me",
+          privacy_policy_url: "https://kiramanga.me/privacy",
+          description: File.read(File.expand_path("../release/testflight/beta-description.txt", __dir__)).strip
+        }
+      },
+      localized_build_info: {
+        "en-US" => {
+          whats_new: File.read(File.expand_path("../release/testflight/what-to-test.txt", __dir__)).strip
+        }
+      }
+    )
+  end
+
+  desc "Record the non-sensitive App Store Connect processing and external-review state"
+  lane :record_testflight_status do
+    connect_api_key
+    app = verified_app
+    build_number = protected_env("KIRA_BUILD_NUMBER")
+    build = Spaceship::ConnectAPI::Build.all(
+      app_id: app.id,
+      version: MARKETING_VERSION,
+      build_number: build_number,
+      platform: Spaceship::ConnectAPI::Platform::IOS,
+      includes: "app,buildBetaDetail,preReleaseVersion,buildBundles,betaAppReviewSubmission"
+    ).first
+    UI.user_error!("Uploaded build is not visible in App Store Connect") unless build
+
+    external_group = app.get_beta_groups.find do |group|
+      group.name == EXTERNAL_GROUP_NAME && !group.is_internal_group
+    end
+    assigned = external_group && external_group.fetch_builds.any? { |candidate| candidate.id == build.id }
+    external_state = build.build_beta_detail&.external_build_state || "UNKNOWN"
+    beta_review_state = build.beta_app_review_submission&.beta_review_state || "NOT_SUBMITTED"
+    review_submitted = %w[
+      WAITING_FOR_BETA_REVIEW IN_BETA_REVIEW BETA_APPROVED IN_BETA_TESTING
+    ].include?(external_state) || beta_review_state != "NOT_SUBMITTED"
+    approved = %w[BETA_APPROVED IN_BETA_TESTING].include?(external_state)
+
+    result = {
+      app_store_id: APP_STORE_ID,
+      bundle_id: APP_IDENTIFIER,
+      version: MARKETING_VERSION,
+      build: build.version,
+      processing_state: build.processing_state,
+      external_state: external_state,
+      beta_review_state: beta_review_state,
+      external_group_assigned: !!assigned,
+      beta_review_submitted: review_submitted,
+      approved_for_external_testing: approved,
+      available_to_external_testers: external_state == "IN_BETA_TESTING"
+    }
+    write_private_result(protected_env("KIRA_TESTFLIGHT_STATUS_FILE"), JSON.pretty_generate(result) + "\n")
+    UI.success("Recorded App Store Connect state: #{external_state}")
+  end
+end

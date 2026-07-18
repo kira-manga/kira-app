@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Диагностика</string>
+    <string name="crash_diagnostics_title">Диагностика сбоев</string>
+    <string name="crash_diagnostics_settings_description">Запустите контролируемые критические сбои для проверки Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">Только для внутреннего тестирования</string>
+    <string name="crash_diagnostics_warning_body">Каждое подтверждённое действие немедленно закрывает приложение. Снова откройте его перед следующим тестом.</string>
+    <string name="crash_diagnostics_intro">Crashlytics отправляет критический отчёт после следующего запуска. Выполняйте по одному сценарию и проверьте пять отдельных проблем в Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Сбой недопустимого состояния</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Сбой недопустимого аргумента</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Сбой выхода за границы</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Арифметический сбой</string>
+    <string name="crash_diagnostics_scenario_custom">5. Пользовательский сбой Kira</string>
+    <string name="crash_diagnostics_confirm_title">Вызвать сбой приложения?</string>
+    <string name="crash_diagnostics_confirm_message">Запустить «%1$s»? Приложение немедленно закроется, а несохранённые данные могут быть потеряны.</string>
+    <string name="crash_diagnostics_confirm_action">Вызвать сбой</string>
+</resources>

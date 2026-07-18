@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">診断</string>
+    <string name="crash_diagnostics_title">クラッシュ診断</string>
+    <string name="crash_diagnostics_settings_description">制御された致命的クラッシュを実行して Firebase Crashlytics を確認します。</string>
+    <string name="crash_diagnostics_warning_title">内部テスト専用</string>
+    <string name="crash_diagnostics_warning_body">確認した操作は直ちにアプリを終了します。次のテストを実行する前にアプリを再度開いてください。</string>
+    <string name="crash_diagnostics_intro">Crashlytics は次回起動後に致命的レポートを送信します。1 回に 1 つのシナリオを実行し、Firebase で 5 件の個別問題を確認してください。</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. 不正な状態のクラッシュ</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. 不正な引数のクラッシュ</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. 範囲外クラッシュ</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. 算術クラッシュ</string>
+    <string name="crash_diagnostics_scenario_custom">5. Kira カスタムクラッシュ</string>
+    <string name="crash_diagnostics_confirm_title">アプリをクラッシュさせますか？</string>
+    <string name="crash_diagnostics_confirm_message">「%1$s」を実行しますか？アプリは直ちに終了し、未保存の作業が失われる場合があります。</string>
+    <string name="crash_diagnostics_confirm_action">クラッシュさせる</string>
+</resources>

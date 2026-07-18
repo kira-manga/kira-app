@@ -109,6 +109,7 @@ enum class SettingsDestination {
     COMPLAINT,
     WHATSNEW,
     DOWNLOADS,
+    CRASH_DIAGNOSTICS,
 
     /**
      * Backup & restore (feature/backup) — full-library export + merge-import. The `:composeApp`

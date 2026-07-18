@@ -32,7 +32,14 @@ GoogleService-Info.plist
 *.jks
 *.p12
 *.p8
+*.mobileprovision
+*.ipa
+*.xcarchive/
+*.dSYM/
+.secrets/
+fastlane/report.xml
 
 # --- Local scratch / temp working dirs ---
+.DS_Store
 .audit-scratch/
 .parity_i18n_tmp/

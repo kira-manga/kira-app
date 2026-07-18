@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Diagnostica</string>
+    <string name="crash_diagnostics_title">Diagnostica arresti anomali</string>
+    <string name="crash_diagnostics_settings_description">Esegui arresti fatali controllati per verificare Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">Solo per test interni</string>
+    <string name="crash_diagnostics_warning_body">Ogni azione confermata chiude immediatamente l’app. Riaprila prima di eseguire il test successivo.</string>
+    <string name="crash_diagnostics_intro">Crashlytics invia un rapporto fatale dopo il prossimo avvio. Esegui uno scenario alla volta e verifica cinque problemi separati in Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Arresto per stato non valido</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Arresto per argomento non valido</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Arresto fuori limite</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Arresto aritmetico</string>
+    <string name="crash_diagnostics_scenario_custom">5. Arresto Kira personalizzato</string>
+    <string name="crash_diagnostics_confirm_title">Arrestare l’app?</string>
+    <string name="crash_diagnostics_confirm_message">Eseguire “%1$s”? L’app si chiuderà immediatamente e il lavoro non salvato potrebbe andare perso.</string>
+    <string name="crash_diagnostics_confirm_action">Arresta app</string>
+</resources>

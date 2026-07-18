@@ -5,18 +5,18 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ServerTimestamp
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
-import kotlin.time.ExperimentalTime
-import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 import me.manga.kira.presentation.features.complaint.model.Complaint
 import me.manga.kira.presentation.features.complaint.model.ComplaintStatus
 import me.manga.kira.presentation.features.complaint.model.ComplaintType
 import me.manga.kira.presentation.features.complaint.utils.toComplaintStatus
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /**
  * Android Firestore-backed implementation of [ComplaintRepository] (Phase 14.x).
@@ -43,95 +43,94 @@ import me.manga.kira.presentation.features.complaint.utils.toComplaintStatus
 class ComplaintFirestoreDataSource(
     firestore: FirebaseFirestore,
 ) : ComplaintRepository {
-
     private val log = Logger.withTag("ComplaintFirestoreDataSource")
     private val complaintsCol = firestore.collection("complaints_v2")
 
     override suspend fun sendComplaint(complaint: Complaint): String {
         val dto = ComplaintDto.fromDomain(complaint)
         return try {
-            log.d { "Sending complaint for user: ${dto.userId}, subject: ${dto.subject}" }
             val ref = complaintsCol.add(dto).await()
-            log.d { "Complaint sent successfully with ID: ${ref.id}" }
             ref.id
         } catch (e: Exception) {
-            log.e(e) { "Error sending complaint: ${e.message}" }
+            log.e { "Failed to send complaint" }
             throw e
         }
     }
 
     override suspend fun getComplaintsByUser(userId: String): List<Complaint> {
         val trimmedUserId = userId.trim()
-        log.d { "Fetching complaints for userId: $trimmedUserId" }
 
-        val formatDocs = complaintsCol.where(
-            Filter.or(
-                Filter.equalTo("a", trimmedUserId),
-                Filter.equalTo("userId", trimmedUserId),
-            )
-        )
-            .get()
-            .await()
-            .documents
+        val formatDocs =
+            complaintsCol
+                .where(
+                    Filter.or(
+                        Filter.equalTo("a", trimmedUserId),
+                        Filter.equalTo("userId", trimmedUserId),
+                    ),
+                ).get()
+                .await()
+                .documents
 
         log.d { "Fetched ${formatDocs.size} complaint documents" }
 
-        return formatDocs.mapNotNull { doc ->
-            try {
-                // Support both new and legacy single-letter fields
-                val uid = doc.getString("userId") ?: doc.getString("a") ?: "0"
-                val type = ComplaintType.valueOf(
-                    doc.getString("type") ?: doc.getString("b") ?: ComplaintType.CUSTOM.name
-                )
-                val subject = doc.getString("subject") ?: doc.getString("c") ?: "0"
-                val body = doc.getString("body") ?: doc.getString("d") ?: "0"
-
-                // Legacy status is in "f" (per screenshot), new status in "status"
-                val status = doc.getString("status")?.toComplaintStatus()
-                    ?: doc.getString("f")?.toComplaintStatus()
-                    ?: doc.getString("e")?.toComplaintStatus()
-                    ?: ComplaintStatus.OPEN
-
-                // Legacy metadata key is "g" (per screenshot), new key is "metadata"
-                @Suppress("UNCHECKED_CAST")
-                val metadata = (doc.get("metadata") ?: doc.get("g")) as? Map<String, Any> ?: emptyMap()
-
-                log.d { "Parsed complaint: id=${doc.id}, status=$status" }
-
-                Complaint(
-                    id = doc.id,
-                    userId = uid,
-                    type = type,
-                    subject = subject,
-                    body = body,
-                    status = status,
-                    metadata = metadata.mapValues { it.value.toString() },
-                    createdAt = doc.extractCreatedAt()
-                )
-            } catch (e: Exception) {
-                log.e(e) { "Error parsing complaint doc: ${doc.id}, ${e.message}" }
-                null
-            }
-        }.sortedBy { it.createdAt }.reversed()
-    }
-
-    override suspend fun getAllComplaints(): List<Complaint> {
-        return try {
-            val snapshot = complaintsCol.get().await()
-            snapshot.documents.mapNotNull { doc ->
-                log.i { "ComplaintParseDebug_data ${doc.data}" }
-                log.i { "ComplaintParseDebug_toString $doc" }
+        return formatDocs
+            .mapNotNull { doc ->
                 try {
-                    val userId = doc.getString("userId") ?: doc.getString("a") ?: "0"
-                    val type = ComplaintType.valueOf(
-                        doc.getString("type") ?: doc.getString("b") ?: ComplaintType.CUSTOM.name
-                    )
+                    // Support both new and legacy single-letter fields
+                    val uid = doc.getString("userId") ?: doc.getString("a") ?: "0"
+                    val type =
+                        ComplaintType.valueOf(
+                            doc.getString("type") ?: doc.getString("b") ?: ComplaintType.CUSTOM.name,
+                        )
                     val subject = doc.getString("subject") ?: doc.getString("c") ?: "0"
                     val body = doc.getString("body") ?: doc.getString("d") ?: "0"
-                    val status = doc.getString("status")?.toComplaintStatus()
-                        ?: doc.getString("f")?.toComplaintStatus()
-                        ?: doc.getString("e")?.toComplaintStatus()
-                        ?: ComplaintStatus.OPEN
+
+                    // Legacy status is in "f" (per screenshot), new status in "status"
+                    val status =
+                        doc.getString("status")?.toComplaintStatus()
+                            ?: doc.getString("f")?.toComplaintStatus()
+                            ?: doc.getString("e")?.toComplaintStatus()
+                            ?: ComplaintStatus.OPEN
+
+                    // Legacy metadata key is "g" (per screenshot), new key is "metadata"
+                    @Suppress("UNCHECKED_CAST")
+                    val metadata = (doc.get("metadata") ?: doc.get("g")) as? Map<String, Any> ?: emptyMap()
+
+                    Complaint(
+                        id = doc.id,
+                        userId = uid,
+                        type = type,
+                        subject = subject,
+                        body = body,
+                        status = status,
+                        metadata = metadata.mapValues { it.value.toString() },
+                        createdAt = doc.extractCreatedAt(),
+                    )
+                } catch (_: Exception) {
+                    log.e { "Failed to parse a complaint document" }
+                    null
+                }
+            }.sortedBy { it.createdAt }
+            .reversed()
+    }
+
+    override suspend fun getAllComplaints(): List<Complaint> =
+        try {
+            val snapshot = complaintsCol.get().await()
+            snapshot.documents.mapNotNull { doc ->
+                try {
+                    val userId = doc.getString("userId") ?: doc.getString("a") ?: "0"
+                    val type =
+                        ComplaintType.valueOf(
+                            doc.getString("type") ?: doc.getString("b") ?: ComplaintType.CUSTOM.name,
+                        )
+                    val subject = doc.getString("subject") ?: doc.getString("c") ?: "0"
+                    val body = doc.getString("body") ?: doc.getString("d") ?: "0"
+                    val status =
+                        doc.getString("status")?.toComplaintStatus()
+                            ?: doc.getString("f")?.toComplaintStatus()
+                            ?: doc.getString("e")?.toComplaintStatus()
+                            ?: ComplaintStatus.OPEN
 
                     @Suppress("UNCHECKED_CAST")
                     val metadata = (doc.get("metadata") ?: doc.get("g")) as? Map<String, Any> ?: emptyMap()
@@ -144,30 +143,31 @@ class ComplaintFirestoreDataSource(
                         body = body,
                         status = status,
                         metadata = metadata.mapValues { it.value.toString() },
-                        createdAt = doc.extractCreatedAt()
+                        createdAt = doc.extractCreatedAt(),
                     )
-                } catch (e: Exception) {
-                    log.e(e) { "failed to parse doc ${doc.id}: ${e.message}" }
+                } catch (_: Exception) {
+                    log.e { "Failed to parse a complaint document" }
                     null
                 }
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            log.e(e) { "failed to fetch all complaints: ${e.message}" }
+        } catch (_: Exception) {
+            log.e { "Failed to fetch complaints" }
             emptyList()
         }
-    }
 
     override suspend fun updateComplaint(complaint: Complaint) {
         val dto = ComplaintDto.fromDomain(complaint)
-        complaintsCol.document(complaint.id)
+        complaintsCol
+            .document(complaint.id)
             .set(dto)
             .await()
     }
 
     override suspend fun deleteComplaint(complaintId: String) {
-        complaintsCol.document(complaintId)
+        complaintsCol
+            .document(complaintId)
             .delete()
             .await()
     }
@@ -181,46 +181,41 @@ class ComplaintFirestoreDataSource(
      * we preserve that behaviour and just convert `Date -> Instant` at the boundary via
      * `Instant.fromEpochMilliseconds(date.time)`.
      */
-    private fun DocumentSnapshot.extractCreatedAt(logTag: String = "CreatedAtParser"): Instant {
-        val docId = id
-
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "ReturnCount")
+    private fun DocumentSnapshot.extractCreatedAt(): Instant {
         // try multiple legacy keys in addition to canonical "createdAt"
-        val raw = get("createdAt")
-            ?: get("e")        // legacy screenshot shows createdAt stored at "e"
-            ?: get("created_at")
-            ?: get("timestamp")
-            ?: get("time")
+        val raw =
+            get("createdAt")
+                ?: get("e") // legacy screenshot shows createdAt stored at "e"
+                ?: get("created_at")
+                ?: get("timestamp")
+                ?: get("time")
 
-        // pretty date formatter for logs (UTC ISO)
-        val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
-
-        log.d { "$logTag doc=$docId createdAt raw=${raw?.toString() ?: "null"} type=${raw?.javaClass?.name ?: "null"}" }
+        // ISO parser used for historical string-shaped timestamps.
+        val isoFmt =
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
 
         // 1) direct Date (if stored as java.util.Date)
         getDate("createdAt")?.let {
-            log.d { "$logTag doc=$docId branch=getDate(createdAt) -> ${isoFmt.format(it)}" }
             return it.toKotlinInstant()
         }
         // Also try legacy key "e" as Date
         (get("e") as? Date)?.let {
-            log.d { "$logTag doc=$docId branch=getDate(e) -> ${isoFmt.format(it)}" }
             return it.toKotlinInstant()
         }
 
         // 2) Firestore Timestamp -> Date
         try {
             getTimestamp("createdAt")?.toDate()?.let {
-                log.d { "$logTag doc=$docId branch=getTimestamp(createdAt) -> ${isoFmt.format(it)}" }
                 return it.toKotlinInstant()
             }
             getTimestamp("e")?.toDate()?.let {
-                log.d { "$logTag doc=$docId branch=getTimestamp(e) -> ${isoFmt.format(it)}" }
                 return it.toKotlinInstant()
             }
-        } catch (t: Throwable) {
-            log.w(t) { "$logTag doc=$docId getTimestamp() failed: ${t.message}" }
+        } catch (_: Throwable) {
+            // continue with legacy raw shapes
         }
 
         // 3) raw value handling (Number / Map / String)
@@ -228,14 +223,10 @@ class ComplaintFirestoreDataSource(
             is Number -> {
                 val n = raw.toLong()
                 val date = if (n > 1_000_000_000_000L) Date(n) else Date(n * 1000)
-                val kind = if (n > 1_000_000_000_000L) "millis" else "seconds"
-                log.d { "$logTag doc=$docId branch=Number ($kind) n=$n -> ${isoFmt.format(date)}" }
                 return date.toKotlinInstant()
             }
 
             is Map<*, *> -> {
-                log.d { "$logTag doc=$docId branch=Map keys=${raw.keys}" }
-
                 val seconds =
                     (raw["seconds"] as? Number)?.toLong()
                         ?: (raw["_seconds"] as? Number)?.toLong()
@@ -245,19 +236,19 @@ class ComplaintFirestoreDataSource(
 
                 if (seconds != null) {
                     val date = Date(seconds * 1000 + nanos / 1_000_000)
-                    log.d { "$logTag doc=$docId parsed map -> seconds=$seconds nanos=$nanos -> ${isoFmt.format(date)}" }
                     return date.toKotlinInstant()
                 }
 
                 val nested = raw["time"] as? Map<*, *>
                 if (nested != null) {
-                    val s = (nested["seconds"] as? Number)?.toLong()
-                        ?: (nested["_seconds"] as? Number)?.toLong()
-                    val ns = (nested["nanoseconds"] as? Number)?.toInt()
-                        ?: (nested["_nanoseconds"] as? Number)?.toInt() ?: 0
+                    val s =
+                        (nested["seconds"] as? Number)?.toLong()
+                            ?: (nested["_seconds"] as? Number)?.toLong()
+                    val ns =
+                        (nested["nanoseconds"] as? Number)?.toInt()
+                            ?: (nested["_nanoseconds"] as? Number)?.toInt() ?: 0
                     if (s != null) {
                         val date = Date(s * 1000 + ns / 1_000_000)
-                        log.d { "$logTag doc=$docId parsed nested time -> ${isoFmt.format(date)}" }
                         return date.toKotlinInstant()
                     }
                 }
@@ -266,52 +257,48 @@ class ComplaintFirestoreDataSource(
             is String -> {
                 // try parse ISO8601-ish strings
                 try {
-                    val parsed = try {
-                        isoFmt.parse(raw)
-                    } catch (_: Exception) {
-                        null
-                    }
+                    val parsed =
+                        try {
+                            isoFmt.parse(raw)
+                        } catch (_: Exception) {
+                            null
+                        }
                     if (parsed != null) {
-                        log.d { "$logTag doc=$docId branch=String(ISO) -> ${isoFmt.format(parsed)}" }
                         return parsed.toKotlinInstant()
                     }
 
                     // try a more human-readable fallback (e.g. "1 November 2025 at 15:21:32 UTC+2")
                     // We'll try a few common patterns
-                    val altFormats = listOf(
-                        "d MMMM yyyy 'at' HH:mm:ss 'UTC'XXX",
-                        "d MMMM yyyy 'at' HH:mm:ss 'UTC'Z",
-                        "d MMMM yyyy 'at' HH:mm:ss",
-                        "yyyy-MM-dd HH:mm:ss",
-                        "yyyy/MM/dd HH:mm:ss"
-                    )
+                    val altFormats =
+                        listOf(
+                            "d MMMM yyyy 'at' HH:mm:ss 'UTC'XXX",
+                            "d MMMM yyyy 'at' HH:mm:ss 'UTC'Z",
+                            "d MMMM yyyy 'at' HH:mm:ss",
+                            "yyyy-MM-dd HH:mm:ss",
+                            "yyyy/MM/dd HH:mm:ss",
+                        )
                     for (fmt in altFormats) {
                         try {
                             val sdf = SimpleDateFormat(fmt, Locale.US)
                             val p = sdf.parse(raw)
                             if (p != null) {
-                                log.d { "$logTag doc=$docId branch=String(alt:$fmt) -> ${isoFmt.format(p)}" }
                                 return p.toKotlinInstant()
                             }
-                        } catch (_: Exception) { /* continue */ }
+                        } catch (_: Exception) {
+                            // continue
+                        }
                     }
-                } catch (t: Throwable) {
-                    log.w(t) { "$logTag doc=$docId string parse failed: ${t.message}" }
+                } catch (_: Throwable) {
+                    // use current-time fallback below
                 }
             }
 
-            null -> {
-                log.d { "$logTag doc=$docId createdAt is null" }
-            }
-
-            else -> {
-                log.d { "$logTag doc=$docId createdAt unknown raw class: ${raw.javaClass.name}" }
-            }
+            null -> Unit
+            else -> Unit
         }
 
         // fallback: current time
         val fallback = Date()
-        log.w { "$logTag doc=$docId branch=fallback -> ${isoFmt.format(fallback)}" }
         return fallback.toKotlinInstant()
     }
 
@@ -333,18 +320,19 @@ class ComplaintFirestoreDataSource(
         val metadata: Map<String, Any>? = null,
     ) {
         companion object {
-            fun fromDomain(domain: Complaint): ComplaintDto = ComplaintDto(
-                userId = domain.userId,
-                type = domain.type.name,
-                subject = domain.subject,
-                body = domain.body,
-                status = domain.status.name,
-                metadata = domain.metadata,
-                // Upstream let `@ServerTimestamp` fill this in on writes; we pass null on send
-                // (server populates it). When `domain.createdAt` is non-null (e.g. updates from
-                // the admin VM) we forward the converted Date.
-                createdAt = domain.createdAt?.toJavaDate(),
-            )
+            fun fromDomain(domain: Complaint): ComplaintDto =
+                ComplaintDto(
+                    userId = domain.userId,
+                    type = domain.type.name,
+                    subject = domain.subject,
+                    body = domain.body,
+                    status = domain.status.name,
+                    metadata = domain.metadata,
+                    // Upstream let `@ServerTimestamp` fill this in on writes; we pass null on send
+                    // (server populates it). When `domain.createdAt` is non-null (e.g. updates from
+                    // the admin VM) we forward the converted Date.
+                    createdAt = domain.createdAt?.toJavaDate(),
+                )
         }
     }
 }

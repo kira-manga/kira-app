@@ -13,23 +13,28 @@ import co.touchlab.kermit.Logger
  * Verbatim port from legacy `:shared/iosMain/.../core/crash/CrashReporter.ios.kt`.
  */
 class IosCrashReporter : CrashReporter {
-
     private val log = Logger.withTag(TAG)
 
-    override fun recordException(throwable: Throwable, context: Map<String, String>) {
-        log.e(throwable) { "recordException(context=$context) — no-op on iOS" }
+    override fun recordException(
+        throwable: Throwable,
+        context: Map<String, String>,
+    ) {
+        log.e { "Non-fatal exception reached the no-op Kotlin iOS crash adapter" }
     }
 
     override fun log(message: String) {
-        log.d { "log($message) — no-op on iOS" }
+        log.d { "Crash breadcrumb received by the no-op Kotlin iOS adapter" }
     }
 
     override fun setUserId(id: String?) {
-        log.d { "setUserId($id) — no-op on iOS" }
+        log.d { "Crash user ID ignored by the Kotlin iOS adapter" }
     }
 
-    override fun setCustomKey(key: String, value: String) {
-        log.d { "setCustomKey($key, $value) — no-op on iOS" }
+    override fun setCustomKey(
+        key: String,
+        value: String,
+    ) {
+        log.d { "Crash custom key ignored by the Kotlin iOS adapter" }
     }
 
     private companion object {
