@@ -225,7 +225,8 @@ dependencies {
     implementation(libs.play.review)
     implementation(libs.play.review.ktx)
 
-    // Android-only image extras (also depended on by composeApp; declared here so app's own composables resolve them too)
+    // Android-only image extras (also depended on by composeApp; declared here so app's own
+    // composables resolve them too).
     implementation(libs.telephoto.zoomable.image.coil3)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

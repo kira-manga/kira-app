@@ -61,7 +61,11 @@ class KtorRemoteConfigSourceTest {
             val source =
                 KtorRemoteConfigSource(
                     HttpClient(engine),
-                    SourceRemoteConfiguration.create("https://api.example.test", "1.0.0", mapOf("test-key" to "public")),
+                    SourceRemoteConfiguration.create(
+                        "https://api.example.test",
+                        "1.0.0",
+                        mapOf("test-key" to "public"),
+                    ),
                     store,
                 )
 

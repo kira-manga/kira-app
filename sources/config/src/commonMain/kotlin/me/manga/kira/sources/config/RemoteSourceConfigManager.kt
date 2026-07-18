@@ -60,6 +60,7 @@ class RemoteSourceConfigManager(
 
     override fun activeDocument(): SourceConfigDocument = active.value
 
+    @Suppress("TooGenericExceptionCaught") // Boundary converts every unexpected operational failure into AppResult.
     override suspend fun refresh(): AppResult<SourceConfigDocument> =
         refreshLock.withLock {
             val previous = updateState.value

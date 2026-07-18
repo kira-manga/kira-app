@@ -75,8 +75,12 @@ gradle.taskGraph.whenReady {
                     "Use -PallowUnconfiguredSourceRemote=true only for non-shipping build-path validation.",
             )
         }
-        val uri = runCatching { URI(baseUrl) }.getOrElse { throw GradleException("Invalid source-config base URL", it) }
-        if (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null || uri.query != null || uri.fragment != null) {
+        val uri =
+            runCatching { URI(baseUrl) }
+                .getOrElse { throw GradleException("Invalid source-config base URL", it) }
+        val hasSecureAuthority = uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null
+        val hasCleanLocation = uri.query == null && uri.fragment == null
+        if (!hasSecureAuthority || !hasCleanLocation) {
             throw GradleException("Source-config base URL must be credential-free HTTPS without query or fragment")
         }
         val keyIds = mutableSetOf<String>()
@@ -91,7 +95,12 @@ gradle.taskGraph.whenReady {
                 KeyFactory.getInstance("Ed25519").generatePublic(
                     X509EncodedKeySpec(Base64.getDecoder().decode(entry.substring(separator + 1))),
                 )
-            }.getOrElse { throw GradleException("Source-config pin '$keyId' is not a Base64 X.509 Ed25519 public key", it) }
+            }.getOrElse {
+                throw GradleException(
+                    "Source-config pin '$keyId' is not a Base64 X.509 Ed25519 public key",
+                    it,
+                )
+            }
         }
     }
 }
@@ -267,7 +276,7 @@ kotlin {
             implementation(libs.crashkios.crashlytics)
         }
 
-        val desktopMain = getByName("desktopMain") {
+        getByName("desktopMain") {
             dependencies {
                 implementation(compose.desktop.currentOs)
 
