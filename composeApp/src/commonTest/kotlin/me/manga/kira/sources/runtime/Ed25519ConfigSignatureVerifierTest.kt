@@ -22,7 +22,15 @@ class Ed25519ConfigSignatureVerifierTest {
         assertFalse(verifier.verify(document.copy(metadata = document.metadata.copy(revision = 99))))
         assertFalse(verifier.verify(document.copy(metadata = document.metadata.copy(checksum = "0".repeat(64)))))
         assertFalse(
-            verifier.verify(document.copy(metadata = document.metadata.copy(previousRevision = 99, previousChecksum = "1".repeat(64)))),
+            verifier.verify(
+                document.copy(
+                    metadata =
+                        document.metadata.copy(
+                            previousRevision = 99,
+                            previousChecksum = "1".repeat(64),
+                        ),
+                ),
+            ),
         )
         assertFalse(verifier.verify(document.copy(metadata = document.metadata.copy(signatureBase64 = "not-base64"))))
     }

@@ -81,7 +81,11 @@ class KtorRemoteConfigSourceTest {
             assertFailsWith<IllegalArgumentException> {
                 KtorRemoteConfigSource(
                     HttpClient(MockEngine { respondError(HttpStatusCode.OK) }),
-                    SourceRemoteConfiguration.create("https://user:secret@api.example.test", "1.0.0", mapOf("key" to "public")),
+                    SourceRemoteConfiguration.create(
+                        "https://user:secret@api.example.test",
+                        "1.0.0",
+                        mapOf("key" to "public"),
+                    ),
                     EmptyConfigStore,
                 )
             }

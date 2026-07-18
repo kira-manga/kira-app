@@ -58,7 +58,8 @@ fun configJson(
 ): String {
     val src =
         sources.joinToString(",") { s ->
-            """{"api":"${s.api}","language":"en","baseUrl":"https://${s.api}.test","priority":${s.priority},"displayName":"${s.label}","engine":"legacy"}"""
+            """{"api":"${s.api}","language":"en","baseUrl":"https://${s.api}.test",""" +
+                """"priority":${s.priority},"displayName":"${s.label}","engine":"legacy"}"""
         }
     val timestamp = generatedAt?.let { ""","generatedAt":"$it"""" }.orEmpty()
     return """{"schemaVersion":$schemaVersion,"revision":$revision$timestamp,"sources":[$src]}"""

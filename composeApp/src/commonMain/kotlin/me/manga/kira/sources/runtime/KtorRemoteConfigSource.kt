@@ -37,7 +37,9 @@ class KtorRemoteConfigSource(
         }
         response.headers["Content-Length"]?.toLongOrNull()?.let { check(it <= MAX_DOCUMENT_BYTES) }
         val bytes = response.body<ByteArray>()
-        check(bytes.size.toLong() <= MAX_DOCUMENT_BYTES) { "source-config document exceeds the configured size limit" }
+        check(bytes.size.toLong() <= MAX_DOCUMENT_BYTES) {
+            "source-config document exceeds the configured size limit"
+        }
         val previousRevision = response.headers["X-Config-Previous-Revision"]?.toLong()
         val previousChecksum = response.headers["X-Config-Previous-Checksum"]
         require((previousRevision == null) == (previousChecksum == null)) {
@@ -61,7 +63,9 @@ class KtorRemoteConfigSource(
     }
 
     private fun io.ktor.client.statement.HttpResponse.requiredHeader(name: String): String =
-        requireNotNull(headers[name]?.takeIf { it.isNotBlank() }) { "source-config response is missing $name" }
+        requireNotNull(headers[name]?.takeIf { it.isNotBlank() }) {
+            "source-config response is missing $name"
+        }
 
     private fun endpoint(baseUrl: String): String {
         val parsed = Url(baseUrl)
