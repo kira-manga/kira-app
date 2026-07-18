@@ -7,9 +7,8 @@ import me.manga.kira.sources.contracts.model.SourceConfigDocument
 /**
  * Owns the lifecycle of "which config document is active right now". At construction the active
  * document resolves to the bundled asset only; any cached or remote document is folded in solely by
- * [refresh] (the cache read is suspend and cannot run in the constructor). In Stage-0 remote refresh
- * is DISABLED by default and [refresh] has no production caller, so the manager only ever surfaces
- * the bundled document — this interface describes the full shape without turning the dynamic path on.
+ * [refresh] (the cache read is suspend and cannot run in the constructor). Production calls [refresh]
+ * during startup; an unset remote origin safely leaves the manager on its verified cache or bundle.
  *
  * Resolution precedence is always: verified+valid remote/cached document with the highest [revision]
  * wins; on any failure (no network, bad signature, failed validation) the manager falls back to the
@@ -29,7 +28,7 @@ interface SourceUpdateManager {
     suspend fun refresh(): AppResult<SourceConfigDocument>
 }
 
-/** Observable status of the update manager, for diagnostics/settings UI (not consumed in Stage-0). */
+/** Observable status of the update manager for diagnostics and settings UI. */
 sealed interface UpdateState {
     /** Active document resolved from bundled/cache; no refresh in flight. */
     data class Active(val revision: Long, val source: Origin) : UpdateState
@@ -44,8 +43,7 @@ sealed interface UpdateState {
      * The highest-precedence document **accepted** in the last refresh (bundled < cache < remote) —
      * NOT a per-source provenance guarantee. When a higher-priority bundled source overrides a remote
      * one ([me.manga.kira.sources.config] merge), origin may still report `REMOTE` even though the
-     * winning source came from bundled. Per-source provenance is a Stage-1 concern; in Stage-0 this
-     * value is diagnostic only and not consumed.
+     * winning source came from bundled. Per-source provenance is not represented by this diagnostic.
      */
     enum class Origin { BUNDLED, CACHE, REMOTE }
 }

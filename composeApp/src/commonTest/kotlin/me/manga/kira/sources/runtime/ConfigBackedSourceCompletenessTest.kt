@@ -71,7 +71,8 @@ class ConfigBackedSourceCompletenessTest {
     @Test
     fun every_config_backed_api_is_reachable_through_the_real_registry_assembly() {
         // The exact production wiring from SourcesGenericModule, minus Room (bundled tier only —
-        // which is also the production reality: the cache tier is never written while remote = null).
+        // The isolated registry test intentionally exercises only its bundled floor; signed remote
+        // delivery is covered by KtorRemoteConfigSourceTest and RemoteSourceConfigManagerTest.
         val manager =
             RemoteSourceConfigManager(
                 store = BundledSourceConfigStore(CONFIG_BACKED_SOURCES_JSON),

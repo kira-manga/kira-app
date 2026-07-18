@@ -6,6 +6,7 @@ import me.manga.kira.data.local.dao.SourceConfigCacheDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
+import me.manga.kira.sources.config.RemoteConfigSource
 import me.manga.kira.sources.config.RemoteSourceConfigManager
 import me.manga.kira.sources.contracts.CloudflareChallengeSignal
 import me.manga.kira.sources.contracts.ConfigSignatureVerifier
@@ -25,11 +26,13 @@ import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.sources.runtime.DataStoreHeaderStore
 import me.manga.kira.sources.runtime.DbSourceBaseUrlProvider
 import me.manga.kira.sources.runtime.DefaultSourceRegistry
-import me.manga.kira.sources.runtime.DenyRemoteSignatureVerifier
+import me.manga.kira.sources.runtime.Ed25519ConfigSignatureVerifier
 import me.manga.kira.sources.runtime.KtorHttpExecutor
+import me.manga.kira.sources.runtime.KtorRemoteConfigSource
 import me.manga.kira.sources.runtime.RegistryChapterPageProvider
 import me.manga.kira.sources.runtime.RoomSourceConfigStore
 import me.manga.kira.sources.runtime.SourceDebugFlags
+import me.manga.kira.sources.runtime.SourceRemoteConfiguration
 import me.manga.kira.sources_repositry.BaseMangaRepository
 import org.koin.dsl.module
 
@@ -37,7 +40,7 @@ import org.koin.dsl.module
  * Assembles the generic-sources subsystem at the composition root and binds the
  * [SourceRegistry]/[SourceUpdateManager] facades the rest of the app consumes.
  *
- * **Stage-1 posture — registry live for the config-backed sources, remote config still disabled:**
+ * **Signed remote posture — registry live with a bundled floor and authenticated updates:**
  *  - The registry is BOUND and CONSUMED by four `:data` repositories (HomeFeed / Search /
  *    MangaDetails / ChapterPages), each branching on `sourceRegistry.isConfigBacked(api)`.
  *  - The config-backed sources (every `engine="generic"` stanza in the validated bundled document —
@@ -45,8 +48,8 @@ import org.koin.dsl.module
  *    generic-ONLY (no legacy fallback — see [DefaultSourceRegistry]); every other source
  *    stays on the legacy adapter.
  *  - The bundled config ([CONFIG_BACKED_SOURCES_JSON]) ships in the signed binary (trusted, no detached
- *    signature). Remote config is DISABLED (`remote = null`); signatures are denied
- *    ([DenyRemoteSignatureVerifier]) so a remote document could never be trusted even if wired.
+ *    signature). The HTTPS client is wired in every build, while an empty release base URL makes it
+ *    a no-op. Cache and remote envelopes are accepted only after Ed25519 verification with pinned keys.
  *  - The real [DataStoreHeaderStore] lets the generic clients reuse captured Cloudflare headers.
  *
  * Dependencies pulled from the merged graph: the shared Ktor [HttpClient], the legacy
@@ -65,7 +68,11 @@ val sourcesGenericModule =
         // Sources Migration Phase 1: durable Room-backed config cache (was in-memory only). The bundled
         // config-backed JSON stays the trusted floor; remote-accepted documents now persist across launches.
         single<ConfigStore> { RoomSourceConfigStore(get<SourceConfigCacheDao>(), CONFIG_BACKED_SOURCES_JSON) }
-        single<ConfigSignatureVerifier> { DenyRemoteSignatureVerifier() }
+        single { SourceRemoteConfiguration.fromGenerated() }
+        single<ConfigSignatureVerifier> {
+            Ed25519ConfigSignatureVerifier(get<SourceRemoteConfiguration>().pinnedPublicKeys)
+        }
+        single<RemoteConfigSource> { KtorRemoteConfigSource(get<HttpClient>(), get(), get<ConfigStore>()) }
         // Live base URL, read from the same sources DB row the legacy path follows (server-pushed /
         // user-edited domain moves) — so a config-backed source whose host moves keeps working without remote config.
         single<SourceBaseUrlProvider> { DbSourceBaseUrlProvider(get<SourcesDao>()) }
@@ -79,12 +86,16 @@ val sourcesGenericModule =
             val logger = KermitLoggerAdapter()
             CloudflareChallengeSignal { api, url ->
                 if (SourceDebugFlags.DISABLE_LEGACY_FALLBACK_FOR_GENERIC_TESTING) {
-                    logger.w("GenericSourceTest", "$api → Cloudflare challenge at $url (needs a solved cf_clearance cookie + matching UA)")
+                    logger.w(
+                        "GenericSourceTest",
+                        "$api → Cloudflare challenge at $url " +
+                            "(needs a solved cf_clearance cookie + matching UA)",
+                    )
                 }
             }
         }
 
-        // Config lifecycle — remote disabled. The bundled config-backed config resolves at construction
+        // Config lifecycle. The bundled config-backed config resolves at construction
         // (resolveBundled), so activeDocument() returns the config-backed descriptors without any refresh().
         single<SourceUpdateManager> {
             val logger = KermitLoggerAdapter()
@@ -92,7 +103,7 @@ val sourcesGenericModule =
                 store = get(),
                 verifier = get(),
                 validator = get(),
-                remote = null,
+                remote = get(),
                 // Document rejection used to be fully silent — for the BUNDLED tier that means every
                 // generic source vanishes at once (validation is all-or-nothing). Log it loudly so a
                 // blank source catalog is diagnosable in the field (2026-07 source-lifecycle

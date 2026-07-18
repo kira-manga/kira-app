@@ -163,14 +163,14 @@ website copy together.
 
 ## Source delivery boundary
 
-Production source definitions remain bundled in the signed app. `RemoteSourceConfigManager` is
-constructed with `remote = null` and `DenyRemoteSignatureVerifier`; no backend source-config URL or
-remote synchronization is wired. Updating a source definition requires an app release. See
-`BUNDLED_SOURCES_RELEASE.md`.
+Production retains bundled source definitions as its recovery floor and also wires an authenticated
+backend update path. The release build must supply a credential-free HTTPS backend origin; pinned
+Ed25519 public keys are compiled into the app. Invalid, stale, rolled-back, oversized, or unavailable
+remote documents fall back to the last verified cache or bundle. See `BUNDLED_SOURCES_RELEASE.md`.
 
 ## Deliberate non-actions
 
 - No public deployment, DNS mutation, Play upload, TestFlight upload, or App Store submission was
   performed during this preparation.
-- No `kira-backend` integration or backend source authority was added.
+- No production backend URL was guessed or deployed; the release pipeline must supply the real origin.
 - Desktop remains a shared-code compile/test target, not a product-release target.

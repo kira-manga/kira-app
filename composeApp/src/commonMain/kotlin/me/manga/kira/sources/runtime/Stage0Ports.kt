@@ -1,20 +1,15 @@
 package me.manga.kira.sources.runtime
 
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
+import kotlinx.serialization.json.Json
 import me.manga.kira.data.local.dao.SourceConfigCacheDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.entity.SourceConfigCacheEntity
 import me.manga.kira.sources.contracts.ConfigSignatureVerifier
 import me.manga.kira.sources.contracts.ConfigStore
+import me.manga.kira.sources.contracts.SignedConfigDocument
 import me.manga.kira.sources.contracts.SourceBaseUrlProvider
-
-/**
- * The Stage-0 implementations of the config/header ports. They are intentionally minimal and SAFE:
- * the generic engine path is dark, so these exist to (a) make the registry graph resolvable and
- * (b) encode the safe default posture for the parts that ARE wired (config resolution, signatures).
- * Each carries a note on what its Stage-1 replacement does.
- */
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 /**
  * Bundled config storage for the Stage-1 config-backed: [readBundled] returns the in-binary config-backed config
@@ -23,19 +18,21 @@ import me.manga.kira.sources.contracts.SourceBaseUrlProvider
  * the engine + every other source via the legacy adapter.
  *
  * The in-memory [cache] backs [readCached]/[writeCached] and holds the last *remote-accepted* document.
- * Since remote is disabled in Stage-1, nothing ever writes it, so it stays null — bundled is the only
- * resolved source. Reading a signed remote document and persisting the cache to disk is Stage-2.
+ * This in-memory implementation is retained for isolated tests. Production uses
+ * [RoomSourceConfigStore] so a verified envelope survives process death.
  */
 class BundledSourceConfigStore(
     private val bundledJson: String,
 ) : ConfigStore {
-    // In-memory only; remote is disabled so there is a single writer (refresh) in practice.
-    private var cache: String? = null
+    // In-memory only; callers still receive the complete signed envelope.
+    private var cache: SignedConfigDocument? = null
 
     override fun readBundled(): String? = bundledJson
-    override suspend fun readCached(): String? = cache
-    override suspend fun writeCached(raw: String) {
-        cache = raw
+
+    override suspend fun readCached(): SignedConfigDocument? = cache
+
+    override suspend fun writeCached(document: SignedConfigDocument) {
+        cache = document
     }
 }
 
@@ -45,9 +42,9 @@ class BundledSourceConfigStore(
  * remote-accepted document survives process death — the previous [BundledSourceConfigStore] kept it
  * in memory only, so it was lost on every relaunch and never even written (remote disabled).
  *
- * The `ConfigStore` port speaks a raw JSON string; we store it verbatim (forward-compatible with
- * newer remote schemas) plus a cheaply-extracted `revision` for diagnostics. The store stays origin-
- * agnostic: whether the raw came from a future signed API or a manual write, [readCached] returns it.
+ * The `ConfigStore` port persists the complete signed envelope, including the exact payload and
+ * detached metadata needed to authenticate it again after process death. The Room column name stays
+ * `rawJson` for schema compatibility, but its value is the serialized envelope rather than bare JSON.
  */
 @OptIn(ExperimentalTime::class)
 class RoomSourceConfigStore(
@@ -56,36 +53,32 @@ class RoomSourceConfigStore(
 ) : ConfigStore {
     override fun readBundled(): String? = bundledJson
 
-    override suspend fun readCached(): String? = dao.getCached()?.rawJson
+    override suspend fun readCached(): SignedConfigDocument? =
+        dao.getCached()?.rawJson?.let { raw ->
+            runCatching { CACHE_JSON.decodeFromString(SignedConfigDocument.serializer(), raw) }.getOrNull()
+        }
 
-    override suspend fun writeCached(raw: String) {
+    override suspend fun writeCached(document: SignedConfigDocument) {
         dao.upsert(
             SourceConfigCacheEntity(
-                rawJson = raw,
-                revision = extractRevision(raw),
+                rawJson = CACHE_JSON.encodeToString(SignedConfigDocument.serializer(), document),
+                revision = document.metadata.revision,
                 updatedAtEpochMs = Clock.System.now().toEpochMilliseconds(),
             ),
         )
     }
 
     private companion object {
-        // Lightweight, dependency-free revision read for the diagnostics column. The authoritative
-        // revision/merge handling stays in RemoteSourceConfigManager (which re-parses the raw doc).
-        private val REVISION = Regex("\"revision\"\\s*:\\s*(-?\\d+)")
-        fun extractRevision(raw: String): Long =
-            REVISION.find(raw)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: -1L
+        val CACHE_JSON = Json { ignoreUnknownKeys = false }
     }
 }
 
 /**
- * Stage-0 signature policy: deny everything. No remote source is wired, but even if one were, an
- * unverifiable document must never be trusted — so until a real public key is provisioned, every
- * non-bundled document is rejected and the bundled/cached document stays active. Fail-closed.
- *
- * Stage-1 replacement verifies a detached Ed25519/RSA signature against a pinned public key.
+ * Test/development fallback signature policy. Production DI uses [Ed25519ConfigSignatureVerifier];
+ * this implementation remains useful for deliberately disconnected stores and denies everything.
  */
 class DenyRemoteSignatureVerifier : ConfigSignatureVerifier {
-    override fun verify(payload: ByteArray, signatureBase64: String): Boolean = false
+    override fun verify(document: SignedConfigDocument): Boolean = false
 }
 
 /**

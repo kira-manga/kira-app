@@ -51,6 +51,7 @@ kermit = "2.1.0"
 crashkios = "0.9.0"
 ksoup = "0.2.6"
 okio = "3.17.0"
+cryptography = "0.6.0"
 
 # Android-only (preserved from source)
 # 1.19.0 unlocked 2026-06-29 by the compileSdk 37 + AGP 9.2.1 bump (it needs compileSdk 37 + AGP ≥ 9.1.0
@@ -108,6 +109,9 @@ compose-components-ui-tooling-preview = { group = "org.jetbrains.compose.compone
 
 # Kotlin / KMP common
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+cryptography-core = { group = "dev.whyoleg.cryptography", name = "cryptography-core", version.ref = "cryptography" }
+cryptography-provider-optimal = { group = "dev.whyoleg.cryptography", name = "cryptography-provider-optimal", version.ref = "cryptography" }
+cryptography-provider-jdk-bc = { group = "dev.whyoleg.cryptography", name = "cryptography-provider-jdk-bc", version.ref = "cryptography" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 # kotlinx-coroutines-play-services: provides `Task<T>.await()` for Play Services / Firebase APIs.
@@ -238,3 +242,4 @@ compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-m
 androidx-room = { id = "androidx.room", version.ref = "room" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
+cryptography = { id = "dev.whyoleg.cryptography", version.ref = "cryptography" }

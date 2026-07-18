@@ -9,7 +9,7 @@
 
 ## 1. Where source configs live (and where they don't)
 
-**Sources are compiled into the app. There are no runtime JSON files.**
+**Sources have a bundled floor and an authenticated remote update channel.**
 
 - The entire source catalog is ONE JSON document embedded as a Kotlin string constant:
   **`CONFIG_BACKED_SOURCES_JSON`** in
@@ -23,18 +23,16 @@
   (`DefaultSourceRegistry.isConfigBacked`). The former compiled `CONFIG_BACKED_APIS` allow-list
   was deleted — do not reintroduce one (the `GenericSourcesDecouplingGuardTest` build gate
   fails on it).
-- The app **never scans a directory, never reads a `.json` file, and never fetches configs from
-  the network**. The remote-config channel exists in code (`RemoteSourceConfigManager`) but is
-  double-locked off: `remote = null` in `di/SourcesGenericModule.kt`, and
-  `DenyRemoteSignatureVerifier` rejects every signature. The Room `source_config_cache` table is
-  the (currently never-written) cache tier for a future signed remote feed.
-- Consequence: **every source change — add, edit, disable, remove — requires editing
-  `BundledSourcesConfig.kt`, rebuilding, and shipping a release.** Users get the change when they
-  update the app. There is no server-side switch.
+- The app never scans a config directory. It begins with the bundled document, then may accept the
+  backend's exact JSON bytes only after pinned-key Ed25519 verification and validation. Room stores
+  the complete signed envelope and re-verifies it after restart.
+- Changes should still be made to the bundled floor for the next app release. A signed backend
+  publication can update already-installed builds once the production HTTPS origin is configured;
+  incompatible schema or strategy changes still require an app release first.
 
 **When is the document loaded?** Once per process. `RemoteSourceConfigManager` parses + validates
 the bundled string eagerly in its constructor (first Koin injection, at app start); `App.kt`'s
-startup block then calls `refresh()` (a near-no-op with remote disabled) and `syncSourceCatalog()`
+startup block then calls `refresh()` (which checks the verified cache and configured remote) and `syncSourceCatalog()`
 (projects config truth into the Room `sources` table — enabled/baseUrl/siteState — and migrates
 stored URLs on host moves). The parsed document is held in memory; it is never re-read during the
 app's lifetime.

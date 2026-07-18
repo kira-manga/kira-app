@@ -9,6 +9,10 @@ registry of **legacy** scrapers only.
 This document is the audit record and the binding plan. Read together with
 `docs/sources/ADDING_SOURCES.md` (authoring guide — updated at the end of this campaign).
 
+> Historical note (2026-07-18): references below to remote delivery being disabled describe the
+> state during this completed decoupling campaign. Signed remote delivery is now implemented with a
+> pinned-key Ed25519 verifier; see `docs/release/BUNDLED_SOURCES_RELEASE.md` for the live posture.
+
 ---
 
 ## 1. Complete `MangaSource` dependency map

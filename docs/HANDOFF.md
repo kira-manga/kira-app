@@ -80,10 +80,14 @@ Two paths, decided per-api by `SourceRegistry.isConfigBacked`:
   parity-verified before shipping.
 - **33 legacy scraper sources** (`:sources:legacy`), hidden from Home tabs, represented in the
   config document as metadata-only `engine:"legacy"` stanzas.
-- The remote SourceRegistry endpoint (`/source/35`) is **deleted** (2026-07-04): the bundled JSON
-  config is the single authority for every source's existence/hosts/state/lifecycle. A host move
-  ships as a config edit + release. Fail-closed: remote config fetch disabled, all signatures
-  rejected — signed remote delivery is the Stage-1 roadmap item.
+- The legacy SourceRegistry endpoint (`/source/35`) remains deleted. The app now consumes the
+  backend's `/api/v1/source-config/document` endpoint through a bounded HTTPS client, authenticates
+  the exact document/checksum/revision/chain metadata with Ed25519 and an app-pinned X.509 public
+  key, re-verifies the Room-cached envelope after every restart, and rejects stale/rolled-back or
+  malformed artifacts. Network, HTTP, signature, or validation failure preserves the last verified
+  cache and bundled floor. Release builds set the origin with `KIRA_SOURCE_CONFIG_BASE_URL` or
+  `-Pkira.sourceConfigBaseUrl` and pins with `KIRA_SOURCE_CONFIG_PINNED_KEYS` or
+  `-Pkira.sourceConfigPinnedKeys`; Android release assembly fails when either is absent.
 - Permanently legacy-only (impossible as pure config — do not attempt): Dilar (AES), MangaPark
   (GraphQL), Promanga/Prochan (canvas de-scramble), Mangatuk (rebuilt SPA), Lavatoons, Comick,
   Manhwatop, Batcave, Batoto.
@@ -208,7 +212,8 @@ machines (see `CLAUDE.md`).
 - **Desktop**: DB directory migration, background refresh, KCEF bundling for macOS, AVIF — all
   parked (Desktop unshipped).
 - **Package-rename pass** for relocated `:shared` files — deliberately not done.
-- Sources Stage-1/2: signed remote config delivery, image strategies, `minAppVersion` gating.
+- Sources follow-ups: image strategies and `minAppVersion` gating. Signed remote delivery is
+  implemented; production activation still needs the deployed backend HTTPS base URL.
 - C2 accepted cross-platform gaps (from the retired inventory): new-chapter **system**
   notifications are Android-only (`NotificationPresenter` has zero call sites); inline What's-New
   video is poster-only everywhere; Material You dynamic color is a no-op everywhere; in-app update
@@ -253,3 +258,6 @@ machines (see `CLAUDE.md`).
 11. Android Auto Backup/device transfer excludes all app persistence domains so DB/settings/manga
     files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.
+13. The signed source-config client is fail-closed and compiled for Android/iOS, but the production
+    backend HTTPS origin is not available in this workspace; set `KIRA_SOURCE_CONFIG_BASE_URL` in the
+    release environment after deployment. The production verification public key is already pinned.
