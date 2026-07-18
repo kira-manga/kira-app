@@ -60,7 +60,13 @@ class RemoteSourceConfigManagerTest {
     fun remote_with_bad_signature_is_ignored_and_not_cached() =
         runTest {
             val store = FakeConfigStore(bundled = configJson(1, listOf(SourceJson("a", label = "bundled-a"))))
-            val remote = RemoteConfigSource { signedConfig(configJson(9, listOf(SourceJson("a", label = "remote-a"))), revision = 9) }
+            val remote =
+                RemoteConfigSource {
+                    signedConfig(
+                        configJson(9, listOf(SourceJson("a", label = "remote-a"))),
+                        revision = 9,
+                    )
+                }
             val manager = RemoteSourceConfigManager(store, FakeVerifier(result = false), SchemaOnlyValidator(), remote)
 
             val effective = manager.refresh().valueOrFail()
@@ -110,7 +116,11 @@ class RemoteSourceConfigManagerTest {
             val store =
                 FakeConfigStore(
                     bundled = configJson(1, listOf(SourceJson("a", label = "bundled-a"))),
-                    cached = signedConfig(configJson(2, listOf(SourceJson("a", label = "untrusted-cache"))), revision = 2),
+                    cached =
+                        signedConfig(
+                            configJson(2, listOf(SourceJson("a", label = "untrusted-cache"))),
+                            revision = 2,
+                        ),
                 )
             val manager = RemoteSourceConfigManager(store, FakeVerifier(false), SchemaOnlyValidator())
 
@@ -163,7 +173,14 @@ class RemoteSourceConfigManagerTest {
     @Test
     fun bundled_priority_pin_resists_remote_override() =
         runTest {
-            val store = FakeConfigStore(bundled = configJson(1, listOf(SourceJson("a", priority = 100, label = "bundled-pinned"))))
+            val store =
+                FakeConfigStore(
+                    bundled =
+                        configJson(
+                            1,
+                            listOf(SourceJson("a", priority = 100, label = "bundled-pinned")),
+                        ),
+                )
             val remoteRaw = configJson(9, listOf(SourceJson("a", priority = 0, label = "remote-a")))
             val manager =
                 RemoteSourceConfigManager(
@@ -201,7 +218,13 @@ class RemoteSourceConfigManagerTest {
             val cached = signedConfig(cachedRaw, revision = 8, checksum = "checksum-8")
             val store = FakeConfigStore(bundled = configJson(4, emptyList()), cached = cached)
             val replay = signedConfig(configJson(8, listOf(SourceJson("a", label = "replay"))), revision = 8)
-            val manager = RemoteSourceConfigManager(store, FakeVerifier(true), SchemaOnlyValidator(), RemoteConfigSource { replay })
+            val manager =
+                RemoteSourceConfigManager(
+                    store,
+                    FakeVerifier(true),
+                    SchemaOnlyValidator(),
+                    RemoteConfigSource { replay },
+                )
 
             assertEquals("cache-a", manager.refresh().valueOrFail().label("a"))
             assertEquals(0, store.writeCount)
@@ -227,7 +250,12 @@ class RemoteSourceConfigManagerTest {
     @Test
     fun remote_may_skip_revisions_when_its_chain_does_not_rollback_past_cache() =
         runTest {
-            val cached = signedConfig(configJson(8, listOf(SourceJson("a", label = "cache-a"))), revision = 8, checksum = "checksum-8")
+            val cached =
+                signedConfig(
+                    configJson(8, listOf(SourceJson("a", label = "cache-a"))),
+                    revision = 8,
+                    checksum = "checksum-8",
+                )
             val store = FakeConfigStore(bundled = configJson(4, emptyList()), cached = cached)
             val remote =
                 signedConfig(
@@ -236,7 +264,13 @@ class RemoteSourceConfigManagerTest {
                     previousRevision = 10,
                     previousChecksum = "checksum-10",
                 )
-            val manager = RemoteSourceConfigManager(store, FakeVerifier(true), SchemaOnlyValidator(), RemoteConfigSource { remote })
+            val manager =
+                RemoteSourceConfigManager(
+                    store,
+                    FakeVerifier(true),
+                    SchemaOnlyValidator(),
+                    RemoteConfigSource { remote },
+                )
 
             assertEquals("remote-a", manager.refresh().valueOrFail().label("a"))
             assertEquals(1, store.writeCount)

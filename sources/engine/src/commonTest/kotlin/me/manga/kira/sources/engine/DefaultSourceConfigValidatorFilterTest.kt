@@ -242,6 +242,22 @@ class DefaultSourceConfigValidatorFilterTest {
             ),
             "default: 'high' is not numeric",
         )
+        for (nonFinite in listOf("NaN", "Infinity", "-Infinity")) {
+            assertRejected(
+                source(
+                    listOf(
+                        FilterDefinition(
+                            id = "min_rating",
+                            label = "Min rating",
+                            type = "number",
+                            default = nonFinite,
+                            request = FilterRequestSpec(target = "query", param = "min_rating"),
+                        ),
+                    ),
+                ),
+                "not numeric",
+            )
+        }
     }
 
     @Test
@@ -454,6 +470,25 @@ class DefaultSourceConfigValidatorFilterTest {
             select(id = "bbb", request = FilterRequestSpec(target = "query", param = "bbb"))
                 .copy(visibleWhen = listOf(FilterConditionSpec(filter = "aaa", anyOf = listOf("latest"))))
         assertRejected(source(listOf(a, b)), "dependency cycle detected")
+    }
+
+    @Test
+    fun oversized_deep_visibility_chains_are_rejected_without_recursive_traversal() {
+        val filters =
+            List(DefaultSourceConfigValidator.MAX_FILTERS + 1) { index ->
+                select(
+                    id = "f$index",
+                    request = FilterRequestSpec(target = "query", param = "f$index"),
+                    visibleWhen =
+                        if (index == 0) {
+                            emptyList()
+                        } else {
+                            listOf(FilterConditionSpec(filter = "f${index - 1}", anyOf = listOf("latest")))
+                        },
+                )
+            }
+
+        assertRejected(source(filters), "maximum is ${DefaultSourceConfigValidator.MAX_FILTERS}")
     }
 
     @Test

@@ -259,5 +259,6 @@ machines (see `CLAUDE.md`).
     files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.
 13. The signed source-config client is fail-closed and compiled for Android/iOS, but the production
-    backend HTTPS origin is not available in this workspace; set `KIRA_SOURCE_CONFIG_BASE_URL` in the
-    release environment after deployment. The production verification public key is already pinned.
+    backend HTTPS origin and signing ceremony are not configured; set `KIRA_SOURCE_CONFIG_BASE_URL`
+    and `KIRA_SOURCE_CONFIG_PINNED_KEYS` in the release environment only after the backend's protected
+    private key and matching public key exist. No orphan placeholder pin is accepted.
