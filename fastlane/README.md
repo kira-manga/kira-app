@@ -1,0 +1,56 @@
+fastlane documentation
+----
+
+# Installation
+
+Make sure you have the latest version of the Xcode command line tools installed:
+
+```sh
+xcode-select --install
+```
+
+For _fastlane_ installation instructions, see [Installing _fastlane_](https://docs.fastlane.tools/#installing-fastlane)
+
+# Available Actions
+
+## iOS
+
+### ios prepare_testflight
+
+```sh
+[bundle exec] fastlane ios prepare_testflight
+```
+
+Verify App Store Connect, create required TestFlight groups, and reserve the next build number
+
+### ios upload_external
+
+```sh
+[bundle exec] fastlane ios upload_external
+```
+
+Upload, process, and submit the signed IPA for external TestFlight review
+
+### ios finalize_external
+
+```sh
+[bundle exec] fastlane ios finalize_external
+```
+
+Process and submit an already-uploaded build for external TestFlight review
+
+### ios record_testflight_status
+
+```sh
+[bundle exec] fastlane ios record_testflight_status
+```
+
+Record the non-sensitive App Store Connect processing and external-review state
+
+----
+
+This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
+
+More information about _fastlane_ can be found on [fastlane.tools](https://fastlane.tools).
+
+The documentation of _fastlane_ can be found on [docs.fastlane.tools](https://docs.fastlane.tools).

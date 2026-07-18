@@ -146,6 +146,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun SettingsRoute(
     navController: NavController,
     @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
+    crashDiagnosticsEnabled: Boolean = false,
 ) {
     val viewModel: SettingsViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
@@ -158,28 +159,38 @@ fun SettingsRoute(
         // iOS background finalize engine); show it only there. `backupPlatformName()` is the app's
         // canonical per-target platform-name seam (also used by BackupReworkModule).
         lowPowerCompressionToggleVisible = backupPlatformName() == "ios",
-        onNavigate = { destination ->
-            val target: Screen = when (destination) {
-                SettingsDestination.SOURCE_MANAGEMENT ->
-                    sourceManagementDestination(sourceAccessState)
-                SettingsDestination.THEME -> Screen.ThemeRework
-                SettingsDestination.STATISTICS -> Screen.StatisticsRework
-                SettingsDestination.LANGUAGE -> Screen.LanguageRework
-                SettingsDestination.ABOUT -> Screen.AboutRework
-                SettingsDestination.COMPLAINT ->
-                    if (Admin.isAdmin) Screen.ComplaintAdminRework else Screen.ComplaintRework
-                SettingsDestination.WHATSNEW -> Screen.WhatsNewRework
-                SettingsDestination.DOWNLOADS -> Screen.DownloadsRework
-                // Full-library mode: empty scopeJson (the scoped variants navigate from the
-                // Details / Library export actions, not from here).
-                SettingsDestination.BACKUP -> Screen.BackupRework()
-            }
+        crashDiagnosticsVisible = crashDiagnosticsEnabled,
+        onNavigate = navigate@{ destination ->
+            val target = settingsDestination(
+                destination = destination,
+                sourceAccessState = sourceAccessState,
+                crashDiagnosticsEnabled = crashDiagnosticsEnabled,
+            ) ?: return@navigate
             navController.safeNavigate(target)
         },
         // GAP-SET-12 parity (#5) — wire the platform IntentLauncher so the Feedback dialog's social
         // links open externally. (The admin "Testing Mode" toggle was removed per owner request.)
         onOpenUrl = { url -> launcher.openUrl(url) },
     )
+}
+
+internal fun settingsDestination(
+    destination: SettingsDestination,
+    sourceAccessState: SourceAccessState,
+    crashDiagnosticsEnabled: Boolean,
+): Screen? = when (destination) {
+    SettingsDestination.SOURCE_MANAGEMENT -> sourceManagementDestination(sourceAccessState)
+    SettingsDestination.THEME -> Screen.ThemeRework
+    SettingsDestination.STATISTICS -> Screen.StatisticsRework
+    SettingsDestination.LANGUAGE -> Screen.LanguageRework
+    SettingsDestination.ABOUT -> Screen.AboutRework
+    SettingsDestination.COMPLAINT ->
+        if (Admin.isAdmin) Screen.ComplaintAdminRework else Screen.ComplaintRework
+    SettingsDestination.WHATSNEW -> Screen.WhatsNewRework
+    SettingsDestination.DOWNLOADS -> Screen.DownloadsRework
+    SettingsDestination.BACKUP -> Screen.BackupRework()
+    SettingsDestination.CRASH_DIAGNOSTICS ->
+        Screen.CrashDiagnostics.takeIf { crashDiagnosticsEnabled }
 }
 
 internal fun sourceManagementDestination(sourceAccessState: SourceAccessState): Screen =

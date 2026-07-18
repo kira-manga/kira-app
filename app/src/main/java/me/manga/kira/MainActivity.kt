@@ -12,20 +12,17 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import co.touchlab.kermit.Logger
-import com.google.android.gms.ads.MobileAds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.manga.kira.App
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.navigation.push.NotificationRouter
 import me.manga.kira.navigation.push.PushPayloadParser
 import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
-import me.manga.kira.platform.consent.ConsentFlowClient
 import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.update.AppUpdateClient
@@ -33,7 +30,7 @@ import org.koin.core.context.GlobalContext
 
 /**
  * Android launcher. Thin wrapper that hands rendering off to the shared `App()` composable, plus
- * the per-launch Google Play / UMP wiring that native's `MainActivity.onCreate` performs.
+ * the per-launch Google Play wiring that native's `MainActivity.onCreate` performs.
  *
  * - `installSplashScreen()` MUST be called BEFORE `super.onCreate()` to bridge the launcher
  *   theme `Theme.App.Starting` into the AndroidX SplashScreen API.
@@ -45,14 +42,12 @@ import org.koin.core.context.GlobalContext
  *   edge-to-edge and lets `Theme.KiraManga` (navigationBarColor=transparent +
  *   windowTranslucentNavigation=true) govern the bars, so matching the call matches native chrome.
  *
- * After `setContent`, three best-effort flows mirror native MainActivity.onCreate (each wrapped so
+ * After `setContent`, two best-effort flows mirror native MainActivity.onCreate (each wrapped so
  * a failure never crashes launch):
  *  1. **In-app update** — `AppUpdateClient.checkForUpdate()` then `startFlexibleUpdate()` when an
  *     update is available (native: `AppUpdateHelper.checkForUpdate(immediate=false)` → flexible).
  *  2. **In-app review** — `InAppReviewClient.requestReview()`, gated on the same "20 days since
  *     first open" threshold native's `ReviewManagerHelper.shouldShowReview()` enforces.
- *  3. **UMP consent** — `requestConsentInfoUpdate()` → `loadAndShowConsentFormIfRequired()`, then
- *     `MobileAds.initialize` gated on `canRequestAds()` (native: `requestConsent` → `initializeAds`).
  *
  * The SPIs are resolved from Koin's `GlobalContext` (this Activity is not a `KoinComponent`), the
  * same out-of-graph resolution pattern `DownloadWorkerV2` uses. The foreground Activity these
@@ -63,15 +58,14 @@ import org.koin.core.context.GlobalContext
  * queues behind the lifecycle transaction and may safely start from `onCreate`.
  */
 class MainActivity : ComponentActivity() {
-
     private val log = Logger.withTag("MainActivity")
 
-    // Activity-scoped scope for the per-launch Play / UMP flows, cancelled in onDestroy — the same
+    // Activity-scoped scope for the per-launch Play flows, cancelled in onDestroy — the same
     // shape native uses (`reviewScope = CoroutineScope(Dispatchers.IO + Job())`, cancelled in
     // onDestroy). SupervisorJob so one flow failing doesn't cancel the siblings.
     private val launchFlowScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // Once-guard: the consent/review flows run once per Activity instance, deferred to the first
+    // Once-guard: the review flow runs once per Activity instance, deferred to the first
     // onResume so ActivityHolder is guaranteed to be populated (see class KDoc).
     private var activityScopedFlowsStarted = false
 
@@ -91,7 +85,7 @@ class MainActivity : ComponentActivity() {
         // no AndroidX scrim. See class KDoc for why this replaces enableEdgeToEdge().
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
-            App()
+            App(crashDiagnosticsEnabled = BuildConfig.CRASH_DIAGNOSTICS_ENABLED)
         }
 
         // A notification cold-launch delivers the tapped payload as this Activity's launch intent.
@@ -123,7 +117,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (!activityScopedFlowsStarted) {
             activityScopedFlowsStarted = true
-            startConsentFlow()
             startInAppReviewFlow()
         }
         // Native parity: MainActivity.onResume calls AppUpdateHelper.resumeUpdate → completeUpdate
@@ -189,26 +182,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Mirrors native `requestConsent` → `loadAndShowForm` → `initializeAds` (gated on canRequestAds). */
-    private fun startConsentFlow() {
-        launchFlowScope.launch(Dispatchers.IO) {
-            try {
-                val consent = GlobalContext.get().get<ConsentFlowClient>()
-                consent.requestConsentInfoUpdate()
-                consent.loadAndShowConsentFormIfRequired()
-                if (consent.canRequestAds()) {
-                    // Native calls MobileAds.initialize only once consent permits ad requests. We do
-                    // NOT build any ad views here — ad rendering is a separate, out-of-scope item.
-                    withContext(Dispatchers.Main) {
-                        MobileAds.initialize(this@MainActivity) { /* no-op */ }
-                    }
-                }
-            } catch (t: Throwable) {
-                log.e(t) { "UMP consent flow failed" }
-            }
-        }
-    }
-
     /**
      * Mirrors native `launchInAppReviewSafely()`. The KMP `InAppReviewClient.requestReview()` does
      * NOT self-gate (unlike native's `ReviewManagerHelper.launchInAppReview`, which checks
@@ -227,12 +200,13 @@ class MainActivity : ComponentActivity() {
                 val storage = GlobalContext.get().get<SecureStorage>()
                 val firstOpen = storage.get(KEY_FIRST_OPEN_TIME)?.toLongOrNull() ?: 0L
                 val now = System.currentTimeMillis()
-                val shouldShow = if (firstOpen == 0L) {
-                    storage.put(KEY_FIRST_OPEN_TIME, now.toString())
-                    false
-                } else {
-                    now - firstOpen >= REVIEW_MIN_AGE_MILLIS
-                }
+                val shouldShow =
+                    if (firstOpen == 0L) {
+                        storage.put(KEY_FIRST_OPEN_TIME, now.toString())
+                        false
+                    } else {
+                        now - firstOpen >= REVIEW_MIN_AGE_MILLIS
+                    }
                 if (shouldShow) {
                     GlobalContext.get().get<InAppReviewClient>().requestReview()
                 }
@@ -250,12 +224,13 @@ class MainActivity : ComponentActivity() {
      */
     private fun handlePushIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
-        val data = buildMap {
-            for (key in extras.keySet()) {
-                val value = extras.getString(key) ?: continue
-                put(key, value)
+        val data =
+            buildMap {
+                for (key in extras.keySet()) {
+                    val value = extras.getString(key) ?: continue
+                    put(key, value)
+                }
             }
-        }
         if (data.isEmpty()) return
         val destination = PushPayloadParser.parse(data) ?: return
         try {
@@ -290,10 +265,11 @@ class MainActivity : ComponentActivity() {
      */
     private fun maybeRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val alreadyGranted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
+        val alreadyGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
         if (alreadyGranted) return
         try {
             val prefs = GlobalContext.get().get<SharedPrefsHelper>()

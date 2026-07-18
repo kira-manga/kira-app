@@ -1,12 +1,17 @@
+@file:Suppress("FunctionNaming", "ktlint:standard:function-naming")
+
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
-import me.manga.kira.platform.intent.IntentLauncher
+import kotlinx.coroutines.launch
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
+import me.manga.kira.platform.intent.IntentLauncher
+import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.presentation.about.AboutEffect
 import me.manga.kira.presentation.about.AboutViewModel
 import me.manga.kira.ui.about.AboutScreen
@@ -139,11 +144,14 @@ fun AboutReworkScreenRoute(
 ) {
     val viewModel: AboutViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
+    val reviewClient: InAppReviewClient = koinInject()
+    val coroutineScope = rememberCoroutineScope()
     AboutScreen(
         viewModel = viewModel,
         onEffect = { effect ->
             when (effect) {
                 is AboutEffect.OpenPlayStorePage -> launcher.openPlayStorePage(effect.packageName)
+                AboutEffect.RequestReview -> coroutineScope.launch { reviewClient.requestReview() }
                 is AboutEffect.OpenUrl -> launcher.openUrl(effect.url)
                 AboutEffect.NavigateToWhatsNew -> navController.safeNavigate(Screen.WhatsNewRework)
             }

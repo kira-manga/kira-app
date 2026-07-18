@@ -1,46 +1,42 @@
 package me.manga.kira.di
 
 import com.russhwolf.settings.ObservableSettings
-import me.manga.kira.platform.ads.AdProvider
-import me.manga.kira.platform.ads.DesktopAdProvider
+import me.manga.kira.domain.auth.DesktopUserIdProvider
+import me.manga.kira.domain.auth.UserIdProvider
+import me.manga.kira.domain.device.DesktopDeviceInfoProvider
+import me.manga.kira.domain.device.DeviceInfoProvider
 import me.manga.kira.platform.analytics.AnalyticsClient
 import me.manga.kira.platform.analytics.DesktopAnalyticsClient
+import me.manga.kira.platform.background.BackgroundExecutionGuard
 import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.cbz.DefaultCbzReader
 import me.manga.kira.platform.cbz.DesktopCbzWriter
-import me.manga.kira.platform.consent.ConsentFlowClient
-import me.manga.kira.platform.consent.DesktopConsentFlowClient
+import me.manga.kira.platform.connectivity.ConnectivityObserver
+import me.manga.kira.platform.connectivity.DesktopConnectivityObserver
 import me.manga.kira.platform.crash.CrashReporter
 import me.manga.kira.platform.crash.DesktopCrashReporter
 import me.manga.kira.platform.device.DesktopDeviceTierProbe
 import me.manga.kira.platform.device.DeviceTierProbe
 import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.platform.filesystem.DesktopAppFileSystem
 import me.manga.kira.platform.filesystem.DesktopFileSizeFormatter
 import me.manga.kira.platform.filesystem.FileSizeFormatter
 import me.manga.kira.platform.image.DesktopDominantColorExtractor
-import me.manga.kira.platform.image.DominantColorExtractor
 import me.manga.kira.platform.image.DesktopImageDecoderRegistry
-import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.platform.image.DesktopScreenshotProvider
+import me.manga.kira.platform.image.DominantColorExtractor
+import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.platform.image.ScreenshotProvider
-import me.manga.kira.platform.filesystem.DesktopAppFileSystem
+import me.manga.kira.platform.intent.DesktopIntentLauncher
+import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.platform.jobs.BackgroundJobScheduler
 import me.manga.kira.platform.jobs.DesktopBackgroundJobScheduler
 import me.manga.kira.platform.locale.DesktopLocaleSwitcher
 import me.manga.kira.platform.locale.LocaleSwitcher
-import me.manga.kira.platform.connectivity.ConnectivityObserver
-import me.manga.kira.platform.connectivity.DesktopConnectivityObserver
 import me.manga.kira.platform.notification.DesktopNotificationPresenter
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.notification.NotificationPresenter
-import me.manga.kira.platform.background.BackgroundExecutionGuard
-import me.manga.kira.platform.version.AppVersionProvider
-import me.manga.kira.platform.version.DesktopAppVersionProvider
-import me.manga.kira.platform.intent.DesktopIntentLauncher
-import me.manga.kira.platform.intent.IntentLauncher
-import me.manga.kira.platform.toast.DesktopToastShower
-import me.manga.kira.platform.toast.ToastShower
 import me.manga.kira.platform.push.DesktopPushTokenProvider
 import me.manga.kira.platform.push.PushTokenProvider
 import me.manga.kira.platform.remote.DesktopRemoteDocStore
@@ -49,15 +45,15 @@ import me.manga.kira.platform.review.DesktopInAppReviewClient
 import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.platform.storage.DesktopSecureStorage
-import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.storage.DesktopSettingsFactory
+import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.storage.SettingsFactory
+import me.manga.kira.platform.toast.DesktopToastShower
+import me.manga.kira.platform.toast.ToastShower
 import me.manga.kira.platform.update.AppUpdateClient
 import me.manga.kira.platform.update.DesktopAppUpdateClient
-import me.manga.kira.domain.auth.DesktopUserIdProvider
-import me.manga.kira.domain.auth.UserIdProvider
-import me.manga.kira.domain.device.DesktopDeviceInfoProvider
-import me.manga.kira.domain.device.DeviceInfoProvider
+import me.manga.kira.platform.version.AppVersionProvider
+import me.manga.kira.platform.version.DesktopAppVersionProvider
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -71,89 +67,87 @@ import org.koin.dsl.module
  * Kermit). Same rationale as iOS: the JVM has no first-party Firebase/AdMob/Play SDKs and the
  * desktop build never serves ads.
  */
-actual fun platformModule(): Module = module {
+actual fun platformModule(): Module =
+    module {
+        // ---- Settings / DataStore (Phase 8.1) ----
+        single<SettingsFactory> { DesktopSettingsFactory() }
+        single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }
+        single { DataStoreHelper(get()) }
 
-    // ---- Settings / DataStore (Phase 8.1) ----
-    single<SettingsFactory> { DesktopSettingsFactory() }
-    single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }
-    single { DataStoreHelper(get()) }
+        // ---- Room database + DAOs ----
+        // Relocated to :data:local `databaseModule()` (strangler-fig Phase 1), added via allSharedModules().
 
-    // ---- Room database + DAOs ----
-    // Relocated to :data:local `databaseModule()` (strangler-fig Phase 1), added via allSharedModules().
+        // ---- Network / connectivity (Phase 8.2) ----
+        single<ConnectivityObserver> { DesktopConnectivityObserver() }
 
-    // ---- Network / connectivity (Phase 8.2) ----
-    single<ConnectivityObserver> { DesktopConnectivityObserver() }
+        // ---- Identity / device metadata (Phase 8.3) ----
+        single<UserIdProvider> { DesktopUserIdProvider() }
+        single<DeviceInfoProvider> { DesktopDeviceInfoProvider() }
 
-    // ---- Identity / device metadata (Phase 8.3) ----
-    single<UserIdProvider> { DesktopUserIdProvider() }
-    single<DeviceInfoProvider> { DesktopDeviceInfoProvider() }
+        // ---- Notifications (Phase 8.4) ----
+        single<NotificationPresenter> { DesktopNotificationPresenter() }
+        // Owner opted iOS-only for download notifications, so Desktop uses no-ops (no per-page tray
+        // spam) and runs freely while minimized (no background assertion needed).
+        single<DownloadNotifier> { DownloadNotifier.NoOp }
+        single<BackgroundExecutionGuard> { BackgroundExecutionGuard.PassThrough }
 
-    // ---- Notifications (Phase 8.4) ----
-    single<NotificationPresenter> { DesktopNotificationPresenter() }
-    // Owner opted iOS-only for download notifications, so Desktop uses no-ops (no per-page tray
-    // spam) and runs freely while minimized (no background assertion needed).
-    single<DownloadNotifier> { DownloadNotifier.NoOp }
-    single<BackgroundExecutionGuard> { BackgroundExecutionGuard.PassThrough }
+        // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
+        single<AppFileSystem> { DesktopAppFileSystem() }
+        single<CbzWriter> { DesktopCbzWriter(get()) }
+        single<CbzReader> { DefaultCbzReader(get(), get()) }
 
-    // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
-    single<AppFileSystem> { DesktopAppFileSystem() }
-    single<CbzWriter> { DesktopCbzWriter(get()) }
-    single<CbzReader> { DefaultCbzReader(get(), get()) }
+        // ---- Background jobs (Phase 8.6) ----
+        single<BackgroundJobScheduler> { DesktopBackgroundJobScheduler() }
 
-    // ---- Background jobs (Phase 8.6) ----
-    single<BackgroundJobScheduler> { DesktopBackgroundJobScheduler() }
+        // ---- Secure storage (Phase 8.7) ----
+        single<SecureStorage> { DesktopSecureStorage() }
 
-    // ---- Secure storage (Phase 8.7) ----
-    single<SecureStorage> { DesktopSecureStorage() }
+        // ---- Analytics / crash / push / remote doc store (Phase 8.8 — Desktop noops) ----
+        single<AnalyticsClient> { DesktopAnalyticsClient() }
+        single<CrashReporter> { DesktopCrashReporter() }
+        single<PushTokenProvider> { DesktopPushTokenProvider() }
+        single<RemoteDocStore> { DesktopRemoteDocStore() }
+        // No Firebase In-App Messaging on the JVM (no SDK) — nothing to bind.
 
-    // ---- Analytics / crash / push / remote doc store (Phase 8.8 — Desktop noops) ----
-    single<AnalyticsClient> { DesktopAnalyticsClient() }
-    single<CrashReporter> { DesktopCrashReporter() }
-    single<PushTokenProvider> { DesktopPushTokenProvider() }
-    single<RemoteDocStore> { DesktopRemoteDocStore() }
-    // No Firebase In-App Messaging on the JVM (no SDK) — nothing to bind.
+        // ---- Update / review (Phase 8.9 — Desktop noops) ----
+        single<AppUpdateClient> { DesktopAppUpdateClient() }
+        single<InAppReviewClient> { DesktopInAppReviewClient() }
 
-    // ---- Ads / update / review / consent (Phase 8.9 — Desktop noops) ----
-    single<AdProvider> { DesktopAdProvider() }
-    single<AppUpdateClient> { DesktopAppUpdateClient() }
-    single<InAppReviewClient> { DesktopInAppReviewClient() }
-    single<ConsentFlowClient> { DesktopConsentFlowClient() }
+        // ---- Imaging (Phase 8.10 + 8.11) ----
+        single<ImageDecoderRegistry> { DesktopImageDecoderRegistry() }
+        single<ScreenshotProvider> { DesktopScreenshotProvider(get()) } // injects the bound :platform AppFileSystem singleton
+        single<DominantColorExtractor> { DesktopDominantColorExtractor() }
 
-    // ---- Imaging (Phase 8.10 + 8.11) ----
-    single<ImageDecoderRegistry> { DesktopImageDecoderRegistry() }
-    single<ScreenshotProvider> { DesktopScreenshotProvider(get()) }  // injects the bound :platform AppFileSystem singleton
-    single<DominantColorExtractor> { DesktopDominantColorExtractor() }
+        // ---- Locale switch (PC-7 cutover to :platform) ----
+        // Consumed by :data LanguageRepositoryImpl.setLanguage. Desktop impl is an intentional no-op
+        // (JVM-wide Locale; takes effect on next launch). Replaces the legacy :shared
+        // core.locale.applyApplicationLocale top-level fun.
+        single<LocaleSwitcher> { DesktopLocaleSwitcher() }
 
-    // ---- Locale switch (PC-7 cutover to :platform) ----
-    // Consumed by :data LanguageRepositoryImpl.setLanguage. Desktop impl is an intentional no-op
-    // (JVM-wide Locale; takes effect on next launch). Replaces the legacy :shared
-    // core.locale.applyApplicationLocale top-level fun.
-    single<LocaleSwitcher> { DesktopLocaleSwitcher() }
+        // ---- External intents / toasts / app version (Phase 10.2) ----
+        // Desktop uses java.awt.Desktop.browse() for URLs, Kermit for "toasts" (no native primitive),
+        // and resolves the version from the `yami.app.version` system property, then the JAR manifest
+        // Implementation-Version, with "1.0.0-desktop" as a dev fallback.
+        single<IntentLauncher> { DesktopIntentLauncher() }
+        single<ToastShower> { DesktopToastShower() }
+        single<AppVersionProvider> { DesktopAppVersionProvider() }
 
-    // ---- External intents / toasts / app version (Phase 10.2) ----
-    // Desktop uses java.awt.Desktop.browse() for URLs, Kermit for "toasts" (no native primitive),
-    // and resolves the version from the `yami.app.version` system property, then the JAR manifest
-    // Implementation-Version, with "1.0.0-desktop" as a dev fallback.
-    single<IntentLauncher> { DesktopIntentLauncher() }
-    single<ToastShower> { DesktopToastShower() }
-    single<AppVersionProvider> { DesktopAppVersionProvider() }
+        // ---- Downloaded-chapter folder-size formatting (Phase 10.3, Wave 2A) ----
+        single<FileSizeFormatter> { DesktopFileSizeFormatter() }
 
-    // ---- Downloaded-chapter folder-size formatting (Phase 10.3, Wave 2A) ----
-    single<FileSizeFormatter> { DesktopFileSizeFormatter() }
+        // ---- Device tier probe (PC-1) ----
+        // Bound symmetrically with the Android/iOS actuals so the first commonMain consumer of
+        // DeviceTierProbe resolves on every target. Desktop reads the sun-bean total physical memory.
+        single<DeviceTierProbe> { DesktopDeviceTierProbe() }
 
-    // ---- Device tier probe (PC-1) ----
-    // Bound symmetrically with the Android/iOS actuals so the first commonMain consumer of
-    // DeviceTierProbe resolves on every target. Desktop reads the sun-bean total physical memory.
-    single<DeviceTierProbe> { DesktopDeviceTierProbe() }
+        // Desktop download-engine bindings (ChapterPageResolver, ChapterFinalizer + the coroutine-queue
+        // CoroutineDownloadRepositoryImpl) moved to :data:download's downloadModule() (strangler-fig
+        // Phase 4), loaded via allReworkModules(). They resolve the :platform CbzWriter / AppFileSystem /
+        // background facades + the Ktor HttpClient by type across the combined graph.
 
-    // Desktop download-engine bindings (ChapterPageResolver, ChapterFinalizer + the coroutine-queue
-    // CoroutineDownloadRepositoryImpl) moved to :data:download's downloadModule() (strangler-fig
-    // Phase 4), loaded via allReworkModules(). They resolve the :platform CbzWriter / AppFileSystem /
-    // background facades + the Ktor HttpClient by type across the combined graph.
-
-    // ComplaintRepository (Desktop: Ktor Firestore REST) moved to :data complaintRepositoryModule()
-    // (strangler-fig Phase 5), loaded via allReworkModules().
-}
+        // ComplaintRepository (Desktop: Ktor Firestore REST) moved to :data complaintRepositoryModule()
+        // (strangler-fig Phase 5), loaded via allReworkModules().
+    }
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster170.staleKdocSweep.cascade,

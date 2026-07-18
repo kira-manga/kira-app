@@ -10,13 +10,9 @@ import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
-import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -27,6 +23,9 @@ import me.manga.kira.presentation.features.complaint.model.Complaint
 import me.manga.kira.presentation.features.complaint.model.ComplaintStatus
 import me.manga.kira.presentation.features.complaint.model.ComplaintType
 import me.manga.kira.presentation.features.complaint.utils.toComplaintStatus
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /**
  * KMP-portable HTTP-backed implementation of [ComplaintRepository] (Phase 14.x).
@@ -37,13 +36,11 @@ import me.manga.kira.presentation.features.complaint.utils.toComplaintStatus
  * Firebase SDK and the official `firebase-ios-sdk` / `google-cloud-firestore` (JVM admin) routes
  * each require non-trivial cinterop / server-side credentials that are out of scope.
  *
- * Why REST + URL-param API key:
- *   - The collection's Firestore security rules already permit unauthenticated reads + writes for
- *     `complaints_v2` (the original Android client never attached auth either; the API key alone
- *     identifies the project). Using `?key=` mirrors the unauthenticated browser/REST pattern and
- *     avoids dragging in an auth provider on iOS/Desktop just to get parity.
- *   - The API key is shipped in `google-services.json` (i.e. inside the APK), so it's already
- *     public — embedding it here adds no new exposure surface.
+ * The REST client intentionally has no authentication provider today. Its Firebase project ID and
+ * API key are injected from the target's local Firebase configuration and are never committed in
+ * source. Firestore rules therefore remain the only server-side enforcement boundary; the feature
+ * must not be enabled in a public release until those rules and the admin authorization model have
+ * been reviewed and deployed.
  *
  * Behavioural parity with the Android impl:
  *   - `sendComplaint` POSTs to the collection root and returns the auto-generated doc ID. The
@@ -67,40 +64,43 @@ import me.manga.kira.presentation.features.complaint.utils.toComplaintStatus
  * shapes were Firebase SDK quirks, not literal stored bytes.
  */
 @OptIn(ExperimentalTime::class)
+@Suppress("TooManyFunctions")
 class ComplaintFirestoreRestDataSource(
     private val httpClient: HttpClient,
+    private val config: ComplaintFirestoreRestConfig,
 ) : ComplaintRepository {
-
     private val log = Logger.withTag("ComplaintFirestoreRest")
 
     override suspend fun sendComplaint(complaint: Complaint): String {
+        val endpoints = configuredEndpoints()
         val body = FirestoreDocumentWrite(fields = complaint.toFirestoreFields())
-        log.d { "POST $COLLECTION_URL" }
-        val response: HttpResponse = httpClient.post(COLLECTION_URL) {
-            parameter("key", API_KEY)
-            contentType(ContentType.Application.Json)
-            setBody(body)
-        }
+        val response: HttpResponse =
+            httpClient.post(endpoints.collectionUrl) {
+                parameter("key", endpoints.apiKey)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
         if (!response.status.isSuccess()) {
-            val raw = response.bodyAsText()
-            log.e { "sendComplaint failed: HTTP ${response.status.value} body=$raw" }
+            log.e { "sendComplaint failed: HTTP ${response.status.value}" }
             error("Firestore create failed: HTTP ${response.status.value}")
         }
         val doc: FirestoreDocument = response.body()
-        return doc.parseDocId().also { log.d { "Created complaint id=$it" } }
+        return doc.parseDocId()
     }
 
     override suspend fun getAllComplaints(): List<Complaint> {
         return try {
+            val endpoints = configuredEndpoints()
             val docs = mutableListOf<FirestoreDocument>()
             var pageToken: String? = null
             do {
                 val token = pageToken
-                val response: HttpResponse = httpClient.get(COLLECTION_URL) {
-                    parameter("key", API_KEY)
-                    parameter("pageSize", PAGE_SIZE)
-                    if (token != null) parameter("pageToken", token)
-                }
+                val response: HttpResponse =
+                    httpClient.get(endpoints.collectionUrl) {
+                        parameter("key", endpoints.apiKey)
+                        parameter("pageSize", PAGE_SIZE)
+                        if (token != null) parameter("pageToken", token)
+                    }
                 if (!response.status.isSuccess()) {
                     log.e { "getAllComplaints failed: HTTP ${response.status.value}" }
                     return emptyList()
@@ -111,72 +111,73 @@ class ComplaintFirestoreRestDataSource(
             } while (pageToken != null)
             docs.mapNotNull { doc ->
                 runCatching { doc.toComplaint() }
-                    .onFailure { log.e(it) { "failed to parse doc ${doc.name}: ${it.message}" } }
+                    .onFailure { log.e { "Failed to parse a complaint document" } }
                     .getOrNull()
             }
         } catch (c: CancellationException) {
             throw c
-        } catch (t: Throwable) {
-            log.e(t) { "failed to fetch all complaints: ${t.message}" }
+        } catch (_: Throwable) {
+            log.e { "Failed to fetch complaints" }
             emptyList()
         }
     }
 
     override suspend fun getComplaintsByUser(userId: String): List<Complaint> {
         val trimmedUserId = userId.trim()
-        log.d { "runQuery $RUN_QUERY_URL" }
         return try {
-            val response: HttpResponse = httpClient.post(RUN_QUERY_URL) {
-                parameter("key", API_KEY)
-                contentType(ContentType.Application.Json)
-                setBody(buildUserIdQuery(trimmedUserId))
-            }
+            val endpoints = configuredEndpoints()
+            val response: HttpResponse =
+                httpClient.post(endpoints.runQueryUrl) {
+                    parameter("key", endpoints.apiKey)
+                    contentType(ContentType.Application.Json)
+                    setBody(buildUserIdQuery(trimmedUserId))
+                }
             if (!response.status.isSuccess()) {
-                log.e { "getComplaintsByUser failed: HTTP ${response.status.value} body=${response.bodyAsText()}" }
+                log.e { "getComplaintsByUser failed: HTTP ${response.status.value}" }
                 return emptyList()
             }
             val rows: List<RunQueryRow> = response.body()
-            rows.mapNotNull { it.document }
+            rows
+                .mapNotNull { it.document }
                 .mapNotNull { doc ->
                     runCatching { doc.toComplaint() }
-                        .onFailure { log.e(it) { "failed to parse doc ${doc.name}: ${it.message}" } }
+                        .onFailure { log.e { "Failed to parse a complaint document" } }
                         .getOrNull()
-                }
-                .sortedBy { it.createdAt }
+                }.sortedBy { it.createdAt }
                 .reversed()
         } catch (c: CancellationException) {
             throw c
-        } catch (t: Throwable) {
-            log.e(t) { "failed to fetch user complaints: ${t.message}" }
+        } catch (_: Throwable) {
+            log.e { "Failed to fetch user complaints" }
             emptyList()
         }
     }
 
     override suspend fun updateComplaint(complaint: Complaint) {
-        val docUrl = "$COLLECTION_URL/${complaint.id}"
+        val endpoints = configuredEndpoints()
+        val docUrl = "${endpoints.collectionUrl}/${complaint.id.requireDocumentId()}"
         val body = FirestoreDocumentWrite(fields = complaint.toFirestoreFields())
-        log.d { "PATCH $docUrl" }
-        val response: HttpResponse = httpClient.patch(docUrl) {
-            parameter("key", API_KEY)
-            contentType(ContentType.Application.Json)
-            setBody(body)
-        }
+        val response: HttpResponse =
+            httpClient.patch(docUrl) {
+                parameter("key", endpoints.apiKey)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
         if (!response.status.isSuccess()) {
-            val raw = response.bodyAsText()
-            log.e { "updateComplaint failed: HTTP ${response.status.value} body=$raw" }
+            log.e { "updateComplaint failed: HTTP ${response.status.value}" }
             error("Firestore update failed: HTTP ${response.status.value}")
         }
     }
 
     override suspend fun deleteComplaint(complaintId: String) {
-        val docUrl = "$COLLECTION_URL/$complaintId"
-        log.d { "DELETE $docUrl" }
-        val response: HttpResponse = httpClient.delete(docUrl) {
-            parameter("key", API_KEY)
-        }
+        val endpoints = configuredEndpoints()
+        val docUrl = "${endpoints.collectionUrl}/${complaintId.requireDocumentId()}"
+        val response: HttpResponse =
+            httpClient.delete(docUrl) {
+                parameter("key", endpoints.apiKey)
+            }
         if (!response.status.isSuccess()) {
-            val raw = response.bodyAsText()
-            log.e { "deleteComplaint failed: HTTP ${response.status.value} body=$raw" }
+            log.e { "deleteComplaint failed: HTTP ${response.status.value}" }
             error("Firestore delete failed: HTTP ${response.status.value}")
         }
     }
@@ -191,57 +192,68 @@ class ComplaintFirestoreRestDataSource(
      */
     private fun buildUserIdQuery(userId: String): JsonObject {
         val userIdValue = JsonObject(mapOf("stringValue" to JsonPrimitive(userId)))
-        fun fieldFilter(fieldPath: String): JsonObject = JsonObject(
-            mapOf(
-                "fieldFilter" to JsonObject(
-                    mapOf(
-                        "field" to JsonObject(mapOf("fieldPath" to JsonPrimitive(fieldPath))),
-                        "op" to JsonPrimitive("EQUAL"),
-                        "value" to userIdValue,
-                    ),
-                ),
-            ),
-        )
-        val structuredQuery = JsonObject(
-            mapOf(
-                "from" to JsonArray(
-                    listOf(JsonObject(mapOf("collectionId" to JsonPrimitive(COLLECTION_NAME)))),
-                ),
-                "where" to JsonObject(
-                    mapOf(
-                        "compositeFilter" to JsonObject(
+
+        fun fieldFilter(fieldPath: String): JsonObject =
+            JsonObject(
+                mapOf(
+                    "fieldFilter" to
+                        JsonObject(
                             mapOf(
-                                "op" to JsonPrimitive("OR"),
-                                "filters" to JsonArray(
-                                    listOf(fieldFilter("userId"), fieldFilter("a")),
-                                ),
+                                "field" to JsonObject(mapOf("fieldPath" to JsonPrimitive(fieldPath))),
+                                "op" to JsonPrimitive("EQUAL"),
+                                "value" to userIdValue,
                             ),
                         ),
-                    ),
                 ),
-            ),
-        )
+            )
+        val structuredQuery =
+            JsonObject(
+                mapOf(
+                    "from" to
+                        JsonArray(
+                            listOf(JsonObject(mapOf("collectionId" to JsonPrimitive(COLLECTION_NAME)))),
+                        ),
+                    "where" to
+                        JsonObject(
+                            mapOf(
+                                "compositeFilter" to
+                                    JsonObject(
+                                        mapOf(
+                                            "op" to JsonPrimitive("OR"),
+                                            "filters" to
+                                                JsonArray(
+                                                    listOf(fieldFilter("userId"), fieldFilter("a")),
+                                                ),
+                                        ),
+                                    ),
+                            ),
+                        ),
+                ),
+            )
         return JsonObject(mapOf("structuredQuery" to structuredQuery))
     }
 
     /** Domain -> Firestore field map. */
     private fun Complaint.toFirestoreFields(): Map<String, FirestoreField> {
         val createdAtIso = (createdAt ?: Clock.System.now()).toString()
-        val out = mutableMapOf(
-            "userId" to FirestoreField(stringValue = userId),
-            "type" to FirestoreField(stringValue = type.name),
-            "subject" to FirestoreField(stringValue = subject),
-            "body" to FirestoreField(stringValue = body),
-            "status" to FirestoreField(stringValue = status.name),
-            "createdAt" to FirestoreField(timestampValue = createdAtIso),
-        )
-        if (!metadata.isNullOrEmpty()) {
-            val metaFields = metadata.mapValues { (_, v) ->
-                FirestoreField(stringValue = v.toString())
-            }
-            out["metadata"] = FirestoreField(
-                mapValue = FirestoreMap(fields = metaFields),
+        val out =
+            mutableMapOf(
+                "userId" to FirestoreField(stringValue = userId),
+                "type" to FirestoreField(stringValue = type.name),
+                "subject" to FirestoreField(stringValue = subject),
+                "body" to FirestoreField(stringValue = body),
+                "status" to FirestoreField(stringValue = status.name),
+                "createdAt" to FirestoreField(timestampValue = createdAtIso),
             )
+        if (!metadata.isNullOrEmpty()) {
+            val metaFields =
+                metadata.mapValues { (_, v) ->
+                    FirestoreField(stringValue = v.toString())
+                }
+            out["metadata"] =
+                FirestoreField(
+                    mapValue = FirestoreMap(fields = metaFields),
+                )
         }
         return out
     }
@@ -264,11 +276,14 @@ class ComplaintFirestoreRestDataSource(
         val status = (str("status", "f", "e"))?.toComplaintStatus() ?: ComplaintStatus.OPEN
 
         val metadataField = fieldsMap["metadata"] ?: fieldsMap["g"]
-        val metadata: Map<String, Any> = metadataField?.mapValue?.fields
-            ?.mapValues { (_, fv) -> fv.unwrapPrimitiveOrString() }
-            ?: emptyMap()
+        val metadata: Map<String, Any> =
+            metadataField
+                ?.mapValue
+                ?.fields
+                ?.mapValues { (_, fv) -> fv.unwrapPrimitiveOrString() }
+                ?: emptyMap()
 
-        val createdAt: Instant = extractCreatedAt(fieldsMap, docId) ?: Clock.System.now()
+        val createdAt: Instant = extractCreatedAt(fieldsMap) ?: Clock.System.now()
 
         return Complaint(
             id = docId,
@@ -290,19 +305,23 @@ class ComplaintFirestoreRestDataSource(
      * Tries the canonical key first, then the legacy `e` key (the Android impl also accepts `e`
      * as a fallback per the screenshot referenced in `ComplaintFirestoreDataSource`).
      */
-    private fun extractCreatedAt(fields: Map<String, FirestoreField>, docId: String): Instant? {
+    @Suppress("ReturnCount") // Defensive timestamp-shape parsing is clearest with early matches.
+    private fun extractCreatedAt(fields: Map<String, FirestoreField>): Instant? {
         for (key in listOf("createdAt", "e", "created_at", "timestamp", "time")) {
             val field = fields[key] ?: continue
             field.timestampValue?.let { iso ->
                 runCatching { Instant.parse(iso) }
-                    .onFailure { log.w(it) { "doc=$docId failed Instant.parse($key=$iso)" } }
-                    .getOrNull()?.let { return it }
+                    .onFailure { log.w { "A complaint timestamp could not be parsed" } }
+                    .getOrNull()
+                    ?.let { return it }
             }
             field.mapValue?.fields?.let { mapFields ->
-                val seconds = mapFields["seconds"]?.numberAsLong()
-                    ?: mapFields["_seconds"]?.numberAsLong()
-                val nanos = mapFields["nanoseconds"]?.numberAsLong()?.toInt()
-                    ?: mapFields["_nanoseconds"]?.numberAsLong()?.toInt() ?: 0
+                val seconds =
+                    mapFields["seconds"]?.numberAsLong()
+                        ?: mapFields["_seconds"]?.numberAsLong()
+                val nanos =
+                    mapFields["nanoseconds"]?.numberAsLong()?.toInt()
+                        ?: mapFields["_nanoseconds"]?.numberAsLong()?.toInt() ?: 0
                 if (seconds != null) {
                     val millis = seconds * 1000L + nanos / 1_000_000
                     return Instant.fromEpochMilliseconds(millis)
@@ -326,26 +345,47 @@ class ComplaintFirestoreRestDataSource(
         return if (idx >= 0 && idx < n.length - 1) n.substring(idx + 1) else n
     }
 
+    private fun configuredEndpoints(): ComplaintFirestoreEndpoints {
+        val projectId = config.projectId.trim()
+        check(PROJECT_ID_PATTERN.matches(projectId)) { "Complaint Firebase project ID is not configured" }
+        val apiKey = config.apiKey.trim()
+        check(apiKey.isNotEmpty()) { "Complaint Firebase API key is not configured" }
+        val root = "https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents"
+        return ComplaintFirestoreEndpoints(
+            apiKey = apiKey,
+            collectionUrl = "$root/$COLLECTION_NAME",
+            runQueryUrl = "$root:runQuery",
+        )
+    }
+
+    private fun String.requireDocumentId(): String =
+        trim().also { id ->
+            require(DOCUMENT_ID_PATTERN.matches(id)) { "Invalid complaint document ID" }
+        }
+
     companion object {
-        private const val PROJECT_ID = "yami-manga"
-
-        // Public API key — same key shipped in google-services.json (inside the APK).
-        // Used only as the project identifier; rules enforce access control.
-        private const val API_KEY = "AIzaSyDfh6IBNffTbzA-DFJL1B5SDrBDcvx3rnU"
-
         private const val COLLECTION_NAME = "complaints_v2"
 
         // documents.list defaults to a small server page; page through explicitly so the admin
         // "all complaints" view isn't silently truncated once complaints_v2 grows.
         private const val PAGE_SIZE = 300
 
-        private const val COLLECTION_URL =
-            "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/$COLLECTION_NAME"
-
-        private const val RUN_QUERY_URL =
-            "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents:runQuery"
+        private val PROJECT_ID_PATTERN = Regex("[a-z0-9][a-z0-9-]{2,62}")
+        private val DOCUMENT_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,256}")
     }
 }
+
+/** Runtime Firebase identifiers supplied by each target's uncommitted configuration. */
+data class ComplaintFirestoreRestConfig(
+    val projectId: String,
+    val apiKey: String,
+)
+
+private data class ComplaintFirestoreEndpoints(
+    val apiKey: String,
+    val collectionUrl: String,
+    val runQueryUrl: String,
+)
 
 // ---- Firestore REST API DTOs (internal to this file) ----
 
@@ -379,8 +419,7 @@ internal data class FirestoreField(
             ?: ""
 
     /** Returns the field as a [Long] when it's an `integerValue` or numeric `doubleValue`. */
-    fun numberAsLong(): Long? =
-        integerValue?.toLongOrNull() ?: doubleValue?.toLong()
+    fun numberAsLong(): Long? = integerValue?.toLongOrNull() ?: doubleValue?.toLong()
 }
 
 @Serializable

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">التشخيصات</string>
+    <string name="crash_diagnostics_title">تشخيص الأعطال</string>
+    <string name="crash_diagnostics_settings_description">شغّل أعطالًا قاتلة متحكمًا بها للتحقق من Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">للاختبار الداخلي فقط</string>
+    <string name="crash_diagnostics_warning_body">يؤدي كل إجراء مؤكد إلى إغلاق التطبيق فورًا. أعد فتحه قبل تشغيل الاختبار التالي.</string>
+    <string name="crash_diagnostics_intro">يرسل Crashlytics تقرير عطل قاتل بعد التشغيل التالي. شغّل سيناريو واحدًا في كل مرة وتحقق من ظهور خمس مشكلات منفصلة في Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">١. عطل حالة غير صالحة</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">٢. عطل وسيطة غير صالحة</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">٣. عطل تجاوز الحدود</string>
+    <string name="crash_diagnostics_scenario_arithmetic">٤. عطل حسابي</string>
+    <string name="crash_diagnostics_scenario_custom">٥. عطل Kira مخصص</string>
+    <string name="crash_diagnostics_confirm_title">هل تريد إحداث عطل في التطبيق؟</string>
+    <string name="crash_diagnostics_confirm_message">هل تريد تشغيل «%1$s»؟ سيُغلق التطبيق فورًا وقد تفقد العمل غير المحفوظ.</string>
+    <string name="crash_diagnostics_confirm_action">إحداث عطل</string>
+</resources>

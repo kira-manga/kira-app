@@ -1,6 +1,6 @@
 # Kira Manga — Project Handoff
 
-> Written 2026-07-04 for an incoming agent/developer with zero prior context. This is the
+> Written 2026-07-04 and release-prep updated 2026-07-18 for an incoming agent/developer with zero prior context. This is the
 > project-state document: what the app is, where every subsystem stands, the rules that bite, and
 > what's still open. Companion docs: [`ENGINEERING_NOTES.md`](ENGINEERING_NOTES.md) (subsystem
 > deep-dives), [`../CLAUDE.md`](../CLAUDE.md) (working rules, build commands, gotchas — read it
@@ -20,7 +20,7 @@ as the parity spec) and since rebranded:
   bundle id `me.manga.kira` · version **1.0.0**.
 - Feature set: multi-source manga browsing (Home tabs per source), search, details, a
   webtoon/paged reader, library with categories, chapter downloads (CBZ), reading history,
-  updates feed, statistics, complaints (Firestore-backed), what's-new, theming (incl. AMOLED),
+  updates feed, statistics, complaints (Firestore-backed; internal-test/public-release blocker), what's-new, theming (incl. AMOLED),
   11-locale i18n (RTL-ready), push notifications with deep links, in-app messaging.
 - **Android and iOS are the shipping targets.** Desktop (JVM) compiles, runs, and is CI-gated,
   but is explicitly out of the current release scope — do not spend effort on Desktop-only gaps
@@ -64,7 +64,7 @@ owner sign-off — high import churn, zero behavior value).
 | Background library refresh | ✅ periodic WorkManager | ✅ BGAppRefreshTask | ✗ unwired |
 | Firebase Analytics + Crashlytics | ✅ | ✅ (Release-only collection) | ✗ |
 | Push (FCM) + deep links + FIAM | ✅ | ✅ (owner console steps pending) | ✗ |
-| Ads / consent / in-app update / review | SDKs present, ads have zero consumers (owner: keep as-is) | stubs | stubs |
+| Ads / consent / in-app update / review | No ads/AD_ID; Play update + review | No ads/IDFA; StoreKit review + App Store listing | No product work |
 | Cloudflare WebView solver | ✅ | ✅ | Windows/Linux only (macOS KCEF upstream-broken) |
 | AVIF decode | ✅ native | ✅ ImageIO | ✗ unsupported |
 
@@ -141,33 +141,36 @@ committed `*.example` templates — `app/google-services.json`, `iosApp/iosApp/G
   files, then run device E2E (QA Q4).
 - **FIAM**: SDK wired on both platforms (owner allows it everywhere incl. the reader); no
   campaigns authored yet — content only appears once the owner creates campaigns in the console.
-- iOS signing: Debug signs with `iosApp-nopush.entitlements` (Personal-team friendly, push absent
-  locally); Release uses `iosApp.entitlements` (`aps-environment=production`).
+- iOS signing: Debug and Release use `iosApp.entitlements` under the Developer Program team;
+  Debug expands `aps-environment=development`, Release uses `production`. The no-push file remains
+  only as an explicit Personal-team contributor fallback.
 
 ## 8. CI / branches / release
 
 - **Branch policy (owner rule, encoded in `.github/workflows/ci.yml`): Actions NEVER run on
   `main`.** Triggers are pushes to **`testing`** and **`release`** plus manual
   `workflow_dispatch` — no `pull_request`, no tag triggers. Don't add them back.
-- CI jobs: `jvm-android` (compile matrix + 11 module desktopTest suites + both locale-parity
-  gates + `:app:testDebugUnitTest` + debug APK), `ios` (both iOS klib compiles, macos runner),
+- CI jobs: `jvm-android` (compile matrix + 12 module desktopTest suites + both locale-parity
+  gates + `:app:testDebugUnitTest` + installable debug APK), `ios` (both iOS klib compiles plus
+  arm64 Release framework, macOS runner),
   `static-analysis` (ktlint 1.5.0 + detekt 1.23.7 standalone CLIs, **blocking** against committed
-  baselines under `config/`), `release-verify` (`release` pushes / dispatch; builds a signed R8
-  APK).
-- **Release secrets are NOT configured yet** (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`,
-  `KEY_PASSWORD`, optional `GOOGLE_SERVICES_JSON`, `ADMOB_*`) — `release-verify` warn-skips until
-  they exist. Local release builds read the same values from env vars.
-- `gradle.properties` commits **real production AdMob unit IDs** — a local release build serves
-  production ads by default; debug always uses Google test IDs.
-- Store submission is gated on the device-QA checklist (`ENGINEERING_NOTES.md` §7) — none of the
-  device items have been run on final builds yet.
+  baselines under `config/`), `release-verify` (always verifies unit/lint/R8/unsigned APK+AAB and
+  optionally emits a signed AAB), and `ios-archive` (optionally creates a signed archive+dSYMs).
+- Android signing is environment-only. CI signed output requires `KEYSTORE_BASE64`,
+  `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, and real `GOOGLE_SERVICES_JSON`; iOS archive
+  output requires its certificate/profile/plist secret set. Missing secrets skip only the signed
+  paths—the unsigned/build verification remains mandatory.
+- AdMob, mediation, UMP, Android `AD_ID`, and Privacy Sandbox advertising-ID/attribution
+  permissions were removed because the app has no advertising UI; CI guards the merged manifest.
+- Store submission is gated on `docs/release/INTERNAL_RELEASE_QA.md`; no final signed-device suite
+  has been completed yet. Configuration/manual actions: `docs/release/RELEASE_CONFIGURATION.md`.
 
 ## 9. Toolchain (2026-07)
 
 Kotlin **2.4.0** · Compose Multiplatform **1.11.1** · AGP **9.2.1** (all KMP modules on the
 new-DSL `com.android.kotlin.multiplatform.library`; `:app` on AGP built-in Kotlin; AGP-10-ready,
 the version bump itself pending AGP 10's release) · Gradle **9.6.1** · compileSdk **37** / minSdk
-24 · JVM 11 (Android) / 17 (Desktop; non-JBR JDK required) · Room KMP (DB v11) · Ktor
+26 · targetSdk 36 · JVM 11 (Android) / 17 (Desktop; non-JBR JDK required) · Room KMP (DB v11) · Ktor
 (OkHttp/Darwin/CIO) · Koin · Coil 3.5 · Kermit · Firebase BOM 34.15.0 · iOS targets `iosArm64` +
 `iosSimulatorArm64` only (no x64) · Xcode project via **xcodegen**. Machine gotcha: SDK 37
 installs as `platforms/android-37.0` but AGP wants `android-37` — symlink needed on fresh
@@ -197,13 +200,10 @@ machines (see `CLAUDE.md`).
 
 ## 11. Known deferred areas (owner-decided; do not "fix" unprompted)
 
-- **Firestore security rules (CRITICAL, known, deliberately deferred 2026-07-03)**: the
-  `complaints_v2` collection accepts unauthenticated REST writes with the shipped public API key —
-  anyone could vandalize complaints. The client console is debug-gated (`Admin.isAdmin`
-  fail-closed), but the real fix is server-side rules + admin custom-claims; the owner deferred
-  it pending a planned Firebase project migration. **Highest-priority open risk on record.**
-- **Ads stack**: fully integrated SDKs (AdMob + mediation + UMP), zero consumers. Owner: keep
-  as-is, don't wire, don't strip.
+- **Complaint authorization (CRITICAL public-release blocker)**: the clients have no authenticated
+  user/admin identity, deployed Firestore rules are absent from this repository, and debug-gating
+  `Admin.isAdmin` is not server authorization. Keep internal test data disposable; secure the
+  service or disable the public feature per `docs/release/COMPLAINT_PRODUCTION_DECISION.md`.
 - **Manga sharing (P2pKit)**: plan-only (`ENGINEERING_NOTES.md` §8); five open owner decisions.
 - **Desktop**: DB directory migration, background refresh, KCEF bundling for macOS, AVIF — all
   parked (Desktop unshipped).
@@ -211,8 +211,9 @@ machines (see `CLAUDE.md`).
 - Sources Stage-1/2: signed remote config delivery, image strategies, `minAppVersion` gating.
 - C2 accepted cross-platform gaps (from the retired inventory): new-chapter **system**
   notifications are Android-only (`NotificationPresenter` has zero call sites); inline What's-New
-  video is poster-only everywhere; Material You dynamic color is a no-op everywhere; in-app
-  update/review are Android-only; Desktop app-version string is a hardcoded stub.
+  video is poster-only everywhere; Material You dynamic color is a no-op everywhere; in-app update
+  is Android-only while review is implemented on Android and iOS; Desktop app-version string is a
+  hardcoded stub.
 - Downloads paging: Room-KMP can't generate `PagingSource`; the in-memory list stands
   (perf-only concern).
 - ~2,072 LLM-translated strings never human-reviewed (worst risk: ja/ar/ru).
@@ -232,10 +233,9 @@ machines (see `CLAUDE.md`).
 
 ## 12. Remaining risks / follow-ups
 
-1. **Firestore rules hole** — see §11; revisit the moment the Firebase migration happens.
-2. **Device QA checklist not yet run** on final builds (Q1–Q5, Q7 in `ENGINEERING_NOTES.md` §7):
-   iOS background resolve-ahead, Android R8 production-key smoke, feel pass, push E2E, logging
-   distribution, live language switch.
+1. **Complaint rules/identity hole** — see §11; this blocks public release.
+2. **Device QA checklist not yet run** on final builds; use the authoritative
+   `docs/release/INTERNAL_RELEASE_QA.md` for Android/iOS, website/deep-link, backup, and compliance evidence.
 3. **Owner console steps for push**: APNs key upload + real config files (then Q4).
 4. **Release secrets** in GitHub (§8) so `release-verify` actually exercises the signed path.
 5. **Never-audited subsystem**: the WebView/Cloudflare solver stack has never had a dedicated
@@ -248,8 +248,8 @@ machines (see `CLAUDE.md`).
    point (incl. cache-first opens) before any store release.
 9. iOS reader loader changes (decode gate + cache tiers, 2026-07-04) are simulator-verified;
    recommend one device pass on fast webtoon fling on a low-RAM iPhone.
-10. iOS `Info.plist` still carries `NSAllowsArbitraryLoads=true` (global ATS off) — tightening to
-    per-host exceptions is a store-review-hardening candidate.
-11. Android `backup_rules.xml` templates back up `cf_clearance` cookies — review before enabling
-    full backup in a store build.
+10. iOS ATS uses a scoped `raijinscan.fr` exception rather than global arbitrary loads; confirm the
+    source still requires it and document/remove it when possible.
+11. Android Auto Backup/device transfer excludes all app persistence domains so DB/settings/manga
+    files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.

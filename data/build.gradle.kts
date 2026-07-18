@@ -120,9 +120,19 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.turbine)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
             // MapSettings (in-memory ObservableSettings) — backs the real legacy `SourcesRepository`
             // the Home/Search `:data` impls strangle, so its tests don't need a real DataStore.
             implementation(libs.multiplatform.settings.test)
+        }
+
+        getByName("desktopTest").dependencies {
+            // BackupRepository end-to-end tests use a real in-memory Room database and the same
+            // bundled SQLite driver as production instead of mocking the persistence boundary.
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
         }
     }
 }

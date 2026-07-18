@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Auto Backup rules (used on API < 31 via android:fullBackupContent).
-   See https://developer.android.com/guide/topics/data/autobackup
-
-   The "kira_settings" SharedPreferences file backs the multiplatform-settings store, which
-   includes captured Cloudflare cf_clearance cookies and per-source User-Agent strings. Those are
-   IP/UA-bound session tokens: restoring them onto a new device is useless and can resurrect
-   solved-challenge state that immediately 403s, so it is excluded from cloud backup.
+   Kira's database, preferences, and manga files form one consistency boundary. Android Auto
+   Backup cannot restore that state atomically, so exclude all app-owned state and use Kira's
+   explicit .kira.zip export/import flow instead. Cache and no-backup domains are never backed up
+   by Android and therefore need no entries here.
 -->
 <full-backup-content>
-    <exclude domain="sharedpref" path="kira_settings.xml"/>
+    <exclude domain="database" path="."/>
+    <exclude domain="sharedpref" path="."/>
+    <exclude domain="file" path="."/>
+    <exclude domain="root" path="."/>
+    <exclude domain="external" path="."/>
 </full-backup-content>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Tanılama</string>
+    <string name="crash_diagnostics_title">Çökme tanılaması</string>
+    <string name="crash_diagnostics_settings_description">Firebase Crashlytics’i doğrulamak için kontrollü ölümcül çökmeler çalıştırın.</string>
+    <string name="crash_diagnostics_warning_title">Yalnızca dahili test</string>
+    <string name="crash_diagnostics_warning_body">Onaylanan her işlem uygulamayı hemen kapatır. Sonraki testi çalıştırmadan önce uygulamayı yeniden açın.</string>
+    <string name="crash_diagnostics_intro">Crashlytics, sonraki açılıştan sonra ölümcül bir rapor gönderir. Her seferinde bir senaryo çalıştırın ve Firebase’de beş ayrı sorunu doğrulayın.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Geçersiz durum çökmesi</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Geçersiz bağımsız değişken çökmesi</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Sınır dışı çökme</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Aritmetik çökme</string>
+    <string name="crash_diagnostics_scenario_custom">5. Özel Kira çökmesi</string>
+    <string name="crash_diagnostics_confirm_title">Uygulama çökertilsin mi?</string>
+    <string name="crash_diagnostics_confirm_message">“%1$s” çalıştırılsın mı? Uygulama hemen kapanacak ve kaydedilmemiş çalışmalar kaybolabilir.</string>
+    <string name="crash_diagnostics_confirm_action">Uygulamayı çökert</string>
+</resources>

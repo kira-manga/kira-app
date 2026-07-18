@@ -6,9 +6,7 @@ package me.manga.kira.platform.review
  * Implementations:
  *  - Android  → delegates to Play Core's `ReviewManagerFactory.create(context)` +
  *               `launchReviewFlow(activity, info)`. Needs a foreground `Activity`.
- *  - iOS      → no-op returning `false` (the `SKStoreReviewController` integration will land in
- *               the iosApp wiring phase; the facade returns `false` so consumers fall through to
- *               their "review not shown" branch).
+ *  - iOS      → delegates to `SKStoreReviewController.requestReviewInScene` for the active scene.
  *  - Desktop  → no-op returning `false` (there is no native in-app review surface for desktop).
  *
  * The legacy `:shared` SPI was an `expect class InAppReviewClient` with the Android actual taking

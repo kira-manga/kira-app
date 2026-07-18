@@ -110,7 +110,7 @@ kotlin {
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.components.ui.tooling.preview)
-            implementation(compose.preview)
+            implementation(libs.compose.ui.tooling.preview)
             implementation(libs.compose.animation)
 
             // Koin for Compose + ViewModels
@@ -169,8 +169,7 @@ kotlin {
             // no jvm/desktop target, so it must NOT go in commonMain. Wired by setupCrashlytics()
             // (CrashSetup.kt), called from the Swift host after FirebaseApp.configure(). The framework
             // is static, so its FIR* symbols resolve at the app link from the SPM FirebaseCrashlytics
-            // (no linker plugin needed). Requires kotlin.native.cacheKind.iosSimulatorArm64=none
-            // (see gradle.properties).
+            // (no linker plugin needed).
             implementation(libs.crashkios.crashlytics)
         }
 

@@ -7,9 +7,11 @@ import me.manga.kira.domain.model.sources.SourceAccessState
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
 import me.manga.kira.presentation.home.HomeState
+import me.manga.kira.presentation.settings.SettingsDestination
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SourceAccessNavigationTest {
@@ -34,6 +36,25 @@ class SourceAccessNavigationTest {
         assertEquals(
             Screen.RepoSettings(isFirstOpen = false),
             sourceManagementDestination(SourceAccessState.ACTIVATED),
+        )
+    }
+
+    @Test
+    fun settings_crash_diagnostics_route_is_fail_closed() {
+        assertNull(
+            settingsDestination(
+                destination = SettingsDestination.CRASH_DIAGNOSTICS,
+                sourceAccessState = SourceAccessState.LOCKED,
+                crashDiagnosticsEnabled = false,
+            ),
+        )
+        assertEquals(
+            Screen.CrashDiagnostics,
+            settingsDestination(
+                destination = SettingsDestination.CRASH_DIAGNOSTICS,
+                sourceAccessState = SourceAccessState.LOCKED,
+                crashDiagnosticsEnabled = true,
+            ),
         )
     }
 

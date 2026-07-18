@@ -13,19 +13,24 @@ import co.touchlab.kermit.Logger
  * Verbatim port from legacy `:shared/iosMain/.../core/analytics/AnalyticsClient.ios.kt`.
  */
 class IosAnalyticsClient : AnalyticsClient {
-
     private val log = Logger.withTag(TAG)
 
-    override fun logEvent(name: String, params: Map<String, Any?>) {
-        log.d { "logEvent($name, $params) — no-op on iOS" }
+    override fun logEvent(
+        name: String,
+        params: Map<String, Any?>,
+    ) {
+        log.d { "Analytics event ignored by the Kotlin iOS adapter" }
     }
 
-    override fun setUserProperty(key: String, value: String?) {
-        log.d { "setUserProperty($key, $value) — no-op on iOS" }
+    override fun setUserProperty(
+        key: String,
+        value: String?,
+    ) {
+        log.d { "Analytics user property ignored by the Kotlin iOS adapter" }
     }
 
     override fun setUserId(id: String?) {
-        log.d { "setUserId($id) — no-op on iOS" }
+        log.d { "Analytics user ID ignored by the Kotlin iOS adapter" }
     }
 
     private companion object {

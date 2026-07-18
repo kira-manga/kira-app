@@ -17,8 +17,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Preserved from source — IronSource Ads SDK + JitPack for transitive deps
-        maven("https://android-sdk.is.com/")
         maven("https://jitpack.io") {
             content {
                 // JitPack may only serve its own com.github.* coordinates. Without this filter it

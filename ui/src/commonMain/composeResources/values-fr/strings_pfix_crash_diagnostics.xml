@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Diagnostic</string>
+    <string name="crash_diagnostics_title">Diagnostic des plantages</string>
+    <string name="crash_diagnostics_settings_description">Exécutez des plantages fatals contrôlés pour vérifier Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">Tests internes uniquement</string>
+    <string name="crash_diagnostics_warning_body">Chaque action confirmée ferme immédiatement l’application. Rouvrez-la avant de lancer le test suivant.</string>
+    <string name="crash_diagnostics_intro">Crashlytics envoie un rapport fatal après le prochain lancement. Exécutez un scénario à la fois et vérifiez cinq problèmes distincts dans Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Plantage par état invalide</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Plantage par argument invalide</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Plantage hors limites</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Plantage arithmétique</string>
+    <string name="crash_diagnostics_scenario_custom">5. Plantage Kira personnalisé</string>
+    <string name="crash_diagnostics_confirm_title">Faire planter l’application ?</string>
+    <string name="crash_diagnostics_confirm_message">Exécuter « %1$s » ? L’application se fermera immédiatement et le travail non enregistré pourra être perdu.</string>
+    <string name="crash_diagnostics_confirm_action">Faire planter</string>
+</resources>

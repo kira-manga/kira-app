@@ -224,7 +224,10 @@ memory across chapters).
 
 ## 7. Device QA checklist (pre-store-submission; consolidated 2026-07-03)
 
-All open except Q6. Run on real hardware.
+This historical subsystem shortlist remains useful context. The authoritative, expanded first-release
+matrix is [`release/INTERNAL_RELEASE_QA.md`](release/INTERNAL_RELEASE_QA.md); run it on real hardware
+and record artifact/device evidence there. All items below remain open except Q6 unless that record
+says otherwise.
 
 - **Q1 — iOS background downloads resolve-ahead**: real iPhone, Release/TestFlight. Queue 5+
   chapters, background during ch1 → ch2–4 complete in background (`prefetch.manifest.written`).

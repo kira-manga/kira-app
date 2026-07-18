@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Info
@@ -118,6 +119,9 @@ import me.manga.kira.ui.generated.resources.cancel
 import me.manga.kira.ui.generated.resources.category
 import me.manga.kira.ui.generated.resources.cbz_conversion_error_body
 import me.manga.kira.ui.generated.resources.chapter
+import me.manga.kira.ui.generated.resources.crash_diagnostics_section
+import me.manga.kira.ui.generated.resources.crash_diagnostics_settings_description
+import me.manga.kira.ui.generated.resources.crash_diagnostics_title
 import me.manga.kira.ui.generated.resources.chapters_converted_successfully
 import me.manga.kira.ui.generated.resources.chapters_remaining
 import me.manga.kira.ui.generated.resources.clear_chapter_cache
@@ -323,6 +327,8 @@ fun SettingsScreen(
     // iOS-only: whether to show the "compress during Low Power Mode" toggle in the Downloads section.
     // The route adapter passes true only on iOS; defaults false so other callers / previews compile.
     lowPowerCompressionToggleVisible: Boolean = false,
+    // Deliberate fatal-crash controls are present only in protected internal release builds.
+    crashDiagnosticsVisible: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     SettingsScreenContent(
@@ -334,6 +340,7 @@ fun SettingsScreen(
         sourceAccessActivated = sourceAccessActivated,
         onOpenUrl = onOpenUrl,
         lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
+        crashDiagnosticsVisible = crashDiagnosticsVisible,
     )
 }
 
@@ -348,6 +355,7 @@ internal fun SettingsScreenContent(
     sourceAccessActivated: Boolean = false,
     onOpenUrl: (String) -> Unit = {},
     lowPowerCompressionToggleVisible: Boolean = false,
+    crashDiagnosticsVisible: Boolean = false,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // Launch snackbars off the effect collector so showing one never blocks a later navigation
@@ -416,6 +424,7 @@ internal fun SettingsScreenContent(
                     onIntent = onIntent,
                     sourceAccessActivated = sourceAccessActivated,
                     lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
+                    crashDiagnosticsVisible = crashDiagnosticsVisible,
                 )
             }
         }
@@ -460,6 +469,7 @@ private fun SettingsList(
     onIntent: (SettingsIntent) -> Unit,
     sourceAccessActivated: Boolean = false,
     lowPowerCompressionToggleVisible: Boolean = false,
+    crashDiagnosticsVisible: Boolean = false,
 ) {
     val spacing = LocalSpacing.current
     LazyColumn(
@@ -744,6 +754,21 @@ private fun SettingsList(
                     // SettingsScreen.kt:309).
                     leadingIcon = { RowIcon(Icons.AutoMirrored.Outlined.Help) },
                 )
+            }
+        }
+
+        if (crashDiagnosticsVisible) {
+            item(key = "section-crash-diagnostics") {
+                SectionCard(label = stringResource(Res.string.crash_diagnostics_section)) {
+                    NavRow(
+                        label = settingsDestinationLabel(SettingsDestination.CRASH_DIAGNOSTICS),
+                        description = stringResource(Res.string.crash_diagnostics_settings_description),
+                        onClick = {
+                            onIntent(SettingsIntent.OnNavigate(SettingsDestination.CRASH_DIAGNOSTICS))
+                        },
+                        leadingIcon = { RowIcon(Icons.Outlined.BugReport) },
+                    )
+                }
             }
         }
     }
@@ -1257,6 +1282,7 @@ private fun settingsDestinationLabel(destination: SettingsDestination): String =
     SettingsDestination.WHATSNEW -> stringResource(Res.string.what_s_new)
     SettingsDestination.DOWNLOADS -> stringResource(Res.string.downloads)
     SettingsDestination.BACKUP -> stringResource(Res.string.backup_title)
+    SettingsDestination.CRASH_DIAGNOSTICS -> stringResource(Res.string.crash_diagnostics_title)
 }
 
 /**

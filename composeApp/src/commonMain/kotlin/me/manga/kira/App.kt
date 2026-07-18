@@ -88,6 +88,7 @@ import me.manga.kira.navigation.routes.AdminComplaintScreenRoute
 import me.manga.kira.navigation.routes.ChapterImagesByLegacyArgsReworkScreenRoute
 import me.manga.kira.navigation.routes.ComplaintReworkScreenRoute
 import me.manga.kira.navigation.routes.ComplaintScreenRoute
+import me.manga.kira.navigation.routes.CrashDiagnosticsScreenRoute
 import me.manga.kira.navigation.routes.DownloadsReworkScreenRoute
 import me.manga.kira.navigation.routes.HistoryScreenRoute
 import me.manga.kira.navigation.routes.HomeReworkScreenRoute
@@ -385,7 +386,7 @@ private class CoilSourceHeaderInterceptor(
 }
 
 @Composable
-fun App() {
+fun App(crashDiagnosticsEnabled: Boolean = false) {
     // Wire the singleton ImageLoader so every AsyncImage / SubcomposeAsyncImage call site picks up
     // the per-source header injection without changes at the call sites. The factory runs once and
     // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`, so resolving
@@ -576,7 +577,7 @@ fun App() {
         },
     ) {
         KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {
-            MainScreen()
+            MainScreen(crashDiagnosticsEnabled = crashDiagnosticsEnabled)
         }
     }
 }
@@ -586,7 +587,7 @@ fun App() {
 // also validates Reader.coverUrl).
 
 @Composable
-private fun MainScreen() {
+private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -714,7 +715,10 @@ private fun MainScreen() {
                     LocalBottomBarPadding provides
                         if (showBottomBar) systemBottom + FloatingNavBarSpace else 0.dp,
                 ) {
-                    AppNavHost(navController = navController)
+                    AppNavHost(
+                        navController = navController,
+                        crashDiagnosticsEnabled = crashDiagnosticsEnabled,
+                    )
                 }
             }
             if (showBottomBar) {
@@ -768,6 +772,7 @@ private val FloatingNavBarSpace = 88.dp
 @Composable
 private fun AppNavHost(
     navController: NavHostController,
+    crashDiagnosticsEnabled: Boolean,
 ) {
     val prefs: SharedPrefsHelper = koinInject()
     val observeSourceAccess: ObserveSourceAccessUseCase = koinInject()
@@ -912,7 +917,14 @@ private fun AppNavHost(
             SettingsRoute(
                 navController = navController,
                 backStackEntry = backStackEntry,
+                crashDiagnosticsEnabled = crashDiagnosticsEnabled,
             )
+        }
+
+        if (crashDiagnosticsEnabled) {
+            composable<Screen.CrashDiagnostics> {
+                CrashDiagnosticsScreenRoute(navController = navController)
+            }
         }
 
         composable<Screen.WebView> { backStackEntry ->

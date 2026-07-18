@@ -87,12 +87,18 @@ import me.manga.kira.presentation.mvi.MviEffect
  *  fulfilled (legacy About screen retired) across §354.
  */
 sealed interface AboutEffect : MviEffect {
-
     /** Route adapter should invoke `IntentLauncher.openPlayStorePage(packageName)`. */
-    data class OpenPlayStorePage(val packageName: String) : AboutEffect
+    data class OpenPlayStorePage(
+        val packageName: String,
+    ) : AboutEffect
+
+    /** Route adapter should request the platform-native in-app review flow. */
+    data object RequestReview : AboutEffect
 
     /** Route adapter should invoke `IntentLauncher.openUrl(url)`. */
-    data class OpenUrl(val url: String) : AboutEffect
+    data class OpenUrl(
+        val url: String,
+    ) : AboutEffect
 
     /**
      * Route adapter should invoke `navController.navigate(Screen.WhatsNewRework)`. Added by

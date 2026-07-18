@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -14,10 +15,38 @@ plugins {
 }
 
 fun env(name: String): String? = System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
-fun propOrFallback(name: String, fallback: String): String {
-    val v = (project.findProperty(name) as String?)?.trim()
-    return if (!v.isNullOrEmpty()) v else fallback
+
+val releaseVersionProperties = Properties().apply {
+    rootProject.file("release/version.properties").inputStream().use(::load)
 }
+val releaseVersionName =
+    env("KIRA_VERSION_NAME") ?: releaseVersionProperties.getProperty("VERSION_NAME")
+val releaseVersionCode =
+    (env("KIRA_BUILD_NUMBER")
+        ?: env("GITHUB_RUN_NUMBER")
+        ?: releaseVersionProperties.getProperty("VERSION_CODE"))
+        .toIntOrNull()
+        ?.takeIf { it > 0 }
+        ?: error("Kira Android version code must be a positive integer")
+val crashDiagnosticsEnabled =
+    providers.gradleProperty("kira.enableCrashDiagnostics")
+        .map { value -> value.equals("true", ignoreCase = true) }
+        .orElse(false)
+
+// Production signing is intentionally environment-only. A developer without these four values
+// still gets an unsigned release artifact for R8/package validation; there is no local-keystore or
+// Gradle-property fallback that could accidentally sign a production bundle with the wrong key.
+val releaseSigningEnvironment =
+    mapOf(
+        "KEYSTORE_FILE" to env("KEYSTORE_FILE"),
+        "KEYSTORE_PASSWORD" to env("KEYSTORE_PASSWORD"),
+        "KEY_ALIAS" to env("KEY_ALIAS"),
+        "KEY_PASSWORD" to env("KEY_PASSWORD"),
+    )
+val hasAnyReleaseSigningValue = releaseSigningEnvironment.values.any { it != null }
+val hasAllReleaseSigningValues = releaseSigningEnvironment.values.all { it != null }
+val releaseKeystore = releaseSigningEnvironment.getValue("KEYSTORE_FILE")?.let(::file)
+val releaseSigningReady = hasAllReleaseSigningValues && releaseKeystore?.isFile == true
 
 // Release guard (audit: firebase-placeholder-ships-inert-in-release). Fail any release-variant
 // build that would package the committed PLACEHOLDER google-services.json — which leaves
@@ -50,6 +79,13 @@ gradle.taskGraph.whenReady {
                     "path-validation only.",
             )
         }
+        if (hasAnyReleaseSigningValue && !hasAllReleaseSigningValues) {
+            val missing = releaseSigningEnvironment.filterValues { it == null }.keys.joinToString()
+            throw GradleException("Incomplete release signing environment; missing: $missing")
+        }
+        if (hasAllReleaseSigningValues && releaseKeystore?.isFile != true) {
+            throw GradleException("KEYSTORE_FILE does not point to a readable keystore file")
+        }
     }
 }
 
@@ -60,40 +96,35 @@ android {
     defaultConfig {
         applicationId = "me.manga.kira"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
+        buildConfigField(
+            "boolean",
+            "CRASH_DIAGNOSTICS_ENABLED",
+            crashDiagnosticsEnabled.get().toString(),
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        create("release") {
-            val envKeystoreFile = env("KEYSTORE_FILE")
-            val localKeystore = "yami-release.keystore"
-            storeFile = file(envKeystoreFile ?: localKeystore)
-            storePassword = env("KEYSTORE_PASSWORD") ?: (findProperty("KEYSTORE_PASSWORD") as String?)
-            keyAlias = env("KEY_ALIAS") ?: (findProperty("KEY_ALIAS") as String?)
-            keyPassword = env("KEY_PASSWORD") ?: (findProperty("KEY_PASSWORD") as String?)
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = releaseSigningEnvironment.getValue("KEYSTORE_PASSWORD")
+                keyAlias = releaseSigningEnvironment.getValue("KEY_ALIAS")
+                keyPassword = releaseSigningEnvironment.getValue("KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
-        debug {
-            buildConfigField("String", "REWARDED_AD_UNIT_ID", "\"ca-app-pub-3940256099942544/5224354917\"")
-            buildConfigField("String", "NATIVE_AD_UNIT_ID", "\"ca-app-pub-3940256099942544/2247696110\"")
-            buildConfigField("String", "BANNER_AD_UNIT_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
-        }
+        debug { }
         release {
-            signingConfig = signingConfigs.getByName("release")
-
-            val rewarded = propOrFallback("ADMOB_REWARDED_ID", "ca-app-pub-3940256099942544/5224354917")
-            val native = propOrFallback("ADMOB_NATIVE_ID", "ca-app-pub-3940256099942544/2247696110")
-            val banner = propOrFallback("ADMOB_BANNER_ID", "ca-app-pub-3940256099942544/6300978111")
-
-            buildConfigField("String", "REWARDED_AD_UNIT_ID", "\"$rewarded\"")
-            buildConfigField("String", "NATIVE_AD_UNIT_ID", "\"$native\"")
-            buildConfigField("String", "BANNER_AD_UNIT_ID", "\"$banner\"")
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
 
             isMinifyEnabled = true
             isShrinkResources = true
@@ -171,19 +202,11 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.firestore)
 
-    // Google Play services / AdMob
-    implementation(libs.play.services.ads)
+    // Google Play services
     implementation(libs.play.app.update)
     implementation(libs.play.app.update.ktx)
     implementation(libs.play.review)
     implementation(libs.play.review.ktx)
-    implementation(libs.ump)
-
-    // AdMob mediation
-    implementation(libs.mediation.inmobi)
-    implementation(libs.mediation.ironsource)
-    implementation(libs.mediation.vungle)
-    implementation(libs.mediation.facebook)
 
     // Android-only image extras (also depended on by composeApp; declared here so app's own composables resolve them too)
     implementation(libs.telephoto.zoomable.image.coil3)

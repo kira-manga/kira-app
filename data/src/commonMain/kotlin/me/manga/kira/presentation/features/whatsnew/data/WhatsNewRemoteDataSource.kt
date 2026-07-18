@@ -38,13 +38,13 @@ import me.manga.kira.core.dispatchers.platformIoDispatcher
 class WhatsNewRemoteDataSource(
     private val httpClient: HttpClient,
 ) {
-
     private val log = Logger.withTag(TAG)
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-        coerceInputValues = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+        }
 
     suspend fun fetchWhatsNewFeatures(): Result<WhatsNewResponse> {
         return withContext(platformIoDispatcher) {
@@ -83,15 +83,17 @@ class WhatsNewRemoteDataSource(
     ): LocalizedFeature {
         val normalizedLanguage = normalizeLanguageCode(languageCode)
 
-        val title = feature.title[normalizedLanguage]
-            ?: feature.title[FALLBACK_LANGUAGE]
-            ?: feature.title.values.firstOrNull()
-            ?: "Unknown Feature"
+        val title =
+            feature.title[normalizedLanguage]
+                ?: feature.title[FALLBACK_LANGUAGE]
+                ?: feature.title.values.firstOrNull()
+                ?: "Unknown Feature"
 
-        val description = feature.description[normalizedLanguage]
-            ?: feature.description[FALLBACK_LANGUAGE]
-            ?: feature.description.values.firstOrNull()
-            ?: "No description available"
+        val description =
+            feature.description[normalizedLanguage]
+                ?: feature.description[FALLBACK_LANGUAGE]
+                ?: feature.description.values.firstOrNull()
+                ?: "No description available"
 
         return LocalizedFeature(
             title = title,
@@ -118,13 +120,24 @@ class WhatsNewRemoteDataSource(
 
     companion object {
         private const val TAG = "WhatsNewRemoteDataSource"
-        private const val WHATS_NEW_URL = "https://yamimanga.me/whatsnew/35/whatsnew.json"
+        private const val WHATS_NEW_URL = "https://kiramanga.me/whatsnew/35/whatsnew.json"
 
         private const val FALLBACK_LANGUAGE = "en"
 
-        val SUPPORTED_LANGUAGES = setOf(
-            "en", "ar", "de", "es", "fr", "in", "it", "ja", "pt", "ru", "tr",
-        )
+        val SUPPORTED_LANGUAGES =
+            setOf(
+                "en",
+                "ar",
+                "de",
+                "es",
+                "fr",
+                "in",
+                "it",
+                "ja",
+                "pt",
+                "ru",
+                "tr",
+            )
     }
 }
 
@@ -141,7 +154,7 @@ class WhatsNewRemoteDataSource(
  * Json.decodeFromString) + `getLocalizedFeature(feature, languageCode)` (pure synchronous
  * locale-resolution, no I/O). 1 private helper `normalizeLanguageCode`. Companion-object
  * carries 3 constants: TAG (Kermit log namespace), WHATS_NEW_URL (production endpoint
- * `https://yamimanga.me/whatsnew/35/whatsnew.json`), FALLBACK_LANGUAGE ("en"), and the
+ * `https://kiramanga.me/whatsnew/35/whatsnew.json`), FALLBACK_LANGUAGE ("en"), and the
  * SUPPORTED_LANGUAGES set (11 entries: en/ar/de/es/fr/in/it/ja/pt/ru/tr).
  *
  * Body-level deltas (cluster57+ taxonomy):
@@ -197,7 +210,7 @@ class WhatsNewRemoteDataSource(
  *     documents the wide-catch as deliberate.
  *
  *   • INTENTIONAL-PUBLIC-ENDPOINT-NOT-VIOLATION — the `WHATS_NEW_URL` constant embeds a
- *     production CDN endpoint (`https://yamimanga.me/whatsnew/35/whatsnew.json`). This is
+ *     production CDN endpoint (`https://kiramanga.me/whatsnew/35/whatsnew.json`). This is
  *     not a credential, not an API key, and is unauthenticated (the JSON content is
  *     public-by-design). DO NOT flag for rotation, env-var extraction, or build-config
  *     plumbing — the URL is the contract surface itself, intentionally hardcoded.
@@ -206,4 +219,3 @@ class WhatsNewRemoteDataSource(
  *     withContext + kotlinx-serialization Json + platformIoDispatcher). Standard KMP-portable HTTP
  *     fetcher shape.
  */
-

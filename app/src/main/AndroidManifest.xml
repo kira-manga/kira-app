@@ -2,15 +2,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- NOTE: All permissions and components are preserved verbatim from the source app.
-         AndroidManifest is identical in spirit; component class names will be re-pointed
-         to their new package locations as Phase 11 wires the Android app to shared modules. -->
-
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+
+    <!-- Firebase Analytics can contribute advertising identifiers/attribution transitively. Kira
+         does not serve ads or use those APIs, so keep them out of every merged manifest. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_AD_ID"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION"
+        tools:node="remove" />
 
     <uses-permission
         android:name="android.permission.POST_NOTIFICATIONS"
@@ -34,13 +41,21 @@
         android:windowSoftInputMode="stateVisible|adjustResize"
         android:theme="@style/Theme.App.Starting"
         android:largeHeap="true"
-        tools:targetApi="31">
+        tools:targetApi="33">
+
+        <!-- Firebase Analytics has no separate Android no-ID artifact. These are its supported
+             controls for keeping advertising-ID collection and ad personalization disabled. -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:label="@string/app_name"
             android:theme="@style/Theme.App.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -62,10 +77,6 @@
                 <data android:scheme="kiramanga" />
             </intent-filter>
         </activity>
-
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-6540850069916280~1205773408" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

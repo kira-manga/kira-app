@@ -81,17 +81,8 @@ kcef = "2025.03.23"
 google-services = "4.5.0"
 firebase-bom = "34.15.0"
 firebase-crashlytics-plugin = "3.0.7"
-# play-services-ads 25.x is a major bump; the 4 mediation adapters below are version-matched to it
-# (latest stable adapter revisions). Bump them together — a stale adapter breaks AdMob mediation.
-play-services-ads = "25.4.0"
 play-app-update = "2.1.0"
 play-review = "2.0.2"
-# ump 4.0.0 is a major bump (consent / User Messaging Platform).
-ump = "4.0.0"
-mediation-inmobi = "11.3.0.1"
-mediation-ironsource = "9.4.3.0"
-mediation-vungle = "7.7.4.2"
-mediation-facebook = "6.21.0.3"
 
 # Test
 junit = "4.13.2"
@@ -109,6 +100,8 @@ compose-animation = { group = "org.jetbrains.compose.animation", name = "animati
 compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "compose-material3" }
 compose-material = { group = "org.jetbrains.compose.material", name = "material", version.ref = "compose-multiplatform" }
 compose-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "compose-multiplatform" }
+compose-ui-tooling-preview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "compose-multiplatform" }
+compose-ui-test-junit4 = { group = "org.jetbrains.compose.ui", name = "ui-test-junit4", version.ref = "compose-multiplatform" }
 compose-icons-extended = { group = "org.jetbrains.compose.material", name = "material-icons-extended", version.ref = "compose-icons" }
 compose-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "compose-multiplatform" }
 compose-components-ui-tooling-preview = { group = "org.jetbrains.compose.components", name = "components-ui-tooling-preview", version.ref = "compose-multiplatform" }
@@ -153,6 +146,7 @@ androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", 
 
 # Ktor client
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
 ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version.ref = "ktor" }
@@ -223,16 +217,10 @@ firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore
 # screen with no app code. Version via the BOM above. Android-only (iOS uses the SPM
 # FirebaseInAppMessaging-Beta product; Desktop has no SDK).
 firebase-inappmessaging-display = { group = "com.google.firebase", name = "firebase-inappmessaging-display" }
-play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "play-services-ads" }
 play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "play-app-update" }
 play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "play-app-update" }
 play-review = { group = "com.google.android.play", name = "review", version.ref = "play-review" }
 play-review-ktx = { group = "com.google.android.play", name = "review-ktx", version.ref = "play-review" }
-ump = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "ump" }
-mediation-inmobi = { group = "com.google.ads.mediation", name = "inmobi", version.ref = "mediation-inmobi" }
-mediation-ironsource = { group = "com.google.ads.mediation", name = "ironsource", version.ref = "mediation-ironsource" }
-mediation-vungle = { group = "com.google.ads.mediation", name = "vungle", version.ref = "mediation-vungle" }
-mediation-facebook = { group = "com.google.ads.mediation", name = "facebook", version.ref = "mediation-facebook" }
 
 # Test
 junit = { group = "junit", name = "junit", version.ref = "junit" }

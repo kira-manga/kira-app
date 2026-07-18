@@ -4,6 +4,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.uikit.ComposeUIViewControllerConfiguration
 import androidx.compose.ui.uikit.EndEdgePanGestureBehavior
 import androidx.compose.ui.window.ComposeUIViewController
+import platform.Foundation.NSBundle
 import platform.UIKit.UIViewController
 
 /**
@@ -32,11 +33,16 @@ fun MainViewController(): UIViewController {
         ComposeUIViewController(
             configure = { configureKiraNavigationHost() },
         ) {
-            App()
+            App(crashDiagnosticsEnabled = isCrashDiagnosticsEnabled())
         }
     IosHostLayoutDirection.bind(controller.view)
     return controller
 }
+
+private fun isCrashDiagnosticsEnabled(): Boolean =
+    NSBundle.mainBundle.objectForInfoDictionaryKey("KiraCrashDiagnosticsEnabled")
+        ?.toString()
+        ?.lowercase() in setOf("yes", "true", "1")
 
 @OptIn(ExperimentalComposeUiApi::class)
 internal fun ComposeUIViewControllerConfiguration.configureKiraNavigationHost() {

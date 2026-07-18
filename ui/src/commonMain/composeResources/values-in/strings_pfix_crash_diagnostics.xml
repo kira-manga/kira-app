@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Diagnostik</string>
+    <string name="crash_diagnostics_title">Diagnostik crash</string>
+    <string name="crash_diagnostics_settings_description">Jalankan crash fatal terkontrol untuk memverifikasi Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">Hanya untuk pengujian internal</string>
+    <string name="crash_diagnostics_warning_body">Setiap tindakan yang dikonfirmasi langsung menutup aplikasi. Buka kembali sebelum menjalankan pengujian berikutnya.</string>
+    <string name="crash_diagnostics_intro">Crashlytics mengirim laporan fatal setelah peluncuran berikutnya. Jalankan satu skenario setiap kali dan verifikasi lima masalah terpisah di Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Crash status tidak valid</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Crash argumen tidak valid</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Crash di luar batas</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Crash aritmetika</string>
+    <string name="crash_diagnostics_scenario_custom">5. Crash Kira khusus</string>
+    <string name="crash_diagnostics_confirm_title">Buat aplikasi crash?</string>
+    <string name="crash_diagnostics_confirm_message">Jalankan “%1$s”? Aplikasi akan langsung ditutup dan pekerjaan yang belum disimpan dapat hilang.</string>
+    <string name="crash_diagnostics_confirm_action">Buat crash</string>
+</resources>

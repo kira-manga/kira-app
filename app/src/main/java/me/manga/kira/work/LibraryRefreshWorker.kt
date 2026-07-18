@@ -10,6 +10,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -21,29 +22,28 @@ import kotlinx.coroutines.flow.timeout
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
-import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.todayIn
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.todayIn
 import me.manga.kira.R
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.domain.model.Manga
-import kotlinx.datetime.LocalDate
-import me.manga.kira.sources.contracts.MangaSourceClient
-import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.core.states.State
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
+import me.manga.kira.sources.contracts.MangaSourceClient
+import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources_repositry.BaseMangaRepository
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.ExperimentalTime
 
 /**
  * Phase 12.x port of upstream `LibraryRefreshWorker.kt`.
@@ -71,7 +71,8 @@ import kotlin.time.Duration.Companion.seconds
  * Concurrency preserved verbatim: BATCH_SIZE=5, MANGA_TIMEOUT_SECONDS=30, TOTAL_TIMEOUT_MINUTES=15,
  * 1-second inter-batch delay, supervisorScope so one failed manga doesn't cancel siblings.
  */
-@OptIn(ExperimentalTime::class)
+@OptIn(ExperimentalTime::class, FlowPreview::class)
+@Suppress("LongParameterList")
 class LibraryRefreshWorker(
     private val context: Context,
     params: WorkerParameters,
@@ -81,7 +82,6 @@ class LibraryRefreshWorker(
     private val sourcesRepository: SourcesRepository,
     private val sourceRegistry: SourceRegistry,
 ) : CoroutineWorker(context, params) {
-
     private val log = Logger.withTag(TAG)
 
     private val notificationManager by lazy {
@@ -90,146 +90,160 @@ class LibraryRefreshWorker(
 
     private fun createRefreshChannelIfNeeded() {
         // minSdk = 26 so NotificationChannel is always available.
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            context.getString(R.string.notification_channel_library_refresh),
-            NotificationManager.IMPORTANCE_LOW,
-        ).apply {
-            description = context.getString(R.string.notification_channel_library_refresh_desc)
-        }
+        val channel =
+            NotificationChannel(
+                CHANNEL_ID,
+                context.getString(R.string.notification_channel_library_refresh),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = context.getString(R.string.notification_channel_library_refresh_desc)
+            }
         notificationManager.createNotificationChannel(channel)
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         createRefreshChannelIfNeeded()
 
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle(context.getString(R.string.notification_refreshing_library))
-            .setContentText(context.getString(R.string.notification_starting))
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setOnlyAlertOnce(true)
-            .setProgress(100, 0, false)
-            .build()
+        val notification =
+            NotificationCompat
+                .Builder(applicationContext, CHANNEL_ID)
+                .setContentTitle(context.getString(R.string.notification_refreshing_library))
+                .setContentText(context.getString(R.string.notification_starting))
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setOnlyAlertOnce(true)
+                .setProgress(100, 0, false)
+                .build()
 
-        val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(NOTIF_ID, notification, serviceType)
+            ForegroundInfo(
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
         } else {
             ForegroundInfo(NOTIF_ID, notification)
         }
     }
 
-    override suspend fun doWork(): Result = supervisorScope {
-        try {
-            // On API 31+ setForeground() throws ForegroundServiceStartNotAllowedException (an
-            // IllegalStateException) when the worker starts while the app is backgrounded — e.g. a
-            // CONNECTED-constrained refresh deferred until connectivity returns. The refresh does
-            // not require foreground promotion, so continue as ordinary background work.
+    override suspend fun doWork(): Result =
+        supervisorScope {
             try {
-                setForeground(getForegroundInfo())
-            } catch (e: IllegalStateException) {
-                log.w(e) { "Foreground promotion rejected; continuing refresh in background" }
-            }
+                // On API 31+ setForeground() throws ForegroundServiceStartNotAllowedException (an
+                // IllegalStateException) when the worker starts while the app is backgrounded — e.g. a
+                // CONNECTED-constrained refresh deferred until connectivity returns. The refresh does
+                // not require foreground promotion, so continue as ordinary background work.
+                try {
+                    setForeground(getForegroundInfo())
+                } catch (e: IllegalStateException) {
+                    log.w(e) { "Foreground promotion rejected; continuing refresh in background" }
+                }
 
-            val result = withTimeoutOrNull(TOTAL_TIMEOUT_MINUTES.minutes) {
-                refreshAll()
-            }
+                val result =
+                    withTimeoutOrNull(TOTAL_TIMEOUT_MINUTES.minutes) {
+                        refreshAll()
+                    }
 
-            if (result == null) {
+                if (result == null) {
+                    updateNotification(
+                        context.getString(R.string.notification_refresh_failed, ""),
+                        isComplete = true,
+                        isError = true,
+                    )
+                    Result.failure()
+                } else {
+                    Result.success()
+                }
+            } catch (e: Exception) {
                 updateNotification(
-                    context.getString(R.string.notification_refresh_failed, ""),
+                    context.getString(R.string.notification_refresh_failed, e.message ?: ""),
                     isComplete = true,
                     isError = true,
                 )
                 Result.failure()
-            } else {
-                Result.success()
+            } finally {
+                cleanupNotification()
             }
-        } catch (e: Exception) {
-            updateNotification(
-                context.getString(R.string.notification_refresh_failed, e.message ?: ""),
-                isComplete = true,
-                isError = true,
-            )
-            Result.failure()
-        } finally {
-            cleanupNotification()
         }
-    }
 
-    private suspend fun refreshAll() = supervisorScope {
-        try {
-            val allManga = withTimeoutOrNull(30.seconds) {
-                libraryRepository.getAllSavedManga().first()
-            } ?: return@supervisorScope
+    private suspend fun refreshAll() =
+        supervisorScope {
+            try {
+                val allManga =
+                    withTimeoutOrNull(30.seconds) {
+                        libraryRepository.getAllSavedManga().first()
+                    } ?: return@supervisorScope
 
-            val total = allManga.size
+                val total = allManga.size
 
-            if (total == 0) {
+                if (total == 0) {
+                    updateNotification(
+                        context.getString(R.string.notification_no_manga_to_refresh),
+                        isComplete = true,
+                    )
+                    return@supervisorScope
+                }
+
+                var completed = 0
+                var failed = 0
+                val batches = allManga.chunked(BATCH_SIZE)
+
+                batches.forEachIndexed { batchIndex, batch ->
+                    val batchResults =
+                        batch.map { manga ->
+                            async {
+                                try {
+                                    withTimeoutOrNull(MANGA_TIMEOUT_SECONDS.seconds) {
+                                        refreshSingleManga(manga)
+                                    } ?: false
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            }
+                        }
+
+                    val results = batchResults.awaitAll()
+                    results.forEach { success -> if (success) completed++ else failed++ }
+
+                    val progress = ((completed + failed) * 100) / total
+                    val statusText =
+                        if (batchIndex < batches.size - 1) {
+                            context.getString(R.string.notification_processing_batch, batchIndex + 2)
+                        } else {
+                            context.getString(R.string.notification_finishing_up)
+                        }
+
+                    updateNotification(
+                        text =
+                            context.getString(
+                                R.string.notification_refresh_progress,
+                                statusText,
+                                completed,
+                                total,
+                                failed,
+                            ),
+                        progress = progress,
+                    )
+
+                    delay(1000)
+                }
+
+                val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                prefs.putString(KEY_LAST_UPDATED, now.toString())
+
                 updateNotification(
-                    context.getString(R.string.notification_no_manga_to_refresh),
+                    context.getString(R.string.notification_refresh_completed, completed, failed),
                     isComplete = true,
                 )
-                return@supervisorScope
-            }
-
-            var completed = 0
-            var failed = 0
-            val batches = allManga.chunked(BATCH_SIZE)
-
-            batches.forEachIndexed { batchIndex, batch ->
-                val batchResults = batch.map { manga ->
-                    async {
-                        try {
-                            withTimeoutOrNull(MANGA_TIMEOUT_SECONDS.seconds) {
-                                refreshSingleManga(manga)
-                            } ?: false
-                        } catch (e: Exception) {
-                            false
-                        }
-                    }
-                }
-
-                val results = batchResults.awaitAll()
-                results.forEach { success -> if (success) completed++ else failed++ }
-
-                val progress = ((completed + failed) * 100) / total
-                val statusText = if (batchIndex < batches.size - 1) {
-                    context.getString(R.string.notification_processing_batch, batchIndex + 2)
-                } else {
-                    context.getString(R.string.notification_finishing_up)
-                }
-
+            } catch (e: Exception) {
                 updateNotification(
-                    text = context.getString(
-                        R.string.notification_refresh_progress,
-                        statusText,
-                        completed,
-                        total,
-                        failed,
-                    ),
-                    progress = progress,
+                    context.getString(R.string.notification_refresh_failed, e.message ?: ""),
+                    isComplete = true,
+                    isError = true,
                 )
-
-                delay(1000)
             }
-
-            val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-            prefs.putString(KEY_LAST_UPDATED, now.toString())
-
-            updateNotification(
-                context.getString(R.string.notification_refresh_completed, completed, failed),
-                isComplete = true,
-            )
-        } catch (e: Exception) {
-            updateNotification(
-                context.getString(R.string.notification_refresh_failed, e.message ?: ""),
-                isComplete = true,
-                isError = true,
-            )
         }
-    }
 
+    @Suppress("ReturnCount") // Early exits keep each unsupported/failed source path explicit.
     private suspend fun refreshSingleManga(manga: SavedMangaEntity): Boolean {
         return try {
             if (manga.id == 0L) return false
@@ -244,10 +258,11 @@ class LibraryRefreshWorker(
             // Strict lookup: an unknown/retired api must count as a failed refresh, NOT resolve to
             // EmptyMangaRepository — its empty-Success (imageUrl="") used to blank the saved cover
             // via the reconcile in fetchMangaUpdates (2026-07 source-lifecycle hardening).
-            val repo = sourcesRepository.getOrRepoByName(manga.api) ?: run {
-                log.w { "Skipping refresh for '${manga.title}': unknown source api=${manga.api}" }
-                return false
-            }
+            val repo =
+                sourcesRepository.getOrRepoByName(manga.api) ?: run {
+                    log.w { "Skipping refresh for '${manga.title}': unknown source api=${manga.api}" }
+                    return false
+                }
             fetchMangaUpdates(manga, repo)
             true
         } catch (e: Exception) {
@@ -268,30 +283,35 @@ class LibraryRefreshWorker(
      * list. Same 20s per-manga budget as the legacy flow timeout; a Failure/timeout counts as a
      * failed refresh (never a cover blank — reconcile guards below).
      */
-    private suspend fun fetchGenericUpdates(manga: SavedMangaEntity, client: MangaSourceClient): Boolean {
-        val result = withContext(platformIoDispatcher) {
-            withTimeoutOrNull(20.seconds) {
-                client.details(
-                    Manga(
-                        api = manga.api,
-                        language = manga.language,
-                        title = manga.title,
-                        url = manga.url,
-                        coverUrl = manga.imageUrl,
-                        rating = null,
-                        genres = manga.genres,
-                    ),
-                )
-            }
-        } ?: return false
+    private suspend fun fetchGenericUpdates(
+        manga: SavedMangaEntity,
+        client: MangaSourceClient,
+    ): Boolean {
+        val result =
+            withContext(platformIoDispatcher) {
+                withTimeoutOrNull(20.seconds) {
+                    client.details(
+                        Manga(
+                            api = manga.api,
+                            language = manga.language,
+                            title = manga.title,
+                            url = manga.url,
+                            coverUrl = manga.imageUrl,
+                            rating = null,
+                            genres = manga.genres,
+                        ),
+                    )
+                }
+            } ?: return false
         return when (result) {
             is AppResult.Success -> {
                 reconcileRemote(
                     manga = manga,
                     remoteImageUrl = result.value.coverUrl,
-                    remoteChapters = result.value.chapters.map {
-                        RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
-                    },
+                    remoteChapters =
+                        result.value.chapters.map {
+                            RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
+                        },
                 )
                 true
             }
@@ -302,25 +322,30 @@ class LibraryRefreshWorker(
         }
     }
 
-    private suspend fun fetchMangaUpdates(manga: SavedMangaEntity, activeRepo: BaseMangaRepository) {
+    private suspend fun fetchMangaUpdates(
+        manga: SavedMangaEntity,
+        activeRepo: BaseMangaRepository,
+    ) {
         try {
-            val state = withContext(platformIoDispatcher) {
-                activeRepo
-                    .fetchMangaChaptersF(manga.url)
-                    .timeout(20.seconds)
-                    .flowOn(platformIoDispatcher)
-                    .filter { it !is State.Loading }
-                    .catch { e -> emit(State.Error(0, e.message ?: "Unknown error")) }
-                    .first()
-            }
+            val state =
+                withContext(platformIoDispatcher) {
+                    activeRepo
+                        .fetchMangaChaptersF(manga.url)
+                        .timeout(20.seconds)
+                        .flowOn(platformIoDispatcher)
+                        .filter { it !is State.Loading }
+                        .catch { e -> emit(State.Error(0, e.message ?: "Unknown error")) }
+                        .first()
+                }
 
             state.toData()?.let { mangaInfo ->
                 reconcileRemote(
                     manga = manga,
                     remoteImageUrl = mangaInfo.imageUrl,
-                    remoteChapters = mangaInfo.chapters.map {
-                        RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
-                    },
+                    remoteChapters =
+                        mangaInfo.chapters.map {
+                            RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
+                        },
                 )
             }
         } catch (e: Exception) {
@@ -344,31 +369,32 @@ class LibraryRefreshWorker(
             libraryRepository.updateMangaImageUrlEverywhere(manga.id, remoteImageUrl)
         }
 
-        val localChapters = withTimeoutOrNull(10.seconds) {
-            libraryRepository.getChaptersByMangaId(manga.id).first()
-        } ?: run {
-            log.w { "Timeout getting local chapters for ${manga.title}" }
-            return
-        }
+        val localChapters =
+            withTimeoutOrNull(10.seconds) {
+                libraryRepository.getChaptersByMangaId(manga.id).first()
+            } ?: run {
+                log.w { "Timeout getting local chapters for ${manga.title}" }
+                return
+            }
 
         val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
         // Discovery timestamp for the NEW-badge 4-day expiry (DB v10). Without it the badge
         // would be hidden immediately (fetchedAt==0 is treated as outside the window).
         val now = Clock.System.now().toEpochMilliseconds()
-        val newChapters = remoteChapters
-            .filterNot { remote -> localChapters.any { it.url == remote.url } }
-            .map { remote ->
-                SavedChapterEntity(
-                    mangaId = manga.id,
-                    name = remote.name,
-                    number = remote.number,
-                    url = remote.url,
-                    date = remote.date ?: today,
-                    isNew = true,
-                    fetchedAt = now,
-                )
-            }
-            .reversed()
+        val newChapters =
+            remoteChapters
+                .filterNot { remote -> localChapters.any { it.url == remote.url } }
+                .map { remote ->
+                    SavedChapterEntity(
+                        mangaId = manga.id,
+                        name = remote.name,
+                        number = remote.number,
+                        url = remote.url,
+                        date = remote.date ?: today,
+                        isNew = true,
+                        fetchedAt = now,
+                    )
+                }.reversed()
 
         if (newChapters.isNotEmpty()) {
             libraryRepository.insertChapterList(newChapters)
@@ -383,17 +409,20 @@ class LibraryRefreshWorker(
         isError: Boolean = false,
     ) {
         try {
-            val title = if (isError) {
-                context.getString(R.string.notification_library_refresh_failed)
-            } else {
-                context.getString(R.string.notification_refreshing_library)
-            }
+            val title =
+                if (isError) {
+                    context.getString(R.string.notification_library_refresh_failed)
+                } else {
+                    context.getString(R.string.notification_refreshing_library)
+                }
 
-            val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setOnlyAlertOnce(true)
+            val builder =
+                NotificationCompat
+                    .Builder(applicationContext, CHANNEL_ID)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setOnlyAlertOnce(true)
 
             if (!isComplete && progress >= 0) {
                 builder.setProgress(100, progress, false)

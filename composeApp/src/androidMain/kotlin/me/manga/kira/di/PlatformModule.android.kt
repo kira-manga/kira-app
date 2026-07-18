@@ -2,64 +2,60 @@ package me.manga.kira.di
 
 import androidx.work.WorkManager
 import com.russhwolf.settings.ObservableSettings
-import me.manga.kira.platform.activity.ActivityHolder
-import me.manga.kira.platform.ads.AdProvider
-import me.manga.kira.platform.ads.AndroidAdProvider
-import me.manga.kira.platform.analytics.AndroidAnalyticsClient
-import me.manga.kira.platform.analytics.AnalyticsClient
 import me.manga.kira.core.cbz.CbzManager
+import me.manga.kira.core.cbz.OptimizedCbzManager
+import me.manga.kira.domain.auth.AndroidUserIdProvider
+import me.manga.kira.domain.auth.UserIdProvider
+import me.manga.kira.domain.device.AndroidDeviceInfoProvider
+import me.manga.kira.domain.device.DeviceInfoProvider
+import me.manga.kira.platform.activity.ActivityHolder
+import me.manga.kira.platform.analytics.AnalyticsClient
+import me.manga.kira.platform.analytics.AndroidAnalyticsClient
+import me.manga.kira.platform.cbz.AndroidCbzWriter
 import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.cbz.CbzWriter
-import me.manga.kira.platform.cbz.AndroidCbzWriter
 import me.manga.kira.platform.cbz.DefaultCbzReader
-import me.manga.kira.core.cbz.OptimizedCbzManager
-import me.manga.kira.platform.consent.AndroidConsentFlowClient
-import me.manga.kira.platform.consent.ConsentFlowClient
+import me.manga.kira.platform.connectivity.AndroidConnectivityObserver
+import me.manga.kira.platform.connectivity.ConnectivityObserver
 import me.manga.kira.platform.crash.AndroidCrashReporter
 import me.manga.kira.platform.crash.CrashReporter
 import me.manga.kira.platform.device.AndroidDeviceTierProbe
 import me.manga.kira.platform.device.DeviceTierProbe
-import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.AndroidAppFileSystem
 import me.manga.kira.platform.filesystem.AndroidFileSizeFormatter
+import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.FileSizeFormatter
 import me.manga.kira.platform.image.AndroidDominantColorExtractor
-import me.manga.kira.platform.image.DominantColorExtractor
 import me.manga.kira.platform.image.AndroidImageDecoderRegistry
-import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.platform.image.AndroidScreenshotProvider
+import me.manga.kira.platform.image.DominantColorExtractor
+import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.platform.image.ScreenshotProvider
-import me.manga.kira.platform.jobs.BackgroundJobScheduler
-import me.manga.kira.platform.jobs.AndroidBackgroundJobScheduler
-import me.manga.kira.platform.locale.AndroidLocaleSwitcher
-import me.manga.kira.platform.locale.LocaleSwitcher
-import me.manga.kira.platform.connectivity.AndroidConnectivityObserver
-import me.manga.kira.platform.connectivity.ConnectivityObserver
-import me.manga.kira.platform.notification.AndroidNotificationPresenter
-import me.manga.kira.platform.notification.NotificationPresenter
-import me.manga.kira.platform.version.AppVersionProvider
-import me.manga.kira.platform.version.AndroidAppVersionProvider
 import me.manga.kira.platform.intent.AndroidIntentLauncher
 import me.manga.kira.platform.intent.IntentLauncher
-import me.manga.kira.platform.toast.AndroidToastShower
-import me.manga.kira.platform.toast.ToastShower
+import me.manga.kira.platform.jobs.AndroidBackgroundJobScheduler
+import me.manga.kira.platform.jobs.BackgroundJobScheduler
+import me.manga.kira.platform.locale.AndroidLocaleSwitcher
+import me.manga.kira.platform.locale.LocaleSwitcher
+import me.manga.kira.platform.notification.AndroidNotificationPresenter
+import me.manga.kira.platform.notification.NotificationPresenter
 import me.manga.kira.platform.push.AndroidPushTokenProvider
 import me.manga.kira.platform.push.PushTokenProvider
 import me.manga.kira.platform.remote.AndroidRemoteDocStore
 import me.manga.kira.platform.remote.RemoteDocStore
 import me.manga.kira.platform.review.AndroidInAppReviewClient
 import me.manga.kira.platform.review.InAppReviewClient
-import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.platform.storage.AndroidSecureStorage
-import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.storage.AndroidSettingsFactory
+import me.manga.kira.platform.storage.DataStoreHelper
+import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.storage.SettingsFactory
+import me.manga.kira.platform.toast.AndroidToastShower
+import me.manga.kira.platform.toast.ToastShower
 import me.manga.kira.platform.update.AndroidAppUpdateClient
 import me.manga.kira.platform.update.AppUpdateClient
-import me.manga.kira.domain.auth.AndroidUserIdProvider
-import me.manga.kira.domain.auth.UserIdProvider
-import me.manga.kira.domain.device.AndroidDeviceInfoProvider
-import me.manga.kira.domain.device.DeviceInfoProvider
+import me.manga.kira.platform.version.AndroidAppVersionProvider
+import me.manga.kira.platform.version.AppVersionProvider
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -73,118 +69,120 @@ import org.koin.dsl.module
  * call is required — see `DatabaseBuilder.android.kt`. Same pattern for `setAndroidDeviceTierContext`
  * (see `core/util/heap/DeviceTier.android.kt`).
  *
- * `AdProvider`, `AppUpdateClient`, `InAppReviewClient`, and `ConsentFlowClient` each accept an
+ * `AppUpdateClient` and `InAppReviewClient` each accept an
  * `activityProvider: () -> Activity?` lambda to obtain the current foreground Activity at show
  * time without holding a strong reference. The lambda is backed by the `ActivityHolder` singleton
  * (`{ ActivityHolder.current }`), kept current by `MyApp`'s `registerActivityLifecycleCallbacks`;
  * when no Activity is resumed it returns null and the facades fall through to their "no activity"
  * branches.
  */
-actual fun platformModule(): Module = module {
+actual fun platformModule(): Module =
+    module {
+        // ---- Settings / DataStore (Phase 8.1 + 7.0b) ----
+        // Fresh start under the Kira identity (2026-06): the preferences store is "kira_settings" with
+        // NO migration from any legacy Yami store. The app launches with default preferences; old
+        // native/Yami data is intentionally not imported.
+        single<SettingsFactory> { AndroidSettingsFactory(androidContext()) }
+        single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }
+        single { DataStoreHelper(get()) }
 
-    // ---- Settings / DataStore (Phase 8.1 + 7.0b) ----
-    // Fresh start under the Kira identity (2026-06): the preferences store is "kira_settings" with
-    // NO migration from any legacy Yami store. The app launches with default preferences; old
-    // native/Yami data is intentionally not imported.
-    single<SettingsFactory> { AndroidSettingsFactory(androidContext()) }
-    single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }
-    single { DataStoreHelper(get()) }
+        // ---- Room database + DAOs ----
+        // Relocated to :data:local `databaseModule()` (strangler-fig Phase 1), added to the graph via
+        // allSharedModules(). setAndroidAppContext(applicationContext) must still run in MyApp.onCreate()
+        // before MangaDatabase is first resolved (see DatabaseBuilder.android.kt in :data:local).
 
-    // ---- Room database + DAOs ----
-    // Relocated to :data:local `databaseModule()` (strangler-fig Phase 1), added to the graph via
-    // allSharedModules(). setAndroidAppContext(applicationContext) must still run in MyApp.onCreate()
-    // before MangaDatabase is first resolved (see DatabaseBuilder.android.kt in :data:local).
+        // ---- Network / connectivity (Phase 8.2) ----
+        single<ConnectivityObserver> { AndroidConnectivityObserver(androidContext()) }
 
-    // ---- Network / connectivity (Phase 8.2) ----
-    single<ConnectivityObserver> { AndroidConnectivityObserver(androidContext()) }
+        // ---- Identity / device metadata (Phase 8.3) ----
+        single<UserIdProvider> { AndroidUserIdProvider(androidContext()) }
+        single<DeviceInfoProvider> { AndroidDeviceInfoProvider() }
 
-    // ---- Identity / device metadata (Phase 8.3) ----
-    single<UserIdProvider> { AndroidUserIdProvider(androidContext()) }
-    single<DeviceInfoProvider> { AndroidDeviceInfoProvider() }
+        // ---- Notifications (Phase 8.4) ----
+        single<NotificationPresenter> { AndroidNotificationPresenter(androidContext()) }
 
-    // ---- Notifications (Phase 8.4) ----
-    single<NotificationPresenter> { AndroidNotificationPresenter(androidContext()) }
+        // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
+        single<AppFileSystem> { AndroidAppFileSystem(androidContext()) }
+        single<CbzWriter> { AndroidCbzWriter(get()) }
+        single<CbzReader> { DefaultCbzReader(get(), get()) }
 
-    // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
-    single<AppFileSystem> { AndroidAppFileSystem(androidContext()) }
-    single<CbzWriter> { AndroidCbzWriter(get()) }
-    single<CbzReader> { DefaultCbzReader(get(), get()) }
+        // ---- Background jobs (Phase 8.6) ----
+        single<BackgroundJobScheduler> { AndroidBackgroundJobScheduler(androidContext()) }
 
-    // ---- Background jobs (Phase 8.6) ----
-    single<BackgroundJobScheduler> { AndroidBackgroundJobScheduler(androidContext()) }
+        // ---- Secure storage (Phase 8.7) ----
+        single<SecureStorage> { AndroidSecureStorage(androidContext()) }
 
-    // ---- Secure storage (Phase 8.7) ----
-    single<SecureStorage> { AndroidSecureStorage(androidContext()) }
+        // ---- Firebase facades (Phase 8.8) ----
+        single<AnalyticsClient> { AndroidAnalyticsClient(androidContext()) }
+        single<CrashReporter> { AndroidCrashReporter() }
+        single<PushTokenProvider> { AndroidPushTokenProvider() }
+        single<RemoteDocStore> { AndroidRemoteDocStore() }
+        // Firebase In-App Messaging needs no binding: the firebase-inappmessaging-display SDK (dep in
+        // :platform androidMain) auto-initialises from google-services.json and displays console-authored
+        // campaigns on every screen. The app intentionally does not suppress them anywhere.
 
-    // ---- Firebase facades (Phase 8.8) ----
-    single<AnalyticsClient> { AndroidAnalyticsClient(androidContext()) }
-    single<CrashReporter> { AndroidCrashReporter() }
-    single<PushTokenProvider> { AndroidPushTokenProvider() }
-    single<RemoteDocStore> { AndroidRemoteDocStore() }
-    // Firebase In-App Messaging needs no binding: the firebase-inappmessaging-display SDK (dep in
-    // :platform androidMain) auto-initialises from google-services.json and displays console-authored
-    // campaigns on every screen. The app intentionally does not suppress them anywhere.
+        // ---- Play services (Phase 8.9) ----
+        // activityProvider is now backed by ActivityHolder (:platform androidMain), kept current by
+        // MyApp's registerActivityLifecycleCallbacks. Each facade re-resolves the foreground Activity
+        // at show time via `{ ActivityHolder.current }`; when none is resumed it returns null and the
+        // facade falls through to its safe-default (false / UNKNOWN / AdResult.Failed) branch.
+        single<AppUpdateClient> {
+            AndroidAppUpdateClient(androidContext(), activityProvider = { ActivityHolder.current })
+        }
+        single<InAppReviewClient> {
+            AndroidInAppReviewClient(androidContext(), activityProvider = { ActivityHolder.current })
+        }
 
-    // ---- AdMob / Play services / UMP (Phase 8.9) ----
-    // activityProvider is now backed by ActivityHolder (:platform androidMain), kept current by
-    // MyApp's registerActivityLifecycleCallbacks. Each facade re-resolves the foreground Activity
-    // at show time via `{ ActivityHolder.current }`; when none is resumed it returns null and the
-    // facade falls through to its safe-default (false / UNKNOWN / AdResult.Failed) branch.
-    single<AdProvider> { AndroidAdProvider(androidContext(), activityProvider = { ActivityHolder.current }) }
-    single<AppUpdateClient> { AndroidAppUpdateClient(androidContext(), activityProvider = { ActivityHolder.current }) }
-    single<InAppReviewClient> { AndroidInAppReviewClient(androidContext(), activityProvider = { ActivityHolder.current }) }
-    single<ConsentFlowClient> { AndroidConsentFlowClient(androidContext(), activityProvider = { ActivityHolder.current }) }
+        // ---- Imaging (Phase 8.10 + 8.11) ----
+        single<ImageDecoderRegistry> { AndroidImageDecoderRegistry() }
+        single<ScreenshotProvider> { AndroidScreenshotProvider(androidContext()) }
+        single<DominantColorExtractor> { AndroidDominantColorExtractor() }
 
-    // ---- Imaging (Phase 8.10 + 8.11) ----
-    single<ImageDecoderRegistry> { AndroidImageDecoderRegistry() }
-    single<ScreenshotProvider> { AndroidScreenshotProvider(androidContext()) }
-    single<DominantColorExtractor> { AndroidDominantColorExtractor() }
+        // ---- Locale switch (PC-7 cutover to :platform) ----
+        // Consumed by :data LanguageRepositoryImpl.setLanguage to apply the per-app locale after the
+        // pref write. Replaces the legacy :shared core.locale.applyApplicationLocale top-level fun.
+        single<LocaleSwitcher> { AndroidLocaleSwitcher() }
 
-    // ---- Locale switch (PC-7 cutover to :platform) ----
-    // Consumed by :data LanguageRepositoryImpl.setLanguage to apply the per-app locale after the
-    // pref write. Replaces the legacy :shared core.locale.applyApplicationLocale top-level fun.
-    single<LocaleSwitcher> { AndroidLocaleSwitcher() }
+        // ---- External intents / toasts / app version (Phase 10.2) ----
+        // Used by Welcome / Theme / About / Settings screens to open URLs, open Play Store, show
+        // toasts, and read the running version name. All three depend on Context which is provided
+        // through Koin's androidContext().
+        single<IntentLauncher> { AndroidIntentLauncher(androidContext()) }
+        single<ToastShower> { AndroidToastShower(androidContext()) }
+        single<AppVersionProvider> { AndroidAppVersionProvider(androidContext()) }
 
-    // ---- External intents / toasts / app version (Phase 10.2) ----
-    // Used by Welcome / Theme / About / Settings screens to open URLs, open Play Store, show
-    // toasts, and read the running version name. All three depend on Context which is provided
-    // through Koin's androidContext().
-    single<IntentLauncher> { AndroidIntentLauncher(androidContext()) }
-    single<ToastShower> { AndroidToastShower(androidContext()) }
-    single<AppVersionProvider> { AndroidAppVersionProvider(androidContext()) }
+        // ---- Downloaded-chapter folder-size formatting (Phase 10.3, Wave 2A) ----
+        // Used by LibraryChapterItem / TotalSizeDisplay to render the on-disk size of downloaded
+        // manga/chapter folders. Replaces upstream `FileSizeUtils` which depended on Context+resources.
+        single<FileSizeFormatter> { AndroidFileSizeFormatter() }
 
-    // ---- Downloaded-chapter folder-size formatting (Phase 10.3, Wave 2A) ----
-    // Used by LibraryChapterItem / TotalSizeDisplay to render the on-disk size of downloaded
-    // manga/chapter folders. Replaces upstream `FileSizeUtils` which depended on Context+resources.
-    single<FileSizeFormatter> { AndroidFileSizeFormatter() }
+        // ---- DownloadRepository (Phase 8.14 — real WorkManager-backed impl) ----
+        // The Android target wires `DownloadRepositoryImpl` backed by WorkManager (`DownloadWorkerV2`)
+        // + Ktor + Room. Transitive deps `CbzManager`, `OptimizedCbzManager`, and
+        // `ChapterDownloadService` are all Android-only (Bitmap / AVIF / WorkManager). iOS + Desktop
+        // bind `CoroutineDownloadRepositoryImpl` (shared via `nonAndroidMain`) in their respective
+        // PlatformModule.* files.
+        //
+        // `DownloadWorkerV2(Context, WorkerParameters)` currently resolves its deps via
+        // `org.koin.core.context.GlobalContext.get()` at runtime. The Phase 12.x `KoinWorkerFactory`
+        // bootstrap landed in `MyApp.onCreate()` (see commit e8b4fa9) but the worker itself still uses
+        // `GlobalContext.get()` rather than constructor injection; refactoring to `workerOf(::…)`-style
+        // constructor wiring is tracked separately under AUDIT_GOAL.md Section 4 item #5.
+        // PC-1 (Platform Cutover): bind the :platform DeviceTierProbe SPI. Replaces the legacy
+        // `:shared` `detectDeviceTier()` + `setAndroidDeviceTierContext(...)` opt-in registration
+        // (both deleted). OptimizedCbzManager injects it to size its decode/compress semaphores.
+        single<DeviceTierProbe> { AndroidDeviceTierProbe(androidContext()) }
+        single { CbzManager(androidContext()) }
+        single { OptimizedCbzManager(androidContext(), get()) }
+        single { WorkManager.getInstance(androidContext()) }
+        // ChapterDownloadService + DownloadRepositoryImpl bindings moved to :data:download's
+        // downloadModule() (strangler-fig Phase 4), loaded via allReworkModules(). They resolve
+        // WorkManager / OptimizedCbzManager (above) + the Room DAOs / FileService by type across the
+        // combined graph.
 
-    // ---- DownloadRepository (Phase 8.14 — real WorkManager-backed impl) ----
-    // The Android target wires `DownloadRepositoryImpl` backed by WorkManager (`DownloadWorkerV2`)
-    // + Ktor + Room. Transitive deps `CbzManager`, `OptimizedCbzManager`, and
-    // `ChapterDownloadService` are all Android-only (Bitmap / AVIF / WorkManager). iOS + Desktop
-    // bind `CoroutineDownloadRepositoryImpl` (shared via `nonAndroidMain`) in their respective
-    // PlatformModule.* files.
-    //
-    // `DownloadWorkerV2(Context, WorkerParameters)` currently resolves its deps via
-    // `org.koin.core.context.GlobalContext.get()` at runtime. The Phase 12.x `KoinWorkerFactory`
-    // bootstrap landed in `MyApp.onCreate()` (see commit e8b4fa9) but the worker itself still uses
-    // `GlobalContext.get()` rather than constructor injection; refactoring to `workerOf(::…)`-style
-    // constructor wiring is tracked separately under AUDIT_GOAL.md Section 4 item #5.
-    // PC-1 (Platform Cutover): bind the :platform DeviceTierProbe SPI. Replaces the legacy
-    // `:shared` `detectDeviceTier()` + `setAndroidDeviceTierContext(...)` opt-in registration
-    // (both deleted). OptimizedCbzManager injects it to size its decode/compress semaphores.
-    single<DeviceTierProbe> { AndroidDeviceTierProbe(androidContext()) }
-    single { CbzManager(androidContext()) }
-    single { OptimizedCbzManager(androidContext(), get()) }
-    single { WorkManager.getInstance(androidContext()) }
-    // ChapterDownloadService + DownloadRepositoryImpl bindings moved to :data:download's
-    // downloadModule() (strangler-fig Phase 4), loaded via allReworkModules(). They resolve
-    // WorkManager / OptimizedCbzManager (above) + the Room DAOs / FileService by type across the
-    // combined graph.
-
-    // ComplaintRepository (Android: Firebase Firestore) + FirebaseFirestore binding moved to :data
-    // complaintRepositoryModule() (strangler-fig Phase 5), loaded via allReworkModules().
-}
+        // ComplaintRepository (Android: Firebase Firestore) + FirebaseFirestore binding moved to :data
+        // complaintRepositoryModule() (strangler-fig Phase 5), loaded via allReworkModules().
+    }
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster170.staleKdocSweep.cascade,

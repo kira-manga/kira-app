@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_diagnostics_section">Diagnostics</string>
+    <string name="crash_diagnostics_title">Crash diagnostics</string>
+    <string name="crash_diagnostics_settings_description">Run controlled fatal crashes to verify Firebase Crashlytics.</string>
+    <string name="crash_diagnostics_warning_title">Internal testing only</string>
+    <string name="crash_diagnostics_warning_body">Each confirmed action immediately closes the app. Reopen it before running the next test.</string>
+    <string name="crash_diagnostics_intro">Crashlytics sends a fatal report after the next launch. Run one scenario at a time and verify five separate issues in Firebase.</string>
+    <string name="crash_diagnostics_scenario_illegal_state">1. Illegal state crash</string>
+    <string name="crash_diagnostics_scenario_illegal_argument">2. Illegal argument crash</string>
+    <string name="crash_diagnostics_scenario_out_of_bounds">3. Out-of-bounds crash</string>
+    <string name="crash_diagnostics_scenario_arithmetic">4. Arithmetic crash</string>
+    <string name="crash_diagnostics_scenario_custom">5. Custom Kira crash</string>
+    <string name="crash_diagnostics_confirm_title">Crash the app?</string>
+    <string name="crash_diagnostics_confirm_message">Run &quot;%1$s&quot;? The app will close immediately and unsaved work may be lost.</string>
+    <string name="crash_diagnostics_confirm_action">Crash app</string>
+</resources>

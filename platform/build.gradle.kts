@@ -215,17 +215,6 @@ kotlin {
             // flexible/immediate in-app update flows. iOS uses the App Store outside the app;
             // Desktop has no Play-Store-style update mechanism — both are no-ops.
             implementation(libs.play.app.update)
-            // Google UMP (User Messaging Platform) — required by AndroidConsentFlowClient
-            // (Phase 5.z.3 ConsentFlowClient). Provides `UserMessagingPlatform.getConsentInformation`
-            // + `loadAndShowConsentFormIfRequired` for the GDPR / IAB TCF consent flow that
-            // AdMob requires in EEA regions. iOS / Desktop don't serve ads — both are no-ops.
-            implementation(libs.ump)
-            // Google Mobile Ads (AdMob) — required by AndroidAdProvider (Phase 5.z.4
-            // AdProvider). Provides `InterstitialAd.load(...)` / `RewardedAd.load(...)` plus
-            // their `FullScreenContentCallback` show-flow listeners. iOS has a Google Mobile
-            // Ads SDK but it's not wired in Phase 8 (deferred to Phase 12 alongside Firebase
-            // iOS); Desktop has no first-party JVM SDK. Both are no-ops.
-            implementation(libs.play.services.ads)
         }
 
         iosMain.dependencies {

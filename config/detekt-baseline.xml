@@ -2124,7 +2124,7 @@
     <ID>TooManyFunctions:WhatsNewScreen.kt$me.manga.kira.ui.whatsnew.WhatsNewScreen.kt</ID>
     <ID>TopLevelPropertyNaming:KiraSocialMediaRow.kt$/** Facebook URL — matches legacy `SocialMediaRow.kt:107` literal. */ const val FacebookUrl: String = "https://www.facebook.com/61577403584218"</ID>
     <ID>TopLevelPropertyNaming:KiraSocialMediaRow.kt$/** Instagram URL — matches legacy `SocialMediaRow.kt:115` literal. */ const val InstagramUrl: String = "https://www.instagram.com/yami_manga_me"</ID>
-    <ID>TopLevelPropertyNaming:KiraSocialMediaRow.kt$/** Project website URL — matches legacy `SocialMediaRow.kt:145` literal. */ const val WebsiteUrl: String = "https://yamimanga.me/"</ID>
+    <ID>TopLevelPropertyNaming:KiraSocialMediaRow.kt$/** Official project website URL. */ const val WEBSITE_URL: String = "https://kiramanga.me"</ID>
     <ID>TopLevelPropertyNaming:KiraSocialMediaRow.kt$/** Twitter/X URL — matches legacy `SocialMediaRow.kt:99` literal. */ const val TwitterUrl: String = "https://twitter.com/yami_manga_me"</ID>
     <ID>TopLevelPropertyNaming:KiraSocialMediaRow.kt$/** WhatsApp URL — matches legacy `SocialMediaRow.kt:125-128` literal (Egypt country code). */ const val WhatsAppUrl: String = "https://api.whatsapp.com/send?phone=201558657735&amp;text=Hey%20from%20Kira!"</ID>
     <ID>UnusedParameter:SourcesScreen.kt$language: String</ID>

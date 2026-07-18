@@ -107,9 +107,8 @@ import me.manga.kira.presentation.mvi.MviViewModel
 class AboutViewModel(
     private val getAppMetadata: GetAppMetadataUseCase,
 ) : MviViewModel<AboutState, AboutIntent, AboutEffect>(
-    initialState = AboutState(),
-) {
-
+        initialState = AboutState(),
+    ) {
     init {
         launchSafely {
             try {
@@ -131,9 +130,11 @@ class AboutViewModel(
 
     override suspend fun handle(intent: AboutIntent) {
         when (intent) {
-            AboutIntent.OnOpenPlayStore -> emit(
-                AboutEffect.OpenPlayStorePage(packageName = state.value.packageName),
-            )
+            AboutIntent.OnOpenPlayStore ->
+                emit(
+                    AboutEffect.OpenPlayStorePage(packageName = state.value.packageName),
+                )
+            AboutIntent.OnRequestReview -> emit(AboutEffect.RequestReview)
             is AboutIntent.OnOpenUrl -> emit(AboutEffect.OpenUrl(url = intent.url))
             AboutIntent.OnOpenWhatsNew -> emit(AboutEffect.NavigateToWhatsNew)
         }
