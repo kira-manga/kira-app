@@ -65,6 +65,10 @@ Owner actions before Play upload:
    key and controls Android App Links after Play re-signs the app.
 5. Upload only the signed `.aab`, then preserve its mapping file and CI provenance.
 
+The complete Android/Play/backend input inventory and the non-printing local validation/apply
+helpers are documented in [`ANDROID_INTERNAL_TESTING.md`](ANDROID_INTERNAL_TESTING.md). Fill only
+the ignored `.secrets/android-release.env`; never commit the real configuration.
+
 ## iOS release
 
 - Bundle ID: `me.manga.kira`.

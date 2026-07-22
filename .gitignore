@@ -37,6 +37,8 @@ GoogleService-Info.plist
 *.xcarchive/
 *.dSYM/
 .secrets/
+# Explicit release-config guard (also covered by the .secrets/ rule above).
+.secrets/android-release.env
 fastlane/report.xml
 
 # --- Local scratch / temp working dirs ---

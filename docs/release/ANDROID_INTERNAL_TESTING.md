@@ -35,11 +35,12 @@ The workflow also requires these release inputs:
 
 - `GOOGLE_SERVICES_JSON`: the real Firebase file from Firebase Console → Project settings → Your
   apps → Android app → `google-services.json`. The repository convention is one-line Base64:
-  `base64 < app/google-services.json | tr -d '\n'`. Store it as a GitHub Secret named
-  `GOOGLE_SERVICES_JSON`; it is configuration/credential material and must remain gitignored.
+  `base64 < app/google-services.json | tr -d '\n'`. Store it as an Actions secret named
+  `GOOGLE_SERVICES_JSON` in the `google-play-internal` environment; it is configuration/credential
+  material and must remain gitignored.
 - `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`: the complete JSON key for the Play-only service account,
-  stored verbatim as a GitHub Secret. Fastlane consumes it through `json_key_data` and never writes
-  it to the workspace.
+  stored verbatim as an Actions secret in the `google-play-internal` environment. Fastlane consumes
+  it through `json_key_data` and never writes it to the workspace.
 - `ANDROID_BUILD_NUMBER_OFFSET` (optional): a non-negative repository variable, default `1000`.
   The workflow computes `offset + github.run_number`, so every workflow run gets a higher Play
   `versionCode` without modifying the development fallback in `release/version.properties`.
@@ -70,8 +71,9 @@ base64 < "/Users/abdelrahman/Private/kira-signing/kira-upload.jks" \
   | tr -d '\n' > "/Users/abdelrahman/Private/kira-signing/kira-upload.jks.b64"
 ```
 
-Paste that one-line value into the `ANDROID_KEYSTORE_BASE64` GitHub Secret. The runner decodes it
-to `$RUNNER_TEMP/kira-upload.jks` with mode `0600` and deletes it in the final cleanup step.
+Paste that one-line value into the `ANDROID_KEYSTORE_BASE64` Actions secret in the
+`google-play-internal` environment. The runner decodes it to `$RUNNER_TEMP/kira-upload.jks` with
+mode `0600` and deletes it in the final cleanup step.
 
 ## Source signing ceremony
 
@@ -114,8 +116,9 @@ this workflow does not. Do not grant production release, financial, store-presen
 
 For the selected Fastlane integration, create a JSON key in Google Cloud → Service Accounts → the
 service account → **Keys → Add key → Create new key → JSON**. Store the complete JSON as
-`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` in GitHub **Settings → Secrets and variables → Actions → New
-repository secret**. Do not commit it or upload it as an artifact. Fastlane 2.235.0 is already
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` in GitHub **Settings → Environments → google-play-internal →
+Environment secrets** (or the repository Actions secrets page if the environment is not yet
+configured). Do not commit it or upload it as an artifact. Fastlane 2.235.0 is already
 pinned in `Gemfile.lock`; the workflow validates the JSON before building and does not add a
 marketplace Play-upload action. It reuses the repository's existing official checkout, Java,
 Gradle, Ruby, and artifact actions with the same major-version pins as the TestFlight workflow;
@@ -124,3 +127,60 @@ the workflow grants only `contents: read`.
 The first Play app setup and Play App Signing acceptance may require a one-time manual Console
 action. After that, pushes to `internal-testing` build the signed AAB and complete the Internal
 testing release automatically.
+
+## Secure local configuration and helpers
+
+The local file to fill in is:
+
+```text
+/Users/abdelrahman/Projects/kira/Kira manga/.secrets/android-release.env
+```
+
+It is already ignored by `.gitignore`. Keep it mode `0600`:
+
+```bash
+chmod 600 "/Users/abdelrahman/Projects/kira/Kira manga/.secrets/android-release.env"
+```
+
+The committed [`.env.android-release.example`](../../.env.android-release.example) explains every
+assignment. The real file contains the Android upload values (`ANDROID_KEYSTORE_*`), the Base64
+Firebase value (`GOOGLE_SERVICES_JSON`), the raw Play service-account JSON, the public URL and pin,
+the backend Ed25519 key ID/files, the bundled document file, and local admin credentials used only
+for an explicitly requested source import. File references such as `ANDROID_KEYSTORE_FILE`,
+`GOOGLE_SERVICES_JSON_FILE`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_FILE`,
+`SOURCE_CONFIG_PRIVATE_KEY_FILE`, and `SOURCE_CONFIG_PUBLIC_KEY_FILE` are preferred over inline
+binary, JSON, password, or private-key values.
+
+Backend signing is deliberately split: `SOURCE_CONFIG_PRIVATE_KEY_FILE` / `KIRA_SIGNING_PRIVATE_KEY`
+is secret-manager-only backend material; `SOURCE_CONFIG_PUBLIC_KEY_FILE` becomes the Android
+`KIRA_SOURCE_CONFIG_PINNED_KEYS` trust root; `SOURCE_CONFIG_KEY_ID` must equal both backend key-ID
+variables. The backend signing helper installs the four documented `KIRA_SIGNING_*` secrets. The
+`SOURCE_CONFIG_DOCUMENT_FILE` is the JSON body for the documented `POST /api/v1/admin/sources/import-bundled`
+on-ramp; importing it makes the backend allocate the revision, timestamp, checksum, previous-chain
+metadata, and detached signature. There are no safe manual values for those snapshot fields—do not
+invent or place them in the local configuration.
+
+Validate without printing values:
+
+```bash
+scripts/release/validate-android-release-config.sh \
+  .secrets/android-release.env
+```
+
+The apply helper is intentionally not automatic. It first runs the validator, then can stream
+GitHub environment secrets to the existing `google-play-internal` environment, set public
+repository variables, and invoke the backend signing-secret installer:
+
+```bash
+scripts/release/apply-android-release-config.sh \
+  .secrets/android-release.env --confirm-apply
+```
+
+Adding `--publish-source-config` additionally logs in with the local admin credential, imports the
+configured document, and requires the public endpoint to return HTTP 200 with the expected signing
+key ID. Do not use that option until the backend deployment and key ceremony are complete. Neither
+helper is run by CI, and this setup has not run the apply helper.
+
+Never share the real file or referenced files, commit them, upload them as artifacts, paste them in
+issues, or expose them in shell traces/logs. The helper scripts report names and statuses only; they
+never print passwords, private keys, JSON bodies, tokens, or Base64 values.

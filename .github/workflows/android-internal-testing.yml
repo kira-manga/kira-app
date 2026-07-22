@@ -17,6 +17,7 @@ jobs:
   build-and-upload:
     name: Validate, sign, and upload Android Internal testing
     if: ${{ github.ref == 'refs/heads/internal-testing' }}
+    environment: google-play-internal
     runs-on: ubuntu-latest
     timeout-minutes: 150
     defaults:
