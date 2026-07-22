@@ -49,8 +49,8 @@ GOOGLE_SERVICES_JSON   # base64-encoded real file
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
 ```
 
-The dedicated `.github/workflows/android-internal-testing.yml` workflow runs only from the
-`internal-testing` branch. It validates the source-config authority, reconstructs the upload
+The `Internal Testing Release` workflow offers `android`, `ios`, and `both` on the
+`internal-testing` branch. Its reusable Android workflow validates the source-config authority, reconstructs the upload
 keystore only in the runner's temporary directory, runs tests/lint/R8, builds the signed AAB, and
 uploads it to Google Play's Internal testing track. It removes the keystore and Firebase file in
 an `always()` cleanup step. The older `ci.yml` workflow remains a build-validation workflow and
@@ -107,8 +107,8 @@ BETA_REVIEW_CONTACT_EMAIL
 BETA_REVIEW_CONTACT_PHONE
 ```
 
-`.github/workflows/testflight.yml` runs only for `internal-testing` (push or a manual dispatch whose
-selected ref is that branch). It validates all supplied signing metadata without logging protected
+`.github/workflows/testflight.yml` is called only by `Internal Testing Release` when `ios` or
+`both` is selected on `internal-testing`. It validates all supplied signing metadata without logging protected
 contents, queries every uploaded/processing App Store Connect build for version `1.0.0`, chooses an
 integer build higher than the highest result, creates the TestFlight group prerequisites, archives,
 exports and validates the IPA, uploads Crashlytics dSYMs, uploads to App Store Connect, waits for

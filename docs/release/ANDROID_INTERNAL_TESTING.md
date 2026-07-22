@@ -1,8 +1,8 @@
 # Android Internal Testing release
 
-This repository now contains a fail-closed workflow at
-`.github/workflows/android-internal-testing.yml`. It runs only for pushes to `internal-testing`;
-it has not been run, and no Android artifact has been built or uploaded during this setup.
+This repository contains a fail-closed reusable workflow at
+`.github/workflows/android-internal-testing.yml`. Start it through the `Internal Testing Release`
+workflow on `internal-testing`, then select `android` or `both`. A push alone does not publish.
 
 ## Audit result
 
@@ -125,8 +125,8 @@ Gradle, Ruby, and artifact actions with the same major-version pins as the TestF
 the workflow grants only `contents: read`.
 
 The first Play app setup and Play App Signing acceptance may require a one-time manual Console
-action. After that, pushes to `internal-testing` build the signed AAB and complete the Internal
-testing release automatically.
+action. After that, open GitHub Actions, choose `Internal Testing Release`, select the
+`internal-testing` branch and the Android platform, and run the workflow.
 
 ## Secure local configuration and helpers
 

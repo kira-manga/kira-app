@@ -3,7 +3,8 @@
 ## Automated release contract
 
 - Git branch: `internal-testing`.
-- Workflow: `.github/workflows/testflight.yml`; pushes to any other branch cannot trigger it.
+- Workflow: choose `ios` or `both` in `Internal Testing Release` on `internal-testing`;
+  `.github/workflows/testflight.yml` is the reusable implementation. Pushes do not publish.
 - App Store Connect app: `6792232678`.
 - Bundle ID: `me.manga.kira`.
 - Apple Team ID: `7CGZ2343AA`.
