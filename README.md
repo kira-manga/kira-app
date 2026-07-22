@@ -34,7 +34,10 @@ Host is macOS. Full gate cadence and gotchas: `CLAUDE.md` § "Build / test / run
 
 - **`main`** — default branch. **GitHub Actions never run on `main`** (owner rule; encoded in `.github/workflows/ci.yml`).
 - **`testing`** — push here (or use manual workflow dispatch) to get a full CI run: compile matrix, 11 module test suites, locale-parity gates, debug APK, iOS klib compiles, blocking ktlint/detekt.
-- **`release`** — CI runs plus the `release-verify` job (signed R8 release build). Release signing secrets (`KEYSTORE_BASE64` etc.) are **not configured yet**; the job warn-skips until they are.
+- **`release`** — CI runs plus the `release-verify` job (signed R8 release build). Google Play
+  publishing is intentionally separate: `.github/workflows/android-internal-testing.yml` runs
+  only after a push to `internal-testing` and requires the Android signing, Firebase, source
+  authority, and Play service-account inputs documented in `docs/release/ANDROID_INTERNAL_TESTING.md`.
 
 ## Restricted paths
 

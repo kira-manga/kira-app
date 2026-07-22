@@ -160,10 +160,12 @@ committed `*.example` templates — `app/google-services.json`, `iosApp/iosApp/G
   `static-analysis` (ktlint 1.5.0 + detekt 1.23.7 standalone CLIs, **blocking** against committed
   baselines under `config/`), `release-verify` (always verifies unit/lint/R8/unsigned APK+AAB and
   optionally emits a signed AAB), and `ios-archive` (optionally creates a signed archive+dSYMs).
-- Android signing is environment-only. CI signed output requires `KEYSTORE_BASE64`,
-  `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, and real `GOOGLE_SERVICES_JSON`; iOS archive
-  output requires its certificate/profile/plist secret set. Missing secrets skip only the signed
-  paths—the unsigned/build verification remains mandatory.
+- Android signing is environment-only. The Internal testing workflow requires
+  `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+  `ANDROID_KEY_PASSWORD`, real `GOOGLE_SERVICES_JSON`, and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`;
+  iOS archive output requires its certificate/profile/plist secret set. Missing Android release
+  inputs fail that publishing workflow before any artifact is uploaded; the general CI build
+  verification remains separate.
 - AdMob, mediation, UMP, Android `AD_ID`, and Privacy Sandbox advertising-ID/attribution
   permissions were removed because the app has no advertising UI; CI guards the merged manifest.
 - Store submission is gated on `docs/release/INTERNAL_RELEASE_QA.md`; no final signed-device suite

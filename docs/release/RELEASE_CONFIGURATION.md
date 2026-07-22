@@ -38,19 +38,23 @@ The committed `app/google-services.json` is inert. A production-shaped release r
 gitignored file. `-PallowPlaceholderGoogleServices=true` exists only so CI/local validation can
 exercise lint, R8, packaging, and bundle generation without production credentials.
 
-GitHub release secrets:
+GitHub release secrets for the Android Internal testing workflow:
 
 ```text
-KEYSTORE_BASE64
-KEYSTORE_PASSWORD
-KEY_ALIAS
-KEY_PASSWORD
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
 GOOGLE_SERVICES_JSON   # base64-encoded real file
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
 ```
 
-CI always uploads `android-release-validation-<run>` with the unsigned validation APK/AAB and
-mapping files. When all secrets exist, it additionally uploads `android-signed-aab-<run>` after
-verifying the bundle contains a signing certificate.
+The dedicated `.github/workflows/android-internal-testing.yml` workflow runs only from the
+`internal-testing` branch. It validates the source-config authority, reconstructs the upload
+keystore only in the runner's temporary directory, runs tests/lint/R8, builds the signed AAB, and
+uploads it to Google Play's Internal testing track. It removes the keystore and Firebase file in
+an `always()` cleanup step. The older `ci.yml` workflow remains a build-validation workflow and
+does not publish to Play.
 
 Owner actions before Play upload:
 
