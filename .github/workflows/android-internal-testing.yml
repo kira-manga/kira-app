@@ -177,7 +177,15 @@ jobs:
             :app:testDebugUnitTest :app:lintRelease :app:bundleRelease \
             --stacktrace
 
-          jarsigner -verify -strict -certs app/build/outputs/bundle/release/app-release.aab
+          signature_report="$RUNNER_TEMP/kira-aab-signature.txt"
+          jarsigner -verify -certs \
+            app/build/outputs/bundle/release/app-release.aab \
+            > "$signature_report" 2>&1
+          if ! grep -q '^jar verified\.' "$signature_report"; then
+            echo '::error::The signed AAB did not pass jarsigner verification'
+            exit 1
+          fi
+          echo 'Signed AAB signature verification passed'
 
       - name: Upload the signed AAB to Google Play Internal testing
         env:
