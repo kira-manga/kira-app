@@ -68,7 +68,11 @@ value_for() {
 }
 
 file_for() {
-  local name=$1 file=${!name:-}
+  # Bash expands every RHS in one `local` command before applying any assignment. Keeping these as
+  # separate commands is required: otherwise `${!name}` can resolve a stale/global `name` left by
+  # the config parser instead of the variable name supplied to this function.
+  local name=$1
+  local file=${!name:-}
   [[ -n "$file" ]] || return 1
   resolve_path "$file"
 }
@@ -114,6 +118,23 @@ base64_decode() {
   fi
 }
 
+# Use the same OpenSSL 3 / Ed25519 selection rule as the backend's generate-key.sh. macOS's system
+# LibreSSL binary cannot reliably parse the PKCS#8/X.509 Ed25519 files produced by that tool.
+openssl_bin=${OPENSSL_BIN:-}
+if [[ -z "$openssl_bin" ]]; then
+  for candidate in /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl "$(command -v openssl)"; do
+    if [[ -x "$candidate" ]] && "$candidate" list -public-key-algorithms 2>/dev/null | grep -qi Ed25519; then
+      openssl_bin=$candidate
+      break
+    fi
+  done
+fi
+if [[ -n "$openssl_bin" ]]; then
+  pass "OpenSSL supports Ed25519 key validation"
+else
+  fail "OpenSSL 3 with Ed25519 support is unavailable"
+fi
+
 require_value "Android keystore password" ANDROID_KEYSTORE_PASSWORD
 require_value "Android key alias" ANDROID_KEY_ALIAS
 require_value "Android key password" ANDROID_KEY_PASSWORD
@@ -145,8 +166,11 @@ key_password=$(value_for ANDROID_KEY_PASSWORD 2>/dev/null || true)
 if [[ -n "$keystore_path" && -n "$keystore_password" && -n "$key_alias" && -n "$key_password" ]]; then
   if KEYTOOL_STOREPASS="$keystore_password" KEYTOOL_KEYPASS="$key_password" \
     keytool -list -keystore "$keystore_path" -storepass:env KEYTOOL_STOREPASS \
-      -alias "$key_alias" -keypass:env KEYTOOL_KEYPASS >/dev/null 2>&1; then
-    pass "Android keystore opens and configured alias exists"
+      -alias "$key_alias" >/dev/null 2>&1 &&
+    KEYTOOL_STOREPASS="$keystore_password" KEYTOOL_KEYPASS="$key_password" \
+      keytool -certreq -keystore "$keystore_path" -storepass:env KEYTOOL_STOREPASS \
+        -alias "$key_alias" -keypass:env KEYTOOL_KEYPASS -file "$tmp_dir/upload-key.csr" >/dev/null 2>&1; then
+    pass "Android keystore opens and configured alias/key password are valid"
   else
     fail "Android keystore credentials or alias are invalid"
   fi
@@ -219,12 +243,12 @@ if [[ -z "${SOURCE_CONFIG_PUBLIC_KEY_FILE:-}" && -n "${KIRA_SIGNING_VERIFICATION
   SOURCE_CONFIG_PUBLIC_KEY_FILE=$KIRA_SIGNING_VERIFICATION_KEYS_0_PUBLIC_KEY_FILE
 fi
 if private_key_file=$(file_for SOURCE_CONFIG_PRIVATE_KEY_FILE 2>/dev/null); then
-  if [[ -r "$private_key_file" ]]; then pass "Source-config private key file is readable"; else fail "Source-config private key file is unreadable"; fi
+  if [[ -f "$private_key_file" && -r "$private_key_file" && -s "$private_key_file" ]]; then pass "Source-config private key file is readable and non-empty"; else fail "Source-config private key file is missing, unreadable, or empty"; fi
 else
   fail "Source-config private key file path is not configured"
 fi
 if public_key_file=$(file_for SOURCE_CONFIG_PUBLIC_KEY_FILE 2>/dev/null); then
-  if [[ -r "$public_key_file" ]]; then pass "Source-config public key file is readable"; else fail "Source-config public key file is unreadable"; fi
+  if [[ -f "$public_key_file" && -r "$public_key_file" && -s "$public_key_file" ]]; then pass "Source-config public key file is readable and non-empty"; else fail "Source-config public key file is missing, unreadable, or empty"; fi
 else
   fail "Source-config public key file path is not configured"
 fi
@@ -232,25 +256,26 @@ fi
 private_der="$tmp_dir/private.der"
 public_der="$tmp_dir/public.der"
 derived_public_der="$tmp_dir/derived-public.der"
-if [[ -n "$private_key_file" && -r "$private_key_file" && -n "$public_key_file" && -r "$public_key_file" ]]; then
-  if ! openssl pkey -inform DER -in "$private_key_file" -noout >/dev/null 2>&1; then
+if [[ -n "$private_key_file" && -f "$private_key_file" && -r "$private_key_file" && -s "$private_key_file" &&
+  -n "$public_key_file" && -f "$public_key_file" && -r "$public_key_file" && -s "$public_key_file" ]]; then
+  if ! "$openssl_bin" pkey -inform DER -in "$private_key_file" -noout >/dev/null 2>&1; then
     if ! tr -d '[:space:]' < "$private_key_file" | base64_decode > "$private_der" 2>/dev/null; then
       fail "Source-config private key is neither DER nor valid Base64"
     fi
   else
     cp "$private_key_file" "$private_der"
   fi
-  if ! openssl pkey -inform DER -in "$private_der" -pubout -outform DER -out "$derived_public_der" >/dev/null 2>&1; then
+  if ! "$openssl_bin" pkey -inform DER -in "$private_der" -pubout -outform DER -out "$derived_public_der" >/dev/null 2>&1; then
     fail "Source-config private key is not a usable Ed25519 private key"
   fi
-  if ! openssl pkey -pubin -inform DER -in "$public_key_file" -noout >/dev/null 2>&1; then
+  if ! "$openssl_bin" pkey -pubin -inform DER -in "$public_key_file" -noout >/dev/null 2>&1; then
     if ! tr -d '[:space:]' < "$public_key_file" | base64_decode > "$public_der" 2>/dev/null; then
       fail "Source-config public key is neither DER nor valid Base64"
     fi
   else
     cp "$public_key_file" "$public_der"
   fi
-  if openssl pkey -pubin -inform DER -in "$public_der" -outform DER -out "$tmp_dir/normalized-public.der" >/dev/null 2>&1 &&
+  if "$openssl_bin" pkey -pubin -inform DER -in "$public_der" -outform DER -out "$tmp_dir/normalized-public.der" >/dev/null 2>&1 &&
     cmp -s "$derived_public_der" "$tmp_dir/normalized-public.der"; then
     pass "Source-config public key matches the private key"
   else
@@ -272,7 +297,7 @@ if [[ -n "$pinned_keys" && "$pinned_keys" != *$'\n'* && "$pinned_keys" != *[[:sp
       pin_ok=0; break
     fi
     if ! printf '%s' "$pin_b64" | base64_decode > "$tmp_dir/pinned.der" 2>/dev/null ||
-      ! openssl pkey -pubin -inform DER -in "$tmp_dir/pinned.der" -outform DER -out /dev/null >/dev/null 2>&1; then
+      ! "$openssl_bin" pkey -pubin -inform DER -in "$tmp_dir/pinned.der" -outform DER -out /dev/null >/dev/null 2>&1; then
       pin_ok=0; break
     fi
   done
