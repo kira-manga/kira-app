@@ -295,7 +295,7 @@ platform :ios do
 end
 
 platform :android do
-  desc "Upload the signed Android App Bundle to Internal testing"
+  desc "Upload the signed Android App Bundle to Internal testing before Open testing publication"
   lane :upload_internal do
     aab_path = protected_env("KIRA_ANDROID_AAB_PATH")
     UI.user_error!("Signed Android App Bundle is unavailable") unless File.file?(aab_path)

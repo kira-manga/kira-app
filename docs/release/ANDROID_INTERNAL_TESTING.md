@@ -1,24 +1,21 @@
-# Android Internal Testing release
+# Android Internal and Open Testing release
 
 This repository contains a fail-closed reusable workflow at
 `.github/workflows/android-internal-testing.yml`. Start it through the `Internal Testing Release`
-workflow on `internal-testing`, then select `android` or `both`. A push alone does not publish.
+workflow on `internal-testing`, or push to `internal-testing` without `[skip android]` or
+`[skip both]`. One signed AAB is published first to Internal Testing and then assigned to Open
+Testing with the same version code. Production is never updated.
 
 ## Audit result
 
 - Application id: `me.manga.kira`; app name: Kira Manga.
-- No release/upload keystore was found in the repository, `/Users/abdelrahman/Private`,
-  `/Users/abdelrahman/.android`, or `/Users/abdelrahman/Downloads`. The only local keystore is the
-  Android debug keystore and it must not be used for Play.
-- GitHub Actions currently has no Android signing, Firebase, Play service-account, or source-pin
-  secrets. The verified public source origin is stored as the repository variable
-  `KIRA_SOURCE_CONFIG_BASE_URL=https://api.kiramanga.me`.
-- `https://api.kiramanga.me/api/v1/sources` is reachable over HTTPS. The document route currently
-  returns 404 because the backend has no published snapshot yet. The workflow intentionally refuses
-  to build until that route returns a signed document.
-- The three local source-delivery commits were reviewed and pushed to
-  `production-hardening-source-signing`. The branch is still separate from `internal-testing` until
-  the owner is ready to trigger the new workflow.
+- Internal Testing currently contains version code `1002`; Open Testing is empty.
+- The validated GitHub Environment secrets and source-config variables are installed.
+- `https://api.kiramanga.me/api/v1/source-config/document` returns a signed HTTPS document using
+  key ID `prod-2026-01`.
+- Google Play currently reports Kira as a **Draft app**. A completed Open Testing release is blocked
+  until the Play Console setup is complete and the account has production access. The workflow
+  checks this before building and fails without uploading when Open Testing is unavailable.
 
 ## Required values
 
@@ -102,8 +99,8 @@ the Base64 X.509 Ed25519 serialization.
 
 ## Play Console service account
 
-Create the app manually in Play Console as **Kira Manga**, package `me.manga.kira`, then create the
-**Internal testing** track. In Play Console → **Account details**, note the linked Google Cloud
+Create the app manually in Play Console as **Kira Manga**, package `me.manga.kira`, then configure
+the **Internal testing** and **Open testing** tracks. In Play Console → **Account details**, note the linked Google Cloud
 Project. In Google Cloud Console, enable **Google Play Android Developer API**, create a dedicated
 service account such as `kira-play-internal`, and copy its email. In Play Console → **Users and
 permissions**, invite that email with app-only access to Kira and grant only:
@@ -124,9 +121,11 @@ marketplace Play-upload action. It reuses the repository's existing official che
 Gradle, Ruby, and artifact actions with the same major-version pins as the TestFlight workflow;
 the workflow grants only `contents: read`.
 
-The first Play app setup and Play App Signing acceptance may require a one-time manual Console
-action. After that, open GitHub Actions, choose `Internal Testing Release`, select the
-`internal-testing` branch and the Android platform, and run the workflow.
+Before enabling Open Testing, finish the store listing, app-content declarations, data-safety form,
+country availability, pricing, and required testing/production-access process in Play Console.
+Open Testing makes the test listing discoverable and is available only after production access is
+granted. The workflow uses the `beta` API track for Open Testing and the `internal` API track for
+Internal Testing; it never writes to `production`.
 
 For push-triggered releases, include `[skip ios]` in the commit message to run Android only, or
 `[skip both]` to prevent both store workflows from running. Use `[skip android]` when releasing

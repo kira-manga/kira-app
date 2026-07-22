@@ -38,7 +38,7 @@ The committed `app/google-services.json` is inert. A production-shaped release r
 gitignored file. `-PallowPlaceholderGoogleServices=true` exists only so CI/local validation can
 exercise lint, R8, packaging, and bundle generation without production credentials.
 
-GitHub release secrets for the Android Internal testing workflow:
+GitHub release secrets for the Android Internal and Open testing workflow:
 
 ```text
 ANDROID_KEYSTORE_BASE64
@@ -50,9 +50,10 @@ GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
 ```
 
 The `Internal Testing Release` workflow offers `android`, `ios`, and `both` on the
-`internal-testing` branch. Its reusable Android workflow validates the source-config authority, reconstructs the upload
+`internal-testing` branch. Its reusable Android workflow validates the source-config authority and
+both Play testing tracks, reconstructs the upload
 keystore only in the runner's temporary directory, runs tests/lint/R8, builds the signed AAB, and
-uploads it to Google Play's Internal testing track. It removes the keystore and Firebase file in
+uploads the same version to Google Play Internal and Open Testing. It removes the keystore and Firebase file in
 an `always()` cleanup step. The older `ci.yml` workflow remains a build-validation workflow and
 does not publish to Play.
 

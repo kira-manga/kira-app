@@ -1,4 +1,4 @@
-name: Android Internal Testing
+name: Android Internal and Open Testing
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build-and-upload:
-    name: Validate, sign, and upload Android Internal testing
+    name: Validate, sign, and upload Android Internal and Open testing
     if: >-
       ${{ github.ref == 'refs/heads/internal-testing' &&
           !contains(github.event.head_commit.message || '', '[skip android]') &&
@@ -133,6 +133,14 @@ jobs:
           fi
           echo "Verified HTTPS source-config endpoint and pinned signing key id: $key_id"
 
+      - name: Verify Google Play Internal and Open testing are publishable
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          KIRA_ANDROID_PACKAGE_NAME: me.manga.kira
+        run: |
+          set +x
+          ruby scripts/release/google-play-open-testing.rb preflight
+
       - name: Decode real Firebase configuration
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -197,10 +205,18 @@ jobs:
           KIRA_ANDROID_MAPPING_PATH: ${{ github.workspace }}/app/build/outputs/mapping/release/mapping.txt
         run: bundle exec fastlane android upload_internal
 
+      - name: Publish the Internal version to Google Play Open testing
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          KIRA_ANDROID_PACKAGE_NAME: me.manga.kira
+        run: |
+          set +x
+          ruby scripts/release/google-play-open-testing.rb publish
+
       - name: Preserve signed AAB and R8 mapping as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kira-android-internal-${{ env.KIRA_BUILD_NUMBER }}
+          name: kira-android-testing-${{ env.KIRA_BUILD_NUMBER }}
           path: |
             app/build/outputs/bundle/release/app-release.aab
             app/build/outputs/mapping/release/mapping.txt
