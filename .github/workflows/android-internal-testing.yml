@@ -1,6 +1,9 @@
 name: Android Internal Testing
 
 on:
+  push:
+    branches:
+      - internal-testing
   workflow_call:
 
 permissions:
@@ -13,7 +16,10 @@ concurrency:
 jobs:
   build-and-upload:
     name: Validate, sign, and upload Android Internal testing
-    if: ${{ github.ref == 'refs/heads/internal-testing' }}
+    if: >-
+      ${{ github.ref == 'refs/heads/internal-testing' &&
+          !contains(github.event.head_commit.message || '', '[skip android]') &&
+          !contains(github.event.head_commit.message || '', '[skip both]') }}
     environment: google-play-internal
     runs-on: ubuntu-latest
     timeout-minutes: 150

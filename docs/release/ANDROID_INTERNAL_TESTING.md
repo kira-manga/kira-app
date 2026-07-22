@@ -128,6 +128,10 @@ The first Play app setup and Play App Signing acceptance may require a one-time 
 action. After that, open GitHub Actions, choose `Internal Testing Release`, select the
 `internal-testing` branch and the Android platform, and run the workflow.
 
+For push-triggered releases, include `[skip ios]` in the commit message to run Android only, or
+`[skip both]` to prevent both store workflows from running. Use `[skip android]` when releasing
+iOS only.
+
 ## Secure local configuration and helpers
 
 The local file to fill in is:

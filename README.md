@@ -39,6 +39,9 @@ Host is macOS. Full gate cadence and gotchas: `CLAUDE.md` § "Build / test / run
   Android, iOS, or both. Android requires the signing, Firebase, source-authority, and Play inputs
   documented in `docs/release/ANDROID_INTERNAL_TESTING.md`.
 
+  Push-triggered store workflows also support commit controls: `[skip ios]` runs Android only,
+  `[skip android]` runs iOS only, and `[skip both]` skips both store releases.
+
 ## Restricted paths
 
 `native-app/` (the original native app, vendored as the read-only parity spec) and `sources_repositry/` (read-only spec for source conversions) must not be edited — see `CLAUDE.md`.
