@@ -21,6 +21,7 @@ import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
 import me.manga.kira.sources.contracts.model.SourceConfig
+import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /** Room v12 implementation of the all-or-nothing source-catalog store. */
 class RoomSourceCatalogStore(
@@ -31,6 +32,15 @@ class RoomSourceCatalogStore(
     private val bundledJson: String,
 ) : SourceCatalogStore {
     override fun readBundled(): String = bundledJson
+
+    override suspend fun projectBundled(document: SourceConfigDocument) {
+        require(document.sources.all { it.engine == ENGINE_GENERIC && it.lifecycle == LIFECYCLE_ACTIVE })
+        database.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                projectActiveSources(document.sources)
+            }
+        }
+    }
 
     override suspend fun readActive(): StoredSourceCatalog? {
         val manifestEntity = catalogDao.activeManifest() ?: return null
@@ -288,6 +298,7 @@ class RoomSourceCatalogStore(
 }
 
 private const val LIFECYCLE_ACTIVE = "active"
+private const val ENGINE_GENERIC = "generic"
 
 internal fun requireSameImmutableSourceRevision(
     existing: SourceRevisionArtifactEntity,

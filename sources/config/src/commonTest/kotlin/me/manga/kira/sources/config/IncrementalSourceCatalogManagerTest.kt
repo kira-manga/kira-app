@@ -12,11 +12,23 @@ import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
 import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
+import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class IncrementalSourceCatalogManagerTest {
+    @Test
+    fun unavailable_remote_atomically_projects_the_complete_bundle() =
+        runTest {
+            val store = FakeCatalogStore(active = null)
+            val manager = manager(store, FakeRemote(SourceCatalogManifestResult.Unavailable))
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(1, store.bundleProjectionCount)
+            assertEquals(BUNDLED_REVISION, manager.activeDocument().revision)
+        }
+
     @Test
     fun notModified_downloads_no_source_payloads() =
         runTest {
@@ -210,8 +222,14 @@ class IncrementalSourceCatalogManagerTest {
         private var acceptanceFloor = floor
         var activationCount = 0
             private set
+        var bundleProjectionCount = 0
+            private set
 
         override fun readBundled(): String = bundledJson()
+
+        override suspend fun projectBundled(document: SourceConfigDocument) {
+            bundleProjectionCount++
+        }
 
         override suspend fun readActive(): StoredSourceCatalog? = active
 

@@ -1,6 +1,7 @@
 package me.manga.kira.sources.contracts
 
 import kotlinx.serialization.Serializable
+import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /**
  * Signed lightweight authority for one complete source-catalog revision.
@@ -92,6 +93,9 @@ interface RemoteSourceCatalog {
  */
 interface SourceCatalogStore {
     fun readBundled(): String?
+
+    /** Atomically project the trusted bundled tier without changing the signed anti-rollback floor. */
+    suspend fun projectBundled(document: SourceConfigDocument)
 
     suspend fun readActive(): StoredSourceCatalog?
 

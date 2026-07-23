@@ -388,10 +388,9 @@ private fun PostFirstFrameStartupTasks() {
             // An empty catalog is an explicit, valid lifecycle outcome. Keep a safe aggregate
             // diagnostic while the UI presents its normal no-sources state.
             if (sourceUpdateManager.activeDocument().sources.none { it.engine == "generic" }) {
-                KermitLoggerAdapter().e(
+                KermitLoggerAdapter().w(
                     "SourceConfig",
-                    "startup: ZERO valid generic sources in the active config document — " +
-                        "the source catalog is effectively empty",
+                    "startup: the verified source catalog has no active sources",
                 )
             }
         }

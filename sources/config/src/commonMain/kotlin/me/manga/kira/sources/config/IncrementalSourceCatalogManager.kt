@@ -72,6 +72,11 @@ class IncrementalSourceCatalogManager(
                 val origin =
                     if (floor === current) previousOrigin else UpdateState.Origin.CACHE
                 active.value = floor
+                if (floor.revision == bundled.revision) {
+                    // The bundle is a complete tier, not a merge base. Projecting it before any
+                    // network work removes obsolete rows even when the fetch later fails.
+                    store.projectBundled(bundled)
+                }
 
                 val result = remote.fetchManifest(cached?.etag)
                 val accepted =

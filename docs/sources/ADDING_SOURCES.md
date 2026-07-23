@@ -324,19 +324,9 @@ the cleanest JSON-API example, the Madara-family sources the HTML ones.
 }
 ```
 
-**Disabled source** (step 1 of retirement — reversible):
-
-```jsonc
-{ "api": "Example", "language": "(EN)", "baseUrl": "https://api.example.com",
-  "engine": "generic", "lifecycle": "disabled", /* …rest of the stanza stays intact… */ }
-```
-
-**Removed source** (step 2 — the stanza stays as a tombstone; metadata-only is fine now):
-
-```jsonc
-{ "api": "Example", "language": "(EN)", "baseUrl": "https://api.example.com",
-  "engine": "legacy", "lifecycle": "removed" }
-```
+**Retirement:** do not turn a source into a legacy JSON tombstone. Use the authenticated backend
+lifecycle endpoints in order: `/disable`, `/retire`, then `/remove` with exact api confirmation.
+The signed v2 manifest carries disabled/retired state and the final identity-only tombstone.
 
 **What NOT to do — the api rename.** This is the one change with permanent, invisible damage:
 
@@ -348,9 +338,9 @@ the cleanest JSON-API example, the Madara-family sources the HTML ones.
 
 Every library entry, history row, backup, and captured header still says `"Example"`. They now
 point at nothing: refresh fails, online reading fails, and no code will ever fix them up. The
-old `sources` row lingers force-disabled. If the display name must change, change `displayName`.
-If the site truly relaunched as something else, ship the old api as `lifecycle:"disabled"` →
-`"removed"` and add the new site as a genuinely new source — accepting that users re-add their
+old api remains unresolved. If the display name must change, change `displayName`.
+If the site truly relaunched as something else, retire the old api through the backend lifecycle and
+publish the new site as a genuinely new source — accepting that users re-add their
 library entries (or migrate via backup export/import, which keeps working offline either way).
 
 ---
