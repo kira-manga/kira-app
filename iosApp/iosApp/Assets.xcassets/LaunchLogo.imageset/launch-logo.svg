@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixed intrinsic size keeps the launch mark restrained on both iPhone and iPad. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="123.1" viewBox="0 0 467.19 319.48">
+  <defs>
+    <linearGradient id="kira-left" x1="249.02" y1="108.55" x2="70.9" y2="245.03" gradientUnits="userSpaceOnUse">
+      <stop offset=".03" stop-color="#f9813e"/>
+      <stop offset=".15" stop-color="#f8733f"/>
+      <stop offset=".52" stop-color="#f74a44"/>
+      <stop offset=".82" stop-color="#f73246"/>
+      <stop offset="1" stop-color="#f72948"/>
+    </linearGradient>
+    <linearGradient id="kira-right" x1="324.99" y1="64.08" x2="419.06" y2="474.3" gradientUnits="userSpaceOnUse">
+      <stop offset=".08" stop-color="#f9813e"/>
+      <stop offset=".17" stop-color="#f8733f"/>
+      <stop offset=".45" stop-color="#f74a44"/>
+      <stop offset=".67" stop-color="#f73246"/>
+      <stop offset=".81" stop-color="#f72948"/>
+    </linearGradient>
+  </defs>
+  <polygon fill="url(#kira-left)" points="164.66 154.27 284.47 319.48 154.27 275.17 114.34 198.58 94.64 218.83 83.15 275.71 17.83 310.1 25.91 228.53 7.56 315.5 7.55 315.5 0 319.48 51.97 86.98 0 61.26 145.52 26.8 119.26 119.81 200.23 31.73 203.3 30.97 172.03 73.16 217.17 27.55 328.78 0 280.19 45.68 238.09 85.24 164.66 154.27"/>
+  <polygon fill="url(#kira-right)" points="467.19 42.4 424.52 251.38 347.1 282.28 380.21 134.51 337.26 243.16 291.59 243.16 282.84 128.48 265.94 277.25 209.42 201.9 238.09 85.24 247.82 45.68 321.67 45.68 332.62 143.6 381.84 45.68 456.24 42.82 437.4 121.61 465.77 42.45 467.19 42.4"/>
+</svg>

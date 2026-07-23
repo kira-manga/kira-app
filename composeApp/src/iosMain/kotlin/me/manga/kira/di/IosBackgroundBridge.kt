@@ -41,7 +41,7 @@ private const val CONTINUED_POLL_MS = 750L
 private const val CONTINUED_RECONCILE_EVERY = 7      // ~5.25s between reconciles
 private const val MAX_CONTINUED_POLLS = 800          // runaway backstop (~10 min); iOS expires long before
 
-// ---- M2: background URLSession launch + relaunch wiring ----
+// ---- M2: background URLSession relaunch wiring ----
 
 /**
  * Host → logging: set the verbose `KiraBgDownload` info stream from the Swift host's
@@ -53,15 +53,6 @@ private const val MAX_CONTINUED_POLLS = 800          // runaway backstop (~10 mi
 fun setBgDownloadVerboseLogging(enabled: Boolean) {
     BgDownloadLog.VERBOSE = enabled
     BgDownloadLog.log("bridge.verboseLogging", "enabled" to enabled) // emits only when enabling
-}
-
-fun ensureBackgroundDownloadsReady() {
-    if (!DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) {
-        BgDownloadLog.log("bridge.ensureReady.skipped", "reason" to "flagOff")
-        return
-    }
-    BgDownloadLog.log("bridge.ensureReady")
-    KoinPlatform.getKoin().get<DownloadRepository>()
 }
 
 fun handleBackgroundUrlSessionEvents(identifier: String, completionHandler: () -> Unit) {

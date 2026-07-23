@@ -66,6 +66,16 @@ class DataStoreHelper(
     val languageFlow: Flow<String> =
         settings.getStringFlow(StorageKeys.SELECTED_LANGUAGE, defaultValue = "")
 
+    /**
+     * Returns the persisted language synchronously for the first UI composition.
+     *
+     * [ObservableSettings] is already backed by an in-process preference store on every platform,
+     * so reading the current value does not require waiting for [languageFlow]'s first collection.
+     * Keeping the initial value and the flow on the same key prevents a cold-start locale flash.
+     */
+    fun currentLanguage(): String =
+        settings.getString(StorageKeys.SELECTED_LANGUAGE, defaultValue = "")
+
     suspend fun setDownloadedOnly(value: Boolean) {
         settings.putBoolean(StorageKeys.DownloadedOnly, value)
     }
