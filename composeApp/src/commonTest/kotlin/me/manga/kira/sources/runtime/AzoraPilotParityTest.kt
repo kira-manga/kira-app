@@ -100,7 +100,7 @@ class AzoraPilotParityTest {
         assertEquals(listOf("Chapter 1", "Chapter 3"), details.chapters.map { it.number }) // locked ch2 hidden
     }
 
-    // legacy adapter mappings, mirrored from LegacyKotlinSourceClient / :data HomeMappers (those are private/internal)
+    // Domain mappings mirrored from the data boundary (the production helpers are private/internal).
     private fun me.manga.kira.domain.model.MangaItem.toHomeFeedItem() = HomeFeedItem(
         api, language, title, url, coverUrl = imageUrl, rating = rating, genres = genres,
         recentChapters = chapters?.map { HomeChapterRef(it.number, it.url, it.isDownloaded) } ?: emptyList(),

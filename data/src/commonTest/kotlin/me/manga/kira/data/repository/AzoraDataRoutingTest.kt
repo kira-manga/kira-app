@@ -1,8 +1,6 @@
 package me.manga.kira.data.repository
 
-import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -11,12 +9,9 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterIdUrl
-import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
@@ -27,8 +22,6 @@ import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.presentation.features.repo_settings.domain.SourceState
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
@@ -44,12 +37,9 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Stage-1 `:data` flip verification: proves that ONLY a piloted source (Azora) is routed through the
- * [SourceRegistry] / generic engine, every other source stays on the legacy [SourcesRepository] path,
- * the downloaded-chapter offline branch is preserved (even for Azora), a registry failure is surfaced
- * through `:data`, and cancellation propagates. The real generic→legacy fallback is exercised end-to-end
- * at the composeApp integration level (AzoraDataFallbackIntegrationTest) with real components; here the
- * registry is faked so the `:data` routing decision is asserted in isolation.
+ * Data-boundary routing verification: catalog sources use [SourceRegistry], absent sources fail
+ * closed, downloaded chapters keep their local fast path, registry failures surface unchanged, and
+ * cancellation propagates. There is no alternate or inferred source implementation.
  */
 class AzoraDataRoutingTest {
 
@@ -98,8 +88,7 @@ class AzoraDataRoutingTest {
 
     @Test
     fun details_azora_registry_failure_is_surfaced_through_data() = runTest {
-        // config-backed = generic-only: the registry's generic client fails → :data surfaces the Failure
-        // as-is. The legacy facade (emptyLegacySources) is never consulted for a config-backed source.
+        // Generic-only: :data surfaces the registry client's failure unchanged.
         val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
             StubSourceClient(it, details = { AppResult.Failure(AppError.Network.Http(403)) })
         }
@@ -352,13 +341,6 @@ class AzoraDataRoutingTest {
         return "file://$withLeadingSlash"
     }
 
-    private fun emptyLegacySources(): SourcesRepository = SourcesRepository(
-        sourcesDao = FakeSourcesDao,
-        repos = emptySet(),
-        prefs = SharedPrefsHelper(MapSettings()),
-        applicationScope = CoroutineScope(Dispatchers.Unconfined),
-    )
-
     private class FakeSourceRegistry(
         private val piloted: Set<String>,
         private val client: (String) -> MangaSourceClient?,
@@ -437,27 +419,5 @@ class AzoraDataRoutingTest {
         }
         override suspend fun deleteCbz(mangaId: Long, chapterId: Long): Boolean = false
         override suspend fun cleanupExtractedCache(mangaId: Long, chapterId: Long) = Unit
-    }
-
-    private object FakeSourcesDao : SourcesDao {
-        override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(emptyList())
-        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = emptyList()
-        override suspend fun insert(source: SourcesEntity): Long = 1L
-        override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 0
-        override suspend fun getBaseUrlFor(name: String): String? = null
-        override fun getSiteStateByName(name: String): Flow<SourceState?> = flowOf(null)
-        override suspend fun getSiteStateByNameSync(name: String): SourceState? = null
-        override suspend fun updateBaseUrlAndVersionByName(name: String, baseUrl: String, version: Int): Int = 0
-        override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int = 0
-        override suspend fun updateSiteStateByName(name: String, siteState: SourceState): Int = 0
-        override suspend fun deleteSourceByName(name: String): Int = 0
-        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
-        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
-        override suspend fun updateCatalogMetadata(
-            api: String,
-            priority: Int,
-            language: String,
-            siteState: SourceState,
-        ): Int = 0
     }
 }

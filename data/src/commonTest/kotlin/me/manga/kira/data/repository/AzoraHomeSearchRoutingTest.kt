@@ -43,10 +43,9 @@ import me.manga.kira.core.states.State as LegacyState
 
 /**
  * Stage-1 Home/Search flip verification: proves Home + Search route through the registry/generic path
- * ONLY for the piloted source (Azora), every other source stays on the legacy [SourcesRepository]
- * path, the rich Home data (recentChapters) is preserved, and a registry failure is surfaced through
- * `:data`. The real generic→legacy fallback is exercised end-to-end at the composeApp integration
- * level; here the registry is faked so the `:data` routing decision is asserted in isolation.
+ * for the converted source (Azora), preserves rich Home data (recentChapters), and surfaces a
+ * registry failure through `:data`. This historical seam test uses a fake registry to isolate the
+ * routing decision; production wiring exposes only active generic catalog entries.
  */
 class AzoraHomeSearchRoutingTest {
     private val testDispatchers =

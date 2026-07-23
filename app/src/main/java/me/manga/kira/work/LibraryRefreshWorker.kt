@@ -41,14 +41,14 @@ import kotlin.time.ExperimentalTime
 /**
  * Phase 12.x port of upstream `LibraryRefreshWorker.kt`.
  *
- * Periodic foreground worker that walks every `SavedMangaEntity`, calls each source's
- * `fetchMangaChaptersF`, inserts any new chapters into Room, and surfaces a `ChapterNotification`
- * per new entry via [ChapterNotificationHelper].
+ * Periodic foreground worker that walks every `SavedMangaEntity`, resolves the source from the
+ * active generic catalog, inserts new chapters into Room, and surfaces a `ChapterNotification` per
+ * new entry via [ChapterNotificationHelper]. Unavailable sources are skipped; no adapter is inferred.
  *
  * Deltas vs upstream:
  *  - `@HiltWorker` + `@AssistedInject` removed — Koin's `workerOf(::LibraryRefreshWorker)` injects
  *    `(Context, WorkerParameters, LibraryRepository, SharedPrefsHelper, ChapterNotificationHelper,
- *    SourcesRepository)` positionally.
+ *    SourceRegistry)` positionally.
  *  - `android.util.Log` → Kermit.
  *  - `Dispatchers.IO` → `IODispatcher`.
  *  - `java.time.LocalDate` / `LocalDateTime` → `kotlinx.datetime.LocalDate` / `LocalDateTime`. The
@@ -249,7 +249,7 @@ class LibraryRefreshWorker(
         }
     }
 
-    /** One remote chapter, source-system-neutral — legacy MangaInfo and generic MangaDetails both project into it. */
+    /** One remote chapter projected from the active generic client's details response. */
     private data class RemoteChapter(
         val name: String,
         val number: String,
@@ -258,9 +258,8 @@ class LibraryRefreshWorker(
     )
 
     /**
-     * Generic-engine refresh for a config-backed api: `details()` carries the cover + full chapter
-     * list. Same 20s per-manga budget as the legacy flow timeout; a Failure/timeout counts as a
-     * failed refresh (never a cover blank — reconcile guards below).
+     * Generic-engine refresh for an active catalog api: `details()` carries the cover and complete
+     * chapter list. A failure or timeout counts as a failed refresh.
      */
     private suspend fun fetchGenericUpdates(
         manga: SavedMangaEntity,

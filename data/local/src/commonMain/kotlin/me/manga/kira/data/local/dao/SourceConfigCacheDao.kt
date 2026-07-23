@@ -7,10 +7,9 @@ import androidx.room.Query
 import me.manga.kira.data.local.entity.SourceConfigCacheEntity
 
 /**
- * DAO for the single-row generic-sources config cache (Sources Migration — Phase 1).
- *
- * Backs the durable `cache` tier of the `ConfigStore` port. Reads return the cached document (or
- * null on a fresh install with no cached config yet); writes REPLACE the single row.
+ * Historical v11 whole-document cache retained only because Room must preserve the declared
+ * database schema across upgrades. Migration 11→12 clears this table; runtime source delivery uses
+ * [SourceCatalogDao] and never reads it.
  */
 @Dao
 interface SourceConfigCacheDao {

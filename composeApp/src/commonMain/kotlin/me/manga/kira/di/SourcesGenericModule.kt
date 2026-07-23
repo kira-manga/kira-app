@@ -9,7 +9,6 @@ import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.sources.config.IncrementalSourceCatalogManager
 import me.manga.kira.sources.contracts.CloudflareChallengeSignal
-import me.manga.kira.sources.contracts.ConfigSignatureVerifier
 import me.manga.kira.sources.contracts.HeaderStore
 import me.manga.kira.sources.contracts.HttpExecutor
 import me.manga.kira.sources.contracts.RemoteSourceCatalog
@@ -45,9 +44,10 @@ import org.koin.dsl.module
  *    MangaDetails / ChapterPages), each branching on `sourceRegistry.isConfigBacked(api)`.
  *  - Active `engine="generic"` stanzas are served by the generic engine. Every absent, disabled,
  *    retired, removed, or non-generic source has no client.
- *  - The bundled config ([CONFIG_BACKED_SOURCES_JSON]) ships in the signed binary (trusted, no detached
- *    signature). The HTTPS client is wired in every build, while an empty release base URL makes it
- *    a no-op. Cache and remote envelopes are accepted only after Ed25519 verification with pinned keys.
+ *  - The bundled config ([CONFIG_BACKED_SOURCES_JSON]) ships in the signed binary (trusted, no
+ *    detached signature). The HTTPS client is wired in every build, while an empty release base URL
+ *    makes it a no-op. Signed manifests and immutable source revisions are accepted only after
+ *    Ed25519 verification with pinned keys.
  *  - The real [DataStoreHeaderStore] lets the generic clients reuse captured Cloudflare headers.
  *
  * Dependencies pulled from the merged graph are the shared Ktor [HttpClient] and
@@ -76,7 +76,6 @@ val sourcesGenericModule =
         single {
             Ed25519ConfigSignatureVerifier(get<SourceRemoteConfiguration>().pinnedPublicKeys)
         }
-        single<ConfigSignatureVerifier> { get<Ed25519ConfigSignatureVerifier>() }
         single<SourceCatalogSignatureVerifier> { get<Ed25519ConfigSignatureVerifier>() }
         single<RemoteSourceCatalog> { KtorRemoteSourceCatalog(get<HttpClient>(), get()) }
         // Live base URL from the active catalog projection, while preserving a user's explicitly

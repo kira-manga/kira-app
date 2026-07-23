@@ -43,20 +43,16 @@ import me.manga.kira.sources.engine.internal.UrlEncode
  * + named extraction/transform/date strategies) against an injected [HttpExecutor], then mapping the
  * extracted strings onto `:domain` models. It contains no source-specific code and no HTTP library.
  *
- * Stage-0 note: the generic path now serves the piloted sources (`engine = "generic"` in the
- * bundled config) in production behind [FallbackSourceClient], which routes to the legacy adapter on
- * failure. The golden-fixture tests remain the engine's behavioural spec; non-piloted sources still
- * run through the legacy adapter.
+ * The generic path is the only executable source path. A failure is returned to the caller; no
+ * legacy adapter is inferred. Golden-fixture tests remain the engine's behavioural specification.
  *
  * Stage-0 relative-link resolution uses the source's base URL (for Ksoup `abs:*` and [absolutize]).
  * Resolving against [SourceResponse.finalUrl] (cross-host redirects / path-relative links) is a
  * Stage-1 refinement and will land with redirect golden fixtures; until then a generic source must
  * declare a `baseUrl` that its relative links resolve against.
  *
- * The effective base URL is taken LIVE from the injected [SourceBaseUrlProvider] (the same
- * server-pushed / user-edited value the legacy path follows from the sources DB), falling back to
- * the frozen [SourceConfig.baseUrl] when none is stored — so a piloted source whose host moves keeps
- * working without a remote config refresh.
+ * The effective base URL is taken live from the active catalog projection through
+ * [SourceBaseUrlProvider], falling back to [SourceConfig.baseUrl] when none is stored.
  */
 class GenericSourceClient(
     private val config: SourceConfig,
@@ -69,8 +65,7 @@ class GenericSourceClient(
     override val api: String = config.api
 
     // The live base URL for this source, resolved (once per verb, before any extraction) from
-    // [baseUrlProvider] — the same source store the legacy path follows. Defaults to the frozen
-    // config value; a blank/absent override leaves it untouched (fail-closed: never a worse URL).
+    // [baseUrlProvider]. A blank/absent override keeps the signed config value.
     private var effectiveBaseUrl: String = config.baseUrl
 
     /**
@@ -97,13 +92,12 @@ class GenericSourceClient(
             ?: return AppResult.Failure(AppError.Validation.Required("endpoint:details"))
         resolveEffectiveBaseUrl()
         val base = runRequest(endpoint, vars(itemUrl = manga.url)) { resp -> detailsFrom(manga, endpoint, resp.body) }
-        // Two-request details (the legacy "SeparatedDetailsSites" pattern): some sources serve the manga
+        // Some sources serve manga metadata and chapters through two distinct endpoints.
         // scalars and the chapter list from two DISTINCT endpoints. When a `chapters` endpoint is declared,
         // fetch it as a SECOND request and replace the (inline) chapter list with the chapters parsed from
         // THAT body — using the chapters endpoint's own root/listSelector (so JSON `root` and HTML
-        // `listSelector`/POST_FORM all work). If the second request fails, the WHOLE details fails, so
-        // FallbackSourceClient routes to the legacy adapter rather than showing a chapter-less page (a
-        // Success carrying empty chapters would otherwise suppress the per-verb fallback).
+        // `listSelector`/POST_FORM all work). If the second request fails, the whole details request
+        // fails instead of returning a misleading chapter-less success.
         val chaptersEndpoint = config.endpoints["chapters"]
         if (base !is AppResult.Success || chaptersEndpoint == null) return base
         return when (val chapters = chaptersPaginated(chaptersEndpoint, vars(itemUrl = manga.url))) {
@@ -255,8 +249,7 @@ class GenericSourceClient(
         } catch (c: CancellationException) {
             throw c
         } catch (e: UnresolvedTemplateVarException) {
-            // A URL field's required template var was empty — fail-closed so FallbackSourceClient routes
-            // to legacy rather than requesting a broken-but-plausible URL.
+            // A required URL-template value was empty; reject the broken-but-plausible request.
             AppResult.Failure(AppError.Validation.Required("var:${e.field}:${e.varName}"))
         } catch (t: Throwable) {
             AppResult.Failure(classifyTransportError(t))
@@ -266,9 +259,8 @@ class GenericSourceClient(
     /**
      * Bucket a non-cancellation transport/parse [Throwable] into the same [AppError.Network]
      * categories the rest of the rework boundary uses (connectivity / timeout / serialization),
-     * falling back to [AppError.Unexpected]. The legacy [FallbackSourceClient] otherwise masks this
-     * in production, but a generic-only source (or generic-only debug mode) surfaces this error
-     * directly, so the buckets must match for `:ui`'s per-status messages to apply.
+     * falling back to [AppError.Unexpected]. These errors surface directly, so the buckets must
+     * match `:ui`'s per-status messages.
      */
     private fun classifyTransportError(t: Throwable): AppError {
         val raw = (t.message ?: "").lowercase()
@@ -554,7 +546,7 @@ class GenericSourceClient(
                     .orEmpty()
             }
             // Fail-closed: a required template var that resolved to nothing would expand to "" and build a
-            // broken URL (e.g. ".../postId="). Throw so runRequest surfaces a Failure → legacy fallback.
+            // broken URL (e.g. ".../postId="). Throw so runRequest fails closed.
             if (strict && !isDirToken && resolved.isEmpty()) throw UnresolvedTemplateVarException(key, name)
             val value = if (parts.size > 1) {
                 Transforms.apply(resolved, parts.drop(1).map { TransformSpec(fn = it.trim()) })
@@ -568,8 +560,8 @@ class GenericSourceClient(
     /**
      * A required template var resolved to nothing. Thrown from [fieldVars] when a URL field's template
      * references a var whose response locator is empty; caught in [runRequest] and mapped to
-     * [AppError.Validation.Required] so the verb fails (→ legacy fallback) rather than emitting a
-     * plausible-but-wrong URL. Carries no `cause` — it is a deliberate fail-closed signal, not a throw.
+     * [AppError.Validation.Required] so the verb fails rather than emitting a plausible-but-wrong
+     * URL. Carries no `cause` — it is a deliberate fail-closed signal, not a transport failure.
      */
     private class UnresolvedTemplateVarException(val field: String, val varName: String) :
         Exception("unresolved template var '$varName' for field '$field'")

@@ -5,32 +5,30 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /**
- * Owns the lifecycle of "which config document is active right now". At construction the active
- * document resolves to the bundled asset only; any cached or remote document is folded in solely by
- * [refresh] (the cache read is suspend and cannot run in the constructor). Production calls [refresh]
- * during startup; an unset remote origin safely leaves the manager on its verified cache or bundle.
+ * Owns the lifecycle of the complete active source catalog. Construction begins on the trusted
+ * bundled tier; [refresh] may restore a complete reverified cache or atomically activate a complete
+ * signed manifest after every referenced source revision is present and verified.
  *
- * Resolution precedence is always: verified+valid remote/cached document with the highest [revision]
- * wins; on any failure (no network, bad signature, failed validation) the manager falls back to the
- * last good document and ultimately to the always-present bundled asset. The active document is never
- * empty.
+ * A transport, signature, validation, or persistence failure keeps the complete last-known-good
+ * catalog. A valid authoritative catalog may intentionally contain zero active sources after
+ * lifecycle updates; that is distinct from a partial or failed synchronization.
  */
 interface SourceUpdateManager {
     val state: StateFlow<UpdateState>
 
-    /** The document currently in effect. Always non-null after construction (bundled is the floor). */
+    /** The complete document currently in effect. Always non-null; bundled is the trusted floor. */
     fun activeDocument(): SourceConfigDocument
 
     /**
-     * Attempt to fetch + verify + validate a newer document and, if it wins on precedence, make it
-     * active and cache it. Safe to call when remote is disabled — it then resolves to a no-op success.
+     * Conditionally fetch the signed manifest, download only missing immutable source revisions,
+     * verify the complete candidate, and activate it atomically. A disabled remote is a safe no-op.
      */
     suspend fun refresh(): AppResult<SourceConfigDocument>
 }
 
 /** Observable status of the update manager for diagnostics and settings UI. */
 sealed interface UpdateState {
-    /** Active document resolved from bundled/cache; no refresh in flight. */
+    /** Complete active document resolved from bundle, cache, or remote; no refresh in flight. */
     data class Active(val revision: Long, val source: Origin) : UpdateState
 
     /** A refresh is in progress. */
@@ -39,11 +37,6 @@ sealed interface UpdateState {
     /** Last refresh failed; [reason] is human-readable, the previous good document stays active. */
     data class Failed(val reason: String) : UpdateState
 
-    /**
-     * The highest-precedence document **accepted** in the last refresh (bundled < cache < remote) —
-     * NOT a per-source provenance guarantee. When a higher-priority bundled source overrides a remote
-     * one ([me.manga.kira.sources.config] merge), origin may still report `REMOTE` even though the
-     * winning source came from bundled. Per-source provenance is not represented by this diagnostic.
-     */
+    /** Provenance of the complete active catalog revision, never an individual source revision. */
     enum class Origin { BUNDLED, CACHE, REMOTE }
 }

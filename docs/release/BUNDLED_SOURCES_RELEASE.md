@@ -9,7 +9,8 @@ exact UTF-8 manifest and each referenced source revision with an in-app pinned p
 
 The client rejects HTTP endpoints, credentials in the URL, missing signature metadata, oversized
 responses, non-generic entries, unknown key identifiers, invalid signatures, checksum or identity
-mismatches, stale/replayed revisions, and rollback links behind its durable acceptance floor. It
+mismatches, stale/replayed catalog revisions, lower per-source revisions, silent source omissions,
+discarded tombstones, and rollback links behind its durable acceptance floor. It
 sends `If-None-Match` for the manifest, reuses verified immutable source rows, and fetches only
 missing active revisions. Room activates the manifest, entries, source rows, and app source
 projection in one transaction. Any failure preserves the complete last-known-good catalog or bundle;

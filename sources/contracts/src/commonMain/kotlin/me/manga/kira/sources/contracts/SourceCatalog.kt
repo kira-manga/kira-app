@@ -101,6 +101,13 @@ interface SourceCatalogStore {
 
     suspend fun readAcceptanceFloor(): SourceCatalogAcceptanceFloor?
 
+    /**
+     * Returns the signed manifest selected by the durable active pointer even when one of its
+     * source payload rows is unreadable. Clients use it to preserve per-source revision and
+     * tombstone history across cache corruption; implementations must not synthesize a manifest.
+     */
+    suspend fun readAcceptedManifest(): SignedSourceCatalogManifest?
+
     suspend fun findSource(
         api: String,
         sourceRevision: Long,

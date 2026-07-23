@@ -52,8 +52,8 @@ class TransportErrorMessagesTest {
 
     @Test
     fun canonicalLegacyStateTexts_areConnectivity() {
-        // State.Error.fromException replaces the raw engine message with these BEFORE the
-        // LegacyKotlinSourceClient re-classifies, so the downstream classifier must know them.
+        // Historical request paths can replace the raw engine message with these canonical texts,
+        // so the downstream classifier must still recognize them.
         assertTrue(connectivity("Cannot reach server—please check your internet connection."))
         assertTrue(connectivity("Unable to connect to the server."))
     }

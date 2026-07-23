@@ -15,8 +15,8 @@ import me.manga.kira.data.repository.SourceUrlMigrator
 import me.manga.kira.presentation.features.repo_settings.domain.SourceState
 import me.manga.kira.sources.contracts.ConfigSignatureMetadata
 import me.manga.kira.sources.contracts.SignedSourceCatalogManifest
-import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceCatalogAcceptanceFloor
+import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
@@ -72,6 +72,9 @@ class RoomSourceCatalogStore(
         catalogDao.activePointer()?.let {
             SourceCatalogAcceptanceFloor(it.catalogRevision, it.checksum)
         }
+
+    override suspend fun readAcceptedManifest(): SignedSourceCatalogManifest? =
+        catalogDao.activeManifest()?.toContract()
 
     override suspend fun activate(catalog: StoredSourceCatalog) {
         val manifest =

@@ -133,8 +133,10 @@ What each endpoint must produce (verb → domain result, via the `fields` mappin
 
 - `schemaVersion == 1` (anything else rejects the document immediately);
 - per stanza: non-blank **unique** `api`; non-blank `language`; `baseUrl` starting with `http`;
-  `engine` ∈ {`generic`, `legacy`, `kotlin:*`}; `siteState` ∈ {`WORKING`, `UNDER_MAINTENANCE`,
-  `STOPPED`, `ADULT_18_PLUS`}; `lifecycle` ∈ {`active`, `disabled`, `removed`};
+  compatibility parsing recognizes `engine` ∈ {`generic`, `legacy`, `kotlin:*`}, while bundled and
+  signed v2 catalogs accept only `generic`; `siteState` ∈
+  {`WORKING`, `UNDER_MAINTENANCE`, `STOPPED`, `ADULT_18_PLUS`}; source-payload `lifecycle` ∈
+  {`active`, `disabled`, `removed`} and manifest lifecycle ∈ {`active`, `disabled`, `retired`};
   `previousHosts`/`previousImageHosts`/`trustedHosts` entries are **bare hosts** (no scheme, no
   path, no port);
 - generic stanzas additionally: known `pagination.type` (currently only `page-number`); at least a
@@ -144,7 +146,8 @@ What each endpoint must produce (verb → domain result, via the `fields` mappin
   intentionally EMPTY — any `imageStrategy` reference is rejected).
 
 **Acceptance is all-or-nothing.** The incremental manager rejects the candidate manifest if any
-manifest, source, signature, schema, identity, lifecycle, strategy, or full-document check fails.
+manifest, source, signature, schema, identity, lifecycle, strategy, explicit-tombstone, per-source
+anti-rollback, or full-document check fails.
 It never exposes a partial candidate; the complete last-known-good catalog or bundle remains active.
 Unknown JSON fields are ignored for compatibility, so typo'd field names still require parity tests.
 Two safety nets exist:

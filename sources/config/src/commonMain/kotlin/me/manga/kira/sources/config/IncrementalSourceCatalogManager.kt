@@ -60,6 +60,15 @@ class IncrementalSourceCatalogManager(
             try {
                 val acceptanceFloor = store.readAcceptanceFloor()
                 val cached = loadVerifiedCache()
+                val acceptedManifest =
+                    cached
+                        ?.takeIf {
+                            acceptanceFloor != null &&
+                                it.document.revision == acceptanceFloor.catalogRevision &&
+                                it.etag == acceptanceFloor.checksum
+                        }
+                        ?.manifest
+                        ?: loadAcceptedManifest(acceptanceFloor)
                 val current = active.value
                 val previousOrigin =
                     (previousState as? UpdateState.Active)?.source
@@ -84,7 +93,16 @@ class IncrementalSourceCatalogManager(
                         SourceCatalogManifestResult.Unavailable -> null
                         SourceCatalogManifestResult.NotModified -> null
                         is SourceCatalogManifestResult.Modified ->
-                            acceptRemote(result.manifest, acceptanceFloor)
+                            acceptRemote(
+                                signed = result.manifest,
+                                acceptanceFloor = acceptanceFloor,
+                                acceptedManifest = acceptedManifest,
+                                previousManifest =
+                                    cached
+                                        ?.takeIf { it.document.revision == floor.revision }
+                                        ?.manifest,
+                                previousDocument = floor,
+                            )
                     }
                 val effective = accepted ?: floor
                 active.value = effective
@@ -107,6 +125,9 @@ class IncrementalSourceCatalogManager(
     private suspend fun acceptRemote(
         signed: SignedSourceCatalogManifest,
         acceptanceFloor: SourceCatalogAcceptanceFloor?,
+        acceptedManifest: SourceCatalogManifest?,
+        previousManifest: SourceCatalogManifest?,
+        previousDocument: SourceConfigDocument,
     ): SourceConfigDocument? {
         val manifest = verifyManifest(signed) ?: return null
         if (manifest.catalogRevision <= bundled.revision) return null
@@ -116,9 +137,18 @@ class IncrementalSourceCatalogManager(
                 manifest.catalogRevision == acceptanceFloor.catalogRevision -> {
                     if (signed.metadata.checksum != acceptanceFloor.checksum) return null
                 }
+                acceptedManifest == null -> return null
                 !chainAdvances(signed, acceptanceFloor) -> return null
             }
         }
+        val evolutionBase =
+            when {
+                acceptanceFloor?.catalogRevision == manifest.catalogRevision -> manifest
+                acceptedManifest != null -> acceptedManifest
+                else -> previousManifest
+            }
+        val evolutionErrors = catalogEvolutionErrors(manifest, evolutionBase, previousDocument)
+        if (evolutionErrors.isNotEmpty()) return rejected(evolutionErrors.joinToString())
 
         val activeEntries = manifest.sources.filter { it.lifecycle == LIFECYCLE_ACTIVE }
         val artifacts = fetchRequiredSources(activeEntries)
@@ -160,7 +190,22 @@ class IncrementalSourceCatalogManager(
         return VerifiedCatalog(
             document = document,
             etag = stored.manifest.metadata.checksum,
+            manifest = manifest,
         )
+    }
+
+    private suspend fun loadAcceptedManifest(
+        acceptanceFloor: SourceCatalogAcceptanceFloor?,
+    ): SourceCatalogManifest? {
+        if (acceptanceFloor == null) return null
+        val signed = store.readAcceptedManifest() ?: return null
+        if (
+            signed.metadata.revision != acceptanceFloor.catalogRevision ||
+            signed.metadata.checksum != acceptanceFloor.checksum
+        ) {
+            return null
+        }
+        return verifyManifest(signed)
     }
 
     private fun verifyManifest(signed: SignedSourceCatalogManifest): SourceCatalogManifest? {
@@ -187,6 +232,7 @@ class IncrementalSourceCatalogManager(
         if (manifest.sources.map { it.order } != manifest.sources.indices.toList()) add("source order is not contiguous")
         if (manifest.removedSources.any { it.lifecycle != LIFECYCLE_REMOVED }) add("invalid removed tombstone")
         val removedApis = manifest.removedSources.map { it.api }
+        if (removedApis.any(String::isBlank)) add("blank removed source api")
         if (removedApis.toSet().size != removedApis.size) add("duplicate removed source api")
         if (manifest.sources.any { it.api in removedApis }) add("source is both present and removed")
         manifest.sources.forEach { entry ->
@@ -196,6 +242,40 @@ class IncrementalSourceCatalogManager(
             if (entry.engine != ENGINE_GENERIC) add("non-generic source is forbidden")
             if (!KEY_ID.matches(entry.sourceSigningKeyId) || entry.sourceSignature.isBlank()) {
                 add("invalid source signature metadata")
+            }
+        }
+    }
+
+    private fun catalogEvolutionErrors(
+        candidate: SourceCatalogManifest,
+        previous: SourceCatalogManifest?,
+        previousDocument: SourceConfigDocument,
+    ): List<String> = buildList {
+        val candidateEntries = candidate.sources.associateBy { it.api }
+        val candidateTombstones = candidate.removedSources.mapTo(hashSetOf()) { it.api }
+        val previousEntries = previous?.sources?.associateBy { it.api }.orEmpty()
+        val previousApis =
+            previous
+                ?.sources
+                ?.mapTo(hashSetOf()) { it.api }
+                ?: previousDocument.sources.mapTo(hashSetOf()) { it.api }
+        val silentlyOmitted = previousApis - candidateEntries.keys - candidateTombstones
+        if (silentlyOmitted.isNotEmpty()) add("previous source is absent without a removed tombstone")
+
+        val previousTombstones = previous?.removedSources?.mapTo(hashSetOf()) { it.api }.orEmpty()
+        if (!candidateTombstones.containsAll(previousTombstones)) add("removed tombstone was discarded")
+        if (candidateEntries.keys.any { it in previousTombstones }) add("removed source was reintroduced")
+
+        previousEntries.forEach { (api, oldEntry) ->
+            val nextEntry = candidateEntries[api] ?: return@forEach
+            if (nextEntry.sourceRevision < oldEntry.sourceRevision) {
+                add("source revision rollback is forbidden")
+            }
+            if (
+                nextEntry.sourceRevision == oldEntry.sourceRevision &&
+                nextEntry.checksum != oldEntry.checksum
+            ) {
+                add("immutable source revision checksum changed")
             }
         }
     }
@@ -262,6 +342,7 @@ class IncrementalSourceCatalogManager(
     private data class VerifiedCatalog(
         val document: SourceConfigDocument,
         val etag: String,
+        val manifest: SourceCatalogManifest,
     )
 
     private companion object {

@@ -17,8 +17,8 @@ import kotlin.test.fail
  * …). When `endpoints["chapters"]` is declared, `details()` must issue a SECOND request and build the
  * chapter list from THAT body (its own `root`), while the scalars come from the details body.
  *
- * Also pins the safety contract: if the chapters request fails, the WHOLE `details()` fails — so
- * `FallbackSourceClient` routes to legacy rather than surfacing a chapter-less page.
+ * Also pins the safety contract: if the chapters request fails, the whole `details()` call fails
+ * instead of surfacing a misleading chapter-less success.
  */
 class GenericSourceClientSeparateChaptersTest {
 
@@ -63,8 +63,7 @@ class GenericSourceClientSeparateChaptersTest {
 
     @Test
     fun details_fails_when_separate_chapters_request_fails() = runTest {
-        // Only the details body is served; the chapters URL 404s → the whole details() must fail so the
-        // FallbackSourceClient routes to legacy (a Success with empty chapters would suppress fallback).
+        // Only the details body is served; the chapters URL 404s, so the whole request must fail.
         val onlyDetails = mapOf("https://api.sep.com/series/op" to SEP_DETAILS_BODY)
         val result = client(onlyDetails).details(manga)
         assertTrue(result is AppResult.Failure, "expected Failure when chapters endpoint fails, got $result")

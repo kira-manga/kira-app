@@ -171,7 +171,7 @@ committed `*.example` templates — `app/google-services.json`, `iosApp/iosApp/G
 Kotlin **2.4.0** · Compose Multiplatform **1.11.1** · AGP **9.2.1** (all KMP modules on the
 new-DSL `com.android.kotlin.multiplatform.library`; `:app` on AGP built-in Kotlin; AGP-10-ready,
 the version bump itself pending AGP 10's release) · Gradle **9.6.1** · compileSdk **37** / minSdk
-26 · targetSdk 36 · JVM 11 (Android) / 17 (Desktop; non-JBR JDK required) · Room KMP (DB v11) · Ktor
+26 · targetSdk 36 · JVM 11 (Android) / 17 (Desktop; non-JBR JDK required) · Room KMP (DB v12) · Ktor
 (OkHttp/Darwin/CIO) · Koin · Coil 3.5 · Kermit · Firebase BOM 34.15.0 · iOS targets `iosArm64` +
 `iosSimulatorArm64` only (no x64) · Xcode project via **xcodegen**. Machine gotcha: SDK 37
 installs as `platforms/android-37.0` but AGP wants `android-37` — symlink needed on fresh

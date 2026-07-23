@@ -257,11 +257,8 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
-// v10 -> v11 (Sources Migration — Phase 1): add the single-row `source_config_cache` table — the
-// durable cache tier of the generic-sources config `ConfigStore` (was in-memory only, lost on
-// process death). Pure additive CREATE TABLE; the column list/types/PK must match Room's generated
-// schema for SourceConfigCacheEntity exactly (id INTEGER PK NOT NULL, rawJson TEXT NOT NULL,
-// revision INTEGER NOT NULL, updatedAtEpochMs INTEGER NOT NULL).
+// v10 -> v11 historical schema: add the former whole-document cache. Migration 11→12 clears this
+// obsolete table, but the migration remains byte-for-byte compatible with v11 installations.
 val MIGRATION_10_11 = object : Migration(10, 11) {
     override fun migrate(connection: SQLiteConnection) {
         connection.execSQL(

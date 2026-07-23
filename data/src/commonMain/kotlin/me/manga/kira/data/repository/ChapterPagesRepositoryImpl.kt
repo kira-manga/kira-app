@@ -32,27 +32,8 @@ import okio.Path.Companion.toPath
 /**
  * Source-backed [ChapterPagesRepository] implementation.
  *
- * SRP (contract §6): owns ONE rule — "given a manga + chapter, ask the legacy source repo for its
- * page-URL stream, attach the source's `defaultHeaders` to each URL, and project legacy `State`
- * emissions into typed [AppResult] emissions". Source-routing itself lives in [SourcesRepository];
- * the per-source page-fetch logic lives in each `BaseMangaRepository.fetchChapterDataF`.
- *
- * DIP: depends on [ChapterPagesRepository] (declared in `:domain`), [SourcesRepository] (legacy
- * `:shared` — transitional, removed when sources move into `:data`), and [DispatcherProvider]
- * (`:core`). No Compose, no UI types.
- *
- * Why this impl is a thin shim over legacy:
- *  - Legacy `BaseMangaRepository.fetchChapterDataF(url)` already emits `Flow<State<List<String>>>`
- *    with streaming semantics for Prochan-style sources (each emission is the running cumulative
- *    list). The Phase 6.4.1 [ChapterPagesRepository] contract was designed around that exact
- *    shape — see `ChapterPagesRepository.fetchPages` KDoc. So the impl only has to (a) drop
- *    Loading emissions, (b) translate Success → `AppResult.Success(pages)` with headers attached,
- *    and (c) translate Error → terminal `AppResult.Failure` with the same classification heuristics
- *    `MangaDetailsRepositoryImpl` uses.
- *  - Headers are read ONCE per fetch from `BaseMangaRepository.defaultHeaders`. They're identical
- *    across pages of one chapter (per-source config — referer / user-agent), so re-reading per
- *    emission would waste a property read. The `Page` model carries the same map by reference;
- *    later pages from the same chapter share the header map identity.
+ * Online pages always resolve through the active generic [SourceRegistry]. An absent source fails
+ * closed with [AppError.Validation.SourceUnavailable]; there is no legacy or inferred fallback.
  *
  * **Downloaded-chapter local-path lookup (native parity).** Before delegating to the source, the
  * impl checks whether the chapter has been downloaded for offline reading: it resolves the saved
@@ -65,22 +46,12 @@ import okio.Path.Companion.toPath
  * on JVM and Native (no per-page headers — local reads don't hit the network). If the lookup
  * yields nothing readable, the impl falls through to the source fetch unchanged.
  *
- * Error classification (matches the legacy [LegacyState.Error.fromException] buckets so the
- * surfaced [AppError] hierarchy is consistent across the rework `:data` layer):
+ * Error classification keeps the surfaced [AppError] hierarchy consistent across `:data`:
  *  - HTTP status in 400..599 → [AppError.Network.Http].
  *  - code == 0 with a connectivity hint in the message → [AppError.Network.NoConnectivity].
  *  - code == 0 with a timeout hint → [AppError.Network.Timeout].
  *  - Anything else → [AppError.Unexpected] carrying the original message.
- *  - Unknown source api → terminal `AppResult.Failure(AppError.Unexpected)`. Same posture as
- *    [MangaDetailsRepositoryImpl] — legacy silently substitutes `EmptyMangaRepository` whose
- *    flow returns Success with empty URLs, hiding the integrity issue.
- *
- * The classification heuristics (including the Cloudflare-challenge → 403 re-surfacing, bug #2)
- * are duplicated from [MangaDetailsRepositoryImpl] rather than factored out. The duplication is
- * now over the rule-of-three threshold (Details, Reader, plus the HomeFeed/Search mapper), so a
- * shared `:data` classifier is warranted; until that refactor lands the challenge branch is kept
- * in sync by hand so non-config-backed reader failures still route to the WebView solver. The
- * duplication is documented and localised.
+ *  - Unknown source api → [AppError.Validation.SourceUnavailable].
  *
  * Cancellation: [CancellationException] propagates unchanged through the catch operator
  * (structured-concurrency invariant). Any other [Throwable] thrown by the underlying flow lands

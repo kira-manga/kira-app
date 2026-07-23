@@ -22,7 +22,7 @@ there is no legacy stanza, adapter, union, or inference path. The legacy remote 
 client. Disabled, retired, and removed lifecycle changes remove it from the active projection.
 
 Schema facts: `siteState` (`WORKING|STOPPED|UNDER_MAINTENANCE`), `lifecycle`
-(`active|disabled|removed` — the kill switch; `enabled` only means "default-enabled on first
+(`active|disabled|retired|removed` — the kill switch; `enabled` only means "default-enabled on first
 seed"), `previousHosts` (**append-only**; drives the stored-URL alias sweep via `SourceUrlMigrator`
 and the push deep-link trust join via `ConfigHostTrust`), `previousImageHosts`, `trustedHosts`.
 Mirror protection is authoring-opt-in: a source that declares `previousHosts` gets mirror-safe

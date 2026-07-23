@@ -10,8 +10,10 @@ import me.manga.kira.sources.contracts.SourceCatalogEntry
 import me.manga.kira.sources.contracts.SourceCatalogManifestResult
 import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
 import me.manga.kira.sources.contracts.SourceCatalogStore
+import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
+import me.manga.kira.sources.contracts.ValidationResult
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -74,6 +76,79 @@ class IncrementalSourceCatalogManagerTest {
         }
 
     @Test
+    fun non_generic_manifest_entry_is_rejected_without_fetch_or_activation() =
+        runTest {
+            val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
+            val store = FakeCatalogStore(active = stored)
+            val next = signedManifest(11, listOf(entry("a", 2).copy(engine = "legacy")), previousRevision = 10)
+            val remote = FakeRemote(SourceCatalogManifestResult.Modified(next))
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(0, remote.sourceFetches)
+            assertEquals(0, store.activationCount)
+            assertEquals(10, manager.activeDocument().revision)
+        }
+
+    @Test
+    fun previously_known_source_requires_an_explicit_removed_tombstone() =
+        runTest {
+            val stored =
+                storedCatalog(
+                    10,
+                    listOf(
+                        entry("a", 1) to artifact("a", 1),
+                        entry("b", 1) to artifact("b", 1),
+                    ),
+                )
+            val store = FakeCatalogStore(active = stored)
+            val next = signedManifest(11, listOf(entry("a", 1)), previousRevision = 10)
+            val remote = FakeRemote(SourceCatalogManifestResult.Modified(next))
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(0, remote.sourceFetches)
+            assertEquals(0, store.activationCount)
+            assertEquals(10, manager.activeDocument().revision)
+        }
+
+    @Test
+    fun explicit_removed_tombstone_activates_without_downloading_payloads() =
+        runTest {
+            val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
+            val store = FakeCatalogStore(active = stored)
+            val next =
+                signedManifest(
+                    revision = 11,
+                    entries = emptyList(),
+                    previousRevision = 10,
+                    removedApis = listOf("a"),
+                )
+            val remote = FakeRemote(SourceCatalogManifestResult.Modified(next))
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(0, remote.sourceFetches)
+            assertEquals(1, store.activationCount)
+            assertTrue(manager.activeDocument().sources.isEmpty())
+        }
+
+    @Test
+    fun lower_per_source_revision_is_rejected_as_a_rollback() =
+        runTest {
+            val stored = storedCatalog(10, listOf(entry("a", 2) to artifact("a", 2)))
+            val store = FakeCatalogStore(active = stored)
+            val next = signedManifest(11, listOf(entry("a", 1)), previousRevision = 10)
+            val remote = FakeRemote(SourceCatalogManifestResult.Modified(next))
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(0, remote.sourceFetches)
+            assertEquals(0, store.activationCount)
+            assertEquals(10, manager.activeDocument().revision)
+        }
+
+    @Test
     fun failed_required_download_never_activates_partial_catalog() =
         runTest {
             val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
@@ -125,6 +200,44 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(listOf("a"), remote.fetchedApis)
             assertEquals(1, store.activationCount)
             assertEquals(20, manager.activeDocument().revision)
+        }
+
+    @Test
+    fun higher_revision_fails_closed_when_durable_manifest_baseline_is_unreadable() =
+        runTest {
+            val store =
+                FakeCatalogStore(
+                    active = null,
+                    floor = SourceCatalogAcceptanceFloor(20, checksum(20)),
+                )
+            val next = signedManifest(21, listOf(entry("a", 3)), previousRevision = 20)
+            val remote = FakeRemote(SourceCatalogManifestResult.Modified(next))
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(0, remote.sourceFetches)
+            assertEquals(0, store.activationCount)
+            assertEquals(BUNDLED_REVISION, manager.activeDocument().revision)
+        }
+
+    @Test
+    fun previously_removed_source_cannot_be_reintroduced() =
+        runTest {
+            val stored =
+                storedCatalog(
+                    revision = 10,
+                    entries = emptyList(),
+                    removedApis = listOf("a"),
+                )
+            val store = FakeCatalogStore(active = stored)
+            val next = signedManifest(11, listOf(entry("a", 2)), previousRevision = 10)
+            val remote = FakeRemote(SourceCatalogManifestResult.Modified(next))
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+            assertEquals(0, remote.sourceFetches)
+            assertEquals(0, store.activationCount)
+            assertTrue(manager.activeDocument().sources.isEmpty())
         }
 
     @Test
@@ -205,7 +318,7 @@ class IncrementalSourceCatalogManagerTest {
     ) = IncrementalSourceCatalogManager(
         store = store,
         verifier = FakeCatalogVerifier,
-        validator = SchemaOnlyValidator(),
+        validator = SchemaOnlyValidator,
         remote = remote,
     )
 
@@ -216,6 +329,7 @@ class IncrementalSourceCatalogManagerTest {
         },
         private val failActivation: Boolean = false,
     ) : SourceCatalogStore {
+        private var acceptedManifest = active?.manifest
         private val revisionArtifacts =
             active?.sources?.associateBy { Triple(it.api, it.sourceRevision, it.checksum) }?.toMutableMap()
                 ?: mutableMapOf()
@@ -235,6 +349,8 @@ class IncrementalSourceCatalogManagerTest {
 
         override suspend fun readAcceptanceFloor(): SourceCatalogAcceptanceFloor? = acceptanceFloor
 
+        override suspend fun readAcceptedManifest(): SignedSourceCatalogManifest? = acceptedManifest
+
         override suspend fun findSource(
             api: String,
             sourceRevision: Long,
@@ -245,6 +361,7 @@ class IncrementalSourceCatalogManagerTest {
             if (failActivation) error("simulated projection failure")
             activationCount++
             active = catalog
+            acceptedManifest = catalog.manifest
             catalog.sources.forEach {
                 revisionArtifacts[Triple(it.api, it.sourceRevision, it.checksum)] = it
             }
@@ -289,6 +406,15 @@ class IncrementalSourceCatalogManagerTest {
                 entry.checksum == artifact.checksum
     }
 
+    private object SchemaOnlyValidator : SourceConfigValidator {
+        override fun validate(document: SourceConfigDocument): ValidationResult =
+            if (document.schemaVersion == 1) {
+                ValidationResult.OK
+            } else {
+                ValidationResult.failed(listOf("bad schema"))
+            }
+    }
+
     private companion object {
         const val BUNDLED_REVISION = 5L
 
@@ -323,9 +449,13 @@ class IncrementalSourceCatalogManagerTest {
         fun storedCatalog(
             revision: Long,
             entries: List<Pair<SourceCatalogEntry, SourceRevisionArtifact>>,
+            removedApis: List<String> = emptyList(),
         ): StoredSourceCatalog {
             val ordered = entries.mapIndexed { index, pair -> pair.first.copy(order = index) }
-            return StoredSourceCatalog(signedManifest(revision, ordered), entries.map { it.second })
+            return StoredSourceCatalog(
+                signedManifest(revision, ordered, removedApis = removedApis),
+                entries.map { it.second },
+            )
         }
 
         fun signedManifest(
@@ -338,7 +468,7 @@ class IncrementalSourceCatalogManagerTest {
             val sources =
                 ordered.joinToString(",") {
                     """{"api":"${it.api}","sourceRevision":${it.sourceRevision},"checksum":"${it.checksum}",""" +
-                        """"order":${it.order},"lifecycle":"${it.lifecycle}","engine":"generic",""" +
+                        """"order":${it.order},"lifecycle":"${it.lifecycle}","engine":"${it.engine}",""" +
                         """"sourceSigningKeyId":"test-key","sourceSignature":"signature"}"""
                 }
             val payload =

@@ -12,8 +12,8 @@ import me.manga.kira.sources.contracts.model.SourceConfigDocument
  * Schema + referential validator. Runs after signature verification, before any source is trusted.
  * Two jobs: (1) the document is structurally sane (supported schema, non-blank keys, URL-shaped
  * base), and (2) every strategy/transform/date/pagination name a `generic` source references is one
- * this build ships (via [StrategyRegistry]). `legacy`/`kotlin:` sources skip the strategy checks —
- * their behavior lives in Kotlin, not the config.
+ * this build ships (via [StrategyRegistry]). Archived descriptors remain parseable for migration
+ * tooling, but the shipping catalog manager independently rejects every non-generic entry.
  *
  * Errors are collected (not fail-fast) and keyed by api so a whole batch can be diagnosed at once.
  */
@@ -133,12 +133,12 @@ class DefaultSourceConfigValidator(
             errors += "$tag unknown engine '${source.engine}' (expected 'generic', 'legacy', or 'kotlin:<id>')"
         }
 
-        // Lifecycle metadata (SourceRegistry retirement §2) applies to EVERY engine — metadata-only
-        // legacy stanzas carry exactly these fields, so they are validated before the generic-only
-        // early return below.
+        // Validate archived compatibility descriptors before the generic-only early return. The
+        // shipping catalog manager rejects these engine values before activation.
         validateLifecycleMetadata(source, tag, errors)
 
-        // Legacy sources carry no config-driven behavior to validate.
+        // Non-generic behavior is intentionally outside this config validator and never executable
+        // through the shipping source registry.
         if (!isGeneric) {
             if (source.filters.isNotEmpty()) {
                 errors += "$tag filters: declared on a non-generic engine — filters are a generic-engine capability"
@@ -204,8 +204,8 @@ class DefaultSourceConfigValidator(
             // values (the executor form-encodes those). In a URL it must be {queryEncoded} and in
             // a JSON body {queryJson}; the raw form would break (or corrupt the body) on the first
             // search containing a space, '&', quote, or backslash. Rejecting at validation keeps
-            // the engine's fail-closed posture: a typo'd config falls back to legacy instead of
-            // issuing malformed requests. ("{query}" cannot false-match "{queryEncoded}"/
+            // the engine's fail-closed posture: a typo'd config is rejected instead of issuing
+            // malformed requests. ("{query}" cannot false-match "{queryEncoded}"/
             // "{queryJson}" — the closing brace pins the exact var name.)
             if (spec.url.contains("{query}")) {
                 errors += "$tag endpoint '$verb' url uses raw {query} — use {queryEncoded}"

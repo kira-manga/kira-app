@@ -49,7 +49,7 @@ class ConfigHostTrustTest {
                                 previousImageHosts = listOf("oldimg.azora.net"),
                                 trustedHosts = listOf("cdn.azora-images.net"),
                             ),
-                            // A metadata-only legacy stanza participates in trust exactly the same way.
+                            // A non-generic stanza must never participate in host trust.
                             SourceConfig(
                                 api = "Other",
                                 language = "en",
