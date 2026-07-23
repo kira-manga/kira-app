@@ -73,10 +73,9 @@ val sourcesGenericModule =
             )
         }
         single { SourceRemoteConfiguration.fromGenerated() }
-        single {
+        single<SourceCatalogSignatureVerifier> {
             Ed25519ConfigSignatureVerifier(get<SourceRemoteConfiguration>().pinnedPublicKeys)
         }
-        single<SourceCatalogSignatureVerifier> { get<Ed25519ConfigSignatureVerifier>() }
         single<RemoteSourceCatalog> { KtorRemoteSourceCatalog(get<HttpClient>(), get()) }
         // Live base URL from the active catalog projection, while preserving a user's explicitly
         // configured mirror according to the descriptor's previous-host policy.

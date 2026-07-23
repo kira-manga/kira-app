@@ -244,11 +244,11 @@ class IncrementalSourceCatalogManagerTest {
     fun later_refresh_never_downgrades_a_valid_in_memory_catalog_to_bundle() =
         runTest {
             val store = FakeCatalogStore(active = null)
-            val next = signedManifest(10, listOf(entry("a", 1)), previousRevision = 5)
+            val next = signedManifest(10, listOf(entry("floor", 1)), previousRevision = 5)
             val firstRemote =
                 FakeRemote(
                     SourceCatalogManifestResult.Modified(next),
-                    artifacts = mapOf("a" to artifact("a", 1)),
+                    artifacts = mapOf("floor" to artifact("floor", 1)),
                 )
             val manager = manager(store, firstRemote)
             assertTrue(manager.refresh() is AppResult.Success)
