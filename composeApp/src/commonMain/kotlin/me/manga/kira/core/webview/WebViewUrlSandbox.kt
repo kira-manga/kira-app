@@ -13,18 +13,19 @@ import io.ktor.http.Url
  * up bound to the wrong origin and the source HTML fetch still 403s. Pinning the main frame to the
  * initial host keeps the session cookie tied to the host the source repo will later replay it to.
  *
- * The legacy Android rule set, reproduced verbatim:
- *  - `about:` and `data:` URLs are always allowed (used for blank / inline content).
+ * The legacy Android rule set, tightened for top-level navigation:
  *  - For a main-frame navigation: allow only `http`/`https` whose host is the initial host or a
- *    true sub-domain of it; block everything else.
+ *    true sub-domain of it. The one exception is the browser-owned `about:blank` page.
+ *    Arbitrary pseudo-URLs such as `about:about` and top-level `data:` documents are blocked.
+ *  - `about:` and `data:` remain available to sub-frames for ordinary inline browser content.
  *  - For a sub-frame navigation: block `javascript:` and `file:` schemes (anti-exfiltration),
  *    allow the rest (iframes, images, XHR to third parties are normal page resources).
  *
  * Host matching is tightened vs the legacy `uri.host?.endsWith(host, ignoreCase = true)` bare
  * suffix test: only an exact host match or a dot-boundary sub-domain (`targetHost.endsWith(".$host")`)
  * is allowed, so a registrable lookalike like `evil-lek-manga.net` no longer slips through the pin
- * for host `lek-manga.net`. Parse failures fall back to *allowed* (legacy `catch → true`),
- * matching the legacy behaviour of never blocking on a URL it couldn't parse.
+ * for host `lek-manga.net`. Main-frame parse failures fail closed: an address the browser policy
+ * cannot identify as HTTP(S) for the pinned host must not replace the visible page.
  */
 class WebViewUrlSandbox(initialUrl: String) {
     private val initialHost: String? =
@@ -42,16 +43,21 @@ class WebViewUrlSandbox(initialUrl: String) {
      */
     fun isAllowed(url: String, isMainFrame: Boolean): Boolean {
         val lower = url.trimStart().lowercase()
-        if (lower.startsWith("about:") || lower.startsWith("data:")) return true
 
         if (isMainFrame) {
-            val parsed = runCatching { Url(url) }.getOrNull() ?: return true
+            // WKWebView uses about:blank for its own empty/error-document lifecycle. Do not extend
+            // that exception to arbitrary about:* targets: source pages have been observed
+            // redirecting to the invalid about:about pseudo-URL.
+            if (lower == "about:blank") return true
+            val parsed = runCatching { Url(url) }.getOrNull() ?: return false
             val scheme = parsed.protocol.name.lowercase()
             if (scheme != "http" && scheme != "https") return false
-            val host = initialHost ?: return true
-            val targetHost = parsed.host.lowercase().takeIf { it.isNotBlank() } ?: return true
+            val host = initialHost ?: return false
+            val targetHost = parsed.host.lowercase().takeIf { it.isNotBlank() } ?: return false
             return targetHost == host || targetHost.endsWith(".$host")
         }
+
+        if (lower.startsWith("about:") || lower.startsWith("data:")) return true
 
         // Sub-frame: block javascript: / file: schemes, allow ordinary resource loads.
         val scheme = lower.substringBefore(':', missingDelimiterValue = "")

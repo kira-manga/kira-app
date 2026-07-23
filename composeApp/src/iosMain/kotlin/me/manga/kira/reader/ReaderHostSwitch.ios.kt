@@ -109,7 +109,7 @@ private fun NativeReaderHost(
                 // the navigation transition and swallow every touch on the incoming WKWebView screen.
                 // Stage the request in Compose state first; the effect below unmounts the native reader
                 // for a full frame before it asks Navigation to push the WebView.
-                onOpenInWebView = webViewTransition.requestOpen,
+                onOpenInWebViewEffect = webViewTransition.requestOpen,
                 onSolveCloudflare = onSolveCloudflareChallenge,
             )
         }
