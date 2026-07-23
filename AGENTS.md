@@ -77,7 +77,7 @@ must remain independent of one another.
 - The generic source contract is in `:sources:contracts`; the engine is declarative and has no
   HTTP-library dependency; Ktor and platform implementations are wired at the composition root.
   Config validation is all-or-nothing per document.
-- The bundled document is revision **5** and contains exactly the **12 approved `generic` sources**.
+- The bundled document is revision **6** and contains exactly the **12 approved `generic` sources**.
   It contains no legacy stanza. `IncrementalSourceCatalogManager` conditionally fetches a signed v2
   manifest, downloads only missing immutable source revisions, and atomically activates a complete
   verified catalog in Room. `DefaultSourceRegistry` has no legacy adapter or inference path: an api

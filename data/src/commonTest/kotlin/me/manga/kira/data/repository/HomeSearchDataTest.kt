@@ -12,28 +12,24 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.data.mapper.toFeatured
 import me.manga.kira.data.mapper.toHomeFeedItem
 import me.manga.kira.data.mapper.toSiteState
+import me.manga.kira.data.mapper.toSourceTab
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.MangaInfo
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
-import me.manga.kira.domain.model.MangaInfo
-import me.manga.kira.domain.model.MangaItem as LegacyMangaItem
-import me.manga.kira.domain.model.PopularManga as LegacyPopularManga
 import me.manga.kira.presentation.features.home.data.SearchType
 import me.manga.kira.presentation.features.repo_settings.domain.SourceState
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
@@ -41,6 +37,11 @@ import me.manga.kira.sources_repositry.BaseMangaRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import me.manga.kira.core.states.State as LegacyState
+import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
+import me.manga.kira.domain.model.MangaItem as LegacyMangaItem
+import me.manga.kira.domain.model.PopularManga as LegacyPopularManga
+import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 
 /**
  * Unit tests for the Home + Search `:data` slice (Epic H2): mapper round-trips plus authoritative
@@ -213,6 +214,38 @@ class HomeSearchDataTest {
         assertEquals("https://md/c700", domain.recentChapters[0].url)
         assertTrue(domain.recentChapters[0].isDownloaded)
         assertEquals(false, domain.recentChapters[1].isDownloaded)
+    }
+
+    @Test
+    fun sourceTab_invalidPersistedBaseUrl_usesValidatedDescriptorUrl() {
+        val row = SourcesEntity(
+            name = "Azora",
+            isEnabled = true,
+            priority = 0,
+            language = "(AR)",
+            siteState = SourceState.WORKING,
+            baseUrl = "about:about",
+            baseVersion = 0,
+            imageBaseUrl = "",
+            imageUrlVersion = 0,
+        )
+        val descriptor = RuntimeSourceDescriptor(
+            api = "Azora",
+            displayName = "Azora",
+            language = "(AR)",
+            engine = "generic",
+            baseUrl = "https://api.azorafly.com",
+            priority = 0,
+            enabledByDefault = true,
+            siteState = "WORKING",
+            lifecycle = "active",
+            iconResourceKey = "azora",
+            iconRemoteUrl = null,
+            blacklistGenres = emptyList(),
+            headers = emptyMap(),
+        )
+
+        assertEquals("https://api.azorafly.com", row.toSourceTab(descriptor).baseUrl)
     }
 
     @Test

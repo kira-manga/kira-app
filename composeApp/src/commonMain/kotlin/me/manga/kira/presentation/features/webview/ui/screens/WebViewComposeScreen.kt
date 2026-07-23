@@ -41,6 +41,7 @@ import me.manga.kira.composeapp.generated.resources.webview_action_save_headers
 import me.manga.kira.core.webview.WebViewHost
 import me.manga.kira.core.webview.WebViewUrlSandbox
 import me.manga.kira.core.webview.rememberWebViewController
+import me.manga.kira.ui.util.BackHandler
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -202,6 +203,17 @@ fun WebViewComposeScreen(
     LaunchedEffect(savedHeaders) {
         if (savedHeaders != null) {
             onSaveHeaders(savedHeaders, api)
+        }
+    }
+
+    // Prefer WebView history for Android system back; otherwise close the destination and persist
+    // captured headers, exactly like the visible close button. The shared handler is intentionally
+    // a no-op on iOS, where the top app-bar close action and navigation gesture own dismissal.
+    BackHandler {
+        if (nav.canGoBack) {
+            controller.goBack()
+        } else {
+            onClose(savedHeaders, api)
         }
     }
 

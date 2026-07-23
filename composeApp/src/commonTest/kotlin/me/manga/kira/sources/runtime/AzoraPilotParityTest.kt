@@ -13,6 +13,7 @@ import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.sources.contracts.HeaderStore
 import me.manga.kira.sources.contracts.HttpExecutor
+import me.manga.kira.sources.contracts.SourceBaseUrlProvider
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.engine.GenericSourceClient
@@ -80,6 +81,24 @@ class AzoraPilotParityTest {
     }
 
     @Test
+    fun invalidPersistedBaseUrl_fallsBackToSignedDescriptor() = runTest {
+        val invalidRoomOverride = object : SourceBaseUrlProvider {
+            override suspend fun baseUrlFor(api: String): String = "about:about"
+        }
+        val client = GenericSourceClient(
+            config = azoraConfig(),
+            http = MapFakeHttp(azoraResponses(base)),
+            headerStore = NoopHeaderStore(),
+            baseUrlProvider = invalidRoomOverride,
+        )
+
+        val home = client.home(1).valueOrFail()
+
+        assertTrue(home.isNotEmpty())
+        assertTrue(home.all { it.url.startsWith(base) })
+    }
+
+    @Test
     fun locked_chapters_are_hidden_from_details_and_home() = runTest {
         // Azora marks paid/locked chapters with isLocked=true (they return empty images). The config
         // declares chapter.locked → isLocked, so the engine drops them from both the details chapter
@@ -87,7 +106,7 @@ class AzoraPilotParityTest {
         val http = MapFakeHttp(
             mapOf(
                 "$base/api/query?page=1&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc" to LOCKED_QUERY_JSON,
-                "$base/api/post/?postId=lock" to DETAIL_LOCKED_JSON,
+                "$base/api/post/?postId=lock&includeChapters=true" to DETAIL_LOCKED_JSON,
             ),
         )
         val client = client(http = http)
@@ -248,7 +267,7 @@ private fun azoraResponses(base: String): Map<String, String> = mapOf(
     "$base/api/query?page=1&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc" to QUERY_JSON,
     "$base/api/query?page=1&perPage=24&orderBy=totalViews&orderDirection=desc" to QUERY_JSON,
     "$base/api/query?searchTerm=one%20piece&perPage=24" to QUERY_JSON,
-    "$base/api/post/?postId=92" to DETAIL_JSON,
+    "$base/api/post/?postId=92&includeChapters=true" to DETAIL_JSON,
     "$base/api/chapter?chapterId=85027" to PAGES_JSON,
 )
 

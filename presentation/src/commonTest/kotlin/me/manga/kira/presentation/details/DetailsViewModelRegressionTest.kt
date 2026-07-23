@@ -18,18 +18,20 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.AdultContentClassifier
-import me.manga.kira.domain.repository.ChapterIdResolver
 import me.manga.kira.domain.repository.AnalyticsPort
-import me.manga.kira.domain.repository.ConnectivityRepository
+import me.manga.kira.domain.repository.ChapterBookmarkRepository
+import me.manga.kira.domain.repository.ChapterDeletionRepository
+import me.manga.kira.domain.repository.ChapterIdResolver
+import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 import me.manga.kira.domain.repository.CompressionDeferralRepository
+import me.manga.kira.domain.repository.ConnectivityRepository
 import me.manga.kira.domain.repository.DownloadsActionRepository
 import me.manga.kira.domain.repository.DownloadsRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
-import me.manga.kira.domain.repository.ChapterBookmarkRepository
-import me.manga.kira.domain.repository.ChapterDeletionRepository
-import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 import me.manga.kira.domain.repository.MarkChapterReadRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
+import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
+import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.details.ClearChapterNewUseCase
 import me.manga.kira.domain.usecase.details.DeleteChapterUseCase
 import me.manga.kira.domain.usecase.details.FetchMangaDetailsUseCase
@@ -44,10 +46,8 @@ import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueDownloadUseCase
-import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
-import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
-import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
+import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.library.MarkMangaOpenedUseCase
 import me.manga.kira.domain.usecase.library.ObserveInLibraryUseCase
 import me.manga.kira.domain.usecase.library.PersistNewChaptersUseCase
@@ -478,6 +478,34 @@ class DetailsViewModelRegressionTest {
 
         vm.submit(DetailsIntent.OnRetry) // explicit refresh = pull-to-refresh parity
         assertEquals(1, fetchFake.fetchCount, "OnRetry forces a network fetch regardless of cache/membership")
+    }
+
+    @Test
+    fun onRetry_emptySuccessfulPayload_keepsLastKnownGoodChaptersVisible() = runTest {
+        val saved = FakeSavedMangaDetailsRepository()
+        saved.saved.value = details(
+            listOf(
+                chapter("c/1", isRead = true),
+                chapter("c/2", isDownloaded = true),
+            ),
+        )
+        val (vm, fetchFake) = vmWithFetchFake(
+            // Reproduces Azora's July 2026 API change: HTTP/parsing succeeds, but the details
+            // payload contains an empty post.chapters unless the opt-in query is present.
+            fetch = AppResult.Success(details(emptyList())),
+            saved = saved,
+        )
+
+        vm.submit(DetailsIntent.OnEnter(manga()))
+        assertEquals(2, vm.state.value.details!!.chapters.size)
+
+        vm.submit(DetailsIntent.OnRetry)
+
+        assertEquals(1, fetchFake.fetchCount)
+        val chapters = vm.state.value.details!!.chapters
+        assertEquals(listOf("c/1", "c/2"), chapters.map { it.url })
+        assertTrue(chapters.first().isRead, "saved read state remains attached to the retained list")
+        assertTrue(chapters.last().isDownloaded, "saved download state remains attached to the retained list")
     }
 
     // ---- PFIX-DLPROGRESS: live per-chapter download state+progress, then flip to downloaded ----

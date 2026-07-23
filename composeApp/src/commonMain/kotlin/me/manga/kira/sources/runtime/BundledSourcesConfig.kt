@@ -14,7 +14,8 @@ package me.manga.kira.sources.runtime
  * (`sources_repositry/ar/azora/AzoraModels.kt`, the parity spec):
  *  - api `"Azora"`, language `"(AR)"` (== `MangaSource.AZORA.API` / `.LANGUAGE.Language`).
  *  - home/popular/search → `GET /api/query?...` → JSON list at `posts`.
- *  - details → `GET {itemUrl}` (the stored `…/api/post/?postId=<id>`) → scalars under `post`, chapters at `post.chapters`.
+ *  - details → `GET {itemUrl}&includeChapters=true` (the stored `…/api/post/?postId=<id>`) →
+ *    scalars under `post`, chapters at `post.chapters`. Azora made chapters opt-in in July 2026.
  *  - pages → `GET {chapterUrl}` (`…/api/chapter?chapterId=<id>`) → image list at `chapter.images`.
  *  - item/chapter URLs are templated from the numeric `id` (mirrors `buildMangaUrl`/`buildChapterUrl`).
  *  - rating defaults to `"0"`, status to `"Unknown"`, description via `clean-html` (== `cleanHtmlContent`),
@@ -34,7 +35,7 @@ package me.manga.kira.sources.runtime
 const val CONFIG_BACKED_SOURCES_JSON: String = """
 {
   "schemaVersion": 1,
-  "revision": 5,
+  "revision": 6,
   "sources": [
     {
       "api": "Azora",
@@ -50,7 +51,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
         "home":     { "url": "{baseUrl}/api/query?page={page}&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc", "format": "json", "root": "posts" },
         "featured": { "url": "{baseUrl}/api/query?page={page}&perPage=24&orderBy=totalViews&orderDirection=desc", "format": "json", "root": "posts" },
         "search":   { "url": "{baseUrl}/api/query?searchTerm={queryEncoded}&perPage=24", "format": "json", "root": "posts" },
-        "details": { "url": "{itemUrl}", "format": "json" },
+        "details": { "url": "{itemUrl}&includeChapters=true", "format": "json" },
         "pages":   { "url": "{chapterUrl}", "format": "json", "root": "chapter.images" }
       },
       "fields": {

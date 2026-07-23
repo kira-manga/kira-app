@@ -14,7 +14,7 @@ The latest completely verified signed backend catalog is authoritative. It is a 
 manifest plus immutable per-source revisions; the client uses ETags and downloads only missing or
 changed active revisions. Room stores exact signed bytes and moves the active pointer and the
 `sources` projection in one transaction only after every required revision verifies. On failure,
-the app uses the reverified last-known-good catalog, then the bundled revision-5 floor.
+the app uses the reverified last-known-good catalog, then the bundled revision-6 floor.
 
 All three tiers contain only approved generic sources. The bundle contains exactly the initial 12;
 there is no legacy stanza, adapter, union, or inference path. The legacy remote source-list endpoint

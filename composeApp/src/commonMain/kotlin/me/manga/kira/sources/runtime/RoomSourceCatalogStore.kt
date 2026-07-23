@@ -22,6 +22,7 @@ import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
+import me.manga.kira.sources.contracts.sourceBaseUrlHost
 
 /** Room v12 implementation of the all-or-nothing source-catalog store. */
 class RoomSourceCatalogStore(
@@ -153,14 +154,22 @@ class RoomSourceCatalogStore(
             row.baseUrl != config.baseUrl &&
             !isUserMirror(row.baseUrl, config.baseUrl, config.previousHosts)
         ) {
-            migrator.migratePageUrlsStrict(config.api, config.baseUrl, urlHost(row.baseUrl)?.let(::setOf))
+            migrator.migratePageUrlsStrict(
+                config.api,
+                config.baseUrl,
+                sourceBaseUrlHost(row.baseUrl)?.let(::setOf),
+            )
             sourcesDao.updateBaseUrlAndVersionByName(config.api, config.baseUrl, row.baseVersion + 1)
         }
         if (config.imageBase.isNotBlank() &&
             row.imageBaseUrl != config.imageBase &&
             !isUserMirror(row.imageBaseUrl, config.imageBase, config.previousImageHosts)
         ) {
-            migrator.migrateImageUrlsStrict(config.api, config.imageBase, urlHost(row.imageBaseUrl)?.let(::setOf))
+            migrator.migrateImageUrlsStrict(
+                config.api,
+                config.imageBase,
+                sourceBaseUrlHost(row.imageBaseUrl)?.let(::setOf),
+            )
             sourcesDao.updateImageBaseUrlAndVersionByName(
                 config.api,
                 config.imageBase,
@@ -190,19 +199,7 @@ class RoomSourceCatalogStore(
         rowUrl: String,
         configUrl: String,
         previousHosts: List<String>,
-    ): Boolean {
-        if (previousHosts.isEmpty()) return false
-        val rowHost = urlHost(rowUrl)
-        return rowHost != null &&
-            rowHost != urlHost(configUrl) &&
-            previousHosts.none { it.lowercase() == rowHost }
-    }
-
-    private fun urlHost(url: String): String? =
-        runCatching {
-            val authority = url.substringAfter("://").substringBefore('/').substringBefore('?').substringBefore('#')
-            authority.substringBefore(':').lowercase().takeIf(String::isNotBlank)
-        }.getOrNull()
+    ): Boolean = isUserMirrorSourceUrl(rowUrl, configUrl, previousHosts)
 
     private fun parseActiveConfigs(
         manifestApis: Set<String>,
@@ -302,6 +299,22 @@ class RoomSourceCatalogStore(
 
 private const val LIFECYCLE_ACTIVE = "active"
 private const val ENGINE_GENERIC = "generic"
+
+/**
+ * Mirror preservation applies only to a parseable HTTP(S) row URL. Invalid legacy values are
+ * config-owned corruption and must be repaired from the signed descriptor.
+ */
+internal fun isUserMirrorSourceUrl(
+    rowUrl: String,
+    configUrl: String,
+    previousHosts: List<String>,
+): Boolean {
+    val rowHost = sourceBaseUrlHost(rowUrl)
+    return previousHosts.isNotEmpty() &&
+        rowHost != null &&
+        rowHost != sourceBaseUrlHost(configUrl) &&
+        previousHosts.none { it.lowercase() == rowHost }
+}
 
 internal fun requireSameImmutableSourceRevision(
     existing: SourceRevisionArtifactEntity,

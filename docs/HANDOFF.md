@@ -70,7 +70,7 @@ owner sign-off — high import churn, zero behavior value).
 
 ## 4. Sources (the content backbone)
 
-- **12 config-driven generic sources** in the revision-5 bundled floor: Azora, Mangamello,
+- **12 config-driven generic sources** in the revision-6 bundled floor: Azora, Mangamello,
   Mangamello Plus, SwatManga, Lekmanga, Team X, DilarV2, 3asq, Demonicscans, Mangabuddy,
   Zazamanga, Tapas. These run **generic-only**. The bundle contains no legacy stanzas.
 - The 33 unconverted sources are unavailable. The runtime scraper set is empty, and there is no

@@ -13,7 +13,7 @@
 
 - `CONFIG_BACKED_SOURCES_JSON` in
   `composeApp/src/commonMain/kotlin/me/manga/kira/sources/runtime/BundledSourcesConfig.kt` is the
-  revision-5 binary fallback. It contains exactly the 12 approved generic sources and no legacy
+  revision-6 binary fallback. It contains exactly the 12 approved generic sources and no legacy
   stanza.
 - The backend publishes a lightweight signed manifest and immutable signed per-source revisions.
   `IncrementalSourceCatalogManager` checks the manifest ETag, reuses verified local revisions, and

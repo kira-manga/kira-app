@@ -22,6 +22,7 @@ import me.manga.kira.sources.contracts.SourceBaseUrlProvider
 import me.manga.kira.sources.contracts.SourceHttpMethod
 import me.manga.kira.sources.contracts.SourceRequest
 import me.manga.kira.sources.contracts.SourceResponse
+import me.manga.kira.sources.contracts.isValidSourceBaseUrl
 import me.manga.kira.sources.contracts.model.EndpointSpec
 import me.manga.kira.sources.contracts.model.FieldSpec
 import me.manga.kira.sources.contracts.model.FilterSpec
@@ -74,7 +75,12 @@ class GenericSourceClient(
      * string for every verb of a source, so concurrent verbs writing it is benign.
      */
     private suspend fun resolveEffectiveBaseUrl() {
-        val live = baseUrlProvider?.baseUrlFor(config.api)?.takeIf { it.isNotBlank() }
+        // The Room projection is user-editable and can contain stale values from older releases.
+        // Only a real HTTP(S) origin may override the already-validated immutable descriptor.
+        val live =
+            baseUrlProvider
+                ?.baseUrlFor(config.api)
+                ?.takeIf(::isValidSourceBaseUrl)
         effectiveBaseUrl = live ?: config.baseUrl
     }
 

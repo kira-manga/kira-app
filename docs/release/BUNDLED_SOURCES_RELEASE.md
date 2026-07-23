@@ -2,7 +2,7 @@
 
 ## Trust boundary
 
-The revision-5 bundled `CONFIG_BACKED_SOURCES_JSON` is the always-available floor and contains only
+The revision-6 bundled `CONFIG_BACKED_SOURCES_JSON` is the always-available floor and contains only
 the 12 reviewed generic sources. Production wires `KtorRemoteSourceCatalog` to the backend v2
 manifest and immutable per-source endpoints. `Ed25519ConfigSignatureVerifier` authenticates the
 exact UTF-8 manifest and each referenced source revision with an in-app pinned public key.
