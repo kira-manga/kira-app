@@ -2,6 +2,7 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="kira_splash_background">#F5F5F7</color>
 
     <!-- Kira Manga Material 3 token set — light values ported verbatim from native
          native-app/.../res/values/colors.xml (the source of truth). Consumed by Theme.KiraManga

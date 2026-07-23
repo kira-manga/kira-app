@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="kira_splash_background">#0C0D11</color>
+
     <!-- Kira Manga Material 3 token set — dark values ported verbatim from native
          native-app/.../res/values-night/colors.xml (the source of truth). Mirrors values/colors.xml
          so Theme.KiraManga / the splash background track day/night exactly as native does. -->

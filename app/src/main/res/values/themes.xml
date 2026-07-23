@@ -40,13 +40,10 @@
         <item name="android:windowTranslucentNavigation">true</item>
     </style>
 
-    <!-- Splash launcher theme. windowSplashScreenBackground now resolves through
-         postSplashScreenTheme's ?attr/android:colorBackground (= @color/kira_manga_background:
-         #FEFBFF light, #1B1B1F dark) instead of a hardcoded opaque white, so the splash tracks
-         day/night and the dark-mode launch no longer flashes white. Matches native
-         native-app/.../res/values/themes.xml `Theme.App.Starting`. -->
+    <!-- Native Android splash: the website mark on matching light/dark brand canvases. The system
+         owns its duration; do not add an artificial delay or a dedicated splash Activity. -->
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">?attr/android:colorBackground</item>
+        <item name="windowSplashScreenBackground">@color/kira_splash_background</item>
         <item name="postSplashScreenTheme">@style/Theme.KiraManga</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
     </style>

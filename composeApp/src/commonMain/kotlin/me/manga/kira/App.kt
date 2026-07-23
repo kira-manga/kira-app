@@ -1,6 +1,5 @@
 package me.manga.kira
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -22,6 +20,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import me.manga.kira.platform.storage.DataStoreHelper
@@ -67,7 +68,6 @@ import me.manga.kira.domain.model.sources.SourceAccessState
 import me.manga.kira.domain.model.sources.SourceActivationResult
 import me.manga.kira.domain.usecase.sourceaccess.ActivateSourceAccessUseCase
 import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
-import me.manga.kira.domain.usecase.sources.SyncSourceCatalogUseCase
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.locale.LocalAppLocale
@@ -331,20 +331,30 @@ private class CoilSourceHeaderInterceptor(
                 }.build()
                 return chain.withRequest(req.newBuilder().httpHeaders(configHeaders).build()).proceed()
             }
-            // Nothing to inject (no static headers, nothing captured yet) → raw URL, same as the
-            // legacy no-headers outcome below. Don't consult the legacy resolver for a config-backed
-            // api: its scraper's defaultHeaders belong to the LEGACY system.
+            // Nothing to inject (no static headers and nothing captured yet) → use the raw URL.
             return chain.proceed()
         }
         return chain.proceed()
     }
 }
 
+/**
+ * Resolves and runs non-visual launch work only after Compose has presented its first frame.
+ *
+ * This is especially important on a new iOS install: resolving [ReconcileDownloadsUseCase] also
+ * constructs the Room-backed background download engine. Doing that before the first frame keeps
+ * the native launch screen visible and previously exposed a blank transition after it disappeared.
+ * Background URLSession relaunches remain safe because the native delegate resolves that engine
+ * directly from its system callback.
+ */
 @Composable
-fun App(crashDiagnosticsEnabled: Boolean = false) {
-    // Wire the singleton ImageLoader so every AsyncImage / SubcomposeAsyncImage call site picks up
-    // the per-source header injection without changes at the call sites. The factory runs once and
-    // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`.
+private fun PostFirstFrameStartupTasks() {
+    var firstFramePresented by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        firstFramePresented = true
+    }
+    if (!firstFramePresented) return
 
     // Restart-freeze fix (2026-06-02): on every launch, reconcile downloads orphaned in
     // RUNNING / COMPRESSING by a previous (killed) process — reset them to QUEUED and re-trigger the
@@ -358,15 +368,9 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     // the :domain AnalyticsPort (Firebase on Android, no-op on iOS/Desktop) — same one-shot launch
     // seam as refreshSources/reconcileDownloads.
     val logAppOpen: LogAppOpenUseCase = koinInject()
-    // Sources Migration Phase 1: the generic-sources config refresh seam. With remote delivery still
-    // disabled this re-resolves the bundled+cached document (a near-no-op today), but it establishes
-    // the startup entry point Phase 2 (config-driven catalog seed + baseUrl migration) and Phase 5
-    // (signed remote fetch) hang off. Best-effort/own-coroutine like the others — never blocks launch.
+    // Refreshes the signed manifest and only missing immutable source revisions. It keeps the
+    // complete verified cache or bundle on failure and never blocks the first rendered frame.
     val sourceUpdateManager: SourceUpdateManager = koinInject()
-    // Sources Migration Phase 2: config-driven catalog sync. Seeds config-backed sources into the
-    // `sources` table and migrates stored URLs when a source's config.baseUrl (the trusted value)
-    // changed. Best-effort/own-coroutine like the others — never blocks launch.
-    val syncSourceCatalog: SyncSourceCatalogUseCase = koinInject()
     LaunchedEffect(Unit) {
         // ONCE PER PROCESS, not per composition: on Android an Activity recreation (rotation)
         // rebuilds App() and re-fires LaunchedEffect(Unit); without [StartupTasksOnce] the
@@ -376,20 +380,13 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
         // Independent one-shot startup tasks, each in its own child coroutine so none blocks the
         // others. reconcileDownloads() is pure local Room work to un-freeze interrupted downloads
         // — it must never wait on any network round-trip, or a stuck "downloading" row would stay
-        // visibly frozen. (The legacy remote source-registry refresh that used to launch here was
-        // retired in SourceRegistry retirement Phase 6 — the bundled config document, refreshed +
-        // synced below, is the single authority for source metadata/lifecycle.)
+        // visibly frozen. Source synchronization runs independently below.
         launch { reconcileDownloads() }
-        // Refresh the config doc, then sync the catalog from it (seed + baseUrl migration). Sequenced
-        // so the sync reads the freshest active document; both are no-throw best-effort.
+        // Refresh and atomically activate/project one complete catalog tier.
         launch {
             sourceUpdateManager.refresh()
-            syncSourceCatalog()
-            // Zero generic stanzas after refresh = the bundled document was rejected wholesale
-            // (validation is all-or-nothing) or is empty — every config-backed source is gone and
-            // Home degrades to its error pane. The per-reason detail is logged at rejection time by
-            // the manager's onDocumentRejected hook (SourcesGenericModule); this is the aggregate
-            // startup alarm (2026-07 source-lifecycle hardening).
+            // An empty catalog is an explicit, valid lifecycle outcome. Keep a safe aggregate
+            // diagnostic while the UI presents its normal no-sources state.
             if (sourceUpdateManager.activeDocument().sources.none { it.engine == "generic" }) {
                 KermitLoggerAdapter().e(
                     "SourceConfig",
@@ -401,6 +398,11 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
         // #11: fire app_open once per launch (synchronous, fast, best-effort telemetry).
         logAppOpen()
     }
+}
+
+@Composable
+fun App(crashDiagnosticsEnabled: Boolean = false) {
+    PostFirstFrameStartupTasks()
 
     // Bug 5: register the AVIF decoder factory (on Android only) before the URL fetch interceptor so
     // chapter pages from Cloudflare-protected AVIF CDNs decode at full quality. iOS / Desktop
@@ -479,18 +481,12 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     // load-bearing: it preserves the NavController and its back stack across a live language change.
     val observeLanguage: ObserveSelectedLanguageUseCase = koinInject()
     val iconSourceRegistry: SourceRegistry = koinInject()
-    // Wait for the persisted language's FIRST emission before building the app tree, avoiding a
-    // startup locale flash and ensuring a cold-start deep link is handled only after the resource
-    // environment is ready. `null` = not yet read; "" = read, system default. The DataStore-backed
-    // flow always emits promptly while the Android splash is still visible.
-    val appLanguage: String? by remember { observeLanguage() }.collectAsState(initial = null)
-    val language = appLanguage
-    if (language == null) {
-        KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-        }
-        return
-    }
+    // Seed from the same synchronous ObservableSettings cell that backs the Flow. Waiting with a
+    // nullable initial value previously rendered a blank, pure-black frame on a dark-mode first
+    // launch. The real persisted value is available synchronously, so this keeps locale correctness
+    // without delaying construction of the first visible screen.
+    val initialLanguage = remember(coilHeaderStore) { coilHeaderStore.currentLanguage() }
+    val language by remember { observeLanguage() }.collectAsState(initial = initialLanguage)
     // RTL parity (GAP-LANG-RTL): on Android the LocalConfiguration locale override (LocalAppLocale)
     // makes Compose derive layout direction from the chosen locale, so picking Arabic flips the UI to
     // RTL there. iOS/Desktop have no such derivation, so also drive LocalLayoutDirection from the

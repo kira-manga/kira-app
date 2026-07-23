@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Website Kira mark centered inside Android's 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="21"
+        android:translateY="31.44"
+        android:scaleX="0.14127"
+        android:scaleY="0.14127">
+        <path android:pathData="M164.66,154.27 L284.47,319.48 L154.27,275.17 L114.34,198.58 L94.64,218.83 L83.15,275.71 L17.83,310.1 L25.91,228.53 L7.56,315.5 L7.55,315.5 L0,319.48 L51.97,86.98 L0,61.26 L145.52,26.8 L119.26,119.81 L200.23,31.73 L203.3,30.97 L172.03,73.16 L217.17,27.55 L328.78,0 L280.19,45.68 L238.09,85.24 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="249.02"
+                    android:startY="108.55"
+                    android:endX="70.9"
+                    android:endY="245.03"
+                    android:type="linear">
+                    <item android:color="#FFF9813E" android:offset="0.03" />
+                    <item android:color="#FFF8733F" android:offset="0.15" />
+                    <item android:color="#FFF74A44" android:offset="0.52" />
+                    <item android:color="#FFF73246" android:offset="0.82" />
+                    <item android:color="#FFF72948" android:offset="1" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M467.19,42.4 L424.52,251.38 L347.1,282.28 L380.21,134.51 L337.26,243.16 L291.59,243.16 L282.84,128.48 L265.94,277.25 L209.42,201.9 L238.09,85.24 L247.82,45.68 L321.67,45.68 L332.62,143.6 L381.84,45.68 L456.24,42.82 L437.4,121.61 L465.77,42.45 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="324.99"
+                    android:startY="64.08"
+                    android:endX="419.06"
+                    android:endY="474.3"
+                    android:type="linear">
+                    <item android:color="#FFF9813E" android:offset="0.08" />
+                    <item android:color="#FFF8733F" android:offset="0.17" />
+                    <item android:color="#FFF74A44" android:offset="0.45" />
+                    <item android:color="#FFF73246" android:offset="0.67" />
+                    <item android:color="#FFF72948" android:offset="0.81" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>
