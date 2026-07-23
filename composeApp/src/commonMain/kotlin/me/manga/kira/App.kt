@@ -48,8 +48,6 @@ import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.presentation.common.componants.images.platformNetworkFetcherFactory
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
-import me.manga.kira.sources_repositry.common.BaseManga
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -278,18 +276,10 @@ import org.koin.compose.viewmodel.koinViewModel
  *
  * Strategy:
  *  1. Extract the image URL's host.
- *  2. Walk every registered [BaseMangaRepository] (from [SourcesRepository.repos]) and find the
- *     one whose `baseUrl` / `BASE_URL` / `imgBaseUrl` resolves to the same host, or to a parent
- *     domain (apex `lavascans.com` should match image host `cdn.lavascans.com`, etc.). Apex,
- *     leading-dot, and any-subdomain matches all count — same scheme the Desktop cookie capture
- *     uses, kept consistent on purpose.
- *  3. Pull `defaultHeaders` from the matched repo. By the time an image is laid out, the user has
- *     navigated through a flow that ran `fetchDataWithHeaders` → `ensureSiteInitialized()`, so the
- *     repo's `_cachedHeaders` is populated with the WebView-captured Cookie+User-Agent on top of
- *     its static defaults (Referer). If we land on a repo with empty defaultHeaders (e.g. user is
- *     on the home screen before any source-specific request), we skip injection rather than emit
- *     half a header set.
- *  4. Convert the `Map<String, String>` into Coil 3's [NetworkHeaders], attach via the
+ *  2. Resolve the host only through the active signed catalog. Unknown, disabled, retired, or
+ *     removed sources never contribute credentials.
+ *  3. Merge the active source's static headers under its captured per-api headers.
+ *  4. Convert the result to Coil 3 [NetworkHeaders], attach via the
  *     `httpHeaders` extension on the [ImageRequest.Builder], and forward the new request through
  *     `chain.withRequest(...).proceed()`. We deliberately use `withRequest` rather than the
  *     experimental `proceed(request)` so we don't pull in `@ExperimentalCoilApi`.
@@ -301,7 +291,6 @@ import org.koin.compose.viewmodel.koinViewModel
  * debugging again.
  */
 private class CoilSourceHeaderInterceptor(
-    private val sourcesRepository: SourcesRepository,
     private val configHostTrust: ConfigHostTrust,
     private val sourceRegistry: SourceRegistry,
     private val dataStore: DataStoreHelper,
@@ -347,41 +336,7 @@ private class CoilSourceHeaderInterceptor(
             // api: its scraper's defaultHeaders belong to the LEGACY system.
             return chain.proceed()
         }
-        // GAP-SHELL-04 (P3 cleanup): the per-request `[CoilDbg]` stdout `println`s (no-match / empty-
-        // headers / injected-keys) are removed — they fired on every image load in production. The
-        // header-injection logic itself is load-bearing (Bug-4-layer-3) and is preserved unchanged.
-        val match = sourcesRepository.findRepoByHost(host)
-        if (match == null) {
-            return chain.proceed()
-        }
-        var headers = match.defaultHeaders
-        if (headers.isEmpty()) {
-            // r5-cf-1: the matched repo hasn't been hydrated this session (its `_cachedHeaders` is
-            // still null). For the generic-config-backed sources the feed/details fetch is served by
-            // GenericSourceClient straight from the DataStore header store and never runs the legacy
-            // `initSite()`, so plain-URL cover/search/details image loads would otherwise go out with
-            // no Cookie/User-Agent and 403 on Cloudflare-gated config-backed sources even after the user solved the
-            // challenge. Lazily hydrate via the idempotent, session-cached `ensureSiteInitialized()`
-            // (same path rememberSourceImageRequest(url, api) uses) and re-read the headers.
-            (match as? BaseManga)?.let { repo ->
-                try {
-                    repo.ensureSiteInitialized()
-                } catch (c: CancellationException) {
-                    throw c
-                } catch (_: Throwable) {
-                    // headers stay empty; raw-URL fallback below
-                }
-            }
-            headers = match.defaultHeaders
-            if (headers.isEmpty()) {
-                return chain.proceed()
-            }
-        }
-        val networkHeaders = NetworkHeaders.Builder().apply {
-            headers.forEach { (k, v) -> add(k, v) }
-        }.build()
-        val newReq = req.newBuilder().httpHeaders(networkHeaders).build()
-        return chain.withRequest(newReq).proceed()
+        return chain.proceed()
     }
 }
 
@@ -389,9 +344,7 @@ private class CoilSourceHeaderInterceptor(
 fun App(crashDiagnosticsEnabled: Boolean = false) {
     // Wire the singleton ImageLoader so every AsyncImage / SubcomposeAsyncImage call site picks up
     // the per-source header injection without changes at the call sites. The factory runs once and
-    // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`, so resolving
-    // `SourcesRepository` via Koin here is safe (same singleton instance as everywhere else).
-    val sourcesRepository: SourcesRepository = koinInject()
+    // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`.
 
     // Restart-freeze fix (2026-06-02): on every launch, reconcile downloads orphaned in
     // RUNNING / COMPRESSING by a previous (killed) process — reset them to QUEUED and re-trigger the
@@ -476,7 +429,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
                 // page-progress observer and the 30s/60s timeouts (no whole-request ceiling).
                 networkFetcherFactory?.let { add(it) }
                 decoderFactories.forEach { add(it) }
-                add(CoilSourceHeaderInterceptor(sourcesRepository, coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
+                add(CoilSourceHeaderInterceptor(coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
             }
             .diskCache { DiskCache.Builder().directory(imageCacheDir).build() }
             // Disable the default 4096×4096 maxBitmapSize cap. Coil 3.3+ tightened how this cap
@@ -610,7 +563,6 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
     val onboardingPrefs: SharedPrefsHelper = koinInject()
     val sourceActivationRouter: SourceActivationRequestRouter = koinInject()
     val activateSourceAccess: ActivateSourceAccessUseCase = koinInject()
-    val deepLinkSources: SourcesRepository = koinInject()
     val configHostTrust: ConfigHostTrust = koinInject()
     val pendingDeepLink by notificationRouter.pending.collectAsState()
     val pendingSourceActivation by sourceActivationRouter.pending.collectAsState()
@@ -638,7 +590,7 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
         // can start it with crafted extras. Require a manga/chapter deep link's URL to belong to its
         // own source's domain — else a forced Reader/Details nav would fetch an attacker URL through
         // the claimed source's client, attaching that source's stored Cookie/cf_clearance headers.
-        if (!onboarding && destination.isHostTrustedFor(deepLinkSources, configHostTrust)) {
+        if (!onboarding && destination.isHostTrustedFor(configHostTrust)) {
             // #9: navigate wrapped in runCatching (crash-safe, like safeNavigate — a stray/invalid
             // route can never crash the host) but deliberately WITHOUT safeNavigate's RESUMED
             // debounce. A cold-start tap runs this effect while the start entry may still be

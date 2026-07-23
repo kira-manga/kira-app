@@ -17,7 +17,6 @@ import me.manga.kira.data.repository.HomeFeedRepositoryImpl
 import me.manga.kira.data.repository.MangaDetailsRepositoryImpl
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
@@ -62,14 +61,12 @@ class AzoraDataFallbackIntegrationTest {
 
     /** A real registry: Azora piloted, generic always fails → exercises the legacy fallback. */
     private fun registryWithFailingGeneric() = DefaultSourceRegistry(
-        legacyRepos = setOf(FakeLegacyRepo("Azora")),
         updateManager = FixedUpdateManager(azoraGenericDoc),
         genericClientFactory = { FailingGenericClient(it.api) },
     )
 
     private fun registryWith(repo: FakeLegacyRepo, factory: (me.manga.kira.sources.contracts.model.SourceConfig) -> MangaSourceClient) =
         DefaultSourceRegistry(
-            legacyRepos = setOf(repo),
             updateManager = FixedUpdateManager(azoraGenericDoc),
             genericClientFactory = factory,
         )
@@ -85,7 +82,6 @@ class AzoraDataFallbackIntegrationTest {
     @Test
     fun data_surfaces_failure_for_azora_details_when_generic_fails_no_legacy() = runTest {
         val repo = MangaDetailsRepositoryImpl(
-            sourcesRepository = emptyLegacySources(),
             dispatchers = dispatchers,
             sourceRegistry = registryWithFailingGeneric(),
         )
@@ -103,11 +99,10 @@ class AzoraDataFallbackIntegrationTest {
     fun data_routes_azora_to_generic_when_it_succeeds() = runTest {
         // Same wiring but the generic client SUCCEEDS → its result is used (not the legacy fallback).
         val registry = DefaultSourceRegistry(
-            legacyRepos = setOf(FakeLegacyRepo("Azora")),
             updateManager = FixedUpdateManager(azoraGenericDoc),
             genericClientFactory = { GenericOk(it.api) },
         )
-        val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), dispatchers, registry)
+        val repo = MangaDetailsRepositoryImpl(dispatchers, registry)
 
         val manga = Manga("Azora", "(AR)", "t", "https://api.azoramoon.com/api/post/?postId=1", "", null, emptyList())
         val details = (repo.fetchDetails(manga) as AppResult.Success).value
@@ -120,7 +115,6 @@ class AzoraDataFallbackIntegrationTest {
         val azoraRepo = FakeLegacyRepo("Azora")
         val repo = HomeFeedRepositoryImpl(
             sourcesRepository = azoraActiveSources(azoraRepo),
-            dadosStore = ManhastroDadosStore(),
             dispatchers = dispatchers,
             sourceRegistry = registryWith(azoraRepo) { FailingGenericClient(it.api) },
         )
@@ -131,13 +125,12 @@ class AzoraDataFallbackIntegrationTest {
     }
 
     @Test
-    fun data_keeps_non_pilot_on_legacy_path() = runTest {
-        // "Other" isn't piloted → :data uses the legacy SourcesRepository path (empty → Unknown source).
-        val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), dispatchers, registryWithFailingGeneric())
+    fun data_rejects_source_absent_from_catalog() = runTest {
+        val repo = MangaDetailsRepositoryImpl(dispatchers, registryWithFailingGeneric())
         val manga = Manga("Other", "(EN)", "t", "u", "", null, emptyList())
         val result = repo.fetchDetails(manga)
         val error = (result as AppResult.Failure).error
-        assertTrue(error is AppError.Unexpected && error.message.contains("Unknown source"))
+        assertTrue(error is AppError.Validation.SourceUnavailable && error.api == "Other")
     }
 
     // --- fakes -----------------------------------------------------------------------------------
@@ -176,6 +169,7 @@ class AzoraDataFallbackIntegrationTest {
 
     private object EmptySourcesDao : SourcesDao {
         override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(emptyList())
+        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = emptyList()
         override suspend fun insert(source: SourcesEntity): Long = 1L
         override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 0
         override suspend fun getBaseUrlFor(name: String): String? = null
@@ -185,6 +179,14 @@ class AzoraDataFallbackIntegrationTest {
         override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int = 0
         override suspend fun updateSiteStateByName(name: String, siteState: SourceState): Int = 0
         override suspend fun deleteSourceByName(name: String): Int = 0
+        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun updateCatalogMetadata(
+            api: String,
+            priority: Int,
+            language: String,
+            siteState: SourceState,
+        ): Int = 0
     }
 
     private class SeededSourcesDao(repos: List<BaseMangaRepository>) : SourcesDao {
@@ -196,6 +198,7 @@ class AzoraDataFallbackIntegrationTest {
             )
         }
         override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(rows)
+        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = rows
         override suspend fun insert(source: SourcesEntity): Long = 1L
         override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 0
         override suspend fun getBaseUrlFor(name: String): String? = rows.firstOrNull { it.name == name }?.baseUrl
@@ -205,5 +208,13 @@ class AzoraDataFallbackIntegrationTest {
         override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int = 0
         override suspend fun updateSiteStateByName(name: String, siteState: SourceState): Int = 0
         override suspend fun deleteSourceByName(name: String): Int = 0
+        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun updateCatalogMetadata(
+            api: String,
+            priority: Int,
+            language: String,
+            siteState: SourceState,
+        ): Int = 0
     }
 }

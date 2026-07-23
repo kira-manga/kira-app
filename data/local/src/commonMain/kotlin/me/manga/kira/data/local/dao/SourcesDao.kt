@@ -63,6 +63,9 @@ interface SourcesDao {
     @Query("SELECT * FROM sources ORDER BY priority")
     fun getAllSources(): Flow<List<SourcesEntity>>
 
+    @Query("SELECT * FROM sources ORDER BY priority")
+    suspend fun getAllSourcesOnce(): List<SourcesEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(source: SourcesEntity): Long
 
@@ -101,6 +104,26 @@ interface SourcesDao {
 
     @Query("DELETE FROM sources WHERE name = :name")
     suspend fun deleteSourceByName(name: String): Int
+
+    @Query("UPDATE sources SET isEnabled = 0 WHERE name NOT IN (:activeApis)")
+    suspend fun disableOutsideCatalog(activeApis: List<String>): Int
+
+    @Query("DELETE FROM sources WHERE name NOT IN (:activeApis)")
+    suspend fun deleteOutsideCatalog(activeApis: List<String>): Int
+
+    @Query(
+        """
+        UPDATE sources
+        SET priority = :priority, language = :language, siteState = :siteState
+        WHERE name = :api
+        """,
+    )
+    suspend fun updateCatalogMetadata(
+        api: String,
+        priority: Int,
+        language: String,
+        siteState: SourceState,
+    ): Int
 }
 
 /**
@@ -176,4 +199,3 @@ interface SourcesDao {
  * (originally from the endpoint refresh, retired in SourceRegistry retirement Phase 6),
  * so the live surface is 10 members. Retained as lineage per the audit-trail-preservation convention.
  */
-

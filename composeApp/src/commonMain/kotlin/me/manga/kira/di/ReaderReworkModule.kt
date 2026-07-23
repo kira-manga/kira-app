@@ -95,7 +95,6 @@ import org.koin.dsl.module
 val readerReworkModule: Module = module {
     single<ChapterPagesRepository> {
         ChapterPagesRepositoryImpl(
-            sourcesRepository = get(),
             dispatchers = get(),
             // Downloaded-chapter local-read path: ChapterDao (saved-chapter lookup by URL +
             // localImagePaths) is the per-platform :shared Room singleton; CbzReader is the

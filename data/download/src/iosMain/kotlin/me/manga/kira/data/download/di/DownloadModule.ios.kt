@@ -17,7 +17,7 @@ import org.koin.dsl.module
 // vs the proven coroutine engine (OFF). The IosBackgroundScheduler / BackgroundTransport /
 // BackgroundWorkSignal facades stay in platformModule().ios and resolve via get().
 actual fun downloadModule(): Module = module {
-    single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get(), sourcesRepository = get()) }
+    single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
     single {
         ChapterFinalizer(
             dao = get(),

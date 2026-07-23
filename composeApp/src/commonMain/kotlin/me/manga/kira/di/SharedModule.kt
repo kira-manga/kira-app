@@ -7,7 +7,7 @@ import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.di.databaseModule
 import me.manga.kira.data.remote.di.remoteModule
 import me.manga.kira.domain.service.FileService
-import me.manga.kira.sources.legacy.di.legacySourcesModule
+import me.manga.kira.sources.legacy.di.sourcePersistenceModule
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -209,7 +209,7 @@ val sharedModule: Module = module {
  * Convenience: all KMP-portable common bindings exposed as a single list, so the host can do
  * `startKoin { modules(allSharedModules() + platformModule()) }`.
  */
-fun allSharedModules(): List<Module> = listOf(sharedModule, databaseModule(), remoteModule(), legacySourcesModule())
+fun allSharedModules(): List<Module> = listOf(sharedModule, databaseModule(), remoteModule(), sourcePersistenceModule())
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster172.staleKdocSweep.cascade,

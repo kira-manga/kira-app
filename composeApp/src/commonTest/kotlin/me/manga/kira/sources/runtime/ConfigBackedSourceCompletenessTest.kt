@@ -36,8 +36,8 @@ import kotlin.test.fail
  *  4. every config-backed stanza defines every user-facing endpoint: home or featured, search,
  *     details, pages.
  *
- * [LegacyStanzaCompletenessTest] pins the registry⇄config completeness in both directions; this
- * class pins reachability and endpoint coverage. See docs/sources/ADDING_SOURCES.md.
+ * [BundledSourceCatalogPolicyTest] pins the exact approved source set and order; this class pins
+ * reachability and endpoint coverage. See docs/sources/ADDING_SOURCES.md.
  */
 class ConfigBackedSourceCompletenessTest {
     private val document =
@@ -82,7 +82,6 @@ class ConfigBackedSourceCompletenessTest {
             )
         val registry =
             DefaultSourceRegistry(
-                legacyRepos = emptySet(),
                 updateManager = manager,
                 genericClientFactory = { config -> MarkerClient("generic:${config.api}") },
             )

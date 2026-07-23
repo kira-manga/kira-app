@@ -17,7 +17,6 @@ import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.sources.contracts.MangaSourceClient
-import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -58,7 +57,6 @@ class ConfigOnlySourceRoutingTest {
     private fun homeRepo(dao: StatefulSourcesDao) =
         HomeFeedRepositoryImpl(
             sourcesRepository = legacySources(dao),
-            dadosStore = ManhastroDadosStore(),
             dispatchers = testDispatchers,
             sourceRegistry = registry(),
         )
@@ -83,7 +81,6 @@ class ConfigOnlySourceRoutingTest {
             val repo =
                 HomeFeedRepositoryImpl(
                     sourcesRepository = legacy,
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = registry(),
                 )

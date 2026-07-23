@@ -1,17 +1,19 @@
-# Signed source-document release posture
+# Signed incremental source-catalog release posture
 
 ## Trust boundary
 
-The bundled `CONFIG_BACKED_SOURCES_JSON` remains the always-available floor. Production also wires
-`KtorRemoteConfigSource` to the backend document endpoint and accepts an update only after
-`Ed25519ConfigSignatureVerifier` authenticates its exact UTF-8 bytes and metadata with an in-app
-pinned public key.
+The revision-5 bundled `CONFIG_BACKED_SOURCES_JSON` is the always-available floor and contains only
+the 12 reviewed generic sources. Production wires `KtorRemoteSourceCatalog` to the backend v2
+manifest and immutable per-source endpoints. `Ed25519ConfigSignatureVerifier` authenticates the
+exact UTF-8 manifest and each referenced source revision with an in-app pinned public key.
 
-The client rejects HTTP endpoints, credentials in the URL, missing signature headers, documents
-larger than 5 MiB, unknown key identifiers, invalid signatures, checksum mismatches, stale or replayed
-revisions, and rollback links behind the last accepted signed document. The last verified envelope is
-stored in Room and re-verified after every process restart. Any failure preserves the last good cache
-or bundle.
+The client rejects HTTP endpoints, credentials in the URL, missing signature metadata, oversized
+responses, non-generic entries, unknown key identifiers, invalid signatures, checksum or identity
+mismatches, stale/replayed revisions, and rollback links behind its durable acceptance floor. It
+sends `If-None-Match` for the manifest, reuses verified immutable source rows, and fetches only
+missing active revisions. Room activates the manifest, entries, source rows, and app source
+projection in one transaction. Any failure preserves the complete last-known-good catalog or bundle;
+catalogs are never partially combined.
 
 ## Release configuration
 
@@ -35,6 +37,6 @@ Run from `Kira manga/`:
   :composeApp:compileAndroidMain :composeApp:compileKotlinIosSimulatorArm64
 ```
 
-The tests cover valid backend-compatible signatures, tampering, wrong keys, replay/rollback,
-re-verification of cached data, metadata completeness, HTTPS enforcement, size bounds, ETag
-conditional requests, 304 responses, and safe fallback.
+The tests cover backend-compatible manifest/source signatures, tampering, wrong keys,
+replay/rollback, immutable row conflicts, re-verification of cached data, lifecycle removals,
+HTTPS/size bounds, ETag/304 behavior, delta fetches, atomic activation, and safe fallback.

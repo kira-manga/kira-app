@@ -36,7 +36,6 @@ import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -78,7 +77,6 @@ class AzoraHomeSearchRoutingTest {
         registry: SourceRegistry,
     ) = HomeFeedRepositoryImpl(
         sourcesRepository = legacySources(listOf(active), this),
-        dadosStore = ManhastroDadosStore(),
         dispatchers = testDispatchers,
         sourceRegistry = registry,
     )
@@ -119,24 +117,28 @@ class AzoraHomeSearchRoutingTest {
         }
 
     @Test
-    fun non_azora_home_uses_legacy_not_registry() =
+    fun source_absent_from_catalog_is_not_available_to_home() =
         runTest {
-            val registry = FakeRegistry(piloted = setOf("Azora")) { error("registry must not serve a non-pilot") }
-            val repo = homeRepo(FakeMangaRepo("Other", home = legacyHome("LEGACY")), registry)
+            val legacy = FakeMangaRepo("Other", home = legacyHome("LEGACY"))
+            val registry = FakeRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
+            val repo = homeRepo(legacy, registry)
 
-            val result = repo.fetchHome(reset = true).valueOrFail()
-            assertEquals(listOf("LEGACY"), result.map { it.title }) // legacy path
-            assertEquals(emptyList(), registry.getCalls) // registry NOT consulted
+            val result = repo.fetchHome(reset = true)
+            assertTrue(result is AppResult.Failure && result.error is AppError.Validation.NoEnabledSources)
+            assertEquals(0, legacy.homeCalls)
+            assertEquals(emptyList(), registry.getCalls)
         }
 
     @Test
-    fun non_azora_search_uses_legacy_not_registry() =
+    fun source_absent_from_catalog_is_not_available_to_search() =
         runTest {
-            val registry = FakeRegistry(piloted = setOf("Azora")) { error("registry must not serve a non-pilot") }
-            val repo = searchRepo(FakeMangaRepo("Other", search = legacySearch("LEGACY")), registry)
+            val legacy = FakeMangaRepo("Other", search = legacySearch("LEGACY"))
+            val registry = FakeRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
+            val repo = searchRepo(legacy, registry)
 
-            val result = repo.searchSource("q", FilterSelections()).valueOrFail()
-            assertEquals(listOf("LEGACY"), result.map { it.title })
+            val result = repo.searchSource("q", FilterSelections())
+            assertTrue(result is AppResult.Failure && result.error is AppError.Validation.NoEnabledSources)
+            assertEquals(0, legacy.searchCalls)
             assertEquals(emptyList(), registry.getCalls)
         }
 
@@ -186,7 +188,6 @@ class AzoraHomeSearchRoutingTest {
                             prefs = SharedPrefsHelper(MapSettings()),
                             applicationScope = this,
                         ),
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = registry,
                 )
@@ -206,7 +207,6 @@ class AzoraHomeSearchRoutingTest {
             val repo =
                 HomeFeedRepositoryImpl(
                     sourcesRepository = legacySources(emptyList(), this),
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = registry,
                 )
@@ -215,7 +215,7 @@ class AzoraHomeSearchRoutingTest {
 
             assertTrue(result is AppResult.Failure, "expected a typed Failure, got $result")
             assertTrue(
-                result.error is AppError.Unexpected,
+                result.error is AppError.Validation.NoEnabledSources,
                 "a missing/rejected catalog remains a real configuration failure: $result",
             )
             assertEquals(emptyList(), registry.getCalls) // nothing was fetched
@@ -232,7 +232,6 @@ class AzoraHomeSearchRoutingTest {
                 scope = this,
                 enabledByApi = mapOf("Azora" to false, "Other" to true),
             ),
-            dadosStore = ManhastroDadosStore(),
             dispatchers = testDispatchers,
             sourceRegistry = registry,
         )
@@ -256,7 +255,6 @@ class AzoraHomeSearchRoutingTest {
             val repo =
                 HomeFeedRepositoryImpl(
                     sourcesRepository = legacySources(listOf(FakeMangaRepo("Azora"), FakeMangaRepo("Other")), this),
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = registry,
                 )
@@ -282,7 +280,6 @@ class AzoraHomeSearchRoutingTest {
                             ),
                             this,
                         ),
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = registry,
                 )
@@ -306,7 +303,6 @@ class AzoraHomeSearchRoutingTest {
             val repo =
                 HomeFeedRepositoryImpl(
                     sourcesRepository = sources,
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = registry,
                 )
@@ -487,7 +483,7 @@ class AzoraHomeSearchRoutingTest {
 
         override fun get(api: String): MangaSourceClient? {
             getCalls += api
-            return client(api)
+            return if (api in piloted) client(api) else null
         }
 
         override fun isConfigBacked(api: String): Boolean = api in piloted
@@ -609,6 +605,7 @@ class AzoraHomeSearchRoutingTest {
     /** A dao whose source-list flow throws when collected — simulates a Room/IO error. */
     private object ThrowingSourcesDao : SourcesDao {
         override fun getAllSources(): Flow<List<SourcesEntity>> = kotlinx.coroutines.flow.flow { throw RuntimeException("db read error") }
+        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = throw RuntimeException("db read error")
 
         override suspend fun insert(source: SourcesEntity): Long = 1L
 
@@ -641,6 +638,14 @@ class AzoraHomeSearchRoutingTest {
         ): Int = 0
 
         override suspend fun deleteSourceByName(name: String): Int = 0
+        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun updateCatalogMetadata(
+            api: String,
+            priority: Int,
+            language: String,
+            siteState: SourceState,
+        ): Int = 0
     }
 
     private class SeededSourcesDao(
@@ -664,6 +669,7 @@ class AzoraHomeSearchRoutingTest {
             }
 
         override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(rows)
+        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = rows
 
         override suspend fun insert(source: SourcesEntity): Long = 1L
 
@@ -696,5 +702,13 @@ class AzoraHomeSearchRoutingTest {
         ): Int = 0
 
         override suspend fun deleteSourceByName(name: String): Int = 0
+        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun updateCatalogMetadata(
+            api: String,
+            priority: Int,
+            language: String,
+            siteState: SourceState,
+        ): Int = 0
     }
 }

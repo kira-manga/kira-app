@@ -3,10 +3,8 @@ package me.manga.kira.sources.contracts
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 
 /**
- * Type-agnostic lookup of sources by API key. The concrete registry (assembled at the composition
- * root) decides per source whether to return a config-driven engine client or a legacy adapter —
- * the caller cannot tell. This is the seam that lets a source be migrated from Kotlin to config
- * without any change above `:data`.
+ * Lookup of active generic sources by API key. A missing/non-active/non-generic API returns null;
+ * implementations must never infer a legacy adapter.
  *
  * The registry is also the ONE public reader of catalog metadata: [descriptor]/[genericDescriptors]
  * project the validated active config document into [RuntimeSourceDescriptor]s so no caller ever
@@ -17,20 +15,15 @@ interface SourceRegistry {
     fun get(api: String): MangaSourceClient?
 
     /**
-     * True if [api] is served by the config-driven engine (it has a valid `generic` config), i.e.
-     * [get] returns the generic client rather than a plain legacy adapter. Callers that keep a separate
-     * legacy path (e.g. `:data`) use this to route ONLY config-backed sources through the registry while
-     * everything else stays on the legacy path unchanged. (Config-backed sources are generic-ONLY — see
-     * the registry impl; there is no legacy fallback for them.)
+     * True only when [api] is active in the complete accepted generic catalog.
      */
     fun isConfigBacked(api: String): Boolean
 
     /**
-     * Catalog metadata for [api] from the validated active document — any engine, including the
-     * metadata-only `legacy` stanzas. Null for an api with no stanza (unknown or pre-config data).
+     * Active generic catalog metadata for [api], or null when the source is unavailable.
      */
     fun descriptor(api: String): RuntimeSourceDescriptor?
 
-    /** Descriptors of every `engine == "generic"` stanza in the validated active document. */
+    /** Ordered descriptors of every active generic stanza in the complete accepted catalog. */
     fun genericDescriptors(): List<RuntimeSourceDescriptor>
 }

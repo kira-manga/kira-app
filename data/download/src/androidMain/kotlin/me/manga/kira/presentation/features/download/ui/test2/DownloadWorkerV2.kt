@@ -16,16 +16,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapConcat
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import me.manga.kira.core.states.State
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
@@ -39,10 +33,7 @@ import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.data.download.R
-import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.ar.promanga.ProchanRepository
 import org.koin.core.context.GlobalContext
 
 /**
@@ -92,10 +83,7 @@ class DownloadWorkerV2(
     private val chapterDao: ChapterDao by lazy { koin.get() }
     private val mangaDao: MangaDao by lazy { koin.get() }
     private val chapterDownloadService: ChapterDownloadService by lazy { koin.get() }
-    private val sourcesRepository: SourcesRepository by lazy { koin.get() }
-    // Sources Migration Phase 3: routes config-backed downloads through SourceRegistry (generic-
-    // ONLY — the registry has no legacy fallback); null for non-config sources → legacy path
-    // unchanged.
+    // Routes downloads through the authoritative generic catalog. Missing sources fail closed.
     private val chapterPageProvider: ChapterPageProvider by lazy { koin.get() }
     private val appFileSystem: AppFileSystem by lazy { koin.get() }
 
@@ -232,84 +220,32 @@ class DownloadWorkerV2(
         }
     }
 
-    /**
-     * Inlined replacement for upstream `DownloadRepository.downloadChapterFlowv2`.
-     * Picks the right `BaseMangaRepository` for the chapter's manga, kicks off either the
-     * streaming (ProManga) or batch download path via `ChapterDownloadService`, and bridges
-     * intermediate states into DAO writes for the UI to observe.
-     */
-    private suspend fun provideActiveRepo(mangaId: Long): BaseMangaRepository {
-        val api = mangaDao.getApiByMangaId(mangaId)
-        return if (api.isNullOrBlank()) {
-            sourcesRepository.activeRepo.first()
-        } else {
-            sourcesRepository.getRepoByName(api)
-        }
-    }
-
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun downloadChapterFlowV2(chapter: SavedChapterEntity): Flow<DownloadState> {
-        // Sources Migration Phase 3: route config-backed sources through the SourceRegistry
-        // (generic-only). The provider returns null for a non-config source, so the legacy scraper
-        // path below runs byte-identical to before.
         val api = mangaDao.getApiByMangaId(chapter.mangaId)
+            ?: return flowOf(
+                DownloadState.Error(
+                    Throwable("Source unavailable for downloaded chapter"),
+                    downloadedImages = 0,
+                    totalImages = 0,
+                ),
+            )
         val manga = mangaDao.getMangaById(chapter.mangaId)
-        val providerPages = if (!api.isNullOrBlank()) {
+        val providerPages =
             chapterPageProvider.pagesOrNull(
                 api = api,
                 mangaUrl = manga?.url.orEmpty(),
                 mangaLanguage = manga?.language.orEmpty(),
                 chapterUrl = chapter.url,
             )
+        return if (providerPages.isEmpty()) {
+            flowOf(DownloadState.Error(Throwable("No images for chapter"), downloadedImages = 0, totalImages = 0))
         } else {
-            null
+            chapterDownloadService.downloadChapterC(
+                chapter = chapter,
+                pages = providerPages,
+            )
         }
-        if (providerPages != null) {
-            // Generic/config-driven path — page URLs + per-page headers from the registry; no legacy repo.
-            val urls = providerPages.map { it.url }
-            val overrideHeaders = providerPages.firstOrNull()?.headers ?: emptyMap()
-            return if (urls.isEmpty()) {
-                flowOf(DownloadState.Error(Throwable("No images for chapter"), downloadedImages = 0, totalImages = 0))
-            } else {
-                chapterDownloadService.downloadChapterC(chapter, urls, repo = null, overrideHeaders = overrideHeaders)
-            }
-        }
-
-        val repo = provideActiveRepo(chapter.mangaId)
-
-        val chapterDataFlow = if (repo is ProchanRepository) {
-            Log.d(TAG, "Using batch loading for ProManga")
-            repo.getFullImgs(chapter.url)
-        } else {
-            Log.d(TAG, "Using standard streaming for ${repo.API}")
-            repo.fetchChapterDataF(chapter.url)
-        }
-
-        return chapterDataFlow
-            .onStart { repo.initSite() }
-            .flatMapConcat { state ->
-                when (state) {
-                    is State.Loading -> flowOf(
-                        DownloadState.InProgress(
-                            totalImages = 0,
-                            downloadedImages = 0,
-                            currentImageUrl = "",
-                        ),
-                    )
-                    is State.Error -> flowOf(
-                        DownloadState.Error(
-                            exception = Throwable(state.message),
-                            downloadedImages = 0,
-                            totalImages = 0,
-                        ),
-                    )
-                    is State.Success -> flow {
-                        emitAll(
-                            chapterDownloadService.downloadChapterC(chapter, state.data, repo),
-                        )
-                    }
-                }
-            }
     }
 
     private suspend fun handleCompressingSafely(chapter: ChapterDownloadEntity) {
@@ -735,4 +671,3 @@ class DownloadWorkerV2(
  * Cumulative §253 postscript count after this commit: 159 leaves
  * across 259 clusters.
  */
-

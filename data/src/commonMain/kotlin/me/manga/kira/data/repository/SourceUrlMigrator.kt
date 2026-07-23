@@ -23,7 +23,8 @@ import me.manga.kira.data.local.dao.NotificationDao
  *
  * Uses the top-level [replaceBaseUrl] helper (same package), which no-ops when the URL is unchanged
  * or the new base is blank/scheme-less, so a steady-state migration costs zero writes and a bad base
- * can never corrupt a stored URL. Failure isolation ([isolate]) is two-level: each table pass is
+ * can never corrupt a stored URL. Best-effort failure isolation ([migrationUnit]) is two-level:
+ * each table pass is
  * isolated so one table can't abort the others, and each row write so a single failing row (e.g. a
  * rewritten url colliding with another `saved_manga` row's UNIQUE url — bare `update()` ABORTs
  * instead of REPLACE-deleting + cascading) is skipped while the REST of the table still migrates.
@@ -41,41 +42,66 @@ class SourceUrlMigrator(
         apiName: String,
         newBaseUrl: String,
         fromHosts: Set<String>? = null,
-    ) {
-        try {
-            updateMangaUrls(apiName, newBaseUrl, fromHosts)
-            updateChapterUrls(apiName, newBaseUrl, fromHosts)
-            updateHistoryUrls(apiName, newBaseUrl, fromHosts)
-            updateNotificationUrls(apiName, newBaseUrl, fromHosts)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (_: Throwable) {
-        }
-    }
+    ) = migratePageUrls(apiName, newBaseUrl, fromHosts, failClosed = false)
+
+    /**
+     * Atomic-catalog variant of [migratePageUrls]. Any failed read or write is propagated so the
+     * caller can roll back the enclosing catalog activation transaction.
+     */
+    suspend fun migratePageUrlsStrict(
+        apiName: String,
+        newBaseUrl: String,
+        fromHosts: Set<String>? = null,
+    ) = migratePageUrls(apiName, newBaseUrl, fromHosts, failClosed = true)
 
     /** Image-URL pass: rewrite stored cover/image URLs against the new IMAGE host only. */
     suspend fun migrateImageUrls(
         apiName: String,
         newImageBaseUrl: String,
         fromHosts: Set<String>? = null,
-    ) {
-        try {
-            updateMangaImageUrls(apiName, newImageBaseUrl, fromHosts)
-            updateHistoryImageUrls(apiName, newImageBaseUrl, fromHosts)
-            updateNotificationImageUrls(apiName, newImageBaseUrl, fromHosts)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (_: Throwable) {
-        }
+    ) = migrateImageUrls(apiName, newImageBaseUrl, fromHosts, failClosed = false)
+
+    /**
+     * Atomic-catalog variant of [migrateImageUrls]. Any failed read or write is propagated so the
+     * caller can roll back the enclosing catalog activation transaction.
+     */
+    suspend fun migrateImageUrlsStrict(
+        apiName: String,
+        newImageBaseUrl: String,
+        fromHosts: Set<String>? = null,
+    ) = migrateImageUrls(apiName, newImageBaseUrl, fromHosts, failClosed = true)
+
+    private suspend fun migratePageUrls(
+        apiName: String,
+        newBaseUrl: String,
+        fromHosts: Set<String>?,
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
+        updateMangaUrls(apiName, newBaseUrl, fromHosts, failClosed)
+        updateChapterUrls(apiName, newBaseUrl, fromHosts, failClosed)
+        updateHistoryUrls(apiName, newBaseUrl, fromHosts, failClosed)
+        updateNotificationUrls(apiName, newBaseUrl, fromHosts, failClosed)
+    }
+
+    private suspend fun migrateImageUrls(
+        apiName: String,
+        newImageBaseUrl: String,
+        fromHosts: Set<String>?,
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
+        updateMangaImageUrls(apiName, newImageBaseUrl, fromHosts, failClosed)
+        updateHistoryImageUrls(apiName, newImageBaseUrl, fromHosts, failClosed)
+        updateNotificationImageUrls(apiName, newImageBaseUrl, fromHosts, failClosed)
     }
 
     private suspend fun updateMangaUrls(
         apiName: String,
         newBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         mangaDao.getMangaByApi(apiName).forEach { manga ->
-            isolate {
+            migrationUnit(failClosed) {
                 val newUrl = rewrite(manga.url, newBaseUrl, fromHosts)
                 if (newUrl != manga.url) mangaDao.update(manga.copy(url = newUrl))
             }
@@ -86,11 +112,12 @@ class SourceUrlMigrator(
         apiName: String,
         newBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         // Chapters carry no `api` column → reach them per-manga via the manga ids.
         mangaDao.getMangaIdsByApi(apiName).forEach { mangaId ->
             chapterDao.getChaptersByMangaIdR(mangaId).forEach { chapter ->
-                isolate {
+                migrationUnit(failClosed) {
                     val newUrl = rewrite(chapter.url, newBaseUrl, fromHosts)
                     if (newUrl != chapter.url) chapterDao.updateChapter(chapter.copy(url = newUrl))
                 }
@@ -102,9 +129,10 @@ class SourceUrlMigrator(
         apiName: String,
         newBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         historyDao.getHistoryByApi(apiName).forEach { item ->
-            isolate {
+            migrationUnit(failClosed) {
                 val newManga = rewrite(item.mangaUrl, newBaseUrl, fromHosts)
                 val newChapter = rewrite(item.chapterUrl, newBaseUrl, fromHosts)
                 if (newManga != item.mangaUrl || newChapter != item.chapterUrl) {
@@ -118,9 +146,10 @@ class SourceUrlMigrator(
         apiName: String,
         newBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         notificationDao.getNotificationsByApi(apiName).forEach { n ->
-            isolate {
+            migrationUnit(failClosed) {
                 val newManga = rewrite(n.mangaUrl, newBaseUrl, fromHosts)
                 val newChapter = rewrite(n.chapterUrl, newBaseUrl, fromHosts)
                 if (newManga != n.mangaUrl || newChapter != n.chapterUrl) {
@@ -134,9 +163,10 @@ class SourceUrlMigrator(
         apiName: String,
         newImageBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         mangaDao.getMangaByApi(apiName).forEach { manga ->
-            isolate {
+            migrationUnit(failClosed) {
                 val newImage = rewrite(manga.imageUrl, newImageBaseUrl, fromHosts)
                 if (newImage != manga.imageUrl) mangaDao.update(manga.copy(imageUrl = newImage))
             }
@@ -147,9 +177,10 @@ class SourceUrlMigrator(
         apiName: String,
         newImageBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         historyDao.getHistoryByApi(apiName).forEach { item ->
-            isolate {
+            migrationUnit(failClosed) {
                 val newImage = rewrite(item.mangaImageUrl, newImageBaseUrl, fromHosts)
                 if (newImage != item.mangaImageUrl) historyDao.updateHistory(item.copy(mangaImageUrl = newImage))
             }
@@ -160,9 +191,10 @@ class SourceUrlMigrator(
         apiName: String,
         newImageBaseUrl: String,
         fromHosts: Set<String>?,
-    ) = isolate {
+        failClosed: Boolean,
+    ) = migrationUnit(failClosed) {
         notificationDao.getNotificationsByApi(apiName).forEach { n ->
-            isolate {
+            migrationUnit(failClosed) {
                 val newImage = rewrite(n.mangaImageUrl, newImageBaseUrl, fromHosts)
                 if (newImage != n.mangaImageUrl) notificationDao.updateNotification(n.copy(mangaImageUrl = newImage))
             }
@@ -175,12 +207,16 @@ class SourceUrlMigrator(
      * is what lets a UNIQUE-url collision in `saved_manga` (which ABORTs that update) skip just
      * that row while every following row still migrates.
      */
-    private suspend inline fun isolate(block: () -> Unit) {
+    private suspend inline fun migrationUnit(
+        failClosed: Boolean,
+        block: () -> Unit,
+    ) {
         try {
             block()
         } catch (ce: CancellationException) {
             throw ce
-        } catch (_: Throwable) {
+        } catch (failure: Throwable) {
+            if (failClosed) throw failure
         }
     }
 }

@@ -69,9 +69,7 @@ import org.koin.dsl.module
  */
 val homeReworkModule: Module = module {
     single<HomeFeedRepository> {
-        // 4th arg: SourceRegistry — routes ONLY config-backed sources (engine="generic" stanzas) Home/Featured through
-        // the generic engine; every other source stays on the legacy SourcesRepository path.
-        HomeFeedRepositoryImpl(get(), get(), get(), get())
+        HomeFeedRepositoryImpl(get(), get(), get())
     }
     single<SearchRepository> {
         // 3rd arg: SourceRegistry — routes ONLY config-backed sources (engine="generic" stanzas) search through the engine.

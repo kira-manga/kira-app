@@ -279,6 +279,83 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
 }
 
 /**
+ * v11 -> v12: discard the obsolete full-document cache and add immutable source revisions,
+ * signed manifests, ordered entries, and one atomic active-catalog pointer.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("DELETE FROM `source_config_cache`")
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `source_catalog_manifests` (
+                `catalogRevision` INTEGER NOT NULL,
+                `rawPayload` TEXT NOT NULL,
+                `format` TEXT NOT NULL,
+                `algorithm` TEXT NOT NULL,
+                `signingKeyId` TEXT NOT NULL,
+                `signatureBase64` TEXT NOT NULL,
+                `checksum` TEXT NOT NULL,
+                `createdAt` TEXT NOT NULL,
+                `previousRevision` INTEGER,
+                `previousChecksum` TEXT,
+                PRIMARY KEY(`catalogRevision`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `source_catalog_entries` (
+                `catalogRevision` INTEGER NOT NULL,
+                `api` TEXT NOT NULL,
+                `sourceRevision` INTEGER NOT NULL,
+                `checksum` TEXT NOT NULL,
+                `displayOrder` INTEGER NOT NULL,
+                `lifecycle` TEXT NOT NULL,
+                `engine` TEXT NOT NULL,
+                `sourceSigningKeyId` TEXT NOT NULL,
+                `sourceSignature` TEXT NOT NULL,
+                PRIMARY KEY(`catalogRevision`, `api`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_source_catalog_entries_api_sourceRevision`
+            ON `source_catalog_entries` (`api`, `sourceRevision`)
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `source_revision_artifacts` (
+                `api` TEXT NOT NULL,
+                `sourceRevision` INTEGER NOT NULL,
+                `checksum` TEXT NOT NULL,
+                `canonVersion` TEXT NOT NULL,
+                `rawPayload` TEXT NOT NULL,
+                PRIMARY KEY(`api`, `sourceRevision`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_source_revision_artifacts_checksum`
+            ON `source_revision_artifacts` (`checksum`)
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `active_source_catalog` (
+                `id` INTEGER NOT NULL,
+                `catalogRevision` INTEGER NOT NULL,
+                `checksum` TEXT NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
  * **Audit-trail postscript** (Phase 9.x.cluster185.staleKdocSweep.cascade,
  * Task #676, 2026-05-29): classified as follows after recursive symbol
  * verification (two-hundred-and-eighty-eighth sibling of the cluster57-184
@@ -343,4 +420,3 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
  * version = 10. The verbose postscript prose is retained as lineage per the audit-trail-preservation
  * convention.
  */
-

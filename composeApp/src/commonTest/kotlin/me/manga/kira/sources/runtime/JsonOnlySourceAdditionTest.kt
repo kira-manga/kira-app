@@ -124,7 +124,6 @@ class JsonOnlySourceAdditionTest {
     fun a_json_only_stanza_is_fully_discovered_by_the_real_registry() {
         val registry =
             DefaultSourceRegistry(
-                legacyRepos = emptySet(), // no compiled repo anywhere
                 updateManager = FixedManager(documentWithSynthetic()),
                 genericClientFactory = { config -> MarkerPagesClient("generic:${config.api}") },
             )
@@ -147,7 +146,6 @@ class JsonOnlySourceAdditionTest {
         // FilterRequestComposer / GenericSourceClientFilterRequestTest suites).
         val registry =
             DefaultSourceRegistry(
-                legacyRepos = emptySet(),
                 updateManager = FixedManager(documentWithSynthetic()),
                 genericClientFactory = { config -> MarkerPagesClient("generic:${config.api}") },
             )

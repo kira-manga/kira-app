@@ -44,6 +44,7 @@ class ConfigHostTrustTest {
                                 language = "(AR)",
                                 baseUrl = "https://azoramoon.com",
                                 imageBase = "https://img.azora.net",
+                                engine = "generic",
                                 previousHosts = listOf("azoramoon.co"),
                                 previousImageHosts = listOf("oldimg.azora.net"),
                                 trustedHosts = listOf("cdn.azora-images.net"),
@@ -67,7 +68,7 @@ class ConfigHostTrustTest {
         assertTrue(trust.ownsHost("Azora", "azoramoon.co")) // previousHosts
         assertTrue(trust.ownsHost("Azora", "oldimg.azora.net")) // previousImageHosts
         assertTrue(trust.ownsHost("Azora", "cdn.azora-images.net")) // trustedHosts
-        assertTrue(trust.ownsHost("Other", "other.test")) // legacy stanza
+        assertFalse(trust.ownsHost("Other", "other.test")) // legacy stanza never grants trust
     }
 
     @Test

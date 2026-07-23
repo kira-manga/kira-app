@@ -14,11 +14,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.timeout
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -29,17 +25,14 @@ import kotlinx.datetime.todayIn
 import me.manga.kira.R
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.core.states.State
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
-import me.manga.kira.sources_repositry.BaseMangaRepository
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -79,7 +72,6 @@ class LibraryRefreshWorker(
     private val libraryRepository: LibraryRepository,
     private val prefs: SharedPrefsHelper,
     private val chapterNotificationHelper: ChapterNotificationHelper,
-    private val sourcesRepository: SourcesRepository,
     private val sourceRegistry: SourceRegistry,
 ) : CoroutineWorker(context, params) {
     private val log = Logger.withTag(TAG)
@@ -247,24 +239,11 @@ class LibraryRefreshWorker(
     private suspend fun refreshSingleManga(manga: SavedMangaEntity): Boolean {
         return try {
             if (manga.id == 0L) return false
-            // MangaSource decoupling (2026-07): a config-backed source refreshes through the
-            // GENERIC engine (details verb) — the same system that serves its Home/Details/Pages.
-            // Previously refresh was 100% legacy-scraper: the 12 pilots refreshed via their rotting
-            // legacy parsers, and a config-only source (no compiled repo) never refreshed at all.
-            if (sourceRegistry.isConfigBacked(manga.api)) {
-                val client = sourceRegistry.get(manga.api) ?: return false
-                return fetchGenericUpdates(manga, client)
+            val client = sourceRegistry.get(manga.api) ?: run {
+                log.w { "Skipping refresh for unavailable source api=${manga.api}" }
+                return false
             }
-            // Strict lookup: an unknown/retired api must count as a failed refresh, NOT resolve to
-            // EmptyMangaRepository — its empty-Success (imageUrl="") used to blank the saved cover
-            // via the reconcile in fetchMangaUpdates (2026-07 source-lifecycle hardening).
-            val repo =
-                sourcesRepository.getOrRepoByName(manga.api) ?: run {
-                    log.w { "Skipping refresh for '${manga.title}': unknown source api=${manga.api}" }
-                    return false
-                }
-            fetchMangaUpdates(manga, repo)
-            true
+            fetchGenericUpdates(manga, client)
         } catch (e: Exception) {
             false
         }
@@ -319,37 +298,6 @@ class LibraryRefreshWorker(
                 log.w { "Generic refresh failed for '${manga.title}' (${manga.api}): ${result.error}" }
                 false
             }
-        }
-    }
-
-    private suspend fun fetchMangaUpdates(
-        manga: SavedMangaEntity,
-        activeRepo: BaseMangaRepository,
-    ) {
-        try {
-            val state =
-                withContext(platformIoDispatcher) {
-                    activeRepo
-                        .fetchMangaChaptersF(manga.url)
-                        .timeout(20.seconds)
-                        .flowOn(platformIoDispatcher)
-                        .filter { it !is State.Loading }
-                        .catch { e -> emit(State.Error(0, e.message ?: "Unknown error")) }
-                        .first()
-                }
-
-            state.toData()?.let { mangaInfo ->
-                reconcileRemote(
-                    manga = manga,
-                    remoteImageUrl = mangaInfo.imageUrl,
-                    remoteChapters =
-                        mangaInfo.chapters.map {
-                            RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
-                        },
-                )
-            }
-        } catch (e: Exception) {
-            log.e(e) { "Error fetching updates for ${manga.title}" }
         }
     }
 

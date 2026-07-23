@@ -8,16 +8,18 @@
 
 ## 1. Sources subsystem
 
-### Ownership model (since the SourceRegistry endpoint retirement, 2026-07-04)
+### Ownership model (signed incremental catalog, 2026-07-23)
 
-The bundled JSON config document (`CONFIG_BACKED_SOURCES_JSON` in
-`composeApp/.../sources/runtime/BundledSourcesConfig.kt`) is the **only authority** for every
-source — existence, metadata, baseUrl/imageBase, `siteState`, `lifecycle`, host-migration history,
-deep-link trust hosts. Room's `sources` table is a local cache/projection (plus the user-owned
-`isEnabled` toggle and priority order); its writer for config apis is the config sync alone
-(`SourceCatalogSyncRepositoryImpl`). The legacy remote source-list endpoint (`/source/35` ·
-`/dev/source`) is deleted. A source host move now ships as a config edit + app release (accepted
-tradeoff until Stage-1 signed remote config: update-speed, not server-speed).
+The latest completely verified signed backend catalog is authoritative. It is a lightweight
+manifest plus immutable per-source revisions; the client uses ETags and downloads only missing or
+changed active revisions. Room stores exact signed bytes and moves the active pointer and the
+`sources` projection in one transaction only after every required revision verifies. On failure,
+the app uses the reverified last-known-good catalog, then the bundled revision-5 floor.
+
+All three tiers contain only approved generic sources. The bundle contains exactly the initial 12;
+there is no legacy stanza, adapter, union, or inference path. The legacy remote source-list endpoint
+(`/source/35` · `/dev/source`) remains deleted. A source absent from the active manifest has no
+client. Disabled, retired, and removed lifecycle changes remove it from the active projection.
 
 Schema facts: `siteState` (`WORKING|STOPPED|UNDER_MAINTENANCE`), `lifecycle`
 (`active|disabled|removed` — the kill switch; `enabled` only means "default-enabled on first
@@ -27,8 +29,9 @@ Mirror protection is authoring-opt-in: a source that declares `previousHosts` ge
 baseUrl assertion (a user's repo-settings mirror host outside the declared set survives sync);
 without declared history, plain assert-any-difference applies. The 12 generic stanzas' baseUrl is
 the generic **engine's** base — legitimately different from the legacy scraper host; cross-system
-hosts must never drive migration. `LegacyStanzaCompletenessTest` +
-`SourceCatalogSyncRepositoryTest` pin registry⇄config completeness and sync behavior.
+hosts must never drive migration. `BundledSourceCatalogPolicyTest`,
+`IncrementalSourceCatalogManagerTest`, and `RoomSourceCatalogStoreTest` pin the exact bundled
+policy, delta/rollback rules, immutable storage, and atomic projection behavior.
 
 ### Converted sources (campaign complete)
 
@@ -36,20 +39,12 @@ hosts must never drive migration. `LegacyStanzaCompletenessTest` +
 Plus, SwatManga (full 5-verb JSON), Lekmanga, Team X, DilarV2, 3asq (AR), Demonicscans,
 Mangabuddy, Zazamanga, Tapas (EN).
 
-**Registry hardening (2026-06-25, Phase 5/6 — verified in code):** `DefaultSourceRegistry.get()`
-returns the **bare generic client for config-backed apis — no `FallbackSourceClient`**; a generic
-failure surfaces as a failure. `FallbackSourceClient` + `SourceDebugFlags` are retained-but-unwired
-rollback material. The owner rule stands: a source is 100% generic or fully legacy — the per-verb
-fallback described in older campaign docs no longer exists at runtime. Non-config legacy sources
-still route to `LegacyKotlinSourceClient`, are hidden from Home tabs (hidden-not-dropped), and
-their DB rows are force-disabled by the config sync. Config cache lives in Room
-(`source_config_cache`, added in `Migration_10_11`).
-
-**Permanently legacy-only** (pure-config impossible under the no-source-specific-Kotlin rule; the
-legacy `:sources:legacy` scrapers serve them): Dilar (AES-encrypted), MangaPark AR+EN (GraphQL),
-Promanga/Prochan (canvas de-scramble + per-item CDN host), Mangatuk (rebuilt Next.js/RSC SPA —
-its legacy adapter is itself broken vs the new site), Lavatoons (CF + inline-JS `ts_reader`),
-Comick (API hosts dead/CF), Manhwatop, Batcave (CF), Batoto (connection-fail).
+**Runtime policy:** `DefaultSourceRegistry.get()` returns the bare `GenericSourceClient` only for
+an active generic descriptor. `FallbackSourceClient`, `LegacyKotlinSourceClient`, and the debug
+fallback flag were deleted. The archived scraper module remains buildable as a migration reference
+and for repository/library persistence, but contributes an empty runtime scraper set. Sources not
+yet converted are unavailable; they become eligible only after full generic conversion, validation,
+review, and explicit backend publication.
 
 Reusable engine features built during the campaign (each has a golden test in `:sources:engine`):
 separated `chapters` endpoint (two-request details), comma-fallback template vars, POST_JSON body,
@@ -72,11 +67,10 @@ Flowermanga (PT), Timenaight + Webtoontr + Webtoonhatti (TR).
 > retirement policy (`disabled` → `removed`, never silent deletion), and troubleshooting. The
 > steps below are the short form.
 
-1. Author its `SourceConfig` (`engine="generic"`) in `CONFIG_BACKED_SOURCES_JSON`, deriving fields
-   from the legacy parser in `sources_repositry/` (read-only spec). The stanza IS the whole
-   registration: the compiled `CONFIG_BACKED_APIS` allow-list and the `MangaSource`-enum
-   requirement were deleted in the 2026-07 MangaSource decoupling — the validated document is the
-   single authority (guarded by `GenericSourcesDecouplingGuardTest`).
+1. Author a complete `SourceConfig` with `engine="generic"`, deriving fields from the legacy parser
+   in `sources_repositry/` (read-only spec). Publish its reviewed immutable revision through the
+   backend lifecycle. Add it to the bundled floor only in an app release when the binary must retain
+   it during an outage. The signed manifest is the runtime registration.
 2. Add a `*PilotParityTest.kt` in `:composeApp` commonTest with real captured HTML/JSON fixtures.
 3. Any new engine capability needs a golden test in `:sources:engine` plus a
    `DefaultStrategyRegistry` whitelist entry.
@@ -89,9 +83,9 @@ Flowermanga (PT), Timenaight + Webtoontr + Webtoonhatti (TR).
 Fail-closed posture (do not weaken): configs are data-only; only strategy names compiled into
 `DefaultStrategyRegistry` may be referenced (image-strategy set intentionally EMPTY);
 `DefaultSourceConfigValidator` rejects unknown references. Remote delivery uses a bounded Ktor HTTPS
-client, a complete signed envelope in Room, and Ed25519 verification against app-pinned public keys;
-network or verification failures retain the last verified cache and bundled floor. Production activation
-needs the deployed backend HTTPS origin; image strategies and `minAppVersion` gating remain follow-ups.
+client, signed manifest and per-source envelopes, Ed25519 verification against app-pinned public
+keys, a durable anti-rollback floor, and atomic Room activation. Network or verification failures
+retain the complete last verified cache or bundled floor.
 
 Known open question (never adjudicated): `GenericSourceClient.isBlacklistedByGenre` uses
 case-insensitive **substring** contains vs the native exact-set membership — could over-filter

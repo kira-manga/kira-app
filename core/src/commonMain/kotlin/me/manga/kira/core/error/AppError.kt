@@ -104,6 +104,7 @@ sealed class AppError {
         data class OutOfRange(val field: String, override val cause: Throwable? = null) : Validation()
         data class Format(val field: String, override val cause: Throwable? = null) : Validation()
         data class NoEnabledSources(override val cause: Throwable? = null) : Validation()
+        data class SourceUnavailable(val api: String, override val cause: Throwable? = null) : Validation()
     }
 
     /** Authorization category — missing/expired credentials, forbidden ops. */

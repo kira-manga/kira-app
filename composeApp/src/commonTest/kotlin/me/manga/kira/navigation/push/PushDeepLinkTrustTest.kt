@@ -1,20 +1,10 @@
 package me.manga.kira.navigation.push
 
-import com.russhwolf.settings.MapSettings
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.core.storage.SharedPrefsHelper
-import me.manga.kira.data.local.dao.SourcesDao
-import me.manga.kira.data.local.entity.SourcesEntity
-import me.manga.kira.presentation.features.repo_settings.domain.SourceState
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
 import me.manga.kira.sources.contracts.model.SourceConfig
@@ -43,51 +33,6 @@ class PushDeepLinkTrustTest {
         override suspend fun refresh(): AppResult<SourceConfigDocument> = AppResult.Success(document)
     }
 
-    private object EmptySourcesDao : SourcesDao {
-        override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(emptyList())
-
-        override suspend fun insert(source: SourcesEntity): Long = 1L
-
-        override suspend fun setEnabledByName(
-            name: String,
-            enabled: Boolean,
-        ): Int = 0
-
-        override suspend fun getBaseUrlFor(name: String): String? = null
-
-        override fun getSiteStateByName(name: String): Flow<SourceState?> = flowOf(null)
-
-        override suspend fun getSiteStateByNameSync(name: String): SourceState? = null
-
-        override suspend fun updateBaseUrlAndVersionByName(
-            name: String,
-            baseUrl: String,
-            version: Int,
-        ): Int = 0
-
-        override suspend fun updateImageBaseUrlAndVersionByName(
-            apiName: String,
-            newImageBaseUrl: String,
-            newImageVersion: Int,
-        ): Int = 0
-
-        override suspend fun updateSiteStateByName(
-            name: String,
-            siteState: SourceState,
-        ): Int = 0
-
-        override suspend fun deleteSourceByName(name: String): Int = 0
-    }
-
-    /** No legacy repos → the config authority is the only one that can grant trust. */
-    private val legacySources =
-        SourcesRepository(
-            sourcesDao = EmptySourcesDao,
-            repos = emptySet(),
-            prefs = SharedPrefsHelper(MapSettings()),
-            applicationScope = CoroutineScope(Dispatchers.Unconfined),
-        )
-
     private val configTrust =
         ConfigHostTrust(
             FakeUpdateManager(
@@ -100,6 +45,7 @@ class PushDeepLinkTrustTest {
                                 language = "(AR)",
                                 baseUrl = "https://azoramoon.com",
                                 imageBase = "https://img.azora.net",
+                                engine = "generic",
                             ),
                         ),
                 ),
@@ -124,7 +70,7 @@ class PushDeepLinkTrustTest {
     @Test
     fun reader_allUrlsOnDeclaredHosts_isTrusted() =
         runTest {
-            assertTrue(reader().isHostTrustedFor(legacySources, configTrust))
+            assertTrue(reader().isHostTrustedFor(configTrust))
         }
 
     @Test
@@ -133,7 +79,7 @@ class PushDeepLinkTrustTest {
             // manga/chapter urls are legitimate — only the cover points at a foreign host. Pre-fix
             // this passed the gate and the attacker cover was persisted into history/library.
             assertFalse(
-                reader(coverUrl = "https://evil.example/steal.jpg").isHostTrustedFor(legacySources, configTrust),
+                reader(coverUrl = "https://evil.example/steal.jpg").isHostTrustedFor(configTrust),
             )
         }
 
@@ -141,10 +87,10 @@ class PushDeepLinkTrustTest {
     fun reader_attackerMangaOrChapterUrl_isRejected() =
         runTest {
             assertFalse(
-                reader(mangaUrl = "https://evil.example/series/1").isHostTrustedFor(legacySources, configTrust),
+                reader(mangaUrl = "https://evil.example/series/1").isHostTrustedFor(configTrust),
             )
             assertFalse(
-                reader(chapterUrl = "https://evil.example/ch/2").isHostTrustedFor(legacySources, configTrust),
+                reader(chapterUrl = "https://evil.example/ch/2").isHostTrustedFor(configTrust),
             )
         }
 
@@ -153,14 +99,14 @@ class PushDeepLinkTrustTest {
         runTest {
             val own = PushDestination.MangaDetail(api = "Azora", url = "https://azoramoon.com/series/1")
             val foreign = PushDestination.MangaDetail(api = "Azora", url = "https://evil.example/series/1")
-            assertTrue(own.isHostTrustedFor(legacySources, configTrust))
-            assertFalse(foreign.isHostTrustedFor(legacySources, configTrust))
+            assertTrue(own.isHostTrustedFor(configTrust))
+            assertFalse(foreign.isHostTrustedFor(configTrust))
         }
 
     @Test
     fun tabDestinations_carryNoUrl_alwaysTrusted() =
         runTest {
-            assertTrue(PushDestination.Updates.isHostTrustedFor(legacySources, configTrust))
-            assertTrue(PushDestination.Home.isHostTrustedFor(legacySources, configTrust))
+            assertTrue(PushDestination.Updates.isHostTrustedFor(configTrust))
+            assertTrue(PushDestination.Home.isHostTrustedFor(configTrust))
         }
 }

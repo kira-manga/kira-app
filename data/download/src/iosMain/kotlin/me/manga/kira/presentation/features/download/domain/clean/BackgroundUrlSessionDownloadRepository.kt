@@ -35,7 +35,6 @@ import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import me.manga.kira.sources_repositry.ar.mangamelloplus.MangamelloPlusRepository
 import platform.Foundation.NSNotificationCenter
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
@@ -574,8 +573,8 @@ class BackgroundUrlSessionDownloadRepository(
             mangaId = entity.mangaId,
             chapterId = entity.chapterId,
             api = entity.api,
-            pages = resolved.imageUrls.mapIndexed { index, url ->
-                ManifestPage(index = index, url = url, headers = headersFor(resolved, url))
+            pages = resolved.pages.mapIndexed { index, page ->
+                ManifestPage(index = index, url = page.url, headers = page.headers)
             },
         )
 
@@ -1231,19 +1230,6 @@ class BackgroundUrlSessionDownloadRepository(
     private suspend fun freshSiteHeaders(api: String?): Map<String, String> {
         val a = api?.takeIf { it.isNotBlank() } ?: return emptyMap()
         return runCatching { dataStoreHelper.getHeadersForApi(a) }.getOrNull().orEmpty()
-    }
-
-    /** Per-page header strategy — byte-identical to CoroutineDownloadRepositoryImpl.downloadOnePage. */
-    private fun headersFor(resolved: ResolvedChapter, url: String): Map<String, String> {
-        resolved.overrideHeaders?.let { return it }
-        val repo = resolved.repo ?: return emptyMap()
-        if (repo is MangamelloPlusRepository) {
-            val isMello = url.contains("mangamello", ignoreCase = true) ||
-                url.contains("mello", ignoreCase = true) ||
-                url.contains("cdn.mangamello.com", ignoreCase = true)
-            return if (isMello) repo.imgsHeader else emptyMap()
-        }
-        return repo.defaultHeaders
     }
 
     private fun notifTitle(entity: ChapterDownloadEntity): String {

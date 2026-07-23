@@ -9,7 +9,7 @@ import me.manga.kira.sources.engine.GenericSourceClient
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -55,7 +55,6 @@ class DownloadPageSeamParityTest {
      *  `GenericSourceClient` factory over the canned page fixtures. */
     private fun provider(): RegistryChapterPageProvider {
         val registry = DefaultSourceRegistry(
-            legacyRepos = setOf(FakeLegacyRepo("Azora"), FakeLegacyRepo("Zazamanga")),
             updateManager = RemoteSourceConfigManager(
                 store = BundledSourceConfigStore(CONFIG_BACKED_SOURCES_JSON),
                 verifier = DenyRemoteSignatureVerifier(),
@@ -106,9 +105,9 @@ class DownloadPageSeamParityTest {
     }
 
     @Test
-    fun non_config_source_returns_null_so_download_keeps_legacy() = runTest {
-        assertNull(
-            provider().pagesOrNull("NotPiloted", "https://x.test/m", "(EN)", "https://x.test/m/c1"),
-        )
+    fun non_config_source_fails_closed_without_legacy_fallback() = runTest {
+        assertFailsWith<GenericPagesFailedException> {
+            provider().pagesOrNull("NotPiloted", "https://x.test/m", "(EN)", "https://x.test/m/c1")
+        }
     }
 }

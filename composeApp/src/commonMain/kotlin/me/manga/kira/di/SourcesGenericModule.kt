@@ -2,17 +2,19 @@ package me.manga.kira.di
 
 import io.ktor.client.HttpClient
 import me.manga.kira.core.logging.KermitLoggerAdapter
-import me.manga.kira.data.local.dao.SourceConfigCacheDao
+import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.local.dao.SourceCatalogDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
-import me.manga.kira.sources.config.RemoteConfigSource
-import me.manga.kira.sources.config.RemoteSourceConfigManager
+import me.manga.kira.sources.config.IncrementalSourceCatalogManager
 import me.manga.kira.sources.contracts.CloudflareChallengeSignal
 import me.manga.kira.sources.contracts.ConfigSignatureVerifier
-import me.manga.kira.sources.contracts.ConfigStore
 import me.manga.kira.sources.contracts.HeaderStore
 import me.manga.kira.sources.contracts.HttpExecutor
+import me.manga.kira.sources.contracts.RemoteSourceCatalog
+import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
+import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceBaseUrlProvider
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.SourceRegistry
@@ -28,12 +30,10 @@ import me.manga.kira.sources.runtime.DbSourceBaseUrlProvider
 import me.manga.kira.sources.runtime.DefaultSourceRegistry
 import me.manga.kira.sources.runtime.Ed25519ConfigSignatureVerifier
 import me.manga.kira.sources.runtime.KtorHttpExecutor
-import me.manga.kira.sources.runtime.KtorRemoteConfigSource
+import me.manga.kira.sources.runtime.KtorRemoteSourceCatalog
 import me.manga.kira.sources.runtime.RegistryChapterPageProvider
-import me.manga.kira.sources.runtime.RoomSourceConfigStore
-import me.manga.kira.sources.runtime.SourceDebugFlags
+import me.manga.kira.sources.runtime.RoomSourceCatalogStore
 import me.manga.kira.sources.runtime.SourceRemoteConfiguration
-import me.manga.kira.sources_repositry.BaseMangaRepository
 import org.koin.dsl.module
 
 /**
@@ -43,17 +43,15 @@ import org.koin.dsl.module
  * **Signed remote posture — registry live with a bundled floor and authenticated updates:**
  *  - The registry is BOUND and CONSUMED by four `:data` repositories (HomeFeed / Search /
  *    MangaDetails / ChapterPages), each branching on `sourceRegistry.isConfigBacked(api)`.
- *  - The config-backed sources (every `engine="generic"` stanza in the validated bundled document —
- *    the single authority, no in-binary api allow-list) are served by the generic engine,
- *    generic-ONLY (no legacy fallback — see [DefaultSourceRegistry]); every other source
- *    stays on the legacy adapter.
+ *  - Active `engine="generic"` stanzas are served by the generic engine. Every absent, disabled,
+ *    retired, removed, or non-generic source has no client.
  *  - The bundled config ([CONFIG_BACKED_SOURCES_JSON]) ships in the signed binary (trusted, no detached
  *    signature). The HTTPS client is wired in every build, while an empty release base URL makes it
  *    a no-op. Cache and remote envelopes are accepted only after Ed25519 verification with pinned keys.
  *  - The real [DataStoreHeaderStore] lets the generic clients reuse captured Cloudflare headers.
  *
- * Dependencies pulled from the merged graph: the shared Ktor [HttpClient], the legacy
- * `Set<BaseMangaRepository>`, and [DataStoreHelper] (all from `SharedModule`/`platformModule`).
+ * Dependencies pulled from the merged graph are the shared Ktor [HttpClient] and
+ * [DataStoreHelper].
  */
 val sourcesGenericModule =
     module {
@@ -65,70 +63,64 @@ val sourcesGenericModule =
         // Ports (composition-root implementations of :sources:contracts interfaces).
         single<HttpExecutor> { KtorHttpExecutor(get<HttpClient>()) }
         single<HeaderStore> { DataStoreHeaderStore(get<DataStoreHelper>()) }
-        // Sources Migration Phase 1: durable Room-backed config cache (was in-memory only). The bundled
-        // config-backed JSON stays the trusted floor; remote-accepted documents now persist across launches.
-        single<ConfigStore> { RoomSourceConfigStore(get<SourceConfigCacheDao>(), CONFIG_BACKED_SOURCES_JSON) }
+        single<SourceCatalogStore> {
+            RoomSourceCatalogStore(
+                database = get<MangaDatabase>(),
+                catalogDao = get<SourceCatalogDao>(),
+                sourcesDao = get<SourcesDao>(),
+                migrator = get(),
+                bundledJson = CONFIG_BACKED_SOURCES_JSON,
+            )
+        }
         single { SourceRemoteConfiguration.fromGenerated() }
-        single<ConfigSignatureVerifier> {
+        single {
             Ed25519ConfigSignatureVerifier(get<SourceRemoteConfiguration>().pinnedPublicKeys)
         }
-        single<RemoteConfigSource> { KtorRemoteConfigSource(get<HttpClient>(), get(), get<ConfigStore>()) }
-        // Live base URL, read from the same sources DB row the legacy path follows (server-pushed /
-        // user-edited domain moves) — so a config-backed source whose host moves keeps working without remote config.
+        single<ConfigSignatureVerifier> { get<Ed25519ConfigSignatureVerifier>() }
+        single<SourceCatalogSignatureVerifier> { get<Ed25519ConfigSignatureVerifier>() }
+        single<RemoteSourceCatalog> { KtorRemoteSourceCatalog(get<HttpClient>(), get()) }
+        // Live base URL from the active catalog projection, while preserving a user's explicitly
+        // configured mirror according to the descriptor's previous-host policy.
         single<SourceBaseUrlProvider> { DbSourceBaseUrlProvider(get<SourcesDao>()) }
         // SourceRegistry retirement Phase 3 (R7): config-declared hosts (baseUrl/imageBase/
         // previousHosts/previousImageHosts/trustedHosts) join the push deep-link trust gate in App.kt.
         single { ConfigHostTrust(get()) }
         single<CloudflareChallengeSignal> {
-            // No-op in production. When the generic-only debug flag is ON, surface the definitive Cloudflare
-            // signal (this fires exactly when the engine detects a challenge) so a 403/503 can be attributed
-            // to Cloudflare rather than to plain missing headers.
             val logger = KermitLoggerAdapter()
-            CloudflareChallengeSignal { api, url ->
-                if (SourceDebugFlags.DISABLE_LEGACY_FALLBACK_FOR_GENERIC_TESTING) {
-                    logger.w(
-                        "GenericSourceTest",
-                        "$api → Cloudflare challenge at $url " +
-                            "(needs a solved cf_clearance cookie + matching UA)",
-                    )
-                }
+            CloudflareChallengeSignal { api, _ ->
+                logger.w(
+                    "SourceCatalog",
+                    "$api reported an upstream challenge; no alternate source implementation is allowed",
+                )
             }
         }
 
-        // Config lifecycle. The bundled config-backed config resolves at construction
-        // (resolveBundled), so activeDocument() returns the config-backed descriptors without any refresh().
+        // Config lifecycle. The exact-12 bundle validates at construction, so activeDocument()
+        // is immediately safe; refresh may atomically replace it with a complete signed catalog.
         single<SourceUpdateManager> {
             val logger = KermitLoggerAdapter()
-            RemoteSourceConfigManager(
+            IncrementalSourceCatalogManager(
                 store = get(),
                 verifier = get(),
                 validator = get(),
                 remote = get(),
-                // Document rejection used to be fully silent — for the BUNDLED tier that means every
-                // generic source vanishes at once (validation is all-or-nothing). Log it loudly so a
-                // blank source catalog is diagnosable in the field (2026-07 source-lifecycle
-                // hardening). The build-time gate is ConfigBackedSourceCompletenessTest; this is the
-                // runtime alarm for whatever slips past it.
-                onDocumentRejected = { origin, reasons ->
+                onRejected = { reason ->
                     logger.e(
                         "SourceConfig",
-                        "source config document REJECTED (origin=$origin) — previous good document " +
-                            "stays active; a rejected bundled document means ALL generic sources are " +
-                            "lost:\n" + reasons.joinToString("\n") { "  - $it" },
+                        "source catalog candidate rejected; the complete previous catalog stays active: $reason",
                     )
                 },
             )
         }
 
         // The registry: generic-ONLY for every engine="generic" stanza in the validated active
-        // document (the single authority — no in-binary api allow-list); legacy adapter for the rest.
+        // document (the single authority — no in-binary api allow-list); no adapter for the rest.
         single<SourceRegistry> {
             val httpExecutor = get<HttpExecutor>()
             val headerStore = get<HeaderStore>()
             val cloudflare = get<CloudflareChallengeSignal>()
             val baseUrlProvider = get<SourceBaseUrlProvider>()
             DefaultSourceRegistry(
-                legacyRepos = get<Set<BaseMangaRepository>>(),
                 updateManager = get(),
                 genericClientFactory = { config ->
                     GenericSourceClient(
@@ -144,8 +136,7 @@ val sourcesGenericModule =
 
         // Sources Migration Phase 3: the download engines' routing seam. Routes chapter DOWNLOADS of
         // config-backed sources through the SourceRegistry (generic-ONLY — the registry has no
-        // legacy fallback) instead of calling the legacy scraper directly. Returns null for
-        // non-config sources so their existing legacy download path stays unchanged. Consumed by
+        // fallback) instead of calling a scraper. Missing sources fail closed. Consumed by
         // DownloadWorkerV2 (Android, via GlobalContext) and CoroutineDownloadRepositoryImpl
         // (iOS/Desktop, ctor-injected) in :data:download.
         single<ChapterPageProvider> { RegistryChapterPageProvider(sourceRegistry = get()) }

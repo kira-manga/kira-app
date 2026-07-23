@@ -17,7 +17,6 @@ import me.manga.kira.core.error.TransportErrorMessages
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
-import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -26,7 +25,6 @@ import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources.contracts.SourceRegistry
 import okio.Path
 import okio.Path.Companion.toPath
@@ -89,7 +87,6 @@ import okio.Path.Companion.toPath
  * as a terminal `AppResult.Failure` emission.
  */
 class ChapterPagesRepositoryImpl(
-    private val sourcesRepository: SourcesRepository,
     private val dispatchers: DispatcherProvider,
     private val chapterDao: ChapterDao,
     private val cbzReader: CbzReader,
@@ -125,47 +122,17 @@ class ChapterPagesRepositoryImpl(
             return@flow
         }
 
-        // Config-backed source (Stage-1: Azora) → the config-driven engine for the NETWORK page fetch, with
-        // its own legacy fallback. The downloaded-chapter offline path above still wins first (for all
-        // sources). The registry's pages flow already emits domain Pages + typed AppError; forwarding
-        // it preserves cancellation (the catch operator below rethrows CancellationException).
-        if (sourceRegistry.isConfigBacked(manga.api)) {
-            FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=config-backed api=${manga.api}")
-            val client = sourceRegistry.get(manga.api)
-            if (client == null) {
-                emit(AppResult.Failure(AppError.Unexpected(message = "No source client for api=${manga.api}")))
-            } else {
-                emitAll(client.pages(manga, chapter))
-            }
+        FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=catalog api=${manga.api}")
+        val client = sourceRegistry.get(manga.api)
+        if (client == null) {
+            emit(
+                AppResult.Failure(
+                    AppError.Validation.SourceUnavailable(api = manga.api),
+                ),
+            )
             return@flow
         }
-
-        val sourceRepo = sourcesRepository.getOrRepoByName(manga.api)
-        if (sourceRepo == null) {
-            emit(AppResult.Failure(AppError.Unexpected(message = "Unknown source api=${manga.api}")))
-            return@flow
-        }
-        FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=legacy api=${manga.api}")
-
-        val headers = sourceRepo.defaultHeaders
-
-        sourceRepo.fetchChapterDataF(chapter.url).collect { state ->
-            when (state) {
-                LegacyState.Loading -> {
-                    // Drop loading — the contract documents that the Flow only emits
-                    // Success / Failure (loading is the absence of an emission). The MVI VM
-                    // tracks its own loading flag.
-                }
-                is LegacyState.Success -> {
-                    val urls: List<String> = state.toData() ?: emptyList()
-                    val pages = urls.map { url -> Page(url = url, headers = headers) }
-                    emit(AppResult.Success(pages))
-                }
-                is LegacyState.Error -> {
-                    emit(AppResult.Failure(state.toAppError()))
-                }
-            }
-        }
+        emitAll(client.pages(manga, chapter))
     }
         .catch { t ->
             if (t is CancellationException) throw t
@@ -317,29 +284,6 @@ class ChapterPagesRepositoryImpl(
         }
     }
 
-    private fun LegacyState.Error.toAppError(): AppError {
-        val status = code ?: 0
-        if (status in 400..599) {
-            return AppError.Network.Http(statusCode = status)
-        }
-        val raw = message.lowercase()
-        return when {
-            // A code-0 emission whose body/message betrays a Cloudflare / anti-bot interstitial is a
-            // SOLVABLE challenge, not a hard failure (bug #2). Many sources serve the challenge HTML
-            // with a 200/0 that the parser rejects, so the status code is lost — re-surface it as a
-            // 403 so the Details/Reader VMs route the user to the WebView solver instead of a
-            // dead-end "failed to load". See [isChallengeMessage].
-            isChallengeMessage(raw) ->
-                AppError.Network.Http(statusCode = 403)
-            TransportErrorMessages.isConnectivityMessage(raw) ->
-                AppError.Network.NoConnectivity()
-            TransportErrorMessages.isTimeoutMessage(raw) ->
-                AppError.Network.Timeout()
-            else ->
-                AppError.Unexpected(message = message)
-        }
-    }
-
     private fun classifyThrowable(t: Throwable): AppError {
         val raw = (t.message ?: "").lowercase()
         return when {
@@ -456,4 +400,3 @@ class ChapterPagesRepositoryImpl(
  *  Original Phase 6.4.1 (Task #237) impl prose preserved verbatim per the
  *  audit-trail-preservation convention.
  */
-

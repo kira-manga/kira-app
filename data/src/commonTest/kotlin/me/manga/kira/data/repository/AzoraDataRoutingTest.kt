@@ -78,7 +78,7 @@ class AzoraDataRoutingTest {
         val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
             StubSourceClient(it, details = { AppResult.Success(sentinel) })
         }
-        val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), testDispatchers, registry)
+        val repo = MangaDetailsRepositoryImpl(testDispatchers, registry)
 
         val result = repo.fetchDetails(azora())
         assertEquals(AppResult.Success(sentinel), result) // came from the registry, not legacy
@@ -86,16 +86,14 @@ class AzoraDataRoutingTest {
     }
 
     @Test
-    fun details_non_pilot_uses_legacy_not_registry() = runTest {
-        // isConfigBacked("Other") = false → the legacy branch runs (empty sources → Unknown-source failure),
-        // and the registry's get() is never consulted.
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not serve a non-pilot") }
-        val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), testDispatchers, registry)
+    fun details_source_absent_from_catalog_fails_closed() = runTest {
+        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
+        val repo = MangaDetailsRepositoryImpl(testDispatchers, registry)
 
         val result = repo.fetchDetails(other())
         val error = (result as AppResult.Failure).error
-        assertTrue(error is AppError.Unexpected && error.message.contains("Unknown source"))
-        assertEquals(emptyList(), registry.getCalls) // registry NOT consulted for a non-pilot
+        assertTrue(error is AppError.Validation.SourceUnavailable && error.api == "Other")
+        assertEquals(listOf("Other"), registry.getCalls)
     }
 
     @Test
@@ -105,7 +103,7 @@ class AzoraDataRoutingTest {
         val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
             StubSourceClient(it, details = { AppResult.Failure(AppError.Network.Http(403)) })
         }
-        val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), testDispatchers, registry)
+        val repo = MangaDetailsRepositoryImpl(testDispatchers, registry)
 
         val result = repo.fetchDetails(azora())
         assertTrue(result is AppResult.Failure && (result.error as? AppError.Network.Http)?.statusCode == 403)
@@ -116,7 +114,7 @@ class AzoraDataRoutingTest {
         val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
             StubSourceClient(it, details = { throw CancellationException("cancelled") })
         }
-        val repo = MangaDetailsRepositoryImpl(emptyLegacySources(), testDispatchers, registry)
+        val repo = MangaDetailsRepositoryImpl(testDispatchers, registry)
 
         assertFailsWith<CancellationException> { repo.fetchDetails(azora()) }
     }
@@ -128,7 +126,7 @@ class AzoraDataRoutingTest {
         dao: ChapterDao = FakeChapterDao(),
         cbz: CbzReader = FakeCbzReader(),
         appFs: AppFileSystem = TempDirAppFileSystem(),
-    ) = ChapterPagesRepositoryImpl(emptyLegacySources(), testDispatchers, dao, cbz, registry, appFs)
+    ) = ChapterPagesRepositoryImpl(testDispatchers, dao, cbz, registry, appFs)
 
     @Test
     fun pages_azora_routes_through_registry_not_legacy() = runTest {
@@ -142,11 +140,12 @@ class AzoraDataRoutingTest {
     }
 
     @Test
-    fun pages_non_pilot_uses_legacy_not_registry() = runTest {
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not serve a non-pilot") }
+    fun pages_source_absent_from_catalog_fails_closed() = runTest {
+        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
         val result = pagesRepo(registry).fetchPages(other(), chapter("u")).first()
-        assertTrue(result is AppResult.Failure) // legacy branch: empty sources → Unknown source
-        assertEquals(emptyList(), registry.getCalls)
+        val error = (result as AppResult.Failure).error
+        assertTrue(error is AppError.Validation.SourceUnavailable && error.api == "Other")
+        assertEquals(listOf("Other"), registry.getCalls)
     }
 
     @Test
@@ -367,7 +366,7 @@ class AzoraDataRoutingTest {
         val getCalls = mutableListOf<String>()
         override fun get(api: String): MangaSourceClient? {
             getCalls += api
-            return client(api)
+            return if (api in piloted) client(api) else null
         }
         override fun isConfigBacked(api: String): Boolean = api in piloted
         override fun descriptor(api: String): RuntimeSourceDescriptor? =
@@ -442,6 +441,7 @@ class AzoraDataRoutingTest {
 
     private object FakeSourcesDao : SourcesDao {
         override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(emptyList())
+        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = emptyList()
         override suspend fun insert(source: SourcesEntity): Long = 1L
         override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 0
         override suspend fun getBaseUrlFor(name: String): String? = null
@@ -451,5 +451,13 @@ class AzoraDataRoutingTest {
         override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int = 0
         override suspend fun updateSiteStateByName(name: String, siteState: SourceState): Int = 0
         override suspend fun deleteSourceByName(name: String): Int = 0
+        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun updateCatalogMetadata(
+            api: String,
+            priority: Int,
+            language: String,
+            siteState: SourceState,
+        ): Int = 0
     }
 }

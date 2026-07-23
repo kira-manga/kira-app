@@ -103,9 +103,7 @@ import org.koin.dsl.module
 val detailsReworkModule: Module = module {
     single<MangaDetailsRepository> {
         MangaDetailsRepositoryImpl(
-            sourcesRepository = get(),
             dispatchers = get(),
-            // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic engine; all others stay legacy.
             sourceRegistry = get(),
         )
     }
@@ -116,7 +114,7 @@ val detailsReworkModule: Module = module {
     // single because the classifier holds the legacy SourcesRepository reference and is
     // stateless beyond that — re-creating it per resolution would be wasteful. The use case
     // stays factory (stateless wrapper, cheap to construct).
-    single<AdultContentClassifier> { AdultContentClassifierImpl(sourcesRepository = get(), sourceRegistry = get()) }
+    single<AdultContentClassifier> { AdultContentClassifierImpl(sourceRegistry = get()) }
 
     factory { IsAdultContentUseCase(get()) }
 

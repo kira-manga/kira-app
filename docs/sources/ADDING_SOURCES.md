@@ -9,33 +9,26 @@
 
 ## 1. Where source configs live (and where they don't)
 
-**Sources have a bundled floor and an authenticated remote update channel.**
+**Sources have an authoritative signed catalog and a bundled recovery floor.**
 
-- The entire source catalog is ONE JSON document embedded as a Kotlin string constant:
-  **`CONFIG_BACKED_SOURCES_JSON`** in
-  `composeApp/src/commonMain/kotlin/me/manga/kira/sources/runtime/BundledSourcesConfig.kt`.
-  It contains every source the app has ever shipped: the **generic** stanzas (`engine:"generic"`,
-  executed by the config-driven engine) and the metadata-only **legacy** stanzas
-  (`engine:"legacy"`, lifecycle/host metadata for the hand-written Kotlin scrapers).
-- **The validated document is the single authority** for which sources are generic
-  (MangaSource decoupling, 2026-07): a source runs generic exactly when its stanza says
-  `engine:"generic"` and the whole document passes validation
-  (`DefaultSourceRegistry.isConfigBacked`). The former compiled `CONFIG_BACKED_APIS` allow-list
-  was deleted — do not reintroduce one (the `GenericSourcesDecouplingGuardTest` build gate
-  fails on it).
-- The app never scans a config directory. It begins with the bundled document, then may accept the
-  backend's exact JSON bytes only after pinned-key Ed25519 verification and validation. Room stores
-  the complete signed envelope and re-verifies it after restart.
-- Changes should still be made to the bundled floor for the next app release. A signed backend
-  publication can update already-installed builds once the production HTTPS origin is configured;
-  incompatible schema or strategy changes still require an app release first.
+- `CONFIG_BACKED_SOURCES_JSON` in
+  `composeApp/src/commonMain/kotlin/me/manga/kira/sources/runtime/BundledSourcesConfig.kt` is the
+  revision-5 binary fallback. It contains exactly the 12 approved generic sources and no legacy
+  stanza.
+- The backend publishes a lightweight signed manifest and immutable signed per-source revisions.
+  `IncrementalSourceCatalogManager` checks the manifest ETag, reuses verified local revisions, and
+  downloads only missing active revisions.
+- The accepted signed manifest is the runtime authority. `DefaultSourceRegistry` creates a client
+  only for an active `engine:"generic"` entry. There is no compiled roster, legacy adapter,
+  inference path, or per-verb fallback.
+- Room re-verifies the last-known-good catalog after restart. A new revision becomes visible only
+  when every required artifact and the source projection commit atomically; otherwise the complete
+  prior cache or bundle stays active.
 
-**When is the document loaded?** Once per process. `RemoteSourceConfigManager` parses + validates
-the bundled string eagerly in its constructor (first Koin injection, at app start); `App.kt`'s
-startup block then calls `refresh()` (which checks the verified cache and configured remote) and `syncSourceCatalog()`
-(projects config truth into the Room `sources` table — enabled/baseUrl/siteState — and migrates
-stored URLs on host moves). The parsed document is held in memory; it is never re-read during the
-app's lifetime.
+**When is the catalog loaded?** `IncrementalSourceCatalogManager` validates the bundle during
+construction. `App.kt` calls `refresh()` at startup, then projects the resulting active catalog.
+Unchanged manifests return 304 and download no source payload. The in-memory document changes only
+after complete verification and durable activation.
 
 ## 2. How to add a new source
 
@@ -43,9 +36,10 @@ Checklist (details below):
 
 1. Choose a **stable api string** — this is the source's permanent identity (see §3). Not a
    display name; never reused; never renamed.
-2. Add an `engine:"generic"` stanza to `CONFIG_BACKED_SOURCES_JSON`. **That is the whole
-   registration** — no allow-list, no enum entry, no Kotlin wiring (the decoupling invariant,
-   pinned by `JsonOnlySourceAdditionTest` + `ConfigOnlySourceRoutingTest`).
+2. Author and validate an `engine:"generic"` stanza, then publish it through the backend lifecycle.
+   The signed manifest entry is the whole runtime registration — no allow-list, enum entry, or
+   Kotlin wiring. Add the stanza to `CONFIG_BACKED_SOURCES_JSON` only when deliberately updating
+   the next binary's outage floor.
 3. Optionally give it an icon (see "Icons" below): `"icon": { "resourceKey": "x" }` for a
    packaged drawable (one generic entry in `SourceIconRegistry` maps the key), or
    `"icon": { "remoteUrl": "https://…" }` for a config-delivered icon (no Kotlin at all), or
@@ -68,12 +62,8 @@ Checklist (details below):
 8. `previousHosts` / `previousImageHosts`: leave empty for a new source. They exist for **domain
    moves** (§7) — append the OLD host when `baseUrl` changes so stored library/chapter/history
    URLs are rewritten and user-configured mirrors are protected.
-9. **No enum entry** (MangaSource decoupling, 2026-07): a generic stanza needs NO `MangaSource`
-   entry — `LegacyStanzaCompletenessTest` now pins the enum⇄stanza completeness for LEGACY
-   stanzas only (a metadata-only legacy stanza must still name a shipped scraper). Where a
-   generic stanza shares an api with a converted legacy scraper (the 12 pilots), its `language`
-   must still match the enum's. `GenericSourcesDecouplingGuardTest` fails the build if
-   production code outside `:sources:legacy` references the enum again.
+9. **No enum or legacy entry:** a generic stanza needs no `MangaSource` entry. Archived scrapers are
+   migration references only and must not be added to the runtime graph.
 10. Add a `<Source>PilotParityTest.kt` in `:composeApp` commonTest with real captured HTML/JSON
     fixtures asserting each verb's parsed output (see any existing `*PilotParityTest.kt`).
 11. If the site needs an engine capability that doesn't exist yet (new transform, new pagination
@@ -112,9 +102,8 @@ Rules:
 
 ## 4. Required endpoint behavior — there is NO legacy fallback
 
-Since the Phase 5/6 registry hardening, `DefaultSourceRegistry.get()` returns the **bare**
-`GenericSourceClient` for a config-backed api. `FallbackSourceClient` is retained-but-unwired
-rollback material. Consequences:
+`DefaultSourceRegistry.get()` returns the **bare** `GenericSourceClient` for an active,
+config-backed api. The fallback and legacy client classes are deleted. Consequences:
 
 - A **missing endpoint** returns `AppError.Validation.Required("endpoint:<verb>")` to the user on
   every use of that verb. It does not fall back to the legacy scraper. (Older docs claiming
@@ -154,18 +143,16 @@ What each endpoint must produce (verb → domain result, via the `fields` mappin
   `imageStrategy` name must be compiled into `DefaultStrategyRegistry` (the image set is
   intentionally EMPTY — any `imageStrategy` reference is rejected).
 
-**Acceptance is all-or-nothing.** `RemoteSourceConfigManager` drops the ENTIRE document if any
-stanza has any error. For the bundled document that means degrading to an empty document — **every
-generic source disappears at once** (Home shows its error pane; the catalog sync's guard prevents
-DB damage). Unknown JSON fields are silently ignored (`ignoreUnknownKeys`), so typo'd *field
-names* don't fail validation — they just don't do anything. Two safety nets exist:
+**Acceptance is all-or-nothing.** The incremental manager rejects the candidate manifest if any
+manifest, source, signature, schema, identity, lifecycle, strategy, or full-document check fails.
+It never exposes a partial candidate; the complete last-known-good catalog or bundle remains active.
+Unknown JSON fields are ignored for compatibility, so typo'd field names still require parity tests.
+Two safety nets exist:
 
-- **Build time**: `ConfigBackedSourceCompletenessTest` (+ `LegacyStanzaCompletenessTest`,
-  `JsonOnlySourceAdditionTest`, `GenericSourcesDecouplingGuardTest`) in `:composeApp` tests —
-  parse the bundled JSON, run the shipping validator, verify every generic stanza is
-  registry-reachable with all required endpoints, and fail the build if production code
-  re-couples to the `MangaSource` enum or a compiled api allow-list. Run in CI
-  (`:composeApp:desktopTest`).
+- **Build time**: `BundledSourceCatalogPolicyTest`, `ConfigBackedSourceCompletenessTest`,
+  `IncrementalSourceCatalogManagerTest`, `KtorRemoteSourceCatalogTest`, and
+  `RoomSourceCatalogStoreTest` pin the exact-12 bundle, required endpoints, signatures, delta
+  behavior, lifecycle removal, immutable revisions, and atomic activation.
 - **Runtime**: the manager's `onDocumentRejected` hook logs every rejection with per-stanza
   reasons (tag `SourceConfig`), and `App.kt` logs a startup alarm if the active document contains
   zero generic stanzas.
@@ -174,8 +161,9 @@ names* don't fail validation — they just don't do anything. Two safety nets ex
 
 ```bash
 # 1. The config gates (parse + validate + registry reachability + endpoint completeness):
-./gradlew :composeApp:desktopTest --tests "me.manga.kira.sources.runtime.ConfigBackedSourceCompletenessTest" \
-                                  --tests "me.manga.kira.sources.runtime.LegacyStanzaCompletenessTest" --offline
+./gradlew :composeApp:desktopTest \
+  --tests "me.manga.kira.sources.runtime.ConfigBackedSourceCompletenessTest" \
+  --tests "me.manga.kira.sources.runtime.BundledSourceCatalogPolicyTest" --offline
 
 # 2. Your parity test + everything else in the sources runtime:
 ./gradlew :composeApp:desktopTest --offline
@@ -226,25 +214,25 @@ Manual, on a device/emulator (`SourcesScreen` → enable the new source):
 - **Changing the api**: never (§3).
 - **Removing an endpoint**: instant user-visible breakage of that verb (§4); the completeness
   test will fail the build for the four required ones — that's by design.
-- **Changing `lifecycle`**: this is the kill switch (§8) — `disabled` force-disables the source
-  on *every* launch (a user's re-enable lasts one session); `removed` deletes its catalog row.
-- **Deleting a stanza**: don't (§8) — the sources row is orphaned (force-disabled but never
-  cleaned), the alias sweep stops running for it, and the ghost-gate test breaks the build
-  anyway if the enum entry remains.
+- **Changing lifecycle**: use the backend state machine (§8). A signed manifest with
+  `disabled`, `retired`, or a `removed` tombstone removes the api from the active projection.
+- **Deleting a source without a lifecycle publication**: do not. The backend must publish the
+  explicit transition/tombstone so clients cannot confuse omission with an incomplete catalog.
 - **Editing a generic stanza's selectors without re-running the parity test**: a stale selector
   that still returns 200-with-empty is the forbidden wrong-but-Success mode.
 
 ## 8. How to retire a source
 
-The policy (in order — never skip to deletion):
+The backend policy is explicit and ordered:
 
-1. **First release: `"lifecycle": "disabled"`.** The catalog sync force-disables the row every
-   launch; the source disappears from Home/search but its row (user toggle, mirror URL,
-   siteState) is kept for saved-entry reads. Reversible by shipping `active` again.
-2. **Later release (optional): `"lifecycle": "removed"`.** The sync deletes the `sources` row
-   (including the user's toggle and mirror URL) and skips re-seed + alias sweep. The stanza stays
-   in the document as a tombstone — **never silently delete a shipped stanza**.
-3. **Never rename or reuse the api** (§3).
+1. Publish `active → disabled`.
+2. After review/grace, publish `disabled → retired`.
+3. Publish `retired → removed` with the required confirmation; v2 retains an identity tombstone.
+4. Never rename or reuse the api (§3).
+
+Each accepted state removes a non-active source from the runtime projection. Re-enabling a reviewed
+generic source requires an explicit backend transition and a completely verified manifest; absence
+never activates a bundled or legacy implementation.
 
 What survives, forever, in either state (verified in code — there is no orphan cleanup, by
 design):
@@ -507,7 +495,7 @@ fields.
 > or a `when(api)` branch. (Build gate: `GenericSourcesDecouplingGuardTest`, incl. the
 > `when(api)` scan over the generic pipeline modules.)
 
-*Invariants recap: api strings are immutable once shipped · retirement is `disabled` → `removed`,
-never silent stanza deletion · `previousHosts` is append-only · validation is all-or-nothing
-(build gate: `ConfigBackedSourceCompletenessTest`) · generic sources have no legacy fallback —
-every required endpoint must exist and be parity-tested.*
+*Invariants recap: api strings are immutable once shipped · retirement is
+`disabled → retired → removed`, never silent deletion · `previousHosts` is append-only · manifest
+activation is all-or-nothing · generic sources have no legacy fallback · every required endpoint
+must exist and be parity-tested.*

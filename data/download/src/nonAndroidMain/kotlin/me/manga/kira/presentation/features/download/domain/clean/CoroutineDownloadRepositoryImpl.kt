@@ -36,8 +36,6 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.ar.mangamelloplus.MangamelloPlusRepository
 import okio.buffer
 import okio.use
 
@@ -319,8 +317,8 @@ class CoroutineDownloadRepositoryImpl(
             return
         }
 
-        // M1 (clean seam): page-URL + header resolution (config/generic vs legacy scraper) now lives
-        // in ChapterPageResolver — same logic, just relocated so the iOS background engine reuses it.
+        // M1 (clean seam): catalog page-URL + header resolution lives in ChapterPageResolver so
+        // the iOS background engine reuses the same verified path.
         // A resolve failure is classified here (not left to the worker loop's generic catch) so a
         // WebView-solvable Cloudflare/anti-bot challenge stamps the sentinel — the Details VM then
         // auto-routes to the solver and re-enqueues, exactly like the iOS background engine and the
@@ -347,7 +345,8 @@ class CoroutineDownloadRepositoryImpl(
         appFileSystem.fileSystem().createDirectories(outDir)
 
         val downloadedPaths = mutableListOf<String>()
-        for ((index, url) in imageUrls.withIndex()) {
+        for ((index, page) in resolved.pages.withIndex()) {
+            val url = page.url
             currentCoroutineContext().ensureActive()
             // Cooperative cancel: if an outside caller flipped this chapter to FAILED, stop.
             val state = dao.getDownloadByChapter(entity.chapterId)?.state
@@ -360,7 +359,7 @@ class CoroutineDownloadRepositoryImpl(
             }
 
             try {
-                val path = downloadOnePage(url, savedChapter, index, resolved.repo, resolved.overrideHeaders)
+                val path = downloadOnePage(url, savedChapter, index, page.headers)
                 downloadedPaths += path
             } catch (ce: CancellationException) {
                 throw ce
@@ -396,28 +395,11 @@ class CoroutineDownloadRepositoryImpl(
         imageUrl: String,
         chapter: SavedChapterEntity,
         imageIndex: Int,
-        repo: BaseMangaRepository?,
-        // Sources Migration Phase 3: when non-null (config-backed/generic path), these per-page headers
-        // are used verbatim and the legacy repo-based header logic is skipped (repo is null there).
-        overrideHeaders: Map<String, String>?,
+        pageHeaders: Map<String, String>,
     ): String = withContext(Dispatchers.Default) {
         val response: HttpResponse = httpClient.get(imageUrl) {
             headers {
-                when {
-                    overrideHeaders != null -> overrideHeaders.forEach { (name, value) -> append(name, value) }
-                    // Parity with Android ChapterDownloadService.downloadImage: MangamelloPlus image
-                    // URLs on the mangamello CDN take the dedicated imgsHeader (host: cdn.mangamello.com)
-                    // and everything else for that repo takes NO headers; all other repos use defaultHeaders.
-                    repo is MangamelloPlusRepository -> {
-                        if (imageUrl.contains("mangamello", ignoreCase = true) ||
-                            imageUrl.contains("mello", ignoreCase = true) ||
-                            imageUrl.contains("cdn.mangamello.com", ignoreCase = true)
-                        ) {
-                            repo.imgsHeader.forEach { (name, value) -> append(name, value) }
-                        }
-                    }
-                    repo != null -> repo.defaultHeaders.forEach { (name, value) -> append(name, value) }
-                }
+                pageHeaders.forEach { (name, value) -> append(name, value) }
             }
         }
         if (!response.status.isSuccess()) {
@@ -622,4 +604,3 @@ class CoroutineDownloadRepositoryImpl(
  *     .kt) which are NOT fan-shaped + the :shared platform-actual subtree §253 sweep
  *     would reach SATURATION at that point.
  */
-
