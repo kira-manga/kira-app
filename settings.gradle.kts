@@ -17,6 +17,26 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        if (providers.gradleProperty("kiraUseMavenLocal").orNull == "true") {
+            mavenLocal {
+                content {
+                    includeGroup("me.manga.kira.source")
+                }
+            }
+        }
+        maven("https://maven.pkg.github.com/kira-manga/kira-source-engine") {
+            credentials {
+                username =
+                    providers.environmentVariable("KIRA_PACKAGES_USER").orNull
+                        ?: providers.environmentVariable("GITHUB_ACTOR").orNull
+                password =
+                    providers.environmentVariable("KIRA_PACKAGES_READ_TOKEN").orNull
+                        ?: providers.environmentVariable("GITHUB_TOKEN").orNull
+            }
+            content {
+                includeGroup("me.manga.kira.source")
+            }
+        }
         maven("https://jitpack.io") {
             content {
                 // JitPack may only serve its own com.github.* coordinates. Without this filter it

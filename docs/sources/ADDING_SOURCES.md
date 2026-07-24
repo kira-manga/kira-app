@@ -67,10 +67,12 @@ Checklist (details below):
 10. Add a `<Source>PilotParityTest.kt` in `:composeApp` commonTest with real captured HTML/JSON
     fixtures asserting each verb's parsed output (see any existing `*PilotParityTest.kt`).
 11. If the site needs an engine capability that doesn't exist yet (new transform, new pagination
-    type, new date strategy): implement it in `:sources:engine`, whitelist the name in
-    `DefaultStrategyRegistry`, and add a golden test in `:sources:engine`. Configs may only
-    reference names compiled into that registry — the validator rejects everything else
-    (fail-closed; do not weaken).
+    type, new date strategy): implement and test it in the separately versioned
+    `kira-manga/kira-source-engine` repository, publish a reviewed immutable package version, then
+    update the pinned `me.manga.kira.source:source-engine` dependency in this repository. The app's
+    `GenericSourceClient` is only a ports/domain adapter; do not add execution behavior to it.
+    Configs may reference only names compiled into the shared registry — validation remains
+    fail-closed.
 
 Derive selectors/paths from the legacy parser in `sources_repositry/` when converting (that tree
 is the read-only spec).
@@ -129,7 +131,8 @@ What each endpoint must produce (verb → domain result, via the `fields` mappin
 
 ## 5. Validation rules — and why one bad stanza is catastrophic
 
-`DefaultSourceConfigValidator` (`:sources:engine`) checks, per document:
+`DefaultSourceConfigValidator` (`:sources:engine`) checks app catalog acceptance per document.
+Source execution is delegated to the pinned shared-engine package used by backend previews:
 
 - `schemaVersion == 1` (anything else rejects the document immediately);
 - per stanza: non-blank **unique** `api`; non-blank `language`; `baseUrl` starting with `http`;
@@ -171,12 +174,17 @@ Two safety nets exist:
 # 2. Your parity test + everything else in the sources runtime:
 ./gradlew :composeApp:desktopTest --offline
 
-# 3. If you added an engine capability:
+# 3. Verify the app adapter against the pinned shared engine:
 ./gradlew :sources:engine:desktopTest --offline
 
 # 4. The standard compile gate before committing:
 ./gradlew :composeApp:compileAndroidMain :composeApp:compileKotlinDesktop :composeApp:compileKotlinIosSimulatorArm64 --offline
 ```
+
+For local development before a package is published, publish the exact version to Maven Local from
+the shared-engine repository and add `-PkiraUseMavenLocal=true` to app Gradle commands. Normal CI
+resolves the private package from GitHub Packages using `KIRA_PACKAGES_USER` and
+`KIRA_PACKAGES_READ_TOKEN` (or the equivalent GitHub Actions variables).
 
 Manual, on a device/emulator (`SourcesScreen` → enable the new source):
 
