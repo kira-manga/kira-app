@@ -257,11 +257,8 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
-// v10 -> v11 (Sources Migration — Phase 1): add the single-row `source_config_cache` table — the
-// durable cache tier of the generic-sources config `ConfigStore` (was in-memory only, lost on
-// process death). Pure additive CREATE TABLE; the column list/types/PK must match Room's generated
-// schema for SourceConfigCacheEntity exactly (id INTEGER PK NOT NULL, rawJson TEXT NOT NULL,
-// revision INTEGER NOT NULL, updatedAtEpochMs INTEGER NOT NULL).
+// v10 -> v11 historical schema: add the former whole-document cache. Migration 11→12 clears this
+// obsolete table, but the migration remains byte-for-byte compatible with v11 installations.
 val MIGRATION_10_11 = object : Migration(10, 11) {
     override fun migrate(connection: SQLiteConnection) {
         connection.execSQL(
@@ -271,6 +268,83 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
                 `rawJson` TEXT NOT NULL,
                 `revision` INTEGER NOT NULL,
                 `updatedAtEpochMs` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * v11 -> v12: discard the obsolete full-document cache and add immutable source revisions,
+ * signed manifests, ordered entries, and one atomic active-catalog pointer.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("DELETE FROM `source_config_cache`")
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `source_catalog_manifests` (
+                `catalogRevision` INTEGER NOT NULL,
+                `rawPayload` TEXT NOT NULL,
+                `format` TEXT NOT NULL,
+                `algorithm` TEXT NOT NULL,
+                `signingKeyId` TEXT NOT NULL,
+                `signatureBase64` TEXT NOT NULL,
+                `checksum` TEXT NOT NULL,
+                `createdAt` TEXT NOT NULL,
+                `previousRevision` INTEGER,
+                `previousChecksum` TEXT,
+                PRIMARY KEY(`catalogRevision`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `source_catalog_entries` (
+                `catalogRevision` INTEGER NOT NULL,
+                `api` TEXT NOT NULL,
+                `sourceRevision` INTEGER NOT NULL,
+                `checksum` TEXT NOT NULL,
+                `displayOrder` INTEGER NOT NULL,
+                `lifecycle` TEXT NOT NULL,
+                `engine` TEXT NOT NULL,
+                `sourceSigningKeyId` TEXT NOT NULL,
+                `sourceSignature` TEXT NOT NULL,
+                PRIMARY KEY(`catalogRevision`, `api`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_source_catalog_entries_api_sourceRevision`
+            ON `source_catalog_entries` (`api`, `sourceRevision`)
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `source_revision_artifacts` (
+                `api` TEXT NOT NULL,
+                `sourceRevision` INTEGER NOT NULL,
+                `checksum` TEXT NOT NULL,
+                `canonVersion` TEXT NOT NULL,
+                `rawPayload` TEXT NOT NULL,
+                PRIMARY KEY(`api`, `sourceRevision`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS `index_source_revision_artifacts_checksum`
+            ON `source_revision_artifacts` (`checksum`)
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `active_source_catalog` (
+                `id` INTEGER NOT NULL,
+                `catalogRevision` INTEGER NOT NULL,
+                `checksum` TEXT NOT NULL,
                 PRIMARY KEY(`id`)
             )
             """.trimIndent(),
@@ -343,4 +417,3 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
  * version = 10. The verbose postscript prose is retained as lineage per the audit-trail-preservation
  * convention.
  */
-

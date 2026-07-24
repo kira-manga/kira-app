@@ -11,7 +11,7 @@ import org.koin.dsl.module
 // reusing the M1 ChapterPageResolver + ChapterFinalizer collaborators. Downloads pages with the
 // Koin-injected Ktor HttpClient (CIO engine) into AppFileSystem.chapterDir.
 actual fun downloadModule(): Module = module {
-    single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get(), sourcesRepository = get()) }
+    single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
     single {
         ChapterFinalizer(
             dao = get(),

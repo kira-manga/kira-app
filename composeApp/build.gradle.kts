@@ -191,6 +191,7 @@ kotlin {
             implementation(project(":data:download"))
             implementation(project(":sources:legacy"))
             implementation(project(":platform"))
+            implementation(libs.androidx.room.runtime)
 
             // Generic-sources subsystem (Stage-0). :composeApp is the assembly root that wires the
             // engine + config + legacy adapters behind the :sources:contracts interfaces. :data only

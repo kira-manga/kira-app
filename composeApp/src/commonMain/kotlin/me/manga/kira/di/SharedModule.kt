@@ -7,7 +7,7 @@ import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.di.databaseModule
 import me.manga.kira.data.remote.di.remoteModule
 import me.manga.kira.domain.service.FileService
-import me.manga.kira.sources.legacy.di.legacySourcesModule
+import me.manga.kira.sources.legacy.di.sourcePersistenceModule
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -56,10 +56,10 @@ val sharedModule: Module = module {
     // ---- HTTP / API ----
     // Relocated to :data:remote `remoteModule()` (strangler-fig Phase 2), added via allSharedModules().
 
-    // ---- Per-source repositories (Phase 7 ports) ----
-    // Relocated to :sources:legacy `legacySourcesModule()` (strangler-fig Phase 3), added via
-    // allSharedModules(). The 43 scraper factories + ManhastroDadosStore + the Set<BaseMangaRepository>
-    // registry live there now; `SourcesRepository` (below) resolves that Set cross-module by type.
+    // ---- Source persistence compatibility ----
+    // `sourcePersistenceModule()` retains the Room-facing library/source facades, but deliberately
+    // binds an empty Set<BaseMangaRepository>. Compiled legacy scrapers are not executable through
+    // the runtime graph; active clients come only from the verified generic catalog.
 
     // ---- Phase 8.13 repos / helpers ----
     // Helpers first (storage / filesystem service), then domain repositories that depend on
@@ -95,9 +95,8 @@ val sharedModule: Module = module {
     // StatisticsRepository + SettingsRepository relocated to :data legacyDataModule (strangler-fig
     // Phase 5), alongside WhatsNewRemoteDataSource.
 
-    // LibraryRepository + SourcesRepository relocated to :sources:legacy legacySourcesModule()
-    // (strangler-fig Phase 5) — they + the Set<BaseMangaRepository> registry now live together in
-    // the module both :data:download and :app depend on.
+    // LibraryRepository + SourcesRepository live in :sources:legacy's sourcePersistenceModule().
+    // Its repository set is intentionally empty; the facades remain only for persistence seams.
 
     // Complaint (feedback) feature relocated to :data (strangler-fig Phase 5): the five use-case
     // factories moved to :data complaintUseCasesModule, and the per-target ComplaintRepository
@@ -209,7 +208,7 @@ val sharedModule: Module = module {
  * Convenience: all KMP-portable common bindings exposed as a single list, so the host can do
  * `startKoin { modules(allSharedModules() + platformModule()) }`.
  */
-fun allSharedModules(): List<Module> = listOf(sharedModule, databaseModule(), remoteModule(), legacySourcesModule())
+fun allSharedModules(): List<Module> = listOf(sharedModule, databaseModule(), remoteModule(), sourcePersistenceModule())
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster172.staleKdocSweep.cascade,

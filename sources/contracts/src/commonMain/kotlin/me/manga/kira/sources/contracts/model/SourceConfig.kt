@@ -26,13 +26,10 @@ data class SourceConfigDocument(
 )
 
 /**
- * One source. [api] is the stable key matching the legacy `MangaSource.API`, so a config-driven
- * source is a drop-in replacement for its Kotlin predecessor at the registry boundary.
+ * One source. [api] is its immutable identity across manifests, local data, and backups.
  *
- * [engine] selects how the source is executed: `"generic"` runs through the config-driven engine;
- * `"legacy"` (or `"kotlin:<id>"`) tells the registry to keep using the legacy adapter for this
- * source. A set of pilot sources already ship `engine = "generic"` and run through the engine in
- * production (behind the legacy `FallbackSourceClient`); the rest stay `"legacy"`.
+ * The shipping registry executes only `"generic"`. Compatibility parsing may recognize older
+ * engine values, but a v2 manifest containing one is rejected and no adapter is created.
  */
 @Serializable
 data class SourceConfig(
@@ -50,9 +47,12 @@ data class SourceConfig(
      * honoring it, keeping every already-shipped document's seeding behavior identical.
      */
     val enabled: Boolean = false,
-    /** Higher wins if two configs claim the same [api] (e.g. remote overriding bundled). */
+    /** Display order hint; signed v2 manifests replace it with their contiguous entry order. */
     val priority: Int = 0,
-    /** `"generic"` | `"legacy"` | `"kotlin:<id>"`. Default `"legacy"`; the pilot set ships `"generic"`. */
+    /**
+     * Execution engine. The `"legacy"` default exists only to parse archived descriptors; bundled
+     * and signed v2 catalogs reject every value except `"generic"`.
+     */
     val engine: String = "legacy",
     /** Declared minimum app version. Reserved for a Stage-1 version gate; NOT enforced by the engine yet. */
     val minAppVersion: String? = null,
@@ -76,11 +76,8 @@ data class SourceConfig(
      */
     val blacklistGenres: List<String> = emptyList(),
     /**
-     * Source-lifecycle metadata block (this and the four fields below — SourceRegistry retirement,
-     * SOURCE_REGISTRY_RETIREMENT_PLAN.md §2): applies to EVERY engine, including metadata-only
-     * `engine="legacy"` stanzas, and is consumed by the catalog sync
-     * (`SourceCatalogSyncRepositoryImpl`), not the engine. All five default so documents authored
-     * before them parse unchanged.
+     * Source-lifecycle metadata. Defaults preserve parsing compatibility with archived documents;
+     * the signed manifest is authoritative for remote lifecycle and ordering.
      *
      * This field — operational status (R5): projected into the `sources` row's siteState by the
      * catalog sync (drives the Home-tab maintenance/stopped states). One of `"WORKING"`,

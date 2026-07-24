@@ -1,21 +1,20 @@
 package me.manga.kira.sources.runtime
 
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
-import me.manga.kira.sources.config.RemoteSourceConfigManager
-import me.manga.kira.sources.engine.DefaultSourceConfigValidator
-import me.manga.kira.sources.engine.DefaultStrategyRegistry
+import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.engine.GenericSourceClient
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
  * Sources Migration — Phase 4. End-to-end DOWNLOAD-seam parity: exercises the FULL download path with
  * the REAL shipping config — `RegistryChapterPageProvider` → real `DefaultSourceRegistry` (built from
- * `CONFIG_BACKED_SOURCES_JSON`, generic-with-legacy-fallback) → real `GenericSourceClient` over fake HTTP
+ * `CONFIG_BACKED_SOURCES_JSON`, generic-only) → real `GenericSourceClient` over fake HTTP
  * → `DownloadPage(url, headers)`. Complements Phase 3's `RegistryChapterPageProviderTest` (which used
  * stub clients to prove routing/mapping) by proving the real config + engine produce correct download
  * pages: page ORDER (CBZ ordering), URL absolutization, and per-page download HEADERS.
@@ -54,14 +53,13 @@ class DownloadPageSeamParityTest {
     /** The real registry assembly (mirrors `DefaultSourceRegistryTest.realRegistry`) but with a real
      *  `GenericSourceClient` factory over the canned page fixtures. */
     private fun provider(): RegistryChapterPageProvider {
+        val document =
+            when (val parsed = SourceConfigParser.parse(CONFIG_BACKED_SOURCES_JSON)) {
+                is AppResult.Success -> parsed.value
+                is AppResult.Failure -> error("bundled config must parse: ${parsed.error}")
+            }
         val registry = DefaultSourceRegistry(
-            legacyRepos = setOf(FakeLegacyRepo("Azora"), FakeLegacyRepo("Zazamanga")),
-            updateManager = RemoteSourceConfigManager(
-                store = BundledSourceConfigStore(CONFIG_BACKED_SOURCES_JSON),
-                verifier = DenyRemoteSignatureVerifier(),
-                validator = DefaultSourceConfigValidator(DefaultStrategyRegistry()),
-                remote = null,
-            ),
+            updateManager = StaticSourceUpdateManager(document),
             genericClientFactory = { cfg -> GenericSourceClient(cfg, MapFakeHttp(fixtures), NoopHeaderStore()) },
         )
         return RegistryChapterPageProvider(registry)
@@ -106,9 +104,9 @@ class DownloadPageSeamParityTest {
     }
 
     @Test
-    fun non_config_source_returns_null_so_download_keeps_legacy() = runTest {
-        assertNull(
-            provider().pagesOrNull("NotPiloted", "https://x.test/m", "(EN)", "https://x.test/m/c1"),
-        )
+    fun non_config_source_fails_closed_without_legacy_fallback() = runTest {
+        assertFailsWith<GenericPagesFailedException> {
+            provider().pagesOrNull("NotPiloted", "https://x.test/m", "(EN)", "https://x.test/m/c1")
+        }
     }
 }

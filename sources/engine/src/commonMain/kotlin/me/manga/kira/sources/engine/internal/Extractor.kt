@@ -124,8 +124,8 @@ internal object Extractor {
      * The JSON text inside a `<script id="…">` island (default `__NEXT_DATA__`) — how client-rendered
      * (Next.js/RSC) sites expose their data when the visible DOM has none. Throws when the island is
      * absent/blank: a missing island is a STRUCTURAL site change (redesign/rename), not ordinary selector
-     * rot, so it must surface as a Failure (→ legacy fallback) rather than degrade to an empty `{}` that
-     * would be a wrong-but-Success result suppressing the fallback.
+     * rot, so it must surface as a failure rather than degrade to an empty `{}` that would be a
+     * wrong-but-success result.
      */
     private fun scriptJson(body: String, scriptId: String): String {
         val id = scriptId.ifEmpty { "__NEXT_DATA__" }

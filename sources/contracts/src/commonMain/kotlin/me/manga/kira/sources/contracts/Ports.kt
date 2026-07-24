@@ -38,8 +38,7 @@ data class SourceResponse(
 /**
  * Per-source captured headers (cookies, user-agent, Cloudflare clearance) persisted by the WebView
  * solver flow. The engine reads these to authenticate requests; it never writes them. Backed at the
- * composition root by the same `DataStoreHelper` the legacy sources already use, so a migrated
- * source reuses headers a user captured before migration.
+ * composition root by the application's existing `DataStoreHelper`.
  */
 interface HeaderStore {
     suspend fun headersFor(api: String): Map<String, String>
@@ -50,21 +49,7 @@ interface HeaderStore {
     )
 }
 
-/**
- * Storage for the raw signed config document. [readBundled] returns the asset shipped in the binary
- * (always present, the floor); [readCached]/[writeCached] hold the last accepted remote document.
- * The bundle is raw JSON; the cache is the complete signed envelope so it can be authenticated again
- * before parsing after every process restart.
- */
-interface ConfigStore {
-    fun readBundled(): String?
-
-    suspend fun readCached(): SignedConfigDocument?
-
-    suspend fun writeCached(document: SignedConfigDocument)
-}
-
-/** Immutable detached-signature metadata supplied by the backend and covered by Ed25519. */
+/** Immutable detached-signature metadata for the backend's signed catalog manifest. */
 @Serializable
 data class ConfigSignatureMetadata(
     val format: String,
@@ -77,22 +62,6 @@ data class ConfigSignatureMetadata(
     val previousRevision: Long? = null,
     val previousChecksum: String? = null,
 )
-
-/** Exact UTF-8 document plus all metadata required to verify it again after process death. */
-@Serializable
-data class SignedConfigDocument(
-    val payload: String,
-    val metadata: ConfigSignatureMetadata,
-)
-
-/**
- * Verifies the detached signature over a config payload before it is ever parsed or trusted. Every
- * cached or remote document requires a valid pinned-key signature; the bundled asset is trusted
- * implicitly because it shipped inside the signed app binary.
- */
-interface ConfigSignatureVerifier {
-    fun verify(document: SignedConfigDocument): Boolean
-}
 
 /**
  * One-way signal raised when the engine detects a Cloudflare/anti-bot interstitial (mirrors the
@@ -107,8 +76,8 @@ fun interface CloudflareChallengeSignal {
 }
 
 /**
- * Supplies the live, current base URL for a source — the same one the legacy path follows when a
- * server-pushed / user-edited domain move is stored in the sources DB. The engine prefers this over
+ * Supplies the live, current base URL for a source when a catalog or user-edited domain move is
+ * stored in the sources DB. The engine prefers this over
  * the (frozen) [me.manga.kira.sources.contracts.model.SourceConfig.baseUrl] so a piloted source
  * whose host moves keeps working without a remote config refresh; null/blank means "no override,
  * use the config's baseUrl". Backed at the composition root by the same source store the legacy

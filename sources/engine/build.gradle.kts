@@ -47,6 +47,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":sources:contracts"))
+            implementation("me.manga.kira.source:source-engine:0.1.0")
             // JSON config parsing + JSON-API response extraction.
             implementation(libs.kotlinx.serialization.json)
             // HTML response extraction (CSS selectors) — KMP, same parser the legacy sources use.

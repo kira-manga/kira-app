@@ -66,6 +66,7 @@ fun buildMangaDatabase(): MangaDatabase =
             MIGRATION_8_9,
             MIGRATION_9_10,
             MIGRATION_10_11,
+            MIGRATION_11_12,
         )
         .addCallback(ForeignKeysOnCallback)
         .setDriver(ForeignKeysDriver(BundledSQLiteDriver()))
@@ -192,4 +193,3 @@ fun buildMangaDatabase(): MangaDatabase =
  * MIGRATION_9_10), matching MangaDatabase v10. Same staleness the B14 sweep
  * corrected on MangaDatabase.kt.
  */
-

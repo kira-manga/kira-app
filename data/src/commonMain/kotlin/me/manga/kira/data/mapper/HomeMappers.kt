@@ -2,19 +2,19 @@ package me.manga.kira.data.mapper
 
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.error.TransportErrorMessages
-import me.manga.kira.core.states.State as LegacyState
+import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.home.SourceTab
+import me.manga.kira.presentation.features.repo_settings.domain.SourceState
+import me.manga.kira.sources.contracts.isValidSourceBaseUrl
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
 import me.manga.kira.domain.model.MangaItem as LegacyMangaItem
 import me.manga.kira.domain.model.PopularManga as LegacyPopularManga
-import me.manga.kira.data.local.entity.SourcesEntity
-import me.manga.kira.presentation.features.home.data.SearchType
-import me.manga.kira.presentation.features.repo_settings.domain.SourceState
-import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 
 /**
  * Mappers for the Home + Search slice (Epic H2).
@@ -107,7 +107,9 @@ internal fun SourcesEntity.toSourceTab(descriptor: RuntimeSourceDescriptor?): So
     // The source's base URL — Home's "open in WebView" opens this (native parity). The Room row is
     // the live field (asserted to config truth by the catalog sync, and user-mirror-editable);
     // the descriptor's baseUrl is the fallback for a not-yet-synced row.
-    baseUrl = baseUrl.ifBlank { descriptor?.baseUrl.orEmpty() },
+    // A legacy/user-editable Room row may contain a stale non-network value (observed:
+    // `about:about`). It must not override the validated active descriptor or reach WKWebView.
+    baseUrl = baseUrl.takeIf(::isValidSourceBaseUrl) ?: descriptor?.baseUrl.orEmpty(),
     // MangaSource decoupling (2026-07): the tab is built from the row + the validated config
     // descriptor — no BaseMangaRepository required, so a config-only source appears like any other.
     displayName = descriptor?.displayName ?: name,

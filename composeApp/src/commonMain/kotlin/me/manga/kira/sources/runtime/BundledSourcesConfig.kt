@@ -4,36 +4,18 @@ package me.manga.kira.sources.runtime
  * The bundled, in-binary source-config document for the Stage-1 config-backed. It ships inside the signed app
  * binary (so it needs no detached signature — it is trusted by virtue of the binary's own signing),
  * is pure DATA (a JSON descriptor the engine interprets — no source-specific Kotlin), and ships the
- * generic-engine config-backed config: every stanza declaring `engine:"generic"` (the validated
- * document is the SINGLE authority for the generic set — see the per-source derivation/divergence
- * notes at the bottom of this file). Every other source stays on the legacy adapter.
+ * exact twelve reviewed `engine:"generic"` sources. It contains no legacy metadata or executable
+ * legacy path. A backend outage therefore cannot reactivate a source outside this floor.
  *
- * Reading this from a `composeResources` asset or a signed remote feed is deferred (Stage-2 / remote);
- * a string constant is the minimal correct "bundled config" for the config-backed and keeps the store sync.
- *
- * ## Legacy metadata-only stanzas (SourceRegistry retirement Phase 4 — Option A, 2026-07-04)
- * Every legacy (non-generic) api in the [me.manga.kira.sources_repositry.data.MangaSource]
- * registry now has an `engine:"legacy"` stanza carrying ONLY lifecycle metadata (baseUrl,
- * imageBase, siteState, previousHosts) — no endpoints/fields, nothing executable. They make the
- * config document the single authority for legacy sources' host moves / status / removal too
- * (`SourceCatalogSyncRepositoryImpl` manages their rows; they are never seeded, never declare
- * `engine:"generic"`, and stay force-disabled). Values captured VERBATIM from the production
- * registry feed (`/source/35`, 2026-07-04) so existing endpoint-written rows match byte-for-byte
- * (zero first-launch churn); the 4 apis absent from that feed (Comick, مانجا بارك, Mangapark-It,
- * Batcave) carry their MangaSource code constants. previousHosts declares the 3 live host moves
- * (Dilar: dilar.tube→golden.rest, Komik Cast: komikcast.pics→v1.komikcast05.com, Flowermanga:
- * flowermanga.net→flowermangas.net) so pre-move stored URLs migrate exactly as the endpoint would
- * have. The 12 GENERIC stanzas were deliberately left untouched: their baseUrl is the generic
- * ENGINE's base (e.g. Azora's api.azorafly.com REST API), which legitimately differs from the
- * legacy scraper host the feed advertises — cross-SYSTEM hosts must never enter previousHosts
- * (a host swap across systems would corrupt stored paths). Completeness is pinned by
- * `LegacyStanzaCompletenessTest`.
+ * The signed v2 manifest may replace this floor only after every referenced immutable source
+ * revision has been downloaded, verified, persisted, and activated atomically.
  *
  * ## Azora descriptor — a worked example, derived field-by-field from the legacy parser
  * (`sources_repositry/ar/azora/AzoraModels.kt`, the parity spec):
  *  - api `"Azora"`, language `"(AR)"` (== `MangaSource.AZORA.API` / `.LANGUAGE.Language`).
  *  - home/popular/search → `GET /api/query?...` → JSON list at `posts`.
- *  - details → `GET {itemUrl}` (the stored `…/api/post/?postId=<id>`) → scalars under `post`, chapters at `post.chapters`.
+ *  - details → `GET {itemUrl}&includeChapters=true` (the stored `…/api/post/?postId=<id>`) →
+ *    scalars under `post`, chapters at `post.chapters`. Azora made chapters opt-in in July 2026.
  *  - pages → `GET {chapterUrl}` (`…/api/chapter?chapterId=<id>`) → image list at `chapter.images`.
  *  - item/chapter URLs are templated from the numeric `id` (mirrors `buildMangaUrl`/`buildChapterUrl`).
  *  - rating defaults to `"0"`, status to `"Unknown"`, description via `clean-html` (== `cleanHtmlContent`),
@@ -53,7 +35,7 @@ package me.manga.kira.sources.runtime
 const val CONFIG_BACKED_SOURCES_JSON: String = """
 {
   "schemaVersion": 1,
-  "revision": 4,
+  "revision": 6,
   "sources": [
     {
       "api": "Azora",
@@ -69,7 +51,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
         "home":     { "url": "{baseUrl}/api/query?page={page}&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc", "format": "json", "root": "posts" },
         "featured": { "url": "{baseUrl}/api/query?page={page}&perPage=24&orderBy=totalViews&orderDirection=desc", "format": "json", "root": "posts" },
         "search":   { "url": "{baseUrl}/api/query?searchTerm={queryEncoded}&perPage=24", "format": "json", "root": "posts" },
-        "details": { "url": "{itemUrl}", "format": "json" },
+        "details": { "url": "{itemUrl}&includeChapters=true", "format": "json" },
         "pages":   { "url": "{chapterUrl}", "format": "json", "root": "chapter.images" }
       },
       "fields": {
@@ -616,241 +598,6 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
 
         "page.image": { "selector": "", "attr": "abs:data-src" }
       }
-    },
-    {
-      "api": "Lavatoons",
-      "language": "(AR)",
-      "baseUrl": "https://lavascans.com",
-      "imageBase": "https://lavascans.com",
-      "engine": "legacy"
-    },
-    {
-      "api": "Mangatuk",
-      "language": "(AR)",
-      "baseUrl": "https://mangatuk.com/",
-      "imageBase": "https://mangatuk.com/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Dilar",
-      "language": "(AR)",
-      "baseUrl": "https://golden.rest/",
-      "imageBase": "https://dilar.tube/",
-      "engine": "legacy",
-      "previousHosts": ["dilar.tube"]
-    },
-    {
-      "api": "Promanga",
-      "language": "(AR)",
-      "baseUrl": "https://api.prochan.net/",
-      "imageBase": "https://storage.promanga.net/",
-      "engine": "legacy",
-      "siteState": "ADULT_18_PLUS"
-    },
-    {
-      "api": "Prochan",
-      "language": "(AR)",
-      "baseUrl": "https://prochan.net/",
-      "imageBase": "https://cdn1.prochan.net/",
-      "engine": "legacy",
-      "siteState": "ADULT_18_PLUS"
-    },
-    {
-      "api": "Batoto",
-      "language": "(EN)",
-      "baseUrl": "https://bato.to/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Manhwatop",
-      "language": "(EN)",
-      "baseUrl": "https://manhwatop.com/",
-      "imageBase": "https://manhwatop.com/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Comick",
-      "language": "(EN)",
-      "baseUrl": "https://comick.io/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Mangapark",
-      "language": "(EN)",
-      "baseUrl": "https://mangapark.io/apo/",
-      "imageBase": "https://mangapark.io/",
-      "engine": "legacy",
-      "siteState": "STOPPED"
-    },
-    {
-      "api": "مانجا بارك",
-      "language": "(AR)",
-      "baseUrl": "https://mangapark.io/apo/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Mangapark-It",
-      "language": "(IT)",
-      "baseUrl": "https://mangapark.io/apo/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Mangapark-Es",
-      "language": "(ES)",
-      "baseUrl": "https://mangapark.io/apo/",
-      "imageBase": "https://mangapark.io/apo",
-      "engine": "legacy",
-      "siteState": "STOPPED"
-    },
-    {
-      "api": "Mangapark-Es-La",
-      "language": "(ES)",
-      "baseUrl": "https://mangapark.io/apo/",
-      "imageBase": "https://mangapark.io/apo",
-      "engine": "legacy",
-      "siteState": "STOPPED"
-    },
-    {
-      "api": "Olympusbiblioteca",
-      "language": "(ES)",
-      "baseUrl": "https://olympusbiblioteca.com/",
-      "imageBase": "https://olympusbiblioteca.com",
-      "engine": "legacy"
-    },
-    {
-      "api": "Manhwaweb",
-      "language": "(ES)",
-      "baseUrl": "https://manhwaweb.com/",
-      "imageBase": "https://manhwaweb.com/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Taurus Fansub",
-      "language": "(ES)",
-      "baseUrl": "https://taurus.topmanhuas.org/",
-      "imageBase": "https://taurus.topmanhuas.org/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Inmanga",
-      "language": "(ES)",
-      "baseUrl": "https://inmanga.com/",
-      "imageBase": "https://pack-yak.intomanga.com/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Komik Cast",
-      "language": "(IN)",
-      "baseUrl": "https://v1.komikcast05.com/",
-      "imageBase": "https://v1.komikcast05.com/",
-      "engine": "legacy",
-      "previousHosts": ["komikcast.pics"]
-    },
-    {
-      "api": "Komiku",
-      "language": "(IN)",
-      "baseUrl": "https://komiku.org/",
-      "imageBase": "https://thumbnail.komiku.org/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Manga Origine",
-      "language": "(FR)",
-      "baseUrl": "https://mangas-origines.fr/",
-      "imageBase": "https://mangas-origines.fr/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Raijinscan",
-      "language": "(FR)",
-      "baseUrl": "https://raijin-scans.fr/",
-      "imageBase": "https://raijin-scans.fr/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Manhastro",
-      "language": "(PT)",
-      "baseUrl": "https://api2.manhastro.net/",
-      "imageBase": "https://capa.manhastro.net/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Flowermanga",
-      "language": "(PT)",
-      "baseUrl": "https://flowermangas.net/",
-      "imageBase": "https://flowermangas.net/",
-      "engine": "legacy",
-      "previousHosts": ["flowermanga.net"]
-    },
-    {
-      "api": "Mediocretoons",
-      "language": "(PT)",
-      "baseUrl": "https://api.mediocretoons.com/",
-      "imageBase": "https://cdn.mediocretoons.com/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Desu",
-      "language": "(RU)",
-      "baseUrl": "https://desu.city/",
-      "imageBase": "https://static.desu.city/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Mangahub",
-      "language": "(RU)",
-      "baseUrl": "https://mangahub.ru/",
-      "imageBase": "https://p1.statichub.org/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Batcave",
-      "language": "(EN)",
-      "baseUrl": "https://batcave.biz/",
-      "engine": "legacy"
-    },
-    {
-      "api": "Timenaight",
-      "language": "(TR)",
-      "baseUrl": "https://timenaight.org/",
-      "imageBase": "https://timenaight.org",
-      "engine": "legacy"
-    },
-    {
-      "api": "Webtoontr",
-      "language": "(TR)",
-      "baseUrl": "https://webtoontr.net/",
-      "imageBase": "https://webtoontr.net",
-      "engine": "legacy"
-    },
-    {
-      "api": "Webtoonhatti",
-      "language": "(TR)",
-      "baseUrl": "https://webtoonhatti.club/",
-      "imageBase": "https://webtoonhatti.club",
-      "engine": "legacy"
-    },
-    {
-      "api": "Mangaworld",
-      "language": "(IT)",
-      "baseUrl": "https://mangaworld.cx/",
-      "imageBase": "https://mangaworld.cx",
-      "engine": "legacy"
-    },
-    {
-      "api": "Senkuro",
-      "language": "(RU)",
-      "baseUrl": "https://api.senkuro.com/graphql",
-      "imageBase": "https://api.senkuro.com/graphql",
-      "engine": "legacy"
-    },
-    {
-      "api": "Sussytoons",
-      "language": "(PT)",
-      "baseUrl": "https://api2.sussytoons.wtf/",
-      "imageBase": "https://api2.sussytoons.wtf/",
-      "engine": "legacy",
-      "siteState": "STOPPED"
     }
   ]
 }
@@ -864,9 +611,9 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
  * decoupling, 2026-07): the validated document is the single authority, and
  * `DefaultSourceRegistry.isConfigBacked` derives from it. The owner's rule is **no per-verb legacy
  * split**: each generic source is migrated FULLY generic (every verb it supports goes through the
- * engine) or stays fully legacy — never half-and-half. Since the registry went generic-ONLY,
- * `FallbackSourceClient` is UNWIRED — a generic failure surfaces as a classified error; no migrated
- * source's operation depends on any legacy fallback.
+ * engine) or remains unavailable — never half-and-half. The fallback and legacy client classes are
+ * deleted, so a generic failure surfaces as a classified error and no migrated operation depends
+ * on a legacy implementation.
  *
  * All 12 are fully generic: Azora, Mangamello, Mangamello Plus, SwatManga, DilarV2, 3asq, Lekmanga, Team X,
  * Zazamanga, Demonicscans, Mangabuddy, Tapas. Per-source notes:
@@ -904,8 +651,7 @@ const val CONFIG_BACKED_SOURCES_JSON: String = """
  *    image-bearing anchor) — `a[data-series-id]` also matched the duplicate text anchor, emitting blank shells
  *    (fixed 2026-06-07).
  *
- * Sources intentionally kept FULLY legacy (not config-convertible under the no-source-specific-Kotlin rule;
- * the fallback serves them — see `AR_SOURCES_CONVERSION_PLAN.md`):
+ * Sources that are not yet config-convertible are intentionally absent from every active tier:
  *  - **Dilar** — AES-encrypted search payload + embedded-JSON-in-HTML reader pages.
  *  - **مانجا بارك / Mangapark (AR + EN)** — GraphQL POST bodies (verb distinguished by query, not URL).
  *  - **Promanga / Prochan** — reader pages are canvas de-scrambled; covers use a per-item CDN host; Cloudflare-gated.

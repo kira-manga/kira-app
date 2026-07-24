@@ -9,7 +9,6 @@ import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.sources.config.RemoteSourceConfigManager
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.engine.DefaultSourceConfigValidator
@@ -19,25 +18,21 @@ import kotlin.test.assertEquals
 import kotlin.test.fail
 
 /**
- * Release gate for the config-backed sources (pre-release hardening, 2026-07). Config-backed sources
- * are GENERIC-ONLY — [FallbackSourceClient] is retained-but-unwired, so there is no legacy safety
- * net: a stanza that fails validation rejects the WHOLE bundled document (all generic sources lost
- * at once), and a missing endpoint is a user-visible runtime failure, not a silent legacy fallback.
+ * Release gate for the bundled generic floor. There is no legacy safety net: a stanza that fails
+ * validation rejects the whole bundle, and a missing endpoint is a user-visible runtime failure.
  * Both failure modes must therefore be caught at build time, by this class:
  *
  *  1. the bundled document parses, with a readable error when it does not;
  *  2. the bundled document passes the shipping validator ([DefaultSourceConfigValidator]), with the
  *     per-stanza error list in the failure message;
- *  3. every `engine:"generic"` stanza resolves through the REAL production assembly
- *     ([RemoteSourceConfigManager] over [BundledSourceConfigStore] → [DefaultSourceRegistry]) —
- *     `isConfigBacked(api)` is true and `get(api)` returns the generic client. (The stanzas ARE the
- *     authority — the compiled CONFIG_BACKED_APIS allow-list was removed, MangaSource decoupling
- *     2026-07 — so this pins document ⇒ registry reachability.);
+ *  3. every `engine:"generic"` stanza resolves through the shipping [DefaultSourceRegistry] —
+ *     `isConfigBacked(api)` is true and `get(api)` returns the generic client. (The stanzas are the
+ *     authority, so this pins document ⇒ registry reachability.);
  *  4. every config-backed stanza defines every user-facing endpoint: home or featured, search,
  *     details, pages.
  *
- * [LegacyStanzaCompletenessTest] pins the registry⇄config completeness in both directions; this
- * class pins reachability and endpoint coverage. See docs/sources/ADDING_SOURCES.md.
+ * [BundledSourceCatalogPolicyTest] pins the exact approved source set and order; this class pins
+ * reachability and endpoint coverage. See docs/sources/ADDING_SOURCES.md.
  */
 class ConfigBackedSourceCompletenessTest {
     private val document =
@@ -45,8 +40,8 @@ class ConfigBackedSourceCompletenessTest {
             is AppResult.Success -> parsed.value
             is AppResult.Failure ->
                 fail(
-                    "CONFIG_BACKED_SOURCES_JSON does not parse — at runtime the app would fall back to an " +
-                        "EMPTY document and lose every generic source: ${parsed.error}",
+                    "CONFIG_BACKED_SOURCES_JSON does not parse — production startup would fail closed: " +
+                        "${parsed.error}",
                 )
         }
 
@@ -70,20 +65,9 @@ class ConfigBackedSourceCompletenessTest {
 
     @Test
     fun every_config_backed_api_is_reachable_through_the_real_registry_assembly() {
-        // The exact production wiring from SourcesGenericModule, minus Room (bundled tier only —
-        // The isolated registry test intentionally exercises only its bundled floor; signed remote
-        // delivery is covered by KtorRemoteConfigSourceTest and RemoteSourceConfigManagerTest.
-        val manager =
-            RemoteSourceConfigManager(
-                store = BundledSourceConfigStore(CONFIG_BACKED_SOURCES_JSON),
-                verifier = DenyRemoteSignatureVerifier(),
-                validator = DefaultSourceConfigValidator(DefaultStrategyRegistry()),
-                remote = null,
-            )
         val registry =
             DefaultSourceRegistry(
-                legacyRepos = emptySet(),
-                updateManager = manager,
+                updateManager = StaticSourceUpdateManager(document),
                 genericClientFactory = { config -> MarkerClient("generic:${config.api}") },
             )
 

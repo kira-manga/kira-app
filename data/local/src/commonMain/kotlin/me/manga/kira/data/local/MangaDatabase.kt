@@ -18,11 +18,16 @@ import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.dao.SourceConfigCacheDao
+import me.manga.kira.data.local.dao.SourceCatalogDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.dao.StatisticsDeo
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SourceConfigCacheEntity
+import me.manga.kira.data.local.entity.ActiveSourceCatalogEntity
+import me.manga.kira.data.local.entity.SourceCatalogEntryEntity
+import me.manga.kira.data.local.entity.SourceCatalogManifestEntity
+import me.manga.kira.data.local.entity.SourceRevisionArtifactEntity
 import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
@@ -46,6 +51,10 @@ import me.manga.kira.data.local.entity.SourcesEntity
         ChapterDownloadEntity::class,
         SourcesEntity::class,
         SourceConfigCacheEntity::class,
+        SourceCatalogManifestEntity::class,
+        SourceCatalogEntryEntity::class,
+        SourceRevisionArtifactEntity::class,
+        ActiveSourceCatalogEntity::class,
     ],
     // v8 -> v9: add chapter_downloads.sizeBytes (per-chapter download size, native size-display
     // parity). MIGRATION_8_9 in Migrations.kt; exported schema regenerated to 9.json.
@@ -53,7 +62,7 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // saved_chapters.fetchedAt (NEW-badge 4-day expiry). MIGRATION_9_10; schema regenerated to 10.json.
     // v10 -> v11: add the single-row source_config_cache table (durable generic-sources config
     // cache; Sources Migration Phase 1). MIGRATION_10_11; schema regenerated to 11.json.
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(
@@ -74,6 +83,7 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun chapterDownloadingDao(): ChapterDownloadDao
     abstract fun sourcesDao(): SourcesDao
     abstract fun sourceConfigCacheDao(): SourceConfigCacheDao
+    abstract fun sourceCatalogDao(): SourceCatalogDao
     abstract fun backupDao(): BackupDao
 
     companion object {
@@ -159,4 +169,3 @@ expect object MangaDatabaseConstructor : RoomDatabaseConstructor<MangaDatabase> 
  * as the inline migration note at the top of this file and the `version = 10` annotation now state.
  * The verbose postscript prose is retained as lineage per the audit-trail-preservation convention.
  */
-

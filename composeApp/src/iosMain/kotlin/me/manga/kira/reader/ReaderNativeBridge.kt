@@ -151,7 +151,10 @@ class ReaderNativeSession internal constructor(
     private val viewModel: ReaderViewModel,
     private val scope: CoroutineScope,
     private val onNavigateBack: () -> Unit,
-    private val onOpenInWebView: (url: String, api: String) -> Unit,
+    // Keep this callback name distinct from the public onOpenInWebView() method invoked by Swift.
+    // When both had the same name, handleEffect() resolved the method instead of this function
+    // property and recursively submitted OpenChapterInWebView forever on the main thread.
+    private val onOpenInWebViewEffect: (url: String, api: String) -> Unit,
     private val onSolveCloudflare: (url: String, api: String) -> Unit,
 ) {
     private var stateJob: Job? = null
@@ -193,9 +196,10 @@ class ReaderNativeSession internal constructor(
     }
 
     private fun handleEffect(effect: ReaderEffect) {
+        if (dispatchOpenInWebViewEffect(effect, onOpenInWebViewEffect)) return
         when (effect) {
             is ReaderEffect.NavigateBack -> onNavigateBack()
-            is ReaderEffect.OpenChapterInWebView -> onOpenInWebView(effect.url, effect.api)
+            is ReaderEffect.OpenChapterInWebView -> Unit
             is ReaderEffect.SolveCloudflareChallenge -> onSolveCloudflare(effect.url, effect.api)
             is ReaderEffect.ShowNotInLibrary -> onShowNotInLibrary?.invoke()
             is ReaderEffect.ShowError -> onShowError?.invoke()
@@ -287,4 +291,20 @@ class ReaderNativeSession internal constructor(
             feedSignature = feedRevision,
         )
     }
+}
+
+/**
+ * Dispatches the native reader's WebView effect directly to the host navigation callback.
+ *
+ * This intentionally lives outside [ReaderNativeSession]: the Swift-facing session also exposes a
+ * method named `onOpenInWebView`, and resolving that method from the effect collector would submit
+ * the same intent again, creating an unbounded main-thread loop.
+ */
+internal fun dispatchOpenInWebViewEffect(
+    effect: ReaderEffect,
+    onOpenInWebViewEffect: (url: String, api: String) -> Unit,
+): Boolean {
+    if (effect !is ReaderEffect.OpenChapterInWebView) return false
+    onOpenInWebViewEffect(effect.url, effect.api)
+    return true
 }

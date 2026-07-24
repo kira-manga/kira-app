@@ -54,15 +54,10 @@ import org.koin.dsl.module
  * Scope discipline (mirrors [libraryReworkModule]):
  *  - Binds ONLY rework types: [MangaDetailsRepository] (`:domain`) → [MangaDetailsRepositoryImpl]
  *    (`:data`), [FetchMangaDetailsUseCase] (`:domain`), and [DetailsViewModel] (`:presentation`).
- *  - Legacy `MangaDerailsViewModel` and its repository stay bound by `SharedModule` /
- *    `PlatformModule.*`; both graphs coexist until the user-facing route swap in a later phase.
  *
  * Cross-module dependencies resolved at composition time:
- *  - `SourcesRepository` (consumed by [MangaDetailsRepositoryImpl]) is the same legacy
- *    `:shared` singleton declared by `SharedModule.kt:305`. This is intentional — the
- *    strangler-fig boundary lives at the rework repository (`MangaDetailsRepositoryImpl`), which
- *    delegates to `SourcesRepository.getOrRepoByName(api).fetchMangaChaptersF(url)` and maps the
- *    legacy `MangaInfo` into the pure-domain `MangaDetails` (see `:data` mapper §42.2).
+ *  - [MangaDetailsRepositoryImpl] resolves the requested api only through the active generic
+ *    `SourceRegistry`; an absent source fails closed.
  *  - `DispatcherProvider` (consumed by [MangaDetailsRepositoryImpl]) is bound as a `single` in
  *    [libraryReworkModule]. Both modules are aggregated through [allReworkModules], so the
  *    binding resolves at runtime. We deliberately do **not** re-declare it here — Koin
@@ -77,8 +72,7 @@ import org.koin.dsl.module
  * interface (the VM holds `FetchMangaDetailsUseCase`, never the repository directly).
  *
  * Lifecycle choices:
- *  - [MangaDetailsRepository] → `single`: the impl holds no per-call state and the underlying
- *    `SourcesRepository` is already a singleton; a fresh instance per resolution would be wasteful.
+ *  - [MangaDetailsRepository] → `single`: the implementation holds no per-call state.
  *  - [FetchMangaDetailsUseCase] → `factory`: stateless, cheap, matches the established "use case
  *    is a factory" pattern from the Library slice and the use case's own KDoc.
  *  - [DetailsViewModel] → `viewModel`: Koin's `ViewModelStore`-aware binding so the screen
@@ -103,9 +97,7 @@ import org.koin.dsl.module
 val detailsReworkModule: Module = module {
     single<MangaDetailsRepository> {
         MangaDetailsRepositoryImpl(
-            sourcesRepository = get(),
             dispatchers = get(),
-            // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic engine; all others stay legacy.
             sourceRegistry = get(),
         )
     }
@@ -116,7 +108,7 @@ val detailsReworkModule: Module = module {
     // single because the classifier holds the legacy SourcesRepository reference and is
     // stateless beyond that — re-creating it per resolution would be wasteful. The use case
     // stays factory (stateless wrapper, cheap to construct).
-    single<AdultContentClassifier> { AdultContentClassifierImpl(sourcesRepository = get(), sourceRegistry = get()) }
+    single<AdultContentClassifier> { AdultContentClassifierImpl(sourceRegistry = get()) }
 
     factory { IsAdultContentUseCase(get()) }
 

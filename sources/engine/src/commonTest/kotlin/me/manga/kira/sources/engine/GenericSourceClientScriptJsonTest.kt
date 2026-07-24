@@ -48,8 +48,8 @@ class GenericSourceClientScriptJsonTest {
 
     @Test
     fun missing_island_is_failure_not_empty_success() = runTest {
-        // A site redesign that removes/renames the island is a structural change: the engine must report
-        // Failure (so FallbackSourceClient routes to legacy) rather than a wrong-but-Success empty result.
+        // A site redesign that removes/renames the island is a structural change: report Failure
+        // rather than a wrong-but-Success empty result.
         val responses = mapOf(
             "https://sj.example.com/x" to "<html><body><p>no island here</p></body></html>",
         )

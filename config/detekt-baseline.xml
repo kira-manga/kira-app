@@ -1627,14 +1627,6 @@
     <ID>MaxLineLength:AdminComplaintViewModelTest.kt$AdminComplaintViewModelTest$complaint(id = "b", userId = "alice", type = ComplaintType.FEATURES, status = ComplaintStatus.OPEN, appVersion = "1.0.0")</ID>
     <ID>MaxLineLength:AdminComplaintViewModelTest.kt$AdminComplaintViewModelTest$complaint(id = "c", userId = "bob", type = ComplaintType.TECHNICAL, status = ComplaintStatus.OPEN, appVersion = "1.0.0")</ID>
     <ID>MaxLineLength:AdminComplaintViewModelTest.kt$AdminComplaintViewModelTest$complaint(id = "d", userId = "alice", type = ComplaintType.TECHNICAL, status = ComplaintStatus.CLOSED, appVersion = "0.9.0")</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest$private</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest$sources = listOf(SourceConfig(api = "Azora", language = "(AR)", baseUrl = "https://api.azoramoon.com", engine = "generic"))</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest.EmptySourcesDao$override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest.GenericOk$override fun pages(manga: Manga, chapter: Chapter): Flow&lt;AppResult&lt;List&lt;Page&gt;&gt;&gt;</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest.GenericOk$private val details = MangaDetails(api, "(AR)", "GENERIC ENGINE", "u", "", "", "", "", "", emptyList(), emptyList())</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest.SeededSourcesDao$override fun getSiteStateByName(name: String): Flow&lt;SourceState?&gt;</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest.SeededSourcesDao$override suspend fun getSiteStateByNameSync(name: String): SourceState?</ID>
-    <ID>MaxLineLength:AzoraDataFallbackIntegrationTest.kt$AzoraDataFallbackIntegrationTest.SeededSourcesDao$override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int</ID>
     <ID>MaxLineLength:AzoraDataRoutingTest.kt$AzoraDataRoutingTest$Manga(api = "Azora", language = "(AR)", title = "t", url = url, coverUrl = "", rating = null, genres = emptyList())</ID>
     <ID>MaxLineLength:AzoraDataRoutingTest.kt$AzoraDataRoutingTest$Manga(api = "Other", language = "(EN)", title = "t", url = "u", coverUrl = "", rating = null, genres = emptyList())</ID>
     <ID>MaxLineLength:AzoraDataRoutingTest.kt$AzoraDataRoutingTest$assertEquals(listOf(canonical), cbz.extractCalls, "extracted from the re-derived current path, not the stale stored path")</ID>
@@ -1720,8 +1712,6 @@
     <ID>MaxLineLength:ComplaintActionRepositoryImpl.kt$ComplaintActionRepositoryImpl$if (parent.status == ComplaintStatus.PINNED) parent.toLegacy() else fetchLegacyById(parent.userId, parent.id)</ID>
     <ID>MaxLineLength:ComplaintScreen.kt$items</ID>
     <ID>MaxLineLength:CompressExistingDownloadsTest.kt$CompressExistingDownloadsTest.FakeChapterDao$override suspend fun getChapterIdUrlPairsForMangaBatch(mangaId: Long, urls: List&lt;String&gt;): List&lt;ChapterIdUrl&gt;</ID>
-    <ID>MaxLineLength:ConfigMergerTest.kt$ConfigMergerTest$SourceConfig(api = api, language = "en", baseUrl = "https://$api.test", priority = priority, displayName = label)</ID>
-    <ID>MaxLineLength:ConfigTestSupport.kt$"""{"api":"${s.api}","language":"en","baseUrl":"https://${s.api}.test","priority":${s.priority},"displayName":"${s.label}","engine":"legacy"}"""</ID>
     <ID>MaxLineLength:CoroutineDownloadRepositoryImpl.kt$CoroutineDownloadRepositoryImpl$NotifierRules.TerminalNotification.COMPLETE -&gt; downloadNotifier.onComplete(key, notifTitle(next))</ID>
     <ID>MaxLineLength:CoroutineDownloadRepositoryImpl.kt$CoroutineDownloadRepositoryImpl$NotifierRules.TerminalNotification.FAILED -&gt; downloadNotifier.onFailed(key, notifTitle(next))</ID>
     <ID>MaxLineLength:CoroutineDownloadRepositoryImpl.kt$CoroutineDownloadRepositoryImpl$NotifierRules.TerminalNotification.NONE -&gt; { /* not terminal (still running / re-queued) — leave progress */ }</ID>
@@ -1860,10 +1850,6 @@
     <ID>MaxLineLength:RegistryChapterPageProviderTest.kt$RegistryChapterPageProviderTest.FakeUpdateManager$private val _state = MutableStateFlow&lt;UpdateState&gt;(UpdateState.Active(document.revision, UpdateState.Origin.BUNDLED))</ID>
     <ID>MaxLineLength:RegistryChapterPageProviderTest.kt$RegistryChapterPageProviderTest.StubGenericPagesClient$override suspend fun details(manga: Manga): AppResult&lt;MangaDetails&gt;</ID>
     <ID>MaxLineLength:RememberNotificationPermissionRequester.ios.kt$&lt;no name provided&gt;$UNUserNotificationCenter.currentNotificationCenter()</ID>
-    <ID>MaxLineLength:RemoteSourceConfigManagerTest.kt$RemoteSourceConfigManagerTest$val manager = RemoteSourceConfigManager(store, FakeVerifier(result = true), SchemaOnlyValidator(), RemoteConfigSource { RemoteConfigPayload(remoteRaw, "sig") })</ID>
-    <ID>MaxLineLength:RemoteSourceConfigManagerTest.kt$RemoteSourceConfigManagerTest$val manager = RemoteSourceConfigManager(store, FakeVerifier(true), SchemaOnlyValidator(), RemoteConfigSource { RemoteConfigPayload(remoteRaw, "sig") })</ID>
-    <ID>MaxLineLength:RemoteSourceConfigManagerTest.kt$RemoteSourceConfigManagerTest$val remote = RemoteConfigSource { RemoteConfigPayload(configJson(9, listOf(SourceJson("a", label = "remote-a"))), "sig") }</ID>
-    <ID>MaxLineLength:RemoteSourceConfigManagerTest.kt$RemoteSourceConfigManagerTest$val store = FakeConfigStore(bundled = configJson(1, listOf(SourceJson("a", priority = 100, label = "bundled-pinned"))))</ID>
     <ID>MaxLineLength:SearchScreen.kt$is SearchEffect.ShowError -&gt; scope.launch { snackbarHostState.showSnackbar(errorMessages(effect.error)) }</ID>
     <ID>MaxLineLength:SearchViewModel.kt$SearchViewModel$.</ID>
     <ID>MaxLineLength:SkiaWebpEncoderTest.kt$SkiaWebpEncoderTest$val ftyp = byteArrayOf(0, 0, 0, 0x18, 'f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte(), 0, 0, 0, 0)</ID>
@@ -2057,7 +2043,6 @@
     <ID>TooGenericExceptionCaught:OptimizedCbzManager.kt$OptimizedCbzManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:OptimizedCbzManager.kt$OptimizedCbzManager$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:RefreshAllLibraryChaptersUseCase.kt$RefreshAllLibraryChaptersUseCase$t: Throwable</ID>
-    <ID>TooGenericExceptionCaught:RemoteSourceConfigManager.kt$RemoteSourceConfigManager$t: Throwable</ID>
     <ID>TooGenericExceptionCaught:RunCatchingCancellable.kt$t: Throwable</ID>
     <ID>TooGenericExceptionCaught:SearchRepositoryImpl.kt$SearchRepositoryImpl$t: Throwable</ID>
     <ID>TooGenericExceptionCaught:SourceCatalogSyncRepositoryImpl.kt$SourceCatalogSyncRepositoryImpl$t: Throwable</ID>

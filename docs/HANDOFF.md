@@ -70,27 +70,22 @@ owner sign-off — high import churn, zero behavior value).
 
 ## 4. Sources (the content backbone)
 
-Two paths, decided per-api by `SourceRegistry.isConfigBacked`:
-
-- **12 config-driven generic sources** (`CONFIG_BACKED_APIS` in
-  `composeApp/.../sources/runtime/BundledSourcesConfig.kt` is ground truth): Azora, Mangamello,
+- **12 config-driven generic sources** in the revision-6 bundled floor: Azora, Mangamello,
   Mangamello Plus, SwatManga, Lekmanga, Team X, DilarV2, 3asq, Demonicscans, Mangabuddy,
-  Zazamanga, Tapas. These run **generic-only** — the old `FallbackSourceClient` is
-  retained-but-unwired; a bad config is a visible regression, so every verb must be
-  parity-verified before shipping.
-- **33 legacy scraper sources** (`:sources:legacy`), hidden from Home tabs, represented in the
-  config document as metadata-only `engine:"legacy"` stanzas.
+  Zazamanga, Tapas. These run **generic-only**. The bundle contains no legacy stanzas.
+- The 33 unconverted sources are unavailable. The runtime scraper set is empty, and there is no
+  fallback, inference, or union that can reactivate an api missing from the authoritative catalog.
 - The legacy SourceRegistry endpoint (`/source/35`) remains deleted. The app now consumes the
-  backend's `/api/v1/source-config/document` endpoint through a bounded HTTPS client, authenticates
-  the exact document/checksum/revision/chain metadata with Ed25519 and an app-pinned X.509 public
-  key, re-verifies the Room-cached envelope after every restart, and rejects stale/rolled-back or
-  malformed artifacts. Network, HTTP, signature, or validation failure preserves the last verified
-  cache and bundled floor. Release builds set the origin with `KIRA_SOURCE_CONFIG_BASE_URL` or
+  backend's `/api/v2/source-config/manifest` and immutable per-source endpoints through a bounded
+  HTTPS client. It authenticates exact checksums, revision-chain metadata, manifest and source
+  signatures with an app-pinned X.509 public key; unchanged manifests return 304, and only missing
+  active revisions are downloaded. A candidate activates atomically only after full verification.
+  Network, HTTP, signature, persistence, or validation failure preserves the complete last verified
+  cache or bundled floor. Release builds set the origin with `KIRA_SOURCE_CONFIG_BASE_URL` or
   `-Pkira.sourceConfigBaseUrl` and pins with `KIRA_SOURCE_CONFIG_PINNED_KEYS` or
   `-Pkira.sourceConfigPinnedKeys`; Android release assembly fails when either is absent.
-- Permanently legacy-only (impossible as pure config — do not attempt): Dilar (AES), MangaPark
-  (GraphQL), Promanga/Prochan (canvas de-scramble), Mangatuk (rebuilt SPA), Lavatoons, Comick,
-  Manhwatop, Batcave, Batoto.
+- A new source becomes available only after generic conversion, parity validation, review, and
+  explicit backend publication. Do not expose a legacy implementation during migration.
 
 Conversion guide, ownership invariants, and the next-safe conversion set (ES/FR/PT/TR Madara
 family): `ENGINEERING_NOTES.md` §1.
@@ -176,7 +171,7 @@ committed `*.example` templates — `app/google-services.json`, `iosApp/iosApp/G
 Kotlin **2.4.0** · Compose Multiplatform **1.11.1** · AGP **9.2.1** (all KMP modules on the
 new-DSL `com.android.kotlin.multiplatform.library`; `:app` on AGP built-in Kotlin; AGP-10-ready,
 the version bump itself pending AGP 10's release) · Gradle **9.6.1** · compileSdk **37** / minSdk
-26 · targetSdk 36 · JVM 11 (Android) / 17 (Desktop; non-JBR JDK required) · Room KMP (DB v11) · Ktor
+26 · targetSdk 36 · JVM 11 (Android) / 17 (Desktop; non-JBR JDK required) · Room KMP (DB v12) · Ktor
 (OkHttp/Darwin/CIO) · Koin · Coil 3.5 · Kermit · Firebase BOM 34.15.0 · iOS targets `iosArm64` +
 `iosSimulatorArm64` only (no x64) · Xcode project via **xcodegen**. Machine gotcha: SDK 37
 installs as `platforms/android-37.0` but AGP wants `android-37` — symlink needed on fresh

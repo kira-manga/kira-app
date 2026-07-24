@@ -40,25 +40,18 @@ import org.koin.dsl.module
  * Scope discipline (mirrors [detailsReworkModule]):
  *  - Binds ONLY rework types: [ChapterPagesRepository] (`:domain`) → [ChapterPagesRepositoryImpl]
  *    (`:data`), [FetchChapterPagesUseCase] (`:domain`), and [ReaderViewModel] (`:presentation`).
- *  - Legacy `:shared` `ReaderViewModel` and its repository graph stay bound by `SharedModule` /
- *    `PlatformModule.*`; both graphs coexist until the user-facing route swap (post-8.x.reader).
  *
  * Cross-module dependencies resolved at composition time:
- *  - `SourcesRepository` (consumed by [ChapterPagesRepositoryImpl]) is the same legacy `:shared`
- *    singleton declared by `SharedModule.kt` and reused by [detailsReworkModule]. Strangler-fig
- *    boundary: this impl delegates to `SourcesRepository.getOrRepoByName(api).fetchChapterDataF(url)`
- *    and maps the legacy `Flow<State<List<String>>>` into the pure-domain `Flow<AppResult<List<Page>>>`.
+ *  - [ChapterPagesRepositoryImpl] resolves online pages only through the active generic
+ *    `SourceRegistry`; unavailable sources fail closed.
  *  - `DispatcherProvider` (consumed by [ChapterPagesRepositoryImpl]) is bound as a `single` in
  *    [libraryReworkModule] — same posture as [detailsReworkModule] uses it. We deliberately do
  *    not re-declare it; Koin forbids duplicate `single<T>` bindings.
  *  - [me.manga.kira.domain.repository.MangaDetailsRepository] (consumed by
  *    [ListChaptersUseCase]) is bound as a `single` in [detailsReworkModule]. Phase 7.x.reader.next
  *    deliberately reuses the Details slice's repository rather than introducing a parallel
- *    `ChaptersRepository`: legacy `BaseMangaRepository.fetchMangaChaptersF` is the single source
- *    endpoint that returns both manga metadata + chapter list in one `MangaInfo` payload, so a
- *    dedicated `ChaptersRepository` would either duplicate that fetch or delegate to the Details
- *    repository (dead-weight interface). [ListChaptersUseCase] is a thin projection that extracts
- *    `chapters` from the `MangaDetails` result. Koin's cross-module resolution handles this
+ *    `ChaptersRepository`. [ListChaptersUseCase] is a thin projection that extracts `chapters`
+ *    from the `MangaDetails` result. Koin's cross-module resolution handles this
  *    transparently because [me.manga.kira.di.allReworkModules] aggregates [detailsReworkModule]
  *    and this module into the same dep graph.
  *  - Legacy [me.manga.kira.presentation.features.statistics.domain.StatisticsRepository]
@@ -95,7 +88,6 @@ import org.koin.dsl.module
 val readerReworkModule: Module = module {
     single<ChapterPagesRepository> {
         ChapterPagesRepositoryImpl(
-            sourcesRepository = get(),
             dispatchers = get(),
             // Downloaded-chapter local-read path: ChapterDao (saved-chapter lookup by URL +
             // localImagePaths) is the per-platform :shared Room singleton; CbzReader is the

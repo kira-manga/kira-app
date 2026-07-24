@@ -20,16 +20,9 @@ data class DownloadPage(
  * (`RegistryChapterPageProvider`) is provided at the composition root `:composeApp` and bound by Koin
  * — plain DIP, with the dependency direction preserved.
  *
- * Contract (config-backed sources are GENERIC-ONLY — `FallbackSourceClient` is retained-but-unwired,
- * there is no legacy fallback for a routed failure; doc corrected 2026-07 source-lifecycle hardening):
- *  - Returns the ordered page URLs (+ per-page headers) for a chapter of a **config-backed** source,
- *    resolved through `SourceRegistry.get(api)` — i.e. the generic config-driven client.
- *  - Returns **null** ONLY when [api] is NOT config-backed (`isConfigBacked == false`) — the caller
- *    then runs its existing legacy download path unchanged.
- *  - A routed failure (generic fetch failed, empty page list, or no client) **throws**
- *    `GenericPagesFailedException` — it does NOT return null, so a config-backed source's failure is
- *    recorded as a failed download instead of silently regressing to the legacy scraper (the owner's
- *    "100% generic or fully legacy" rule).
+ * Contract: resolve through the authoritative active generic catalog or fail. The return is
+ * deliberately non-null: absence, retirement, invalid configuration, an empty result, and network
+ * failure must all fail the queued download rather than activating a legacy scraper.
  */
 interface ChapterPageProvider {
     suspend fun pagesOrNull(
@@ -37,5 +30,5 @@ interface ChapterPageProvider {
         mangaUrl: String,
         mangaLanguage: String,
         chapterUrl: String,
-    ): List<DownloadPage>?
+    ): List<DownloadPage>
 }

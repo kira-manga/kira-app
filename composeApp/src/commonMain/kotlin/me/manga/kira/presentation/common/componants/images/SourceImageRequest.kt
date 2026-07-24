@@ -15,9 +15,7 @@ import coil3.size.Dimension
 import coil3.size.Size
 import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.storage.DataStoreHelper
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
 import me.manga.kira.sources.contracts.SourceRegistry
-import me.manga.kira.sources_repositry.common.BaseManga
 import org.koin.compose.koinInject
 
 /**
@@ -86,28 +84,17 @@ fun rememberSourceImageRequest(
     screenWidthPx: Int = 0,
 ): ImageRequest {
     val context = LocalPlatformContext.current
-    val sourcesRepository: SourcesRepository = koinInject()
     val sourceRegistry: SourceRegistry = koinInject()
     val dataStore: DataStoreHelper = koinInject()
-    // MangaSource decoupling (2026-07): CONFIG-FIRST header resolution. A config-backed api's
-    // headers come from the same stores the generic engine uses — the stanza's static headers
-    // (available synchronously via the descriptor) merged UNDER the captured per-api headers
-    // (loaded async below) — with NO compiled legacy repo needed. Non-config apis keep the legacy
-    // repo hydration path unchanged.
-    val configBacked = remember(api) { sourceRegistry.isConfigBacked(api) }
-    val repo = remember(api, configBacked) { if (configBacked) null else sourcesRepository.getRepoByName(api) }
-    var headersSnapshot by remember(api, configBacked) {
-        mutableStateOf(
-            if (configBacked) {
-                sourceRegistry.descriptor(api)?.headers.orEmpty()
-            } else {
-                repo?.defaultHeaders.orEmpty()
-            },
-        )
+    val catalogBacked = sourceRegistry.get(api) != null
+    val localUrl = url.startsWith("file://") || url.startsWith("/")
+    val requestUrl = if (catalogBacked || localUrl) url else ""
+    var headersSnapshot by remember(api, catalogBacked) {
+        mutableStateOf(sourceRegistry.descriptor(api)?.headers.orEmpty())
     }
 
-    LaunchedEffect(api, configBacked) {
-        if (configBacked) {
+    LaunchedEffect(api, catalogBacked) {
+        if (catalogBacked) {
             try {
                 val captured = dataStore.getHeadersForApi(api).orEmpty()
                 if (captured.isNotEmpty()) headersSnapshot = headersSnapshot + captured
@@ -116,24 +103,15 @@ fun rememberSourceImageRequest(
             } catch (_: Throwable) {
                 // static-only (or empty) headers; raw-URL fallback
             }
-        } else if (repo is BaseManga && headersSnapshot.isEmpty()) {
-            try {
-                repo.ensureSiteInitialized()
-            } catch (c: CancellationException) {
-                throw c
-            } catch (_: Throwable) {
-                // headers stay empty; raw-URL fallback
-            }
-            headersSnapshot = repo.defaultHeaders
         }
     }
 
-    return remember(url, headersSnapshot, screenWidthPx) {
+    return remember(requestUrl, headersSnapshot, screenWidthPx) {
         val networkHeaders = NetworkHeaders.Builder().apply {
             headersSnapshot.forEach { (key, value) -> add(key, value) }
         }.build()
         ImageRequest.Builder(context)
-            .data(url)
+            .data(requestUrl)
             .httpHeaders(networkHeaders)
             // Coil 3 defaults `maxBitmapSize` to `Size(4096, 4096)` and the loader-level override
             // in `App.kt` doesn't propagate to every request. Webtoon strips are typically

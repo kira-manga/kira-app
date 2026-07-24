@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: kira-android-internal-testing
@@ -28,6 +29,8 @@ jobs:
         shell: bash
     env:
       CI: "true"
+      KIRA_PACKAGES_USER: ${{ github.actor }}
+      KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
       FASTLANE_OPT_OUT_USAGE: "1"
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"

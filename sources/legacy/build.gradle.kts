@@ -11,7 +11,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 //
 // Owns: the 5 `common/` base classes, BaseMangaRepository/EmptyMangaRepository, data/MangaSource (the
 // 45-source registry), 43 concrete scrapers + 187 @Serializable per-source DTO models, the per-target
-// ar/dilar/CryptoUtils actuals, and the legacySourcesModule() Koin bindings.
+// ar/dilar/CryptoUtils actuals, and persistence-only Koin bindings. Scraper implementations remain
+// compiled for saved-data compatibility but are not bound into the runtime graph.
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -81,7 +82,8 @@ kotlin {
             // The value-class artifact only; NO compose compiler plugin needed.
             implementation(libs.compose.ui)
 
-            // legacySourcesModule() (43 scraper factories + Set<BaseMangaRepository> registry) lives here.
+            // sourcePersistenceModule() binds the saved-data facades and an intentionally empty
+            // Set<BaseMangaRepository>.
             api(libs.koin.core)
         }
 

@@ -14,9 +14,8 @@ import me.manga.kira.sources.contracts.SourceRegistry
  * the [SourceRegistry], so chapter DOWNLOADS go through the same generic config-driven path as reads
  * instead of calling the legacy scraper directly.
  *
- * Routing (config-backed = generic-ONLY; legacy is never executed for a config-backed source):
- *  - Not config-backed (`!isConfigBacked(api)`) → return `null`; the caller keeps its legacy download path.
- *    Non-config sources are disabled/hidden from the active flow, so this branch is inert in practice.
+ * Routing is generic-only:
+ *  - Missing source client → throw [GenericPagesFailedException]. No legacy download path exists.
  *  - Config-backed, generic `Success` → the generic page URLs (+ `Page.headers` for cookies/Referer/UA)
  *    mapped to [DownloadPage]s.
  *  - Config-backed, generic `Failure` (or an empty / no emission) → **throw** [GenericPagesFailedException].
@@ -38,12 +37,9 @@ class RegistryChapterPageProvider(
         mangaUrl: String,
         mangaLanguage: String,
         chapterUrl: String,
-    ): List<DownloadPage>? {
-        // Non-config source → null (the caller's legacy path; inert since non-config sources are disabled).
-        if (!sourceRegistry.isConfigBacked(api)) return null
-        // Config-backed but no client resolved is a config-backed failure → fail, do not fall to legacy.
+    ): List<DownloadPage> {
         val client = sourceRegistry.get(api)
-            ?: throw GenericPagesFailedException("no config-backed client for api=$api")
+            ?: throw GenericPagesFailedException("source unavailable for api=$api")
 
         val manga = Manga(
             api = api,

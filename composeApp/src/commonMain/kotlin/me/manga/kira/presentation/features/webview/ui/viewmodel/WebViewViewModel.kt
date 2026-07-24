@@ -7,7 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.platform.storage.DataStoreHelper
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
+import me.manga.kira.sources.contracts.SourceRegistry
 
 /**
  * Phase 9.x.webviewvm.componentprune (Task #406): dropped 2 orphan constructor deps
@@ -44,8 +44,8 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepositor
  * 3-arg to 1-arg in the same slice.
  */
 class WebViewViewModel(
-    private val sourcesRepository: SourcesRepository,
     private val dataStore: DataStoreHelper,
+    private val sourceRegistry: SourceRegistry,
 ) : ViewModel() {
 
     private val log = Logger.withTag(TAG)
@@ -57,16 +57,9 @@ class WebViewViewModel(
 
         viewModelScope.launch(platformIoDispatcher) {
             try {
-                // MangaSource decoupling (2026-07): persist to the api-keyed header store FIRST —
-                // that is what the generic engine reads (DataStoreHeaderStore.headersFor), and it
-                // works for a CONFIG-ONLY source. Previously this went only through
-                // getRepoByName(api).refreshHeaders(...), which for an api with no compiled repo
-                // landed on EmptyMangaRepository's no-op and silently DROPPED the solved Cloudflare
-                // challenge. The legacy call below stays for the compiled repos' in-memory header
-                // cache (their refreshHeaders also writes the store — an idempotent double-write).
+                // A WebView route must never create state for a withheld/removed/unknown source.
+                if (sourceRegistry.get(api) == null) return@launch
                 dataStore.saveHeadersForApi(api, headers)
-                val repo = sourcesRepository.getRepoByName(api)
-                repo.refreshHeaders(headers)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -203,4 +196,3 @@ class WebViewViewModel(
  *     None of cluster210's 4 leaves add new blocked-task references — all classifications are
  *     LEGACY-AS-NARROW-ADAPTER-LIVE rather than retire-pending.
  */
-

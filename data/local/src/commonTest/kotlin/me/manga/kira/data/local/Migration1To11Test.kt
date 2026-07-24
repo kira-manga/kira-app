@@ -10,7 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Exercises the complete supported upgrade path from the oldest application schema to v11.
+ * Exercises the complete supported upgrade path from the oldest application schema to v12.
  *
  * This starts with representative v1 library/chapter rows, adds data to tables at the version
  * where those tables first exist, then runs every production [Migration] in order. The focused
@@ -31,7 +31,7 @@ class Migration1To11Test {
     fun close() = connection.close()
 
     @Test
-    fun oldest_schema_reaches_v11_without_losing_library_data() {
+    fun oldest_schema_reaches_v12_without_losing_library_data() {
         MIGRATION_1_2.migrate(connection)
         connection.execSQL(
             "INSERT INTO chapter_downloads " +
@@ -81,6 +81,10 @@ class Migration1To11Test {
             number("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'source_config_cache'"),
         )
         assertEquals(0L, number("SELECT COUNT(*) FROM source_config_cache"))
+        assertEquals(
+            1L,
+            number("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'active_source_catalog'"),
+        )
     }
 
     private fun createVersionOneSchema() {
@@ -170,6 +174,7 @@ class Migration1To11Test {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
+                MIGRATION_11_12,
             )
     }
 }

@@ -22,7 +22,7 @@ data class RuntimeSourceDescriptor(
     val displayName: String,
     /** Parenthesised language tag, e.g. `"(AR)"` — the persisted grouping key. */
     val language: String,
-    /** `"generic"` | `"legacy"` | `"kotlin:<id>"`. */
+    /** Always `"generic"` for a descriptor exposed by the shipping registry. */
     val engine: String,
     val baseUrl: String,
     /** Display ordering within a language group (lower first). */
@@ -31,7 +31,7 @@ data class RuntimeSourceDescriptor(
     val enabledByDefault: Boolean,
     /** Operational status in config vocabulary (`"WORKING"`, `"UNDER_MAINTENANCE"`, …). */
     val siteState: String,
-    /** `"active"` | `"disabled"` | `"removed"`. */
+    /** Always `"active"` for a descriptor exposed by the shipping registry. */
     val lifecycle: String,
     /** Key into the packaged-drawable icon registry, or null when the stanza ships none. */
     val iconResourceKey: String?,

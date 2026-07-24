@@ -50,7 +50,7 @@ There are 16 included Gradle modules:
 :platform     → :core                         expect/actual platform facades
 :sources:contracts → :core, :domain            public source ports and config model
 :sources:engine    → :sources:contracts        generic request/extraction engine
-:sources:config    → :sources:contracts        config cache/merge/update lifecycle
+:sources:config    → :sources:contracts        signed manifest/delta synchronization lifecycle
 :sources:legacy    → :core, :domain, :data:local, :data:remote, :platform
 :data:download     → :platform, :data:local, :sources:legacy
 :data             → :core, :domain, :platform, :data:local, :data:download,
@@ -77,12 +77,12 @@ must remain independent of one another.
 - The generic source contract is in `:sources:contracts`; the engine is declarative and has no
   HTTP-library dependency; Ktor and platform implementations are wired at the composition root.
   Config validation is all-or-nothing per document.
-- The bundled document is revision **4**, with **45** stanzas: **12 `generic`** sources and **33
-  metadata-only `legacy`** stanzas. Remote network delivery is currently disabled (`remote = null`
-  and `DenyRemoteSignatureVerifier`). `DefaultSourceRegistry` routes generic stanzas to the generic
-  engine only; the retained `FallbackSourceClient` is currently unwired. Accepted config state is
-  cached through Room, and the app’s active config also feeds source metadata, host trust, and
-  config-backed download routing.
+- The bundled document is revision **6** and contains exactly the **12 approved `generic` sources**.
+  It contains no legacy stanza. `IncrementalSourceCatalogManager` conditionally fetches a signed v2
+  manifest, downloads only missing immutable source revisions, and atomically activates a complete
+  verified catalog in Room. `DefaultSourceRegistry` has no legacy adapter or inference path: an api
+  absent from the active catalog has no client. The same active catalog feeds source metadata, host
+  trust, and download routing.
 - New UI strings must be added to a topic-specific `strings_pfix_*.xml` file in the default and all
   11 locale folders. Both `:ui:checkLocaleKeyParity` and `:composeApp:checkLocaleKeyParity` are
   wired into their module `check` tasks.

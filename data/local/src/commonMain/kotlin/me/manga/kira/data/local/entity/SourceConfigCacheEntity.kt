@@ -4,16 +4,9 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * Persistent cache of the generic-sources config document (Sources Migration — Phase 1).
- *
- * The source-config subsystem's `ConfigStore` port speaks a single raw JSON string (bundled floor <
- * cache < remote). This single-row table is the durable `cache` tier: it survives process death
- * (the previous in-memory cache did not) and is co-located with the `sources` table so a future
- * config refresh can reseed sources + migrate base URLs in one Room transaction.
- *
- * One logical row only (`id` is pinned to [SINGLETON_ID]); a write REPLACEs it. We store the raw
- * JSON verbatim (forward-compatible with newer remote schemas the current parser doesn't know yet)
- * plus lightweight metadata for diagnostics.
+ * Historical v11 whole-document cache entity retained for Room schema compatibility. Migration
+ * 11→12 clears it, and the v2 runtime stores signed manifests and immutable source revisions in the
+ * source-catalog tables instead.
  */
 @Entity(tableName = "source_config_cache")
 data class SourceConfigCacheEntity(

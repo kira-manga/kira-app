@@ -13,7 +13,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -27,10 +26,7 @@ import me.manga.kira.domain.service.FileService
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
-import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.ar.mangamelloplus.MangamelloPlusRepository
-import me.manga.kira.sources_repositry.data.MangaSource
-import java.io.BufferedInputStream
+import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -61,222 +57,23 @@ class ChapterDownloadService(
 
     private val DOWNLOAD_DISPATCHER = Dispatchers.IO.limitedParallelism(6)
 
-    // Sources Migration Phase 3: [repo] is nullable and [overrideHeaders] carries the per-chapter
-    // headers from the SourceRegistry/generic path. When [overrideHeaders] != null the image GET uses
-    // them verbatim ([repo] is null there); otherwise the legacy repo-based header logic applies.
     fun downloadChapterC(
         chapter: SavedChapterEntity,
-        imageUrls: List<String>,
-        repo: BaseMangaRepository?,
-        overrideHeaders: Map<String, String>? = null,
-    ): Flow<DownloadState> = flow {
-        val api = libraryRepository.getApiById(chapter.mangaId)
-
-        if (api == MangaSource.PROCHAN.API) {
-            emitAll(downloadChapterStreaming(chapter, imageUrls, repo, overrideHeaders))
-        } else {
-            emitAll(downloadChapterBatch(chapter, imageUrls, repo, overrideHeaders))
-        }
-    }.flowOn(DOWNLOAD_DISPATCHER)
-
-    private suspend fun handleImageSource(
-        imageSource: String,
-        mangaId: Long,
-        chapterId: Long,
-        imageIndex: Int,
-        repo: BaseMangaRepository?,
-        overrideHeaders: Map<String, String>?,
-    ): String = withContext(Dispatchers.IO) {
-
-        val clean = imageSource.trim().substringBefore("?")
-
-        Log.i("CHECK_PATH", "raw='$imageSource'")
-        Log.i("CHECK_PATH", "clean='$clean'")
-
-        val local = File(clean)
-
-        if (clean.startsWith("/data/") ||
-            clean.startsWith("file://") ||
-            local.exists()
-        ) {
-
-            Log.i("CHECK_PATH", "Detected LOCAL → Copying")
-            return@withContext copyLocalImage(clean, mangaId, chapterId, imageIndex)
-        }
-
-        Log.i("CHECK_PATH", "Detected URL → Downloading")
-        return@withContext downloadImage(clean, mangaId, chapterId, imageIndex, repo, overrideHeaders)
-    }
-
-    private suspend fun copyLocalImage(
-        sourcePath: String,
-        mangaId: Long,
-        chapterId: Long,
-        imageIndex: Int,
-    ): String = withContext(Dispatchers.IO) {
-        val sourceFile = File(sourcePath.removePrefix("file://"))
-
-        if (!sourceFile.exists()) {
-            throw IllegalStateException("Source file does not exist: $sourcePath")
-        }
-
-        val extension = sourceFile.extension.ifEmpty { "jpg" }
-
-        val chapterDir = File(context.filesDir, "manga/$mangaId/chapter_$chapterId").apply {
-            mkdirs()
-        }
-
-        val destFile = File(chapterDir, "image_$imageIndex.$extension")
-
-        BufferedInputStream(sourceFile.inputStream()).use { input ->
-            BufferedOutputStream(FileOutputStream(destFile)).use { output ->
-                input.copyTo(output, bufferSize = 64 * 1024)
-            }
-        }
-
-        destFile.absolutePath
-    }
-
-    private fun downloadChapterStreaming(
-        chapter: SavedChapterEntity,
-        imageUrls: List<String>,
-        repo: BaseMangaRepository?,
-        overrideHeaders: Map<String, String>?,
-    ): Flow<DownloadState> = flow {
-        require(imageUrls.isNotEmpty()) { "No images to download" }
-
-        val paths = mutableListOf<String>()
-        val useCbz = dataStoreHelper.useCbzFormatFlow.first()
-        var lastEmittedCount = 0
-
-        try {
-            Log.d("ChapterDownloadService", "Starting streaming download for ${imageUrls.size} images")
-
-            imageUrls.forEachIndexed { index, imageSource ->
-                currentCoroutineContext().ensureActive()
-
-                if (paths.size > lastEmittedCount) {
-                    emit(DownloadState.InProgress(imageUrls.size, paths.size, imageSource))
-                    lastEmittedCount = paths.size
-                }
-
-                try {
-                    val path = handleImageSource(imageSource, chapter.mangaId, chapter.id, index, repo, overrideHeaders)
-                    paths.add(path)
-
-                    emit(DownloadState.InProgress(imageUrls.size, paths.size, imageSource))
-
-                    Log.d("ChapterDownloadService", "Processed image ${paths.size}/${imageUrls.size}")
-                } catch (e: Exception) {
-                    Log.e("ChapterDownloadService", "Failed to process image $index: ${e.message}")
-                    if (e is CancellationException) throw e
-                }
-            }
-
-            if (paths.size < imageUrls.size) {
-                // Any missing page means the chapter would read with silent gaps offline. Fail the
-                // whole download (and drop the partial pages) rather than mark it Complete — a
-                // wrong-but-plausible chapter is worse than a failure the user can retry.
-                paths.forEach { File(it).delete() }
-                throw IllegalStateException(
-                    "Failed to download all images: got ${paths.size}/${imageUrls.size}",
-                )
-            }
-
-            Log.d("ChapterDownloadService", "Successfully processed ${paths.size}/${imageUrls.size} images")
-
-            if (useCbz) {
-                emit(DownloadState.Compressing(paths.size))
-                Log.i("ChapterDownloadService", "Starting compression for chapter ${chapter.id}")
-
-                try {
-                    currentCoroutineContext().ensureActive()
-
-                    val cbzPath = optimizedCbzManager.createCbzParallel(
-                        paths,
-                        chapter.mangaId,
-                        chapter.id,
-                        onProgress = { _, _ ->
-                            // Optional: emit compression progress
-                        },
-                    )
-                    currentCoroutineContext().ensureActive()
-
-                    Log.i("ChapterDownloadService", "CBZ created: $cbzPath")
-
-                    libraryRepository.updateChapterLocalPaths(chapter.id, listOf(cbzPath))
-                    notificationDao.addLocalImagePathByChapterId(chapter.id, listOf(cbzPath))
-
-                    emit(DownloadState.Complete(listOf(cbzPath)))
-                } catch (e: CancellationException) {
-                    Log.w("ChapterDownloadService", "Compression cancelled for chapter ${chapter.id}")
-                    paths.forEach { File(it).delete() }
-                    chapterDownloadDao.updateStateChId(chapter.id, DownloadingState.FAILED)
-                    throw e
-                } catch (e: Throwable) {
-                    // Throwable, not Exception: OutOfMemoryError is an Error, so the loose-files
-                    // fallback below would otherwise never fire on a real OOM (CancellationException
-                    // is already handled by the branch above).
-                    Log.e("ChapterDownloadService", "Compression failed: ${e.message}", e)
-
-                    if (e is OutOfMemoryError || e.message?.contains("memory", ignoreCase = true) == true) {
-                        Log.i("ChapterDownloadService", "Falling back to original files")
-                        libraryRepository.updateChapterLocalPaths(chapter.id, paths)
-                        libraryRepository.markChapterAsDownloaded(chapterId = chapter.id)
-                        chapterDownloadDao.updateStateChId(chapter.id, DownloadingState.SUCCESS)
-                        notificationDao.addLocalImagePathByChapterId(chapter.id, paths)
-                        emit(DownloadState.Complete(paths))
-                    } else {
-                        paths.forEach { File(it).delete() }
-                        chapterDownloadDao.updateFailure(chapter.id, "Compression failed: ${e.message}")
-                        emit(DownloadState.Error(e, paths.size, imageUrls.size))
-                    }
-                }
-            } else {
-                libraryRepository.updateChapterLocalPaths(chapter.id, paths)
-                notificationDao.addLocalImagePathByChapterId(chapter.id, paths)
-                emit(DownloadState.Complete(paths))
-            }
-        } catch (e: CancellationException) {
-            Log.w("ChapterDownloadService", "Streaming download cancelled for chapter ${chapter.id}")
-            paths.forEach { File(it).delete() }
-            chapterDownloadDao.updateFailure(chapter.id, "Download cancelled")
-            throw e
-        }
-    }.catch { e ->
-        if (e !is CancellationException) {
-            Log.e("ChapterDownloadService", "Streaming download error", e)
-            chapterDownloadDao.updateFailure(chapter.id, e.message)
-        }
-        emit(DownloadState.Error(e, 0, imageUrls.size))
-    }
+        pages: List<DownloadPage>,
+    ): Flow<DownloadState> = downloadChapterBatch(chapter, pages).flowOn(DOWNLOAD_DISPATCHER)
 
     suspend fun downloadImage(
         imageUrl: String,
         mangaId: Long,
         chapterId: Long,
         imageIndex: Int,
-        repo: BaseMangaRepository?,
-        overrideHeaders: Map<String, String>? = null,
+        pageHeaders: Map<String, String>,
     ): String = withContext(Dispatchers.IO) {
         Log.i("ChapterDownloadService", "downloadImage url=$imageUrl")
 
         val response: HttpResponse = httpClient.get(imageUrl) {
             headers {
-                when {
-                    // Sources Migration Phase 3: config-backed/generic path — per-page headers from the
-                    // SourceRegistry are used verbatim (config + captured cookies/Referer/UA).
-                    overrideHeaders != null -> overrideHeaders.forEach { (name, value) -> append(name, value) }
-                    repo is MangamelloPlusRepository -> {
-                        if (imageUrl.contains("mangamello", ignoreCase = true) ||
-                            imageUrl.contains("mello", ignoreCase = true) ||
-                            imageUrl.contains("cdn.mangamello.com", ignoreCase = true)
-                        ) {
-                            repo.imgsHeader.forEach { (name, value) -> append(name, value) }
-                        }
-                    }
-                    repo != null -> repo.defaultHeaders.forEach { (name, value) -> append(name, value) }
-                }
+                pageHeaders.forEach { (name, value) -> append(name, value) }
             }
         }
 
@@ -308,22 +105,21 @@ class ChapterDownloadService(
 
     private fun downloadChapterBatch(
         chapter: SavedChapterEntity,
-        imageUrls: List<String>,
-        repo: BaseMangaRepository?,
-        overrideHeaders: Map<String, String>?,
+        pages: List<DownloadPage>,
     ): Flow<DownloadState> = flow {
-        require(imageUrls.isNotEmpty()) { "No images to download" }
+        require(pages.isNotEmpty()) { "No images to download" }
 
-        val total = imageUrls.size
+        val total = pages.size
         val paths = mutableListOf<String>()
         val useCbz = dataStoreHelper.useCbzFormatFlow.first()
 
         try {
-            for ((index, url) in imageUrls.withIndex()) {
+            for ((index, page) in pages.withIndex()) {
+                val url = page.url
                 currentCoroutineContext().ensureActive()
                 emit(DownloadState.InProgress(total, index, url))
 
-                val path = downloadImage(url, chapter.mangaId, chapter.id, index, repo, overrideHeaders)
+                val path = downloadImage(url, chapter.mangaId, chapter.id, index, page.headers)
                 paths += path
             }
 
@@ -378,7 +174,7 @@ class ChapterDownloadService(
         if (e !is CancellationException) {
             chapterDownloadDao.updateFailure(chapter.id, e.message)
         }
-        emit(DownloadState.Error(e, 0, imageUrls.size))
+        emit(DownloadState.Error(e, 0, pages.size))
     }
 
     private fun detectImageExtension(contentType: String?, imageUrl: String): String {
@@ -613,4 +409,3 @@ class ChapterDownloadService(
  *     orphans, or pivot to the much smaller iOS+Desktop platform-
  *     stub register.
  */
-

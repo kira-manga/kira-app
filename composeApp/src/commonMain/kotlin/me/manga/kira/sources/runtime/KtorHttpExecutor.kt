@@ -19,8 +19,8 @@ import me.manga.kira.sources.contracts.SourceResponse
 
 /**
  * The single Ktor-backed implementation of the engine's transport [HttpExecutor] port. It reuses the
- * app's configured [HttpClient] (the same one the legacy sources use — engine selection, logging,
- * timeouts, content-negotiation all already set up), translating the engine's transport-agnostic
+ * app's configured [HttpClient] (with the shared logging, timeout, and content-negotiation policy),
+ * translating the engine's transport-agnostic
  * [SourceRequest] into a Ktor call and the response into a [SourceResponse].
  *
  * Living here (the composition root) rather than in `:sources:engine` is deliberate: it keeps the

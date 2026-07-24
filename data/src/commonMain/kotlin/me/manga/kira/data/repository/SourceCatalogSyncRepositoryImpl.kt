@@ -210,15 +210,13 @@ class SourceCatalogSyncRepositoryImpl(
     // enabled NON-config (legacy) row so the whole active flow (Home tabs / search-all / active
     // source — all gated on isEnabled) surfaces only config-backed sources. The legacy row +
     // code stay in place (archived), just disabled; this also turns off a pre-migration install
-    // where a legacy source was enabled. Guarded on a non-empty generic set so a parse failure
-    // (no generic sources resolved) can never disable everything. NOTE (retirement Phase 3/4):
-    // the key set is deliberately the GENERIC apis — a legacy api with a metadata-only stanza is
-    // still not user-facing and stays force-disabled.
+    // where a legacy source was enabled. An empty active catalog is authoritative and therefore
+    // disables every row. Parse/network failures never reach this layer: SourceUpdateManager
+    // retains a complete verified cache or bundled tier instead.
     private suspend fun forceDisableNonConfigRows(
         genericEntries: List<SourceConfig>,
         rows: Collection<SourcesEntity>,
     ) {
-        if (genericEntries.isEmpty()) return
         val configApis = genericEntries.mapTo(mutableSetOf()) { it.api }
         rows.forEach { row ->
             if (row.name !in configApis && row.isEnabled) {

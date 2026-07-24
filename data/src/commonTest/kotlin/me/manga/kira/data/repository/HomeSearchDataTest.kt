@@ -12,40 +12,40 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.core.states.State as LegacyState
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.data.mapper.toFeatured
 import me.manga.kira.data.mapper.toHomeFeedItem
 import me.manga.kira.data.mapper.toSiteState
+import me.manga.kira.data.mapper.toSourceTab
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.MangaInfo
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.home.SiteState
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
-import me.manga.kira.domain.model.MangaInfo
-import me.manga.kira.domain.model.MangaItem as LegacyMangaItem
-import me.manga.kira.domain.model.PopularManga as LegacyPopularManga
 import me.manga.kira.presentation.features.home.data.SearchType
 import me.manga.kira.presentation.features.repo_settings.domain.SourceState
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import me.manga.kira.core.states.State as LegacyState
+import me.manga.kira.domain.model.ChapterItem as LegacyChapterItem
+import me.manga.kira.domain.model.MangaItem as LegacyMangaItem
+import me.manga.kira.domain.model.PopularManga as LegacyPopularManga
+import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 
 /**
- * Unit tests for the Home + Search `:data` slice (Epic H2): mapper round-trips + the strangler-fig
- * repo impls against fakes for the legacy `BaseMangaRepository` / `SourcesRepository`.
+ * Unit tests for the Home + Search `:data` slice (Epic H2): mapper round-trips plus authoritative
+ * generic-catalog routing backed by the existing Room source-selection store.
  *
  * Matches the existing `:data` / `:domain` fake-based commonTest style (kotlin-test + turbine,
  * `StandardTestDispatcher` via a test [DispatcherProvider]). Confines the legacy types to the test
@@ -147,6 +147,7 @@ class HomeSearchDataTest {
         }
 
         override fun getAllSources(): Flow<List<SourcesEntity>> = flowOf(rows)
+        override suspend fun getAllSourcesOnce(): List<SourcesEntity> = rows
         override suspend fun insert(source: SourcesEntity): Long = 1L
         override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 1
         override suspend fun getBaseUrlFor(name: String): String? =
@@ -160,6 +161,14 @@ class HomeSearchDataTest {
         override suspend fun updateImageBaseUrlAndVersionByName(apiName: String, newImageBaseUrl: String, newImageVersion: Int): Int = 0
         override suspend fun updateSiteStateByName(name: String, siteState: SourceState): Int = 0
         override suspend fun deleteSourceByName(name: String): Int = 0
+        override suspend fun disableOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int = 0
+        override suspend fun updateCatalogMetadata(
+            api: String,
+            priority: Int,
+            language: String,
+            siteState: SourceState,
+        ): Int = 0
     }
 
     /** Build a real legacy [LegacySourcesRepository] over in-memory fakes. */
@@ -208,6 +217,38 @@ class HomeSearchDataTest {
     }
 
     @Test
+    fun sourceTab_invalidPersistedBaseUrl_usesValidatedDescriptorUrl() {
+        val row = SourcesEntity(
+            name = "Azora",
+            isEnabled = true,
+            priority = 0,
+            language = "(AR)",
+            siteState = SourceState.WORKING,
+            baseUrl = "about:about",
+            baseVersion = 0,
+            imageBaseUrl = "",
+            imageUrlVersion = 0,
+        )
+        val descriptor = RuntimeSourceDescriptor(
+            api = "Azora",
+            displayName = "Azora",
+            language = "(AR)",
+            engine = "generic",
+            baseUrl = "https://api.azorafly.com",
+            priority = 0,
+            enabledByDefault = true,
+            siteState = "WORKING",
+            lifecycle = "active",
+            iconResourceKey = "azora",
+            iconRemoteUrl = null,
+            blacklistGenres = emptyList(),
+            headers = emptyMap(),
+        )
+
+        assertEquals("https://api.azorafly.com", row.toSourceTab(descriptor).baseUrl)
+    }
+
+    @Test
     fun mangaItem_with_null_chapters_maps_to_empty_recentChapters() {
         val legacy = LegacyMangaItem(
             api = "src", language = "en", title = "T", url = "u",
@@ -239,15 +280,7 @@ class HomeSearchDataTest {
 
     // --- HomeFeedRepositoryImpl.fetchHome -------------------------------------------------------
 
-    /** A registry where nothing is piloted — Home/Search take the unchanged legacy path. */
-    private object NoPilotRegistry : SourceRegistry {
-        override fun get(api: String): MangaSourceClient? = null
-        override fun isConfigBacked(api: String): Boolean = false
-        override fun descriptor(api: String): RuntimeSourceDescriptor? = null
-        override fun genericDescriptors(): List<RuntimeSourceDescriptor> = emptyList()
-    }
-
-    /** A registry whose given apis are piloted, each served by a fixed stub client. */
+    /** A registry whose given APIs are active, each served by a fixed generic client. */
     private class PilotedRegistry(private val clients: Map<String, MangaSourceClient>) : SourceRegistry {
         override fun get(api: String): MangaSourceClient? = clients[api]
         override fun isConfigBacked(api: String): Boolean = api in clients
@@ -256,25 +289,27 @@ class HomeSearchDataTest {
         override fun genericDescriptors(): List<RuntimeSourceDescriptor> = clients.keys.map(::fakeDescriptor)
     }
 
-    /** Minimal config-backed client returning a fixed search result. */
-    private class StubSearchClient(
+    /** Minimal config-backed client returning fixed Home and Search results. */
+    private class StubSourceClient(
         override val api: String,
-        private val searchResult: AppResult<List<HomeFeedItem>>,
+        private val homeResult: AppResult<List<HomeFeedItem>> = AppResult.Success(emptyList()),
+        private val searchResult: AppResult<List<HomeFeedItem>> = AppResult.Success(emptyList()),
     ) : MangaSourceClient {
-        override suspend fun home(page: Int) = AppResult.Success(emptyList<HomeFeedItem>())
+        override suspend fun home(page: Int) = homeResult
         override suspend fun featured(page: Int) = AppResult.Success(emptyList<FeaturedManga>())
         override suspend fun search(query: String, page: Int, filters: FilterSelections) = searchResult
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("unused")
         override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = error("unused")
     }
 
-    private fun CoroutineScope.homeRepo(active: FakeMangaRepo): HomeFeedRepositoryImpl =
+    private fun CoroutineScope.homeRepo(
+        active: FakeMangaRepo,
+        result: AppResult<List<HomeFeedItem>>,
+    ): HomeFeedRepositoryImpl =
         HomeFeedRepositoryImpl(
             sourcesRepository = legacySources(listOf(active), this),
-            dadosStore = ManhastroDadosStore(),
             dispatchers = testDispatchers,
-            // No source is piloted here → these tests exercise the unchanged legacy path.
-            sourceRegistry = NoPilotRegistry,
+            sourceRegistry = PilotedRegistry(mapOf(active.API to StubSourceClient(active.API, homeResult = result))),
         )
 
     @Test
@@ -288,13 +323,18 @@ class HomeSearchDataTest {
                 ),
             ),
         )
-        val result = homeRepo(active).fetchHome(reset = true)
+        val expected =
+            listOf(
+                HomeFeedItem("src", "en", "A", "ua", "ia", null, emptyList(), emptyList()),
+                HomeFeedItem("src", "en", "B", "ub", "ib", 5, listOf("g"), emptyList()),
+            )
+        val result = homeRepo(active, AppResult.Success(expected)).fetchHome(reset = true)
         assertTrue(result is AppResult.Success)
         result as AppResult.Success
         assertEquals(2, result.value.size)
         assertEquals("A", result.value[0].title)
         assertEquals("ib", result.value[1].coverUrl)
-        assertEquals(1, active.initSiteCalls) // initSite() called before fetch, like the legacy VM
+        assertEquals(0, active.initSiteCalls)
     }
 
     @Test
@@ -303,7 +343,11 @@ class HomeSearchDataTest {
             api = "src",
             home = LegacyState.Error(code = 503, message = "Service Unavailable"),
         )
-        val result = homeRepo(active).fetchHome(reset = true)
+        val result =
+            homeRepo(
+                active,
+                AppResult.Failure(AppError.Network.Http(statusCode = 503)),
+            ).fetchHome(reset = true)
         assertTrue(result is AppResult.Failure)
         val err = (result as AppResult.Failure).error
         assertTrue(err is AppError.Network.Http)
@@ -316,7 +360,11 @@ class HomeSearchDataTest {
             api = "src",
             home = LegacyState.Error(code = 0, message = "Unknown host api.example.com"),
         )
-        val result = homeRepo(active).fetchHome(reset = false)
+        val result =
+            homeRepo(
+                active,
+                AppResult.Failure(AppError.Network.NoConnectivity()),
+            ).fetchHome(reset = false)
         assertTrue(result is AppResult.Failure)
         assertTrue((result as AppResult.Failure).error is AppError.Network.NoConnectivity)
     }
@@ -332,11 +380,25 @@ class HomeSearchDataTest {
         val repoB = FakeMangaRepo(api = "B")
         val registry = PilotedRegistry(
             mapOf(
-                "A" to StubSearchClient(
+                "A" to StubSourceClient(
                     "A",
-                    AppResult.Success(listOf(LegacyMangaItem("A", "en", "ra", "u", "i", null, null, emptyList()).toHomeFeedItem())),
+                    searchResult =
+                        AppResult.Success(
+                            listOf(
+                                LegacyMangaItem(
+                                    "A",
+                                    "en",
+                                    "ra",
+                                    "u",
+                                    "i",
+                                    null,
+                                    null,
+                                    emptyList(),
+                                ).toHomeFeedItem(),
+                            ),
+                        ),
                 ),
-                "B" to StubSearchClient("B", AppResult.Failure(AppError.Network.Timeout())),
+                "B" to StubSourceClient("B", searchResult = AppResult.Failure(AppError.Network.Timeout())),
             ),
         )
         val impl = SearchRepositoryImpl(

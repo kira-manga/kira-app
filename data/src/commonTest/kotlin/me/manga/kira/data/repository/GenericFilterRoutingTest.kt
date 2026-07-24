@@ -23,7 +23,6 @@ import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.presentation.features.home.data.SearchType
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources_repositry.BaseMangaRepository
-import me.manga.kira.sources_repositry.pt.manhastro.ManhastroDadosStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -109,7 +108,7 @@ class GenericFilterRoutingTest {
         }
 
     @Test
-    fun legacy_source_selections_translate_onto_the_legacy_search_type() =
+    fun source_absent_from_catalog_rejects_search_without_invoking_legacy_adapter() =
         runTest {
             val legacyRepo = FakeLegacyRepo(api, sortTypes = setOf("Latest"), allGenres = setOf("Action", "Drama"))
             val dao = StatefulSourcesDao(listOf(enabledRow()))
@@ -123,18 +122,17 @@ class GenericFilterRoutingTest {
                     sourceRegistry = PilotRegistry(piloted = emptySet()), // NOT config-backed
                 )
 
-            search.searchSource("q", selections("sort" to listOf("Latest"), "genres" to listOf("Action", "Drama")))
-            assertEquals(SearchType.SORT(query = "q", sortType = "Latest", genres = "Action,Drama"), legacyRepo.lastSearchType)
-
-            search.searchSource("q", selections("genres" to listOf("Action")))
-            assertEquals(SearchType.GENRES(query = "q", genres = "Action"), legacyRepo.lastSearchType)
-
-            search.searchSource("plain", FilterSelections())
-            assertEquals(SearchType.Normal("plain"), legacyRepo.lastSearchType)
+            val result =
+                search.searchSource(
+                    "q",
+                    selections("sort" to listOf("Latest"), "genres" to listOf("Action", "Drama")),
+                )
+            assertTrue(result is AppResult.Failure)
+            assertNull(legacyRepo.lastSearchType)
         }
 
     @Test
-    fun legacy_source_filters_adapt_into_ordered_generic_descriptors() =
+    fun source_absent_from_catalog_has_no_filter_surface() =
         runTest {
             val legacyRepo = FakeLegacyRepo(api, sortTypes = setOf("Latest", "Views"), allGenres = setOf("Action"))
             val dao = StatefulSourcesDao(listOf(enabledRow()))
@@ -144,17 +142,14 @@ class GenericFilterRoutingTest {
             val home =
                 HomeFeedRepositoryImpl(
                     sourcesRepository = legacy,
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry = PilotRegistry(piloted = emptySet()),
                 )
 
-            val filters = (home.loadSourceFilters() as AppResult.Success).value
+            val result = home.loadSourceFilters()
 
-            assertEquals(listOf("genres", "sort"), filters.map { it.id }, "pre-generic sheet order: genres, then sort")
-            assertTrue(filters.all { it.type == FilterControlType.SELECT })
-            assertEquals(listOf(FilterOption("Action", "Action")), filters[0].options)
-            assertEquals(listOf("Latest", "Views"), filters[1].options.map { it.value })
+            assertTrue(result is AppResult.Failure)
+            assertNull(legacyRepo.lastSearchType)
         }
 
     @Test
@@ -173,7 +168,6 @@ class GenericFilterRoutingTest {
             fun home(descriptors: Map<String, me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor>) =
                 HomeFeedRepositoryImpl(
                     sourcesRepository = legacySources(StatefulSourcesDao(listOf(enabledRow()))),
-                    dadosStore = ManhastroDadosStore(),
                     dispatchers = testDispatchers,
                     sourceRegistry =
                         PilotRegistry(

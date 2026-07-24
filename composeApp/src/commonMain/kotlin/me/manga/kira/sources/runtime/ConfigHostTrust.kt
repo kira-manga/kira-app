@@ -9,12 +9,11 @@ import me.manga.kira.sources.contracts.model.SourceConfig
  * "is [host] one of the config-declared hosts for [api]?" for the push deep-link trust gate in
  * `App.kt`. The trusted set per source is `baseUrl` + `imageBase` hosts plus the three bare-host
  * lists (`previousHosts`, `previousImageHosts`, `trustedHosts`), each matching exactly or as a
- * parent domain (`sub.host.com` is trusted when `host.com` is declared — the same subdomain rule
- * the legacy `findRepoByHost` resolver applies).
+ * parent domain (`sub.host.com` is trusted when `host.com` is declared).
  *
- * Config metadata is authoritative and per-api (a host declared for source A never trusts a link
- * claiming source B); the legacy resolver remains the fallback for apis without config metadata.
- * Reads the ACTIVE document on every call — no caching — so a config update is honored immediately.
+ * Active generic config metadata is the only authority and is per-api (a host declared for source A
+ * never trusts a link claiming source B). Reads the active document on every call, so a catalog
+ * activation is honored immediately and an absent/disabled/retired source grants no trust.
  */
 class ConfigHostTrust(
     private val updateManager: SourceUpdateManager,
@@ -24,7 +23,18 @@ class ConfigHostTrust(
         host: String,
     ): Boolean {
         val cfg =
-            if (host.isBlank()) null else updateManager.activeDocument().sources.firstOrNull { it.api == api }
+            if (host.isBlank()) {
+                null
+            } else {
+                updateManager
+                    .activeDocument()
+                    .sources
+                    .firstOrNull {
+                        it.api == api &&
+                            it.engine == ENGINE_GENERIC &&
+                            it.lifecycle == LIFECYCLE_ACTIVE
+                    }
+            }
         if (cfg == null) return false
         val target = host.lowercase()
         return configHosts(cfg).any { declared -> target == declared || target.endsWith(".$declared") }
@@ -43,7 +53,9 @@ class ConfigHostTrust(
             .activeDocument()
             .sources
             .firstOrNull { cfg ->
-                configHosts(cfg).any { declared -> target == declared || target.endsWith(".$declared") }
+                cfg.engine == ENGINE_GENERIC &&
+                    cfg.lifecycle == LIFECYCLE_ACTIVE &&
+                    configHosts(cfg).any { declared -> target == declared || target.endsWith(".$declared") }
             }?.api
     }
 
@@ -57,4 +69,9 @@ class ConfigHostTrust(
         }.map { it.lowercase() }.filter { it.isNotBlank() }
 
     private fun hostOf(url: String): String? = runCatching { Url(url).host }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    private companion object {
+        const val ENGINE_GENERIC = "generic"
+        const val LIFECYCLE_ACTIVE = "active"
+    }
 }

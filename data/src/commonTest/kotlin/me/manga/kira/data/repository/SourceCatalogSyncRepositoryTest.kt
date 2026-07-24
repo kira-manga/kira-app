@@ -173,9 +173,8 @@ class SourceCatalogSyncRepositoryTest {
         }
 
     @Test
-    fun emptyConfig_disablesNothing() =
+    fun validEmptyCatalog_disablesEveryPreviouslyEnabledRow() =
         runTest {
-            // A parse failure / empty document must never disable everything.
             val sources =
                 StatefulSourcesDao(
                     listOf(sourceRow("LegacyOnly", baseUrl = "https://legacy.test", isEnabled = true)),
@@ -183,8 +182,8 @@ class SourceCatalogSyncRepositoryTest {
 
             repo(doc(), sources).syncFromConfig()
 
-            assertEquals(emptyList(), sources.enabledCalls)
-            assertEquals(true, sources.current().single { it.name == "LegacyOnly" }.isEnabled)
+            assertEquals(listOf("LegacyOnly" to false), sources.enabledCalls)
+            assertEquals(false, sources.current().single { it.name == "LegacyOnly" }.isEnabled)
         }
 
     // --- SourceRegistry retirement Phase 3: the sync owns the retired endpoint's behaviors -------

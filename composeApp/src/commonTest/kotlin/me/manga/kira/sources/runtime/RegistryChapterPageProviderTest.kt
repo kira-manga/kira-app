@@ -24,7 +24,6 @@ import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 
 /**
  * Sources Migration — Phase 3. Proves the DOWNLOAD routing seam ([RegistryChapterPageProvider]):
@@ -80,7 +79,6 @@ class RegistryChapterPageProviderTest {
         document: SourceConfigDocument = genericDoc("Azora"),
         genericFailing: Boolean = false,
     ) = DefaultSourceRegistry(
-        legacyRepos = setOf(legacy),
         updateManager = FakeUpdateManager(document),
         genericClientFactory = { config -> StubGenericPagesClient(config.api, genericPages, failing = genericFailing) },
     )
@@ -113,13 +111,13 @@ class RegistryChapterPageProviderTest {
     }
 
     @Test
-    fun non_config_source_returns_null_so_caller_keeps_legacy() = runTest {
-        // "Other" has no generic stanza → not config-backed → provider returns null without routing.
+    fun non_config_source_fails_closed_without_legacy_fallback() = runTest {
+        // "Other" has no active generic stanza, so no client is ever inferred for it.
         val provider = RegistryChapterPageProvider(registry(CountingLegacyRepo("Other")))
 
-        val pages = provider.pagesOrNull("Other", "https://other.test/m/1", "ar", "https://other.test/m/1/c/1")
-
-        assertNull(pages)
+        assertFailsWith<GenericPagesFailedException> {
+            provider.pagesOrNull("Other", "https://other.test/m/1", "ar", "https://other.test/m/1/c/1")
+        }
     }
 
     @Test
@@ -141,7 +139,6 @@ class RegistryChapterPageProviderTest {
         // not a silent blank chapter, and never legacy.
         val legacy = CountingLegacyRepo("Azora")
         val emptyRegistry = DefaultSourceRegistry(
-            legacyRepos = setOf(legacy),
             updateManager = FakeUpdateManager(genericDoc("Azora")),
             genericClientFactory = { StubGenericPagesClient(it.api, pages = emptyList()) },
         )

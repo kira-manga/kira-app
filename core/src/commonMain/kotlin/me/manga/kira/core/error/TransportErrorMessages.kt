@@ -3,7 +3,7 @@ package me.manga.kira.core.error
 /**
  * Message-shape heuristics shared by every transport-error classifier at the `:data` / sources
  * boundary (`HomeMappers`, `MangaDetailsRepositoryImpl`, `ChapterPagesRepositoryImpl`,
- * `LegacyKotlinSourceClient`, `GenericSourceClient`).
+ * `GenericSourceClient`).
  *
  * Kept in ONE place so all classifiers recognize every platform engine's error text (2026-07 audit:
  * the previous per-file copies only matched OkHttp/Android shapes, so iOS airplane mode surfaced
@@ -52,9 +52,7 @@ object TransportErrorMessages {
             "connection refused",
             "network is unreachable",
             "no route to host",
-            // Canonical legacy-State friendly texts (State.Error.fromException replaces the raw
-            // exception message BEFORE LegacyKotlinSourceClient re-classifies it, so the downstream
-            // classifier sees these, not the engine text)
+            // Canonical friendly texts emitted by older state adapters.
             "cannot reach server",
             "unable to connect to the server",
         )

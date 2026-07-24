@@ -304,6 +304,7 @@ internal class StatefulSourcesDao(
     fun current(): List<SourcesEntity> = flow.value
 
     override fun getAllSources(): Flow<List<SourcesEntity>> = flow
+    override suspend fun getAllSourcesOnce(): List<SourcesEntity> = flow.value
 
     override suspend fun insert(source: SourcesEntity): Long {
         inserts += source
@@ -366,6 +367,36 @@ internal class StatefulSourcesDao(
         val before = flow.value
         flow.value = before.filterNot { it.name == name }
         return if (before.any { it.name == name }) 1 else 0
+    }
+
+    override suspend fun disableOutsideCatalog(activeApis: List<String>): Int {
+        val before = flow.value
+        flow.value = before.map { row -> if (row.name in activeApis) row else row.copy(isEnabled = false) }
+        return before.count { it.name !in activeApis && it.isEnabled }
+    }
+
+    override suspend fun deleteOutsideCatalog(activeApis: List<String>): Int {
+        val before = flow.value
+        flow.value = before.filter { it.name in activeApis }
+        return before.size - flow.value.size
+    }
+
+    override suspend fun updateCatalogMetadata(
+        api: String,
+        priority: Int,
+        language: String,
+        siteState: SourceState,
+    ): Int {
+        val before = flow.value
+        flow.value =
+            before.map { row ->
+                if (row.name == api) {
+                    row.copy(priority = priority, language = language, siteState = siteState)
+                } else {
+                    row
+                }
+            }
+        return if (before.any { it.name == api }) 1 else 0
     }
 
     // --- unused surface ---------------------------------------------------------------------------

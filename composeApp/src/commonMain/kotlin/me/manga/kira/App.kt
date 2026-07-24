@@ -49,8 +49,6 @@ import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.presentation.common.componants.images.platformNetworkFetcherFactory
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository
-import me.manga.kira.sources_repositry.common.BaseManga
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -70,7 +68,6 @@ import me.manga.kira.domain.model.sources.SourceAccessState
 import me.manga.kira.domain.model.sources.SourceActivationResult
 import me.manga.kira.domain.usecase.sourceaccess.ActivateSourceAccessUseCase
 import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
-import me.manga.kira.domain.usecase.sources.SyncSourceCatalogUseCase
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.locale.LocalAppLocale
@@ -279,18 +276,10 @@ import org.koin.compose.viewmodel.koinViewModel
  *
  * Strategy:
  *  1. Extract the image URL's host.
- *  2. Walk every registered [BaseMangaRepository] (from [SourcesRepository.repos]) and find the
- *     one whose `baseUrl` / `BASE_URL` / `imgBaseUrl` resolves to the same host, or to a parent
- *     domain (apex `lavascans.com` should match image host `cdn.lavascans.com`, etc.). Apex,
- *     leading-dot, and any-subdomain matches all count — same scheme the Desktop cookie capture
- *     uses, kept consistent on purpose.
- *  3. Pull `defaultHeaders` from the matched repo. By the time an image is laid out, the user has
- *     navigated through a flow that ran `fetchDataWithHeaders` → `ensureSiteInitialized()`, so the
- *     repo's `_cachedHeaders` is populated with the WebView-captured Cookie+User-Agent on top of
- *     its static defaults (Referer). If we land on a repo with empty defaultHeaders (e.g. user is
- *     on the home screen before any source-specific request), we skip injection rather than emit
- *     half a header set.
- *  4. Convert the `Map<String, String>` into Coil 3's [NetworkHeaders], attach via the
+ *  2. Resolve the host only through the active signed catalog. Unknown, disabled, retired, or
+ *     removed sources never contribute credentials.
+ *  3. Merge the active source's static headers under its captured per-api headers.
+ *  4. Convert the result to Coil 3 [NetworkHeaders], attach via the
  *     `httpHeaders` extension on the [ImageRequest.Builder], and forward the new request through
  *     `chain.withRequest(...).proceed()`. We deliberately use `withRequest` rather than the
  *     experimental `proceed(request)` so we don't pull in `@ExperimentalCoilApi`.
@@ -302,7 +291,6 @@ import org.koin.compose.viewmodel.koinViewModel
  * debugging again.
  */
 private class CoilSourceHeaderInterceptor(
-    private val sourcesRepository: SourcesRepository,
     private val configHostTrust: ConfigHostTrust,
     private val sourceRegistry: SourceRegistry,
     private val dataStore: DataStoreHelper,
@@ -343,46 +331,10 @@ private class CoilSourceHeaderInterceptor(
                 }.build()
                 return chain.withRequest(req.newBuilder().httpHeaders(configHeaders).build()).proceed()
             }
-            // Nothing to inject (no static headers, nothing captured yet) → raw URL, same as the
-            // legacy no-headers outcome below. Don't consult the legacy resolver for a config-backed
-            // api: its scraper's defaultHeaders belong to the LEGACY system.
+            // Nothing to inject (no static headers and nothing captured yet) → use the raw URL.
             return chain.proceed()
         }
-        // GAP-SHELL-04 (P3 cleanup): the per-request `[CoilDbg]` stdout `println`s (no-match / empty-
-        // headers / injected-keys) are removed — they fired on every image load in production. The
-        // header-injection logic itself is load-bearing (Bug-4-layer-3) and is preserved unchanged.
-        val match = sourcesRepository.findRepoByHost(host)
-        if (match == null) {
-            return chain.proceed()
-        }
-        var headers = match.defaultHeaders
-        if (headers.isEmpty()) {
-            // r5-cf-1: the matched repo hasn't been hydrated this session (its `_cachedHeaders` is
-            // still null). For the generic-config-backed sources the feed/details fetch is served by
-            // GenericSourceClient straight from the DataStore header store and never runs the legacy
-            // `initSite()`, so plain-URL cover/search/details image loads would otherwise go out with
-            // no Cookie/User-Agent and 403 on Cloudflare-gated config-backed sources even after the user solved the
-            // challenge. Lazily hydrate via the idempotent, session-cached `ensureSiteInitialized()`
-            // (same path rememberSourceImageRequest(url, api) uses) and re-read the headers.
-            (match as? BaseManga)?.let { repo ->
-                try {
-                    repo.ensureSiteInitialized()
-                } catch (c: CancellationException) {
-                    throw c
-                } catch (_: Throwable) {
-                    // headers stay empty; raw-URL fallback below
-                }
-            }
-            headers = match.defaultHeaders
-            if (headers.isEmpty()) {
-                return chain.proceed()
-            }
-        }
-        val networkHeaders = NetworkHeaders.Builder().apply {
-            headers.forEach { (k, v) -> add(k, v) }
-        }.build()
-        val newReq = req.newBuilder().httpHeaders(networkHeaders).build()
-        return chain.withRequest(newReq).proceed()
+        return chain.proceed()
     }
 }
 
@@ -416,15 +368,9 @@ private fun PostFirstFrameStartupTasks() {
     // the :domain AnalyticsPort (Firebase on Android, no-op on iOS/Desktop) — same one-shot launch
     // seam as refreshSources/reconcileDownloads.
     val logAppOpen: LogAppOpenUseCase = koinInject()
-    // Sources Migration Phase 1: the generic-sources config refresh seam. With remote delivery still
-    // disabled this re-resolves the bundled+cached document (a near-no-op today), but it establishes
-    // the startup entry point Phase 2 (config-driven catalog seed + baseUrl migration) and Phase 5
-    // (signed remote fetch) hang off. Best-effort/own-coroutine like the others — never blocks launch.
+    // Refreshes the signed manifest and only missing immutable source revisions. It keeps the
+    // complete verified cache or bundle on failure and never blocks the first rendered frame.
     val sourceUpdateManager: SourceUpdateManager = koinInject()
-    // Sources Migration Phase 2: config-driven catalog sync. Seeds config-backed sources into the
-    // `sources` table and migrates stored URLs when a source's config.baseUrl (the trusted value)
-    // changed. Best-effort/own-coroutine like the others — never blocks launch.
-    val syncSourceCatalog: SyncSourceCatalogUseCase = koinInject()
     LaunchedEffect(Unit) {
         // ONCE PER PROCESS, not per composition: on Android an Activity recreation (rotation)
         // rebuilds App() and re-fires LaunchedEffect(Unit); without [StartupTasksOnce] the
@@ -434,25 +380,17 @@ private fun PostFirstFrameStartupTasks() {
         // Independent one-shot startup tasks, each in its own child coroutine so none blocks the
         // others. reconcileDownloads() is pure local Room work to un-freeze interrupted downloads
         // — it must never wait on any network round-trip, or a stuck "downloading" row would stay
-        // visibly frozen. (The legacy remote source-registry refresh that used to launch here was
-        // retired in SourceRegistry retirement Phase 6 — the bundled config document, refreshed +
-        // synced below, is the single authority for source metadata/lifecycle.)
+        // visibly frozen. Source synchronization runs independently below.
         launch { reconcileDownloads() }
-        // Refresh the config doc, then sync the catalog from it (seed + baseUrl migration). Sequenced
-        // so the sync reads the freshest active document; both are no-throw best-effort.
+        // Refresh and atomically activate/project one complete catalog tier.
         launch {
             sourceUpdateManager.refresh()
-            syncSourceCatalog()
-            // Zero generic stanzas after refresh = the bundled document was rejected wholesale
-            // (validation is all-or-nothing) or is empty — every config-backed source is gone and
-            // Home degrades to its error pane. The per-reason detail is logged at rejection time by
-            // the manager's onDocumentRejected hook (SourcesGenericModule); this is the aggregate
-            // startup alarm (2026-07 source-lifecycle hardening).
+            // An empty catalog is an explicit, valid lifecycle outcome. Keep a safe aggregate
+            // diagnostic while the UI presents its normal no-sources state.
             if (sourceUpdateManager.activeDocument().sources.none { it.engine == "generic" }) {
-                KermitLoggerAdapter().e(
+                KermitLoggerAdapter().w(
                     "SourceConfig",
-                    "startup: ZERO valid generic sources in the active config document — " +
-                        "the source catalog is effectively empty",
+                    "startup: the verified source catalog has no active sources",
                 )
             }
         }
@@ -464,12 +402,6 @@ private fun PostFirstFrameStartupTasks() {
 @Composable
 fun App(crashDiagnosticsEnabled: Boolean = false) {
     PostFirstFrameStartupTasks()
-
-    // Wire the singleton ImageLoader so every AsyncImage / SubcomposeAsyncImage call site picks up
-    // the per-source header injection without changes at the call sites. The factory runs once and
-    // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`, so resolving
-    // `SourcesRepository` via Koin here is safe (same singleton instance as everywhere else).
-    val sourcesRepository: SourcesRepository = koinInject()
 
     // Bug 5: register the AVIF decoder factory (on Android only) before the URL fetch interceptor so
     // chapter pages from Cloudflare-protected AVIF CDNs decode at full quality. iOS / Desktop
@@ -498,7 +430,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
                 // page-progress observer and the 30s/60s timeouts (no whole-request ceiling).
                 networkFetcherFactory?.let { add(it) }
                 decoderFactories.forEach { add(it) }
-                add(CoilSourceHeaderInterceptor(sourcesRepository, coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
+                add(CoilSourceHeaderInterceptor(coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
             }
             .diskCache { DiskCache.Builder().directory(imageCacheDir).build() }
             // Disable the default 4096×4096 maxBitmapSize cap. Coil 3.3+ tightened how this cap
@@ -626,7 +558,6 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
     val onboardingPrefs: SharedPrefsHelper = koinInject()
     val sourceActivationRouter: SourceActivationRequestRouter = koinInject()
     val activateSourceAccess: ActivateSourceAccessUseCase = koinInject()
-    val deepLinkSources: SourcesRepository = koinInject()
     val configHostTrust: ConfigHostTrust = koinInject()
     val pendingDeepLink by notificationRouter.pending.collectAsState()
     val pendingSourceActivation by sourceActivationRouter.pending.collectAsState()
@@ -654,7 +585,7 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
         // can start it with crafted extras. Require a manga/chapter deep link's URL to belong to its
         // own source's domain — else a forced Reader/Details nav would fetch an attacker URL through
         // the claimed source's client, attaching that source's stored Cookie/cf_clearance headers.
-        if (!onboarding && destination.isHostTrustedFor(deepLinkSources, configHostTrust)) {
+        if (!onboarding && destination.isHostTrustedFor(configHostTrust)) {
             // #9: navigate wrapped in runCatching (crash-safe, like safeNavigate — a stray/invalid
             // route can never crash the host) but deliberately WITHOUT safeNavigate's RESUMED
             // debounce. A cold-start tap runs this effect while the start entry may still be

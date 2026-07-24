@@ -31,20 +31,13 @@ import org.koin.dsl.module
  *  - Both screens are observed through the H5a route adapter `HomeReworkScreenRoute`, which
  *    swaps `HomeScreen`/`SearchScreen` on `HomeState.isSearching` (legacy overlay parity).
  *
- * **Strangler-fig reuse — legacy `:shared` singletons resolved via `get()` (NOT re-declared)**:
- *  - `SourcesRepository` (consumed by [HomeFeedRepositoryImpl] + [SearchRepositoryImpl]) is the
- *    same legacy `:shared` singleton bound by `SharedModule.kt` (`single { SourcesRepository(...) }`)
- *    that the Details + Reader slices already strangle. The strangler boundary lives in the rework
- *    `:data` impls, which delegate to the active `BaseMangaRepository`'s `fetchMangaHomeF` /
- *    `fetchMoreManga` / `fetchPopularManga` / `fetchSearchDataF` and map legacy `core.states.State`
- *    payloads into pure-domain `AppResult`. Per user direction the per-source `sources_repositry`
- *    parsers stay in `:shared` (never migrated), so this seam is permanent.
- *  - `ManhastroDadosStore` (consumed by [HomeFeedRepositoryImpl]) is the same per-process cache
- *    `single { ManhastroDadosStore() }` bound by `SharedModule.kt`. The impl replicates the legacy
- *    `MangaViewModel.onTabSelected` `clear()`-on-tab-switch behaviour (locked decision H-§77-(3)).
+ * Cross-module bindings resolved via `get()`:
+ *  - `SourcesRepository` is now only a Room-backed source-selection facade. Its executable scraper
+ *    set is empty; [HomeFeedRepositoryImpl] and [SearchRepositoryImpl] route through the active
+ *    generic source registry.
  *  - `DispatcherProvider` (consumed by both impls) is the `single<DispatcherProvider>` bound by
  *    [libraryReworkModule] — same posture the Details + Reader slices use. We deliberately do NOT
- *    re-declare any of these three: Koin forbids duplicate `single<T>` bindings, and all three
+ *    re-declare it: Koin forbids duplicate `single<T>` bindings, and both
  *    land before this module in the aggregated graph ([allReworkModules]).
  *  - [ObserveLibraryUseCase] (consumed by [HomeViewModel] for whole-library heart-sync) is already a
  *    `factory` in [libraryReworkModule]; Koin's single-graph composition resolves it cross-module,
@@ -59,8 +52,7 @@ import org.koin.dsl.module
  * cases, never the repositories directly).
  *
  * Lifecycle choices:
- *  - Repositories → `single`: the impls hold no per-call state and their legacy collaborators are
- *    already singletons; a fresh instance per resolution would be wasteful.
+ *  - Repositories → `single`: the implementations hold no per-call state.
  *  - Use cases → `factory`: stateless, cheap, matches the established "use case is a factory"
  *    pattern across every prior rework slice.
  *  - ViewModels → `viewModel`: Koin's `ViewModelStore`-aware binding so the screens survive
@@ -69,12 +61,10 @@ import org.koin.dsl.module
  */
 val homeReworkModule: Module = module {
     single<HomeFeedRepository> {
-        // 4th arg: SourceRegistry — routes ONLY config-backed sources (engine="generic" stanzas) Home/Featured through
-        // the generic engine; every other source stays on the legacy SourcesRepository path.
-        HomeFeedRepositoryImpl(get(), get(), get(), get())
+        HomeFeedRepositoryImpl(get(), get(), get())
     }
     single<SearchRepository> {
-        // 3rd arg: SourceRegistry — routes ONLY config-backed sources (engine="generic" stanzas) search through the engine.
+        // The registry exposes only active generic catalog entries.
         SearchRepositoryImpl(get(), get(), get())
     }
 

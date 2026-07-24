@@ -3,6 +3,7 @@ package me.manga.kira.data.repository
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /**
  * Sources Migration — Phase 2. [SourceUrlMigrator] host-move coverage: when a source's base URL
@@ -216,6 +217,38 @@ class SourceUrlMigratorTest {
             assertEquals("https://new.azora.test/manga/2", manga.rows.first { it.id == 2L }.url)
             // …and the later tables run too.
             assertEquals("https://new.azora.test/manga/dup/ch/1", chapter.rows.single().url)
+        }
+
+    @Test
+    fun migratePageUrlsStrict_propagates_write_failure_for_transaction_rollback() =
+        runTest {
+            val manga =
+                StatefulMangaDao(
+                    listOf(
+                        mangaRow(1, "Azora", "https://old.azora.test/manga/dup"),
+                        mangaRow(2, "Azora", "https://old.azora.test/manga/2"),
+                        mangaRow(3, "Azora", "https://new.azora.test/manga/dup"),
+                    ),
+                )
+            manga.updateFailure = { updated ->
+                if (manga.rows.any { it.id != updated.id && it.url == updated.url }) {
+                    IllegalStateException("simulated projection failure")
+                } else {
+                    null
+                }
+            }
+
+            assertFailsWith<IllegalStateException> {
+                migrator(
+                    manga,
+                    StatefulChapterDao(),
+                    StatefulHistoryDao(),
+                    StatefulNotificationDao(),
+                ).migratePageUrlsStrict("Azora", "https://new.azora.test")
+            }
+
+            assertEquals("https://old.azora.test/manga/dup", manga.rows.first { it.id == 1L }.url)
+            assertEquals("https://old.azora.test/manga/2", manga.rows.first { it.id == 2L }.url)
         }
 
     @Test

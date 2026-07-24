@@ -17,24 +17,24 @@ import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
+import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.details.ClearChapterNewUseCase
 import me.manga.kira.domain.usecase.details.DeleteChapterUseCase
 import me.manga.kira.domain.usecase.details.FetchMangaDetailsUseCase
 import me.manga.kira.domain.usecase.details.IsAdultContentUseCase
 import me.manga.kira.domain.usecase.details.ObserveSavedMangaDetailsUseCase
 import me.manga.kira.domain.usecase.details.ResolveChapterIdUseCase
-import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
-import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.downloads.CancelAllDownloadsUseCase
 import me.manga.kira.domain.usecase.downloads.CancelChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.CancelRunningDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
-import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
-import me.manga.kira.domain.usecase.library.ObserveInLibraryUseCase
+import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.library.MarkMangaOpenedUseCase
+import me.manga.kira.domain.usecase.library.ObserveInLibraryUseCase
 import me.manga.kira.domain.usecase.library.PersistNewChaptersUseCase
 import me.manga.kira.domain.usecase.library.ToggleInLibraryUseCase
 import me.manga.kira.domain.usecase.reader.MarkChaptersReadUseCase
@@ -424,44 +424,50 @@ class DetailsViewModel(
     private fun startObservingSavedDetails(manga: Manga) {
         savedDetailsJob?.cancel()
         if (manga.title.isBlank()) return
-        savedDetailsJob = observeSavedDetails(api = manga.api, title = manga.title)
-            .onEach { saved ->
-                if (saved == null) return@onEach
-                FlowLog.log(
-                    "Details",
-                    "savedLoaded",
-                    "title=${manga.title} chapters=${saved.chapters.size} new=${saved.chapters.count { it.isNew }}",
-                )
-                updateState { current ->
-                    val net = current.details
-                    val merged = (if (net != null) net.overlaidWith(saved) else saved)
-                        .expireNewBadges(nowMs())
-                    // P0-ADULT (compliance): a cache-first open suppresses runFetch, so this is the
-                    // only place the gate gets re-classified for an in-library manga. Classify from
-                    // the saved/merged genres (the nav-arg genres may be empty — History/Updates
-                    // pass `genres = emptyList()`) and arm the hard-block gate exactly as
-                    // runFetch.onSuccess does: arm at AdultWarning when adult (preserving an
-                    // already-advanced step), else clear to None. Without this, an adult title opened
-                    // from cache would render fully ungated.
-                    val refreshedAdult = isAdultContent(manga.copy(genres = merged.genres))
-                    current.copy(
-                        details = merged,
-                        isLoading = false,
-                        error = null,
-                        isAdult = refreshedAdult,
-                        adultGateStep = when {
-                            !refreshedAdult -> AdultGateStep.None
-                            current.adultGateStep == AdultGateStep.None -> AdultGateStep.AdultWarning
-                            else -> current.adultGateStep
-                        },
+        savedDetailsJob =
+            observeSavedDetails(api = manga.api, title = manga.title)
+                .onEach { saved ->
+                    if (saved == null) return@onEach
+                    // Cancellation of the previous Room collector and the next identity's OnEnter can
+                    // race by one emission. Never let a saved payload from the previous screen make a
+                    // newly Home-opened manga look like that library entry.
+                    if (state.value.manga?.matches(manga) != true) return@onEach
+                    FlowLog.log(
+                        "Details",
+                        "savedLoaded",
+                        "title=${manga.title} chapters=${saved.chapters.size} new=${saved.chapters.count { it.isNew }}",
                     )
-                }
-                // A saved manga's chapter list just landed/changed — re-derive each chapter's live
-                // download status+progress (PFIX-DLPROGRESS).
-                recomputeChapterDownloads()
-            }
-            .catch { /* Offline read is best-effort; the network refresh path still runs. */ }
-            .launchIn(viewModelScope)
+                    updateState { current ->
+                        val net = current.details
+                        val merged =
+                            (if (net != null) net.overlaidWith(saved) else saved)
+                                .expireNewBadges(nowMs())
+                        // P0-ADULT (compliance): a cache-first open suppresses runFetch, so this is the
+                        // only place the gate gets re-classified for an in-library manga. Classify from
+                        // the saved/merged genres (the nav-arg genres may be empty — History/Updates
+                        // pass `genres = emptyList()`) and arm the hard-block gate exactly as
+                        // runFetch.onSuccess does: arm at AdultWarning when adult (preserving an
+                        // already-advanced step), else clear to None. Without this, an adult title opened
+                        // from cache would render fully ungated.
+                        val refreshedAdult = isAdultContent(manga.copy(genres = merged.genres))
+                        current.copy(
+                            details = merged,
+                            isLoading = false,
+                            error = null,
+                            isAdult = refreshedAdult,
+                            adultGateStep =
+                                when {
+                                    !refreshedAdult -> AdultGateStep.None
+                                    current.adultGateStep == AdultGateStep.None -> AdultGateStep.AdultWarning
+                                    else -> current.adultGateStep
+                                },
+                        )
+                    }
+                    // A saved manga's chapter list just landed/changed — re-derive each chapter's live
+                    // download status+progress (PFIX-DLPROGRESS).
+                    recomputeChapterDownloads()
+                }.catch { /* Offline read is best-effort; the network refresh path still runs. */ }
+                .launchIn(viewModelScope)
     }
 
     /**
@@ -541,16 +547,23 @@ class DetailsViewModel(
      */
     private fun startObservingLibraryMembership(manga: Manga) {
         libraryMembershipJob?.cancel()
-        libraryMembershipJob = observeInLibrary(
-            api = manga.api,
-            language = manga.language,
-            title = manga.title,
-        )
-            .onEach { inLibrary ->
-                updateState { it.copy(isInLibrary = inLibrary) }
-            }
-            .catch { /* See KDoc — secondary affordance, defaulting to false is safe. */ }
-            .launchIn(viewModelScope)
+        libraryMembershipJob =
+            observeInLibrary(
+                api = manga.api,
+                language = manga.language,
+                title = manga.title,
+            ).onEach { inLibrary ->
+                // A cancelled membership flow may already have one Room emission queued. Scope it
+                // to the identity that started this collector before touching the shared VM state.
+                updateState { current ->
+                    if (current.manga?.matches(manga) == true) {
+                        current.copy(isInLibrary = inLibrary)
+                    } else {
+                        current
+                    }
+                }
+            }.catch { /* See KDoc — secondary affordance, defaulting to false is safe. */ }
+                .launchIn(viewModelScope)
     }
 
     private suspend fun onRetry() {
@@ -1174,22 +1187,29 @@ private fun Manga.matches(other: Manga): Boolean =
  */
 private fun MangaDetails.overlaidWith(saved: MangaDetails): MangaDetails {
     if (saved.chapters.isEmpty()) return this
+    // An empty successful transport payload must not erase a non-empty last-known-good list on
+    // screen. Azora exposed this when chapters became opt-in: refresh showed zero chapters, while
+    // reopening restored the Room list. Keep fresh metadata, but retain prior chapters until a
+    // verified non-empty list arrives. Explicit local chapter deletion remains a separate action.
+    val networkOrLastKnownGood =
+        if (chapters.isEmpty()) saved.chapters else chapters
     val savedByUrl = saved.chapters.associateBy { it.url }
     return copy(
-        chapters = chapters.map { chapter ->
-            val s = savedByUrl[chapter.url] ?: return@map chapter
-            chapter.copy(
-                isRead = s.isRead,
-                isDownloaded = s.isDownloaded,
-                isBookmarked = s.isBookmarked,
-                // Persisted NEW-chapter flag from Room (the network chapter is always isNew=false).
-                // The library-refresh worker sets it; ChapterDao.markChapterIsNew clears it on open.
-                // (native LibraryDetails likewise shows NEW from the saved row.)
-                isNew = s.isNew,
-                // Discovery timestamp from the saved row, driving the 4-day badge expiry below.
-                fetchedAt = s.fetchedAt,
-            )
-        },
+        chapters =
+            networkOrLastKnownGood.map { chapter ->
+                val s = savedByUrl[chapter.url] ?: return@map chapter
+                chapter.copy(
+                    isRead = s.isRead,
+                    isDownloaded = s.isDownloaded,
+                    isBookmarked = s.isBookmarked,
+                    // Persisted NEW-chapter flag from Room (the network chapter is always isNew=false).
+                    // The library-refresh worker sets it; ChapterDao.markChapterIsNew clears it on open.
+                    // (native LibraryDetails likewise shows NEW from the saved row.)
+                    isNew = s.isNew,
+                    // Discovery timestamp from the saved row, driving the 4-day badge expiry below.
+                    fetchedAt = s.fetchedAt,
+                )
+            },
     )
 }
 

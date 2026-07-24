@@ -60,7 +60,7 @@ import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.about
 import me.manga.kira.ui.generated.resources.back
 import me.manga.kira.ui.generated.resources.check_for_update
-import me.manga.kira.ui.generated.resources.ic_launcher_foreground
+import me.manga.kira.ui.generated.resources.kira_logo
 import me.manga.kira.ui.generated.resources.np_soon
 import me.manga.kira.ui.generated.resources.np_source_code
 import me.manga.kira.ui.generated.resources.privacy_policy
@@ -105,12 +105,9 @@ import org.jetbrains.compose.resources.stringResource
  *    `SettingsNavigationItem.kt:40-88`. `:ui` already depends on `compose.materialIconsExtended`
  *    (Phase 11.ui.UP-2), so the real Material vectors are used directly — no vendoring needed.
  *    (Earlier this slice rendered text-only rows; the prior "icons omitted" note is historical.)
- *  - **App-icon image** (GAP-ABT-03): the `ic_launcher_foreground` drawable was lifted into
- *    `:ui/commonMain/composeResources` (Task #743) and now renders at the top of the column at
- *    native parity — 250.dp with vertical padding 24, centered — matching legacy
- *    `AboutScreen.kt:99-107`. (Earlier this slice's foundation deferred the image with a no-`:ui`-
- *    resource-binding rationale; that has since been resolved, so the prior "dropped" note is
- *    historical.)
+ *  - **Brand image** (GAP-ABT-03): the canonical `design/brand/kira-logo.svg` is mirrored into
+ *    `:ui/commonMain/composeResources` and renders at the top of the column at native parity —
+ *    250.dp with vertical padding 24, centered — matching legacy `AboutScreen.kt:99-107`.
  *  - **Design tokens**: legacy uses `.dp` literals + `Color.Gray.copy(...)` for dividers +
  *    custom `ItemsGroup` / `SettingsNavigationItem` helpers. Rework uses [LocalSpacing] +
  *    `HorizontalDivider` / `Text` directly. **(P2 parity-fix)** [AboutItemsGroup] now mirrors
@@ -306,7 +303,7 @@ internal fun AboutScreenContent(
         ) {
             // GAP-ABT-03 — logo renders at native 250.dp with vertical padding 24 (was 120.dp).
             Image(
-                painter = painterResource(Res.drawable.ic_launcher_foreground),
+                painter = painterResource(Res.drawable.kira_logo),
                 contentDescription = null,
                 modifier =
                     Modifier
