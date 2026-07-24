@@ -390,7 +390,7 @@ class HomeViewModel(
                 // failure so toggleInLibrary never runs on a failed fetch (no half-saved 0-chapter
                 // row).
                 fetchDetails(manga)
-                    .flatMap { details -> toggleInLibrary(manga, details.chapters) }
+                    .flatMap { details -> toggleInLibrary(manga, details) }
                     .onFailure { emit(HomeEffect.ShowError(it)) }
                     .onSuccess { /* membership flow re-emits and snaps savedKeys; no extra state work. */ }
             }

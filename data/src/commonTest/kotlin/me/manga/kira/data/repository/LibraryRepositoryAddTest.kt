@@ -11,7 +11,7 @@ import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Chapter
-import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.features.home.data.ApiTitle
@@ -47,6 +47,7 @@ class LibraryRepositoryAddTest {
     private class FakeLibraryDeo : LibraryDeo {
         var nextId = 1L
         val mangaByUrl = mutableMapOf<String, Long>()
+        val mangaEntitiesByUrl = mutableMapOf<String, SavedMangaEntity>()
         val chapters = mutableListOf<SavedChapterEntity>()
 
         override suspend fun insertManga(manga: SavedMangaEntity): Long {
@@ -55,6 +56,7 @@ class LibraryRepositoryAddTest {
             if (existing != null) return -1L
             val id = nextId++
             mangaByUrl[manga.url] = id
+            mangaEntitiesByUrl[manga.url] = manga.copy(id = id)
             return id
         }
 
@@ -104,14 +106,18 @@ class LibraryRepositoryAddTest {
         override suspend fun getMangaIdsByApi(api: String): List<Long> = emptyList()
     }
 
-    private fun manga() = Manga(
+    private fun details(chapters: List<Chapter> = emptyList()) = MangaDetails(
         api = "src",
         language = "en",
         title = "Naruto",
         url = "https://x/naruto",
-        coverUrl = "",
-        rating = null,
-        genres = emptyList(),
+        coverUrl = "https://x/naruto.jpg",
+        description = "A ninja saves his village.",
+        author = "Masashi Kishimoto",
+        rating = "4.8 / 5",
+        status = "Completed",
+        genres = listOf("action", "adventure"),
+        chapters = chapters,
     )
 
     private fun chapter(number: String, url: String) = Chapter(
@@ -130,7 +136,7 @@ class LibraryRepositoryAddTest {
         // Source ships newest-first.
         val chapters = listOf(chapter("3", "c/3"), chapter("2", "c/2"), chapter("1", "c/1"))
 
-        val result = repo.addToLibrary(manga(), chapters)
+        val result = repo.addToLibrary(details(chapters))
 
         assertTrue(result.isSuccess, "add must succeed")
         assertEquals(1, deo.mangaByUrl.size, "the manga row must be persisted")
@@ -140,16 +146,23 @@ class LibraryRepositoryAddTest {
         // Every chapter was stamped with the resolved mangaId by saveMangaWithChapters.
         val mangaId = deo.mangaByUrl.values.first()
         assertTrue(deo.chapters.all { it.mangaId == mangaId }, "chapters must carry the resolved mangaId")
+        val saved = deo.mangaEntitiesByUrl.values.single()
+        assertEquals("https://x/naruto.jpg", saved.imageUrl)
+        assertEquals("A ninja saves his village.", saved.description)
+        assertEquals("Masashi Kishimoto", saved.author)
+        assertEquals("4.8 / 5", saved.rating)
+        assertEquals("Completed", saved.status)
+        assertEquals(listOf("action", "adventure"), saved.genres)
     }
 
     @Test
     fun addToLibrary_is_idempotent_and_inserts_only_new_chapter_urls() = runTest {
         val deo = FakeLibraryDeo()
         val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers)
-        repo.addToLibrary(manga(), listOf(chapter("1", "c/1"), chapter("2", "c/2")))
+        repo.addToLibrary(details(listOf(chapter("1", "c/1"), chapter("2", "c/2"))))
 
         // Re-add with one overlapping + one new chapter: manga is a no-op, only the new URL inserts.
-        val result = repo.addToLibrary(manga(), listOf(chapter("2", "c/2"), chapter("3", "c/3")))
+        val result = repo.addToLibrary(details(listOf(chapter("2", "c/2"), chapter("3", "c/3"))))
 
         assertTrue(result.isSuccess)
         assertEquals(1, deo.mangaByUrl.size, "re-add must not duplicate the manga row")
@@ -162,7 +175,7 @@ class LibraryRepositoryAddTest {
         val deo = FakeLibraryDeo()
         val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers)
 
-        val result = repo.addToLibrary(manga(), emptyList())
+        val result = repo.addToLibrary(details())
 
         assertTrue(result.isSuccess)
         assertEquals(1, deo.mangaByUrl.size)

@@ -196,10 +196,8 @@ class HomeViewModelTest {
             // row isn't a 0-chapter row (the false-new-chapter-notification trigger on Android).
             val vm = vm()
             vm.submit(HomeIntent.OnEnter)
-            detailsRepo.result =
-                AppResult.Success(
-                    detailsWith(listOf(testChapter("c/1"), testChapter("c/2"), testChapter("c/3"))),
-                )
+            val fetched = detailsWith(listOf(testChapter("c/1"), testChapter("c/2"), testChapter("c/3")))
+            detailsRepo.result = AppResult.Success(fetched)
 
             vm.submit(HomeIntent.OnSaveToggle(sampleFeedItem(api = "a", title = "Saveable")))
 
@@ -208,7 +206,8 @@ class HomeViewModelTest {
                 libraryRepo.calls.any { it == "addToLibrary(Saveable,chapters=3)" },
                 "the fetched chapters are persisted with the manga: ${libraryRepo.calls}",
             )
-            assertEquals(3, libraryRepo.lastAddedChapters.size)
+            assertEquals(3, libraryRepo.lastAddedDetails?.chapters?.size)
+            assertEquals(fetched, libraryRepo.lastAddedDetails, "the save boundary must receive all fetched metadata")
         }
 
     @Test
@@ -296,11 +295,11 @@ class HomeViewModelTest {
             title = "Saveable",
             url = "https://example.test/Saveable",
             coverUrl = "",
-            description = "",
-            author = "",
-            rating = "",
-            status = "",
-            genres = emptyList(),
+            description = "Complete description",
+            author = "Complete author",
+            rating = "4.8 / 5",
+            status = "Ongoing",
+            genres = listOf("action", "fantasy"),
             chapters = chapters,
         )
 

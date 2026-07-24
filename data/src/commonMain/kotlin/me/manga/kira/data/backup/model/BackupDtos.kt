@@ -40,6 +40,7 @@ internal data class BackupManga(
     val imageUrl: String = "",
     val title: String,
     val description: String = "",
+    val author: String = "",
     val status: String = "",
     val rating: String? = null,
     val genres: List<String> = emptyList(),

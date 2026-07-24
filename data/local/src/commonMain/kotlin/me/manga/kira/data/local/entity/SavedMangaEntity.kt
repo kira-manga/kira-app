@@ -1,5 +1,6 @@
 package me.manga.kira.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -25,6 +26,8 @@ data class SavedMangaEntity(
     val imageUrl: String,
     val title: String,
     val description: String,
+    @ColumnInfo(defaultValue = "''")
+    val author: String = "",
     val status: String,
     val rating: String?,
     val genres: List<String>,

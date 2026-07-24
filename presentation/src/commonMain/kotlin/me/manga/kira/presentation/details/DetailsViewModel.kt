@@ -813,8 +813,8 @@ class DetailsViewModel(
         try {
             // Native parity: persist the manga WITH its fetched chapter list at add-time
             // (saveMangaWithChapters) so an in-library manga renders from Room on subsequent opens
-            // without a network re-fetch. The chapters are ignored on the removal branch.
-            toggleInLibrary(manga, state.value.details?.chapters ?: emptyList())
+            // without a network re-fetch. The fetched details are ignored on the removal branch.
+            toggleInLibrary(manga, state.value.details)
                 .onFailure { error -> emit(DetailsEffect.ShowError(error)) }
                 .onSuccess { /* Flow re-emission flips isInLibrary; no extra state work. */ }
         } finally {

@@ -7,6 +7,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.domain.repository.MangaKey
 
@@ -54,13 +55,13 @@ class FakeLibraryRepository : LibraryRepository {
         )
     }
 
-    /** Chapters of the most recent [addToLibrary] call, for asserting the toggle threads them through. */
-    var lastAddedChapters: List<Chapter> = emptyList()
+    /** Complete payload of the most recent [addToLibrary] call. */
+    var lastAddedDetails: MangaDetails? = null
         private set
 
-    override suspend fun addToLibrary(manga: Manga, chapters: List<Chapter>): AppResult<Unit> {
-        calls += "addToLibrary(${manga.api},${manga.language},${manga.title},chapters=${chapters.size})"
-        lastAddedChapters = chapters
+    override suspend fun addToLibrary(details: MangaDetails): AppResult<Unit> {
+        calls += "addToLibrary(${details.api},${details.language},${details.title},chapters=${details.chapters.size})"
+        lastAddedDetails = details
         return AppResult.Success(Unit)
     }
 

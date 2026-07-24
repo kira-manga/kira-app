@@ -378,6 +378,29 @@ class DetailsViewModelRegressionTest {
     }
 
     @Test
+    fun saveFromDetails_forwardsTheCompleteFetchedPayload() = runTest {
+        val saved = FakeSavedMangaDetailsRepository()
+        val libraryRepo = FakeLibraryRepository()
+        val fetched = details(listOf(chapter("c/1"), chapter("c/2"))).copy(
+            description = "Complete description",
+            author = "Complete author",
+            rating = "4.8 / 5",
+            status = "Ongoing",
+            genres = listOf("action", "fantasy"),
+        )
+        val (vm, _) = vmWithFetchFake(
+            fetch = AppResult.Success(fetched),
+            saved = saved,
+            libraryRepo = libraryRepo,
+        )
+
+        vm.submit(DetailsIntent.OnEnter(manga()))
+        vm.submit(DetailsIntent.OnToggleInLibrary)
+
+        assertEquals(fetched, libraryRepo.lastAddedDetails)
+    }
+
+    @Test
     fun compressionDeferral_isProjectedIntoDetailsState() = runTest {
         val saved = FakeSavedMangaDetailsRepository()
         saved.saved.value = details(listOf(chapter("c/1")))

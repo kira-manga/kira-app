@@ -8,6 +8,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.model.library.GridDensity
 import me.manga.kira.domain.model.library.LibraryCategory
@@ -86,12 +87,12 @@ class FakeLibraryRepository : LibraryRepository {
         calls += "get($title)"
         return AppResult.Success(library.value.firstOrNull { it.manga.title == title })
     }
-    var lastAddedChapters: List<Chapter> = emptyList()
+    var lastAddedDetails: MangaDetails? = null
         private set
 
-    override suspend fun addToLibrary(manga: Manga, chapters: List<Chapter>): AppResult<Unit> {
-        calls += "addToLibrary(${manga.title},chapters=${chapters.size})"
-        lastAddedChapters = chapters
+    override suspend fun addToLibrary(details: MangaDetails): AppResult<Unit> {
+        calls += "addToLibrary(${details.title},chapters=${details.chapters.size})"
+        lastAddedDetails = details
         return AppResult.Success(Unit)
     }
     override suspend fun persistNewChapters(

@@ -2,6 +2,9 @@ package me.manga.kira.domain.usecase.library
 
 import app.cash.turbine.test
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.error.AppError
+import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.domain.testing.FakeLibraryRepository
 import me.manga.kira.domain.testing.sampleChapter
@@ -18,6 +21,23 @@ import kotlin.test.assertTrue
  * refactor that, say, drops the empty-keys guard or inverts the toggle branch fails loudly.
  */
 class LibraryUseCasesTest {
+
+    private fun details(
+        manga: Manga,
+        chapters: List<me.manga.kira.domain.model.Chapter> = emptyList(),
+    ) = MangaDetails(
+        api = manga.api,
+        language = manga.language,
+        title = manga.title,
+        url = manga.url,
+        coverUrl = manga.coverUrl,
+        description = "A complete description",
+        author = "Author",
+        rating = "4.8 / 5",
+        status = "Ongoing",
+        genres = manga.genres,
+        chapters = chapters,
+    )
 
     @Test
     fun observeLibrary_emits_the_seeded_rows() = runTest {
@@ -36,7 +56,7 @@ class LibraryUseCasesTest {
         val repo = FakeLibraryRepository() // empty library
         val manga = sampleManga(title = "Absent")
 
-        val result = ToggleInLibraryUseCase(repo)(manga)
+        val result = ToggleInLibraryUseCase(repo)(manga, details(manga))
 
         assertEquals(true, result.getOrNull())
         assertTrue(repo.calls.any { it.startsWith("addToLibrary(") }, "expected add; calls=${repo.calls}")
@@ -44,36 +64,32 @@ class LibraryUseCasesTest {
     }
 
     @Test
-    fun toggleInLibrary_add_threads_the_chapter_list_to_the_repository() = runTest {
-        // Native parity: adding a manga persists its chapters (saveMangaWithChapters), not just the
-        // manga row. The toggle must forward the chapters it is handed to addToLibrary on the add
-        // branch.
+    fun toggleInLibrary_add_threads_the_complete_details_to_the_repository() = runTest {
         val repo = FakeLibraryRepository() // empty library → add branch
         val manga = sampleManga(title = "Absent")
         val chapters = listOf(sampleChapter(number = "1"), sampleChapter(number = "2"))
+        val details = details(manga, chapters)
 
-        val result = ToggleInLibraryUseCase(repo)(manga, chapters)
+        val result = ToggleInLibraryUseCase(repo)(manga, details)
 
         assertEquals(true, result.getOrNull())
         assertTrue(
             repo.calls.any { it == "addToLibrary(test-api,en,Absent,chapters=2)" },
             "add must forward the chapter list to the repository; calls=${repo.calls}",
         )
-        assertEquals(chapters, repo.lastAddedChapters, "the exact chapter list must reach the repo")
+        assertEquals(details, repo.lastAddedDetails, "the complete fetched details must reach the repo")
     }
 
     @Test
-    fun toggleInLibrary_add_with_no_chapter_context_passes_empty_list() = runTest {
-        // Home/Library quick-toggle entry points have no chapter context: the default empty list
-        // keeps the manga added (chapters fill in on first Details open) without dropping the add.
+    fun toggleInLibrary_add_without_details_fails_closed() = runTest {
         val repo = FakeLibraryRepository()
         val manga = sampleManga(title = "QuickAdd")
 
         val result = ToggleInLibraryUseCase(repo)(manga)
 
-        assertEquals(true, result.getOrNull())
-        assertTrue(repo.lastAddedChapters.isEmpty(), "no-chapter-context add must pass an empty list")
-        assertTrue(repo.calls.any { it == "addToLibrary(test-api,en,QuickAdd,chapters=0)" }, "calls=${repo.calls}")
+        assertEquals(AppError.Validation.Required("mangaDetails"), result.errorOrNull())
+        assertTrue(repo.lastAddedDetails == null, "a partial row must never be persisted")
+        assertTrue(repo.calls.none { it.startsWith("addToLibrary(") }, "calls=${repo.calls}")
     }
 
     @Test

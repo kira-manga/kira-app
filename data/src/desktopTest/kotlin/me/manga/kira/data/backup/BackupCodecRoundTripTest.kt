@@ -30,6 +30,7 @@ class BackupCodecRoundTripTest {
         imageUrl = "https://azora/img.png",
         title = "Solo Leveling",
         description = "desc",
+        author = "Chugong",
         status = "Ongoing",
         rating = "4.7",
         genres = listOf("action", "fantasy"),

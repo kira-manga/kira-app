@@ -62,7 +62,8 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // saved_chapters.fetchedAt (NEW-badge 4-day expiry). MIGRATION_9_10; schema regenerated to 10.json.
     // v10 -> v11: add the single-row source_config_cache table (durable generic-sources config
     // cache; Sources Migration Phase 1). MIGRATION_10_11; schema regenerated to 11.json.
-    version = 12,
+    // v12 -> v13: retain the source-supplied author on saved manga for complete offline details.
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(

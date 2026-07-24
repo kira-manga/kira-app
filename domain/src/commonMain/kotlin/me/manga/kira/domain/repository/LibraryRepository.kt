@@ -5,6 +5,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 
 /**
  * Library aggregate root contract.
@@ -115,17 +116,17 @@ interface LibraryRepository {
     suspend fun get(api: String, language: String, title: String): AppResult<LibraryManga?>
 
     /**
-     * Add a manga to the library together with its full chapter list. Idempotent — adding an
-     * existing entry is a no-op success, and only chapter URLs not already persisted are inserted.
+     * Add a manga to the library together with its complete fetched metadata and chapter list.
+     * Idempotent — adding an existing entry is a no-op success, and only chapter URLs not already
+     * persisted are inserted.
      *
      * Native parity: the source-of-truth app persists the manga row AND its chapters atomically at
-     * add-time (`saveMangaWithChapters`) so an in-library manga can render its chapter list straight
-     * from Room without a network re-fetch on open. [chapters] is the list the caller already holds
-     * (the fetched [me.manga.kira.domain.model.MangaDetails.chapters]); callers that add without
-     * a chapter context (e.g. Home/Library quick-toggle) pass `emptyList()` — the manga is added and
-     * its chapters fill in on the first Details open.
+     * add-time (`saveMangaWithChapters`) so an in-library manga can render the same description,
+     * author, rating, status, genres, cover, and chapters straight from Room without a network
+     * re-fetch on open. Callers must fetch [MangaDetails] before adding; saving a lightweight
+     * listing [Manga] would silently discard detail-only fields.
      */
-    suspend fun addToLibrary(manga: Manga, chapters: List<Chapter>): AppResult<Unit>
+    suspend fun addToLibrary(details: MangaDetails): AppResult<Unit>
 
     /**
      * Persist chapters discovered by a Details/library refresh that are not yet saved for this

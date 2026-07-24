@@ -28,6 +28,7 @@ import me.manga.kira.data.mapper.toSavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.domain.repository.ReadProgressRepository
@@ -161,12 +162,12 @@ class LibraryRepositoryImpl(
      * `ORDER BY id ASC`). The per-chapter `mangaId` is a placeholder here — the DAO re-stamps it
      * with the resolved id inside the transaction.
      */
-    override suspend fun addToLibrary(manga: Manga, chapters: List<Chapter>): AppResult<Unit> =
+    override suspend fun addToLibrary(details: MangaDetails): AppResult<Unit> =
         runCatchingStorage {
             withContext(dispatchers.io) {
                 libraryDeo.saveMangaWithChapters(
-                    manga = manga.toNewEntity(),
-                    chapters = chapters.reversed().map { it.toSavedChapterEntity() },
+                    manga = details.toNewEntity(),
+                    chapters = details.chapters.reversed().map { it.toSavedChapterEntity() },
                 )
             }
         }
@@ -393,11 +394,11 @@ class LibraryRepositoryImpl(
         }
 
     /**
-     * Project a domain [Manga] onto a fresh [SavedMangaEntity]. Fields not modeled in the domain
-     * (description, status, imageUrl mismatch handling, flags) default to legacy-safe values so
-     * existing UI that still reads them stays sane during the migration.
+     * Project the authoritative fetched [MangaDetails] onto a fresh [SavedMangaEntity]. The
+     * lightweight [Manga] listing model intentionally never reaches this boundary because it does
+     * not contain description, author, status, or the source's opaque string rating.
      */
-    private fun Manga.toNewEntity(): SavedMangaEntity {
+    private fun MangaDetails.toNewEntity(): SavedMangaEntity {
         val now = Clock.System.now().toEpochMilliseconds()
         return SavedMangaEntity(
             api = api,
@@ -405,9 +406,10 @@ class LibraryRepositoryImpl(
             url = url,
             imageUrl = coverUrl,
             title = title,
-            description = "",
-            status = "",
-            rating = rating?.toString(),
+            description = description,
+            author = author,
+            status = status,
+            rating = rating,
             genres = genres,
             savedTimestamp = now,
             lastOpenTimestamp = now,

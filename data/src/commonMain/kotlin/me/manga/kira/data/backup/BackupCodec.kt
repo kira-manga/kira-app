@@ -23,7 +23,7 @@ internal const val BACKUP_FORMAT_VERSION = 1
 internal const val BACKUP_JSON_ENTRY = "backup.json"
 
 /** MangaDatabase version at authoring time — provenance only, import never gates on it. */
-internal const val BACKUP_DB_VERSION = 11
+internal const val BACKUP_DB_VERSION = 13
 
 /** Lenient on read (additive forward-compat), explicit on write (defaults serialized). */
 internal val backupJson =
@@ -44,6 +44,7 @@ internal fun SavedMangaEntity.toBackup(chapters: List<BackupChapter>): BackupMan
         imageUrl = imageUrl,
         title = title,
         description = description,
+        author = author,
         status = status,
         rating = rating,
         genres = genres,
@@ -63,6 +64,7 @@ internal fun BackupManga.toEntity(): SavedMangaEntity =
         imageUrl = imageUrl,
         title = title,
         description = description,
+        author = author,
         status = status,
         rating = rating,
         genres = genres,

@@ -352,6 +352,15 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+/** v12 -> v13: retain the source-supplied author in offline/library manga details. */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            "ALTER TABLE `saved_manga` ADD COLUMN `author` TEXT NOT NULL DEFAULT ''",
+        )
+    }
+}
+
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster185.staleKdocSweep.cascade,
  * Task #676, 2026-05-29): classified as follows after recursive symbol

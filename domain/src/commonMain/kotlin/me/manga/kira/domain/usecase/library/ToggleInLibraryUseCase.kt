@@ -1,9 +1,10 @@
 package me.manga.kira.domain.usecase.library
 
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.result.flatMap
-import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.repository.LibraryRepository
 
 /**
@@ -59,22 +60,20 @@ class ToggleInLibraryUseCase(
     private val repository: LibraryRepository,
 ) {
     /**
-     * @param chapters the manga's chapter list to persist alongside the manga row when adding
-     * (native parity: `saveMangaWithChapters`). Add-paths MUST supply the fetched chapter list:
-     * Home's quick-toggle fetches the full list (and short-circuits on fetch failure) before
-     * toggling, and Details always passes its fetched chapters. The `emptyList()` default exists
-     * only for the removal branch (which ignores `chapters`) — adding with an empty list creates a
-     * 0-chapter row, so the next refresh treats the whole backlist as newly-discovered and floods
-     * the Updates feed (one Notifications entry per chapter, plus system notifications on Android).
+     * @param details the authoritative fetched details to persist on the add branch. It is optional
+     * only because the removal branch does not need it. Adding without details fails closed instead
+     * of creating a partial library row that loses description/author/status/rating or chapters.
      */
     suspend operator fun invoke(
         manga: Manga,
-        chapters: List<Chapter> = emptyList(),
+        details: MangaDetails? = null,
     ): AppResult<Boolean> {
         val existing = repository.get(manga.api, manga.language, manga.title)
         return existing.flatMap { current ->
             if (current == null) {
-                repository.addToLibrary(manga, chapters).flatMap { AppResult.Success(true) }
+                val fetched = details
+                    ?: return@flatMap AppResult.Failure(AppError.Validation.Required("mangaDetails"))
+                repository.addToLibrary(fetched).flatMap { AppResult.Success(true) }
             } else {
                 repository.removeFromLibrary(manga.api, manga.language, manga.title)
                     .flatMap { AppResult.Success(false) }

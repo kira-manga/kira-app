@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 // :data still depends on :shared for scrapers/ApiClient, so Room could not live in either without a
 // cycle). Package stays `me.manga.kira.data.local.*` so no consumer import changes.
 //
-// Owns MangaDatabase v11 + 9 DAOs / 7 entities / 5 converters / 10 migrations, the 3 per-target
+// Owns MangaDatabase v13 + 11 DAOs / 11 entities / 5 converters / 12 migrations, the 3 per-target
 // DatabaseBuilder actuals, and the `databaseModule()` Koin bindings. (The 4 co-extracted model types
 // under presentation.features.* keep their package names for now — renamed in a later strangler phase.)
 

@@ -111,9 +111,8 @@ internal fun SavedChapterEntity.toDomainChapter(): Chapter = Chapter(
 /**
  * Room saved-manga row + its saved chapters → domain [MangaDetails], the offline projection the
  * [me.manga.kira.data.repository.SavedMangaDetailsRepositoryImpl] emits for a manga already in
- * the library. `author` is not persisted on [SavedMangaEntity], so it defaults to empty until a
- * network refresh enriches it; everything else maps 1:1 (cover ← `imageUrl`, rating ← nullable
- * `rating` coalesced to empty).
+ * the library. All source metadata maps 1:1 (cover ← `imageUrl`, rating ← nullable `rating`
+ * coalesced to empty for rows imported from older backups).
  */
 internal fun SavedMangaEntity.toDomainDetails(chapters: List<SavedChapterEntity>): MangaDetails =
     MangaDetails(
@@ -123,7 +122,7 @@ internal fun SavedMangaEntity.toDomainDetails(chapters: List<SavedChapterEntity>
         url = url,
         coverUrl = imageUrl,
         description = description,
-        author = "",
+        author = author,
         rating = rating ?: "",
         status = status,
         genres = genres,
