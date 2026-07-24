@@ -54,7 +54,7 @@ env:
   # Android CI build number. The dedicated TestFlight workflow queries App Store Connect instead.
   KIRA_BUILD_NUMBER: ${{ github.run_number }}
   KIRA_PACKAGES_USER: ${{ github.actor }}
-  KIRA_PACKAGES_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
 
 jobs:
   jvm-android:

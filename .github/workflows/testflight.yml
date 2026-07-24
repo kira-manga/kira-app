@@ -29,7 +29,7 @@ jobs:
     env:
       KIRA_SOURCE_ENTITLEMENTS: ${{ github.workspace }}/iosApp/iosApp/iosApp.entitlements
       KIRA_PACKAGES_USER: ${{ github.actor }}
-      KIRA_PACKAGES_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
       FASTLANE_OPT_OUT_USAGE: "1"
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"
