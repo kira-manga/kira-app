@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - internal-testing
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -16,7 +16,10 @@ concurrency:
 jobs:
   build-upload-and-submit:
     name: Signed iOS archive, TestFlight upload, and external review
-    if: ${{ github.ref == 'refs/heads/internal-testing' }}
+    if: >-
+      ${{ github.ref == 'refs/heads/internal-testing' &&
+          !contains(github.event.head_commit.message || '', '[skip ios]') &&
+          !contains(github.event.head_commit.message || '', '[skip both]') }}
     runs-on: macos-latest
     timeout-minutes: 180
     defaults:

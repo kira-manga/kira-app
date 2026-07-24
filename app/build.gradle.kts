@@ -32,6 +32,12 @@ val crashDiagnosticsEnabled =
     providers.gradleProperty("kira.enableCrashDiagnostics")
         .map { value -> value.equals("true", ignoreCase = true) }
         .orElse(false)
+val sourceConfigBaseUrl =
+    providers.environmentVariable("KIRA_SOURCE_CONFIG_BASE_URL")
+        .orElse(providers.gradleProperty("kira.sourceConfigBaseUrl"))
+val sourceConfigPinnedKeys =
+    providers.environmentVariable("KIRA_SOURCE_CONFIG_PINNED_KEYS")
+        .orElse(providers.gradleProperty("kira.sourceConfigPinnedKeys"))
 
 // Production signing is intentionally environment-only. A developer without these four values
 // still gets an unsigned release artifact for R8/package validation; there is no local-keystore or
@@ -85,6 +91,17 @@ gradle.taskGraph.whenReady {
         }
         if (hasAllReleaseSigningValues && releaseKeystore?.isFile != true) {
             throw GradleException("KEYSTORE_FILE does not point to a readable keystore file")
+        }
+        val allowUnconfiguredSourceRemote =
+            providers.gradleProperty("allowUnconfiguredSourceRemote").orNull == "true"
+        if (!allowUnconfiguredSourceRemote &&
+            (sourceConfigBaseUrl.orNull.isNullOrBlank() || sourceConfigPinnedKeys.orNull.isNullOrBlank())
+        ) {
+            throw GradleException(
+                "Release source delivery is not configured. Set KIRA_SOURCE_CONFIG_BASE_URL and " +
+                    "KIRA_SOURCE_CONFIG_PINNED_KEYS (key-id=Base64-X.509[,key-id=...]). " +
+                    "Use -PallowUnconfiguredSourceRemote=true only for non-shipping build-path validation.",
+            )
         }
     }
 }
@@ -208,7 +225,8 @@ dependencies {
     implementation(libs.play.review)
     implementation(libs.play.review.ktx)
 
-    // Android-only image extras (also depended on by composeApp; declared here so app's own composables resolve them too)
+    // Android-only image extras (also depended on by composeApp; declared here so app's own
+    // composables resolve them too).
     implementation(libs.telephoto.zoomable.image.coil3)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

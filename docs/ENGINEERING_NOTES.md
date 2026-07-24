@@ -88,9 +88,10 @@ Flowermanga (PT), Timenaight + Webtoontr + Webtoonhatti (TR).
 
 Fail-closed posture (do not weaken): configs are data-only; only strategy names compiled into
 `DefaultStrategyRegistry` may be referenced (image-strategy set intentionally EMPTY);
-`DefaultSourceConfigValidator` rejects unknown references; remote config fetch disabled
-(`remote = null`) and `DenyRemoteSignatureVerifier` rejects all signatures. Signed remote delivery,
-image strategies, `minAppVersion` gating = Stage-1/2 roadmap.
+`DefaultSourceConfigValidator` rejects unknown references. Remote delivery uses a bounded Ktor HTTPS
+client, a complete signed envelope in Room, and Ed25519 verification against app-pinned public keys;
+network or verification failures retain the last verified cache and bundled floor. Production activation
+needs the deployed backend HTTPS origin; image strategies and `minAppVersion` gating remain follow-ups.
 
 Known open question (never adjudicated): `GenericSourceClient.isBlacklistedByGenre` uses
 case-insensitive **substring** contains vs the native exact-set membership — could over-filter

@@ -293,3 +293,34 @@ platform :ios do
     UI.success("Recorded App Store Connect state: #{external_state}")
   end
 end
+
+platform :android do
+  desc "Upload the signed Android App Bundle to Internal testing before Open testing publication"
+  lane :upload_internal do
+    aab_path = protected_env("KIRA_ANDROID_AAB_PATH")
+    UI.user_error!("Signed Android App Bundle is unavailable") unless File.file?(aab_path)
+
+    mapping_path = protected_env("KIRA_ANDROID_MAPPING_PATH")
+    UI.user_error!("Android R8 mapping file is unavailable") unless File.file?(mapping_path)
+
+    build_number = protected_env("KIRA_BUILD_NUMBER")
+    UI.user_error!("Android version code must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
+
+    upload_to_play_store(
+      package_name: APP_IDENTIFIER,
+      aab: aab_path,
+      mapping: mapping_path,
+      version_name: protected_env("KIRA_VERSION_NAME"),
+      version_code: build_number.to_i,
+      track: "internal",
+      release_status: "completed",
+      json_key_data: protected_env("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"),
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      ack_bundle_installation_warning: true,
+      timeout: 600
+    )
+  end
+end

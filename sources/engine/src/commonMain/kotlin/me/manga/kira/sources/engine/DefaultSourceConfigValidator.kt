@@ -28,12 +28,92 @@ class DefaultSourceConfigValidator(
             return ValidationResult.failed(errors) // shape may differ entirely; don't probe further
         }
 
+        if (!validateComplexity(document, errors)) {
+            return ValidationResult.failed(errors)
+        }
+
         val seenApis = mutableSetOf<String>()
         for (source in document.sources) {
             validateSource(source, seenApis, errors)
         }
 
         return if (errors.isEmpty()) ValidationResult.OK else ValidationResult.failed(errors)
+    }
+
+    /** Reject pathological collection fan-out before detailed validation traverses the object. */
+    private fun validateComplexity(
+        document: SourceConfigDocument,
+        errors: MutableList<String>,
+    ): Boolean {
+        if (document.sources.size > MAX_SOURCES) {
+            errors += "document contains ${document.sources.size} sources; maximum is $MAX_SOURCES"
+            return false
+        }
+
+        for (source in document.sources) {
+            val tag = "source '${source.api}':"
+            var complexity =
+                source.headers.size.toLong() + source.endpoints.size + source.fields.size +
+                    source.blacklistGenres.size + source.previousHosts.size +
+                    source.previousImageHosts.size + source.trustedHosts.size + source.filters.size
+            var valid = true
+
+            fun bounded(
+                name: String,
+                size: Int,
+                maximum: Int = MAX_COLLECTION_ENTRIES,
+            ) {
+                if (size > maximum) {
+                    errors += "$tag $name contains $size entries; maximum is $maximum"
+                    valid = false
+                }
+            }
+
+            bounded("headers", source.headers.size)
+            bounded("endpoints", source.endpoints.size, 16)
+            bounded("fields", source.fields.size)
+            bounded("blacklistGenres", source.blacklistGenres.size)
+            bounded("previousHosts", source.previousHosts.size)
+            bounded("previousImageHosts", source.previousImageHosts.size)
+            bounded("trustedHosts", source.trustedHosts.size)
+            bounded("filters", source.filters.size, MAX_FILTERS)
+
+            source.endpoints.values.take(MAX_COLLECTION_ENTRIES).forEach { endpoint ->
+                bounded("endpoints[].rootDirs", endpoint.rootDirs.size)
+                bounded("endpoints[].formBody", endpoint.formBody.size)
+                bounded("endpoints[].listFilters", endpoint.listFilters.size)
+                complexity += endpoint.rootDirs.size + endpoint.formBody.size + endpoint.listFilters.size
+            }
+            source.fields.values.take(MAX_COLLECTION_ENTRIES).forEach { field ->
+                bounded("fields[].fallbackSelectors", field.fallbackSelectors.size)
+                bounded("fields[].lazyAttrChain", field.lazyAttrChain.size)
+                bounded("fields[].vars", field.vars.size)
+                bounded("fields[].transform", field.transform.size)
+                complexity += field.fallbackSelectors.size + field.lazyAttrChain.size + field.vars.size + field.transform.size
+                field.transform.take(MAX_COLLECTION_ENTRIES).forEach { transform ->
+                    bounded("fields[].transform[].args", transform.args.size)
+                    bounded("fields[].transform[].list", transform.list.size)
+                    complexity += transform.args.size + transform.list.size
+                }
+            }
+            source.filters.take(MAX_FILTERS).forEach { filter ->
+                bounded("filters[].options", filter.options.size)
+                bounded("filters[].defaults", filter.defaults.size)
+                bounded("filters[].visibleWhen", filter.visibleWhen.size)
+                bounded("filters[].appliesTo", filter.appliesTo.size, 16)
+                complexity += filter.options.size + filter.defaults.size + filter.visibleWhen.size + filter.appliesTo.size
+                filter.visibleWhen.take(MAX_COLLECTION_ENTRIES).forEach { condition ->
+                    bounded("filters[].visibleWhen[].anyOf", condition.anyOf.size)
+                    complexity += condition.anyOf.size
+                }
+            }
+            if (complexity > MAX_SOURCE_COMPLEXITY) {
+                errors += "$tag complexity is $complexity entries; maximum is $MAX_SOURCE_COMPLEXITY"
+                valid = false
+            }
+            if (!valid) return false
+        }
+        return true
     }
 
     private fun validateSource(
@@ -278,7 +358,7 @@ class DefaultSourceConfigValidator(
                         errors += "$ftag default: toggle default must be 'true' or 'false', not '${filter.default}'"
                     }
                 "number" ->
-                    if (filter.default.isNotBlank() && filter.default.toDoubleOrNull() == null) {
+                    if (filter.default.isNotBlank() && filter.default.toDoubleOrNull()?.isFinite() != true) {
                         errors += "$ftag default: '${filter.default}' is not numeric"
                     }
             }
@@ -454,36 +534,39 @@ class DefaultSourceConfigValidator(
         }
     }
 
-    // The visibleWhen graph must be acyclic: composition evaluates visibility against effective
-    // values in a single pass, which is only deterministic without cycles.
+    // The visibleWhen graph must be acyclic. Kahn's algorithm keeps traversal iterative so a
+    // maliciously deep signed document cannot overflow the stack.
     private fun detectVisibilityCycles(
         filters: List<FilterDefinition>,
         tag: String,
         errors: MutableList<String>,
     ) {
-        val edges = filters.associate { f -> f.id to f.visibleWhen.map { it.filter } }
-        val state = mutableMapOf<String, Int>() // 0/absent=unvisited, 1=in-stack, 2=done
-
-        fun visit(id: String): Boolean {
-            when (state[id]) {
-                1 -> return true // back edge — cycle
-                2 -> return false
-            }
-            state[id] = 1
-            for (next in edges[id].orEmpty()) {
-                if (next in edges && visit(next)) {
-                    return true
-                }
-            }
-            state[id] = 2
-            return false
+        val byId = filters.associateBy { it.id }
+        val edges = LinkedHashMap<String, Set<String>>(byId.size)
+        val indegree = byId.keys.associateWith { 0 }.toMutableMap()
+        byId.forEach { (id, filter) ->
+            val dependencies =
+                filter.visibleWhen
+                    .asSequence()
+                    .map { it.filter }
+                    .filter { it in byId }
+                    .toCollection(linkedSetOf())
+            edges[id] = dependencies
+            dependencies.forEach { dependency -> indegree[dependency] = indegree.getValue(dependency) + 1 }
         }
-
-        for (filter in filters) {
-            if (state[filter.id] == null && visit(filter.id)) {
-                errors += "$tag filters: filter '${filter.id}': visibleWhen: dependency cycle detected"
-                return // one report is enough; the cycle names its entry point
+        val ready = ArrayDeque(indegree.filterValues { it == 0 }.keys)
+        var visited = 0
+        while (ready.isNotEmpty()) {
+            val id = ready.removeFirst()
+            visited++
+            edges[id].orEmpty().forEach { dependency ->
+                val remaining = indegree.getValue(dependency) - 1
+                indegree[dependency] = remaining
+                if (remaining == 0) ready.addLast(dependency)
             }
+        }
+        if (visited != byId.size) {
+            errors += "$tag filters: visibleWhen: dependency cycle detected"
         }
     }
 
@@ -514,6 +597,10 @@ class DefaultSourceConfigValidator(
     companion object {
         /** The only schema major this build understands. Bumped only on incompatible model changes. */
         const val SUPPORTED_SCHEMA_VERSION = 1
+        internal const val MAX_SOURCES = 512
+        internal const val MAX_COLLECTION_ENTRIES = 256
+        internal const val MAX_FILTERS = 128
+        internal const val MAX_SOURCE_COMPLEXITY = 20_000L
 
         // Lifecycle metadata whitelists (SourceRegistry retirement §2). SUPPORTED_SITE_STATES
         // mirrors the persisted SourceState enum (:data:local) — the catalog sync maps the string
@@ -554,8 +641,16 @@ class DefaultSourceConfigValidator(
         /** Vars `GenericSourceClient.vars()` always seeds — a filter placeholder must not shadow them. */
         private val RESERVED_TEMPLATE_VARS =
             setOf(
-                "baseUrl", "imageBase", "page", "pageOffset", "query",
-                "queryEncoded", "queryJson", "itemUrl", "chapterUrl", "id",
+                "baseUrl",
+                "imageBase",
+                "page",
+                "pageOffset",
+                "query",
+                "queryEncoded",
+                "queryJson",
+                "itemUrl",
+                "chapterUrl",
+                "id",
             )
     }
 }

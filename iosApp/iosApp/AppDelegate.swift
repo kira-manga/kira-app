@@ -162,7 +162,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         ) { [weak self] _ in self?.refreshDeviceStress() }
         refreshDeviceStress()
 
-        IosBackgroundBridgeKt.ensureBackgroundDownloadsReady()
+        // Do not construct the full download graph on the launch path. The Compose root performs
+        // normal startup reconciliation after its first frame; a background-URLSession relaunch
+        // still resolves the repository on demand in handleEventsForBackgroundURLSession.
         return true
     }
 

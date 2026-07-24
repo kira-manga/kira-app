@@ -1,6 +1,5 @@
 package me.manga.kira
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -22,6 +20,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import me.manga.kira.platform.storage.DataStoreHelper
@@ -385,13 +386,23 @@ private class CoilSourceHeaderInterceptor(
     }
 }
 
+/**
+ * Resolves and runs non-visual launch work only after Compose has presented its first frame.
+ *
+ * This is especially important on a new iOS install: resolving [ReconcileDownloadsUseCase] also
+ * constructs the Room-backed background download engine. Doing that before the first frame keeps
+ * the native launch screen visible and previously exposed a blank transition after it disappeared.
+ * Background URLSession relaunches remain safe because the native delegate resolves that engine
+ * directly from its system callback.
+ */
 @Composable
-fun App(crashDiagnosticsEnabled: Boolean = false) {
-    // Wire the singleton ImageLoader so every AsyncImage / SubcomposeAsyncImage call site picks up
-    // the per-source header injection without changes at the call sites. The factory runs once and
-    // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`, so resolving
-    // `SourcesRepository` via Koin here is safe (same singleton instance as everywhere else).
-    val sourcesRepository: SourcesRepository = koinInject()
+private fun PostFirstFrameStartupTasks() {
+    var firstFramePresented by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        firstFramePresented = true
+    }
+    if (!firstFramePresented) return
 
     // Restart-freeze fix (2026-06-02): on every launch, reconcile downloads orphaned in
     // RUNNING / COMPRESSING by a previous (killed) process — reset them to QUEUED and re-trigger the
@@ -448,6 +459,17 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
         // #11: fire app_open once per launch (synchronous, fast, best-effort telemetry).
         logAppOpen()
     }
+}
+
+@Composable
+fun App(crashDiagnosticsEnabled: Boolean = false) {
+    PostFirstFrameStartupTasks()
+
+    // Wire the singleton ImageLoader so every AsyncImage / SubcomposeAsyncImage call site picks up
+    // the per-source header injection without changes at the call sites. The factory runs once and
+    // the resulting ImageLoader is memoized inside `SingletonImageLoader.setSafe`, so resolving
+    // `SourcesRepository` via Koin here is safe (same singleton instance as everywhere else).
+    val sourcesRepository: SourcesRepository = koinInject()
 
     // Bug 5: register the AVIF decoder factory (on Android only) before the URL fetch interceptor so
     // chapter pages from Cloudflare-protected AVIF CDNs decode at full quality. iOS / Desktop
@@ -526,18 +548,12 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     // load-bearing: it preserves the NavController and its back stack across a live language change.
     val observeLanguage: ObserveSelectedLanguageUseCase = koinInject()
     val iconSourceRegistry: SourceRegistry = koinInject()
-    // Wait for the persisted language's FIRST emission before building the app tree, avoiding a
-    // startup locale flash and ensuring a cold-start deep link is handled only after the resource
-    // environment is ready. `null` = not yet read; "" = read, system default. The DataStore-backed
-    // flow always emits promptly while the Android splash is still visible.
-    val appLanguage: String? by remember { observeLanguage() }.collectAsState(initial = null)
-    val language = appLanguage
-    if (language == null) {
-        KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-        }
-        return
-    }
+    // Seed from the same synchronous ObservableSettings cell that backs the Flow. Waiting with a
+    // nullable initial value previously rendered a blank, pure-black frame on a dark-mode first
+    // launch. The real persisted value is available synchronously, so this keeps locale correctness
+    // without delaying construction of the first visible screen.
+    val initialLanguage = remember(coilHeaderStore) { coilHeaderStore.currentLanguage() }
+    val language by remember { observeLanguage() }.collectAsState(initial = initialLanguage)
     // RTL parity (GAP-LANG-RTL): on Android the LocalConfiguration locale override (LocalAppLocale)
     // makes Compose derive layout direction from the chosen locale, so picking Arabic flips the UI to
     // RTL there. iOS/Desktop have no such derivation, so also drive LocalLayoutDirection from the

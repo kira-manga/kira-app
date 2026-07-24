@@ -1,5 +1,7 @@
 package me.manga.kira.sources.contracts
 
+import kotlinx.serialization.Serializable
+
 /**
  * Transport port. The engine never touches Ktor (or any HTTP library) directly — it asks an
  * [HttpExecutor] to run a [SourceRequest] and hands it back a [SourceResponse]. This keeps
@@ -42,29 +44,54 @@ data class SourceResponse(
 interface HeaderStore {
     suspend fun headersFor(api: String): Map<String, String>
 
-    suspend fun save(api: String, headers: Map<String, String>)
+    suspend fun save(
+        api: String,
+        headers: Map<String, String>,
+    )
 }
 
 /**
  * Storage for the raw signed config document. [readBundled] returns the asset shipped in the binary
  * (always present, the floor); [readCached]/[writeCached] hold the last accepted remote document.
- * All three are raw JSON strings — verification and parsing happen above this port.
+ * The bundle is raw JSON; the cache is the complete signed envelope so it can be authenticated again
+ * before parsing after every process restart.
  */
 interface ConfigStore {
     fun readBundled(): String?
 
-    suspend fun readCached(): String?
+    suspend fun readCached(): SignedConfigDocument?
 
-    suspend fun writeCached(raw: String)
+    suspend fun writeCached(document: SignedConfigDocument)
 }
 
+/** Immutable detached-signature metadata supplied by the backend and covered by Ed25519. */
+@Serializable
+data class ConfigSignatureMetadata(
+    val format: String,
+    val algorithm: String,
+    val keyId: String,
+    val signatureBase64: String,
+    val revision: Long,
+    val checksum: String,
+    val createdAt: String,
+    val previousRevision: Long? = null,
+    val previousChecksum: String? = null,
+)
+
+/** Exact UTF-8 document plus all metadata required to verify it again after process death. */
+@Serializable
+data class SignedConfigDocument(
+    val payload: String,
+    val metadata: ConfigSignatureMetadata,
+)
+
 /**
- * Verifies the detached signature over a config payload before it is ever parsed or trusted. Stage-0
- * ships a verifier that requires a valid signature for any non-bundled document; the bundled asset is
- * trusted implicitly because it shipped inside the signed app binary.
+ * Verifies the detached signature over a config payload before it is ever parsed or trusted. Every
+ * cached or remote document requires a valid pinned-key signature; the bundled asset is trusted
+ * implicitly because it shipped inside the signed app binary.
  */
 interface ConfigSignatureVerifier {
-    fun verify(payload: ByteArray, signatureBase64: String): Boolean
+    fun verify(document: SignedConfigDocument): Boolean
 }
 
 /**
@@ -73,7 +100,10 @@ interface ConfigSignatureVerifier {
  * challenge flow; the engine stays unaware of any UI.
  */
 fun interface CloudflareChallengeSignal {
-    fun onChallenge(api: String, url: String)
+    fun onChallenge(
+        api: String,
+        url: String,
+    )
 }
 
 /**

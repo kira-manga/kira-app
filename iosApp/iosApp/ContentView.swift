@@ -6,7 +6,9 @@ import ComposeApp
 /// into SwiftUI via `UIViewControllerRepresentable`.
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        MainViewControllerKt.MainViewController()
+        let controller = MainViewControllerKt.MainViewController()
+        controller.view.backgroundColor = UIColor(named: "LaunchBackground") ?? .systemBackground
+        return controller
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
@@ -14,7 +16,12 @@ struct ComposeView: UIViewControllerRepresentable {
 
 struct ContentView: View {
     var body: some View {
-        ComposeView()
-            .ignoresSafeArea(edges: .all)
+        ZStack {
+            Color("LaunchBackground")
+                .ignoresSafeArea()
+
+            ComposeView()
+                .ignoresSafeArea(edges: .all)
+        }
     }
 }

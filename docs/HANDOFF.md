@@ -80,10 +80,14 @@ Two paths, decided per-api by `SourceRegistry.isConfigBacked`:
   parity-verified before shipping.
 - **33 legacy scraper sources** (`:sources:legacy`), hidden from Home tabs, represented in the
   config document as metadata-only `engine:"legacy"` stanzas.
-- The remote SourceRegistry endpoint (`/source/35`) is **deleted** (2026-07-04): the bundled JSON
-  config is the single authority for every source's existence/hosts/state/lifecycle. A host move
-  ships as a config edit + release. Fail-closed: remote config fetch disabled, all signatures
-  rejected — signed remote delivery is the Stage-1 roadmap item.
+- The legacy SourceRegistry endpoint (`/source/35`) remains deleted. The app now consumes the
+  backend's `/api/v1/source-config/document` endpoint through a bounded HTTPS client, authenticates
+  the exact document/checksum/revision/chain metadata with Ed25519 and an app-pinned X.509 public
+  key, re-verifies the Room-cached envelope after every restart, and rejects stale/rolled-back or
+  malformed artifacts. Network, HTTP, signature, or validation failure preserves the last verified
+  cache and bundled floor. Release builds set the origin with `KIRA_SOURCE_CONFIG_BASE_URL` or
+  `-Pkira.sourceConfigBaseUrl` and pins with `KIRA_SOURCE_CONFIG_PINNED_KEYS` or
+  `-Pkira.sourceConfigPinnedKeys`; Android release assembly fails when either is absent.
 - Permanently legacy-only (impossible as pure config — do not attempt): Dilar (AES), MangaPark
   (GraphQL), Promanga/Prochan (canvas de-scramble), Mangatuk (rebuilt SPA), Lavatoons, Comick,
   Manhwatop, Batcave, Batoto.
@@ -156,10 +160,12 @@ committed `*.example` templates — `app/google-services.json`, `iosApp/iosApp/G
   `static-analysis` (ktlint 1.5.0 + detekt 1.23.7 standalone CLIs, **blocking** against committed
   baselines under `config/`), `release-verify` (always verifies unit/lint/R8/unsigned APK+AAB and
   optionally emits a signed AAB), and `ios-archive` (optionally creates a signed archive+dSYMs).
-- Android signing is environment-only. CI signed output requires `KEYSTORE_BASE64`,
-  `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, and real `GOOGLE_SERVICES_JSON`; iOS archive
-  output requires its certificate/profile/plist secret set. Missing secrets skip only the signed
-  paths—the unsigned/build verification remains mandatory.
+- Android signing is environment-only. The Internal testing workflow requires
+  `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+  `ANDROID_KEY_PASSWORD`, real `GOOGLE_SERVICES_JSON`, and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`;
+  iOS archive output requires its certificate/profile/plist secret set. Missing Android release
+  inputs fail that publishing workflow before any artifact is uploaded; the general CI build
+  verification remains separate.
 - AdMob, mediation, UMP, Android `AD_ID`, and Privacy Sandbox advertising-ID/attribution
   permissions were removed because the app has no advertising UI; CI guards the merged manifest.
 - Store submission is gated on `docs/release/INTERNAL_RELEASE_QA.md`; no final signed-device suite
@@ -208,7 +214,8 @@ machines (see `CLAUDE.md`).
 - **Desktop**: DB directory migration, background refresh, KCEF bundling for macOS, AVIF — all
   parked (Desktop unshipped).
 - **Package-rename pass** for relocated `:shared` files — deliberately not done.
-- Sources Stage-1/2: signed remote config delivery, image strategies, `minAppVersion` gating.
+- Sources follow-ups: image strategies and `minAppVersion` gating. Signed remote delivery is
+  implemented; production activation still needs the deployed backend HTTPS base URL.
 - C2 accepted cross-platform gaps (from the retired inventory): new-chapter **system**
   notifications are Android-only (`NotificationPresenter` has zero call sites); inline What's-New
   video is poster-only everywhere; Material You dynamic color is a no-op everywhere; in-app update
@@ -253,3 +260,7 @@ machines (see `CLAUDE.md`).
 11. Android Auto Backup/device transfer excludes all app persistence domains so DB/settings/manga
     files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.
+13. The signed source-config client is fail-closed and compiled for Android/iOS, but the production
+    backend HTTPS origin and signing ceremony are not configured; set `KIRA_SOURCE_CONFIG_BASE_URL`
+    and `KIRA_SOURCE_CONFIG_PINNED_KEYS` in the release environment only after the backend's protected
+    private key and matching public key exist. No orphan placeholder pin is accepted.

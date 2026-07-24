@@ -34,7 +34,14 @@ Host is macOS. Full gate cadence and gotchas: `CLAUDE.md` § "Build / test / run
 
 - **`main`** — default branch. **GitHub Actions never run on `main`** (owner rule; encoded in `.github/workflows/ci.yml`).
 - **`testing`** — push here (or use manual workflow dispatch) to get a full CI run: compile matrix, 11 module test suites, locale-parity gates, debug APK, iOS klib compiles, blocking ktlint/detekt.
-- **`release`** — CI runs plus the `release-verify` job (signed R8 release build). Release signing secrets (`KEYSTORE_BASE64` etc.) are **not configured yet**; the job warn-skips until they are.
+- **`release`** — CI runs plus the `release-verify` job (signed R8 release build). Testing releases
+  are started manually with the `Internal Testing Release` workflow on `internal-testing`; select
+  Android, iOS, or both. Android publishes the same version to Play Internal and Open Testing after
+  verifying Open Testing eligibility; it requires the signing, Firebase, source-authority, and Play inputs
+  documented in `docs/release/ANDROID_INTERNAL_TESTING.md`.
+
+  Push-triggered store workflows also support commit controls: `[skip ios]` runs Android only,
+  `[skip android]` runs iOS only, and `[skip both]` skips both store releases.
 
 ## Restricted paths
 

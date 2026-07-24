@@ -25,11 +25,11 @@ import me.manga.kira.sources_repositry.BaseMangaRepository
  *
  * The validated document is the SINGLE authority for which sources are generic (MangaSource
  * decoupling, 2026-07): the former `CONFIG_BACKED_APIS` in-binary allow-list double-gate was removed
- * as redundant — remote config delivery is hard-disabled (`remote = null` +
- * `DenyRemoteSignatureVerifier`), so the bundled document carries exactly the trust the compiled set
- * carried. RECORDED FOR STAGE-2: enabling remote config delivery requires EITHER a real signature
- * verifier OR reinstating an in-binary generic allow-list before any remote stanza may flip a source
- * to `engine="generic"`.
+ * as redundant. Remote config delivery accepts only pinned-key Ed25519 envelopes and falls back to
+ * the bundled document when the endpoint is unset, unavailable, stale, rolled back, or invalid. The
+ * signature covers the exact document bytes and anti-rollback metadata before an update is parsed.
+ * Shipping Android builds require an endpoint and pinned keys; local builds may stay on this bundled
+ * floor explicitly.
  *
  * Fail-closed: if the bundled document failed to parse or validate, the active document degrades to
  * EMPTY — no api resolves generic and [get] returns the plain legacy adapter. The generic path is

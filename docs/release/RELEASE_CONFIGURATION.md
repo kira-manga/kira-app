@@ -38,19 +38,24 @@ The committed `app/google-services.json` is inert. A production-shaped release r
 gitignored file. `-PallowPlaceholderGoogleServices=true` exists only so CI/local validation can
 exercise lint, R8, packaging, and bundle generation without production credentials.
 
-GitHub release secrets:
+GitHub release secrets for the Android Internal and Open testing workflow:
 
 ```text
-KEYSTORE_BASE64
-KEYSTORE_PASSWORD
-KEY_ALIAS
-KEY_PASSWORD
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
 GOOGLE_SERVICES_JSON   # base64-encoded real file
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
 ```
 
-CI always uploads `android-release-validation-<run>` with the unsigned validation APK/AAB and
-mapping files. When all secrets exist, it additionally uploads `android-signed-aab-<run>` after
-verifying the bundle contains a signing certificate.
+The `Internal Testing Release` workflow offers `android`, `ios`, and `both` on the
+`internal-testing` branch. Its reusable Android workflow validates the source-config authority and
+both Play testing tracks, reconstructs the upload
+keystore only in the runner's temporary directory, runs tests/lint/R8, builds the signed AAB, and
+uploads the same version to Google Play Internal and Open Testing. It removes the keystore and Firebase file in
+an `always()` cleanup step. The older `ci.yml` workflow remains a build-validation workflow and
+does not publish to Play.
 
 Owner actions before Play upload:
 
@@ -60,6 +65,10 @@ Owner actions before Play upload:
 4. Record the Play **app signing** SHA-256 certificate in `kira-web`; it may differ from the upload
    key and controls Android App Links after Play re-signs the app.
 5. Upload only the signed `.aab`, then preserve its mapping file and CI provenance.
+
+The complete Android/Play/backend input inventory and the non-printing local validation/apply
+helpers are documented in [`ANDROID_INTERNAL_TESTING.md`](ANDROID_INTERNAL_TESTING.md). Fill only
+the ignored `.secrets/android-release.env`; never commit the real configuration.
 
 ## iOS release
 
@@ -99,8 +108,8 @@ BETA_REVIEW_CONTACT_EMAIL
 BETA_REVIEW_CONTACT_PHONE
 ```
 
-`.github/workflows/testflight.yml` runs only for `internal-testing` (push or a manual dispatch whose
-selected ref is that branch). It validates all supplied signing metadata without logging protected
+`.github/workflows/testflight.yml` is called only by `Internal Testing Release` when `ios` or
+`both` is selected on `internal-testing`. It validates all supplied signing metadata without logging protected
 contents, queries every uploaded/processing App Store Connect build for version `1.0.0`, chooses an
 integer build higher than the highest result, creates the TestFlight group prerequisites, archives,
 exports and validates the IPA, uploads Crashlytics dSYMs, uploads to App Store Connect, waits for
@@ -163,14 +172,14 @@ website copy together.
 
 ## Source delivery boundary
 
-Production source definitions remain bundled in the signed app. `RemoteSourceConfigManager` is
-constructed with `remote = null` and `DenyRemoteSignatureVerifier`; no backend source-config URL or
-remote synchronization is wired. Updating a source definition requires an app release. See
-`BUNDLED_SOURCES_RELEASE.md`.
+Production retains bundled source definitions as its recovery floor and also wires an authenticated
+backend update path. The release build must supply a credential-free HTTPS backend origin; pinned
+Ed25519 public keys are compiled into the app. Invalid, stale, rolled-back, oversized, or unavailable
+remote documents fall back to the last verified cache or bundle. See `BUNDLED_SOURCES_RELEASE.md`.
 
 ## Deliberate non-actions
 
 - No public deployment, DNS mutation, Play upload, TestFlight upload, or App Store submission was
   performed during this preparation.
-- No `kira-backend` integration or backend source authority was added.
+- No production backend URL was guessed or deployed; the release pipeline must supply the real origin.
 - Desktop remains a shared-code compile/test target, not a product-release target.

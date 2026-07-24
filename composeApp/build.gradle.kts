@@ -1,5 +1,9 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.URI
+import java.security.KeyFactory
+import java.security.spec.X509EncodedKeySpec
+import java.util.Base64
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -7,6 +11,98 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.cryptography)
+}
+
+cryptography {
+    configureSwiftLinkerOpts = true
+}
+
+val generatedSourceRemoteDir = layout.buildDirectory.dir("generated/sourceRemote/commonMain")
+val sourceConfigBaseUrl =
+    providers.environmentVariable("KIRA_SOURCE_CONFIG_BASE_URL")
+        .orElse(providers.gradleProperty("kira.sourceConfigBaseUrl"))
+        .orElse("")
+val sourceConfigPinnedKeys =
+    providers.environmentVariable("KIRA_SOURCE_CONFIG_PINNED_KEYS")
+        .orElse(providers.gradleProperty("kira.sourceConfigPinnedKeys"))
+        .orElse("")
+val sourceConfigAppVersion =
+    providers.environmentVariable("KIRA_APP_VERSION")
+        .orElse(providers.gradleProperty("kira.appVersion"))
+        .orElse("1.0.0")
+val generateSourceRemoteConfig = tasks.register("generateSourceRemoteConfig") {
+    inputs.property("baseUrl", sourceConfigBaseUrl)
+    inputs.property("pinnedKeys", sourceConfigPinnedKeys)
+    inputs.property("appVersion", sourceConfigAppVersion)
+    outputs.dir(generatedSourceRemoteDir)
+    doLast {
+        fun String.asKotlinLiteral(): String =
+            replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        val packageDir = generatedSourceRemoteDir.get().dir("me/manga/kira/sources/runtime").asFile
+        packageDir.mkdirs()
+        packageDir.resolve("GeneratedSourceRemoteConfig.kt").writeText(
+            """
+            package me.manga.kira.sources.runtime
+
+            internal object GeneratedSourceRemoteConfig {
+                const val BASE_URL: String = "${sourceConfigBaseUrl.get().asKotlinLiteral()}"
+                const val APP_VERSION: String = "${sourceConfigAppVersion.get().asKotlinLiteral()}"
+                const val PINNED_KEYS: String = "${sourceConfigPinnedKeys.get().asKotlinLiteral()}"
+            }
+            """.trimIndent() + "\n",
+        )
+    }
+}
+
+// Both Android and Xcode release paths fail closed if remote source trust is absent or malformed.
+// Local debug/test builds intentionally keep the bundled document as an offline floor.
+gradle.taskGraph.whenReady {
+    val xcodeRelease = System.getenv("CONFIGURATION").equals("Release", ignoreCase = true)
+    val buildingRelease = allTasks.any { task ->
+        task.project.path == ":composeApp" &&
+            (task.name.contains("Release") || (xcodeRelease && task.name == "embedAndSignAppleFrameworkForXcode"))
+    }
+    val allowUnconfigured =
+        providers.gradleProperty("allowUnconfiguredSourceRemote").orNull == "true"
+    if (buildingRelease && !allowUnconfigured) {
+        val baseUrl = sourceConfigBaseUrl.get()
+        val pins = sourceConfigPinnedKeys.get()
+        if (baseUrl.isBlank() || pins.isBlank()) {
+            throw GradleException(
+                "Release source delivery is not configured. Set KIRA_SOURCE_CONFIG_BASE_URL and " +
+                    "KIRA_SOURCE_CONFIG_PINNED_KEYS (key-id=Base64-X.509[,key-id=...]). " +
+                    "Use -PallowUnconfiguredSourceRemote=true only for non-shipping build-path validation.",
+            )
+        }
+        val uri =
+            runCatching { URI(baseUrl) }
+                .getOrElse { throw GradleException("Invalid source-config base URL", it) }
+        val hasSecureAuthority = uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null
+        val hasCleanLocation = uri.query == null && uri.fragment == null
+        if (!hasSecureAuthority || !hasCleanLocation) {
+            throw GradleException("Source-config base URL must be credential-free HTTPS without query or fragment")
+        }
+        val keyIds = mutableSetOf<String>()
+        pins.split(',').forEach { entry ->
+            val separator = entry.indexOf('=')
+            if (separator <= 0) throw GradleException("Source-config pins must use key-id=Base64-X.509 format")
+            val keyId = entry.substring(0, separator)
+            if (!Regex("[A-Za-z0-9._-]{1,64}").matches(keyId) || !keyIds.add(keyId)) {
+                throw GradleException("Source-config pin key ids must be valid and unique")
+            }
+            runCatching {
+                KeyFactory.getInstance("Ed25519").generatePublic(
+                    X509EncodedKeySpec(Base64.getDecoder().decode(entry.substring(separator + 1))),
+                )
+            }.getOrElse {
+                throw GradleException(
+                    "Source-config pin '$keyId' is not a Base64 X.509 Ed25519 public key",
+                    it,
+                )
+            }
+        }
+    }
 }
 
 kotlin {
@@ -68,6 +164,7 @@ kotlin {
     }
 
     sourceSets {
+        commonMain { kotlin.srcDir(generateSourceRemoteConfig) }
         commonMain.dependencies {
             // Rework modules (Phase 8). Pulled in as `implementation` because :composeApp is the
             // top of the graph — nothing downstream needs to re-export these types. Importing :ui
@@ -101,6 +198,8 @@ kotlin {
             implementation(project(":sources:contracts"))
             implementation(project(":sources:engine"))
             implementation(project(":sources:config"))
+            implementation(libs.cryptography.core)
+            implementation(libs.cryptography.provider.optimal)
 
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -143,9 +242,13 @@ kotlin {
             // (mirrors the Android :app KoinGraphRegistrationTest). koin-core is otherwise only a
             // transitive impl dep of koin-compose; declare it for the test classpath explicitly.
             implementation(libs.koin.core)
+            implementation(libs.ktor.client.mock)
         }
 
         androidMain.dependencies {
+            // Android's platform JCA lacks Ed25519 on older supported API levels; BC keeps the
+            // pinned source-document verifier available across the full minSdk 26 range.
+            implementation(libs.cryptography.provider.jdk.bc)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.core.splashscreen)
@@ -173,7 +276,7 @@ kotlin {
             implementation(libs.crashkios.crashlytics)
         }
 
-        val desktopMain = getByName("desktopMain") {
+        getByName("desktopMain") {
             dependencies {
                 implementation(compose.desktop.currentOs)
 
@@ -187,6 +290,10 @@ kotlin {
             }
         }
     }
+}
+
+tasks.matching { task -> task.name.startsWith("compile") && task.name.contains("Kotlin") }.configureEach {
+    dependsOn(generateSourceRemoteConfig)
 }
 
 compose.resources {
