@@ -42,6 +42,10 @@ on:
     branches: [ testing, release ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -49,6 +53,8 @@ concurrency:
 env:
   # Android CI build number. The dedicated TestFlight workflow queries App Store Connect instead.
   KIRA_BUILD_NUMBER: ${{ github.run_number }}
+  KIRA_PACKAGES_USER: ${{ github.actor }}
+  KIRA_PACKAGES_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   jvm-android:
