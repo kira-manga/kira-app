@@ -12,9 +12,10 @@ import me.manga.kira.sources.contracts.CloudflareChallengeSignal
 import me.manga.kira.sources.contracts.HeaderStore
 import me.manga.kira.sources.contracts.HttpExecutor
 import me.manga.kira.sources.contracts.RemoteSourceCatalog
+import me.manga.kira.sources.contracts.SourceBaseUrlProvider
+import me.manga.kira.sources.contracts.SourceCatalogDiagnosticsProvider
 import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
 import me.manga.kira.sources.contracts.SourceCatalogStore
-import me.manga.kira.sources.contracts.SourceBaseUrlProvider
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.SourceUpdateManager
@@ -95,7 +96,7 @@ val sourcesGenericModule =
 
         // Config lifecycle. The exact-12 bundle validates at construction, so activeDocument()
         // is immediately safe; refresh may atomically replace it with a complete signed catalog.
-        single<SourceUpdateManager> {
+        single {
             val logger = KermitLoggerAdapter()
             IncrementalSourceCatalogManager(
                 store = get(),
@@ -110,6 +111,8 @@ val sourcesGenericModule =
                 },
             )
         }
+        single<SourceUpdateManager> { get<IncrementalSourceCatalogManager>() }
+        single<SourceCatalogDiagnosticsProvider> { get<IncrementalSourceCatalogManager>() }
 
         // The registry: generic-ONLY for every engine="generic" stanza in the validated active
         // document (the single authority — no in-binary api allow-list); no adapter for the rest.

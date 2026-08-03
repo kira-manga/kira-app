@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Info
@@ -184,6 +185,8 @@ import me.manga.kira.ui.generated.resources.setting_incognito
 import me.manga.kira.ui.generated.resources.setting_incognito_desc
 import me.manga.kira.ui.generated.resources.settings_screen_title
 import me.manga.kira.ui.generated.resources.sources_title
+import me.manga.kira.ui.generated.resources.source_catalog_settings_description
+import me.manga.kira.ui.generated.resources.source_catalog_title
 import me.manga.kira.ui.generated.resources.start_reading_settings_activated_description
 import me.manga.kira.ui.generated.resources.start_reading_settings_locked_description
 import me.manga.kira.ui.generated.resources.start_reading_title
@@ -638,6 +641,15 @@ private fun SettingsList(
                         onIntent(SettingsIntent.OnNavigate(SettingsDestination.SOURCE_MANAGEMENT))
                     },
                     leadingIcon = { RowIcon(Icons.Outlined.AutoStories) },
+                )
+                SectionDivider()
+                NavRow(
+                    label = settingsDestinationLabel(SettingsDestination.SOURCE_CATALOG),
+                    description = stringResource(Res.string.source_catalog_settings_description),
+                    onClick = {
+                        onIntent(SettingsIntent.OnNavigate(SettingsDestination.SOURCE_CATALOG))
+                    },
+                    leadingIcon = { RowIcon(Icons.Outlined.CloudSync) },
                 )
                 SectionDivider()
                 // GAP-SET-04 — native Navigation group: feedbacks&complaints → default reading
@@ -1273,6 +1285,7 @@ private fun settingsToggleLabel(toggle: SettingsToggle): String = when (toggle) 
 @Composable
 private fun settingsDestinationLabel(destination: SettingsDestination): String = when (destination) {
     SettingsDestination.SOURCE_MANAGEMENT -> stringResource(Res.string.sources_title)
+    SettingsDestination.SOURCE_CATALOG -> stringResource(Res.string.source_catalog_title)
     SettingsDestination.THEME -> stringResource(Res.string.theme_screen_title)
     SettingsDestination.STATISTICS -> stringResource(Res.string.statistics)
     SettingsDestination.LANGUAGE -> stringResource(Res.string.language)

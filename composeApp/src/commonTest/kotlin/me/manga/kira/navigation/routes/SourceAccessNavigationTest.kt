@@ -59,6 +59,18 @@ class SourceAccessNavigationTest {
     }
 
     @Test
+    fun settings_source_catalog_diagnostics_is_always_read_only_reachable() {
+        assertEquals(
+            Screen.SourceCatalogDiagnostics,
+            settingsDestination(
+                destination = SettingsDestination.SOURCE_CATALOG,
+                sourceAccessState = SourceAccessState.LOCKED,
+                crashDiagnosticsEnabled = false,
+            ),
+        )
+    }
+
+    @Test
     fun home_fallback_requires_typed_no_source_error_and_empty_feed() {
         val noSources = HomeState(feedError = AppError.Validation.NoEnabledSources())
 

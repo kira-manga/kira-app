@@ -11,10 +11,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.sources.contracts.ActiveSourceDiagnostics
 import me.manga.kira.sources.contracts.RemoteSourceCatalog
 import me.manga.kira.sources.contracts.SignedSourceCatalogManifest
-import me.manga.kira.sources.contracts.SourceCatalogEntry
 import me.manga.kira.sources.contracts.SourceCatalogAcceptanceFloor
+import me.manga.kira.sources.contracts.SourceCatalogDiagnostics
+import me.manga.kira.sources.contracts.SourceCatalogDiagnosticsProvider
+import me.manga.kira.sources.contracts.SourceCatalogEntry
 import me.manga.kira.sources.contracts.SourceCatalogManifest
 import me.manga.kira.sources.contracts.SourceCatalogManifestResult
 import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
@@ -40,9 +43,12 @@ class IncrementalSourceCatalogManager(
     private val validator: SourceConfigValidator,
     private val remote: RemoteSourceCatalog,
     private val onRejected: (String) -> Unit = {},
-) : SourceUpdateManager {
+) : SourceUpdateManager,
+    SourceCatalogDiagnosticsProvider {
     private val bundled = requireBundledCatalog()
     private val active = MutableStateFlow(bundled)
+    private val catalogDiagnostics =
+        MutableStateFlow(bundled.toDiagnostics(UpdateState.Origin.BUNDLED))
     private val updateState =
         MutableStateFlow<UpdateState>(
             UpdateState.Active(bundled.revision, UpdateState.Origin.BUNDLED),
@@ -50,6 +56,7 @@ class IncrementalSourceCatalogManager(
     private val refreshLock = Mutex()
 
     override val state: StateFlow<UpdateState> = updateState.asStateFlow()
+    override val diagnostics: StateFlow<SourceCatalogDiagnostics> = catalogDiagnostics.asStateFlow()
 
     override fun activeDocument(): SourceConfigDocument = active.value
 
@@ -81,6 +88,10 @@ class IncrementalSourceCatalogManager(
                 val origin =
                     if (floor === current) previousOrigin else UpdateState.Origin.CACHE
                 active.value = floor
+                if (floor !== current) {
+                    catalogDiagnostics.value =
+                        requireNotNull(cached).toDiagnostics(UpdateState.Origin.CACHE)
+                }
                 if (floor.revision == bundled.revision) {
                     // The bundle is a complete tier, not a merge base. Projecting it before any
                     // network work removes obsolete rows even when the fetch later fails.
@@ -104,14 +115,17 @@ class IncrementalSourceCatalogManager(
                                 previousDocument = floor,
                             )
                     }
-                val effective = accepted ?: floor
-                active.value = effective
+                val effectiveDocument = accepted?.document ?: floor
+                active.value = effectiveDocument
+                if (accepted != null) {
+                    catalogDiagnostics.value = accepted.toDiagnostics(UpdateState.Origin.REMOTE)
+                }
                 updateState.value =
                     UpdateState.Active(
-                        effective.revision,
+                        effectiveDocument.revision,
                         if (accepted == null) origin else UpdateState.Origin.REMOTE,
                     )
-                AppResult.Success(effective)
+                AppResult.Success(effectiveDocument)
             } catch (cancelled: CancellationException) {
                 updateState.value = previousState
                 throw cancelled
@@ -128,7 +142,7 @@ class IncrementalSourceCatalogManager(
         acceptedManifest: SourceCatalogManifest?,
         previousManifest: SourceCatalogManifest?,
         previousDocument: SourceConfigDocument,
-    ): SourceConfigDocument? {
+    ): VerifiedCatalog? {
         val manifest = verifyManifest(signed) ?: return null
         if (manifest.catalogRevision <= bundled.revision) return null
         if (acceptanceFloor != null) {
@@ -154,7 +168,12 @@ class IncrementalSourceCatalogManager(
         val artifacts = fetchRequiredSources(activeEntries)
         val document = assembleDocument(manifest, activeEntries, artifacts) ?: return null
         store.activate(StoredSourceCatalog(signed, artifacts))
-        return document
+        return VerifiedCatalog(
+            document = document,
+            etag = signed.metadata.checksum,
+            manifest = manifest,
+            signedManifest = signed,
+        )
     }
 
     private suspend fun fetchRequiredSources(entries: List<SourceCatalogEntry>): List<SourceRevisionArtifact> =
@@ -191,6 +210,7 @@ class IncrementalSourceCatalogManager(
             document = document,
             etag = stored.manifest.metadata.checksum,
             manifest = manifest,
+            signedManifest = stored.manifest,
         )
     }
 
@@ -339,10 +359,85 @@ class IncrementalSourceCatalogManager(
         return null
     }
 
+    private fun SourceConfigDocument.toDiagnostics(origin: UpdateState.Origin): SourceCatalogDiagnostics =
+        SourceCatalogDiagnostics(
+            origin = origin,
+            catalogRevision = revision,
+            catalogSchemaVersion = schemaVersion,
+            sourceSchemaVersion = schemaVersion,
+            generatedAt = generatedAt,
+            manifestChecksum = null,
+            manifestSigningKeyId = null,
+            signatureAlgorithm = null,
+            signatureFormat = null,
+            previousCatalogRevision = null,
+            previousCatalogChecksum = null,
+            removedSourceCount = 0,
+            inactiveSourceCount = 0,
+            activeSources =
+                sources.mapIndexed { index, source ->
+                    source.toDiagnostics(
+                        order = source.priority.takeIf { it >= 0 } ?: index,
+                        sourceRevision = null,
+                        checksum = null,
+                        signingKeyId = null,
+                    )
+                },
+        )
+
+    private fun VerifiedCatalog.toDiagnostics(origin: UpdateState.Origin): SourceCatalogDiagnostics {
+        val configsByApi = document.sources.associateBy(SourceConfig::api)
+        val activeEntries = manifest.sources.filter { it.lifecycle == LIFECYCLE_ACTIVE }
+        return SourceCatalogDiagnostics(
+            origin = origin,
+            catalogRevision = manifest.catalogRevision,
+            catalogSchemaVersion = manifest.schemaVersion,
+            sourceSchemaVersion = manifest.sourceSchemaVersion,
+            generatedAt = manifest.generatedAt,
+            manifestChecksum = signedManifest.metadata.checksum,
+            manifestSigningKeyId = signedManifest.metadata.keyId,
+            signatureAlgorithm = signedManifest.metadata.algorithm,
+            signatureFormat = signedManifest.metadata.format,
+            previousCatalogRevision = signedManifest.metadata.previousRevision,
+            previousCatalogChecksum = signedManifest.metadata.previousChecksum,
+            removedSourceCount = manifest.removedSources.size,
+            inactiveSourceCount = manifest.sources.size - activeEntries.size,
+            activeSources =
+                activeEntries.map { entry ->
+                    requireNotNull(configsByApi[entry.api]).toDiagnostics(
+                        order = entry.order,
+                        sourceRevision = entry.sourceRevision,
+                        checksum = entry.checksum,
+                        signingKeyId = entry.sourceSigningKeyId,
+                    )
+                },
+        )
+    }
+
+    private fun SourceConfig.toDiagnostics(
+        order: Int,
+        sourceRevision: Long?,
+        checksum: String?,
+        signingKeyId: String?,
+    ): ActiveSourceDiagnostics =
+        ActiveSourceDiagnostics(
+            api = api,
+            displayName = displayName,
+            language = language,
+            baseUrl = baseUrl,
+            engine = engine,
+            lifecycle = lifecycle,
+            order = order,
+            sourceRevision = sourceRevision,
+            checksum = checksum,
+            signingKeyId = signingKeyId,
+        )
+
     private data class VerifiedCatalog(
         val document: SourceConfigDocument,
         val etag: String,
         val manifest: SourceCatalogManifest,
+        val signedManifest: SignedSourceCatalogManifest,
     )
 
     private companion object {

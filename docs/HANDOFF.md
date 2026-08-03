@@ -86,6 +86,9 @@ owner sign-off — high import churn, zero behavior value).
   `-Pkira.sourceConfigPinnedKeys`; Android release assembly fails when either is absent.
 - A new source becomes available only after generic conversion, parity validation, review, and
   explicit backend publication. Do not expose a legacy implementation during migration.
+- Settings → Source catalog exposes read-only provenance and version diagnostics for the active
+  tier. It reports bundled, reverified-cache, or backend origin; catalog/signature metadata; and
+  the immutable revision and checksum of every active source without exposing payloads or keys.
 
 Conversion guide, ownership invariants, and the next-safe conversion set (ES/FR/PT/TR Madara
 family): `ENGINEERING_NOTES.md` §1.

@@ -97,6 +97,7 @@ import me.manga.kira.navigation.routes.MangaDetailsByUrlReworkScreenRoute
 import me.manga.kira.navigation.routes.MangaDetailsReworkScreenRoute
 import me.manga.kira.navigation.routes.RepoSettingsScreenRoute
 import me.manga.kira.navigation.routes.SettingsRoute
+import me.manga.kira.navigation.routes.SourceCatalogDiagnosticsScreenRoute
 import me.manga.kira.navigation.routes.StartReadingScreenRoute
 import me.manga.kira.navigation.routes.SourcesScreenRoute
 import me.manga.kira.navigation.routes.BackupReworkScreenRoute
@@ -866,6 +867,10 @@ private fun AppNavHost(
                 backStackEntry = backStackEntry,
                 crashDiagnosticsEnabled = crashDiagnosticsEnabled,
             )
+        }
+
+        composable<Screen.SourceCatalogDiagnostics> {
+            SourceCatalogDiagnosticsScreenRoute(navController = navController)
         }
 
         if (crashDiagnosticsEnabled) {

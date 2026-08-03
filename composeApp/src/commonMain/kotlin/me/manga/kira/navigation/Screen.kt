@@ -38,6 +38,10 @@ sealed class Screen(val route: String) {
     @Serializable
     object CrashDiagnostics : Screen("me.manga.kira.navigation.Screen.CrashDiagnostics")
 
+    /** Read-only provenance and revision details for the active generic source catalog. */
+    @Serializable
+    object SourceCatalogDiagnostics : Screen("me.manga.kira.navigation.Screen.SourceCatalogDiagnostics")
+
     @Serializable
     data class WhatsNewScreen(
         val isFirstOpen: Boolean = false

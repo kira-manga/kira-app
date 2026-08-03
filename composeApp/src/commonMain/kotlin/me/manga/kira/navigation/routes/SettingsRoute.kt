@@ -180,6 +180,7 @@ internal fun settingsDestination(
     crashDiagnosticsEnabled: Boolean,
 ): Screen? = when (destination) {
     SettingsDestination.SOURCE_MANAGEMENT -> sourceManagementDestination(sourceAccessState)
+    SettingsDestination.SOURCE_CATALOG -> Screen.SourceCatalogDiagnostics
     SettingsDestination.THEME -> Screen.ThemeRework
     SettingsDestination.STATISTICS -> Screen.StatisticsRework
     SettingsDestination.LANGUAGE -> Screen.LanguageRework

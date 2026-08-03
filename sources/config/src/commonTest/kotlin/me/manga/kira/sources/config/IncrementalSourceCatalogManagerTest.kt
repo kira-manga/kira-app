@@ -13,6 +13,7 @@ import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
+import me.manga.kira.sources.contracts.UpdateState
 import me.manga.kira.sources.contracts.ValidationResult
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
@@ -20,6 +21,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class IncrementalSourceCatalogManagerTest {
+    @Test
+    fun diagnostics_start_on_the_bundled_catalog_without_inventing_source_revisions() {
+        val manager = manager(FakeCatalogStore(active = null), FakeRemote(SourceCatalogManifestResult.Unavailable))
+
+        val diagnostics = manager.diagnostics.value
+
+        assertEquals(UpdateState.Origin.BUNDLED, diagnostics.origin)
+        assertEquals(BUNDLED_REVISION, diagnostics.catalogRevision)
+        assertEquals(listOf("floor"), diagnostics.activeSources.map { it.api })
+        assertEquals(null, diagnostics.activeSources.single().sourceRevision)
+        assertEquals(null, diagnostics.manifestChecksum)
+        assertEquals(0, diagnostics.removedSourceCount)
+        assertEquals(0, diagnostics.inactiveSourceCount)
+    }
+
     @Test
     fun unavailable_remote_atomically_projects_the_complete_bundle() =
         runTest {
@@ -43,6 +59,11 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(0, remote.sourceFetches)
             assertEquals(0, store.activationCount)
             assertEquals(10, manager.activeDocument().revision)
+            assertEquals(UpdateState.Origin.CACHE, manager.diagnostics.value.origin)
+            assertEquals(10, manager.diagnostics.value.catalogRevision)
+            val source = manager.diagnostics.value.activeSources.single()
+            assertEquals(1, source.sourceRevision)
+            assertEquals(checksum(1), source.checksum)
         }
 
     @Test
@@ -73,6 +94,16 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(listOf("b"), remote.fetchedApis)
             assertEquals(1, store.activationCount)
             assertEquals(11, manager.activeDocument().revision)
+            assertEquals(UpdateState.Origin.REMOTE, manager.diagnostics.value.origin)
+            assertEquals(11, manager.diagnostics.value.catalogRevision)
+            assertEquals(
+                listOf(1L, 2L),
+                manager.diagnostics.value.activeSources.map { it.sourceRevision },
+            )
+            assertEquals("test-key", manager.diagnostics.value.manifestSigningKeyId)
+            assertEquals("Ed25519", manager.diagnostics.value.signatureAlgorithm)
+            assertEquals(10, manager.diagnostics.value.previousCatalogRevision)
+            assertEquals(checksum(10), manager.diagnostics.value.previousCatalogChecksum)
         }
 
     @Test
@@ -160,6 +191,9 @@ class IncrementalSourceCatalogManagerTest {
             assertTrue(manager.refresh() is AppResult.Failure)
             assertEquals(0, store.activationCount)
             assertEquals(10, manager.activeDocument().revision)
+            assertEquals(UpdateState.Origin.CACHE, manager.diagnostics.value.origin)
+            assertEquals(10, manager.diagnostics.value.catalogRevision)
+            assertTrue(manager.state.value is UpdateState.Failed)
         }
 
     @Test
@@ -276,6 +310,9 @@ class IncrementalSourceCatalogManagerTest {
 
             assertTrue(manager.refresh() is AppResult.Failure)
             assertEquals(10, manager.activeDocument().revision)
+            assertEquals(UpdateState.Origin.CACHE, manager.diagnostics.value.origin)
+            assertEquals(10, manager.diagnostics.value.catalogRevision)
+            assertTrue(manager.state.value is UpdateState.Failed)
         }
 
     @Test
@@ -310,6 +347,10 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(1, store.activationCount)
             assertEquals(11, manager.activeDocument().revision)
             assertTrue(manager.activeDocument().sources.isEmpty())
+            assertEquals(UpdateState.Origin.REMOTE, manager.diagnostics.value.origin)
+            assertEquals(2, manager.diagnostics.value.inactiveSourceCount)
+            assertEquals(1, manager.diagnostics.value.removedSourceCount)
+            assertTrue(manager.diagnostics.value.activeSources.isEmpty())
         }
 
     private fun manager(
