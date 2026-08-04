@@ -21,7 +21,15 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 [bundle exec] fastlane ios prepare_testflight
 ```
 
-Verify App Store Connect, create required TestFlight groups, and reserve the next build number
+Verify App Store Connect and reserve the next TestFlight build number
+
+### ios upload_only
+
+```sh
+[bundle exec] fastlane ios upload_only
+```
+
+Upload and process the signed IPA without external distribution or Beta App Review
 
 ### ios upload_external
 

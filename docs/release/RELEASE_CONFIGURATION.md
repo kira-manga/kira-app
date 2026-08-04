@@ -109,24 +109,27 @@ BETA_REVIEW_CONTACT_PHONE
 ```
 
 `.github/workflows/testflight.yml` is called only by `Internal Testing Release` when `ios` or
-`both` is selected on `internal-testing`. It validates all supplied signing metadata without logging protected
-contents, queries every uploaded/processing App Store Connect build for version `1.0.0`, chooses an
-integer build higher than the highest result, creates the TestFlight group prerequisites, archives,
-exports and validates the IPA, uploads Crashlytics dSYMs, uploads to App Store Connect, waits for
-processing, assigns the build to `External Testing`, and submits Beta App Review. Concurrent uploads
-are serialized rather than cancelled, preventing two runs from selecting the same build number.
+`both` is selected on `internal-testing`. It validates all supplied signing metadata without logging
+protected contents, queries every uploaded/processing App Store Connect build for version `1.0.0`,
+chooses an integer build higher than the highest result, archives, exports and validates the IPA,
+uploads Crashlytics dSYMs, uploads to App Store Connect, and waits for processing. It deliberately
+does not assign an external group, notify external testers, or submit Beta App Review. Concurrent
+uploads are serialized rather than cancelled, preventing two runs from selecting the same build
+number.
 
-The workflow creates an empty `Internal Prerequisite` group only when Apple requires one before an
-external group can exist. It never assigns builds or testers to that group. Actual distribution is
-only through the private `External Testing` group.
+The external-distribution Fastlane lanes remain available for a later, separately approved action.
+They create or verify the private `External Testing` group only when explicitly invoked; the default
+workflow never invokes them.
 
 Owner actions that remain outside the build workflow:
 
 1. Make the local signing/API files and protected values available so their repository secrets can
    be installed.
 2. Complete final legal export-compliance, content-rights, privacy, and age-rating answers.
-3. After Beta App Review approval, add external tester email addresses to the private group.
+3. Add internal App Store Connect users as TestFlight testers when device validation is needed.
 4. Run physical-device TestFlight QA before treating the build as release-ready.
+5. Explicitly approve external distribution and Beta App Review before invoking either external
+   Fastlane lane.
 
 Exact portal paths and expected states are in `EXTERNAL_TESTFLIGHT.md`.
 

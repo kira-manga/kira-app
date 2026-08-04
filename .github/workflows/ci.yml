@@ -55,6 +55,8 @@ env:
   KIRA_BUILD_NUMBER: ${{ github.run_number }}
   KIRA_PACKAGES_USER: ${{ github.actor }}
   KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+  KIRA_SOURCE_CONFIG_BASE_URL: ${{ vars.KIRA_SOURCE_CONFIG_BASE_URL }}
+  KIRA_SOURCE_CONFIG_PINNED_KEYS: ${{ vars.KIRA_SOURCE_CONFIG_PINNED_KEYS }}
 
 jobs:
   jvm-android:
@@ -89,6 +91,8 @@ jobs:
         # :composeApp has its own composeResources tree (route-adapter strings) with its own
         # parity task — both must gate (2026-07 audit: only :ui's ran in CI).
         run: ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
+      - name: Validate release workflow safety contracts
+        run: ruby scripts/release/tests/ios-upload-only-workflow-test.rb
       - name: Provision placeholder google-services.json for the :app debug tasks
         # app/google-services.json is BYO/gitignored; the google-services plugin hard-fails
         # without it on a clean runner (this exact miss is why the job's only two historical runs

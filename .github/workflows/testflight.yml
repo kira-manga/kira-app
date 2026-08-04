@@ -1,4 +1,4 @@
-name: External TestFlight
+name: TestFlight Upload
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   packages: read
 
 concurrency:
-  group: kira-external-testflight
+  group: kira-testflight-upload
   cancel-in-progress: false
 
 jobs:
-  build-upload-and-submit:
-    name: Signed iOS archive, TestFlight upload, and external review
+  build-and-upload:
+    name: Signed iOS archive and TestFlight upload
     if: >-
       ${{ github.ref == 'refs/heads/internal-testing' &&
           !contains(github.event.head_commit.message || '', '[skip ios]') &&
@@ -30,6 +30,8 @@ jobs:
       KIRA_SOURCE_ENTITLEMENTS: ${{ github.workspace }}/iosApp/iosApp/iosApp.entitlements
       KIRA_PACKAGES_USER: ${{ github.actor }}
       KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+      KIRA_SOURCE_CONFIG_BASE_URL: ${{ vars.KIRA_SOURCE_CONFIG_BASE_URL }}
+      KIRA_SOURCE_CONFIG_PINNED_KEYS: ${{ vars.KIRA_SOURCE_CONFIG_PINNED_KEYS }}
       FASTLANE_OPT_OUT_USAGE: "1"
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"
@@ -101,6 +103,39 @@ jobs:
         run: |
           set +x
           ruby release/ios/validate_testflight_metadata.rb
+
+      - name: Verify the HTTPS source-config authority is live and signed
+        run: |
+          set +x
+          base_url="${KIRA_SOURCE_CONFIG_BASE_URL%/}"
+          headers="$RUNNER_TEMP/kira-source-document.headers"
+          body="$RUNNER_TEMP/kira-source-document.json"
+          if [[ -z "$base_url" || -z "$KIRA_SOURCE_CONFIG_PINNED_KEYS" ]]; then
+            echo "Source-config release variables are missing" >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error --location --max-time 30 \
+            --proto '=https' --tlsv1.2 \
+            -D "$headers" -o "$body" \
+            "$base_url/api/v1/source-config/document"
+
+          for header in \
+            x-config-signature-format x-config-signature-algorithm \
+            x-config-signing-key-id x-config-signature \
+            x-config-revision x-config-checksum x-config-created-at; do
+            if ! grep -Eiq "^${header}:[[:space:]]*[^[:space:]].*$" "$headers"; then
+              echo "Source-config response is missing signed header: $header" >&2
+              exit 1
+            fi
+          done
+
+          key_id="$(awk -F': *' 'tolower($1) == "x-config-signing-key-id" { print $2 }' "$headers" | tr -d '\r')"
+          if ! printf '%s\n' "$KIRA_SOURCE_CONFIG_PINNED_KEYS" | tr ',' '\n' |
+            awk -F= -v expected="$key_id" '$1 == expected { found = 1 } END { exit(found ? 0 : 1) }'; then
+            echo "Live source-config signing key id is not pinned by the iOS release" >&2
+            exit 1
+          fi
+          echo "Verified HTTPS source-config endpoint and pinned signing key id: $key_id"
 
       - name: Decode protected files without logging contents
         env:
@@ -218,7 +253,7 @@ jobs:
         id: artifact-validation
         run: ruby release/ios/validate_artifacts.rb
 
-      - name: Upload to TestFlight and submit for External Beta App Review
+      - name: Upload to TestFlight without external distribution or review submission
         id: testflight-upload
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -230,7 +265,7 @@ jobs:
           BETA_REVIEW_CONTACT_PHONE: ${{ secrets.BETA_REVIEW_CONTACT_PHONE }}
         run: |
           set +x
-          bundle exec fastlane ios upload_external
+          bundle exec fastlane ios upload_only
 
       - name: Query final App Store Connect state
         if: ${{ always() && steps.artifact-validation.outcome == 'success' }}

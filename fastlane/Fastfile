@@ -124,14 +124,12 @@ def write_private_result(path, contents)
 end
 
 platform :ios do
-  desc "Verify App Store Connect, create required TestFlight groups, and reserve the next build number"
+  desc "Verify App Store Connect and reserve the next TestFlight build number"
   lane :prepare_testflight do
     UI.message("Preflight stage: authenticate App Store Connect")
     connect_api_key
     UI.message("Preflight stage: verify app identity")
     app = verified_app
-    UI.message("Preflight stage: verify TestFlight groups")
-    ensure_testflight_groups(app)
     UI.message("Preflight stage: query uploaded build numbers")
     build_number = next_integer_build_number(app)
     UI.user_error!("Generated build number must be positive") unless build_number.positive?
@@ -139,6 +137,35 @@ platform :ios do
     output_path = protected_env("KIRA_BUILD_NUMBER_FILE")
     write_private_result(output_path, "#{build_number}\n")
     UI.success("App Store Connect verified; selected build #{build_number} for version #{MARKETING_VERSION}")
+  end
+
+  desc "Upload and process the signed IPA without external distribution or Beta App Review"
+  lane :upload_only do
+    api_key = connect_api_key
+    verified_app
+
+    ipa_path = protected_env("KIRA_IPA_PATH")
+    UI.user_error!("Signed IPA is unavailable") unless File.file?(ipa_path)
+    build_number = protected_env("KIRA_BUILD_NUMBER")
+    UI.user_error!("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
+
+    upload_to_testflight(
+      api_key: api_key,
+      apple_id: APP_STORE_ID,
+      app_identifier: APP_IDENTIFIER,
+      app_platform: "ios",
+      app_version: MARKETING_VERSION,
+      build_number: build_number,
+      ipa: ipa_path,
+      distribute_external: false,
+      submit_beta_review: false,
+      notify_external_testers: false,
+      skip_waiting_for_build_processing: false,
+      wait_processing_interval: 30,
+      wait_processing_timeout_duration: 3_600,
+      uses_non_exempt_encryption: false,
+      expire_previous_builds: false
+    )
   end
 
   desc "Upload, process, and submit the signed IPA for external TestFlight review"

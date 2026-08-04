@@ -1,4 +1,4 @@
-# External TestFlight release
+# TestFlight upload and external beta release
 
 ## Automated release contract
 
@@ -12,10 +12,10 @@
 - Marketing version: `1.0.0`.
 - Build number: highest App Store Connect number for `1.0.0` across both upload records and processed
   TestFlight builds, plus one; starts at `1` only when both sources are empty.
-- Distribution: private external group `External Testing`; approved builds are assigned and external
-  tester notifications are enabled.
-- Review: English beta description, What to Test, reviewer notes, feedback email, and protected
-  reviewer contact values are submitted through Fastlane/App Store Connect API.
+- Default distribution: upload and processing only. The workflow does not assign any external group,
+  notify external testers, or submit Beta App Review.
+- Optional external distribution: the private `External Testing` group and its review metadata are
+  used only after a separate explicit approval to run an external Fastlane lane.
 - Signing: manual App Store Connect distribution signing in a temporary keychain. The workflow
   checks the certificate, profile, final archive, and final IPA rather than trusting project values.
 - Symbols: the Xcode Release build hard-gates on a confirmed Firebase Crashlytics dSYM upload, then
@@ -24,9 +24,10 @@
   under Settings. Every action requires confirmation and deliberately terminates the process. The
   flag defaults off in project configuration, so ordinary production builds do not expose it.
 
-The workflow does not create a public TestFlight link and does not add tester addresses. This avoids
-accidentally distributing an unreviewed build. It creates an empty, non-distributing internal group
-only if App Store Connect requires one before it permits the external group.
+The workflow does not create a public TestFlight link, add tester addresses, create external groups,
+or submit a review. This avoids accidentally distributing an unreviewed build. The separately
+invoked external lane creates an empty, non-distributing internal group only if App Store Connect
+requires one before it permits the external group.
 
 ## Protected local inputs
 
@@ -83,9 +84,10 @@ block paid App Store distribution but normally does not block a free TestFlight 
 
 Path: **App Store Connect → Apps → Kira Manga → TestFlight → iOS → 1.0.0 → selected build**.
 
-Inspect **External Testing** / **Beta App Review**. Expected after the workflow: `Waiting for Review`
-or `In Review`; final expected state: `Approved` / `Testing`. Upload and processing can succeed while
-review is pending, but external testers cannot install until Apple approves the build.
+After the default workflow, confirm the build is processed and available for internal TestFlight
+testing, with no Beta App Review submission. Only after a separately approved external lane should
+**External Testing** / **Beta App Review** show `Waiting for Review` or `In Review`; the final
+external state is `Approved` / `Testing`.
 
 ### Add external testers after approval
 
