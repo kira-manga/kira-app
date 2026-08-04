@@ -13,13 +13,13 @@ name: CI
 # Static analysis (detekt + ktlint) runs as a CI-only `static-analysis` job below, via the tools'
 # standalone CLI release jars — deliberately NOT Gradle plugins, so the local offline build graph is
 # untouched (adding an uncached plugin would break `./gradlew --offline`). The job is BLOCKING
-# since T3 (2026-07-03): the pre-existing tree was baselined (config/ktlint-baseline.xml — 9,450
-# findings; config/detekt-baseline.xml — 2,846 weighted issues; both generated with the exact CLI
-# invocations below and mutation-verified to fail on NEW findings), so the gate trips only on
-# violations introduced by new code. Shrink the baselines opportunistically; never append to them
-# to silence a new finding without a reason. detekt 1.23.7's bundled parser handles the project's
-# Kotlin 2.4 sources (verified 2026-07-03). The read-only native-app/ parity spec is excluded —
-# not our code to lint.
+# since T3 (2026-07-03). The release-readiness snapshot was refreshed on 2026-08-04
+# (config/ktlint-baseline.xml — 7,807 findings; config/detekt-baseline.xml — 2,250 weighted issues)
+# with the exact CLI invocations below and mutation-verified to fail on NEW findings, so the gate
+# trips only on violations introduced after that snapshot. Shrink the baselines opportunistically;
+# refresh them only through an explicit, reviewed snapshot commit. detekt 1.23.7's bundled parser
+# handles the project's Kotlin 2.4 sources (verified 2026-07-03). The read-only native-app/ parity
+# spec is excluded — not our code to lint.
 #
 # Reproduce locally (tools + checksums as below, from the repo root):
 #   ktlint --baseline=config/ktlint-baseline.xml --relative "**/src/**/*.kt" "!**/build/**" \
@@ -260,8 +260,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      # ktlint: standalone CLI, no Gradle plugin. BLOCKING against config/ktlint-baseline.xml (T3,
-      # 2026-07-03): pre-existing findings are baselined; only NEW violations fail the job. The
+      # ktlint: standalone CLI, no Gradle plugin. BLOCKING against config/ktlint-baseline.xml
+      # (release-readiness snapshot refreshed 2026-08-04): only NEW violations fail the job. The
       # read-only native-app/ parity spec and the legacy source-repository subtree are excluded.
       - name: ktlint (blocking, baselined)
         run: |
