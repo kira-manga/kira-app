@@ -1,10 +1,14 @@
 require "minitest/autorun"
+require "rbconfig"
+require "tmpdir"
 
 class IosUploadOnlyWorkflowTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
   FASTFILE = File.read(File.join(ROOT, "fastlane/Fastfile"))
   TESTFLIGHT_WORKFLOW = File.read(File.join(ROOT, ".github/workflows/testflight.yml"))
   CI_WORKFLOW = File.read(File.join(ROOT, ".github/workflows/ci.yml"))
+  RELEASE_CONFIGURATION = File.read(File.join(ROOT, "release/ios/write_release_configuration.rb"))
+  ARTIFACT_VALIDATOR = File.read(File.join(ROOT, "release/ios/validate_artifacts.rb"))
 
   def test_upload_only_lane_cannot_distribute_or_submit_review
     lane = lane_body("upload_only")
@@ -24,6 +28,47 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
 
   def test_preflight_does_not_create_external_groups
     refute_includes lane_body("prepare_testflight"), "ensure_testflight_groups"
+  end
+
+  def test_production_candidate_disables_internal_crash_diagnostics
+    assert_includes RELEASE_CONFIGURATION, "KIRA_CRASH_DIAGNOSTICS_ENABLED = NO"
+    refute_includes RELEASE_CONFIGURATION, "KIRA_CRASH_DIAGNOSTICS_ENABLED = YES"
+    assert_includes ARTIFACT_VALIDATOR, "Production candidate exposes internal crash diagnostics"
+    assert_includes ARTIFACT_VALIDATOR, "crash_diagnostics_disabled: true"
+  end
+
+  def test_release_version_is_consistent
+    assert_includes FASTFILE, 'MARKETING_VERSION = "1.0.5"'
+    assert_includes RELEASE_CONFIGURATION, "MARKETING_VERSION = 1.0.5"
+    assert_includes ARTIFACT_VALIDATOR, 'EXPECTED_VERSION = "1.0.5"'
+    assert_includes TESTFLIGHT_WORKFLOW, "name: kira-ios-1.0.5-"
+  end
+
+  def test_generated_release_xcconfig_disables_diagnostics
+    Dir.mktmpdir("kira-ios-release-config") do |directory|
+      build_number_file = File.join(directory, "build-number")
+      profile_uuid_file = File.join(directory, "profile-uuid")
+      xcconfig_path = File.join(directory, "release.xcconfig")
+      export_options_path = File.join(directory, "ExportOptions.plist")
+      File.write(build_number_file, "7\n")
+      File.write(profile_uuid_file, "00000000-0000-0000-0000-000000000007\n")
+
+      environment = {
+        "KIRA_BUILD_NUMBER_FILE" => build_number_file,
+        "KIRA_PROFILE_UUID_FILE" => profile_uuid_file,
+        "KIRA_KEYCHAIN_PATH" => File.join(directory, "release.keychain-db"),
+        "KIRA_XCCONFIG_PATH" => xcconfig_path,
+        "KIRA_EXPORT_OPTIONS_PATH" => export_options_path
+      }
+      script = File.join(ROOT, "release/ios/write_release_configuration.rb")
+      assert system(environment, RbConfig.ruby, script, out: File::NULL)
+
+      generated = File.read(xcconfig_path)
+      assert_includes generated, "MARKETING_VERSION = 1.0.5"
+      assert_includes generated, "CURRENT_PROJECT_VERSION = 7"
+      assert_includes generated, "KIRA_CRASH_DIAGNOSTICS_ENABLED = NO"
+      refute_includes generated, "KIRA_CRASH_DIAGNOSTICS_ENABLED = YES"
+    end
   end
 
   def test_ci_and_testflight_receive_source_authority_configuration

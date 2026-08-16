@@ -7,7 +7,7 @@ summary_path = ENV.fetch("GITHUB_STEP_SUMMARY")
 artifact = File.file?(artifact_path) ? JSON.parse(File.read(artifact_path)) : {}
 testflight = File.file?(testflight_path) ? JSON.parse(File.read(testflight_path)) : {}
 
-version = testflight["version"] || artifact["version"] || "1.0.0"
+version = testflight["version"] || artifact["version"] || "1.0.5"
 build = testflight["build"] || artifact["build"] || "unknown"
 
 lines = [
@@ -16,6 +16,7 @@ lines = [
   "- Version/build: #{version} (#{build})",
   "- Signed archive validation: #{artifact['archive_valid'] ? 'passed' : 'not completed'}",
   "- IPA validation: #{artifact['ipa_valid'] ? 'passed' : 'not completed'}",
+  "- Internal crash diagnostics: #{artifact['crash_diagnostics_disabled'] ? 'disabled' : 'not confirmed'}",
   "- Crashlytics dSYM upload: #{artifact['crashlytics_dsym_upload_marker'] ? 'confirmed' : 'not confirmed'}",
   "- App Store Connect processing: #{testflight['processing_state'] || 'not confirmed'}",
   "- External group assigned: #{testflight['external_group_assigned'] ? 'yes' : 'no'}",

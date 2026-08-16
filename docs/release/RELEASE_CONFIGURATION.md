@@ -5,13 +5,13 @@ actions remain. Android and iOS are the only shipping targets.
 
 ## Version source of truth
 
-- Product version: `1.0.0`.
-- Android fallback build number: `1`.
+- Product version: `1.0.5`.
+- Android fallback build number: `1005`.
 - Committed values live in `release/version.properties`.
-- Android CI may override them with `KIRA_VERSION_NAME` and `KIRA_BUILD_NUMBER`; GitHub's run
-  number is also accepted as the build number.
-- iOS `MARKETING_VERSION` is `1.0.0`. `CURRENT_PROJECT_VERSION` is `1` locally and the archive CI
-  passes `KIRA_BUILD_NUMBER` so Android and iOS artifacts from one run share a build number.
+- Android CI queries all uploaded Play bundles, APKs, and track releases through a discarded edit,
+  then overrides the fallback with the next unused `KIRA_BUILD_NUMBER`.
+- iOS `MARKETING_VERSION` is `1.0.5`. `CURRENT_PROJECT_VERSION` is `1` locally and the archive CI
+  queries App Store Connect before selecting the next unused build number.
 - Increase the marketing version intentionally; never reuse an uploaded Android version code or
   App Store Connect build number.
 
@@ -80,9 +80,9 @@ the ignored `.secrets/android-release.env`; never commit the real configuration.
 - Release emits dSYMs and the Xcode build phase hard-fails when Crashlytics symbol upload does not
   confirm success. `CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1` is for deliberate offline validation only,
   never a distribution archive.
-- The dedicated internal TestFlight workflow sets `KIRA_CRASH_DIAGNOSTICS_ENABLED=YES`, exposing
-  five confirmed fatal-crash scenarios under Settings for Crashlytics verification. The committed
-  default is `NO`; public production archives must leave the diagnostic route unavailable.
+- The protected TestFlight workflow sets `KIRA_CRASH_DIAGNOSTICS_ENABLED=NO`. The artifact
+  validator rejects any archive or IPA that enables the internal crash-diagnostics route. Debug
+  developers can still opt in explicitly without changing the production configuration.
 - Debug uses development push entitlements; Release uses production push entitlements.
 - The Kotlin/Native Gradle daemon heap is 6 GiB to support release framework linking.
 
@@ -110,7 +110,7 @@ BETA_REVIEW_CONTACT_PHONE
 
 `.github/workflows/testflight.yml` is called only by `Internal Testing Release` when `ios` or
 `both` is selected on `internal-testing`. It validates all supplied signing metadata without logging
-protected contents, queries every uploaded/processing App Store Connect build for version `1.0.0`,
+protected contents, queries every uploaded/processing App Store Connect build for version `1.0.5`,
 chooses an integer build higher than the highest result, archives, exports and validates the IPA,
 uploads Crashlytics dSYMs, uploads to App Store Connect, and waits for processing. It deliberately
 does not assign an external group, notify external testers, or submit Beta App Review. Concurrent

@@ -17,7 +17,7 @@ behavior-parity port of the native Android app "Yami Manga" (vendored read-only 
 as the parity spec) and since rebranded:
 
 - Display name: **Kira Manga** · package root `me.manga.kira.*` · Android `applicationId` and iOS
-  bundle id `me.manga.kira` · version **1.0.0**.
+  bundle id `me.manga.kira` · version **1.0.5**.
 - Feature set: multi-source manga browsing (Home tabs per source), search, details, a
   webtoon/paged reader, library with categories, chapter downloads (CBZ), reading history,
   updates feed, statistics, complaints (Firestore-backed; internal-test/public-release blocker), what's-new, theming (incl. AMOLED),

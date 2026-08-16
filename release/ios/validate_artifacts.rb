@@ -7,7 +7,7 @@ require_relative "lib/plist_reader"
 EXPECTED_APP_STORE_ID = "6792232678"
 EXPECTED_BUNDLE_ID = "me.manga.kira"
 EXPECTED_TEAM_ID = "7CGZ2343AA"
-EXPECTED_VERSION = "1.0.0"
+EXPECTED_VERSION = "1.0.5"
 EXPECTED_DOMAIN = "applinks:kiramanga.me"
 
 archive_path = ENV.fetch("KIRA_ARCHIVE_PATH")
@@ -107,7 +107,7 @@ def validate_app(app_path, build_number, expected_profile_uuid, expected_applica
   raise "Artifact App Store ID is incorrect" unless info["KiraAppStoreID"].to_s == EXPECTED_APP_STORE_ID
   crash_diagnostics_enabled = info["KiraCrashDiagnosticsEnabled"] == true ||
     %w[yes true 1].include?(info["KiraCrashDiagnosticsEnabled"].to_s.downcase)
-  raise "Internal TestFlight crash diagnostics are not enabled" unless crash_diagnostics_enabled
+  raise "Production candidate exposes internal crash diagnostics" if crash_diagnostics_enabled
   raise "Artifact export-compliance declaration is incorrect" unless info["ITSAppUsesNonExemptEncryption"] == false
   raise "Privacy manifest is missing from the app bundle" unless File.file?(File.join(app_path, "PrivacyInfo.xcprivacy"))
   validate_firebase(app_path)
@@ -180,7 +180,7 @@ result = {
   push_notifications_valid: true,
   associated_domains_valid: true,
   advertising_identifiers_absent: true,
-  crash_diagnostics_enabled: true,
+  crash_diagnostics_disabled: true,
   dsym_uuid_match: true,
   crashlytics_dsym_upload_marker: File.file?(ENV.fetch("CRASHLYTICS_DSYM_UPLOAD_MARKER"))
 }

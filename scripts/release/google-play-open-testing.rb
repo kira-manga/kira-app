@@ -52,6 +52,18 @@ module KiraGooglePlay
       request(Net::HTTP::Get, app_path("edits/#{edit_id}/tracks/#{track}"))
     end
 
+    def list_tracks(edit_id)
+      request(Net::HTTP::Get, app_path("edits/#{edit_id}/tracks")).fetch("tracks", [])
+    end
+
+    def list_bundles(edit_id)
+      request(Net::HTTP::Get, app_path("edits/#{edit_id}/bundles")).fetch("bundles", [])
+    end
+
+    def list_apks(edit_id)
+      request(Net::HTTP::Get, app_path("edits/#{edit_id}/apks")).fetch("apks", [])
+    end
+
     def update_track(edit_id, track, payload)
       request(Net::HTTP::Put, app_path("edits/#{edit_id}/tracks/#{track}"), payload)
     end
@@ -174,6 +186,42 @@ module KiraGooglePlay
     end
   end
 
+  def uploaded_version_codes(client, edit_id)
+    bundle_codes = client.list_bundles(edit_id).map { |bundle| Integer(bundle.fetch("versionCode").to_s, 10) }
+    apk_codes = client.list_apks(edit_id).map { |apk| Integer(apk.fetch("versionCode").to_s, 10) }
+    track_codes = client.list_tracks(edit_id).flat_map { |track| version_codes(track) }
+    (bundle_codes + apk_codes + track_codes).uniq.sort
+  rescue KeyError, ArgumentError
+    abort "FAIL Google Play returned an invalid uploaded version code"
+  end
+
+  def select_next_version_code(client, output_path)
+    abort "FAIL KIRA_BUILD_NUMBER_FILE is missing" if output_path.to_s.empty?
+
+    highest = with_discarded_edit(client) do |edit_id|
+      codes = uploaded_version_codes(client, edit_id)
+      abort "FAIL Google Play has no uploaded Android version code" if codes.empty?
+      codes.max
+    end
+    selected = highest + 1
+    abort "FAIL next Android version code exceeds Google Play limits" if selected > 2_100_000_000
+
+    File.write(output_path, "#{selected}\n")
+    File.chmod(0o600, output_path)
+    puts "PASS highest uploaded Android version code is #{highest}"
+    puts "PASS selected unused Android version code #{selected}"
+    selected
+  end
+
+  def verify_version_code_unused(client, version_code)
+    with_discarded_edit(client) do |edit_id|
+      if uploaded_version_codes(client, edit_id).include?(version_code)
+        abort "FAIL selected Android version code is already uploaded"
+      end
+    end
+    puts "PASS selected Android version code remains unused"
+  end
+
   def publish(client, version_code, version_name)
     edit_id = client.create_edit
     committed = false
@@ -209,7 +257,9 @@ end
 if $PROGRAM_NAME == __FILE__
   begin
     mode = ARGV.fetch(0, "")
-    abort "Usage: google-play-open-testing.rb preflight|publish" unless %w[preflight publish].include?(mode)
+    allowed_modes = %w[select-version-code verify-version-code-unused preflight publish]
+    usage = "select-version-code|verify-version-code-unused|preflight|publish"
+    abort "Usage: google-play-open-testing.rb #{usage}" unless allowed_modes.include?(mode)
 
     service_account_json = ENV.fetch("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", "")
     abort "FAIL GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is missing" if service_account_json.empty?
@@ -217,13 +267,20 @@ if $PROGRAM_NAME == __FILE__
     package_name = ENV.fetch("KIRA_ANDROID_PACKAGE_NAME", KiraGooglePlay::PACKAGE_NAME)
     abort "FAIL unexpected Android package name" unless package_name == KiraGooglePlay::PACKAGE_NAME
 
-    version_name = ENV.fetch("KIRA_VERSION_NAME", "")
-    abort "FAIL KIRA_VERSION_NAME is missing" if version_name.empty?
-
     client = KiraGooglePlay::Client.new(service_account_json)
-    if mode == "preflight"
+    if mode == "select-version-code"
+      KiraGooglePlay.select_next_version_code(client, ENV.fetch("KIRA_BUILD_NUMBER_FILE", ""))
+    elsif mode == "verify-version-code-unused"
+      version_code = Integer(ENV.fetch("KIRA_BUILD_NUMBER"), 10)
+      abort "FAIL KIRA_BUILD_NUMBER must be positive" unless version_code.positive?
+      KiraGooglePlay.verify_version_code_unused(client, version_code)
+    elsif mode == "preflight"
+      version_name = ENV.fetch("KIRA_VERSION_NAME", "")
+      abort "FAIL KIRA_VERSION_NAME is missing" if version_name.empty?
       KiraGooglePlay.preflight(client, version_name)
     else
+      version_name = ENV.fetch("KIRA_VERSION_NAME", "")
+      abort "FAIL KIRA_VERSION_NAME is missing" if version_name.empty?
       version_code = Integer(ENV.fetch("KIRA_BUILD_NUMBER"), 10)
       abort "FAIL KIRA_BUILD_NUMBER must be positive" unless version_code.positive?
       KiraGooglePlay.publish(client, version_code, version_name)

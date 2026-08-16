@@ -30,7 +30,7 @@ val sourceConfigPinnedKeys =
 val sourceConfigAppVersion =
     providers.environmentVariable("KIRA_APP_VERSION")
         .orElse(providers.gradleProperty("kira.appVersion"))
-        .orElse("1.0.0")
+        .orElse("1.0.5")
 val generateSourceRemoteConfig = tasks.register("generateSourceRemoteConfig") {
     inputs.property("baseUrl", sourceConfigBaseUrl)
     inputs.property("pinnedKeys", sourceConfigPinnedKeys)

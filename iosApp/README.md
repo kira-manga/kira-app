@@ -13,7 +13,7 @@ SwiftUI wrapper. The Kotlin/Native framework (`ComposeApp.framework`) is produce
   `ComposeApp` framework) inside a `UIViewControllerRepresentable`.
 - `iosApp/NativeReader/` — the shipping native UIKit reader (see `docs/ENGINEERING_NOTES.md` §3).
 - `iosApp/Info.plist` — Bundle metadata. `CFBundleShortVersionString`/`CFBundleVersion` mirror
-  Android's `1.0.0`. Includes `NSPhotoLibraryAddUsageDescription` (required by
+  Android's `1.0.5`. Includes `NSPhotoLibraryAddUsageDescription` (required by
   `ScreenshotProvider.saveBitmapBytesToGallery`) and `NSAppTransportSecurity.NSAllowsArbitraryLoads`
   (manga sources mix HTTP and HTTPS).
 - `project.yml` — [xcodegen](https://github.com/yonaskolb/XcodeGen) project spec. Run `xcodegen`

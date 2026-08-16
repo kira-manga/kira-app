@@ -9,8 +9,8 @@
 - App Store Connect app: `6792232678`.
 - Bundle ID: `me.manga.kira`.
 - Apple Team ID: `7CGZ2343AA`.
-- Marketing version: `1.0.0`.
-- Build number: highest App Store Connect number for `1.0.0` across both upload records and processed
+- Marketing version: `1.0.5`.
+- Build number: highest App Store Connect number for `1.0.5` across both upload records and processed
   TestFlight builds, plus one; starts at `1` only when both sources are empty.
 - Default distribution: upload and processing only. The workflow does not assign any external group,
   notify external testers, or submit Beta App Review.
@@ -20,9 +20,8 @@
   checks the certificate, profile, final archive, and final IPA rather than trusting project values.
 - Symbols: the Xcode Release build hard-gates on a confirmed Firebase Crashlytics dSYM upload, then
   verifies the app executable UUIDs exactly match `Kira.app.dSYM`.
-- Crash verification: the protected workflow enables a five-scenario **Crash diagnostics** screen
-  under Settings. Every action requires confirmation and deliberately terminates the process. The
-  flag defaults off in project configuration, so ordinary production builds do not expose it.
+- Crash diagnostics: internal fatal-crash controls remain disabled in the production-signed
+  TestFlight candidate. Crashlytics symbol upload is still a required archive gate.
 
 The workflow does not create a public TestFlight link, add tester addresses, create external groups,
 or submit a review. This avoids accidentally distributing an unreviewed build. The separately
@@ -82,7 +81,7 @@ block paid App Store distribution but normally does not block a free TestFlight 
 
 ### Beta App Review status
 
-Path: **App Store Connect → Apps → Kira Manga → TestFlight → iOS → 1.0.0 → selected build**.
+Path: **App Store Connect → Apps → Kira Manga → TestFlight → iOS → 1.0.5 → selected build**.
 
 After the default workflow, confirm the build is processed and available for internal TestFlight
 testing, with no Beta App Review submission. Only after a separately approved external lane should

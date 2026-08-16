@@ -8,7 +8,7 @@ entitlements_path = File.join(root, "iosApp/iosApp/iosApp.entitlements")
 project = File.read(project_path)
 required_project_lines = [
   "PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira",
-  "MARKETING_VERSION: \"1.0.0\"",
+  "MARKETING_VERSION: \"1.0.5\"",
   "KIRA_APP_STORE_ID: \"6792232678\"",
   "KIRA_CRASH_DIAGNOSTICS_ENABLED: \"NO\"",
   "exactVersion: \"12.15.0\"",
@@ -37,4 +37,4 @@ abort("Release APNs entitlement is not configuration-driven") unless entitlement
 domains = Array(entitlements["com.apple.developer.associated-domains"])
 abort("Associated Domains entitlement is missing kiramanga.me") unless domains.include?("applinks:kiramanga.me")
 
-puts "Committed iOS configuration verified: app 6792232678, bundle me.manga.kira, team 7CGZ2343AA, version 1.0.0"
+puts "Committed iOS configuration verified: app 6792232678, bundle me.manga.kira, team 7CGZ2343AA, version 1.0.5"

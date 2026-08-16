@@ -7,7 +7,7 @@ Firebase console settings, source/content policy, and target-country requirement
 ## Shared product facts
 
 - Name: Kira Manga
-- Version: 1.0.0
+- Version: 1.0.5
 - Android package / iOS bundle ID: `me.manga.kira`
 - Category candidate: Books & Reference
 - Website: `https://kiramanga.me`
@@ -16,6 +16,7 @@ Firebase console settings, source/content policy, and target-country requirement
 - Terms: `https://kiramanga.me/terms`
 - Data deletion: `https://kiramanga.me/data-deletion`
 - Copyright/takedown: `https://kiramanga.me/takedown`
+- Copyright: `2026 KiraManga`
 - Account required: No
 - Advertising: No advertising UI, ad-serving SDK, or advertising-ID permission in this release;
   Firebase Analytics advertising-ID collection and ad personalization default are disabled
@@ -108,7 +109,7 @@ Confirmed configuration and remaining owner inputs:
 
 - App Store ID `6792232678` is configured and is verified by the TestFlight workflow against bundle
   ID `me.manga.kira`.
-- `[OWNER]` Seller/legal entity, support contact, copyright line, age rating, availability, pricing,
+- `[OWNER]` Seller/legal entity, support contact, age rating, availability, pricing,
   screenshots/previews, review contact, and export-compliance answers.
 - `[OWNER]` Content-rights questionnaire and final reviewer instructions for external sources.
 - `[OWNER]` Final privacy nutrition-label answers from the signed archive and Firebase console.

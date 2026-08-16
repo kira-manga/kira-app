@@ -92,7 +92,9 @@ jobs:
         # parity task — both must gate (2026-07 audit: only :ui's ran in CI).
         run: ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
       - name: Validate release workflow safety contracts
-        run: ruby scripts/release/tests/ios-upload-only-workflow-test.rb
+        run: |
+          ruby scripts/release/tests/ios-upload-only-workflow-test.rb
+          ruby scripts/release/tests/google-play-open-testing-test.rb
       - name: Provision placeholder google-services.json for the :app debug tasks
         # app/google-services.json is BYO/gitignored; the google-services plugin hard-fails
         # without it on a clean runner (this exact miss is why the job's only two historical runs

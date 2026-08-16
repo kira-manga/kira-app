@@ -10,10 +10,10 @@ xcconfig = <<~XCCONFIG
   KIRA_CODE_SIGN_IDENTITY = Apple Distribution
   KIRA_PROVISIONING_PROFILE_SPECIFIER = #{profile_uuid}
   KIRA_OTHER_CODE_SIGN_FLAGS = --keychain #{ENV.fetch("KIRA_KEYCHAIN_PATH")}
-  MARKETING_VERSION = 1.0.0
+  MARKETING_VERSION = 1.0.5
   CURRENT_PROJECT_VERSION = #{build_number}
   KIRA_APP_STORE_ID = 6792232678
-  KIRA_CRASH_DIAGNOSTICS_ENABLED = YES
+  KIRA_CRASH_DIAGNOSTICS_ENABLED = NO
 XCCONFIG
 File.write(ENV.fetch("KIRA_XCCONFIG_PATH"), xcconfig)
 File.chmod(0o600, ENV.fetch("KIRA_XCCONFIG_PATH"))
@@ -51,4 +51,4 @@ PLIST
 File.write(ENV.fetch("KIRA_EXPORT_OPTIONS_PATH"), export_options)
 File.chmod(0o600, ENV.fetch("KIRA_EXPORT_OPTIONS_PATH"))
 
-puts "Release configuration generated for version 1.0.0 build #{build_number}"
+puts "Release configuration generated for version 1.0.5 build #{build_number} with crash diagnostics disabled"

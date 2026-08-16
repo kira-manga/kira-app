@@ -3,7 +3,7 @@
 A **Kotlin Multiplatform** manga reader (Android + iOS + Desktop/JVM, single Compose Multiplatform codebase), originally a full-parity port of the native Android app "Yami Manga". **Android and iOS are the shipping targets**; Desktop builds and runs but is not part of the current release scope.
 
 - Package root: `me.manga.kira.*` · Android `applicationId` / iOS bundle id: `me.manga.kira` · Display name: **Kira Manga**
-- App version: 1.0.0
+- App version: 1.0.5
 
 ## Documentation map
 

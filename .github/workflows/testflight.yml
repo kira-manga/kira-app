@@ -292,7 +292,7 @@ jobs:
         if: ${{ always() && steps.artifact-validation.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: kira-ios-1.0.0-${{ env.KIRA_BUILD_NUMBER }}
+          name: kira-ios-1.0.5-${{ env.KIRA_BUILD_NUMBER }}
           path: |
             ${{ env.KIRA_IPA_PATH }}
             ${{ runner.temp }}/Kira.xcarchive.zip
