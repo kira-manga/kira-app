@@ -216,8 +216,10 @@ jobs:
         working-directory: iosApp
         run: xcodegen generate
 
-      - name: Archive the signed App Store build and upload Crashlytics dSYMs
+      - name: Archive the signed App Store build
         id: archive
+        env:
+          CRASHLYTICS_DSYM_UPLOAD_DEFERRED: "1"
         run: |
           set +x
           log="$RUNNER_TEMP/xcode-archive.log"
@@ -225,11 +227,21 @@ jobs:
             ruby release/ios/safe_xcode_log.rb "$log"
             exit 1
           fi
+          echo "Signed App Store archive created; Crashlytics upload is the next mandatory gate"
+
+      - name: Upload and confirm the archived app dSYM in Crashlytics
+        id: crashlytics-dsym
+        run: |
+          set +x
+          upload_tool="$RUNNER_TEMP/DerivedData/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols"
+          app_dsym="$KIRA_ARCHIVE_PATH/dSYMs/Kira.app.dSYM"
+          ruby release/ios/upload_crashlytics_dsyms.rb \
+            "$upload_tool" "$KIRA_FIREBASE_PLIST" "$app_dsym"
           if [ ! -f "$CRASHLYTICS_DSYM_UPLOAD_MARKER" ]; then
             echo "Crashlytics dSYM upload was not confirmed" >&2
             exit 1
           fi
-          echo "Signed App Store archive created and Crashlytics dSYM upload confirmed"
+          echo "Archived app dSYM upload confirmed"
 
       - name: Export the signed IPA
         id: export

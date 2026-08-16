@@ -7,7 +7,7 @@ DEFAULT_TIMEOUT_SECONDS = 300
 
 upload_tool = ARGV.fetch(0)
 firebase_plist = ARGV.fetch(1)
-dsym_root = ARGV.fetch(2)
+dsym_input = ARGV.fetch(2)
 marker_path = ENV["CRASHLYTICS_DSYM_UPLOAD_MARKER"].to_s
 timeout_seconds = Integer(
   ENV.fetch("CRASHLYTICS_DSYM_UPLOAD_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS.to_s),
@@ -17,9 +17,13 @@ timeout_seconds = Integer(
 abort("Crashlytics upload timeout must be a positive integer") unless timeout_seconds&.positive?
 abort("Crashlytics upload tool is unavailable") unless File.executable?(upload_tool)
 abort("Firebase configuration is unavailable") unless File.file?(firebase_plist)
-abort("dSYM output directory is unavailable") unless File.directory?(dsym_root)
+abort("dSYM input is unavailable") unless File.directory?(dsym_input)
 
-dsym_paths = Dir.glob(File.join(dsym_root, "*.dSYM")).select { |path| File.directory?(path) }.sort
+dsym_paths = if File.extname(dsym_input) == ".dSYM"
+  [dsym_input]
+else
+  Dir.glob(File.join(dsym_input, "*.dSYM")).select { |path| File.directory?(path) }.sort
+end
 abort("No dSYM bundles were produced") if dsym_paths.empty?
 
 dsym_paths.each do |path|

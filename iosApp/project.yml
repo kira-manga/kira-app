@@ -148,7 +148,9 @@ targets:
     postBuildScripts:
       # Firebase Crashlytics dSYM upload — HARD GATE. Uploads the build's dSYM to Crashlytics via the
       # upload-symbols tool from the firebase-ios-sdk SPM checkout, and FAILS THE BUILD unless the
-      # upload confirms success. This guarantees you never run/ship a build whose symbols weren't
+      # upload confirms success. The protected CI workflow defers this phase until the archive exists,
+      # then uploads only the archived app dSYM and keeps the same mandatory confirmation marker.
+      # This guarantees you never run/ship a build whose symbols weren't
       # uploaded (a missing dSYM = "unprocessed crash" in Crashlytics). RELEASE/TestFlight ONLY — the
       # script no-ops in Debug (basedOnDependencyAnalysis: false so it always fires, then exits early
       # unless CONFIGURATION=Release). We call upload-symbols DIRECTLY — not the lenient `run`
@@ -169,15 +171,23 @@ targets:
           if [ "${CRASHLYTICS_DSYM_UPLOAD_OPTIONAL:-0}" = "1" ]; then
             echo "warning: Crashlytics dSYM upload skipped (CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1)"; exit 0
           fi
+          if [ "${CRASHLYTICS_DSYM_UPLOAD_DEFERRED:-0}" = "1" ]; then
+            if [ "${CI:-false}" != "true" ]; then
+              echo "error: Crashlytics dSYM upload may only be deferred by the protected CI release workflow"
+              exit 1
+            fi
+            echo "note: Crashlytics dSYM upload deferred to the protected post-archive CI gate"
+            exit 0
+          fi
           UPLOAD="${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols"
           GSP="${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/GoogleService-Info.plist"
-          DSYM_ROOT="${DWARF_DSYM_FOLDER_PATH}"
-          [ -d "$DSYM_ROOT" ] || { echo "error: Crashlytics — dSYM output directory is missing"; exit 1; }
+          DSYM_PATH="${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}"
+          [ -d "$DSYM_PATH" ] || { echo "error: Crashlytics — app dSYM is missing"; exit 1; }
           [ -x "$UPLOAD" ] || { echo "error: Crashlytics — upload-symbols not found at $UPLOAD"; exit 1; }
           [ -f "$GSP" ]    || { echo "error: Crashlytics — GoogleService-Info.plist not bundled at $GSP"; exit 1; }
           UPLOAD_RUNNER="$SRCROOT/../release/ios/upload_crashlytics_dsyms.rb"
           [ -f "$UPLOAD_RUNNER" ] || { echo "error: Crashlytics — protected upload runner is missing"; exit 1; }
-          if ! /usr/bin/ruby "$UPLOAD_RUNNER" "$UPLOAD" "$GSP" "$DSYM_ROOT"; then
+          if ! /usr/bin/ruby "$UPLOAD_RUNNER" "$UPLOAD" "$GSP" "$DSYM_PATH"; then
             echo "error: Crashlytics dSYM upload FAILED — provider output is withheld to protect Firebase configuration. Fix network / GoogleService-Info.plist and rebuild (or set CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1 for an offline build)."
             exit 1
           fi
