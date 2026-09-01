@@ -31,9 +31,19 @@ val localSourceConfigProperties =
                 contents.reader().use(::load)
             }
         }
+
+fun String.unquotedLocalEnvValue(): String {
+    val value = trim()
+    val hasMatchingQuotes =
+        value.length >= 2 &&
+            value.first() == value.last() &&
+            (value.first() == '"' || value.first() == '\'')
+    return if (hasMatchingQuotes) value.substring(1, value.lastIndex) else value
+}
+
 fun localSourceConfigValue(name: String) =
     localSourceConfigProperties
-        .map { properties -> properties.getProperty(name)?.trim().orEmpty() }
+        .map { properties -> properties.getProperty(name)?.unquotedLocalEnvValue().orEmpty() }
         .orElse("")
 
 val sourceConfigBaseUrl =
