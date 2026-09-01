@@ -197,6 +197,3 @@ const val WhatsAppUrl: String =
 
 /** Official project website URL. */
 const val WEBSITE_URL: String = "https://kiramanga.me"
-
-/** Official guide destination used by the Start Reading flow. */
-const val KIRA_GUIDE_URL: String = "$WEBSITE_URL/guide"

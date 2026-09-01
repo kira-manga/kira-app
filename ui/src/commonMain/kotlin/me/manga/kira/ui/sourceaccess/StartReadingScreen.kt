@@ -39,7 +39,6 @@ import me.manga.kira.presentation.sourceaccess.StartReadingEffect
 import me.manga.kira.presentation.sourceaccess.StartReadingIntent
 import me.manga.kira.presentation.sourceaccess.StartReadingState
 import me.manga.kira.presentation.sourceaccess.StartReadingViewModel
-import me.manga.kira.ui.components.KIRA_GUIDE_URL
 import me.manga.kira.ui.components.KiraIconButton
 import me.manga.kira.ui.components.KiraIcons
 import me.manga.kira.ui.components.KiraSocialMediaRow
@@ -186,7 +185,7 @@ private fun StartReadingBody(
 @Composable
 private fun ReadingGuideLink(onOpenUrl: (String) -> Unit) {
     OutlinedButton(
-        onClick = { onOpenUrl(KIRA_GUIDE_URL) },
+        onClick = { onOpenUrl(WEBSITE_URL) },
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(stringResource(Res.string.start_reading_guide))
