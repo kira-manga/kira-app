@@ -371,4 +371,110 @@ class HomeViewModelTest {
             hasNew.value = value
         }
     }
+
+    @Test
+    fun maintenanceSource_onEntry_showsStatusWithoutFetchingOrEmittingError() =
+        runTest {
+            val vm = vm()
+            homeRepo.siteState.value = me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE
+            homeRepo.sourceTabs.value =
+                listOf(
+                    sampleSourceTab(
+                        api = "maintenance",
+                        siteState = me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE,
+                    ),
+                )
+            val effects = mutableListOf<HomeEffect>()
+            val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+
+            vm.submit(HomeIntent.OnEnter)
+
+            assertEquals(me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE, vm.state.value.siteState)
+            assertEquals(
+                "maintenance",
+                vm.state.value.activeTab
+                    ?.api,
+            )
+            assertTrue(homeRepo.calls.none { it.startsWith("fetchHome") }, "maintenance must not fetch Home")
+            assertTrue(homeRepo.calls.none { it.startsWith("fetchFeatured") }, "maintenance must not fetch featured")
+            assertTrue(effects.none { it is HomeEffect.ShowError }, "maintenance is a status, not an error")
+            collector.cancel()
+        }
+
+    @Test
+    fun selectingMaintenanceSource_doesNotProduceInvalidInputError() =
+        runTest {
+            val vm = vm()
+            homeRepo.homePages.addLast(AppResult.Success(listOf(sampleFeedItem(api = "a", title = "FromA"))))
+            vm.submit(HomeIntent.OnEnter)
+            homeRepo.siteState.value = me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE
+            homeRepo.sourceTabs.value =
+                listOf(
+                    sampleSourceTab(api = "a"),
+                    sampleSourceTab(
+                        api = "b",
+                        siteState = me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE,
+                    ),
+                )
+            homeRepo.calls.clear()
+            val effects = mutableListOf<HomeEffect>()
+            val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+
+            vm.submit(HomeIntent.OnTabSelected(1))
+
+            assertEquals(1, vm.state.value.activeTabIndex)
+            assertEquals(me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE, vm.state.value.siteState)
+            assertTrue(
+                vm.state.value.feed
+                    .isEmpty(),
+                "content from the previous source must be cleared",
+            )
+            assertEquals(listOf("selectTab(1)"), homeRepo.calls)
+            assertTrue(effects.none { it is HomeEffect.ShowError }, "no validation snackbar for maintenance")
+            collector.cancel()
+        }
+
+    @Test
+    fun maintenanceSource_becomingWorking_refetchesAutomatically() =
+        runTest {
+            val vm = vm()
+            homeRepo.siteState.value = me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE
+            homeRepo.sourceTabs.value =
+                listOf(
+                    sampleSourceTab(
+                        api = "a",
+                        siteState = me.manga.kira.domain.model.home.SiteState.UNDER_MAINTENANCE,
+                    ),
+                )
+            vm.submit(HomeIntent.OnEnter)
+            assertTrue(homeRepo.calls.none { it.startsWith("fetchHome") })
+
+            homeRepo.homePages.addLast(AppResult.Success(listOf(sampleFeedItem(api = "a", title = "Ready"))))
+            homeRepo.siteState.value = me.manga.kira.domain.model.home.SiteState.WORKING
+            homeRepo.sourceTabs.value = listOf(sampleSourceTab(api = "a"))
+
+            assertEquals(me.manga.kira.domain.model.home.SiteState.WORKING, vm.state.value.siteState)
+            assertEquals(
+                listOf("Ready"),
+                vm.state.value.feed
+                    .map { it.title },
+            )
+            assertEquals(1, homeRepo.calls.count { it.startsWith("fetchHome") })
+        }
+
+    @Test
+    fun sourceUnavailableRace_isNotMappedToInvalidInputSnackbar() =
+        runTest {
+            val vm = vm()
+            homeRepo.defaultHome = AppResult.Failure(AppError.Validation.SourceUnavailable(api = "a"))
+            homeRepo.featuredResult = AppResult.Failure(AppError.Validation.SourceUnavailable(api = "a"))
+            val effects = mutableListOf<HomeEffect>()
+            val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+
+            vm.submit(HomeIntent.OnEnter)
+
+            assertEquals(null, vm.state.value.feedError)
+            assertTrue(effects.none { it is HomeEffect.ShowError })
+            collector.cancel()
+        }
 }
