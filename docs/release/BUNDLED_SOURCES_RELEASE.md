@@ -25,6 +25,12 @@ catalogs are never partially combined.
 - `kira.appVersion` (or `KIRA_APP_VERSION`) is sent as the endpoint's `appVersion` query parameter.
 - Never put an Ed25519 private key in this repository or an app build.
 
+For local builds, `:composeApp` also reads the two public source-delivery values from the ignored
+`.secrets/android-release.env` when neither an environment variable nor a Gradle property is set.
+This makes Android Studio and Xcode Debug builds use the signed backend catalog without requiring
+the developer to source the file first. CI remains environment-driven because that local file is
+absent, and no signing credential or private key is read into the app.
+
 Android release assembly fails unless the pipeline supplies both the real public HTTPS backend
 origin and the production public key pins. `-PallowUnconfiguredSourceRemote=true` exists only for
 non-shipping release-path validation; artifacts built with it must not be distributed.

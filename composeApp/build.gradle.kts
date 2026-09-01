@@ -4,6 +4,7 @@ import java.net.URI
 import java.security.KeyFactory
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -19,13 +20,31 @@ cryptography {
 }
 
 val generatedSourceRemoteDir = layout.buildDirectory.dir("generated/sourceRemote/commonMain")
+// Xcode and IDE-launched debug builds do not inherit variables from a developer's interactive
+// shell. Read only the public source authority and trust pins from the ignored local release file
+// as a final fallback; explicit environment variables and Gradle properties always win.
+val localSourceConfigProperties =
+    providers.fileContents(rootProject.layout.projectDirectory.file(".secrets/android-release.env"))
+        .asText
+        .map { contents ->
+            Properties().apply {
+                contents.reader().use(::load)
+            }
+        }
+fun localSourceConfigValue(name: String) =
+    localSourceConfigProperties
+        .map { properties -> properties.getProperty(name)?.trim().orEmpty() }
+        .orElse("")
+
 val sourceConfigBaseUrl =
     providers.environmentVariable("KIRA_SOURCE_CONFIG_BASE_URL")
         .orElse(providers.gradleProperty("kira.sourceConfigBaseUrl"))
+        .orElse(localSourceConfigValue("KIRA_SOURCE_CONFIG_BASE_URL"))
         .orElse("")
 val sourceConfigPinnedKeys =
     providers.environmentVariable("KIRA_SOURCE_CONFIG_PINNED_KEYS")
         .orElse(providers.gradleProperty("kira.sourceConfigPinnedKeys"))
+        .orElse(localSourceConfigValue("KIRA_SOURCE_CONFIG_PINNED_KEYS"))
         .orElse("")
 val sourceConfigAppVersion =
     providers.environmentVariable("KIRA_APP_VERSION")
