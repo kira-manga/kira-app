@@ -8,20 +8,22 @@ import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.toRuntimeDescriptor
 
 /**
- * Generic-only source registry. A source resolves only while the complete active catalog contains
- * an `active` generic stanza for its API. Absence and every non-active lifecycle return null; no
- * legacy client is inferred from old rows, cache contents, or network failure.
+ * Generic-only source registry. Catalog metadata stays visible for every `active` generic stanza
+ * so the UI can render operational states such as maintenance. Executable clients resolve only
+ * while that stanza is also `WORKING`. Absence, every non-active lifecycle, and every non-working
+ * site state return null; no legacy client is inferred from old rows, cache contents, or network
+ * failure.
  */
 class DefaultSourceRegistry(
     private val updateManager: SourceUpdateManager,
     private val genericClientFactory: (SourceConfig) -> MangaSourceClient,
 ) : SourceRegistry {
     override fun get(api: String): MangaSourceClient? {
-        val config = genericConfigFor(api)
+        val config = executableConfigFor(api)
         return config?.let(genericClientFactory)
     }
 
-    override fun isConfigBacked(api: String): Boolean = genericConfigFor(api) != null
+    override fun isConfigBacked(api: String): Boolean = catalogConfigFor(api) != null
 
     override fun descriptor(api: String): RuntimeSourceDescriptor? =
         updateManager
@@ -37,14 +39,18 @@ class DefaultSourceRegistry(
             .filter { it.engine == ENGINE_GENERIC && it.lifecycle == LIFECYCLE_ACTIVE }
             .map { it.toRuntimeDescriptor() }
 
-    private fun genericConfigFor(api: String): SourceConfig? =
+    private fun catalogConfigFor(api: String): SourceConfig? =
         updateManager
             .activeDocument()
             .sources
             .firstOrNull { it.api == api && it.engine == ENGINE_GENERIC && it.lifecycle == LIFECYCLE_ACTIVE }
 
+    private fun executableConfigFor(api: String): SourceConfig? =
+        catalogConfigFor(api)?.takeIf { it.siteState == SITE_STATE_WORKING }
+
     private companion object {
         const val ENGINE_GENERIC = "generic"
         const val LIFECYCLE_ACTIVE = "active"
+        const val SITE_STATE_WORKING = "WORKING"
     }
 }

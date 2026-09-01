@@ -24,6 +24,7 @@ class KtorRemoteSourceCatalogTest {
                 MockEngine { request ->
                     assertEquals("/api/v2/source-config/manifest", request.url.encodedPath)
                     assertEquals("1.2.3", request.url.parameters["appVersion"])
+                    assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
                     assertEquals("\"$checksum\"", request.headers[HttpHeaders.IfNoneMatch])
                     respondError(HttpStatusCode.NotModified)
                 }

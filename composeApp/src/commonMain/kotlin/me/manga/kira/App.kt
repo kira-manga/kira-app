@@ -35,6 +35,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.disk.DiskCache
@@ -46,6 +49,7 @@ import coil3.request.maxBitmapSize
 import coil3.size.Size
 import io.ktor.http.Url
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.presentation.common.componants.images.platformNetworkFetcherFactory
@@ -57,7 +61,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import me.manga.kira.platform.toast.ToastRelay
-import me.manga.kira.core.logging.KermitLoggerAdapter
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import kotlinx.coroutines.launch
@@ -357,48 +360,57 @@ private fun PostFirstFrameStartupTasks() {
     }
     if (!firstFramePresented) return
 
+    SourceCatalogRefreshEffect()
+
     // Restart-freeze fix (2026-06-02): on every launch, reconcile downloads orphaned in
     // RUNNING / COMPRESSING by a previous (killed) process — reset them to QUEUED and re-trigger the
     // engine so they resume instead of staying stuck "downloading" forever — and back-fill the size
     // of completed rows that pre-date the sizeBytes column. This single common seam covers
     // Android / iOS / Desktop identically (each legacy impl re-triggers via its own mechanism).
-    // Best-effort like refreshSources(): the use case returns an AppResult/Result and never throws
-    // except on cancellation, so a failure can never block launch.
+    // Best-effort: the use case returns an AppResult/Result and never throws except on cancellation,
+    // so a failure can never block launch.
     val reconcileDownloads: ReconcileDownloadsUseCase = koinInject()
     // #11: native-parity app_open analytics event. The cross-platform use case fires the event via
-    // the :domain AnalyticsPort (Firebase on Android, no-op on iOS/Desktop) — same one-shot launch
-    // seam as refreshSources/reconcileDownloads.
+    // the :domain AnalyticsPort (Firebase on Android, no-op on iOS/Desktop) — the same one-shot
+    // launch seam as reconcileDownloads.
     val logAppOpen: LogAppOpenUseCase = koinInject()
-    // Refreshes the signed manifest and only missing immutable source revisions. It keeps the
-    // complete verified cache or bundle on failure and never blocks the first rendered frame.
-    val sourceUpdateManager: SourceUpdateManager = koinInject()
     LaunchedEffect(Unit) {
         // ONCE PER PROCESS, not per composition: on Android an Activity recreation (rotation)
         // rebuilds App() and re-fires LaunchedEffect(Unit); without [StartupTasksOnce] the
         // reconciler below reset ACTIVELY-downloading rows to QUEUED mid-download and app_open
         // fired once per rotation (2026-07 audit). See the guard's KDoc.
         if (!StartupTasksOnce.claim()) return@LaunchedEffect
-        // Independent one-shot startup tasks, each in its own child coroutine so none blocks the
-        // others. reconcileDownloads() is pure local Room work to un-freeze interrupted downloads
-        // — it must never wait on any network round-trip, or a stuck "downloading" row would stay
-        // visibly frozen. Source synchronization runs independently below.
+        // Independent one-shot startup tasks. reconcileDownloads() is pure local Room work to
+        // un-freeze interrupted downloads; source synchronization has its own lifecycle-aware
+        // effect below and never delays this work.
         launch { reconcileDownloads() }
-        // Refresh and atomically activate/project one complete catalog tier.
-        launch {
-            sourceUpdateManager.refresh()
-            // An empty catalog is an explicit, valid lifecycle outcome. Keep a safe aggregate
-            // diagnostic while the UI presents its normal no-sources state.
-            if (sourceUpdateManager.activeDocument().sources.none { it.engine == "generic" }) {
-                KermitLoggerAdapter().w(
-                    "SourceConfig",
-                    "startup: the verified source catalog has no active sources",
-                )
-            }
-        }
         // #11: fire app_open once per launch (synchronous, fast, best-effort telemetry).
         logAppOpen()
     }
 }
+
+/**
+ * Revalidates the signed source catalog immediately whenever the app enters the foreground, then
+ * at a bounded cadence while it stays visible. Lifecycle cancellation stops both polling and an
+ * in-flight request in the background. Conditional ETags keep unchanged polls cheap, while the
+ * request's `Cache-Control: no-cache` guarantees an operational-mode change reaches this process
+ * instead of waiting for the shared HTTP cache's freshness window.
+ */
+@Composable
+private fun SourceCatalogRefreshEffect() {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val sourceUpdateManager: SourceUpdateManager = koinInject()
+    LaunchedEffect(lifecycleOwner, sourceUpdateManager) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                sourceUpdateManager.refresh()
+                delay(SOURCE_CATALOG_REFRESH_INTERVAL_MILLIS)
+            }
+        }
+    }
+}
+
+private const val SOURCE_CATALOG_REFRESH_INTERVAL_MILLIS = 60_000L
 
 @Composable
 fun App(crashDiagnosticsEnabled: Boolean = false) {

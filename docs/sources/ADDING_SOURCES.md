@@ -18,17 +18,18 @@
 - The backend publishes a lightweight signed manifest and immutable signed per-source revisions.
   `IncrementalSourceCatalogManager` checks the manifest ETag, reuses verified local revisions, and
   downloads only missing active revisions.
-- The accepted signed manifest is the runtime authority. `DefaultSourceRegistry` creates a client
-  only for an active `engine:"generic"` entry. There is no compiled roster, legacy adapter,
-  inference path, or per-verb fallback.
+- The accepted signed manifest is the runtime authority. `DefaultSourceRegistry` exposes metadata
+  for active `engine:"generic"` entries, but creates an executable client only when `siteState` is
+  `WORKING`. There is no compiled roster, legacy adapter, inference path, or per-verb fallback.
 - Room re-verifies the last-known-good catalog after restart. A new revision becomes visible only
   when every required artifact and the source projection commit atomically; otherwise the complete
   prior cache or bundle stays active.
 
 **When is the catalog loaded?** `IncrementalSourceCatalogManager` validates the bundle during
-construction. `App.kt` calls `refresh()` at startup, then projects the resulting active catalog.
-Unchanged manifests return 304 and download no source payload. The in-memory document changes only
-after complete verification and durable activation.
+construction. After the first frame, `App.kt` revalidates immediately whenever the app enters the
+foreground and every 60 seconds while it remains visible. Requests use `Cache-Control: no-cache`
+plus the accepted ETag, so unchanged manifests return 304 and download no source payload. The
+in-memory document changes only after complete verification and durable activation.
 
 ## 2. How to add a new source
 

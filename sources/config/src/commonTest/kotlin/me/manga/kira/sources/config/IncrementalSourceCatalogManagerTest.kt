@@ -107,6 +107,25 @@ class IncrementalSourceCatalogManagerTest {
         }
 
     @Test
+    fun maintenance_site_state_is_preserved_in_the_active_document() =
+        runTest {
+            val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
+            val next = signedManifest(11, listOf(entry("a", 2)), previousRevision = 10)
+            val store = FakeCatalogStore(active = stored)
+            val remote =
+                FakeRemote(
+                    SourceCatalogManifestResult.Modified(next),
+                    artifacts = mapOf("a" to artifact("a", 2, siteState = "UNDER_MAINTENANCE")),
+                )
+            val manager = manager(store, remote)
+
+            assertTrue(manager.refresh() is AppResult.Success)
+
+            assertEquals("UNDER_MAINTENANCE", manager.activeDocument().sources.single().siteState)
+            assertEquals("active", manager.activeDocument().sources.single().lifecycle)
+        }
+
+    @Test
     fun non_generic_manifest_entry_is_rejected_without_fetch_or_activation() =
         runTest {
             val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
@@ -462,8 +481,8 @@ class IncrementalSourceCatalogManagerTest {
         fun bundledJson(): String =
             """{"schemaVersion":1,"revision":$BUNDLED_REVISION,"sources":[${sourceJson("floor")}]}"""
 
-        fun sourceJson(api: String): String =
-            """{"api":"$api","language":"en","baseUrl":"https://$api.test","engine":"generic"}"""
+        fun sourceJson(api: String, siteState: String = "WORKING"): String =
+            """{"api":"$api","language":"en","baseUrl":"https://$api.test","engine":"generic","siteState":"$siteState"}"""
 
         fun entry(
             api: String,
@@ -484,8 +503,9 @@ class IncrementalSourceCatalogManagerTest {
         fun artifact(
             api: String,
             revision: Long,
+            siteState: String = "WORKING",
         ): SourceRevisionArtifact =
-            SourceRevisionArtifact(api, revision, checksum(revision), "kcj-1", sourceJson(api))
+            SourceRevisionArtifact(api, revision, checksum(revision), "kcj-1", sourceJson(api, siteState))
 
         fun storedCatalog(
             revision: Long,

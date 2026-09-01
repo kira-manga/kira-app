@@ -28,8 +28,9 @@ import kotlin.test.assertTrue
 /** Pins the generic-only registry: catalog absence can never infer a legacy adapter. */
 class DefaultSourceRegistryTest {
     private class FixedUpdateManager(
-        private val document: SourceConfigDocument,
+        document: SourceConfigDocument,
     ) : SourceUpdateManager {
+        private var document = document
         private val mutableState =
             MutableStateFlow<UpdateState>(
                 UpdateState.Active(document.revision, UpdateState.Origin.BUNDLED),
@@ -39,6 +40,11 @@ class DefaultSourceRegistryTest {
         override fun activeDocument(): SourceConfigDocument = document
 
         override suspend fun refresh(): AppResult<SourceConfigDocument> = AppResult.Success(document)
+
+        fun replace(document: SourceConfigDocument) {
+            this.document = document
+            mutableState.value = UpdateState.Active(document.revision, UpdateState.Origin.REMOTE)
+        }
     }
 
     private class MarkerClient(
@@ -69,13 +75,16 @@ class DefaultSourceRegistryTest {
     }
 
     @Test
-    fun only_active_generic_sources_resolve() {
+    fun only_active_working_generic_sources_resolve() {
         val document =
             SourceConfigDocument(
                 schemaVersion = 1,
                 sources =
                     listOf(
                         config("active"),
+                        config("maintenance").copy(siteState = "UNDER_MAINTENANCE"),
+                        config("stopped").copy(siteState = "STOPPED"),
+                        config("adult").copy(siteState = "ADULT_18_PLUS"),
                         config("disabled").copy(lifecycle = "disabled"),
                         config("legacy").copy(engine = "legacy"),
                     ),
@@ -83,10 +92,18 @@ class DefaultSourceRegistryTest {
         val registry = registry(document)
 
         assertEquals("client:active", registry.get("active")?.api)
+        assertNull(registry.get("maintenance"))
+        assertNull(registry.get("stopped"))
+        assertNull(registry.get("adult"))
         assertNull(registry.get("disabled"))
         assertNull(registry.get("legacy"))
         assertNull(registry.get("absent"))
-        assertEquals(listOf("active"), registry.genericDescriptors().map { it.api })
+        assertTrue(registry.isConfigBacked("maintenance"))
+        assertEquals(
+            listOf("active", "maintenance", "stopped", "adult"),
+            registry.genericDescriptors().map { it.api },
+        )
+        assertEquals("UNDER_MAINTENANCE", registry.descriptor("maintenance")?.siteState)
     }
 
     @Test
@@ -113,6 +130,35 @@ class DefaultSourceRegistryTest {
     fun empty_or_missing_catalog_returns_no_client() {
         val registry = registry(SourceConfigDocument(schemaVersion = 1))
         assertNull(registry.get("Azora"))
+    }
+
+    @Test
+    fun operational_mode_changes_take_effect_without_recreating_the_registry() {
+        val manager = FixedUpdateManager(SourceConfigDocument(1, revision = 1, sources = listOf(config("source"))))
+        val registry =
+            DefaultSourceRegistry(
+                updateManager = manager,
+                genericClientFactory = { MarkerClient("client:${it.api}") },
+            )
+
+        assertEquals("client:source", registry.get("source")?.api)
+
+        manager.replace(
+            SourceConfigDocument(
+                1,
+                revision = 2,
+                sources = listOf(config("source").copy(siteState = "UNDER_MAINTENANCE")),
+            ),
+        )
+        assertNull(registry.get("source"))
+        assertEquals("UNDER_MAINTENANCE", registry.descriptor("source")?.siteState)
+
+        manager.replace(SourceConfigDocument(1, revision = 3, sources = emptyList()))
+        assertNull(registry.get("source"))
+        assertNull(registry.descriptor("source"))
+
+        manager.replace(SourceConfigDocument(1, revision = 4, sources = listOf(config("source"))))
+        assertEquals("client:source", registry.get("source")?.api)
     }
 
     private fun registry(

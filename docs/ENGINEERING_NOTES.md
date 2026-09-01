@@ -21,7 +21,7 @@ there is no legacy stanza, adapter, union, or inference path. The legacy remote 
 (`/source/35` · `/dev/source`) remains deleted. A source absent from the active manifest has no
 client. Disabled, retired, and removed lifecycle changes remove it from the active projection.
 
-Schema facts: `siteState` (`WORKING|STOPPED|UNDER_MAINTENANCE`), `lifecycle`
+Schema facts: `siteState` (`WORKING|STOPPED|UNDER_MAINTENANCE|ADULT_18_PLUS`), `lifecycle`
 (`active|disabled|retired|removed` — the kill switch; `enabled` only means "default-enabled on first
 seed"), `previousHosts` (**append-only**; drives the stored-URL alias sweep via `SourceUrlMigrator`
 and the push deep-link trust join via `ConfigHostTrust`), `previousImageHosts`, `trustedHosts`.
@@ -39,8 +39,10 @@ policy, delta/rollback rules, immutable storage, and atomic projection behavior.
 Plus, SwatManga (full 5-verb JSON), Lekmanga, Team X, DilarV2, 3asq (AR), Demonicscans,
 Mangabuddy, Zazamanga, Tapas (EN).
 
-**Runtime policy:** `DefaultSourceRegistry.get()` returns the bare `GenericSourceClient` only for
-an active generic descriptor. `FallbackSourceClient`, `LegacyKotlinSourceClient`, and the debug
+**Runtime policy:** `DefaultSourceRegistry.get()` returns a `GenericSourceClient` only for an active
+generic descriptor whose `siteState` is `WORKING`. Maintenance/stopped/adult descriptors remain
+visible to UI metadata but cannot execute network verbs. `FallbackSourceClient`,
+`LegacyKotlinSourceClient`, and the debug
 fallback flag were deleted. The archived scraper module remains buildable as a migration reference
 and for repository/library persistence, but contributes an empty runtime scraper set. Sources not
 yet converted are unavailable; they become eligible only after full generic conversion, validation,

@@ -3,8 +3,9 @@ package me.manga.kira.sources.contracts
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 
 /**
- * Lookup of active generic sources by API key. A missing/non-active/non-generic API returns null;
- * implementations must never infer a legacy adapter.
+ * Lookup of generic sources by API key. [get] returns an executable client only for an active,
+ * operationally working source; missing/non-active/non-generic/non-working APIs return null.
+ * Implementations must never infer a legacy adapter.
  *
  * The registry is also the ONE public reader of catalog metadata: [descriptor]/[genericDescriptors]
  * project the validated active config document into [RuntimeSourceDescriptor]s so no caller ever
@@ -14,13 +15,12 @@ import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 interface SourceRegistry {
     fun get(api: String): MangaSourceClient?
 
-    /**
-     * True only when [api] is active in the complete accepted generic catalog.
-     */
+    /** True when [api] is present with an active lifecycle in the accepted generic catalog. */
     fun isConfigBacked(api: String): Boolean
 
     /**
-     * Active generic catalog metadata for [api], or null when the source is unavailable.
+     * Active-lifecycle generic catalog metadata for [api], including a non-working operational
+     * state that the UI must explain, or null when the source is absent/disabled.
      */
     fun descriptor(api: String): RuntimeSourceDescriptor?
 

@@ -43,8 +43,9 @@ import org.koin.dsl.module
  * **Signed remote posture — registry live with a bundled floor and authenticated updates:**
  *  - The registry is BOUND and CONSUMED by four `:data` repositories (HomeFeed / Search /
  *    MangaDetails / ChapterPages), each branching on `sourceRegistry.isConfigBacked(api)`.
- *  - Active `engine="generic"` stanzas are served by the generic engine. Every absent, disabled,
- *    retired, removed, or non-generic source has no client.
+ *  - Active, `WORKING`, `engine="generic"` stanzas are served by the generic engine. Maintenance
+ *    metadata stays visible to the UI, but every non-working, absent, disabled, retired, removed,
+ *    or non-generic source has no executable client.
  *  - The bundled config ([CONFIG_BACKED_SOURCES_JSON]) ships in the signed binary (trusted, no
  *    detached signature). The HTTPS client is wired in every build, while an empty release base URL
  *    makes it a no-op. Signed manifests and immutable source revisions are accepted only after
@@ -114,8 +115,9 @@ val sourcesGenericModule =
         single<SourceUpdateManager> { get<IncrementalSourceCatalogManager>() }
         single<SourceCatalogDiagnosticsProvider> { get<IncrementalSourceCatalogManager>() }
 
-        // The registry: generic-ONLY for every engine="generic" stanza in the validated active
-        // document (the single authority — no in-binary api allow-list); no adapter for the rest.
+        // The registry: generic-ONLY for every WORKING engine="generic" stanza in the validated
+        // active document (the single authority — no in-binary api allow-list); no adapter for the
+        // rest. Non-working descriptors remain available for status UI.
         single<SourceRegistry> {
             val httpExecutor = get<HttpExecutor>()
             val headerStore = get<HeaderStore>()

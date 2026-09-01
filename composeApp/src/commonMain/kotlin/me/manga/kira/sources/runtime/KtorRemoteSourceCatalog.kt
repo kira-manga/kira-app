@@ -29,6 +29,9 @@ class KtorRemoteSourceCatalog(
         val response =
             httpClient.get(origin + MANIFEST_PATH) {
                 parameter("appVersion", appVersion)
+                // Operational-mode changes must be revalidated with the authority on every
+                // foreground poll. The ETag still makes an unchanged catalog a cheap 304.
+                header(HttpHeaders.CacheControl, "no-cache")
                 etag?.let { header(HttpHeaders.IfNoneMatch, quotedEtag(it)) }
             }
         if (response.status == HttpStatusCode.NotModified) {
