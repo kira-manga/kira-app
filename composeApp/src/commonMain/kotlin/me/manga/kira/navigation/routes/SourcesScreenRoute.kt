@@ -6,6 +6,7 @@ import androidx.navigation.NavController
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.navigation.Screen
+import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.sources.SourcesViewModel
 import me.manga.kira.ui.sources.SourcesScreen
@@ -162,6 +163,9 @@ fun SourcesScreenRoute(
 
     SourcesScreen(
         viewModel = viewModel,
+        onImportFromStorage = {
+            navController.safeNavigate(Screen.BackupRework(completeStartFlowOnImport = true))
+        },
         // Activation reveals the stored source state exactly as-is. Do not auto-enable a locale here.
         onboardingLanguageTag = null,
         // Request-Source dialog social-media row forwards each brand URL to the platform

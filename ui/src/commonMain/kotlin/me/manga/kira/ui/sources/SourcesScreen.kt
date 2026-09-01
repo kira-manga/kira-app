@@ -44,6 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -103,6 +104,7 @@ import me.manga.kira.ui.generated.resources.request_failed
 import me.manga.kira.ui.generated.resources.request_submitted_successfully
 import me.manga.kira.ui.generated.resources.retry
 import me.manga.kira.ui.generated.resources.select_your_manga_sources
+import me.manga.kira.ui.generated.resources.source_import_from_storage
 import me.manga.kira.ui.generated.resources.sources_title
 import me.manga.kira.ui.generated.resources.submit
 import me.manga.kira.ui.generated.resources.submitting
@@ -187,12 +189,9 @@ import org.jetbrains.compose.resources.stringResource
  * it's purely a sort key, not a user-visible field).
  *
  * **Loading state**: the shared `KiraLoadingState` (centred spinner) while `isLoading == true`.
- * **No empty state** (parity-fix): native `RepoSettingsScreen.kt` has no empty branch — it always
- * renders the request-source row + "Upcoming Languages" info card above the (possibly empty)
- * language sections, so the request affordance is never lost. The screen therefore always renders
- * the list once loaded; an empty source snapshot simply contributes no language sections. (The
- * earlier full-screen `KiraEmptyState` short-circuit dropped the request affordance and was
- * removed.)
+ * **Empty-source recovery**: the loaded screen always keeps its request-source row and Upcoming
+ * Languages card. When the catalog has no source available to enable, it also shows an Import from
+ * storage button. The route owns that navigation through [onImportFromStorage].
  *
  * **`viewModel` reference in `LaunchedEffect`**: keying on `effects` (the flow itself, not
  * the VM) is the safe pattern — same posture as the rework Settings hub.
@@ -292,6 +291,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun SourcesScreen(
     viewModel: SourcesViewModel,
+    onImportFromStorage: () -> Unit,
     modifier: Modifier = Modifier,
     onFinish: (() -> Unit)? = null,
     onboardingLanguageTag: String? = null,
@@ -307,6 +307,7 @@ fun SourcesScreen(
         state = state,
         effects = viewModel.effects,
         onIntent = viewModel::submit,
+        onImportFromStorage = onImportFromStorage,
         modifier = modifier,
         onFinish = onFinish,
         onboardingLanguageTag = onboardingLanguageTag,
@@ -321,6 +322,7 @@ internal fun SourcesScreenContent(
     state: SourcesState,
     effects: Flow<SourcesEffect>,
     onIntent: (SourcesIntent) -> Unit,
+    onImportFromStorage: () -> Unit,
     modifier: Modifier = Modifier,
     onFinish: (() -> Unit)? = null,
     onboardingLanguageTag: String? = null,
@@ -438,17 +440,12 @@ internal fun SourcesScreenContent(
             }
             when {
                 state.isLoading -> LoadingBox(innerPadding)
-                // Parity-fix: native RepoSettingsScreen.kt has NO empty branch — it always
-                // renders the LazyColumn with the request-source row + "Upcoming Languages" info
-                // card above the (possibly empty) language sections, so the request affordance is
-                // never lost. The KMP screen previously short-circuited to a full-screen
-                // KiraEmptyState when the source list was empty, dropping that affordance. We now
-                // always render SourcesList — its request-source row and info card are rendered
-                // unconditionally (the language `groups` loop simply contributes no sections when
-                // empty), matching native.
+                // Keep the list surface when the catalog is empty so its recovery actions remain
+                // reachable. SourcesList adds Import from storage only for that empty snapshot.
                 else -> SourcesList(
                     groups = state.groupedByLanguage,
                     onIntent = onIntent,
+                    onImportFromStorage = onImportFromStorage,
                     contentPadding = innerPadding,
                     spacingMd = spacing.md,
                     spacingLg = spacing.lg,
@@ -529,6 +526,7 @@ private fun AnimatedSourcesBackground(modifier: Modifier = Modifier) {
 private fun SourcesList(
     groups: Map<String, List<Source>>,
     onIntent: (SourcesIntent) -> Unit,
+    onImportFromStorage: () -> Unit,
     contentPadding: PaddingValues,
     spacingMd: androidx.compose.ui.unit.Dp,
     spacingLg: androidx.compose.ui.unit.Dp,
@@ -553,6 +551,18 @@ private fun SourcesList(
                         .fillMaxWidth()
                         .padding(horizontal = spacingLg, vertical = spacingLg),
                 )
+            }
+        }
+        if (groups.isEmpty()) {
+            item(key = "import-from-storage") {
+                OutlinedButton(
+                    onClick = onImportFromStorage,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacingLg, vertical = spacingMd),
+                ) {
+                    Text(stringResource(Res.string.source_import_from_storage))
+                }
             }
         }
         // Phase 7.x.sources.complaint — "Request adding source" row above the language list.

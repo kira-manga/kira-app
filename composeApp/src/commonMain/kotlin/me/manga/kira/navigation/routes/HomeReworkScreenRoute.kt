@@ -118,6 +118,9 @@ fun HomeReworkScreenRoute(
                 onEditSources = {
                     navController.safeNavigate(Screen.RepoSettings(isFirstOpen = false))
                 },
+                onImportFromStorage = {
+                    navController.safeNavigate(Screen.BackupRework())
+                },
             )
         }
     } else if (homeState.isSearching) {

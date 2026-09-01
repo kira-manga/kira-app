@@ -19,4 +19,5 @@
     <string name="home_no_sources_locked_body">Tidak ada sumber yang dapat digunakan. Aktifkan Sumber atau impor cadangan Kira atau paket manga.</string>
     <string name="home_no_sources_activated_title">Tidak ada sumber yang diaktifkan</string>
     <string name="home_no_sources_activated_body">Aktifkan setidaknya satu sumber untuk menjelajahi manga di Beranda.</string>
+    <string name="source_import_from_storage">Impor dari penyimpanan</string>
 </resources>

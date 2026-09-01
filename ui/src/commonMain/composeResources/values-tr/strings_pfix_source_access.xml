@@ -19,4 +19,5 @@
     <string name="home_no_sources_locked_body">Kullanılabilir etkin kaynak yok. Kaynakları etkinleştirin veya bir Kira yedeği ya da manga paketi içe aktarın.</string>
     <string name="home_no_sources_activated_title">Etkin kaynak yok</string>
     <string name="home_no_sources_activated_body">Ana Sayfa’da manga keşfetmek için en az bir kaynağı etkinleştirin.</string>
+    <string name="source_import_from_storage">Depolamadan içe aktar</string>
 </resources>

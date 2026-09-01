@@ -19,4 +19,5 @@
     <string name="home_no_sources_locked_body">利用可能なソースが有効になっていません。ソースを有効化するか、Kira バックアップまたはマンガパッケージをインポートしてください。</string>
     <string name="home_no_sources_activated_title">有効なソースがありません</string>
     <string name="home_no_sources_activated_body">ホームでマンガを閲覧するには、少なくとも1つのソースを有効にしてください。</string>
+    <string name="source_import_from_storage">ストレージからインポート</string>
 </resources>

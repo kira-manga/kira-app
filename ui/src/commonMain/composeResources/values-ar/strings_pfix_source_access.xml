@@ -19,4 +19,5 @@
     <string name="home_no_sources_locked_body">لا يوجد مصدر صالح مفعّل. فعّل المصادر أو استورد نسخة Kira احتياطية أو حزمة مانجا.</string>
     <string name="home_no_sources_activated_title">لا توجد مصادر مفعّلة</string>
     <string name="home_no_sources_activated_body">فعّل مصدرًا واحدًا على الأقل لتصفح المانجا في الصفحة الرئيسية.</string>
+    <string name="source_import_from_storage">استيراد من وحدة التخزين</string>
 </resources>

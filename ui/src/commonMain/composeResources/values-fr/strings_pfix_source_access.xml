@@ -19,4 +19,5 @@
     <string name="home_no_sources_locked_body">Aucune source utilisable n’est activée. Activez les sources ou importez une sauvegarde Kira ou un paquet manga.</string>
     <string name="home_no_sources_activated_title">Aucune source activée</string>
     <string name="home_no_sources_activated_body">Activez au moins une source pour parcourir les mangas sur l’accueil.</string>
+    <string name="source_import_from_storage">Importer depuis le stockage</string>
 </resources>

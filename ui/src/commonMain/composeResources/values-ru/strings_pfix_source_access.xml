@@ -19,4 +19,5 @@
     <string name="home_no_sources_locked_body">Нет включённого доступного источника. Активируйте источники или импортируйте резервную копию Kira либо пакет манги.</string>
     <string name="home_no_sources_activated_title">Нет включённых источников</string>
     <string name="home_no_sources_activated_body">Включите хотя бы один источник, чтобы просматривать мангу на главной странице.</string>
+    <string name="source_import_from_storage">Импортировать из хранилища</string>
 </resources>

@@ -3,6 +3,8 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.navigation.Screen
+import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.sources.SourcesViewModel
@@ -117,6 +119,9 @@ fun RepoSettingsScreenRoute(
 
     SourcesScreen(
         viewModel = viewModel,
+        onImportFromStorage = {
+            navController.safeNavigate(Screen.BackupRework())
+        },
         // Request-Source dialog social-media row forwards each brand URL to the platform
         // IntentLauncher (fire-and-forget; same posture as SettingsReworkScreenRoute's onOpenUrl).
         onOpenUrl = { url -> launcher.openUrl(url) },

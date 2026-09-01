@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import me.manga.kira.ui.generated.resources.home_no_sources_activated_body
 import me.manga.kira.ui.generated.resources.home_no_sources_activated_title
 import me.manga.kira.ui.generated.resources.home_no_sources_locked_body
 import me.manga.kira.ui.generated.resources.home_no_sources_locked_title
+import me.manga.kira.ui.generated.resources.source_import_from_storage
 import me.manga.kira.ui.generated.resources.start_reading_title
 import me.manga.kira.ui.theme.LocalBottomBarPadding
 import me.manga.kira.ui.theme.LocalSpacing
@@ -51,6 +53,7 @@ fun LockedHomeSourcePrompt(
 @Composable
 fun ActivatedHomeSourcePrompt(
     onEditSources: () -> Unit,
+    onImportFromStorage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     HomeSourcePrompt(
@@ -58,6 +61,8 @@ fun ActivatedHomeSourcePrompt(
         body = stringResource(Res.string.home_no_sources_activated_body),
         actionLabel = stringResource(Res.string.home_edit_sources),
         onAction = onEditSources,
+        secondaryActionLabel = stringResource(Res.string.source_import_from_storage),
+        onSecondaryAction = onImportFromStorage,
         modifier = modifier,
     )
 }
@@ -68,6 +73,8 @@ private fun HomeSourcePrompt(
     body: String,
     actionLabel: String,
     onAction: () -> Unit,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
     actionEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -115,6 +122,14 @@ private fun HomeSourcePrompt(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(actionLabel)
+                }
+                if (secondaryActionLabel != null && onSecondaryAction != null) {
+                    OutlinedButton(
+                        onClick = onSecondaryAction,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(secondaryActionLabel)
+                    }
                 }
             }
         }
