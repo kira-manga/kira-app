@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 actual fun rememberNotificationPermissionRequester(): NotificationPermissionRequester = remember {
     val state = MutableStateFlow(true)
     object : NotificationPermissionRequester {
+        override val onboardingPolicy: NotificationPermissionOnboardingPolicy =
+            NotificationPermissionOnboardingPolicy.NOT_APPLICABLE
+
         override val hasPermission: StateFlow<Boolean> = state.asStateFlow()
         override fun request(onResult: (granted: Boolean) -> Unit) {
             // Desktop has no runtime notification permission — always implicitly granted.

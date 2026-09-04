@@ -103,6 +103,7 @@
     <string name="no_results_found">No se encontraron resultados</string>
     <string name="not_updated_yet">Aún no actualizado</string>
     <string name="notification_permission">Necesitamos este permiso para enviarte los capítulos más recientes, mostrar el progreso de descarga y garantizar el correcto funcionamiento de la aplicación.</string>
+    <string name="notification_permission_optional">Las notificaciones son opcionales. Actívalas para recibir avisos de capítulos nuevos y novedades de descargas.</string>
     <string name="notifications_group_last_week">La semana pasada</string>
     <string name="notifications_group_older">Antiguas</string>
     <string name="notifications_group_today">Hoy</string>

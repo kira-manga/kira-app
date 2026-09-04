@@ -14,15 +14,19 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
 }
 
-fun env(name: String): String? = System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
+fun env(vararg names: String): String? =
+    names.firstNotNullOfOrNull { name ->
+        System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
+    }
 
 val releaseVersionProperties = Properties().apply {
     rootProject.file("release/version.properties").inputStream().use(::load)
 }
 val releaseVersionName =
-    env("KIRA_VERSION_NAME") ?: releaseVersionProperties.getProperty("VERSION_NAME")
+    env("KIRA_VERSION_NAME", "MOBILE_RELEASE_VERSION_NAME")
+        ?: releaseVersionProperties.getProperty("VERSION_NAME")
 val releaseVersionCode =
-    (env("KIRA_BUILD_NUMBER")
+    (env("KIRA_BUILD_NUMBER", "MOBILE_RELEASE_BUILD_NUMBER")
         ?: env("GITHUB_RUN_NUMBER")
         ?: releaseVersionProperties.getProperty("VERSION_CODE"))
         .toIntOrNull()
@@ -44,15 +48,23 @@ val sourceConfigPinnedKeys =
 // Gradle-property fallback that could accidentally sign a production bundle with the wrong key.
 val releaseSigningEnvironment =
     mapOf(
-        "KEYSTORE_FILE" to env("KEYSTORE_FILE"),
-        "KEYSTORE_PASSWORD" to env("KEYSTORE_PASSWORD"),
-        "KEY_ALIAS" to env("KEY_ALIAS"),
-        "KEY_PASSWORD" to env("KEY_PASSWORD"),
+        "KEYSTORE_FILE" to
+            env(
+                "KEYSTORE_FILE",
+                "KIRA_ANDROID_KEYSTORE_PATH",
+                "MOBILE_RELEASE_ANDROID_KEYSTORE_PATH",
+            ),
+        "KEYSTORE_PASSWORD" to
+            env("KEYSTORE_PASSWORD", "MOBILE_RELEASE_ANDROID_KEYSTORE_PASSWORD"),
+        "KEY_ALIAS" to env("KEY_ALIAS", "MOBILE_RELEASE_ANDROID_KEY_ALIAS"),
+        "KEY_PASSWORD" to env("KEY_PASSWORD", "MOBILE_RELEASE_ANDROID_KEY_PASSWORD"),
     )
 val hasAnyReleaseSigningValue = releaseSigningEnvironment.values.any { it != null }
 val hasAllReleaseSigningValues = releaseSigningEnvironment.values.all { it != null }
 val releaseKeystore = releaseSigningEnvironment.getValue("KEYSTORE_FILE")?.let(::file)
 val releaseSigningReady = hasAllReleaseSigningValues && releaseKeystore?.isFile == true
+val releaseSigningRequired =
+    env("MOBILE_RELEASE_REQUIRE_SIGNING")?.equals("true", ignoreCase = true) == true
 
 // Release guard (audit: firebase-placeholder-ships-inert-in-release). Fail any release-variant
 // build that would package the committed PLACEHOLDER google-services.json — which leaves
@@ -91,6 +103,11 @@ gradle.taskGraph.whenReady {
         }
         if (hasAllReleaseSigningValues && releaseKeystore?.isFile != true) {
             throw GradleException("KEYSTORE_FILE does not point to a readable keystore file")
+        }
+        if (releaseSigningRequired && !releaseSigningReady) {
+            throw GradleException(
+                "MOBILE_RELEASE_REQUIRE_SIGNING=true, but Android release signing is not ready",
+            )
         }
         val allowUnconfiguredSourceRemote =
             providers.gradleProperty("allowUnconfiguredSourceRemote").orNull == "true"

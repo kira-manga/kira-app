@@ -103,6 +103,7 @@
     <string name="no_results_found">Tidak ada hasil ditemukan</string>
     <string name="not_updated_yet">Belum diperbarui</string>
     <string name="notification_permission">Kami membutuhkan izin ini untuk mengirim bab terbaru, menunjukkan progress unduhan, dan memastikan aplikasi berfungsi dengan baik.</string>
+    <string name="notification_permission_optional">Notifikasi bersifat opsional. Aktifkan untuk menerima pemberitahuan bab baru dan pembaruan unduhan.</string>
     <string name="notifications_group_last_week">Minggu lalu</string>
     <string name="notifications_group_older">Lebih lama</string>
     <string name="notifications_group_today">Hari ini</string>

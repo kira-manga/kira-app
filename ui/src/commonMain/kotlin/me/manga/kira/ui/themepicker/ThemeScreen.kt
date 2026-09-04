@@ -51,6 +51,7 @@ import me.manga.kira.ui.generated.resources.continue_string
 import me.manga.kira.ui.generated.resources.enable_notifications
 import me.manga.kira.ui.generated.resources.grant_permission
 import me.manga.kira.ui.generated.resources.notification_permission
+import me.manga.kira.ui.generated.resources.notification_permission_optional
 import me.manga.kira.ui.generated.resources.pure_black_mode_title
 import me.manga.kira.ui.generated.resources.theme_dark
 import me.manga.kira.ui.generated.resources.theme_light
@@ -90,8 +91,9 @@ import org.jetbrains.compose.resources.stringResource
  *    onboarding-flavour affordances without forcing them on every caller:
  *     - `onContinue: (() -> Unit)?` — when non-null, renders a "Continue" button at the
  *       bottom of the picker column. (Phase 7.x.theme.onboardingcontinue.)
- *     - `hasNotificationPermission: Boolean = true` — current notification permission state
- *       input. Default `true` means "no permission gating".
+ *     - `hasNotificationPermission: Boolean = true` — current notification permission state.
+ *     - `isNotificationPermissionRequired: Boolean = false` — separates platform policy from
+ *       permission state. Android opts into required gating; iOS remains optional.
  *     - `onRequestNotificationPermission: (() -> Unit)?` — when non-null, renders an
  *       "Enable Notifications" grant row (header + descriptive copy + Grant Permission
  *       button) inside the picker card, below the TabRow. Native parity (P2 picker fix):
@@ -100,10 +102,10 @@ import org.jetbrains.compose.resources.stringResource
  *       `ThemeSelector`, which always renders the notification section. Tapping the grant
  *       button dispatches the callback (used by the future Phase 7.x.theme.swap to re-launch
  *       the platform permission requester). When this callback is non-null, the Continue
- *       button is also gated on `enabled = hasNotificationPermission` so the user can't
- *       advance through the onboarding wizard without granting notifications.
+ *       button is gated on `hasNotificationPermission` only when the caller explicitly marks
+ *       notification permission as required.
  *       (Phase 7.x.theme.onboardingpermission.)
- *    All three parameters default to nothing/`true`/null, so existing callers
+ *    These parameters default to non-onboarding, non-gating behavior, so existing callers
  *    (`Screen.ThemeRework`) get the standalone-picker behaviour bit-for-bit unchanged —
  *    no Continue button, no grant row, no gating. Future Phase 7.x.theme.swap (Task #291)
  *    is the first caller to opt into all three. Mirrors the established §122 sources.
@@ -290,6 +292,7 @@ fun ThemeScreen(
     modifier: Modifier = Modifier,
     onContinue: (() -> Unit)? = null,
     hasNotificationPermission: Boolean = true,
+    isNotificationPermissionRequired: Boolean = false,
     onRequestNotificationPermission: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
 ) {
@@ -300,6 +303,7 @@ fun ThemeScreen(
         modifier = modifier,
         onContinue = onContinue,
         hasNotificationPermission = hasNotificationPermission,
+        isNotificationPermissionRequired = isNotificationPermissionRequired,
         onRequestNotificationPermission = onRequestNotificationPermission,
         onBack = onBack,
     )
@@ -313,6 +317,7 @@ internal fun ThemeScreenContent(
     modifier: Modifier = Modifier,
     onContinue: (() -> Unit)? = null,
     hasNotificationPermission: Boolean = true,
+    isNotificationPermissionRequired: Boolean = false,
     onRequestNotificationPermission: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
 ) {
@@ -357,6 +362,7 @@ internal fun ThemeScreenContent(
                 paddingVertical = spacing.md,
                 onContinue = onContinue,
                 hasNotificationPermission = hasNotificationPermission,
+                isNotificationPermissionRequired = isNotificationPermissionRequired,
                 onRequestNotificationPermission = onRequestNotificationPermission,
             )
         }
@@ -387,6 +393,7 @@ private fun ThemePickerColumn(
     paddingVertical: androidx.compose.ui.unit.Dp,
     onContinue: (() -> Unit)?,
     hasNotificationPermission: Boolean,
+    isNotificationPermissionRequired: Boolean,
     onRequestNotificationPermission: (() -> Unit)?,
 ) {
     // Native parity — the onboarding screen uses a 24dp outer padding with
@@ -488,7 +495,10 @@ private fun ThemePickerColumn(
             // the TabRow by a 24dp spacer.
             if (onRequestNotificationPermission != null) {
                 Spacer(modifier = Modifier.height(24.dp))
-                NotificationPermissionRow(onRequest = onRequestNotificationPermission)
+                NotificationPermissionRow(
+                    isRequired = isNotificationPermissionRequired,
+                    onRequest = onRequestNotificationPermission,
+                )
             }
         }
         // PureBlack/OLED toggle — native exposes this ONLY on the Settings-reached screen, NOT in
@@ -506,7 +516,9 @@ private fun ThemePickerColumn(
             // onPrimary. Enabled-gated on the notification permission state in the onboarding flow.
             Button(
                 onClick = onContinue,
-                enabled = onRequestNotificationPermission == null || hasNotificationPermission,
+                enabled = !isNotificationPermissionRequired ||
+                    onRequestNotificationPermission == null ||
+                    hasNotificationPermission,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
@@ -564,11 +576,9 @@ private fun PureBlackRow(
  * the picker card (see [ThemePickerColumn]). The row carries:
  *  - **Title** "Enable Notifications" — `bodyMedium` @ 14sp on `onBackground` with a 4dp
  *    bottom padding, matching native's header typography.
- *  - **Body** descriptive copy explaining why notifications are needed — `bodySmall` @ 12sp
- *    on `onBackground`, capped at `maxLines = 3` with an 8dp bottom padding, matching native.
- *    The copy mirrors native `ThemeSelector`'s `Res.string.notification_permission` resource
- *    literal verbatim. Phase 10 i18n lift will route both consumers through the existing
- *    `notification_permission` resource key.
+ *  - **Body** descriptive copy explaining notification benefits — `bodySmall` @ 12sp on
+ *    `onBackground`, capped at `maxLines = 3`. Required platforms retain the existing copy;
+ *    optional platforms explicitly state that notifications are optional.
  *  - **Grant button** right-aligned in a trailing `Row` — Material 3 `Button` with
  *    `contentPadding(horizontal = 16dp, vertical = 8dp)` matching native; primary container
  *    coloring via the design-system defaults (the rework lets the design system carry the
@@ -581,6 +591,7 @@ private fun PureBlackRow(
  */
 @Composable
 private fun NotificationPermissionRow(
+    isRequired: Boolean,
     onRequest: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -593,7 +604,13 @@ private fun NotificationPermissionRow(
         )
         // Body — native: bodySmall @ 12sp, onBackground, maxLines 3, bottom padding 8dp.
         Text(
-            text = stringResource(Res.string.notification_permission),
+            text = stringResource(
+                if (isRequired) {
+                    Res.string.notification_permission
+                } else {
+                    Res.string.notification_permission_optional
+                },
+            ),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 3,

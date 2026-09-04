@@ -5,12 +5,56 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 app_root=$(cd "$script_dir/../../.." && pwd)
 validator="$app_root/scripts/release/validate-android-release-config.sh"
 backend_key_tool="$app_root/../kira-backend/scripts/signing/generate-key.sh"
+android_gradle="$app_root/app/build.gradle.kts"
+compose_gradle="$app_root/composeApp/build.gradle.kts"
+settings_gradle="$app_root/settings.gradle.kts"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/kira-release-validator-test.XXXXXX")
 trap 'chmod 600 "$tmp_dir"/unreadable.public.b64 2>/dev/null || true; rm -rf "$tmp_dir"' EXIT HUP INT TERM
 umask 077
 
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1" >&2; exit 1; }
+
+for shared_android_input in \
+  MOBILE_RELEASE_ANDROID_KEYSTORE_PATH \
+  MOBILE_RELEASE_ANDROID_KEYSTORE_PASSWORD \
+  MOBILE_RELEASE_ANDROID_KEY_ALIAS \
+  MOBILE_RELEASE_ANDROID_KEY_PASSWORD \
+  MOBILE_RELEASE_REQUIRE_SIGNING; do
+  grep -Fq "$shared_android_input" "$android_gradle" ||
+    fail "Android release configuration does not accept $shared_android_input"
+done
+pass "Mobile Release Kit Android signing inputs remain wired"
+
+grep -Fq 'env("KIRA_VERSION_NAME", "MOBILE_RELEASE_VERSION_NAME")' "$android_gradle" ||
+  fail "shared marketing version does not preserve the explicit Kira override"
+grep -Fq 'env("KIRA_BUILD_NUMBER", "MOBILE_RELEASE_BUILD_NUMBER")' "$android_gradle" ||
+  fail "shared build number does not preserve the explicit Kira override"
+shared_build_line=$(grep -nF 'env("KIRA_BUILD_NUMBER", "MOBILE_RELEASE_BUILD_NUMBER")' "$android_gradle" | head -n 1 | cut -d: -f1)
+ambient_build_line=$(grep -nF 'env("GITHUB_RUN_NUMBER")' "$android_gradle" | head -n 1 | cut -d: -f1)
+if ((shared_build_line >= ambient_build_line)); then
+  fail "committed Mobile Release Kit build number must precede ambient GITHUB_RUN_NUMBER"
+fi
+pass "committed shared version inputs take precedence over ambient CI numbering"
+
+legacy_app_version_line=$(grep -nF 'providers.environmentVariable("KIRA_APP_VERSION")' "$compose_gradle" | head -n 1 | cut -d: -f1)
+shared_app_version_line=$(grep -nF 'providers.environmentVariable("MOBILE_RELEASE_VERSION_NAME")' "$compose_gradle" | head -n 1 | cut -d: -f1)
+property_app_version_line=$(grep -nF 'providers.gradleProperty("kira.appVersion")' "$compose_gradle" | head -n 1 | cut -d: -f1)
+literal_app_version_line=$(grep -nF '.orElse("1.0.5")' "$compose_gradle" | head -n 1 | cut -d: -f1)
+if ((legacy_app_version_line >= shared_app_version_line ||
+      shared_app_version_line >= property_app_version_line ||
+      property_app_version_line >= literal_app_version_line)); then
+  fail "generated source-config app-version precedence changed"
+fi
+pass "generated source-config app version consumes the shared committed version"
+
+legacy_token_line=$(grep -nF 'providers.environmentVariable("KIRA_PACKAGES_READ_TOKEN")' "$settings_gradle" | head -n 1 | cut -d: -f1)
+shared_token_line=$(grep -nF 'providers.environmentVariable("MOBILE_RELEASE_PROJECT_READ_TOKEN")' "$settings_gradle" | head -n 1 | cut -d: -f1)
+github_token_line=$(grep -nF 'providers.environmentVariable("GITHUB_TOKEN")' "$settings_gradle" | head -n 1 | cut -d: -f1)
+if ((legacy_token_line >= shared_token_line || shared_token_line >= github_token_line)); then
+  fail "project-read token fallback precedence changed"
+fi
+pass "project-read token fallback preserves legacy and GitHub-token precedence"
 
 key_id=validator-regression
 mkdir -p "$tmp_dir/signing"

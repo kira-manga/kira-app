@@ -182,7 +182,10 @@ Minimum device matrix:
   parameters. iOS automatic Firebase Analytics behavior matches privacy disclosures.
 - [ ] Deliberate Android and Kotlin/iOS test crashes appear symbolicated in Crashlytics with the exact
   build; Debug collection remains off where configured.
-- [ ] Push permission is requested contextually; token creation/refresh/deletion works.
+- [ ] On a clean iOS install, opening the Theme onboarding step does not show the system prompt;
+  Continue works while permission is undecided or denied, and Grant Permission triggers the prompt.
+- [ ] Android 13+ retains its automatic onboarding prompt and permission-gated Continue behavior;
+  token creation/refresh/deletion works on both mobile platforms.
 - [ ] Android FCM and iOS APNs/FCM cold/warm/background notification taps route once. iOS foreground
   download notification presentation is correct.
 - [ ] FIAM has either an approved campaign test or is explicitly accepted as inert with no campaign.

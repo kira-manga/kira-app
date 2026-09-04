@@ -103,6 +103,7 @@
     <string name="no_results_found">Sonuç bulunamadı</string>
     <string name="not_updated_yet">Henüz güncellenmedi</string>
     <string name="notification_permission">Size en son bölümleri göndermek, indirme ilerlemesini göstermek ve uygulamanın düzgün çalışmasını sağlamak için bu izne ihtiyacımız var.</string>
+    <string name="notification_permission_optional">Bildirimler isteğe bağlıdır. Yeni bölüm uyarıları ve indirme güncellemeleri almak için etkinleştirin.</string>
     <string name="notifications_group_last_week">Geçen Hafta</string>
     <string name="notifications_group_older">Daha Eski</string>
     <string name="notifications_group_today">Bugün</string>

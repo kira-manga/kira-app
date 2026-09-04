@@ -145,6 +145,9 @@ actual fun rememberNotificationPermissionRequester(): NotificationPermissionRequ
 
     return remember(app, launcher) {
         object : NotificationPermissionRequester {
+            override val onboardingPolicy: NotificationPermissionOnboardingPolicy =
+                NotificationPermissionOnboardingPolicy.REQUIRED_AUTOMATIC
+
             override val hasPermission: StateFlow<Boolean> = hasPermission.asStateFlow()
 
             override fun request(onResult: (granted: Boolean) -> Unit) {
@@ -326,4 +329,3 @@ private fun hasPostNotificationPermission(context: Context): Boolean =
  *     CONTINUE anonymous-object-return where the expect-decl returns an
  *     interface-typed handle.
  */
-

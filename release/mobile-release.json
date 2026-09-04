@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "version": {
+    "source": "release/version.properties",
+    "nameKey": "VERSION_NAME",
+    "buildKey": "VERSION_CODE"
+  },
+  "source": {
+    "candidateBranch": "internal-testing",
+    "productionBranch": "release",
+    "projectReadTokenRequired": true
+  },
+  "android": {
+    "enabled": true,
+    "applicationId": "me.manga.kira",
+    "identityStatus": "blocked",
+    "module": ":app",
+    "variant": "release",
+    "externalTrack": {
+      "name": "beta",
+      "kind": "open"
+    }
+  },
+  "ios": {
+    "enabled": true,
+    "bundleId": "me.manga.kira",
+    "identityStatus": "blocked",
+    "appStoreAppId": "6792232678",
+    "teamId": "7CGZ2343AA",
+    "project": "iosApp/iosApp.xcodeproj",
+    "scheme": "iosApp",
+    "archiveConfiguration": "Release",
+    "prepareCommand": [
+      "xcodegen",
+      "generate",
+      "--spec",
+      "iosApp/project.yml",
+      "--project",
+      "iosApp"
+    ],
+    "externalTestFlightGroup": "External Testing",
+    "symbols": {
+      "policy": "retain"
+    },
+    "review": {
+      "usesNonExemptEncryption": false,
+      "demoAccountRequired": false
+    }
+  },
+  "metadata": {
+    "root": "release/store",
+    "androidLocales": [
+      "en-US"
+    ],
+    "iosLocales": [
+      "en-US"
+    ]
+  },
+  "services": {
+    "androidFirebase": "required",
+    "iosFirebase": "required"
+  },
+  "projectChecks": {
+    "preflight": [
+      [
+        "ruby",
+        "release/ios/validate_project_configuration.rb"
+      ],
+      [
+        "ruby",
+        "scripts/release/tests/google-play-open-testing-test.rb"
+      ],
+      [
+        "ruby",
+        "scripts/release/tests/ios-upload-only-workflow-test.rb"
+      ],
+      [
+        "bash",
+        "scripts/release/tests/validate-android-release-config-test.sh"
+      ]
+    ],
+    "androidArtifact": [],
+    "iosArtifact": []
+  }
+}

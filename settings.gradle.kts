@@ -31,6 +31,7 @@ dependencyResolutionManagement {
                         ?: providers.environmentVariable("GITHUB_ACTOR").orNull
                 password =
                     providers.environmentVariable("KIRA_PACKAGES_READ_TOKEN").orNull
+                        ?: providers.environmentVariable("MOBILE_RELEASE_PROJECT_READ_TOKEN").orNull
                         ?: providers.environmentVariable("GITHUB_TOKEN").orNull
             }
             content {

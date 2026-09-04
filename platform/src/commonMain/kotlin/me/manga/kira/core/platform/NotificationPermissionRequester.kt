@@ -6,9 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
  * Cross-platform handle to the OS-level notification permission state.
  *
  * On Android (API 33+), notification posting requires the `POST_NOTIFICATIONS` runtime permission.
- * On iOS, the equivalent is `UNUserNotificationCenter.requestAuthorizationWithOptions(...)`, but
- * the iOS app shell requests that at launch — so our iOS actual treats permission as implicitly
- * granted from this screen's perspective.
+ * On iOS, the equivalent is `UNUserNotificationCenter.requestAuthorizationWithOptions(...)`.
+ * Each implementation also declares an explicit [onboardingPolicy], keeping platform-specific
+ * onboarding rules out of the shared route and UI.
  *
  * On Desktop (JVM AWT SystemTray), there is no permission prompt — system tray notifications are
  * always allowed for the running process (subject to OS settings, but not gated by a user prompt).
@@ -20,12 +20,16 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface NotificationPermissionRequester {
 
+    /** Platform policy for presenting notification permission during onboarding. */
+    val onboardingPolicy: NotificationPermissionOnboardingPolicy
+
     /** Hot flow that emits the current permission state. Starts with the cached/initial value. */
     val hasPermission: StateFlow<Boolean>
 
     /**
-     * Triggers the platform's permission prompt if available. No-op when the platform has no
-     * runtime prompt (iOS/Desktop) or permission is already granted.
+     * Triggers the platform's permission flow if available. Android launches its runtime dialog;
+     * iOS requests undecided authorization or opens app settings after a prior denial; Desktop is
+     * an immediate successful no-op.
      *
      * @param onResult invoked with the final outcome once the prompt resolves: `true` when the
      *   permission is granted (or no runtime prompt exists), `false` on an actual user denial.
@@ -41,6 +45,35 @@ interface NotificationPermissionRequester {
      * still attempt to surface the relevant settings UI (or no-op + log if there is none).
      */
     fun openAppSettings()
+}
+
+/**
+ * Supported notification-permission onboarding behaviors.
+ *
+ * Android retains its required, automatic permission step. iOS presents an optional explanation
+ * and waits for an explicit user action before showing Apple's system prompt. Desktop has no
+ * runtime notification permission, so the control is omitted there.
+ */
+enum class NotificationPermissionOnboardingPolicy(
+    val showPermissionControl: Boolean,
+    val requestAutomatically: Boolean,
+    val requireGrantToContinue: Boolean,
+) {
+    REQUIRED_AUTOMATIC(
+        showPermissionControl = true,
+        requestAutomatically = true,
+        requireGrantToContinue = true,
+    ),
+    OPTIONAL_USER_INITIATED(
+        showPermissionControl = true,
+        requestAutomatically = false,
+        requireGrantToContinue = false,
+    ),
+    NOT_APPLICABLE(
+        showPermissionControl = false,
+        requestAutomatically = false,
+        requireGrantToContinue = false,
+    ),
 }
 
 /**
@@ -114,4 +147,3 @@ interface NotificationPermissionRequester {
  * Phase 5-era NotificationPermissionRequester interface prose preserved
  * verbatim per the audit-trail-preservation convention.
  */
-

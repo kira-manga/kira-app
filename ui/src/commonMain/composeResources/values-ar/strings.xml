@@ -25,6 +25,7 @@
     <string name="continue_string">متابعة</string>
     <string name="enable_notifications">تفعيل الإشعارات</string>
     <string name="notification_permission">نحتاج إلى هذا الإذن لإرسال أحدث الفصول إليك، وعرض تقدم التنزيل، وضمان عمل التطبيق بشكل صحيح.</string>
+    <string name="notification_permission_optional">الإشعارات اختيارية. فعّلها لتلقي تنبيهات الفصول الجديدة وتحديثات التنزيل.</string>
     <string name="grant_permission">منح الإذن</string>
 
     <!-- About + common (reused verbatim from the legacy values-ar catalog). -->
