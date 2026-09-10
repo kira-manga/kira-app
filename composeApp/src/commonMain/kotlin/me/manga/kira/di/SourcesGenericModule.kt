@@ -5,6 +5,7 @@ import me.manga.kira.core.logging.KermitLoggerAdapter
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.SourceCatalogDao
 import me.manga.kira.data.local.dao.SourcesDao
+import me.manga.kira.data.remote.ktor.createHttpClient
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.sources.config.IncrementalSourceCatalogManager
@@ -34,7 +35,11 @@ import me.manga.kira.sources.runtime.KtorRemoteSourceCatalog
 import me.manga.kira.sources.runtime.RegistryChapterPageProvider
 import me.manga.kira.sources.runtime.RoomSourceCatalogStore
 import me.manga.kira.sources.runtime.SourceRemoteConfiguration
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import org.koin.dsl.onClose
+
+internal val sourceCatalogHttpClientQualifier = named("source-catalog-http")
 
 /**
  * Assembles the generic-sources subsystem at the composition root and binds the
@@ -53,7 +58,7 @@ import org.koin.dsl.module
  *  - The real [DataStoreHeaderStore] lets the generic clients reuse captured Cloudflare headers.
  *
  * Dependencies pulled from the merged graph are the shared Ktor [HttpClient] and
- * [DataStoreHelper].
+ * [DataStoreHelper]. This module separately owns the uncached catalog client until Koin closes.
  */
 val sourcesGenericModule =
     module {
@@ -78,7 +83,12 @@ val sourcesGenericModule =
         single<SourceCatalogSignatureVerifier> {
             Ed25519ConfigSignatureVerifier(get<SourceRemoteConfiguration>().pinnedPublicKeys)
         }
-        single<RemoteSourceCatalog> { KtorRemoteSourceCatalog(get<HttpClient>(), get()) }
+        single<HttpClient>(sourceCatalogHttpClientQualifier) {
+            createHttpClient(cacheResponses = false)
+        } onClose { it?.close() }
+        single<RemoteSourceCatalog> {
+            KtorRemoteSourceCatalog(get<HttpClient>(sourceCatalogHttpClientQualifier), get())
+        }
         // Live base URL from the active catalog projection, while preserving a user's explicitly
         // configured mirror according to the descriptor's previous-host policy.
         single<SourceBaseUrlProvider> { DbSourceBaseUrlProvider(get<SourcesDao>()) }

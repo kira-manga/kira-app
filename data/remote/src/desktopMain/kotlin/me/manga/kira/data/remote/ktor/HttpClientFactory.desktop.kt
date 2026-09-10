@@ -25,38 +25,42 @@ private object HttpLoggingFlag
 
 actual val isHttpLoggingEnabled: Boolean = HttpLoggingFlag::class.java.desiredAssertionStatus()
 
-actual fun createHttpClient(): HttpClient = HttpClient(CIO) {
-    install(ContentNegotiation) { json(DefaultJson) }
-    // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
-    // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.
-    if (isHttpLoggingEnabled) {
-        install(Logging) { level = LogLevel.NONE }
+actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
+    HttpClient(CIO) {
+        install(ContentNegotiation) { json(DefaultJson) }
+        // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
+        // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.
+        if (isHttpLoggingEnabled) {
+            install(Logging) { level = LogLevel.NONE }
+        }
+        install(HttpTimeout) {
+            // Parity with native AppModule.provideOkHttpClient: connectTimeout(30s) + readTimeout(60s)
+            // + writeTimeout(60s), and NO whole-request/callTimeout. socketTimeoutMillis approximates
+            // native's read/write timeout (Ktor has no separate write timeout). requestTimeoutMillis is
+            // intentionally omitted: native imposes no whole-request ceiling, so a slow-but-progressing
+            // large response must not be aborted as long as each read stays under the socket timeout.
+            connectTimeoutMillis = 30_000
+            socketTimeoutMillis = 60_000
+        }
+        // Enables cross-request response caching so server-sent `Cache-Control` directives are honored.
+        // Backed by a disk FileStorage rooted in the app's OWN cache dir (~/.kira-manga/cache) — the
+        // default Unlimited() storage is an unbounded in-memory map that retains full response bodies
+        // (incl. multi-MB chapter-image downloads) for the process lifetime, a heap leak on the
+        // download/scrape path. Note: the 1-day /dados window is NOT honored here — that Cache-Control
+        // is stamped by an OkHttp network interceptor (forceCacheForDados) that exists only on Android,
+        // so /dados responses stay uncacheable on Desktop.
+        if (cacheResponses) {
+            val httpCacheDir =
+                File(
+                    File(System.getProperty("user.home") ?: System.getProperty("java.io.tmpdir") ?: ".", ".kira-manga"),
+                    "cache/ktor_http_cache",
+                ).apply { mkdirs() }
+            install(HttpCache) {
+                publicStorage(FileStorage(httpCacheDir))
+                privateStorage(FileStorage(httpCacheDir))
+            }
+        }
     }
-    install(HttpTimeout) {
-        // Parity with native AppModule.provideOkHttpClient: connectTimeout(30s) + readTimeout(60s)
-        // + writeTimeout(60s), and NO whole-request/callTimeout. socketTimeoutMillis approximates
-        // native's read/write timeout (Ktor has no separate write timeout). requestTimeoutMillis is
-        // intentionally omitted: native imposes no whole-request ceiling, so a slow-but-progressing
-        // large response must not be aborted as long as each read stays under the socket timeout.
-        connectTimeoutMillis = 30_000
-        socketTimeoutMillis = 60_000
-    }
-    // Enables cross-request response caching so server-sent `Cache-Control` directives are honored.
-    // Backed by a disk FileStorage rooted in the app's OWN cache dir (~/.kira-manga/cache) — the
-    // default Unlimited() storage is an unbounded in-memory map that retains full response bodies
-    // (incl. multi-MB chapter-image downloads) for the process lifetime, a heap leak on the
-    // download/scrape path. Note: the 1-day /dados window is NOT honored here — that Cache-Control
-    // is stamped by an OkHttp network interceptor (forceCacheForDados) that exists only on Android,
-    // so /dados responses stay uncacheable on Desktop.
-    val httpCacheDir = File(
-        File(System.getProperty("user.home") ?: System.getProperty("java.io.tmpdir") ?: ".", ".kira-manga"),
-        "cache/ktor_http_cache",
-    ).apply { mkdirs() }
-    install(HttpCache) {
-        publicStorage(FileStorage(httpCacheDir))
-        privateStorage(FileStorage(httpCacheDir))
-    }
-}
 
 /*
  * Audit-trail postscript (Phase 9.x.cluster240.staleKdocSweep.cascade, Task #696, 2026-05-29)
@@ -181,4 +185,3 @@ actual fun createHttpClient(): HttpClient = HttpClient(CIO) {
  *     mid-session pivot ("ignore the sources_repositry leave it like
  *     it was").
  */
-
