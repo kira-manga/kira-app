@@ -24,8 +24,11 @@ val DefaultJson: Json = Json {
  *   androidMain — OkHttp engine (preserves source's OkHttp connection pool)
  *   iosMain     — Darwin engine
  *   desktopMain — CIO engine
+ *
+ * @param cacheResponses Install the existing response cache by default. Scoped catalog streaming
+ * must opt out because HttpCache can buffer entire responses before the bounded reader runs.
  */
-expect fun createHttpClient(): HttpClient
+expect fun createHttpClient(cacheResponses: Boolean = true): HttpClient
 
 /**
  * Whether HTTP request/response logging should be installed on the Ktor client.
