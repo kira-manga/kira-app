@@ -7,7 +7,7 @@
   source is available (otherwise they fall back to the English `values/` value).
 -->
 <resources>
-    <string name="welcome_title">مرحبًا بك في يامي مانجا</string>
+    <string name="welcome_title">مرحبًا بك في كيرا مانجا</string>
     <string name="welcome_suptitle">استكشف واقرأ واجمع المانغا بسهولة.</string>
     <string name="get_started">ابدأ</string>
 

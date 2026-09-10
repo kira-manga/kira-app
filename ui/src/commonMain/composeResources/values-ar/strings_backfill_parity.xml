@@ -115,8 +115,8 @@
     <string name="theme_custom_title">سمة مخصصة</string>
     <string name="theme_dark_desc">الوضع الداكن</string>
     <string name="theme_light_desc">الوضع الفاتح</string>
-    <string name="use_kira_compressor">استخدام ضاغط يامي</string>
-    <string name="use_kira_compressor_desc">استخدم ضاغط يامي لتقليل حجم الفصول بأكثر من ٥٠٪ وتوفير المساحة التخزينية</string>
+    <string name="use_kira_compressor">استخدام ضاغط كيرا</string>
+    <string name="use_kira_compressor_desc">استخدم ضاغط كيرا لتقليل حجم الفصول بأكثر من ٥٠٪ وتوفير المساحة التخزينية</string>
     <string name="video_preview">معاينة الفيديو</string>
     <string name="whats_new_feature_image">صورة الميزة</string>
     <string name="whats_new_thumbnail">صورة مصغرة %1$d</string>
