@@ -186,7 +186,7 @@ class DefaultSourceConfigValidatorFilterTest {
     fun option_rules_duplicate_values_blank_values_and_type_mismatches_are_rejected() {
         assertRejected(
             source(listOf(select(options = listOf(FilterOptionSpec("a"), FilterOptionSpec("a"))))),
-            "duplicate option value 'a'",
+            "duplicate option value (selection would be ambiguous)",
         )
         assertRejected(source(listOf(select(options = listOf(FilterOptionSpec(" "))))), "blank value")
         assertRejected(source(listOf(select(options = emptyList()))), "requires at least one option")
@@ -210,8 +210,8 @@ class DefaultSourceConfigValidatorFilterTest {
 
     @Test
     fun invalid_defaults_are_rejected() {
-        assertRejected(source(listOf(select(default = "nope"))), "default: 'nope' is not a declared option value")
-        assertRejected(source(listOf(multiselect(defaults = listOf("nope")))), "defaults: 'nope' is not a declared option value")
+        assertRejected(source(listOf(select(default = "nope"))), "default: value is not a declared option value")
+        assertRejected(source(listOf(multiselect(defaults = listOf("nope")))), "defaults: value is not a declared option value")
         assertRejected(source(listOf(multiselect().copy(default = "action"))), "multiselect uses 'defaults'")
         assertRejected(source(listOf(select().copy(defaults = listOf("latest")))), "only multiselect uses 'defaults'")
         assertRejected(
@@ -240,7 +240,7 @@ class DefaultSourceConfigValidatorFilterTest {
                     ),
                 ),
             ),
-            "default: 'high' is not numeric",
+            "default: value is not numeric",
         )
         for (nonFinite in listOf("NaN", "Infinity", "-Infinity")) {
             assertRejected(
@@ -458,7 +458,7 @@ class DefaultSourceConfigValidatorFilterTest {
                     ),
                 ),
             ),
-            "anyOf value 'nonsense' is not a possible value",
+            "anyOf value is not a possible value",
         )
     }
 
