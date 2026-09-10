@@ -185,7 +185,7 @@ private fun StartReadingBody(
 @Composable
 private fun ReadingGuideLink(onOpenUrl: (String) -> Unit) {
     OutlinedButton(
-        onClick = { onOpenUrl(WEBSITE_URL) },
+        onClick = { onOpenUrl(KIRA_GUIDE_URL) },
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(stringResource(Res.string.start_reading_guide))
