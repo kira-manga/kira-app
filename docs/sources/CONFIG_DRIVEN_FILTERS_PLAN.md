@@ -124,7 +124,8 @@ data class FilterOptionSpec(
 @Serializable
 data class FilterRequestSpec(
     val target: String,                 // "query" | "path" | "form" | "header" | "body-json"
-    val param: String,                  // query/form/header: parameter name (may be "genre[]").
+    val param: String,                  // query/form: parameter name (may be "genre[]").
+                                        // header: exact non-empty ASCII HTTP token; no whitespace, brackets or repair.
                                         // path/body-json: template placeholder name ([a-zA-Z0-9_]+, must appear in url/jsonBody)
     val encode: String = "single",      // "single" | "csv" | "repeat" | "json-array"
     val delimiter: String = ",",        // csv only
@@ -292,6 +293,12 @@ Checks (numbering = the requirement list):
     non-empty guaranteed default; `form`-target `param` colliding with a static
     `formBody` key; `query`-target `param` already hardcoded in the url template
     (`?param=`/`&param=` heuristic); options declared on toggle/text/number
+19. header-target `param` must be an exact non-empty ASCII HTTP token (no trimming/repair).
+    Case-insensitively reject `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `Authorization`,
+    `X-Api-Key`, `Api-Key`, `X-Auth-Token`, and every name containing `token`, `secret` or
+    `password`. Sensitive header filters are unsupported regardless of type, required/visibility
+    state, defaults/options, toggle mappings or CSV delimiter. Even `Bearer null` is allowed only
+    in backend-approved static headers, never as an exception for a sensitive header filter.
 
 All errors accumulate (no fail-fast) and the document is rejected all-or-nothing —
 malformed filters can never be silently ignored. `ConfigBackedSourceCompletenessTest`

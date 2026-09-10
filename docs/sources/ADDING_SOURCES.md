@@ -393,10 +393,18 @@ Each filter:
 | Field | Meaning |
 |---|---|
 | `target` | `query` (URL parameter, appended after template expansion, percent-encoded) \| `form` (post-form entry, appended after the static `formBody`) \| `header` \| `path` (fills a `{param}` hole in the endpoint url — needs a guaranteed non-empty default) \| `body-json` (fills a `{param}` hole in `jsonBody`) |
-| `param` | query/form/header: the parameter name (`"genre[]"` is fine — it percent-encodes on the wire). path/body-json: the template placeholder name (`[a-zA-Z0-9_]+`, must not shadow a reserved engine var). |
+| `param` | query/form: the parameter name (`"genre[]"` is fine — query names percent-encode on the wire). header: an exact non-empty ASCII HTTP token, with no whitespace, brackets or name repair. path/body-json: the template placeholder name (`[a-zA-Z0-9_]+`, must not shadow a reserved engine var). |
 | `encode` | `single` (first value) \| `csv` (join with `delimiter`, default `,`) \| `repeat` (one `param=value` per value; query/form only) \| `json-array` (JSON array literal; body-json only). `csv`/`repeat`/`json-array` require `multiselect`. |
 | `omitIfEmpty` | default `true`: an empty effective value drops the parameter entirely (query/form/header). `false` sends an empty-valued parameter. Placeholder targets always expand (`[]`/`""`). |
 | `trueValue` / `falseValue` | toggle wire values (defaults `"true"` / `""` — empty + omit = the parameter vanishes when off). |
+
+Header-target filters are **not a credential channel**. Names are checked case-insensitively:
+`Cookie`, `Set-Cookie` and `Proxy-Authorization` are forbidden; `Authorization`, `X-Api-Key`,
+`Api-Key`, `X-Auth-Token` and any name containing `token`, `secret` or `password` are unsupported.
+This applies to every control type, including hidden/optional filters, empty defaults, options,
+toggle wire values and CSV delimiters. Even `Bearer null` cannot exempt a sensitive header filter:
+that public placeholder remains supported only in backend-approved static headers. Ordinary
+non-sensitive headers such as `X-Lang` remain valid. Signing authenticates bytes, not their safety.
 
 Deterministic composition rules (all pinned in `FilterRequestComposerTest`): defaults apply when
 nothing is selected; unknown selection ids and unknown option values are DROPPED (stale UI state
