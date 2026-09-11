@@ -57,6 +57,6 @@ data class Manga(
     val coverUrl: String,
     /** Source-supplied rating; null when the source doesn't expose one. */
     val rating: Int?,
-    /** Genre tags as the source labels them; lower-cased + trimmed. May be empty. */
+    /** Source, saved or imported genre labels; no required lowercasing or trimming. May be empty. */
     val genres: List<String>,
 )
