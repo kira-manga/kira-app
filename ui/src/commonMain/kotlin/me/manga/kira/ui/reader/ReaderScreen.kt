@@ -53,7 +53,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -87,7 +86,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -104,7 +102,6 @@ import coil3.request.ImageRequest
 import coil3.request.maxBitmapSize
 import coil3.size.Dimension
 import coil3.size.Size
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -122,8 +119,6 @@ import me.manga.kira.ui.generated.resources.reading_mode_ltr
 import me.manga.kira.ui.generated.resources.reading_mode_vertical
 import me.manga.kira.ui.generated.resources.reading_mode_webtoon
 import me.manga.kira.ui.generated.resources.reading_mode_continuous
-import me.manga.kira.ui.generated.resources.reader_previous_chapter
-import me.manga.kira.ui.generated.resources.reader_next_chapter
 import me.manga.kira.ui.generated.resources.reader_toggle_bookmark
 import me.manga.kira.ui.generated.resources.np_reader_bookmark_not_in_library
 import me.manga.kira.ui.generated.resources.failed_to_load_image
@@ -732,16 +727,13 @@ internal fun ReaderScreenContent(
             // The rework keeps its HUD pill (a pre-existing rework addition, not in native) above
             // the seekbar, then the seekbar (`ReaderPageScrubber`), then the action bar
             // (`ReaderBottomActionBar`). HUD pill renders only when there are pages to count;
-            // scrubber renders only when there are ≥2 pages to scrub between (a 1-page chapter
-            // has nothing to drag); the action bar renders whenever there are pages (settings /
+            // chapter controls render for a nonempty active chapter, but only their slider needs
+            // ≥2 pages to scrub between; the action bar renders whenever there are pages (settings /
             // bookmark are always relevant, share once a page is on screen) — matching native,
             // which shows the action bar with the controls.
             val hudText = pageIndicator(state)
-            // #5: gate on the ACTIVE chapter's page count (the slider is chapter-scoped) — a 1-page
-            // active chapter has nothing to scrub even if the appended feed has more pages.
-            val showScrubber = state.hasPages && state.activeChapterPageCount > 1
             val showActionBar = state.hasPages
-            if (hudText != null || showScrubber || showActionBar) {
+            if (hudText != null || showActionBar) {
                 AnimatedVisibility(
                     visible = state.isUiVisible,
                     // Matching chrome timing for the bottom stack (reader-controls finding #10):
@@ -760,24 +752,7 @@ internal fun ReaderScreenContent(
                         if (hudText != null) {
                             ReaderPageIndicatorHud(text = hudText)
                         }
-                        if (showScrubber) {
-                            ReaderPageScrubber(
-                                positionInChapter = (state.activeChapterPageNumber - 1).coerceAtLeast(0),
-                                chapterPageCount = state.activeChapterPageCount,
-                                canGoPrevChapter = state.canGoPrev,
-                                canGoNextChapter = state.canGoNext,
-                                // Map the slider's within-chapter position back to the absolute feed
-                                // page index before dispatching, so the VM's page-index space is
-                                // unchanged (boundary cards are a pure UI artifact).
-                                onSeekToChapterPage = { rel ->
-                                    state.activeChapterPageIndices.getOrNull(rel)?.let {
-                                        onIntent(ReaderIntent.OnPageChanged(it))
-                                    }
-                                },
-                                onPrevChapter = { onIntent(ReaderIntent.OnPrevChapter) },
-                                onNextChapter = { onIntent(ReaderIntent.OnNextChapter) },
-                            )
-                        }
+                        ReaderPageScrubber(state = state, onIntent = onIntent)
                         if (showActionBar) {
                             // Bottom action bar (reader-core finding #5 / reader-controls finding
                             // #5): native `ControlOverlay.BottomActionBar` — three weight(1f)
@@ -1224,126 +1199,6 @@ private fun ReaderPageIndicatorHud(text: String) {
                 vertical = spacing.xs,
             ),
         )
-    }
-}
-
-/**
- * Bottom-center page seekbar — faithful port of native `SeekBarContainer.kt` (reader-core
- * finding #3 / reader-controls finding #4). Three rounded translucent pills in a Row:
- *
- *  - **Next-chapter pill** (left): an IconButton that steps to the NEXT chapter — native puts the
- *    forward action on the FIRST pill (left = forward, matching the right-to-left manga reading
- *    flow), `IconButton(enabled = hasNext, onClick = onNext)` behind the `ic_previous` left-chevron
- *    glyph (`SeekBarContainer.kt:50-62`). Native's flanking seekbar buttons step CHAPTERS
- *    (`onPrevious`/`onNext` wired to chapter nav in `ControlOverlay.kt:83-89`), NOT pages — so the
- *    rework's earlier page-step buttons are replaced with chapter-step ones to match the
- *    source-of-truth semantics (reader-controls finding #3). Disabled at the last chapter.
- *  - **Slider pill** (center, weight 1f): the page Slider flanked by the current-page number
- *    (`progress + 1`) on the left and the total page count on the right — both `bodySmall`,
- *    each `weight 1f`, the Slider `weight 9f` — matching native `SeekBarContainer.kt:74-104`.
- *    This restores the inline numeric readout the rework had dropped (it previously lived only
- *    in the separate HUD pill / top bar).
- *  - **Prev-chapter pill** (right): steps to the PREVIOUS chapter — native puts the back action on
- *    the LAST pill (`SeekBarContainer.kt:114-129`). Disabled at the first chapter.
- *
- * Each pill is a `Surface` with `RoundedCornerShape(50)` and `background.copy(alpha = 0.8f)`,
- * mirroring native's `Card(RoundedCornerShape(50), background @0.8f)`.
- *
- * Slider MVI re-use is unchanged: the page Slider dispatches the SAME [ReaderIntent.OnPageChanged]
- * the scroll/pager `snapshotFlow` effects emit, and each layout's `LaunchedEffect(currentPageIndex)`
- * closes the jump-to-page loop (scrubber drag → VM state → recompose → scroll). The if-guard in
- * `onValueChange` skips intent dispatch when the integer page didn't change.
- *
- * Slider config: `value` = `currentPageIndex` coerced into range; `valueRange = 0f..lastIndex`;
- * `steps = pagesCount - 2` (Material3 counts internal steps, so N-2 internal + 2 endpoints = N
- * discrete page positions) — same `valueRange 0f..total-1` / `steps total-1` posture as native.
- */
-@Composable
-private fun ReaderPageScrubber(
-    positionInChapter: Int,
-    chapterPageCount: Int,
-    canGoPrevChapter: Boolean,
-    canGoNextChapter: Boolean,
-    onSeekToChapterPage: (Int) -> Unit,
-    onPrevChapter: () -> Unit,
-    onNextChapter: () -> Unit,
-) {
-    val spacing = LocalSpacing.current
-    // #5: the slider is scoped to the ACTIVE chapter — its range is that chapter's page count and its
-    // value is the position WITHIN that chapter. In a continuous feed with appended chapters it
-    // re-binds to the chapter in view (the caller derives [positionInChapter]/[chapterPageCount] from
-    // `activeChapterPageNumber`/`activeChapterPageCount`), so it reads "3 / 20", not "23 / 60".
-    val lastIndex = (chapterPageCount - 1).coerceAtLeast(0)
-    // Pill background: theme background at 0.8 alpha (native `SeekBarContainer` Card color).
-    val pillColor = MaterialTheme.colorScheme.background.copy(alpha = 0.8f)
-    val pillShape = RoundedCornerShape(percent = 50)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.sm, vertical = spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-    ) {
-        // Next-chapter pill (left, prev-chevron glyph): native puts the NEXT-chapter action on the
-        // FIRST pill — left = forward, matching the right-to-left manga reading flow
-        // (native `SeekBarContainer.kt:50-62`: `IconButton(enabled = hasNext, onClick = onNext)`
-        // behind the `ic_previous` left-chevron glyph).
-        Surface(shape = pillShape, color = pillColor) {
-            KiraIconButton(
-                icon = KiraIcons.PrevChapter,
-                contentDescription = stringResource(Res.string.reader_next_chapter),
-                onClick = onNextChapter,
-                enabled = canGoNextChapter,
-            )
-        }
-        // Slider pill with flanking current/total page numbers.
-        Surface(
-            shape = pillShape,
-            color = pillColor,
-            modifier = Modifier.weight(1f),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = spacing.sm),
-            ) {
-                Text(
-                    text = "${positionInChapter + 1}",
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.weight(1f),
-                )
-                Slider(
-                    value = positionInChapter.toFloat().coerceIn(0f, lastIndex.toFloat()),
-                    onValueChange = { newValue ->
-                        val newRel = newValue.roundToInt().coerceIn(0, lastIndex)
-                        if (newRel != positionInChapter) {
-                            onSeekToChapterPage(newRel)
-                        }
-                    },
-                    valueRange = 0f..lastIndex.toFloat(),
-                    steps = (chapterPageCount - 2).coerceAtLeast(0),
-                    modifier = Modifier.weight(9f),
-                )
-                Text(
-                    text = "$chapterPageCount",
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        // Prev-chapter pill (right, next-chevron glyph): native puts the PREVIOUS-chapter action on
-        // the LAST pill (native `SeekBarContainer.kt:114-129`: `onClick = onPrevious`).
-        Surface(shape = pillShape, color = pillColor) {
-            KiraIconButton(
-                icon = KiraIcons.NextChapter,
-                contentDescription = stringResource(Res.string.reader_previous_chapter),
-                onClick = onPrevChapter,
-                enabled = canGoPrevChapter,
-            )
-        }
     }
 }
 

@@ -1,0 +1,34 @@
+# Leaf UIKit tests only. UIGlassEffect in the real chrome requires an iOS26-capable Xcode SDK.
+# This target has no shipping app, Kotlin framework, Firebase package or signing dependency.
+name: ReaderChromeControlsTests
+options:
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    GENERATE_INFOPLIST_FILE: YES
+    CODE_SIGNING_ALLOWED: NO
+    SUPPORTED_PLATFORMS: iphonesimulator
+targets:
+  ReaderChromeControlsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ../iosApp/NativeReader/ReaderChromeView.swift
+      - path: ReaderChromeBarsTests.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira.readercontrols.tests
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+schemes:
+  ReaderChromeControlsTests:
+    build:
+      targets:
+        ReaderChromeControlsTests: all
+    test:
+      config: Debug
+      targets:
+        - name: ReaderChromeControlsTests
+          parallelizable: false
