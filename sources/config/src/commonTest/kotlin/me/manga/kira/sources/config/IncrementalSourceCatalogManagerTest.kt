@@ -1,6 +1,15 @@
 package me.manga.kira.sources.config
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.sources.contracts.ConfigSignatureMetadata
 import me.manga.kira.sources.contracts.RemoteSourceCatalog
@@ -61,7 +70,9 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(10, manager.activeDocument().revision)
             assertEquals(UpdateState.Origin.CACHE, manager.diagnostics.value.origin)
             assertEquals(10, manager.diagnostics.value.catalogRevision)
-            val source = manager.diagnostics.value.activeSources.single()
+            val source =
+                manager.diagnostics.value.activeSources
+                    .single()
             assertEquals(1, source.sourceRevision)
             assertEquals(checksum(1), source.checksum)
         }
@@ -98,7 +109,8 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(11, manager.diagnostics.value.catalogRevision)
             assertEquals(
                 listOf(1L, 2L),
-                manager.diagnostics.value.activeSources.map { it.sourceRevision },
+                manager.diagnostics.value.activeSources
+                    .map { it.sourceRevision },
             )
             assertEquals("test-key", manager.diagnostics.value.manifestSigningKeyId)
             assertEquals("Ed25519", manager.diagnostics.value.signatureAlgorithm)
@@ -121,8 +133,22 @@ class IncrementalSourceCatalogManagerTest {
 
             assertTrue(manager.refresh() is AppResult.Success)
 
-            assertEquals("UNDER_MAINTENANCE", manager.activeDocument().sources.single().siteState)
-            assertEquals("active", manager.activeDocument().sources.single().lifecycle)
+            assertEquals(
+                "UNDER_MAINTENANCE",
+                manager
+                    .activeDocument()
+                    .sources
+                    .single()
+                    .siteState,
+            )
+            assertEquals(
+                "active",
+                manager
+                    .activeDocument()
+                    .sources
+                    .single()
+                    .lifecycle,
+            )
         }
 
     @Test
@@ -315,6 +341,39 @@ class IncrementalSourceCatalogManagerTest {
         }
 
     @Test
+    fun caller_cancellation_during_required_fetch_preserves_the_warm_catalog_and_floor() =
+        runTest {
+            val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
+            val store = FakeCatalogStore(active = stored)
+            val remote = FakeRemote(SourceCatalogManifestResult.NotModified)
+            val manager = manager(store, remote)
+            assertTrue(manager.refresh() is AppResult.Success)
+            val state = UpdateState.Active(10, UpdateState.Origin.CACHE)
+            assertEquals(state, manager.state.value)
+            val document = manager.activeDocument()
+            val diagnostics = manager.diagnostics.value
+            val floor = store.readAcceptanceFloor()
+            val fetching = CompletableDeferred<Unit>()
+            remote.manifestResult =
+                SourceCatalogManifestResult.Modified(
+                    signedManifest(11, listOf(entry("a", 2)), previousRevision = 10),
+                )
+            remote.beforeSourceFetch = {
+                fetching.complete(Unit)
+                awaitCancellation()
+            }
+            cancelRequiredFetch(manager, fetching)
+            assertEquals(document, manager.activeDocument())
+            assertEquals(diagnostics, manager.diagnostics.value)
+            assertEquals(state, manager.state.value)
+            assertEquals(stored, store.readActive())
+            assertEquals(stored.manifest, store.readAcceptedManifest())
+            assertEquals(floor, store.readAcceptanceFloor())
+            assertEquals(0, store.activationCount)
+            assertEquals(listOf("a"), remote.fetchedApis)
+        }
+
+    @Test
     fun activation_failure_keeps_complete_last_known_good_catalog() =
         runTest {
             val stored = storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1)))
@@ -369,8 +428,36 @@ class IncrementalSourceCatalogManagerTest {
             assertEquals(UpdateState.Origin.REMOTE, manager.diagnostics.value.origin)
             assertEquals(2, manager.diagnostics.value.inactiveSourceCount)
             assertEquals(1, manager.diagnostics.value.removedSourceCount)
-            assertTrue(manager.diagnostics.value.activeSources.isEmpty())
+            assertTrue(
+                manager.diagnostics.value.activeSources
+                    .isEmpty(),
+            )
         }
+
+    private suspend fun cancelRequiredFetch(
+        manager: IncrementalSourceCatalogManager,
+        fetching: CompletableDeferred<Unit>,
+    ) = coroutineScope {
+        val cancelled = CompletableDeferred<CancellationException>()
+        val request =
+            launch {
+                try {
+                    manager.refresh()
+                } catch (cause: CancellationException) {
+                    cancelled.complete(cause)
+                    throw cause
+                }
+            }
+        try {
+            withTimeout(5_000) { fetching.await() }
+            request.cancel(CancellationException("fixture refresh cancellation"))
+            request.join()
+            assertTrue(cancelled.isCompleted, "refresh must rethrow caller cancellation")
+            assertEquals("fixture refresh cancellation", cancelled.await().message)
+        } finally {
+            withContext(NonCancellable) { request.cancelAndJoin() }
+        }
+    }
 
     private fun manager(
         store: FakeCatalogStore,
@@ -384,9 +471,10 @@ class IncrementalSourceCatalogManagerTest {
 
     private class FakeCatalogStore(
         private var active: StoredSourceCatalog?,
-        floor: SourceCatalogAcceptanceFloor? = active?.let {
-            SourceCatalogAcceptanceFloor(it.manifest.metadata.revision, it.manifest.metadata.checksum)
-        },
+        floor: SourceCatalogAcceptanceFloor? =
+            active?.let {
+                SourceCatalogAcceptanceFloor(it.manifest.metadata.revision, it.manifest.metadata.checksum)
+            },
         private val failActivation: Boolean = false,
     ) : SourceCatalogStore {
         private var acceptedManifest = active?.manifest
@@ -444,12 +532,14 @@ class IncrementalSourceCatalogManagerTest {
         var sourceFetches = 0
             private set
         val fetchedApis = mutableListOf<String>()
+        var beforeSourceFetch: suspend () -> Unit = {}
 
         override suspend fun fetchManifest(etag: String?): SourceCatalogManifestResult = manifestResult
 
         override suspend fun fetchSource(entry: SourceCatalogEntry): SourceRevisionArtifact {
             sourceFetches++
             fetchedApis += entry.api
+            beforeSourceFetch()
             return requireNotNull(artifacts[entry.api])
         }
     }
@@ -479,10 +569,15 @@ class IncrementalSourceCatalogManagerTest {
         const val BUNDLED_REVISION = 5L
 
         fun bundledJson(): String =
-            """{"schemaVersion":1,"revision":$BUNDLED_REVISION,"sources":[${sourceJson("floor")}]}"""
+            """{"schemaVersion":1,"revision":$BUNDLED_REVISION,""" +
+                """"sources":[${sourceJson("floor")}]}"""
 
-        fun sourceJson(api: String, siteState: String = "WORKING"): String =
-            """{"api":"$api","language":"en","baseUrl":"https://$api.test","engine":"generic","siteState":"$siteState"}"""
+        fun sourceJson(
+            api: String,
+            siteState: String = "WORKING",
+        ): String =
+            """{"api":"$api","language":"en","baseUrl":"https://$api.test",""" +
+                """"engine":"generic","siteState":"$siteState"}"""
 
         fun entry(
             api: String,
@@ -505,7 +600,13 @@ class IncrementalSourceCatalogManagerTest {
             revision: Long,
             siteState: String = "WORKING",
         ): SourceRevisionArtifact =
-            SourceRevisionArtifact(api, revision, checksum(revision), "kcj-1", sourceJson(api, siteState))
+            SourceRevisionArtifact(
+                api,
+                revision,
+                checksum(revision),
+                "kcj-1",
+                sourceJson(api, siteState),
+            )
 
         fun storedCatalog(
             revision: Long,

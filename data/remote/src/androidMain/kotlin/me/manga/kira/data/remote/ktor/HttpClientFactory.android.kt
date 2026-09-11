@@ -51,45 +51,49 @@ private object HttpLoggingFlag
 
 actual val isHttpLoggingEnabled: Boolean = HttpLoggingFlag::class.java.desiredAssertionStatus()
 
-actual fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
-    install(ContentNegotiation) { json(DefaultJson) }
-    // HTTP logging is gated on isHttpLoggingEnabled (debug/dev only, like native's BuildConfig.DEBUG
-    // HttpLoggingInterceptor); HEADERS keeps the leak-sensitive request/response BODY out of the
-    // trace. Bump to LogLevel.BODY here if you need to debug the network payloads themselves.
-    if (isHttpLoggingEnabled) {
-        install(Logging) { level = LogLevel.HEADERS }
-    }
-    install(HttpTimeout) {
-        // Parity with native AppModule.provideOkHttpClient: connectTimeout(30s) + readTimeout(60s)
-        // + writeTimeout(60s), and NO whole-request/callTimeout. socketTimeoutMillis approximates
-        // native's read/write timeout (Ktor has no separate write timeout). requestTimeoutMillis is
-        // intentionally omitted: native imposes no whole-request ceiling, so a slow-but-progressing
-        // large response must not be aborted as long as each read stays under the socket timeout.
-        connectTimeoutMillis = 30_000
-        socketTimeoutMillis = 60_000
-    }
-    // Honors the `Cache-Control: public, max-age=86400` directive stamped by
-    // forceCacheForDados() on /dados responses (parity with source's OkHttp disk cache). Backed by
-    // a disk FileStorage rooted in the app's OWN cache dir — the default Unlimited() storage is an
-    // unbounded in-memory map that retains full response bodies for the process lifetime (a leak on
-    // the chapter-download/scrape path) and does not survive process restart.
-    val httpCacheDir = File(
-        androidAppContextOrNull()?.cacheDir ?: File(System.getProperty("java.io.tmpdir") ?: "."),
-        "ktor_http_cache",
-    ).apply { mkdirs() }
-    install(HttpCache) {
-        publicStorage(FileStorage(httpCacheDir))
-        privateStorage(FileStorage(httpCacheDir))
-    }
-    engine {
-        config {
-            retryOnConnectionFailure(true)
-            pingInterval(15, TimeUnit.SECONDS)
+actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
+    HttpClient(OkHttp) {
+        install(ContentNegotiation) { json(DefaultJson) }
+        // HTTP logging is gated on isHttpLoggingEnabled (debug/dev only, like native's BuildConfig.DEBUG
+        // HttpLoggingInterceptor); HEADERS keeps the leak-sensitive request/response BODY out of the
+        // trace. Bump to LogLevel.BODY here if you need to debug the network payloads themselves.
+        if (isHttpLoggingEnabled) {
+            install(Logging) { level = LogLevel.HEADERS }
         }
-        // Mirrors source AppModule `.addNetworkInterceptor(forceCacheForDados())`.
-        addNetworkInterceptor(forceCacheForDados())
+        install(HttpTimeout) {
+            // Parity with native AppModule.provideOkHttpClient: connectTimeout(30s) + readTimeout(60s)
+            // + writeTimeout(60s), and NO whole-request/callTimeout. socketTimeoutMillis approximates
+            // native's read/write timeout (Ktor has no separate write timeout). requestTimeoutMillis is
+            // intentionally omitted: native imposes no whole-request ceiling, so a slow-but-progressing
+            // large response must not be aborted as long as each read stays under the socket timeout.
+            connectTimeoutMillis = 30_000
+            socketTimeoutMillis = 60_000
+        }
+        // Honors the `Cache-Control: public, max-age=86400` directive stamped by
+        // forceCacheForDados() on /dados responses (parity with source's OkHttp disk cache). Backed by
+        // a disk FileStorage rooted in the app's OWN cache dir — the default Unlimited() storage is an
+        // unbounded in-memory map that retains full response bodies for the process lifetime (a leak on
+        // the chapter-download/scrape path) and does not survive process restart.
+        if (cacheResponses) {
+            val httpCacheDir =
+                File(
+                    androidAppContextOrNull()?.cacheDir ?: File(System.getProperty("java.io.tmpdir") ?: "."),
+                    "ktor_http_cache",
+                ).apply { mkdirs() }
+            install(HttpCache) {
+                publicStorage(FileStorage(httpCacheDir))
+                privateStorage(FileStorage(httpCacheDir))
+            }
+        }
+        engine {
+            config {
+                retryOnConnectionFailure(true)
+                pingInterval(15, TimeUnit.SECONDS)
+            }
+            // Mirrors source AppModule `.addNetworkInterceptor(forceCacheForDados())`.
+            addNetworkInterceptor(forceCacheForDados())
+        }
     }
-}
 
 /*
  * Audit-trail postscript (Phase 9.x.cluster240.staleKdocSweep.cascade, Task #696, 2026-05-29)
@@ -235,4 +239,3 @@ actual fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
  *     AXIS-ANDROID-DOMINANT-OUTLIER-WITH-OTHERS-AT-ZERO-CONTRIBUTION
  *     classification.
  */
-
