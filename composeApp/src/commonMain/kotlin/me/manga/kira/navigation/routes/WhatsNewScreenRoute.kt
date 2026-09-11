@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.flow.first
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.platform.intent.IntentLauncher
@@ -46,31 +47,20 @@ import org.koin.compose.viewmodel.koinViewModel
  * `:data` impl over the legacy `:shared` `WhatsNewRemoteDataSource` + `SharedPrefsHelper` +
  * `AppVersionProvider` + `getDefaultFeatures()` — see `whatsNewReworkModule`).
  *
- * **Mark-seen semantics — preserved across mark-on-enter vs mark-on-dismiss**:
- *  - Legacy adapter calls `viewModel.markWhatsNewAsSeen()` inside the loaded-state's
- *    `onDismiss` lambda IFF `args.isFirstOpen` is `true`. The mark fires synchronously when
- *    the user dismisses the dialog (tap "Close" / system back).
- *  - Rework adapter dispatches [WhatsNewIntent.OnMarkSeen] in a [LaunchedEffect] keyed on
- *    `Unit` IFF `args.isFirstOpen` is `true`. The mark fires when the screen mounts (the
- *    user is reading it — equivalent for the auto-popup gate). Mark-on-enter and
- *    mark-on-dismiss produce the same observable outcome for the next-launch gate, with one
- *    edge-case delta: if the app crashes between mount-and-dismiss, the rework still marks
- *    while the legacy would not. The crash-before-dismiss case is degenerate (the user has
- *    seen the screen; gating against re-popup is the right outcome). Same posture as the
- *    rework `WhatsNewViewModel.init` block which loads features unconditionally on mount.
+ * **Mark-seen semantics**: an automatic entry waits for its first successful load, including
+ * valid empty content, before submitting [WhatsNewIntent.OnMarkSeen] once in that mount.
+ * Failure/cancellation alone never consumes the version. Unmount cancels the wait; neither a
+ * cleared spinner nor navigation completion is load-success evidence. Manual entry has no automatic
+ * mark, while the screen's existing explicit dismissal actions remain unchanged.
  *
  * **Affordance parity vs the legacy adapter**:
  *  - **Loading state** — legacy renders inline `LoadingState` composable (spinner + literal
  *    "Loading What's New..." label). Rework renders centered [CircularProgressIndicator] only
  *    (no label). Visual delta; equivalent behaviour. Phase 10 i18n will revisit label text
  *    if needed.
- *  - **Error state** — legacy renders inline `ErrorState` composable with Retry + Close
- *    buttons. Rework renders centered error message + Retry button (no Close). The Close
- *    affordance is redundant with system back at this depth — same justification as §123.5 /
- *    §124.5 (route reached from `safeNavigate(...)` push that leaves the parent on the
- *    stack). Today the error path is wired-but-dormant — the `:data` impl swallows remote
- *    failures and returns the empty default list, so the empty-state path is the de-facto
- *    failure surface.
+ *  - **Error state** — the rework renders localized failure with Retry + Close buttons. Retry
+ *    stays in this destination; card Close dismisses without a seen mark. Header X remains the
+ *    explicit mark-and-dismiss action.
  *  - **Empty state** — legacy renders inline `EmptyState` composable with literal text + a
  *    Close button. Rework renders centered "No new features in this version" placeholder
  *    (no Close). Same Close-button-vs-system-back rationale.
@@ -115,12 +105,12 @@ import org.koin.compose.viewmodel.koinViewModel
  * behavior (system-default); the established pattern across all rework screens.
  *
  * **MVI surface**: the rework's [WhatsNewViewModel] exposes a single
- * `StateFlow<WhatsNewState>` (4-tuple of `isLoading` + `errorMessage` + `features` +
- * `currentPage`) vs the legacy VM's 3 separate StateFlows (`features` / `isLoading` /
+ * `StateFlow<WhatsNewState>` (`isLoading`, typed `error`, `features`, `currentPage` and
+ * `hasLoadedSuccessfully`) vs the legacy VM's 3 separate StateFlows (`features` / `isLoading` /
  * `loadError`). All mutations flow through `WhatsNewIntent` (`OnRetry` / `OnMarkSeen` /
  * `OnPageChanged`). One-shot effects ([WhatsNewEffect]) are an empty sealed interface today —
  * the screen's `onEffect` callback bridge is dormant. The route adapter dispatches
- * `OnMarkSeen` once on mount via `LaunchedEffect(Unit)`; this is the only adapter-level
+ * `OnMarkSeen` once after a successful load in its mount; this is the only adapter-level
  * intent dispatch (mirrors the legacy adapter's only side-effect call on dismiss).
  *
  * **Koin lifecycles** — note that the [WhatsNewViewModel] resolved here via [koinViewModel]
@@ -200,6 +190,7 @@ import org.koin.compose.viewmodel.koinViewModel
  * forecast that was subsequently half-fulfilled (UI retired, VM retained
  * as strangler-fig seam).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 fun WhatsNewScreenRoute(
     navController: NavController,
@@ -210,7 +201,8 @@ fun WhatsNewScreenRoute(
     val launcher: IntentLauncher = koinInject()
 
     if (args.isFirstOpen) {
-        LaunchedEffect(Unit) {
+        LaunchedEffect(viewModel) {
+            viewModel.state.first { it.hasLoadedSuccessfully }
             viewModel.submit(WhatsNewIntent.OnMarkSeen)
         }
     }

@@ -1,5 +1,6 @@
 package me.manga.kira.domain.usecase.whatsnew
 
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
 import me.manga.kira.domain.repository.WhatsNewRepository
 
@@ -7,14 +8,13 @@ import me.manga.kira.domain.repository.WhatsNewRepository
  * Resolve the list of What's New features for the rework WhatsNew screen.
  *
  * Phase 7.x.whatsnew (foundation). The rework `WhatsNewViewModel` injects this use case and
- * invokes it once from `viewModelScope.launch` in its `init {}` block — the result populates
+ * invokes it once from `launchSafely` in its `init {}` block — the result populates
  * `state.value.features`. The `WhatsNewIntent.OnRetry` handler re-launches the same use case
  * call to re-fetch.
  *
- * Suspend pass-through; no combining, no projection, no error mapping. The repository contract
- * surfaces an empty list (NOT a `Result.failure`) on any remote failure — the empty-list signal
- * is the foundation slice's "nothing to show" UX (renders the "No new features in this version"
- * placeholder in the `:ui`).
+ * Suspend pass-through; no combining, projection or error mapping. Preserves the repository's
+ * typed success/failure distinction, including a successfully loaded empty list. Cancellation
+ * propagates to the caller. The audit notes below describe the former bare-list contract.
  *
  * **Why a use case at all when this is a single-line pass-through**: same rationale as the
  * other rework one-shot use cases (`GetAppMetadataUseCase` from Phase 7.x.about,
@@ -74,5 +74,5 @@ import me.manga.kira.domain.repository.WhatsNewRepository
 class GetWhatsNewFeaturesUseCase(
     private val repository: WhatsNewRepository,
 ) {
-    suspend operator fun invoke(): List<WhatsNewFeature> = repository.getFeatures()
+    suspend operator fun invoke(): AppResult<List<WhatsNewFeature>> = repository.getFeatures()
 }
