@@ -276,6 +276,11 @@ kotlin {
             implementation(libs.ktor.client.mock)
         }
 
+        getByName("desktopTest").dependencies {
+            // Exercise the real NavHost/entry lifecycle without bootstrapping the application.
+            implementation(libs.compose.ui.test.junit4)
+        }
+
         androidMain.dependencies {
             // Android's platform JCA lacks Ed25519 on older supported API levels; BC keeps the
             // pinned source-document verifier available across the full minSdk 26 range.

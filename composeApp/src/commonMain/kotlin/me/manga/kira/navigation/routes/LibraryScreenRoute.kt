@@ -1,20 +1,13 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
-import me.manga.kira.presentation.features.whatsnew.viewmodel.WhatsNewViewModel
-import me.manga.kira.presentation.library.LibraryViewModel
-import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.presentation.common.componants.images.rememberSourceImageRequest
+import me.manga.kira.presentation.library.LibraryViewModel
 import me.manga.kira.ui.library.LibraryScreen
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -65,10 +58,8 @@ import org.koin.compose.viewmodel.koinViewModel
  *
  * @param navController parent nav controller for forwarding to `MangaDetails` and the
  *                      WhatsNew first-launch redirect.
- * @param backStackEntry passed through for parity with sibling route adapters; the rework
- *                       `LibraryViewModel` is `koinViewModel()`-scoped (process-wide on
- *                       Android via Koin's ViewModelStoreOwner integration), so we don't
- *                       consult `backStackEntry` for VM scoping here.
+ * @param backStackEntry the exact Library entry supplied by NavHost. It owns the pending
+ *                      What's New redirect and its entry-scoped in-memory acknowledgment.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster35.staleKdocSweep.cascade,
  * Task #491, 2026-05-28): five stale citations appear in this file's
@@ -157,40 +148,14 @@ import org.koin.compose.viewmodel.koinViewModel
  *  (legacy LibraryScreen + RefreshViewModel + DownloadViewModelv2
  *  + MangaDisplayItem retired) across §347/§359/§380/§439.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 fun LibraryScreenRoute(
     navController: NavController,
-    @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
+    backStackEntry: NavBackStackEntry,
 ) {
     val viewModel: LibraryViewModel = koinViewModel()
-    val whatsNewViewModel: WhatsNewViewModel = koinViewModel()
-
-    val shouldShowWhatsNew by whatsNewViewModel.shouldShowWhatsNew.collectAsState()
-    val isLoading by whatsNewViewModel.isLoading.collectAsState()
-
-    // Track if we've already navigated to prevent loops.
-    var hasNavigatedToWhatsNew by remember { mutableStateOf(false) }
-
-    // Only navigate to What's New if we should show it AND we haven't navigated yet.
-    LaunchedEffect(shouldShowWhatsNew, isLoading) {
-        if (shouldShowWhatsNew && !isLoading && !hasNavigatedToWhatsNew) {
-            hasNavigatedToWhatsNew = true
-            // Mark seen up-front (mark-on-enter), flipping shouldShowWhatsNew to false. Without
-            // this, dismissing What's New pops back here and re-enters composition — which resets
-            // the `hasNavigatedToWhatsNew` remember guard while shouldShowWhatsNew is still true,
-            // so the redirect re-fires and the screen reopens until the next app restart. Mirrors
-            // native, whose markWhatsNewAsSeen() flips the same flag false immediately.
-            whatsNewViewModel.markSeen()
-            navController.safeNavigate(Screen.WhatsNewScreen(true))
-        }
-    }
-
-    // Reset the navigation flag only when shouldShowWhatsNew becomes false after being true.
-    LaunchedEffect(shouldShowWhatsNew) {
-        if (!shouldShowWhatsNew && hasNavigatedToWhatsNew) {
-            hasNavigatedToWhatsNew = false
-        }
-    }
+    LibraryWhatsNewRedirect(navController, backStackEntry)
 
     LibraryScreen(
         viewModel = viewModel,
@@ -227,9 +192,10 @@ fun LibraryScreenRoute(
         onNavigateToBackupExport = { keys ->
             navController.safeNavigate(
                 Screen.BackupRework(
-                    scopeJson = encodeBackupScope(
-                        keys.map { BackupScopeKey(api = it.api, language = it.language, title = it.title) },
-                    ),
+                    scopeJson =
+                        encodeBackupScope(
+                            keys.map { BackupScopeKey(api = it.api, language = it.language, title = it.title) },
+                        ),
                 ),
             )
         },
