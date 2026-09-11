@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,6 +27,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.russhwolf.settings.MapSettings
+import kotlinx.coroutines.CompletableDeferred
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.di.legacySharedViewModelsModule
 import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
@@ -56,6 +59,8 @@ internal class WhatsNewNavigationFixture(
     var mounted by mutableStateOf(true)
     var redraw by mutableIntStateOf(0)
     var renderedTick = -1
+    var notesMounted = false
+        private set
     lateinit var controller: NavHostController
     lateinit var libraryEntry: NavBackStackEntry
     lateinit var libraryGate: GateViewModel
@@ -121,6 +126,10 @@ internal class WhatsNewNavigationFixture(
     private fun Notes(entry: NavBackStackEntry) {
         val tick = redraw
         SideEffect { renderedTick = tick }
+        DisposableEffect(entry) {
+            notesMounted = true
+            onDispose { notesMounted = false }
+        }
         WhatsNewScreenRoute(controller, entry)
     }
 
@@ -146,10 +155,20 @@ internal class WhatsNewNavigationFixture(
     class RecordingRepository : WhatsNewRepository {
         var loads = 0
         var marks = 0
+        var completedLoads = 0
+            private set
+        private var nextResult: CompletableDeferred<AppResult<List<WhatsNewFeature>>>? = null
 
-        override suspend fun getFeatures(): List<WhatsNewFeature> {
+        fun deferNextLoad(): CompletableDeferred<AppResult<List<WhatsNewFeature>>> =
+            CompletableDeferred<AppResult<List<WhatsNewFeature>>>().also { nextResult = it }
+
+        override suspend fun getFeatures(): AppResult<List<WhatsNewFeature>> {
             loads++
-            return emptyList()
+            val pending = nextResult
+            nextResult = null
+            val result = pending?.await() ?: AppResult.Success(emptyList())
+            completedLoads++
+            return result
         }
 
         override suspend fun markSeen() {
