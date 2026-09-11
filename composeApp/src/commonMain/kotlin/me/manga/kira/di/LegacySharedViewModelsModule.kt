@@ -17,11 +17,13 @@ import org.koin.dsl.module
  * legacy VMs are preserved and relocated here alongside the routes that use them.
  *
  * Binding them in `:composeApp` (not `:shared`) is what lets their repository deps
- * (`SettingsRepository`/`WhatsNewRemoteDataSource`) move to `:data` without a `:shared -> :data`
- * cycle. Appended to [allReworkModules].
+ * (`SettingsRepository`) move to `:data` without a `:shared -> :data` cycle. The Library gate
+ * observes preferences only; release-note loading belongs to the destination's rework VM.
+ * Appended to [allReworkModules].
  */
-val legacySharedViewModelsModule: Module = module {
-    viewModel { WebViewViewModel(get(), get()) }
-    viewModel { SettingsViewModel(get()) }
-    viewModel { WhatsNewViewModel(get(), get(), get(), get()) }
-}
+val legacySharedViewModelsModule: Module =
+    module {
+        viewModel { WebViewViewModel(get(), get()) }
+        viewModel { SettingsViewModel(get()) }
+        viewModel { WhatsNewViewModel(get(), get(), get()) }
+    }
