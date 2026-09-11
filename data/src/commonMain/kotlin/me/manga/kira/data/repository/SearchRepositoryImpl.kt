@@ -1,11 +1,13 @@
 package me.manga.kira.data.repository
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
@@ -15,8 +17,8 @@ import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.repository.SearchRepository
 import me.manga.kira.sources.contracts.SourceRegistry
-import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as SourceSelectionStore
 import kotlin.coroutines.cancellation.CancellationException
+import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as SourceSelectionStore
 
 /**
  * Searches only sources present in the authoritative active generic catalog.
@@ -30,17 +32,18 @@ class SearchRepositoryImpl(
     private val dispatchers: DispatcherProvider,
     private val sourceRegistry: SourceRegistry,
 ) : SearchRepository {
-
     override suspend fun searchSource(
         query: String,
         selections: FilterSelections,
     ): AppResult<List<HomeFeedItem>> =
         withContext(dispatchers.io) {
             try {
-                val api = activeApi()
-                    ?: return@withContext AppResult.Failure(AppError.Validation.NoEnabledSources())
-                val client = sourceRegistry.get(api)
-                    ?: return@withContext sourceUnavailable(api)
+                val api =
+                    activeApi()
+                        ?: return@withContext AppResult.Failure(AppError.Validation.NoEnabledSources())
+                val client =
+                    sourceRegistry.get(api)
+                        ?: return@withContext sourceUnavailable(api)
                 client.search(query, page = 1, filters = selections)
             } catch (ce: CancellationException) {
                 throw ce
@@ -62,6 +65,7 @@ class SearchRepositoryImpl(
         return enabledApis.firstOrNull { it == persisted } ?: enabledApis.firstOrNull()
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun searchAllRepos(query: String): Flow<Map<String, AppResult<List<HomeFeedItem>>?>> =
         flow {
             val apis =
@@ -77,23 +81,27 @@ class SearchRepositoryImpl(
             apis.forEach { accumulated[it] = null }
             emit(accumulated.toMap())
 
-            val sourceFlows =
-                apis.map { api ->
-                    flow {
-                        val result =
-                            sourceRegistry.get(api)?.search(query, page = 1)
-                                ?: sourceUnavailable(api)
-                        emit(api to result)
-                    }.catch { t ->
-                        if (t is CancellationException) throw t
-                        emit(api to AppResult.Failure(classifyHomeThrowable(t)))
-                    }.flowOn(dispatchers.io)
+            apis
+                .asFlow()
+                .flatMapMerge(concurrency = MULTI_SOURCE_SEARCH_CONCURRENCY) { api -> sourceSearchFlow(api, query) }
+                .collect { (api, result) ->
+                    accumulated[api] = result
+                    emit(accumulated.toMap())
                 }
+        }.flowOn(dispatchers.io)
 
-            merge(*sourceFlows.toTypedArray()).collect { (api, result) ->
-                accumulated[api] = result
-                emit(accumulated.toMap())
-            }
+    private fun sourceSearchFlow(
+        api: String,
+        query: String,
+    ): Flow<Pair<String, AppResult<List<HomeFeedItem>>>> =
+        flow {
+            val result =
+                sourceRegistry.get(api)?.search(query, page = 1)
+                    ?: sourceUnavailable(api)
+            emit(api to result)
+        }.catch { t ->
+            if (t is CancellationException) throw t
+            emit(api to AppResult.Failure(classifyHomeThrowable(t)))
         }.flowOn(dispatchers.io)
 
     private fun <T> sourceUnavailable(api: String): AppResult<T> =
