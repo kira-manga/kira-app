@@ -43,6 +43,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -60,6 +63,8 @@ import me.manga.kira.ui.generated.resources.filters_pfix_status
 import me.manga.kira.ui.generated.resources.filters_pfix_type
 import me.manga.kira.ui.generated.resources.search_genres
 import me.manga.kira.ui.generated.resources.search_pfix_apply_filters
+import me.manga.kira.ui.generated.resources.search_pfix_filter_collapsed
+import me.manga.kira.ui.generated.resources.search_pfix_filter_expanded
 import me.manga.kira.ui.generated.resources.search_pfix_filter_sort_title
 import me.manga.kira.ui.generated.resources.search_pfix_filters_not_ready
 import me.manga.kira.ui.generated.resources.search_pfix_order_by
@@ -393,11 +398,16 @@ private fun SectionHeader(
     onHeaderClick: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
+    val expansionStateDescription =
+        stringResource(
+            if (expanded) Res.string.search_pfix_filter_expanded else Res.string.search_pfix_filter_collapsed,
+        )
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable { onHeaderClick() }
+                .clickable(role = Role.Button) { onHeaderClick() }
+                .semantics { stateDescription = expansionStateDescription }
                 .padding(vertical = spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
