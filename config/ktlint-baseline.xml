@@ -7529,7 +7529,7 @@
         <error line="204" column="21" source="standard:chain-method-continuation" />
         <error line="214" column="21" source="standard:chain-method-continuation" />
         <error line="256" column="33" source="standard:multiline-expression-wrapping" />
-        <error line="291" column="5" source="standard:function-naming" />
+        <error line="285" column="5" source="standard:function-naming" />
         <error line="304" column="25" source="standard:multiline-expression-wrapping" />
         <error line="316" column="33" source="standard:multiline-expression-wrapping" />
         <error line="326" column="28" source="standard:multiline-expression-wrapping" />
