@@ -1,5 +1,12 @@
 package me.manga.kira.presentation.whatsnew
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
 import me.manga.kira.domain.usecase.whatsnew.GetWhatsNewFeaturesUseCase
 import me.manga.kira.domain.usecase.whatsnew.MarkWhatsNewSeenUseCase
 import me.manga.kira.presentation.mvi.MviViewModel
@@ -13,7 +20,7 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * legacy `:shared` `WhatsNewRemoteDataSource`, `SharedPrefsHelper`, or `AppVersionProvider`
  * directly.
  *
- * **`init {}` block dispatches a single `viewModelScope.launch` that calls the suspend
+ * **`init {}` block dispatches a single `launchSafely` that calls the suspend
  * [GetWhatsNewFeaturesUseCase] once and updates state** — same posture as
  * [me.manga.kira.presentation.about.AboutViewModel] / Theme picker's preference pre-load.
  * No `OnEnter` intent is modelled because the feature list is needed unconditionally the
@@ -22,29 +29,22 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *
  * **Why `viewModelScope.launch` not `useCase().onEach {...}.launchIn(viewModelScope)`** —
  * [GetWhatsNewFeaturesUseCase] is a `suspend fun invoke()` (one-shot, returns a single
- * `List<WhatsNewFeature>`), not a `Flow`. The remote endpoint isn't observed for changes
+ * `AppResult<List<WhatsNewFeature>>`), not a `Flow`. The remote endpoint isn't observed for changes
  * (the wire format is server-static for the running process). Same shape as
  * [AboutViewModel]'s init `getAppMetadata()` call. A `launch { ... }` captures the result
  * once and updates state once.
  *
- * **Error path**: the `:data` impl currently returns an empty list on any remote failure
- * (the legacy `getDefaultFeatures()` fallback returns empty). The VM treats empty-list as
- * a valid terminal state ([WhatsNewState.features] = `emptyList()`, [WhatsNewState.errorMessage]
- * = `null`). When the legacy `getDefaultFeatures()` is repopulated in Phase 10 OR when this
- * slice gains explicit failure surfacing (`Result<List<WhatsNewFeature>>` instead of bare
- * `List<...>` — DEFERRED), the VM gains an [WhatsNewState.errorMessage] write path and
- * [WhatsNewIntent.OnRetry] becomes user-visible. Today the retry path is wired-but-dormant.
+ * **Error path**: data failures and unexpected load throws populate [WhatsNewState.error]; only
+ * success sets [WhatsNewState.hasLoadedSuccessfully], including a successfully empty list.
+ * Cancellation propagates and cannot manufacture an error or automatic seen-mark eligibility.
  *
- * **`OnRetry`**: re-runs [GetWhatsNewFeaturesUseCase] in a fresh `viewModelScope.launch`,
- * setting `isLoading = true` + `errorMessage = null` BEFORE the suspend call so the :ui can
- * render the loading placeholder during the re-fetch. Same posture as the legacy
- * `WhatsNewViewModel.retryLoadFeatures()`.
+ * **`OnRetry`**: re-runs [GetWhatsNewFeaturesUseCase] after the previous job completes. While a load
+ * is active, repeated Retry is ignored. Each load clears the previous error and success flag before
+ * suspending so the UI renders loading, not a stale error, during recovery.
  *
- * **`OnMarkSeen`**: fires-and-forgets [MarkWhatsNewSeenUseCase] on `viewModelScope`. The
- * use case is structurally infallible (sync prefs write); no state mutation, no effect
- * emission. The foundation `:ui` does NOT submit `OnMarkSeen` from any composable today —
- * the auto-trigger is deferred to `Phase 7.x.whatsnew.gate` once the should-show comparator
- * Flow lands. The intent is wired now to keep the MVI contract complete for that sub-slice.
+ * **`OnMarkSeen`**: awaits [MarkWhatsNewSeenUseCase] in the intent handler. Explicit dismissal
+ * remains separate from loading; the automatic route submits the mark only after successful load.
+ * The historical audit notes below describe the old bare-list/error-placeholder behavior.
  *
  * **`OnPageChanged(index)`** (Phase 7.x.whatsnew.pager): mirrors the pager's `currentPage`
  * into [WhatsNewState.currentPage]. No suspending work, no effect emission — a pure state
@@ -141,6 +141,7 @@ class WhatsNewViewModel(
 ) : MviViewModel<WhatsNewState, WhatsNewIntent, WhatsNewEffect>(
     initialState = WhatsNewState(),
 ) {
+    private var loadJob: Job? = null
 
     init {
         loadFeatures()
@@ -155,18 +156,44 @@ class WhatsNewViewModel(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught") // Preserve unexpected Throwable mapping after rethrowing cancellation.
     private fun loadFeatures() {
-        // launchSafely (not a bare viewModelScope.launch): the OnRetry caller starts this as a
-        // sibling coroutine that escapes submit()'s safety net, so an unexpected throw must route
-        // to onUnhandledError rather than crash the process. The finally clears isLoading so a
-        // failed load degrades to the empty/error placeholder instead of an infinite spinner.
-        launchSafely {
-            updateState { it.copy(isLoading = true, errorMessage = null) }
-            try {
-                val features = getWhatsNewFeatures()
-                updateState { it.copy(features = features) }
-            } finally {
-                updateState { it.copy(isLoading = false) }
+        if (loadJob?.isActive == true) return
+        loadJob =
+            launchSafely {
+                updateState { it.copy(isLoading = true, error = null, hasLoadedSuccessfully = false) }
+                try {
+                    val result = getWhatsNewFeatures()
+                    currentCoroutineContext().ensureActive()
+                    completeLoad(result)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    val error = AppError.Unexpected(message = t::class.simpleName.orEmpty(), cause = t)
+                    completeLoad(AppResult.Failure(error))
+                } finally {
+                    // Clearing the spinner after cancellation is not successful-load evidence.
+                    updateState { it.copy(isLoading = false) }
+                }
+            }
+    }
+
+    private fun completeLoad(result: AppResult<List<WhatsNewFeature>>) {
+        updateState { state ->
+            when (result) {
+                is AppResult.Success ->
+                    state.copy(
+                        isLoading = false,
+                        features = result.value,
+                        error = null,
+                        hasLoadedSuccessfully = true,
+                    )
+                is AppResult.Failure ->
+                    state.copy(
+                        isLoading = false,
+                        error = result.error,
+                        hasLoadedSuccessfully = false,
+                    )
             }
         }
     }

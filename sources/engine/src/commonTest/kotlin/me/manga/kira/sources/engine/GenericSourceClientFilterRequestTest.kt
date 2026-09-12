@@ -1,6 +1,7 @@
 package me.manga.kira.sources.engine
 
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.sources.contracts.HttpExecutor
@@ -118,14 +119,34 @@ class GenericSourceClientFilterRequestTest {
             val noFilters = RecordingHttp()
             client(emptyList(), noFilters).search("one piece", 1)
             assertEquals("https://f.test/search?q=one%20piece", noFilters.requests.single().url)
+
+            val noDefaults = RecordingHttp()
+            client(listOf(sort(), genres(encode = "csv", param = "genre")), noDefaults).search("q", 1)
+            assertEquals("https://f.test/search?q=q", noDefaults.requests.single().url)
         }
 
     @Test
     fun empty_optional_selections_are_omitted() =
         runTest {
-            val http = RecordingHttp()
-            client(listOf(sort(), genres(encode = "csv", param = "genre")), http).search("q", 1)
-            assertEquals("https://f.test/search?q=q", http.requests.single().url)
+            val defaults =
+                listOf(
+                    sort(default = "latest"),
+                    genres(encode = "csv", param = "genre").copy(defaults = listOf("action")),
+                )
+            val cleared = FilterSelections(mapOf("sort" to emptyList(), "genres" to emptyList()))
+            for (omitIfEmpty in listOf(true, false)) {
+                val http = RecordingHttp()
+                val filters = defaults.map { it.copy(request = it.request.copy(omitIfEmpty = omitIfEmpty)) }
+                val source = client(filters, http)
+                assertTrue(source.search("q", 1) is AppResult.Success)
+                assertTrue(source.search("q", 1, cleared) is AppResult.Success)
+                val clearedUrl =
+                    if (omitIfEmpty) "https://f.test/search?q=q" else "https://f.test/search?q=q&orderby=&genre="
+                assertEquals(
+                    listOf("https://f.test/search?q=q&orderby=latest&genre=action", clearedUrl),
+                    http.requests.map { it.url },
+                )
+            }
         }
 
     @Test
@@ -234,11 +255,17 @@ class GenericSourceClientFilterRequestTest {
     @Test
     fun a_required_filter_with_no_value_fails_closed_without_issuing_a_request() =
         runTest {
-            val http = RecordingHttp()
-            val required = sort().copy(required = true)
-            val result = client(listOf(required), http).search("q", 1)
-            assertTrue(result is AppResult.Failure)
-            assertEquals(emptyList(), http.requests)
+            val cases =
+                listOf(
+                    sort().copy(required = true) to FilterSelections.EMPTY,
+                    sort(default = "latest").copy(required = true) to FilterSelections(mapOf("sort" to emptyList())),
+                )
+            for ((required, selections) in cases) {
+                val http = RecordingHttp()
+                val result = client(listOf(required), http).search("q", 1, selections)
+                assertEquals(AppResult.Failure(AppError.Validation.Required("filter:sort")), result)
+                assertEquals(emptyList(), http.requests)
+            }
         }
 
     @Test

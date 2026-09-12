@@ -1,9 +1,13 @@
 package me.manga.kira.domain.repository
 
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
 
 /**
  * Contract for the rework What's New surface's data source.
+ *
+ * Loads preserve typed failure separately from successful empty content. The historical migration
+ * notes below describe the previous bare-list/fallback boundary, not the current read contract.
  *
  * Phase 7.x.whatsnew (foundation). Backed in `:data` by
  * [me.manga.kira.data.repository.WhatsNewRepositoryImpl], which is a strangler-fig delegate
@@ -109,16 +113,14 @@ import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
  *  preservation convention.
  */
 interface WhatsNewRepository {
-
     /**
-     * Returns the list of What's New features for the current app version.
+     * Returns localized What's New features, preserving failure separately from successful empty content.
      *
-     * Implementation note: the foundation `:data` impl hardcodes the language to `"en"` (the
-     * legacy reads `DataStoreHelper.languageFlow.first()` — deferred to `Phase 7.x.whatsnew.i18n`).
-     * On remote failure or empty response, falls back to the legacy top-level
-     * `getDefaultFeatures()` (which currently returns `emptyList()`).
+     * An empty success means the document was loaded successfully and contained no features.
+     * Network, decoding and projection failures are never represented by an empty success.
+     * Coroutine cancellation propagates rather than becoming a failure result.
      */
-    suspend fun getFeatures(): List<WhatsNewFeature>
+    suspend fun getFeatures(): AppResult<List<WhatsNewFeature>>
 
     /**
      * Marks the current app version as "seen" — writes the current `versionName` (from the

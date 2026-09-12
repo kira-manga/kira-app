@@ -2,6 +2,9 @@ package me.manga.kira.navigation.routes
 
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -11,19 +14,87 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import me.manga.kira.composeapp.generated.resources.Res
+import me.manga.kira.composeapp.generated.resources.retry
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.routes.WhatsNewNavigationFixture.Companion.CURRENT_VERSION
 import me.manga.kira.navigation.routes.WhatsNewNavigationFixture.Companion.SEEN_KEY
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
+import org.jetbrains.compose.resources.getString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
+@Suppress("TooManyFunctions") // Keep real NavHost regressions with their shared lifecycle fixture.
 @OptIn(ExperimentalTestApi::class, ExperimentalCoroutinesApi::class)
 class LibraryWhatsNewRedirectTest {
+    @Test
+    fun automaticMarkWaitsThroughPendingFailureAndActualRetryUntilSuccessfulEmpty() =
+        navigationTest { fixture ->
+            val firstResult = runOnIdle { fixture.repository.deferNextLoad() }
+            val retryLabel = getString(Res.string.retry)
+            resumeOwner(fixture)
+            runOnIdle {
+                assertAutomaticOpen(fixture, expectedMarks = 0)
+                firstResult.complete(AppResult.Failure(AppError.Network.NoConnectivity()))
+            }
+            awaitIdle()
+            onNodeWithText(retryLabel).assertIsDisplayed()
+            runOnIdle { assertAutomaticOpen(fixture, expectedMarks = 0) }
+            val retryResult = runOnIdle { fixture.repository.deferNextLoad() }
+            onNodeWithText(retryLabel).performClick()
+            awaitIdle()
+            onNodeWithText(retryLabel).assertDoesNotExist()
+            runOnIdle {
+                assertAutomaticOpen(fixture, expectedMarks = 0, expectedLoads = 2)
+                retryResult.complete(AppResult.Success(emptyList()))
+            }
+            awaitIdle()
+            runOnIdle { assertAutomaticOpen(fixture, expectedLoads = 2) }
+            runOnUiThread { fixture.redraw++ }
+            awaitIdle()
+            runOnIdle {
+                assertEquals(fixture.redraw, fixture.renderedTick)
+                assertAutomaticOpen(fixture, expectedLoads = 2)
+            }
+        }
+
+    @Test
+    fun leavingDestinationBeforeDelayedSuccessDoesNotAutomaticallyMarkSeen() =
+        navigationTest { fixture ->
+            val result = runOnIdle { fixture.repository.deferNextLoad() }
+            resumeOwner(fixture)
+            val notes = runOnIdle { requireNotNull(fixture.controller.currentBackStackEntry) }
+            runOnIdle {
+                assertAutomaticOpen(fixture, expectedMarks = 0)
+                assertTrue(fixture.notesMounted)
+                fixture.controller.navigate(Screen.History)
+            }
+            awaitIdle()
+            runOnIdle {
+                val current = requireNotNull(fixture.controller.currentBackStackEntry)
+                assertTrue(current.destination.hasRoute<Screen.History>())
+                assertSame(notes, fixture.controller.previousBackStackEntry)
+                assertFalse(fixture.notesMounted)
+                assertEquals(0, fixture.repository.completedLoads)
+                assertEquals(0, fixture.repository.marks)
+                result.complete(AppResult.Success(emptyList()))
+            }
+            awaitIdle()
+            runOnIdle {
+                assertEquals(1, fixture.repository.completedLoads, "Delayed load returned after composition exit")
+                assertFalse(fixture.notesMounted)
+                assertEquals(0, fixture.repository.marks)
+                assertEquals(1, fixture.repository.loads)
+                assertEquals("", fixture.prefs.getString(SEEN_KEY))
+            }
+        }
+
     @Test
     fun deferredLibraryReturnPushesAndMarksOnceWithoutASeenWriteOrReopen() =
         navigationTest { fixture ->
@@ -182,15 +253,19 @@ class LibraryWhatsNewRedirectTest {
         assertEquals(0, fixture.repository.loads, "Constructing the Library gate does not fetch release notes")
     }
 
-    private fun assertAutomaticOpen(fixture: WhatsNewNavigationFixture) {
+    private fun assertAutomaticOpen(
+        fixture: WhatsNewNavigationFixture,
+        expectedMarks: Int = 1,
+        expectedLoads: Int = 1,
+    ) {
         val entry = requireNotNull(fixture.controller.currentBackStackEntry)
         assertTrue(entry.destination.hasRoute<Screen.WhatsNewScreen>())
         assertTrue(entry.toRoute<Screen.WhatsNewScreen>().isFirstOpen)
         assertEquals(Lifecycle.State.RESUMED, entry.lifecycle.currentState)
         assertFalse(fixture.libraryGate.shouldShowWhatsNew.value)
         assertEquals("", fixture.prefs.getString(SEEN_KEY))
-        assertEquals(1, fixture.repository.marks)
-        assertEquals(1, fixture.repository.loads)
+        assertEquals(expectedMarks, fixture.repository.marks)
+        assertEquals(expectedLoads, fixture.repository.loads)
     }
 
     private fun navigationTest(

@@ -31,7 +31,7 @@ internal fun LibraryWhatsNewRedirect(
         }.collect { eligible ->
             if (eligible && viewModel.shouldShowWhatsNew.value && navController.tryOpenWhatsNew(backStackEntry)) {
                 // No suspension between the actual push and entry-local suppression. The destination
-                // alone persists the automatic mark when it mounts, independently of its load.
+                // alone persists the automatic mark after its first successful load in that mount (including empty).
                 viewModel.onAutoNavigationSucceeded()
             }
         }
