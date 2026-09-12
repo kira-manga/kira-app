@@ -6266,12 +6266,12 @@
         <error line="789" column="64" source="standard:multiline-expression-wrapping" />
         <error line="789" column="64" source="standard:function-signature" />
         <error line="794" column="23" source="standard:multiline-expression-wrapping" />
-        <error line="809" column="53" source="standard:multiline-expression-wrapping" />
-        <error line="809" column="53" source="standard:function-signature" />
-        <error line="812" column="23" source="standard:multiline-expression-wrapping" />
-        <error line="826" column="58" source="standard:multiline-expression-wrapping" />
-        <error line="826" column="58" source="standard:function-signature" />
-        <error line="831" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="1077" column="53" source="standard:multiline-expression-wrapping" />
+        <error line="1077" column="53" source="standard:function-signature" />
+        <error line="1080" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="1094" column="58" source="standard:multiline-expression-wrapping" />
+        <error line="1094" column="58" source="standard:function-signature" />
+        <error line="1099" column="23" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="presentation/src/commonTest/kotlin/me/manga/kira/presentation/downloads/DownloadsViewModelTest.kt">
         <error line="39" column="1" source="standard:no-empty-first-line-in-class-body" />

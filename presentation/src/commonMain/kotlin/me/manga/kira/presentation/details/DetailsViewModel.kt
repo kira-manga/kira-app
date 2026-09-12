@@ -1105,9 +1105,9 @@ class DetailsViewModel(
     }
 
     /**
-     * Multi-select "mark this and below as read" (L-4, native `ChapterSelectionActionsRow`
-     * onMarkAllDownRead, single-selection only). Marks the selected chapter and every chapter below
-     * it in the *displayed* reading order as read, then clears the selection. Gated on in-library.
+     * Multi-select "mark this and below as read", single-selection and in-library only.
+     * Includes the selected chapter and every following chapter in the displayed order.
+     * Dispatches the read mutation, then clears selection without awaiting completion.
      */
     private fun onMarkSelectedDownRead() {
         if (!state.value.isInLibrary) return
@@ -1117,10 +1117,10 @@ class DetailsViewModel(
         val displayed = state.value.displayChapters
         val index = displayed.indexOfFirst { it.url == targetUrl }
         if (index < 0) return
-        // "This and below" marks everything AFTER the selected chapter in displayed order, EXCLUSIVE
-        // of the tapped chapter itself — matching native (onMarkAllDownRead marks subList(0, idx) over
-        // the reversed list, i.e. the suffix-after-selected; it does not mark the tapped chapter).
-        val urls = displayed.subList(index + 1, displayed.size).map { it.url }
+        // Include the selected row and every following row in the displayed list.
+        // Use the filtered/sorted projection so "below" follows the order the user sees.
+        // Unlike the native exclusive range, this matches the inclusive KMP action label.
+        val urls = displayed.subList(index, displayed.size).map { it.url }
         if (urls.isEmpty()) return
         launchSafely { markChaptersRead(urls) }
         updateState { it.copy(selectedChapterUrls = emptySet()) }

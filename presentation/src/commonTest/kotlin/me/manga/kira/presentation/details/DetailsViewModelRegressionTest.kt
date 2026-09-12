@@ -804,6 +804,274 @@ class DetailsViewModelRegressionTest {
         }
 }
 
+/** Inclusive displayed-suffix selection tests sharing the existing file-local VM fixture. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DetailsViewModelSelectionTest {
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
+        }
+
+    private fun vmWithFetchFake(
+        fetch: AppResult<MangaDetails>,
+        saved: FakeSavedMangaDetailsRepository,
+        options: VmFixtureOptions,
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            options,
+            testDispatchers,
+        )
+
+    @Test
+    fun markThisAndBelow_includesSelectedAndFollowingDescendingRows() =
+        runTest {
+            val selected = chapter("c/3")
+            val cached = details(listOf(chapter("c/5"), selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/5", "c/3", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(listOf("c/3", "c/1")), recorder.bulkReads)
+                assertEquals(listOf("c/3", "c/1"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_followsAscendingDisplayedOrder() =
+        runTest {
+            val selected = chapter("c/3")
+            val cached = details(listOf(chapter("c/5"), selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnToggleSortDirection)
+                assertTrue(vm.state.value.isInLibrary)
+                assertTrue(vm.state.value.sortAscending)
+                assertEquals(
+                    listOf("c/1", "c/3", "c/5"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(listOf("c/3", "c/5")), recorder.bulkReads)
+                assertEquals(listOf("c/3", "c/5"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_usesFilteredNumericOrder() =
+        runTest {
+            val selected = chapter("c/20")
+            val cached =
+                details(
+                    listOf(
+                        chapter("c/30"),
+                        chapter("c/15", isRead = true),
+                        chapter("c/10"),
+                        selected,
+                        chapter("c/25", isRead = true),
+                    ),
+                )
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.UNREAD))
+                vm.submit(DetailsIntent.OnSetChapterSort(ChapterSortType.NUMBER))
+                vm.submit(DetailsIntent.OnToggleSortDirection)
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/10", "c/20", "c/30"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/20"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(listOf("c/20", "c/30")), recorder.bulkReads)
+                assertEquals(listOf("c/20", "c/30"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_marksLastDisplayedChapterIncludingSingleVisibleRow() =
+        runTest {
+            val cases =
+                listOf(
+                    ChapterFilterType.ALL to listOf("c/3", "c/2", "c/1"),
+                    ChapterFilterType.BOOKMARKED to listOf("c/1"),
+                )
+            for ((filter, displayedUrls) in cases) {
+                val selected = chapter("c/1").copy(isBookmarked = true)
+                val cached = details(listOf(chapter("c/3"), chapter("c/2"), selected))
+                val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+                val recorder = RecordingMarkChapterReadRepository()
+                val options =
+                    VmFixtureOptions().apply {
+                        libraryRepo.emitInLibrary(true)
+                        markReadRepo = recorder
+                    }
+                val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+                val store = ViewModelStore().apply { put("details", vm) }
+                try {
+                    vm.submit(DetailsIntent.OnEnter(manga()))
+                    vm.submit(DetailsIntent.OnSetChapterFilter(filter))
+                    assertTrue(vm.state.value.isInLibrary)
+                    assertEquals(
+                        displayedUrls,
+                        vm.state.value.displayChapters
+                            .map(Chapter::url),
+                        "filter=$filter",
+                    )
+                    vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                    assertEquals(setOf("c/1"), vm.state.value.selectedChapterUrls)
+
+                    vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                    assertEquals(listOf(listOf("c/1")), recorder.bulkReads, "filter=$filter")
+                    assertEquals(listOf("c/1"), recorder.read, "filter=$filter")
+                    assertTrue(
+                        vm.state.value.selectedChapterUrls
+                            .isEmpty(),
+                    )
+                } finally {
+                    store.clear()
+                }
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_preservesSelectionWhenGuarded() =
+        runTest {
+            val selected = chapter("c/2", isRead = true)
+            val other = chapter("c/3")
+            val cached = details(listOf(other, selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/3", "c/2", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                options.libraryRepo.emitInLibrary(false)
+                assertFalse(vm.state.value.isInLibrary)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+
+                options.libraryRepo.emitInLibrary(true)
+                assertTrue(vm.state.value.isInLibrary)
+                vm.submit(DetailsIntent.OnChapterLongClick(other))
+                assertEquals(setOf("c/2", "c/3"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2", "c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnSelectionToggle(other))
+                vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.UNREAD))
+                assertEquals(
+                    listOf("c/3", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                assertTrue(recorder.bulkReads.isEmpty())
+                assertTrue(recorder.read.isEmpty())
+            } finally {
+                store.clear()
+            }
+        }
+}
+
 // ---- fakes -------------------------------------------------------------------------------
 
 private class FakeMangaDetailsRepository(
@@ -900,9 +1168,10 @@ private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
     override suspend fun markRead(chapterUrls: List<String>) = Unit
 }
 
-/** Records every read-marking call so a test can assert opening a chapter does NOT mark it read. */
+/** Records all read mutations and keeps bulk batches distinct from single/toggle calls. */
 private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
     val read = mutableListOf<String>()
+    val bulkReads = mutableListOf<List<String>>()
 
     override suspend fun markRead(chapterUrl: String) {
         read += chapterUrl
@@ -913,6 +1182,7 @@ private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
     }
 
     override suspend fun markRead(chapterUrls: List<String>) {
+        bulkReads += chapterUrls.toList()
         read += chapterUrls
     }
 }

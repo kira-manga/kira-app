@@ -563,11 +563,11 @@ internal fun DetailsScreenContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        // Resume FAB — native LibraryMangaScreen.kt:225-235. Shown only for an in-library manga with
-        // loaded chapters and outside the adult gate (the gate suppresses the whole body). Computes
-        // the first-unread chapter from the displayed (filtered/sorted) list and jumps into it.
+        // Resume FAB — native LibraryMangaScreen.kt:225-235. Keep chapter-selection actions unobstructed.
+        // Resumes at the first unread chapter in reading order from the displayed (filtered/sorted) list.
         floatingActionButton = {
-            if (state.isInLibrary && state.hasDetails && !state.isAdultGateActive) {
+            val isResumeAvailable = state.isInLibrary && state.hasDetails && !state.isAdultGateActive
+            if (isResumeAvailable && !state.isInChapterSelectionMode) {
                 ResumeFab(
                     firstUnread = state.firstUnreadChapter,
                     expanded = resumeFabExpanded,

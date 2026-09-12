@@ -182,11 +182,11 @@ sealed interface DetailsIntent : MviIntent {
     data object OnDeleteSelectedDownloads : DetailsIntent
 
     /**
-     * Multi-select "mark this and below as read" — native `ChapterSelectionActionsRow`
-     * mark-down-read action, shown only when exactly ONE chapter is selected
-     * (ChapterSelectionActionsRow.kt:77-81 → `onMarkAllDownRead`). Marks every chapter below the
-     * selected one (in the displayed reading order, EXCLUSIVE of the tapped chapter — matching
-     * native) as read, then clears the selection.
+     * Multi-select "mark this and below as read" — shown only when exactly ONE chapter is selected.
+     * Includes the selected chapter and every following chapter in the displayed order.
+     *
+     * Dispatches the bulk read mutation and clears selection without waiting for it to complete.
+     * Ignored for non-library manga or when the selected chapter is no longer displayed.
      */
     data object OnMarkSelectedDownRead : DetailsIntent
 
