@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
-import me.manga.kira.ui.about.Discord
 import me.manga.kira.ui.about.Facebook
 import me.manga.kira.ui.about.Instagram
 import me.manga.kira.ui.about.Public
@@ -38,8 +37,10 @@ import me.manga.kira.ui.about.SocialMediaIcons
 import me.manga.kira.ui.about.WhatsApp
 import me.manga.kira.ui.about.X
 
+private const val SOCIAL_BUTTON_COUNT = 5
+
 /**
- * Reusable adaptive 6-button brand-icon social row (NP Phase 2, GAP-SET-12).
+ * Reusable adaptive five-button brand-icon social row.
  *
  * Hoisted into `:ui/.../components` from the About screen's private `SocialMediaRow` so BOTH the
  * About screen AND the Settings Feedback dialog (and the Language request dialog, native shows the
@@ -50,12 +51,11 @@ import me.manga.kira.ui.about.X
  * **Callback-only `:ui`**: the row never opens a URL itself — each tappable button invokes
  * [onOpenUrl] with one of the brand URL constants ([TwitterUrl] / [FacebookUrl] / [InstagramUrl] /
  * [WhatsAppUrl] / [WEBSITE_URL]). The host route
- * adapter forwards the URL to the platform `IntentLauncher.openUrl`. The Discord button has no
- * landing page in the source (legacy `default: no-op`) and dispatches nothing.
+ * adapter forwards the URL to the platform `IntentLauncher.openUrl`. Discord is omitted until
+ * a verified destination is available; every displayed button opens a destination.
  *
- * **Layout**: [BoxWithConstraints]-driven adaptive sizing — six buttons with 8.dp inter-spacing,
- * button size coerced into 36..56.dp and icon size into 18..28.dp — byte-identical to the legacy
- * `SocialMediaRow` math and to the About screen's private copy.
+ * **Layout**: [BoxWithConstraints]-driven adaptive sizing — five buttons with 8.dp inter-spacing,
+ * button size coerced into 36..56.dp and icon size into 18..28.dp.
  *
  * **Press feedback**: each button shrinks to 85% and springs back (bouncy spring, high stiffness) on
  * tap, resetting after 150ms — a faithful port of the legacy `SocialMediaButton` press animation.
@@ -66,11 +66,10 @@ fun KiraSocialMediaRow(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val buttonCount = 6
         val spacing = 8.dp
-        val totalSpacing = spacing * (buttonCount - 1)
+        val totalSpacing = spacing * (SOCIAL_BUTTON_COUNT - 1)
         val availableWidth = maxWidth - totalSpacing
-        val buttonSize = (availableWidth / buttonCount).coerceIn(36.dp, 56.dp)
+        val buttonSize = (availableWidth / SOCIAL_BUTTON_COUNT).coerceIn(36.dp, 56.dp)
         val iconSize = (buttonSize * 0.5f).coerceIn(18.dp, 28.dp)
 
         Row(
@@ -105,13 +104,6 @@ fun KiraSocialMediaRow(
                 buttonSize = buttonSize,
                 iconSize = iconSize,
                 onClick = { onOpenUrl(WhatsAppUrl) },
-            )
-            SocialMediaButton(
-                icon = SocialMediaIcons.Discord,
-                contentDescription = "Discord",
-                buttonSize = buttonSize,
-                iconSize = iconSize,
-                onClick = { /* no Discord landing page in source — matches legacy no-op */ },
             )
             SocialMediaButton(
                 icon = SocialMediaIcons.Public,
