@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_no_matching_items">Нет манги, соответствующей фильтрам или выбранной категории.</string>
+</resources>

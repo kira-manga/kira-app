@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -75,7 +74,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -147,10 +145,6 @@ import me.manga.kira.ui.generated.resources.library_density_comfortable
 import me.manga.kira.ui.generated.resources.library_density_compact
 import me.manga.kira.ui.generated.resources.library_density_spacious
 import me.manga.kira.ui.generated.resources.library_downloaded_chapters_desc
-import me.manga.kira.ui.generated.resources.library_empty_desc_format
-import me.manga.kira.ui.generated.resources.library_empty_message_format
-import me.manga.kira.ui.generated.resources.library_tab_likes
-import me.manga.kira.ui.generated.resources.library_tab_watching_now
 import me.manga.kira.ui.generated.resources.library_like
 import me.manga.kira.ui.generated.resources.library_options
 import me.manga.kira.ui.generated.resources.library_open_random_manga
@@ -167,7 +161,6 @@ import me.manga.kira.ui.generated.resources.library_toggle_sort_direction
 import me.manga.kira.ui.generated.resources.library_unlike
 import me.manga.kira.ui.generated.resources.library_watch_now
 import me.manga.kira.ui.generated.resources.minutes_ago
-import me.manga.kira.ui.generated.resources.no_results_found
 import me.manga.kira.ui.generated.resources.not_updated_yet
 import me.manga.kira.ui.generated.resources.searching_placeholder
 import me.manga.kira.ui.generated.resources.sort_alphabetic
@@ -350,11 +343,12 @@ internal fun LibraryScreenContent(
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     state.isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    state.isEmpty -> EmptyLibraryMessage(
-                        isSearching = state.isSearching,
-                        category = state.category,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    state.isEmpty ->
+                        libraryEmptyContent(
+                            hasLibraryItems = state.hasLibraryItems,
+                            isSearching = state.isSearching,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     else -> LibraryGrid(
                         items = state.items,
                         selection = state.selection,
@@ -1138,72 +1132,6 @@ private fun formatRelativeTime(past: Instant, now: Instant): String {
         days < 365 -> stringResource(Res.string.months_ago, months.toInt())
         else -> stringResource(Res.string.years_ago, years.toInt())
     }
-}
-
-/**
- * Empty-library placeholder (P2 parity fix, audit p2/library "Empty library state").
- *
- * Mirrors native `EmptyLibraryPlaceholder.kt:26-50` verbatim: a centered [Column] (fillMaxSize,
- * 32.dp padding) with an [Icons.Outlined.Inbox] icon (72.dp, `onBackground` @0.7f alpha), a 16.dp
- * [Spacer], and a `titleLarge` Bold centered message naming the active category —
- * "Your <Library / Watching Now / Likes> is empty" (native `empty_library_message` = "Your %1$s is
- * empty"). The tab name follows native `LibraryItems.kt:92-96`: NAN → "Library", WATCHING_NOW →
- * "Watching Now", LIKED → "Likes".
- *
- * The search case keeps a distinct, simpler "no results" caption (a rework enhancement the audit
- * explicitly preserves — native has no search-empty distinction).
- */
-@Composable
-private fun EmptyLibraryMessage(
-    isSearching: Boolean,
-    category: LibraryCategory,
-    modifier: Modifier = Modifier,
-) {
-    if (isSearching) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            Text(
-                text = stringResource(Res.string.no_results_found),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
-    }
-    val tabName = libraryTabName(category)
-    Column(
-        modifier = modifier.padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Inbox,
-            contentDescription = stringResource(Res.string.library_empty_desc_format, tabName),
-            modifier = Modifier.size(72.dp),
-            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-        )
-        Spacer(modifier = Modifier.size(16.dp))
-        Text(
-            text = stringResource(Res.string.library_empty_message_format, tabName),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-}
-
-/**
- * Active-category tab display name used by the empty-library placeholder, mirroring native
- * `LibraryItems.kt:92-96` (NAN → "Library", WATCHING_NOW → "Watching Now", LIKED → "Likes"). These
- * are the native FilterTabs *display* names — distinct from the in-tab-row category labels
- * ([libraryCategoryLabel], "All" / "Liked" / "Watching") — to reproduce native's empty-state copy
- * exactly.
- */
-@Composable
-private fun libraryTabName(category: LibraryCategory): String = when (category) {
-    LibraryCategory.NAN -> stringResource(Res.string.title_library)
-    LibraryCategory.WATCHING_NOW -> stringResource(Res.string.library_tab_watching_now)
-    LibraryCategory.LIKED -> stringResource(Res.string.library_tab_likes)
 }
 
 @Composable
