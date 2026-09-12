@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_no_matching_items">Aucun manga ne correspond à vos filtres ou à la catégorie sélectionnée.</string>
+</resources>
