@@ -1,20 +1,18 @@
 package me.manga.kira.ui.library
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import me.manga.kira.ui.common.sourceFallbackColor
 
 /**
  * Source brand-color map for the Library card source badge (GAP-LIB-17).
  *
- * Mirrors the legacy `me.manga.kira.sources_repositry.data.String.COLORS` extension verbatim
- * (the per-source brand hex + the `else -> black` fallthrough). It is duplicated here rather than
- * imported because the original lives in `:shared`, and `:ui` is forbidden from depending on
- * `:shared` (contract §4 / §6 — `:ui` imports only `:presentation`). `androidx.compose.ui.graphics.Color`
- * is multiplatform, so the verbatim hex literals compile unchanged across Android / iOS / Desktop.
+ * Preserves the legacy named-source brand colors without importing the source implementation
+ * into `:ui`. These opaque sRGB literals are shared by Android, iOS and Desktop rendering.
  *
  * Keyed on the source `api` string (e.g. "Lekmanga", "Team X") exactly as the legacy
- * `MangaSource.{X}.API` literals resolve. Unknown / unmapped sources fall through to opaque black —
- * identical graceful-degradation to the legacy `else` branch.
+ * `MangaSource.{X}.API` literals resolve. Unknown sources use the shared deterministic per-api
+ * fallback palette, also opaque; neither the source identity nor its fallback hash is changed here.
  */
 internal val String.libraryBrandColor: Color
     get() =
@@ -66,11 +64,13 @@ internal val String.libraryBrandColor: Color
         }
 
 /**
- * BT.601 luminance test — mirrors the legacy `Color.isDark()` helper in `MangaSource.kt` verbatim
- * (the CCIR-601 luma weights `0.299 / 0.587 / 0.114`, mid-gray 0.5 threshold). Drives the
- * contrast-aware badge text color (white on dark brand colors, black on light).
+ * Chooses the stronger WCAG black/white contrast pair for an opaque [libraryBrandColor].
+ * The two ratios have product 21, so the better choice is always above 4.5:1. The badge must
+ * keep its backing opaque: luminance alone does not account for a translucent cover blend.
  */
-internal fun Color.isDarkBrand(): Boolean {
-    val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
-    return luminance < 0.5
+internal fun Color.libraryBrandContentColor(): Color {
+    val relativeLuminance = luminance().toDouble()
+    val blackContrast = (relativeLuminance + 0.05) / 0.05
+    val whiteContrast = 1.05 / (relativeLuminance + 0.05)
+    return if (blackContrast >= whiteContrast) Color.Black else Color.White
 }

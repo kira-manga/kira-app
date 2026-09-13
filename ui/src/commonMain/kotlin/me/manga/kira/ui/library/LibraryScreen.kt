@@ -1268,8 +1268,8 @@ private fun LibraryCard(
                     model = coverModel?.invoke(item),
                 )
                 // GAP-LIB-17: source brand badge overlaid top-start on the cover. Mirrors the
-                // native MangaCard — a small rounded-4dp Card tinted with the source brand color
-                // (api.COLORS) at 80% alpha, showing "api - language" in contrast-aware text.
+                // native MangaCard geometry — a small rounded-4dp Card with an opaque source
+                // brand backing, showing "api - language" in contrast-aware text.
                 // Gated on `display.showSource` (the native `showSource` toggle). Placement moved
                 // from a below-cover caption to this on-cover overlay to match native.
                 if (display.showSource && item.manga.api.isNotBlank()) {
@@ -1404,23 +1404,22 @@ private fun LibraryCardCover(
 
 /**
  * Source brand badge (GAP-LIB-17) — a small rounded-4dp [Card] overlaid top-start on the cover,
- * tinted with the source brand color ([libraryBrandColor]) at 80% alpha, showing the
- * "api - language" label (via `library_source_badge_format`) in contrast-aware text
- * (white on dark brand colors, black on light, per [isDarkBrand]). Mirrors the native MangaCard
- * source badge (`MangaCard.kt:172-193`) verbatim: 8sp Bold text, 6dp/2dp inner padding.
+ * using opaque [libraryBrandColor] and its WCAG black/white [libraryBrandContentColor]. The
+ * localized "api - language" label (via `library_source_badge_format`) retains the native
+ * MangaCard source badge geometry: 8sp Bold text, 6dp/2dp inner padding.
  */
 @Composable
-private fun LibrarySourceBadge(
+internal fun LibrarySourceBadge(
     api: String,
     language: String,
     modifier: Modifier = Modifier,
 ) {
     val brand = api.libraryBrandColor
-    val textColor = if (brand.isDarkBrand()) Color.White else Color.Black
+    val textColor = brand.libraryBrandContentColor()
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(4.dp),
-        colors = CardDefaults.cardColors(containerColor = brand.copy(alpha = 0.8f)),
+        colors = CardDefaults.cardColors(containerColor = brand, contentColor = textColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Text(
