@@ -85,6 +85,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -120,6 +125,7 @@ import me.manga.kira.ui.generated.resources.reading_mode_vertical
 import me.manga.kira.ui.generated.resources.reading_mode_webtoon
 import me.manga.kira.ui.generated.resources.reading_mode_continuous
 import me.manga.kira.ui.generated.resources.reader_toggle_bookmark
+import me.manga.kira.ui.generated.resources.reader_show_controls
 import me.manga.kira.ui.generated.resources.np_reader_bookmark_not_in_library
 import me.manga.kira.ui.generated.resources.failed_to_load_image
 import me.manga.kira.ui.generated.resources.action_open_in_browser
@@ -429,6 +435,13 @@ internal fun ReaderScreenContent(
     // (a config change while open just closes it — same as native's local dialog flag).
     var showReadingModeDialog by remember { mutableStateOf(false) }
 
+    val currentOnIntent by rememberUpdatedState(onIntent)
+    val currentUiVisible by rememberUpdatedState(state.isUiVisible)
+    val showControlsLabel = stringResource(Res.string.reader_show_controls)
+    // Coalesce repeated accessibility requests until this hidden interval is acknowledged.
+    // The latest-visibility guard also makes a retained action harmless once chrome is visible.
+    var revealRequested by remember(state.isUiVisible) { mutableStateOf(false) }
+
     LaunchedEffect(manga.api, manga.language, manga.title, chapter.url) {
         onIntent(ReaderIntent.OnEnter(manga, chapter))
     }
@@ -560,15 +573,29 @@ internal fun ReaderScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // Outer chrome-toggle tap detector (restored 2026-06-30, reverting the af56e1c2
-                // "WEBTOON-SCROLL FIX" that stripped it). `detectTapGestures` only fires on a clean tap
-                // (down → up within the tap timeout, no drag past touchSlop); vertical drags are consumed
-                // by the LazyColumn's own scroll, so the two coexist. Attached to the outer Box (not the
-                // list) so taps in the loading / error states also toggle chrome — matches the native app.
-                // The iOS-only scroll problem this was removed for no longer applies: iOS now runs the
-                // native Swift reader by default, so this Compose path is Android/Desktop (+ iOS fallback).
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { onIntent(ReaderIntent.OnUiToggle) })
+                // Loaded pages have one tap owner: their zoomableWithScroll gesture detector.
+                // Keep a noncompeting fallback only while no page layout is composed.
+                .then(
+                    if (!state.hasPages) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures(onTap = { currentOnIntent(ReaderIntent.OnUiToggle) })
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
+                .semantics(mergeDescendants = false) {
+                    if (!state.isUiVisible) {
+                        contentDescription = showControlsLabel
+                        role = Role.Button
+                        onClick(label = showControlsLabel) {
+                            if (!currentUiVisible && !revealRequested) {
+                                revealRequested = true
+                                currentOnIntent(ReaderIntent.OnUiToggle)
+                            }
+                            true
+                        }
+                    }
                 },
         ) {
             val screenHeightDb: Dp = maxHeight
@@ -667,9 +694,7 @@ internal fun ReaderScreenContent(
                             null
                         },
                         onOpenInWebView = openInWebView,
-                        // gestures-zoom finding #2: chrome-toggle fed into the zoomable gesture
-                        // layer (in addition to the outer Box detector), matching native which
-                        // passes `onTap` into every reading-mode's `zoomableWithScroll`.
+                        // The loaded layout's zoomable gesture layer owns single-tap chrome toggles.
                         onToggleUi = { onIntent(ReaderIntent.OnUiToggle) },
                         pageProgress = state.pageProgress,
                         onReportProgress = onReportProgress,
@@ -1460,13 +1485,8 @@ private fun ReaderVerticalListBody(
         state = listState,
         modifier = Modifier
             .fillMaxSize()
-            // Pinch-zoom + tap-toggle on the continuous list (restored 2026-06-30, reverting the af56e1c2
-            // "WEBTOON-SCROLL FIX"). `zoomableWithScroll` is the engawapg overload for lazy lists
-            // (enableNestedScroll = true): a pan past the zoomed-content edge hands off to the list's own
-            // vertical scroll, and `onTap` toggles chrome at the gesture layer (matches native-app
-            // WebToonReadingMode / ContinuousVerticalReadingMode). This was removed to chase an iOS-only
-            // scroll stall; that no longer applies — iOS now runs the native Swift reader by default, so
-            // this Compose path is Android/Desktop (where scroll was always fine) plus the iOS fallback.
+            // One detector owns taps, pinch and double-tap zoom. Nested scroll preserves handoff
+            // from zoomed-content edges to the list's vertical scroll.
             .zoomableWithScroll(rememberZoomState(), onTap = { onToggleUi() })
             // Theme background painted at the LazyColumn level (not the outer Box) so it
             // sits *behind* the items only — matches legacy
@@ -1613,14 +1633,8 @@ private fun ReaderHorizontalPager(
         HorizontalPager(
             state = pagerState,
             reverseLayout = reverseLayout,
-            // `.zoomableWithScroll` before `.fillMaxSize` so the pinch gesture is recognized at the
-            // pager level, mirroring native `HorizontalReadingMode.kt:47` (`zoomableWithScroll(...,
-            // onTap = { onTap() })`). Native uses the `enableNestedScroll = true` overload even on the
-            // pagers so a pan past the zoomed-page edge can coordinate with the pager's own swipe;
-            // matching the source-of-truth modifier choice (gestures-zoom finding #1). `onTap` is fed
-            // into the gesture layer too (gestures-zoom finding #2): native wires the chrome-toggle at
-            // BOTH the outer Box and inside `zoomableWithScroll`, so a single tap toggles chrome
-            // regardless of whether the zoomable's gesture detector consumed the pointer.
+            // Keep zoomableWithScroll before fillMaxSize: one detector owns taps and zoom,
+            // with nested-scroll handoff from a zoomed-page edge to the pager's swipe.
             modifier = Modifier
                 .zoomableWithScroll(rememberZoomState(), onTap = { onToggleUi() })
                 .fillMaxSize(),
@@ -1722,10 +1736,7 @@ private fun ReaderVerticalPager(
     }
     VerticalPager(
         state = pagerState,
-        // Same `.zoomableWithScroll` + `onTap` posture as `ReaderHorizontalPager`, mirroring native
-        // `VerticalReadingMode.kt:39-43` (`zoomableWithScroll(..., onTap = { onTap() })`).
-        // gestures-zoom findings #1 (nested-scroll overload on the pager) + #2 (chrome-toggle fed
-        // into the gesture layer as well as the outer Box).
+        // Same single tap/zoom owner and nested-scroll handoff as the horizontal pager.
         modifier = Modifier
             .zoomableWithScroll(rememberZoomState(), onTap = { onToggleUi() })
             .fillMaxSize(),
