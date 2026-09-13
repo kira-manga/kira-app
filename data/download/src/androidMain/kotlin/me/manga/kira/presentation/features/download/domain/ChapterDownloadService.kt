@@ -8,6 +8,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,14 +19,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.cbz.OptimizedCbzManager
-import me.manga.kira.platform.storage.DataStoreHelper
-import me.manga.kira.data.local.dao.ChapterDownloadDao
-import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.domain.service.FileService
+import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadState
-import me.manga.kira.presentation.features.download.data.DownloadingState
-import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
 import java.io.BufferedOutputStream
 import java.io.File
@@ -46,21 +42,16 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 class ChapterDownloadService(
     private val context: Context,
-    private val libraryRepository: LibraryRepository,
+    private val persistence: ChapterDownloadPersistence,
     private val httpClient: HttpClient,
-    private val fileService: FileService,
-    private val notificationDao: NotificationDao,
-    private val chapterDownloadDao: ChapterDownloadDao,
     private val optimizedCbzManager: OptimizedCbzManager,
     private val dataStoreHelper: DataStoreHelper,
+    private val downloadDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(DOWNLOAD_PARALLELISM),
 ) {
-
-    private val DOWNLOAD_DISPATCHER = Dispatchers.IO.limitedParallelism(6)
-
     fun downloadChapterC(
         chapter: SavedChapterEntity,
         pages: List<DownloadPage>,
-    ): Flow<DownloadState> = downloadChapterBatch(chapter, pages).flowOn(DOWNLOAD_DISPATCHER)
+    ): Flow<DownloadState> = downloadChapterBatch(chapter, pages).flowOn(downloadDispatcher)
 
     suspend fun downloadImage(
         imageUrl: String,
@@ -68,52 +59,57 @@ class ChapterDownloadService(
         chapterId: Long,
         imageIndex: Int,
         pageHeaders: Map<String, String>,
-    ): String = withContext(Dispatchers.IO) {
-        Log.i("ChapterDownloadService", "downloadImage url=$imageUrl")
+    ): String =
+        withContext(Dispatchers.IO) {
+            Log.i("ChapterDownloadService", "downloadImage url=$imageUrl")
 
-        val response: HttpResponse = httpClient.get(imageUrl) {
-            headers {
-                pageHeaders.forEach { (name, value) -> append(name, value) }
+            val response: HttpResponse =
+                httpClient.get(imageUrl) {
+                    headers {
+                        pageHeaders.forEach { (name, value) -> append(name, value) }
+                    }
+                }
+
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Failed to download image: ${response.status.value}")
             }
+
+            val contentType = response.headers["Content-Type"]
+            val extension = detectImageExtension(contentType, imageUrl)
+
+            val chapterDir =
+                File(context.filesDir, "manga/$mangaId/chapter_$chapterId").apply {
+                    mkdirs()
+                }
+
+            val imageFile = File(chapterDir, "image_$imageIndex.$extension")
+
+            // Ktor 3.x: `response.body<ByteArray>()` materialises the full payload. Manga page images
+            // are typically <1MB each so the memory ceiling is fine; this avoids the Ktor 3 channel
+            // API churn around `readRemaining` / `Source` / `Buffer` (still in flux as of 3.4.x). If
+            // page sizes ever grow we can revisit with `bodyAsChannel().copyAndClose(...)` against a
+            // file-backed write channel.
+            val bytes: ByteArray = response.body()
+            BufferedOutputStream(FileOutputStream(imageFile)).use { output ->
+                output.write(bytes)
+            }
+
+            imageFile.absolutePath
         }
-
-        if (!response.status.isSuccess()) {
-            throw IllegalStateException("Failed to download image: ${response.status.value}")
-        }
-
-        val contentType = response.headers["Content-Type"]
-        val extension = detectImageExtension(contentType, imageUrl)
-
-        val chapterDir = File(context.filesDir, "manga/$mangaId/chapter_$chapterId").apply {
-            mkdirs()
-        }
-
-        val imageFile = File(chapterDir, "image_$imageIndex.$extension")
-
-        // Ktor 3.x: `response.body<ByteArray>()` materialises the full payload. Manga page images
-        // are typically <1MB each so the memory ceiling is fine; this avoids the Ktor 3 channel
-        // API churn around `readRemaining` / `Source` / `Buffer` (still in flux as of 3.4.x). If
-        // page sizes ever grow we can revisit with `bodyAsChannel().copyAndClose(...)` against a
-        // file-backed write channel.
-        val bytes: ByteArray = response.body()
-        BufferedOutputStream(FileOutputStream(imageFile)).use { output ->
-            output.write(bytes)
-        }
-
-        imageFile.absolutePath
-    }
 
     private fun downloadChapterBatch(
         chapter: SavedChapterEntity,
         pages: List<DownloadPage>,
-    ): Flow<DownloadState> = flow {
-        require(pages.isNotEmpty()) { "No images to download" }
+    ): Flow<DownloadState> =
+        flow {
+            require(pages.isNotEmpty()) { "No images to download" }
 
-        val total = pages.size
-        val paths = mutableListOf<String>()
-        val useCbz = dataStoreHelper.useCbzFormatFlow.first()
+            val total = pages.size
+            val paths = mutableListOf<String>()
+            val useCbz = dataStoreHelper.useCbzFormatFlow.first()
 
-        try {
+            // Cancellation propagates to the sole collector, which owns cleanup after flowOn
+            // unwinds. Producer-side deletion would race an already-committed Complete.
             for ((index, page) in pages.withIndex()) {
                 val url = page.url
                 currentCoroutineContext().ensureActive()
@@ -129,55 +125,44 @@ class ChapterDownloadService(
                 try {
                     currentCoroutineContext().ensureActive()
 
-                    val cbzPath = optimizedCbzManager.createCbzParallel(
-                        paths,
-                        chapter.mangaId,
-                        chapter.id,
-                    )
+                    val cbzPath =
+                        optimizedCbzManager.createCbzParallel(
+                            paths,
+                            chapter.mangaId,
+                            chapter.id,
+                        )
                     currentCoroutineContext().ensureActive()
 
-                    libraryRepository.updateChapterLocalPaths(chapter.id, listOf(cbzPath))
-                    notificationDao.addLocalImagePathByChapterId(chapter.id, listOf(cbzPath))
-
+                    persistence.savePaths(chapter.id, listOf(cbzPath))
                     emit(DownloadState.Complete(listOf(cbzPath)))
                 } catch (e: CancellationException) {
-                    paths.forEach { File(it).delete() }
-                    chapterDownloadDao.updateStateChId(chapter.id, DownloadingState.FAILED)
+                    // This branch must precede Throwable: a system stop is not a compression error.
                     throw e
                 } catch (e: Throwable) {
-                    // Throwable, not Exception: OutOfMemoryError is an Error, so the loose-files
-                    // fallback below would otherwise never fire on a real OOM (CancellationException
-                    // is already handled by the branch above).
+                    // OutOfMemoryError is an Error; preserve the loose-files fallback on real OOM.
                     if (e is OutOfMemoryError || e.message?.contains("memory", ignoreCase = true) == true) {
-                        libraryRepository.updateChapterLocalPaths(chapter.id, paths)
-                        libraryRepository.markChapterAsDownloaded(chapterId = chapter.id)
-                        chapterDownloadDao.updateStateChId(chapter.id, DownloadingState.SUCCESS)
-                        notificationDao.addLocalImagePathByChapterId(chapter.id, paths)
+                        persistence.savePaths(chapter.id, paths)
                         emit(DownloadState.Complete(paths))
                     } else {
                         paths.forEach { File(it).delete() }
-                        chapterDownloadDao.updateFailure(chapter.id, "Compression failed: ${e.message}")
+                        persistence.recordFailure(chapter.id, "Compression failed: ${e.message}")
                         emit(DownloadState.Error(e, paths.size, total))
                     }
                 }
             } else {
-                libraryRepository.updateChapterLocalPaths(chapter.id, paths)
-                notificationDao.addLocalImagePathByChapterId(chapter.id, paths)
+                persistence.savePaths(chapter.id, paths)
                 emit(DownloadState.Complete(paths))
             }
-        } catch (e: CancellationException) {
-            paths.forEach { File(it).delete() }
-            chapterDownloadDao.updateFailure(chapter.id, "Download cancelled")
-            throw e
+        }.catch { e ->
+            if (e is CancellationException) throw e
+            persistence.recordFailure(chapter.id, e.message)
+            emit(DownloadState.Error(e, 0, pages.size))
         }
-    }.catch { e ->
-        if (e !is CancellationException) {
-            chapterDownloadDao.updateFailure(chapter.id, e.message)
-        }
-        emit(DownloadState.Error(e, 0, pages.size))
-    }
 
-    private fun detectImageExtension(contentType: String?, imageUrl: String): String {
+    private fun detectImageExtension(
+        contentType: String?,
+        imageUrl: String,
+    ): String {
         val urlExt = imageUrl.substringAfterLast('.', "").substringBefore('?').lowercase()
         if (urlExt in listOf("avif", "jpg", "jpeg", "png", "gif", "webp", "bmp")) {
             return urlExt
@@ -196,14 +181,19 @@ class ChapterDownloadService(
         }
     }
 
-    fun deleteChapterFiles(mangaId: Long, chapterId: Long) {
-        fileService.deleteChapterFiles(mangaId, chapterId)
+    fun deleteChapterFiles(
+        mangaId: Long,
+        chapterId: Long,
+    ) {
+        persistence.deleteChapterFiles(mangaId, chapterId)
     }
 
     suspend fun deleteMangaFiles(mangaId: Long) {
-        fileService.deleteMangaFiles(mangaId)
+        persistence.deleteMangaFiles(mangaId)
     }
 }
+
+private const val DOWNLOAD_PARALLELISM = 6
 
 /* ----------------------------------------------------------------------------
  * Audit-trail postscript (Phase 9.x.cluster258.staleKdocSweep.cascade,

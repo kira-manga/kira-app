@@ -264,15 +264,7 @@ data class DetailsState(
      * is empty.
      */
     val isSelectionAllDownloaded: Boolean by lazy {
-        if (selectedChapterUrls.isEmpty()) {
-            false
-        } else {
-            val downloadedUrls = details?.chapters
-                ?.filter { it.isDownloaded }
-                ?.map { it.url }
-                ?.toSet()
-            downloadedUrls != null && selectedChapterUrls.all { it in downloadedUrls }
-        }
+        selectedChapterUrls.isNotEmpty() && selectedChapterUrls.all(::isChapterDownloaded)
     }
 
     /**
@@ -299,23 +291,25 @@ data class DetailsState(
         if (base == null) {
             emptyList()
         } else {
-            val filtered = when (chapterFilter) {
-                ChapterFilterType.ALL -> base
-                ChapterFilterType.DOWNLOADED -> base.filter { it.isDownloaded }
-                ChapterFilterType.UNREAD -> base.filter { !it.isRead }
-                ChapterFilterType.READED -> base.filter { it.isRead }
-                ChapterFilterType.BOOKMARKED -> base.filter { it.isBookmarked }
-            }
+            val filtered =
+                when (chapterFilter) {
+                    ChapterFilterType.ALL -> base
+                    ChapterFilterType.DOWNLOADED -> base.filter { isChapterDownloaded(it.url) }
+                    ChapterFilterType.UNREAD -> base.filter { !it.isRead }
+                    ChapterFilterType.READED -> base.filter { it.isRead }
+                    ChapterFilterType.BOOKMARKED -> base.filter { it.isBookmarked }
+                }
             // ID preserves the newest-first source order. Other keys produce a descending base;
             // the ascending toggle reverses the entire result, including ties. For LAST_READ_DATE,
             // equal times keep filtered source order descending and reverse it ascending. All-zero
             // history therefore matches ID in either direction, preserving Resume's traversal.
-            val sorted = when (chapterSort) {
-                ChapterSortType.ID -> filtered
-                ChapterSortType.LAST_READ_DATE -> filtered.sortedByDescending { it.lastReadAtEpochMillis }
-                ChapterSortType.NUMBER -> filtered.sortedByDescending { it.number.toDoubleOrNull() ?: 0.0 }
-                ChapterSortType.DATE -> filtered.sortedByDescending { it.date }
-            }
+            val sorted =
+                when (chapterSort) {
+                    ChapterSortType.ID -> filtered
+                    ChapterSortType.LAST_READ_DATE -> filtered.sortedByDescending { it.lastReadAtEpochMillis }
+                    ChapterSortType.NUMBER -> filtered.sortedByDescending { it.number.toDoubleOrNull() ?: 0.0 }
+                    ChapterSortType.DATE -> filtered.sortedByDescending { it.date }
+                }
             if (sortAscending) sorted.reversed() else sorted
         }
     }
@@ -336,6 +330,23 @@ data class DetailsState(
         (if (sortAscending) displayChapters else displayChapters.asReversed())
             .firstOrNull { !it.isRead }
     }
+
+    private val downloadedChapterUrls: Set<String> by lazy {
+        // Match displayChapters: the first declaration owns a duplicated URL's saved flags.
+        details
+            ?.chapters
+            .orEmpty()
+            .distinctBy(Chapter::url)
+            .filter { isDownloaded(it, chapterDownloads[it.url]) }
+            .mapTo(mutableSetOf(), Chapter::url)
+    }
+
+    /**
+     * Current-snapshot completion for Details filtering, actions and row icons; unknown URLs are
+     * false. Live SUCCESS can precede saved details, while the saved flag survives history deletion.
+     * Active progress/cancel controls still take precedence, and size/count remain ledger-only.
+     */
+    fun isChapterDownloaded(chapterUrl: String): Boolean = chapterUrl in downloadedChapterUrls
 
     /**
      * Native size-display parity (2026-06-02). The human-readable on-disk size for the chapter at
@@ -365,9 +376,18 @@ data class DetailsState(
      */
     val totalDownloadedSizeLabel: String?
         get() {
-            val total = chapterDownloads.values
-                .filter { it.state == DownloadState.SUCCESS }
-                .sumOf { it.sizeBytes }
+            val total =
+                chapterDownloads.values
+                    .filter { it.state == DownloadState.SUCCESS }
+                    .sumOf { it.sizeBytes }
             return if (total > 0L) formatBytes(total) else null
         }
+
+    companion object {
+        /** The same saved/live completion rule for known Details chapters and their rows. */
+        fun isDownloaded(
+            chapter: Chapter,
+            progress: ChapterDownloadProgress?,
+        ): Boolean = progress?.isDownloaded == true || chapter.isDownloaded
+    }
 }

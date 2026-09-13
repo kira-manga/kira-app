@@ -1992,7 +1992,7 @@ private fun ChapterRow(
                         }
                     }
                 }
-                download?.isDownloaded == true || chapter.isDownloaded -> {
+                DetailsState.isDownloaded(chapter, download) -> {
                     // Downloaded + done — native `ChapterItem.kt:89-93` / `LibraryChapterItem`
                     // render the DownloadDone glyph (not a bare Check) tinted primary for a
                     // downloaded chapter. P3-LOW parity: use the same DownloadDone glyph here so the
@@ -2046,10 +2046,10 @@ private fun ChapterRow(
             // manga is saved); a downloaded chapter shows the DownloadDone glyph. This restores the
             // per-chapter download entry point the rework dropped (it had only a passive dot).
             KiraIconButton(
-                icon = if (chapter.isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                Icons.Filled.run { if (DetailsState.isDownloaded(chapter, download)) DownloadDone else Download },
                 contentDescription = stringResource(Res.string.details_download_chapter),
                 onClick = onRequestAddBookmark,
-                tint = if (chapter.isDownloaded) {
+                tint = if (DetailsState.isDownloaded(chapter, download)) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)

@@ -17,6 +17,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
@@ -366,74 +367,52 @@ class DetailsViewModelRegressionTest {
     @Test
     fun chapterRow_reflectsLiveDownloadProgress_thenFlipsToDownloadedOnCompletion() =
         runTest {
-            // In-library manga with a cached chapter list (renders from the saved flow, no network).
-            val saved = FakeSavedMangaDetailsRepository()
-            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-            val downloads = FakeDownloadsRepository()
-            // c/1 resolves to Room id 10; c/2 has no download.
-            val resolver = MapChapterIdResolver(mapOf("c/1" to 10L, "c/2" to 20L))
-            val (vm, _) =
-                vmWithFetchFake(
-                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-                    saved = saved,
-                    options =
-                        VmFixtureOptions().apply {
-                            downloadsRepo = downloads
-                            idResolver = resolver
-                        },
-                )
-
-            vm.submit(DetailsIntent.OnEnter(manga()))
-
-            // Symptom 1: while RUNNING the row must carry the live state + progress (matching native's
-            // determinate ring), not just a boolean "is downloading". Joined to the chapter by `url`.
-            downloads.rows.value =
-                listOf(
-                    downloadedChapter(url = "c/1", state = me.manga.kira.domain.model.downloads.DownloadState.RUNNING, progress = 42),
-                )
-            run {
-                val s = vm.state.value
-                val entry = s.chapterDownloads["c/1"]
-                assertNotNull(entry, "the running chapter must have a live download entry")
-                assertEquals(me.manga.kira.domain.model.downloads.DownloadState.RUNNING, entry.state)
-                assertEquals(42, entry.progress, "the live RUNNING progress (42) must reach state")
-                assertTrue("c/1" in s.downloadingChapterUrls, "the running chapter is an active download url")
-                assertEquals(null, s.chapterDownloads["c/2"], "a chapter with no download has no entry")
+            DetailsDownloadFixture(testDispatchers).verify {
+                assertRunningProgress(vm, downloads, progress = 42)
+                assertRunningProgress(vm, downloads, progress = 88)
+                // SUCCESS arrives before the saved-details flag, without leaving/re-entering Details.
+                downloads.rows.value = listOf(successfulDownload())
+                assertFalse(requireNotNull(vm.state.value.details).chapters.first().isDownloaded)
+                assertDownloadedLedger(vm.state.value)
+                assertDownloadedDetailsActions(vm, actions)
             }
+        }
 
-            // A later tick advances the percent — recomposition must follow (the DAO re-emits).
-            downloads.rows.value =
-                listOf(
-                    downloadedChapter(url = "c/1", state = me.manga.kira.domain.model.downloads.DownloadState.RUNNING, progress = 88),
-                )
-            assertEquals(
-                88,
-                vm.state.value.chapterDownloads["c/1"]
-                    ?.progress,
-                "a progress tick re-emits the new percent",
-            )
+    @Test
+    fun downloadHistoryRemoval_keepsSavedDownloadedActions_withoutLedgerSizeOrCount() =
+        runTest {
+            assertDuplicateChapterFallbackUsesFirstEntry()
+            DetailsDownloadFixture(testDispatchers).verify {
+                downloads.rows.value = listOf(successfulDownload())
+                assertDownloadedLedger(vm.state.value)
+                saved.saved.value = details(listOf(chapter("c/1", isDownloaded = true), chapter("c/2")))
+                // Row-only history deletion retains saved flags/files; only the ledger flow changes.
+                downloads.rows.value = emptyList()
+                val state = vm.state.value
+                assertTrue(requireNotNull(state.details).chapters.first().isDownloaded)
+                assertTrue(state.chapterDownloads.isEmpty())
+                assertEquals(0, state.downloadedChapterCount)
+                assertNull(state.chapterSizeLabel("c/1"))
+                assertNull(state.totalDownloadedSizeLabel)
+                assertDownloadedDetailsActions(vm, actions)
+                assertFullDeletionMakesChapterPending(vm, saved, actions)
+            }
+        }
 
-            // Symptom 2 (completion-freeze fix): the SUCCESS row arrives in the downloads flow ALONE —
-            // the saved-details flow has NOT re-emitted isDownloaded yet. The row must STILL read
-            // "downloaded" atomically from the SUCCESS entry (no leave/return, no dependency on the
-            // separately-delivered saved flow), drop out of the active set, and carry the on-disk size.
-            downloads.rows.value =
-                listOf(
-                    downloadedChapter(
-                        url = "c/1",
-                        state = me.manga.kira.domain.model.downloads.DownloadState.SUCCESS,
-                        progress = 100,
-                        sizeBytes = 12L * 1024 * 1024,
-                    ),
-                )
-
-            val s = vm.state.value
-            val done = s.chapterDownloads["c/1"]
-            assertNotNull(done, "a completed (SUCCESS) chapter keeps an entry so the flip is atomic")
-            assertTrue(done.isDownloaded, "the SUCCESS entry reads downloaded WITHOUT the saved flow re-emitting")
-            assertTrue("c/1" !in s.downloadingChapterUrls, "the completed chapter is no longer an active download url")
-            assertEquals("12.0 MB", s.chapterSizeLabel("c/1"), "the chapter size is shown from the SUCCESS entry")
-            assertEquals("12.0 MB", s.totalDownloadedSizeLabel, "the total downloaded size sums the SUCCESS entries")
+    @Test
+    fun cloudflareDownloadRetry_skipsRecoveredSavedChapter_butEnqueuesGenuineFailure() =
+        runTest {
+            DetailsDownloadFixture(testDispatchers).verify {
+                downloads.rows.value =
+                    listOf("c/1" to 10L, "c/2" to 20L).map { (url, id) ->
+                        downloadedChapter(url, DownloadState.FAILED, progress = 0, chapterId = id)
+                            .copy(errorMsg = DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL)
+                    }
+                // A saved completion precedes the ledger update; the retry set still contains c/1.
+                saved.saved.value = details(listOf(chapter("c/1", isDownloaded = true), chapter("c/2")))
+                vm.submit(DetailsIntent.OnRetry)
+                assertEquals(listOf(Triple(20L, "Naruto", "src")), actions.enqueued)
+            }
         }
 
     // ---- Bug 2: Cloudflare-family failures route to the WebView solver ------------------------
@@ -1223,6 +1202,26 @@ private object NoopDownloadsActionRepository : DownloadsActionRepository {
     override suspend fun reconcileInterrupted() = Result.success(Unit)
 }
 
+/** Records real use-case boundary calls without feeding synthetic completion back into the flows. */
+private class RecordingDownloadsActionRepository : DownloadsActionRepository by NoopDownloadsActionRepository {
+    val enqueued = mutableListOf<Triple<Long, String, String>>()
+    val deletedChapters = mutableListOf<Long>()
+
+    override suspend fun enqueueDownload(
+        chapterId: Long,
+        mangaTitle: String,
+        api: String,
+    ): Result<Unit> {
+        enqueued += Triple(chapterId, mangaTitle, api)
+        return Result.success(Unit)
+    }
+
+    override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> {
+        deletedChapters += chapterId
+        return Result.success(Unit)
+    }
+}
+
 private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
     override suspend fun markRead(chapterUrl: String) = Unit
 
@@ -1322,9 +1321,8 @@ private class FakeDownloadsRepository : DownloadsRepository {
 }
 
 /**
- * PFIX-DLPROGRESS: resolves a fixed set of chapter `url` → Room `id` mappings (unknown urls →
- * null), so the VM can join the displayed chapter list onto the active-download rows by id —
- * the join `NullChapterIdResolver` cannot exercise.
+ * Resolves a controlled set of chapter `url` → Room `id` mappings (unknown urls → null),
+ * including both the single and batched resolution used by the real enqueue use cases.
  */
 private class MapChapterIdResolver(
     private val byUrl: Map<String, Long>,
@@ -1337,7 +1335,7 @@ private class MapChapterIdResolver(
 
 private fun downloadedChapter(
     url: String,
-    state: me.manga.kira.domain.model.downloads.DownloadState,
+    state: DownloadState,
     progress: Int,
     sizeBytes: Long = 0,
     chapterId: Long = 10L,
@@ -1398,6 +1396,7 @@ private fun details(chapters: List<Chapter>) =
 private class VmFixtureOptions {
     var downloadsRepo: DownloadsRepository = EmptyDownloadsRepository
     var idResolver: ChapterIdResolver = NullChapterIdResolver
+    var downloadActions: DownloadsActionRepository = NoopDownloadsActionRepository
     var libraryRepo: FakeLibraryRepository = FakeLibraryRepository()
     var badgeRepo: ChapterNewBadgeRepository = RecordingChapterNewBadgeRepository()
     var deletionRepo: ChapterDeletionRepository = RecordingChapterDeletionRepository()
@@ -1424,8 +1423,8 @@ private fun createVmWithFetchFake(
             toggleInLibrary = ToggleInLibraryUseCase(options.libraryRepo),
             enqueueAllChaptersDownload =
                 EnqueueAllChaptersDownloadUseCase(
-                    chapterIdResolver = NullChapterIdResolver,
-                    enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
+                    chapterIdResolver = options.idResolver,
+                    enqueueDownload = EnqueueDownloadUseCase(options.downloadActions),
                     dispatchers = testDispatchers,
                 ),
             toggleChapterRead = ToggleChapterReadUseCase(options.markReadRepo),
@@ -1433,8 +1432,8 @@ private fun createVmWithFetchFake(
             markChaptersRead = MarkChaptersReadUseCase(options.markReadRepo),
             enqueueChapterDownload =
                 EnqueueChapterDownloadUseCase(
-                    chapterIdResolver = NullChapterIdResolver,
-                    enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
+                    chapterIdResolver = options.idResolver,
+                    enqueueDownload = EnqueueDownloadUseCase(options.downloadActions),
                 ),
             cancelChapterDownload =
                 CancelChapterDownloadUseCase(
@@ -1443,7 +1442,7 @@ private fun createVmWithFetchFake(
                 ),
             cancelRunningDownload = CancelRunningDownloadUseCase(NoopDownloadsActionRepository),
             cancelAllDownloads = CancelAllDownloadsUseCase(NoopDownloadsActionRepository),
-            deleteDownloadedChapter = DeleteDownloadedChapterUseCase(NoopDownloadsActionRepository),
+            deleteDownloadedChapter = DeleteDownloadedChapterUseCase(options.downloadActions),
             observeDownloads = ObserveDownloadsUseCase(options.downloadsRepo),
             resolveChapterId = ResolveChapterIdUseCase(options.idResolver),
             markMangaOpened = MarkMangaOpenedUseCase(options.libraryRepo),
@@ -1458,6 +1457,206 @@ private fun createVmWithFetchFake(
                 ),
         )
     return vm to fetchFake
+}
+
+private class DetailsDownloadFixture(
+    testDispatchers: DispatcherProvider,
+) {
+    val saved =
+        FakeSavedMangaDetailsRepository().apply {
+            this.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+        }
+    val downloads = FakeDownloadsRepository()
+    val actions = RecordingDownloadsActionRepository()
+    val vm =
+        createVmWithFetchFake(
+            fetch = AppResult.Success(requireNotNull(saved.saved.value)),
+            saved = saved,
+            options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    downloadsRepo = downloads
+                    idResolver = MapChapterIdResolver(mapOf("c/1" to FIRST_DOWNLOAD_ID, "c/2" to SECOND_DOWNLOAD_ID))
+                    downloadActions = actions
+                },
+            testDispatchers = testDispatchers,
+        ).first
+
+    fun verify(assertions: DetailsDownloadFixture.() -> Unit) {
+        val store = ViewModelStore().apply { put("details", vm) }
+        try {
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertions()
+        } finally {
+            store.clear()
+        }
+    }
+
+    companion object {
+        private const val FIRST_DOWNLOAD_ID = 10L
+        private const val SECOND_DOWNLOAD_ID = 20L
+    }
+}
+
+private fun successfulDownload() =
+    downloadedChapter(url = "c/1", state = DownloadState.SUCCESS, progress = 100, sizeBytes = 12L * 1024 * 1024)
+
+private fun assertRunningProgress(
+    vm: DetailsViewModel,
+    downloads: FakeDownloadsRepository,
+    progress: Int,
+) {
+    downloads.rows.value = listOf(downloadedChapter(url = "c/1", state = DownloadState.RUNNING, progress = progress))
+    val state = vm.state.value
+    val entry = assertNotNull(state.chapterDownloads["c/1"], "the running chapter must have a live download entry")
+    assertEquals(DownloadState.RUNNING, entry.state)
+    assertEquals(progress, entry.progress, "every progress tick must reach state")
+    assertTrue("c/1" in state.downloadingChapterUrls)
+    assertNull(state.chapterDownloads["c/2"], "a chapter with no download has no entry")
+}
+
+private fun assertDownloadedLedger(state: DetailsState) {
+    val done = assertNotNull(state.chapterDownloads["c/1"], "SUCCESS keeps an entry for the immediate completion flip")
+    assertTrue(done.isDownloaded)
+    assertFalse("c/1" in state.downloadingChapterUrls)
+    assertEquals("12.0 MB", state.chapterSizeLabel("c/1"))
+    assertEquals("12.0 MB", state.totalDownloadedSizeLabel)
+    assertEquals(1, state.downloadedChapterCount)
+}
+
+private fun assertDownloadedDetailsActions(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    assertTrue(vm.state.value.isInLibrary, "download guards must be exercised, not bypassed")
+    assertUnknownSelectionCannotDelete(vm, actions)
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    assertEquals(
+        listOf("c/1"),
+        vm.state.value.displayChapters
+            .map(Chapter::url),
+    )
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/1")))
+    assertTrue(vm.state.value.isSelectionAllDownloaded, "the completed selection exposes delete")
+    vm.submit(DetailsIntent.OnSelectionToggle(chapter("c/2")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded, "a mixed selection must not expose delete")
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty(), "a stray mixed-selection delete must do nothing")
+    assertEquals(setOf("c/1", "c/2"), vm.state.value.selectedChapterUrls)
+    vm.submit(DetailsIntent.OnSelectionToggle(chapter("c/2")))
+    assertTrue(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertEquals(listOf(10L), actions.deletedChapters)
+    assertTrue(
+        vm.state.value.selectedChapterUrls
+            .isEmpty(),
+    )
+    actions.deletedChapters.clear()
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.ALL))
+    assertOnlyPendingChapterEnqueues(vm, actions)
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.BOOKMARKED))
+    assertTrue(
+        vm.state.value.displayChapters
+            .isEmpty(),
+        "delete-all must not be limited by the visible list",
+    )
+    vm.submit(DetailsIntent.OnDeleteAllDownloads)
+    assertEquals(listOf(10L), actions.deletedChapters, "delete-all must include completion but exclude pending")
+}
+
+private fun assertUnknownSelectionCannotDelete(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty())
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/missing")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty())
+    assertEquals(setOf("c/missing"), vm.state.value.selectedChapterUrls, "an ignored action preserves selection")
+    vm.submit(DetailsIntent.OnSelectionClear)
+}
+
+private fun assertOnlyPendingChapterEnqueues(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    val completed = chapter("c/1") // Deliberately stale isDownloaded=false, even for the saved-fallback case.
+    val pending = chapter("c/2")
+    val expected = listOf(Triple(20L, "Naruto", "src"))
+    vm.submit(DetailsIntent.OnDownloadChapter(completed))
+    assertTrue(actions.enqueued.isEmpty(), "single enqueue must not demote a completed chapter")
+    vm.submit(DetailsIntent.OnDownloadChapter(pending))
+    assertEquals(expected, actions.enqueued, "positive control: single enqueue reaches the real action boundary")
+    actions.enqueued.clear()
+    vm.submit(DetailsIntent.OnChapterLongClick(completed))
+    vm.submit(DetailsIntent.OnSelectionToggle(pending))
+    vm.submit(DetailsIntent.OnDownloadSelected)
+    assertEquals(expected, actions.enqueued, "mixed selection enqueues only the pending chapter")
+    assertTrue(
+        vm.state.value.selectedChapterUrls
+            .isEmpty(),
+        "download-selected still clears selection",
+    )
+    actions.enqueued.clear()
+    // Download-all uses the full details snapshot, not the currently displayed downloaded-only list.
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    vm.submit(DetailsIntent.OnDownloadAllClick)
+    assertEquals(expected, actions.enqueued, "positive control: the bulk use case resolves and enqueues pending")
+}
+
+private fun assertFullDeletionMakesChapterPending(
+    vm: DetailsViewModel,
+    saved: FakeSavedMangaDetailsRepository,
+    actions: RecordingDownloadsActionRepository,
+) {
+    // Publish the saved-flow result of full deletion; unlike history deletion, both signals are gone.
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    assertEquals(
+        listOf("c/1"),
+        vm.state.value.displayChapters
+            .map(Chapter::url),
+    )
+    saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+    assertTrue(
+        vm.state.value.displayChapters
+            .isEmpty(),
+        "full deletion removes the downloaded-filter result",
+    )
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/1")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    actions.deletedChapters.clear()
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    vm.submit(DetailsIntent.OnDeleteAllDownloads)
+    assertTrue(actions.deletedChapters.isEmpty(), "pending content is no longer eligible for download deletion")
+    assertEquals(setOf("c/1"), vm.state.value.selectedChapterUrls)
+    actions.enqueued.clear()
+    vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1", isDownloaded = true)))
+    assertEquals(
+        listOf(Triple(10L, "Naruto", "src")),
+        actions.enqueued,
+        "a stale true-valued click cannot stay blocked",
+    )
+}
+
+private fun assertDuplicateChapterFallbackUsesFirstEntry() {
+    val pending = chapter("c/duplicate")
+    val saved = pending.copy(isDownloaded = true)
+    listOf(listOf(pending, saved), listOf(saved, pending)).forEach { duplicates ->
+        val first = duplicates.first()
+        val state =
+            DetailsState(
+                details = details(duplicates),
+                selectedChapterUrls = setOf(first.url),
+                chapterFilter = ChapterFilterType.DOWNLOADED,
+            )
+        assertEquals(first.isDownloaded, state.isChapterDownloaded(first.url))
+        assertEquals(first.isDownloaded, state.isSelectionAllDownloaded)
+        assertEquals(DetailsState.isDownloaded(first, null), state.isChapterDownloaded(first.url))
+        assertEquals(if (first.isDownloaded) listOf(first) else emptyList(), state.displayChapters)
+    }
 }
 
 private fun assertAdultGate(state: DetailsState) {

@@ -7,7 +7,9 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS
 
 // Phase 9.x.chapterdownloaddao.componentprune (Task #394): dropped 4 independently-orphan
 // members surfaced by an exhaustive 3-pass reacher-chain audit (receiver-anchored
@@ -102,7 +104,6 @@ import me.manga.kira.presentation.features.download.data.DownloadingState
 //     the legacy `DownloadRepository.observeAllDownloads()` re-export).
 @Dao
 interface ChapterDownloadDao {
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(download: ChapterDownloadEntity): Long
 
@@ -118,12 +119,14 @@ interface ChapterDownloadDao {
     // Active (in-flight) download chapterIds for a manga. Used by the library-removal purge to cancel
     // a RUNNING/COMPRESSING download before deleting the rows + on-disk dir, so the engine can't keep
     // writing pages into the just-purged manga directory and leave an orphan CBZ behind.
-    @Query("""
+    @Query(
+        """
       SELECT chapterId
         FROM chapter_downloads
        WHERE mangaId = :mangaId
          AND state IN (:runningState, :compressingState, :queuedState)
-    """)
+    """,
+    )
     suspend fun getActiveDownloadChapterIdsForManga(
         mangaId: Long,
         runningState: DownloadingState = DownloadingState.RUNNING,
@@ -134,48 +137,151 @@ interface ChapterDownloadDao {
     @Query("DELETE FROM chapter_downloads WHERE chapterId = :chapterId")
     suspend fun deleteByChapterId(chapterId: Long)
 
-    @Query("""
+    @Query(
+        """
       SELECT chapterId
         FROM chapter_downloads
        WHERE state = :queuedState
-    """)
-    fun getAllQueuedChapterIds(
-        queuedState: DownloadingState = DownloadingState.QUEUED
-    ): Flow<List<Long>>
+    """,
+    )
+    fun getAllQueuedChapterIds(queuedState: DownloadingState = DownloadingState.QUEUED): Flow<List<Long>>
 
-    @Query("""
+    @Query(
+        """
     UPDATE chapter_downloads
     SET state    = :state,
         progress = :progress,
         errorMsg = :errorMsg
     WHERE chapterId = :id
-  """)
+  """,
+    )
     suspend fun updateStateAndProgress(
         id: Long,
         state: DownloadingState,
         progress: Int,
-        errorMsg: String? = null
+        errorMsg: String? = null,
     )
 
+    /**
+     * Publishes one Android completion and its saved flag in the same generated Room transaction.
+     * Files and [expectedPaths] must already be saved; filesystem work stays outside this method.
+     * A deleted, replaced or no-longer-in-flight ledger is left alone. A missing/mismatched saved
+     * chapter or changed paths fail the transaction rather than publish a partial SUCCESS.
+     */
+    @Transaction
+    suspend fun completeDownload(
+        expected: ChapterDownloadEntity,
+        expectedPaths: List<String>,
+        sizeBytes: Long,
+    ): Boolean {
+        val current =
+            getDownloadByChapter(expected.chapterId)
+                ?.takeIf { it.isSameDownload(expected) && it.isInFlight() }
+                ?: return false
+        val saved = checkNotNull(getSavedChapterForDownload(expected.chapterId))
+        check(saved.mangaId == expected.mangaId && saved.url == expected.url)
+        check(expectedPaths.isNotEmpty() && saved.localImagePaths == expectedPaths)
+        check(writeCompletedDownload(current.id, current.chapterId, sizeBytes) == 1)
+        check(markMatchingChapterDownloaded(saved.id, saved.mangaId, saved.url) == 1)
+        return true
+    }
+
+    /** Saved-row identity and converted paths used by the completion/recovery transactions. */
+    @Query("SELECT * FROM saved_chapters WHERE id = :chapterId LIMIT 1")
+    suspend fun getSavedChapterForDownload(chapterId: Long): SavedChapterEntity?
+
+    /** Terminal ledger write primitive; [completeDownload] also checks the saved-row update. */
+    @Query(
+        """
+        UPDATE chapter_downloads
+           SET state = :successState, progress = 100, sizeBytes = :sizeBytes, errorMsg = NULL
+         WHERE id = :downloadId AND chapterId = :chapterId
+        """,
+    )
+    suspend fun writeCompletedDownload(
+        downloadId: Long,
+        chapterId: Long,
+        sizeBytes: Long,
+        successState: DownloadingState = DownloadingState.SUCCESS,
+    ): Int
+
+    /** Checked saved-flag primitive; a ledger's manga foreign key does not prove this row exists. */
+    @Query("UPDATE saved_chapters SET isDownloaded = 1 WHERE id = :chapterId AND mangaId = :mangaId AND url = :url")
+    suspend fun markMatchingChapterDownloaded(
+        chapterId: Long,
+        mangaId: Long,
+        url: String,
+    ): Int
+
+    /** Only surviving, matching SUCCESS rows can be candidates for restart flag repair. */
+    @Query(
+        """
+        SELECT downloads.* FROM chapter_downloads AS downloads
+        INNER JOIN saved_chapters AS saved
+            ON saved.id = downloads.chapterId AND saved.mangaId = downloads.mangaId AND saved.url = downloads.url
+        WHERE downloads.state = :successState AND saved.isDownloaded = 0
+        """,
+    )
+    suspend fun getCompletedWithoutDownloadedFlag(successState: DownloadingState = SUCCESS): List<ChapterDownloadEntity>
+
+    /**
+     * Repairs only a previously verified readable SUCCESS. Rechecks state, row identity and the
+     * converted path list after the caller's file reads; never recreates history or cleared paths.
+     * File readability is a point-in-time caller check, not a filesystem/SQL transaction.
+     */
+    @Transaction
+    suspend fun repairCompletedDownloadFlag(
+        expected: ChapterDownloadEntity,
+        expectedPaths: List<String>,
+    ): Boolean {
+        val current =
+            if (expectedPaths.isEmpty()) {
+                null
+            } else {
+                getDownloadByChapter(expected.chapterId)
+            }
+        if (current == null || !current.isSameDownload(expected) || current.state != DownloadingState.SUCCESS) {
+            return false
+        }
+        val saved = getSavedChapterForDownload(expected.chapterId)
+        return if (saved != null && saved.canRepairDownload(expected, expectedPaths)) {
+            check(markMatchingChapterDownloaded(saved.id, saved.mangaId, saved.url) == 1)
+            true
+        } else {
+            false
+        }
+    }
+
     @Query("UPDATE chapter_downloads SET progress = :progress WHERE chapterId = :id")
-    suspend fun updateProgress(id: Long, progress: Int)
+    suspend fun updateProgress(
+        id: Long,
+        progress: Int,
+    )
 
     @Query("UPDATE chapter_downloads SET state = :state WHERE chapterId = :id")
-    suspend fun updateState(id: Long, state: DownloadingState)
+    suspend fun updateState(
+        id: Long,
+        state: DownloadingState,
+    )
 
     @Query("UPDATE chapter_downloads SET state = :state WHERE chapterId = :id")
-    suspend fun updateStateChId(id: Long, state: DownloadingState)
+    suspend fun updateStateChId(
+        id: Long,
+        state: DownloadingState,
+    )
 
     // Conditional QUEUED -> RUNNING claim. Flips the row only while it is still QUEUED and returns the
     // affected-row count, so a cancel that lands as FAILED between getNextQueuedChapter() and this claim
     // is NOT silently overwritten: 0 rows means another caller already changed the state and the worker
     // must skip the job. Guards the cancel-all-then-cancel-one race on the iOS/Desktop worker loop.
-    @Query("""
+    @Query(
+        """
       UPDATE chapter_downloads
          SET state = :runningState
        WHERE chapterId = :id
          AND state = :queuedState
-    """)
+    """,
+    )
     suspend fun claimQueuedAsRunning(
         id: Long,
         runningState: DownloadingState = DownloadingState.RUNNING,
@@ -183,10 +289,16 @@ interface ChapterDownloadDao {
     ): Int
 
     @Query("UPDATE chapter_downloads SET errorMsg = :errorMsg WHERE chapterId = :id")
-    suspend fun setErrorMsg(id: Long, errorMsg: String?)
+    suspend fun setErrorMsg(
+        id: Long,
+        errorMsg: String?,
+    )
 
     @Transaction
-    suspend fun updateFailure(id: Long, errorMsg: String?) {
+    suspend fun updateFailure(
+        id: Long,
+        errorMsg: String?,
+    ) {
         updateState(id, DownloadingState.FAILED)
         setErrorMsg(id, errorMsg)
     }
@@ -204,13 +316,15 @@ interface ChapterDownloadDao {
     // action (DownloadCancelReceiver) routes through. State-name semantics match the
     // native ChapterDownloadDao source of truth (enum name strings via
     // DownloadingStateConverter). No new column, no schema/version change.
-    @Query("""
+    @Query(
+        """
       UPDATE chapter_downloads
          SET state = :failedState,
              progress = 0,
              errorMsg = '__cancelled_by_user__'
        WHERE state IN (:runningState, :queuedState, :compressingState, :downloadedState)
-    """)
+    """,
+    )
     suspend fun markAllRunningOrQueuedAsFailed(
         runningState: DownloadingState = DownloadingState.RUNNING,
         queuedState: DownloadingState = DownloadingState.QUEUED,
@@ -260,13 +374,15 @@ interface ChapterDownloadDao {
     // a re-download from page 0. The nonAndroid impl passes its current activeChapterId here so that
     // legitimately-running row is left alone. Android passes the default (-1, matches no row) since
     // its WorkManager worker runs in a state where no in-process activeChapterId exists.
-    @Query("""
+    @Query(
+        """
       UPDATE chapter_downloads
          SET state = :queuedState,
              progress = 0
        WHERE state IN (:runningState, :compressingState)
          AND chapterId != :excludeChapterId
-    """)
+    """,
+    )
     suspend fun reEnqueueInterrupted(
         excludeChapterId: Long = -1L,
         runningState: DownloadingState = DownloadingState.RUNNING,
@@ -300,15 +416,32 @@ interface ChapterDownloadDao {
     // column existed, i.e. migrated up from schema v8). Used by the startup reconcile to back-fill
     // their on-disk size so the native size display is correct for pre-existing downloads too.
     @Query("SELECT * FROM chapter_downloads WHERE state = :successState AND sizeBytes = 0")
-    suspend fun getCompletedWithoutSize(
-        successState: DownloadingState = DownloadingState.SUCCESS,
-    ): List<ChapterDownloadEntity>
+    suspend fun getCompletedWithoutSize(successState: DownloadingState = SUCCESS): List<ChapterDownloadEntity>
 
     // Persist the final on-disk size (bytes) of a completed chapter download. Written once at
     // SUCCESS by both download engines (native size-display parity) and by the startup back-fill.
     @Query("UPDATE chapter_downloads SET sizeBytes = :sizeBytes WHERE chapterId = :id")
-    suspend fun updateSize(id: Long, sizeBytes: Long)
+    suspend fun updateSize(
+        id: Long,
+        sizeBytes: Long,
+    )
 }
+
+private fun ChapterDownloadEntity.isSameDownload(expected: ChapterDownloadEntity): Boolean =
+    id == expected.id && chapterId == expected.chapterId && mangaId == expected.mangaId && url == expected.url
+
+private fun ChapterDownloadEntity.isInFlight(): Boolean =
+    state == DownloadingState.RUNNING ||
+        state == DownloadingState.COMPRESSING
+
+private fun SavedChapterEntity.canRepairDownload(
+    expected: ChapterDownloadEntity,
+    expectedPaths: List<String>,
+): Boolean =
+    mangaId == expected.mangaId &&
+        url == expected.url &&
+        !isDownloaded &&
+        localImagePaths == expectedPaths
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster184.staleKdocSweep.cascade,
@@ -400,4 +533,3 @@ interface ChapterDownloadDao {
  * the 2026-06-02 startup reconcile and the v9 size back-fill (lines 208-233), so the live surface is
  * 17 members. Retained as lineage per the audit-trail-preservation convention.
  */
-
