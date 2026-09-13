@@ -145,7 +145,7 @@ class AzoraPilotParityTest {
     @Test
     fun home_matches_legacy_parser_field_for_field_incl_recent_chapters() = runTest {
         val generic = client().home(1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(QUERY_JSON).toMangaItems(api, lang)
+        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON).toMangaItems(api, lang)
             .map { it.toHomeFeedItem().onConfigHost() }
         assertEquals(legacy, generic) // includes recentChapters, the rich Home data
         // spot anchors so the test fails loudly if either side silently changes
@@ -160,7 +160,7 @@ class AzoraPilotParityTest {
     @Test
     fun search_matches_legacy_parser() = runTest {
         val generic = client().search("one piece", 1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(QUERY_JSON).toMangaItems(api, lang)
+        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON).toMangaItems(api, lang)
             .map { it.toHomeFeedItem().onConfigHost() }
         assertEquals(legacy, generic)
     }
@@ -168,7 +168,7 @@ class AzoraPilotParityTest {
     @Test
     fun featured_matches_legacy_parser() = runTest {
         val generic = client().featured(1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(QUERY_JSON).toPopularMangaList(api, lang)
+        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON).toPopularMangaList(api, lang)
             .map { it.toFeatured() }
             .map { f -> f.copy(url = f.url.onConfigHost()) }
         assertEquals(legacy, generic)
@@ -180,7 +180,7 @@ class AzoraPilotParityTest {
         val generic = client().details(manga).valueOrFail()
         // detail.url comes from manga.url (already on the config host); only the legacy-BUILT
         // chapter urls carry the pre-move host and need the rewrite.
-        val legacy = json.decodeFromString<AzoraPostDetailResponse>(DETAIL_JSON).toMangaInfo(api, lang, manga.url).toDetails()
+        val legacy = json.decodeFromString<AzoraPostDetailResponse>(AZORA_DETAILS_JSON).toMangaInfo(api, lang, manga.url).toDetails()
             .let { d -> d.copy(chapters = d.chapters.map { it.copy(url = it.url.onConfigHost()) }) }
 
         // Compare everything except chapter dates (legacy uses device-local TZ on full timestamps;
@@ -264,51 +264,12 @@ private const val LEGACY_AZORA_BASE = "https://api.azoramoon.com"
 
 /** Request fixtures keyed off the CONFIG's base url, so the suite tracks the live domain. */
 private fun azoraResponses(base: String): Map<String, String> = mapOf(
-    "$base/api/query?page=1&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc" to QUERY_JSON,
-    "$base/api/query?page=1&perPage=24&orderBy=totalViews&orderDirection=desc" to QUERY_JSON,
-    "$base/api/query?searchTerm=one%20piece&perPage=24" to QUERY_JSON,
-    "$base/api/post/?postId=92&includeChapters=true" to DETAIL_JSON,
+    "$base/api/query?page=1&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc" to AZORA_QUERY_JSON,
+    "$base/api/query?page=1&perPage=24&orderBy=totalViews&orderDirection=desc" to AZORA_QUERY_JSON,
+    "$base/api/query?searchTerm=one%20piece&perPage=24" to AZORA_QUERY_JSON,
+    "$base/api/post/?postId=92&includeChapters=true" to AZORA_DETAILS_JSON,
     "$base/api/chapter?chapterId=85027" to PAGES_JSON,
 )
-
-private const val QUERY_JSON = """
-{
-  "posts": [
-    {
-      "id": 92, "slug": "one-piece", "postTitle": "One Piece",
-      "featuredImage": "https://api.azoramoon.com/covers/op.jpg",
-      "seriesStatus": "ongoing", "totalViews": 1000, "author": "Oda", "averageRating": 8.5,
-      "genres": [ { "id": 1, "name": "Action" }, { "id": 2, "name": "Adventure" } ],
-      "chapters": [ { "id": 85027, "number": 1, "title": "Romance Dawn", "slug": "ch-1", "createdAt": "2024-01-15T12:00:00Z" } ]
-    },
-    {
-      "id": 93, "slug": "naruto", "postTitle": "Naruto",
-      "featuredImage": "https://api.azoramoon.com/covers/naruto.jpg",
-      "seriesStatus": "completed", "totalViews": 900
-    }
-  ],
-  "totalCount": 2
-}
-"""
-
-private const val DETAIL_JSON = """
-{
-  "totalChapterCount": 2,
-  "post": {
-    "id": 92, "slug": "one-piece", "postTitle": "One Piece",
-    "postContent": "<p>Pirates  &amp; adventure</p>",
-    "featuredImage": "https://api.azoramoon.com/covers/op.jpg",
-    "seriesStatus": "ongoing", "totalViews": 1000, "author": "Oda",
-    "averageRating": 8, "totalRatings": 50,
-    "genres": [ { "id": 1, "name": "Action" }, { "id": 2, "name": "Adventure" } ],
-    "chapters": [
-      { "id": 85027, "slug": "ch-1", "number": 1, "title": "Romance Dawn", "createdAt": "2024-01-15T12:00:00Z" },
-      { "id": 85028, "slug": "ch-2", "number": 2, "title": null, "createdAt": "2024-01-22T12:00:00Z" },
-      { "id": 85029, "slug": "ch-3", "number": 3.0, "title": null, "createdAt": "2024-02-01T12:00:00Z" }
-    ]
-  }
-}
-"""
 
 // Real /api/chapter shape (verified live): chapter.images = [{id,url,width,height,order}], url absolute
 // on the storage CDN host. Array order is deliberately SCRAMBLED here (2,1,3) so the engine must sort
