@@ -150,8 +150,9 @@ class LibraryControlSemanticsTest {
         )
         runOnIdle { surface.intents.clear() }
         assertRange(surface, 2).performTouchInput {
-            // Tap the maximum end of the existing slider, mirrored independently of resource locale.
-            click(Offset(if (direction == LayoutDirection.Ltr) width - 1f else 1f, center.y))
+            // Stay inside the pointer region, beyond Material3's 10dp semantics-only margin.
+            // This fixture uses Density(1); mirror the interior maximum endpoint for RTL.
+            click(Offset(if (direction == LayoutDirection.Ltr) width - 16f else 16f, center.y))
         }
         awaitIdle()
         assertRange(surface, 8)
