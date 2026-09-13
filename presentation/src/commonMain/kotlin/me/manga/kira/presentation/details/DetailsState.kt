@@ -1,7 +1,6 @@
 package me.manga.kira.presentation.details
 
 import me.manga.kira.core.error.AppError
-import me.manga.kira.core.util.formatBytes
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
@@ -65,12 +64,11 @@ data class ChapterDownloadProgress(
     val isDownloaded: Boolean get() = state == DownloadState.SUCCESS
 
     /**
-     * Human-readable on-disk size (e.g. `"15.2 MB"`) for the native size display, or `null` until
-     * the download has completed with a known size. Computed here (in `:presentation`, via `:core`
-     * `formatBytes`) so the `:ui` row can render it without depending on `:core`/`:platform`.
+     * On-disk bytes for the size display, or `null` until the download has completed with a
+     * known positive size. The UI formats this value with its current locale.
      */
-    val sizeLabel: String?
-        get() = if (state == DownloadState.SUCCESS && sizeBytes > 0L) formatBytes(sizeBytes) else null
+    val completedSizeBytes: Long?
+        get() = if (state == DownloadState.SUCCESS && sizeBytes > 0L) sizeBytes else null
 }
 
 /**
@@ -349,18 +347,15 @@ data class DetailsState(
     fun isChapterDownloaded(chapterUrl: String): Boolean = chapterUrl in downloadedChapterUrls
 
     /**
-     * Native size-display parity (2026-06-02). The human-readable on-disk size for the chapter at
-     * [url] (e.g. `"15.2 MB"`), or `null` when the chapter isn't downloaded or its size isn't known
-     * yet. Native shows this next to the chapter date in `LibraryChapterItem`, only for downloaded
-     * chapters. Sourced from the SUCCESS [chapterDownloads] entry's [ChapterDownloadProgress.sizeBytes]
-     * (back-filled for pre-existing downloads by the startup reconcile), formatted via `:core`
-     * `formatBytes`.
+     * On-disk bytes for the chapter at [url], or `null` without a completed ledger entry with a
+     * known positive size. Sourced from [ChapterDownloadProgress.completedSizeBytes] (back-filled
+     * for pre-existing downloads by the startup reconcile); localized next to the date by the UI.
      */
-    fun chapterSizeLabel(url: String): String? = chapterDownloads[url]?.sizeLabel
+    fun chapterSizeBytes(url: String): Long? = chapterDownloads[url]?.completedSizeBytes
 
     /**
      * Number of downloaded chapters for the native total-size header "<size> • <N> downloaded".
-     * Derived from the SAME source as [totalDownloadedSizeLabel] — the completed (SUCCESS)
+     * Derived from the SAME source as [totalDownloadedSizeBytes] — the completed (SUCCESS)
      * [chapterDownloads] entries — so the count and the size never disagree (e.g. they drop together
      * the instant a download row is deleted). Counting `details.chapters{isDownloaded}` instead would
      * desync: the legacy delete path removes the `chapter_downloads` row without clearing
@@ -370,17 +365,17 @@ data class DetailsState(
         get() = chapterDownloads.values.count { it.isDownloaded }
 
     /**
-     * Native `TotalSizeDisplay` parity: the formatted sum of every downloaded chapter's on-disk size
-     * (e.g. `"150.5 MB"`), or `null` when nothing downloaded / no sizes known yet. Summed over the
-     * SUCCESS [chapterDownloads] entries' [ChapterDownloadProgress.sizeBytes].
+     * Sum of the SUCCESS [chapterDownloads] entries' on-disk [ChapterDownloadProgress.sizeBytes],
+     * or `null` when the total is not positive. The UI localizes this total for the size header;
+     * saved-only completion contributes no bytes without a ledger entry.
      */
-    val totalDownloadedSizeLabel: String?
+    val totalDownloadedSizeBytes: Long?
         get() {
             val total =
                 chapterDownloads.values
                     .filter { it.state == DownloadState.SUCCESS }
                     .sumOf { it.sizeBytes }
-            return if (total > 0L) formatBytes(total) else null
+            return if (total > 0L) total else null
         }
 
     companion object {

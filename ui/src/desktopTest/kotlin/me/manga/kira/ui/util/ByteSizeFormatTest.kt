@@ -7,20 +7,22 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Locks the typed cache-size wire's display rendering (backlog L15b): [formatByteSize] must pick
- * the native unit thresholds (1024-based), render exactly two locale-aware fraction digits, and
- * substitute through the real `size_*` resource patterns (including the `%1$s` slot compose-
- * resources formatting requires in place of native's `%.2f`).
+ * Locks the shared Settings/Details size rendering: [formatByteSize] picks binary unit thresholds,
+ * renders two localized decimals for KB through terminal TB, and substitutes through the real
+ * `size_*` resource patterns. B deliberately keeps whole, unshaped integer digits in every locale.
  *
- * The JVM default locale is pinned to US for the duration so the decimal separator ('.') and the
- * resolved base-locale patterns are machine-independent.
+ * Each rendering pins and restores the JVM default locale so digits, separators and unit patterns
+ * are machine-independent.
  */
 @OptIn(ExperimentalTestApi::class)
 class ByteSizeFormatTest {
 
-    private fun renderAll(vararg sizes: Long): List<String> {
+    private fun renderAll(
+        locale: Locale,
+        vararg sizes: Long,
+    ): List<String> {
         val previous = Locale.getDefault()
-        Locale.setDefault(Locale.US)
+        Locale.setDefault(locale)
         try {
             lateinit var rendered: List<String>
             runComposeUiTest {
@@ -36,29 +38,79 @@ class ByteSizeFormatTest {
 
     @Test
     fun formatsEachUnitBranch_withTwoDecimals() {
-        val (bytes, kilo, mega, giga) = renderAll(
-            202L,
-            1_536L, // 1.5 KB
-            5_767_168L, // 5.5 MB
-            1_320_702_444L, // ~1.23 GB
-        )
-        assertEquals("202 B", bytes)
-        assertEquals("1.50 KB", kilo)
-        assertEquals("5.50 MB", mega)
-        assertEquals("1.23 GB", giga)
+        val sizes =
+            longArrayOf(
+                202L,
+                1_536L, // 1.5 KB
+                5_767_168L, // 5.5 MB
+                1_320_702_444L, // ~1.23 GB
+                1_649_267_441_664L, // 1.5 TB
+            )
+        listOf(
+            Locale.US to listOf("202 B", "1.50 KB", "5.50 MB", "1.23 GB", "1.50 TB"),
+            Locale.FRENCH to listOf("202 o", "1,50 Ko", "5,50 Mo", "1,23 Go", "1,50 To"),
+            Locale.forLanguageTag("ar") to
+                listOf(
+                    "202 ب",
+                    "١٫٥٠ كيلوبايت",
+                    "٥٫٥٠ ميغابايت",
+                    "١٫٢٣ غيغابايت",
+                    "١٫٥٠ تيرابايت",
+                ),
+        ).forEach { (locale, expected) ->
+            assertEquals(expected, renderAll(locale, *sizes), locale.toLanguageTag())
+        }
     }
 
     @Test
     fun unitBoundaries_matchNativeThresholds() {
-        val (justUnderKb, exactKb, justUnderMb, exactGb) = renderAll(
-            1_023L, // below 1 KB stays bytes
-            1_024L, // exactly 1 KB
-            1_048_575L, // one byte under 1 MB stays KB (renders as 1024.00 KB, native behavior)
-            1_073_741_824L, // exactly 1 GB
-        )
-        assertEquals("1023 B", justUnderKb)
-        assertEquals("1.00 KB", exactKb)
-        assertEquals("1024.00 KB", justUnderMb)
-        assertEquals("1.00 GB", exactGb)
+        val sizes =
+            longArrayOf(
+                1_023L, // below 1 KB stays bytes
+                1_024L, // exactly 1 KB
+                1_048_575L, // one byte under 1 MB stays KB (renders as 1024.00 KB, native behavior)
+                1_048_576L, // exactly 1 MB
+                1_073_741_823L, // one byte under 1 GB stays MB
+                1_073_741_824L, // exactly 1 GB
+                1_099_511_627_775L, // one byte under 1 TB stays GB, even when rounding to 1024.00
+                1_099_511_627_776L, // exactly 1 TB
+            )
+        listOf(
+            Locale.US to
+                listOf(
+                    "1023 B",
+                    "1.00 KB",
+                    "1024.00 KB",
+                    "1.00 MB",
+                    "1024.00 MB",
+                    "1.00 GB",
+                    "1024.00 GB",
+                    "1.00 TB",
+                ),
+            Locale.FRENCH to
+                listOf(
+                    "1023 o",
+                    "1,00 Ko",
+                    "1024,00 Ko",
+                    "1,00 Mo",
+                    "1024,00 Mo",
+                    "1,00 Go",
+                    "1024,00 Go",
+                    "1,00 To",
+                ),
+            Locale.forLanguageTag("ar") to
+                listOf(
+                    "1023 ب",
+                    "١٫٠٠ كيلوبايت",
+                    "١٠٢٤٫٠٠ كيلوبايت",
+                    "١٫٠٠ ميغابايت",
+                    "١٠٢٤٫٠٠ ميغابايت",
+                    "١٫٠٠ غيغابايت",
+                    "١٠٢٤٫٠٠ غيغابايت",
+                    "١٫٠٠ تيرابايت",
+                ),
+        ).forEach { (locale, expected) ->
+            assertEquals(expected, renderAll(locale, *sizes), locale.toLanguageTag())
+        }
     }
 }
