@@ -89,9 +89,14 @@ class FakeHomeFeedRepository : HomeFeedRepository {
     var sourceFilters: List<SourceFilter> = emptyList()
     var sourceFiltersResult: AppResult<List<SourceFilter>>? = null
 
+    /** Optional load gate; each call captures its reply before waiting. Null preserves eager tests. */
+    var sourceFiltersGate: CompletableDeferred<Unit>? = null
+
     override suspend fun loadSourceFilters(): AppResult<List<SourceFilter>> {
         calls += "loadSourceFilters()"
-        return sourceFiltersResult ?: AppResult.Success(sourceFilters)
+        val result = sourceFiltersResult ?: AppResult.Success(sourceFilters)
+        sourceFiltersGate?.await()
+        return result
     }
 }
 

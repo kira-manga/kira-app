@@ -26,7 +26,7 @@ sealed interface SearchIntent : MviIntent {
     /**
      * IME search action / explicit submit (#16). Runs the mode-aware search for the current query.
      * F2 regression guard (native parity): a typed submit is a PLAIN search — the sheet's filter
-     * selections stay display-only on submit; they apply through [OnFilterChange]'s immediate-apply.
+     * selections stay display-only on submit; filter changes have their own apply intents.
      */
     data object OnSubmit : SearchIntent
 
@@ -58,6 +58,16 @@ sealed interface SearchIntent : MviIntent {
     data class OnFilterChange(
         val filterId: String,
         val values: List<String>,
+    ) : SearchIntent
+
+    /**
+     * Commit changed text/number inputs together (Apply, or just the current field on IME Done).
+     * Raw values are a delta, not a full selection snapshot: the reducer merges current declared
+     * inputs into its latest selections, preserves explicit clears, and searches at most once
+     * with the current VM query. Unknown and non-text/number ids are ignored.
+     */
+    data class OnApplyFilterDrafts(
+        val drafts: Map<String, String>,
     ) : SearchIntent
 
     /** Reset every filter to its declared defaults (deterministic) and re-run the search. */

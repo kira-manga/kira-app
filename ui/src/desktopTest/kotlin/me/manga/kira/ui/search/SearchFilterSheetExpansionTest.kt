@@ -60,12 +60,12 @@ class SearchFilterSheetExpansionTest {
                         filters = listOf(multiSelect, singleSelect),
                         selections = selections,
                         onFilterChange = { id, values -> changes += id to values },
+                        onApplyDrafts = { fail("Header toggles must not apply input drafts") },
                         onResetFilters = { fail("Header toggles must not reset filters") },
                         onDismiss = { fail("Header toggles must not dismiss the sheet") },
                     )
                 }
             }
-
             awaitIdle()
             assertExpansionRoundTrip(multiSelect, singleSelect, expanded, collapsed)
             assertExpansionRoundTrip(singleSelect, multiSelect, expanded, collapsed)
