@@ -804,6 +804,69 @@ class DetailsViewModelRegressionTest {
         }
 }
 
+/** Read-time sorting through the real MVI surface and the existing file-local VM fixture. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DetailsViewModelLastReadSortTest {
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
+        }
+
+    private fun vmWithFetchFake(
+        fetch: AppResult<MangaDetails>,
+        saved: FakeSavedMangaDetailsRepository,
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            VmFixtureOptions(),
+            testDispatchers,
+        )
+
+    @Test
+    fun lastReadSort_reordersOnSavedTimeReset_afterNetworkRefresh() =
+        runTest {
+            val older = chapter("c/1").copy(lastReadAtEpochMillis = 100L)
+            val recent = chapter("c/2").copy(lastReadAtEpochMillis = 200L)
+            val cached = details(listOf(older, recent))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val networkOnly = chapter("c/3")
+            val network = details(listOf(chapter("c/1"), networkOnly, chapter("c/2")))
+            val (vm, fetch) = vmWithFetchFake(AppResult.Success(network), saved)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnSetChapterSort(ChapterSortType.LAST_READ_DATE))
+                assertEquals(0, fetch.fetchCount)
+                vm.submit(DetailsIntent.OnRetry)
+                assertEquals(1, fetch.fetchCount)
+                val refreshed = vm.state.value.displayChapters
+                assertEquals(listOf("c/2", "c/1", "c/3"), refreshed.map(Chapter::url))
+
+                saved.saved.value = cached.copy(chapters = listOf(older, recent.copy(lastReadAtEpochMillis = 0L)))
+                val reordered = vm.state.value.displayChapters
+                assertEquals(listOf("c/1", "c/3", "c/2"), reordered.map(Chapter::url))
+                assertEquals(0L, reordered.last().lastReadAtEpochMillis)
+                assertEquals(networkOnly, reordered[1])
+                assertEquals(1, fetch.fetchCount)
+            } finally {
+                store.clear()
+            }
+        }
+}
+
 /** Inclusive displayed-suffix selection tests sharing the existing file-local VM fixture. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsViewModelSelectionTest {

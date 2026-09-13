@@ -2327,11 +2327,11 @@
         <error line="80" column="54" source="standard:function-signature" />
         <error line="95" column="62" source="standard:multiline-expression-wrapping" />
         <error line="95" column="62" source="standard:function-signature" />
-        <error line="152" column="85" source="standard:multiline-expression-wrapping" />
-        <error line="152" column="85" source="standard:function-signature" />
-        <error line="170" column="46" source="standard:function-signature" />
-        <error line="170" column="61" source="standard:function-signature" />
-        <error line="170" column="76" source="standard:function-signature" />
+        <error line="153" column="85" source="standard:multiline-expression-wrapping" />
+        <error line="153" column="85" source="standard:function-signature" />
+        <error line="171" column="46" source="standard:function-signature" />
+        <error line="171" column="61" source="standard:function-signature" />
+        <error line="171" column="76" source="standard:function-signature" />
     </file>
     <file name="data/src/commonMain/kotlin/me/manga/kira/data/mapper/SourcesMappers.kt">
         <error line="43" column="75" source="standard:multiline-expression-wrapping" />
@@ -2725,7 +2725,7 @@
         <error line="74" column="1" source="standard:no-consecutive-blank-lines" />
     </file>
     <file name="data/src/commonTest/kotlin/me/manga/kira/data/mapper/SavedMangaDetailsMetadataTest.kt">
-        <error line="11" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="13" column="22" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="data/src/commonTest/kotlin/me/manga/kira/data/repository/AzoraDataRoutingTest.kt">
         <error line="45" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -5387,8 +5387,8 @@
         <error line="270" column="34" source="standard:multiline-expression-wrapping" />
         <error line="270" column="41" source="standard:chain-method-continuation" />
         <error line="302" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="315" column="26" source="standard:multiline-expression-wrapping" />
-        <error line="370" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="313" column="26" source="standard:multiline-expression-wrapping" />
+        <error line="368" column="25" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="presentation/src/commonMain/kotlin/me/manga/kira/presentation/details/DetailsViewModel.kt">
         <error line="166" column="1" source="standard:indent" />
@@ -5453,11 +5453,11 @@
         <error line="1142" column="141" source="standard:function-literal" />
         <error line="1142" column="141" source="standard:max-line-length" />
         <error line="1168" column="51" source="standard:function-signature" />
-        <error line="1229" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="1235" column="31" source="standard:function-signature" />
-        <error line="1235" column="48" source="standard:function-signature" />
-        <error line="1235" column="59" source="standard:function-signature" />
-        <error line="1235" column="71" source="standard:function-signature" />
+        <error line="1231" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="1237" column="31" source="standard:function-signature" />
+        <error line="1237" column="48" source="standard:function-signature" />
+        <error line="1237" column="59" source="standard:function-signature" />
+        <error line="1237" column="71" source="standard:function-signature" />
     </file>
     <file name="presentation/src/commonMain/kotlin/me/manga/kira/presentation/downloads/DownloadsEffect.kt">
         <error line="79" column="1" source="standard:no-empty-first-line-in-class-body" />

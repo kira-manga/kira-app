@@ -98,4 +98,10 @@ data class Chapter(
      * existed) — treated as "outside the window", so no badge is shown for an unknown discovery time.
      */
     val fetchedAt: Long = 0,
+    /**
+     * Last persisted chapter read time in epoch milliseconds; `0` when unknown.
+     * Independent of [isRead]: changing the read flag may retain an earlier timestamp.
+     * Saved values are carried unchanged; network chapters default to `0`.
+     */
+    val lastReadAtEpochMillis: Long = 0,
 )

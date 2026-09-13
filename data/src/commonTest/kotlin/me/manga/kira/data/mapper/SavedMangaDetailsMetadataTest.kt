@@ -1,10 +1,12 @@
 package me.manga.kira.data.mapper
 
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
-/** Guards the Room-to-Details offline projection against dropping saved source metadata. */
+/** Guards the Room-to-Details offline projection of source metadata and chapter read time. */
 class SavedMangaDetailsMetadataTest {
     @Test
     fun saved_entity_restores_every_displayed_metadata_field() {
@@ -33,5 +35,24 @@ class SavedMangaDetailsMetadataTest {
         assertEquals(entity.status, details.status)
         assertEquals(entity.rating, details.rating)
         assertEquals(entity.genres, details.genres)
+    }
+
+    @Test
+    fun saved_chapter_retains_read_time_even_when_unread() {
+        val entity =
+            SavedChapterEntity(
+                mangaId = 7L,
+                name = "Saved chapter",
+                number = "12",
+                url = "https://example/chapter/12",
+                date = null,
+                isRead = false,
+                lastReadDate = 1_700_000_123_456L,
+            )
+
+        val chapter = entity.toDomainChapter()
+
+        assertEquals(entity.lastReadDate, chapter.lastReadAtEpochMillis)
+        assertFalse(chapter.isRead)
     }
 }

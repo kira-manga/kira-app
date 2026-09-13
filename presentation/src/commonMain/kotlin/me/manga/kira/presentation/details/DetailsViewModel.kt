@@ -1184,6 +1184,7 @@ private fun Manga.matches(other: Manga): Boolean =
  * didn't update the row until the screen was left and re-entered with a fresh fetch. Saved Room
  * state is authoritative for all four flags (the network DTO always leaves them false), so a direct
  * assignment is both correct and reactive (regression fix, 2026-06-02).
+ * Saved read time likewise replaces any previous value, including decreases and resets.
  */
 private fun MangaDetails.overlaidWith(saved: MangaDetails): MangaDetails {
     if (saved.chapters.isEmpty()) return this
@@ -1208,6 +1209,7 @@ private fun MangaDetails.overlaidWith(saved: MangaDetails): MangaDetails {
                     isNew = s.isNew,
                     // Discovery timestamp from the saved row, driving the 4-day badge expiry below.
                     fetchedAt = s.fetchedAt,
+                    lastReadAtEpochMillis = s.lastReadAtEpochMillis,
                 )
             },
     )
