@@ -89,8 +89,8 @@ internal fun LegacyChapterItem.toDomain(): Chapter = Chapter(
 /**
  * Room saved-chapter row → domain [Chapter] for the offline/local Details path (regression fix,
  * 2026-05-31). Unlike [LegacyChapterItem.toDomain] (the network fetch), this carries the locally
- * persisted `isRead` / `isDownloaded` / `isBookmarked` flags so a Library-opened manga renders its
- * read/unread + downloaded marks immediately, without a network round-trip.
+ * persisted `isRead` / `isDownloaded` / `isBookmarked` flags and read time so a Library-opened manga
+ * renders its read/unread + downloaded marks and read-time ordering without a network round-trip.
  */
 internal fun SavedChapterEntity.toDomainChapter(): Chapter = Chapter(
     number = number,
@@ -106,6 +106,7 @@ internal fun SavedChapterEntity.toDomainChapter(): Chapter = Chapter(
     isNew = isNew,
     // Discovery timestamp driving the badge's 4-day read-time expiry (presentation layer).
     fetchedAt = fetchedAt,
+    lastReadAtEpochMillis = lastReadDate,
 )
 
 /**

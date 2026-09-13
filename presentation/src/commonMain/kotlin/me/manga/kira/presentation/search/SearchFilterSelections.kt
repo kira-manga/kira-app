@@ -22,6 +22,21 @@ internal object SearchFilterSelections {
             }
         }
 
+    /** Merge only current text/number drafts; a pruned blank remains an explicit empty entry. */
+    fun mergeDrafts(
+        filters: List<SourceFilter>,
+        held: Map<String, List<String>>,
+        drafts: Map<String, String>,
+    ): Map<String, List<String>> =
+        held +
+            buildMap {
+                for (filter in filters) {
+                    val isTextInput = filter.type == FilterControlType.TEXT || filter.type == FilterControlType.NUMBER
+                    val draft = drafts[filter.id]
+                    if (isTextInput && draft != null) put(filter.id, prune(filter, listOf(draft)))
+                }
+            }
+
     fun prune(
         filter: SourceFilter,
         values: List<String>,

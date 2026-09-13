@@ -306,15 +306,13 @@ data class DetailsState(
                 ChapterFilterType.READED -> base.filter { it.isRead }
                 ChapterFilterType.BOOKMARKED -> base.filter { it.isBookmarked }
             }
-            // The base list arrives newest-first (source order); `ID` and `LAST_READ_DATE` preserve
-            // that source order (native's autoincrement `id` reflects insertion order, and the
-            // domain model carries no per-chapter read timestamp — see ChapterSortType KDoc). The
-            // ascending toggle reverses whatever the chosen key produced (native: `if (asc) sorted
-            // else sorted.reversed()` over an ascending base — here the base is descending source
-            // order, so the directional intent is preserved by reversing for ascending).
+            // ID preserves the newest-first source order. Other keys produce a descending base;
+            // the ascending toggle reverses the entire result, including ties. For LAST_READ_DATE,
+            // equal times keep filtered source order descending and reverse it ascending. All-zero
+            // history therefore matches ID in either direction, preserving Resume's traversal.
             val sorted = when (chapterSort) {
                 ChapterSortType.ID -> filtered
-                ChapterSortType.LAST_READ_DATE -> filtered
+                ChapterSortType.LAST_READ_DATE -> filtered.sortedByDescending { it.lastReadAtEpochMillis }
                 ChapterSortType.NUMBER -> filtered.sortedByDescending { it.number.toDoubleOrNull() ?: 0.0 }
                 ChapterSortType.DATE -> filtered.sortedByDescending { it.date }
             }
