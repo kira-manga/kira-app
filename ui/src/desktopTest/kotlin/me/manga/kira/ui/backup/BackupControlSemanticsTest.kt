@@ -59,7 +59,7 @@ class BackupControlSemanticsTest {
         clickSwitchControl(label)
         awaitIdle()
         assertSingleSwitch(label, checked = true, hint = hint)
-        assertEquals(List(3) { BackupIntent.OnToggleIncludeDownloads }, intents)
+        assertEquals<List<BackupIntent>>(List(3) { BackupIntent.OnToggleIncludeDownloads }, intents)
 
         for (checked in listOf(false, true)) {
             runOnIdle {

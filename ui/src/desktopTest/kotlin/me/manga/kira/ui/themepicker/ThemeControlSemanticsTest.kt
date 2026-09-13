@@ -50,7 +50,7 @@ class ThemeControlSemanticsTest {
         clickSwitchControl(label)
         awaitIdle()
         assertSingleSwitch(label, checked = true)
-        assertEquals(
+        assertEquals<List<ThemeIntent>>(
             listOf(
                 ThemeIntent.OnTogglePureBlack(true),
                 ThemeIntent.OnTogglePureBlack(false),

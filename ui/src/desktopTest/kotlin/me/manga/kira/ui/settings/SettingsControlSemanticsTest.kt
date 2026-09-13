@@ -70,7 +70,7 @@ class SettingsControlSemanticsTest {
             clickSwitchControl(label)
             awaitIdle()
             assertSingleSwitch(label, checked = true, hint = hint, minimumHeight = 64.dp)
-            assertEquals(
+            assertEquals<List<SettingsIntent>>(
                 listOf(
                     SettingsIntent.OnToggle(toggle, true),
                     SettingsIntent.OnToggle(toggle, false),
