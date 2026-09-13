@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -55,6 +56,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,6 +74,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -866,6 +872,7 @@ private fun LanguageHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .toggleable(value = anyEnabled, role = Role.Switch, onValueChange = onToggleLanguage)
             .padding(horizontal = paddingHorizontal, vertical = paddingVertical),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -899,7 +906,8 @@ private fun LanguageHeader(
         }
         Switch(
             checked = anyEnabled,
-            onCheckedChange = onToggleLanguage,
+            onCheckedChange = null,
+            modifier = Modifier.minimumInteractiveComponentSize(),
         )
     }
 }
@@ -912,9 +920,14 @@ private fun SourceRow(
     paddingHorizontal: androidx.compose.ui.unit.Dp,
     paddingVertical: androidx.compose.ui.unit.Dp,
 ) {
+    val status = stringResource(
+        if (source.isEnabled) Res.string.source_enabled else Res.string.source_disabled,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .toggleable(value = source.isEnabled, role = Role.Switch, onValueChange = onToggle)
+            .semantics { stateDescription = status }
             .padding(horizontal = paddingHorizontal, vertical = paddingVertical),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(paddingHorizontal),
@@ -939,9 +952,9 @@ private fun SourceRow(
                 // Localized enabled/disabled status. The language is already shown in the group
                 // header above, so the per-row sublabel conveys the toggle state instead — and stays
                 // translatable (a hardcoded "manga · <lang>" literal did not translate).
-                text = stringResource(
-                    if (source.isEnabled) Res.string.source_enabled else Res.string.source_disabled,
-                ),
+                text = status,
+                // The row announces this once as its state, not again as part of its name.
+                modifier = Modifier.clearAndSetSemantics {},
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -951,7 +964,8 @@ private fun SourceRow(
         // the prior Checkbox to a Switch to match the mockup's `.tog` toggles.
         Switch(
             checked = source.isEnabled,
-            onCheckedChange = onToggle,
+            onCheckedChange = null,
+            modifier = Modifier.minimumInteractiveComponentSize(),
         )
     }
 }
@@ -1000,6 +1014,7 @@ private fun SourceMedallion(api: String, label: String, isEnabled: Boolean) {
 private fun MedallionInitials(label: String) {
     Text(
         text = sourceInitials(label),
+        modifier = Modifier.clearAndSetSemantics {},
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
