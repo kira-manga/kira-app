@@ -116,7 +116,10 @@ class BootstrapCatalogActivationParityTest {
         assertNull(metadata.previousChecksum)
     }
 
-    private fun assertSourceParity(fixture: BootstrapSignedCatalogFixture, manifest: SourceCatalogManifest) {
+    private fun assertSourceParity(
+        fixture: BootstrapSignedCatalogFixture,
+        manifest: SourceCatalogManifest,
+    ) {
         assertEquals(SOURCE_COUNT, fixture.sources.size)
         assertEquals(manifest.sources.map { it.api }, fixture.sources.map { it.api })
         manifest.sources.zip(fixture.sources).forEachIndexed { index, (entry, artifact) ->
@@ -130,7 +133,10 @@ class BootstrapCatalogActivationParityTest {
             assertEquals(entry.checksum, artifact.checksum)
             assertEquals("kcj-1", artifact.canonVersion)
             assertTrue(verifier.verifySource(entry, artifact), "actual source signature: ${entry.api}")
-            val source = assertIs<AppResult.Success<SourceConfig>>(SourceConfigParser.parseSource(artifact.payload)).value
+            val source =
+                assertIs<AppResult.Success<SourceConfig>>(
+                    SourceConfigParser.parseSource(artifact.payload),
+                ).value
             assertEquals(bundle.sources[index], source, "all default-expanded source fields: ${entry.api}")
         }
     }
@@ -145,7 +151,10 @@ class BootstrapCatalogActivationParityTest {
             bundle.copy(
                 revision = CATALOG_REVISION,
                 generatedAt = CREATED_AT,
-                sources = bundle.sources.mapIndexed { index, source -> source.copy(lifecycle = "active", priority = index) },
+                sources =
+                    bundle.sources.mapIndexed { index, source ->
+                        source.copy(lifecycle = "active", priority = index)
+                    },
             )
         assertEquals(expected, actual, "only manifest lifecycle/order/revision/time project over full source models")
         assertEquals(expected, session.manager.activeDocument())
@@ -202,9 +211,30 @@ class BootstrapCatalogActivationParityTest {
 
     private fun expectedChapters(base: String): List<Chapter> =
         listOf(
-            Chapter("Chapter 1", "Romance Dawn", "$base/api/chapter?chapterId=85027", LocalDate(2024, 1, 15), false, false),
-            Chapter("Chapter 2", "Chapter 2", "$base/api/chapter?chapterId=85028", LocalDate(2024, 1, 22), false, false),
-            Chapter("Chapter 3", "Chapter 3", "$base/api/chapter?chapterId=85029", LocalDate(2024, 2, 1), false, false),
+            Chapter(
+                "Chapter 1",
+                "Romance Dawn",
+                "$base/api/chapter?chapterId=85027",
+                LocalDate.parse("2024-01-15"),
+                false,
+                false,
+            ),
+            Chapter(
+                "Chapter 2",
+                "Chapter 2",
+                "$base/api/chapter?chapterId=85028",
+                LocalDate.parse("2024-01-22"),
+                false,
+                false,
+            ),
+            Chapter(
+                "Chapter 3",
+                "Chapter 3",
+                "$base/api/chapter?chapterId=85029",
+                LocalDate.parse("2024-02-01"),
+                false,
+                false,
+            ),
         )
 
     private fun session(fixture: BootstrapSignedCatalogFixture): Session {

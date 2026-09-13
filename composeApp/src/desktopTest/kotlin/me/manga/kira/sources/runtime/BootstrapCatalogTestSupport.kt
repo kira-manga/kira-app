@@ -31,6 +31,7 @@ internal data class BootstrapSignedCatalogFixture(
         const val SOURCE_COUNT = 12
         const val CREATED_AT = "2026-09-13T00:00:00Z"
         const val KEY_ID = "backend22-bootstrap-test-only-v1"
+
         // PUBLIC TEST VECTOR ONLY: RFC 8032 section 7.1 TEST 1, RFC 8410 X.509 encoding.
         // This pin never enters production runtime configuration or a release artifact.
         private const val PUBLIC_KEY = "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
@@ -71,7 +72,11 @@ internal class BootstrapCatalogMemoryStore : SourceCatalogStore {
 
     override suspend fun readAcceptedManifest(): SignedSourceCatalogManifest? = active?.manifest
 
-    override suspend fun findSource(api: String, sourceRevision: Long, checksum: String): SourceRevisionArtifact? =
+    override suspend fun findSource(
+        api: String,
+        sourceRevision: Long,
+        checksum: String,
+    ): SourceRevisionArtifact? =
         active?.sources?.singleOrNull {
             it.api == api && it.sourceRevision == sourceRevision && it.checksum == checksum
         }
@@ -84,7 +89,9 @@ internal class BootstrapCatalogMemoryStore : SourceCatalogStore {
 }
 
 /** Returns the retained backend bytes, without re-encoding any signed body or metadata. */
-internal class BootstrapCatalogRemote(private val fixture: BootstrapSignedCatalogFixture) : RemoteSourceCatalog {
+internal class BootstrapCatalogRemote(
+    private val fixture: BootstrapSignedCatalogFixture,
+) : RemoteSourceCatalog {
     val requestedEtags = mutableListOf<String?>()
     val fetchedEntries = mutableListOf<SourceCatalogEntry>()
 
@@ -102,7 +109,9 @@ internal class BootstrapCatalogRemote(private val fixture: BootstrapSignedCatalo
 }
 
 /** The expected opt-in suffix is independent of the activated descriptor's endpoint template. */
-internal class BootstrapAzoraDetailsHttp(baseUrl: String) : HttpExecutor {
+internal class BootstrapAzoraDetailsHttp(
+    baseUrl: String,
+) : HttpExecutor {
     val itemUrl = "$baseUrl/api/post/?postId=92"
     val expectedUrl = "$itemUrl&includeChapters=true"
     val requests = mutableListOf<SourceRequest>()

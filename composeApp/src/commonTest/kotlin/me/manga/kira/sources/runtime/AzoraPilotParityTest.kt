@@ -145,7 +145,8 @@ class AzoraPilotParityTest {
     @Test
     fun home_matches_legacy_parser_field_for_field_incl_recent_chapters() = runTest {
         val generic = client().home(1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON).toMangaItems(api, lang)
+        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
+            .toMangaItems(api, lang)
             .map { it.toHomeFeedItem().onConfigHost() }
         assertEquals(legacy, generic) // includes recentChapters, the rich Home data
         // spot anchors so the test fails loudly if either side silently changes
@@ -160,7 +161,8 @@ class AzoraPilotParityTest {
     @Test
     fun search_matches_legacy_parser() = runTest {
         val generic = client().search("one piece", 1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON).toMangaItems(api, lang)
+        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
+            .toMangaItems(api, lang)
             .map { it.toHomeFeedItem().onConfigHost() }
         assertEquals(legacy, generic)
     }
@@ -168,7 +170,8 @@ class AzoraPilotParityTest {
     @Test
     fun featured_matches_legacy_parser() = runTest {
         val generic = client().featured(1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON).toPopularMangaList(api, lang)
+        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
+            .toPopularMangaList(api, lang)
             .map { it.toFeatured() }
             .map { f -> f.copy(url = f.url.onConfigHost()) }
         assertEquals(legacy, generic)
@@ -180,7 +183,9 @@ class AzoraPilotParityTest {
         val generic = client().details(manga).valueOrFail()
         // detail.url comes from manga.url (already on the config host); only the legacy-BUILT
         // chapter urls carry the pre-move host and need the rewrite.
-        val legacy = json.decodeFromString<AzoraPostDetailResponse>(AZORA_DETAILS_JSON).toMangaInfo(api, lang, manga.url).toDetails()
+        val legacy = json.decodeFromString<AzoraPostDetailResponse>(AZORA_DETAILS_JSON)
+            .toMangaInfo(api, lang, manga.url)
+            .toDetails()
             .let { d -> d.copy(chapters = d.chapters.map { it.copy(url = it.url.onConfigHost()) }) }
 
         // Compare everything except chapter dates (legacy uses device-local TZ on full timestamps;
