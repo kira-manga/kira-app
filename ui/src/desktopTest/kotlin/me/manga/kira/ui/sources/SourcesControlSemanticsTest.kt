@@ -68,7 +68,7 @@ class SourcesControlSemanticsTest {
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         awaitIdle()
         assertCollapsedGroup(surface)
-        assertEquals(listOf(SourcesIntent.OnToggleLanguage(LANGUAGE, false)), surface.intents)
+        assertEquals<List<SourcesIntent>>(listOf(SourcesIntent.OnToggleLanguage(LANGUAGE, false)), surface.intents)
         clickSwitchLabel(MASTER_LABEL)
         awaitIdle()
         assertSourceRows(surface, master = true, first = true, second = true)

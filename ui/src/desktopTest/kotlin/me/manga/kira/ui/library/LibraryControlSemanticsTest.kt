@@ -96,7 +96,7 @@ class LibraryControlSemanticsTest {
         awaitIdle()
         assertSingleSwitch(label, false, stateDescription = descending, minimumHeight = 64.dp)
         onAllNodesWithText(descending, useUnmergedTree = true).assertCountEquals(0)
-        assertEquals(List(3) { LibraryIntent.OnSortDirectionToggle }, surface.intents)
+        assertEquals<List<LibraryIntent>>(List(3) { LibraryIntent.OnSortDirectionToggle }, surface.intents)
         runOnIdle { surface.intents.clear() }
     }
 
@@ -130,7 +130,7 @@ class LibraryControlSemanticsTest {
         awaitIdle()
         assertRange(surface, 3).performSemanticsAction(SemanticsActions.SetProgress) { it(3.2f) }
         awaitIdle()
-        assertEquals(listOf(LibraryIntent.OnItemsPerRowChange(3)), surface.intents)
+        assertEquals<List<LibraryIntent>>(listOf(LibraryIntent.OnItemsPerRowChange(3)), surface.intents)
         assertRange(surface, 3).performSemanticsAction(SemanticsActions.SetProgress) { it(1f) }
         awaitIdle()
         assertRange(surface, 1).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
@@ -140,7 +140,7 @@ class LibraryControlSemanticsTest {
         }
         awaitIdle()
         assertRange(surface, 2)
-        assertEquals(
+        assertEquals<List<LibraryIntent>>(
             listOf(
                 LibraryIntent.OnItemsPerRowChange(3),
                 LibraryIntent.OnItemsPerRowChange(1),
