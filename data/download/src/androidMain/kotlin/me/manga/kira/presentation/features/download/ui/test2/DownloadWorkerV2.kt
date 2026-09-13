@@ -21,7 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
-import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
@@ -80,9 +80,9 @@ class DownloadWorkerV2(
 
     // Dependencies resolved lazily via Koin GlobalContext (see class header).
     private val chapterDownloadDao: ChapterDownloadDao by lazy { koin.get() }
-    private val chapterDao: ChapterDao by lazy { koin.get() }
     private val mangaDao: MangaDao by lazy { koin.get() }
     private val chapterDownloadService: ChapterDownloadService by lazy { koin.get() }
+
     // Routes downloads through the authoritative generic catalog. Missing sources fail closed.
     private val chapterPageProvider: ChapterPageProvider by lazy { koin.get() }
     private val appFileSystem: AppFileSystem by lazy { koin.get() }
@@ -120,69 +120,76 @@ class DownloadWorkerV2(
 
     override suspend fun getForegroundInfo(): ForegroundInfo = buildForegroundInfo()
 
-    override suspend fun doWork(): Result = coroutineScope {
-        setupChannelsSafely()
+    override suspend fun doWork(): Result =
+        coroutineScope {
+            setupChannelsSafely()
 
-        // The overall foreground notification content is static, so post it once at worker start
-        // instead of rebuilding and re-posting it through setForegroundAsync IPC on every collected
-        // state and inside every per-chapter notification update.
-        updateOverallNotification()
+            // The overall foreground notification content is static, so post it once at worker start
+            // instead of rebuilding and re-posting it through setForegroundAsync IPC on every collected
+            // state and inside every per-chapter notification update.
+            updateOverallNotification()
 
-        var currentChapter: ChapterDownloadEntity? = null
+            var currentChapter: ChapterDownloadEntity? = null
 
-        try {
-            while (true) {
-                val chapter = chapterDownloadDao.getNextQueuedChapter() ?: break
+            try {
+                while (true) {
+                    val chapter = chapterDownloadDao.getNextQueuedChapter() ?: break
 
-                currentChapter = chapter
+                    currentChapter = chapter
 
-                try {
-                    processChapter(chapter)
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (e: Exception) {
-                    // Per-chapter isolation (2026-07 audit): a failure escaping the per-state
-                    // handlers (repo.initSite()/DAO throw) used to end the whole worker with
-                    // Result.failure(), stalling every remaining QUEUED row for the session. Mark
-                    // just this chapter FAILED and continue with the next one.
-                    Log.w(TAG, "Chapter ${chapter.chapterId} failed: ${e.message}", e)
-                    handleErrorSafely(chapter, e)
+                    try {
+                        processChapter(chapter)
+                    } catch (ce: CancellationException) {
+                        throw ce
+                    } catch (e: Exception) {
+                        // Per-chapter isolation (2026-07 audit): a failure escaping the per-state
+                        // handlers (repo.initSite()/DAO throw) used to end the whole worker with
+                        // Result.failure(), stalling every remaining QUEUED row for the session. Mark
+                        // just this chapter FAILED and continue with the next one.
+                        Log.w(TAG, "Chapter ${chapter.chapterId} failed: ${e.message}", e)
+                        handleErrorSafely(chapter, e)
+                    }
+                    // A stop/error while fetching the next job must not clean up the previous success.
+                    currentChapter = null
                 }
-            }
-            Result.success()
-        } catch (e: CancellationException) {
-            // Cooperative cancellation (isStopped throw above, or WorkManager stopping the worker).
-            // The coroutine is already cancelled, so the cleanup MUST run under NonCancellable —
-            // the DAO/file suspend calls would otherwise throw immediately and silently skip.
-            // Clean up the in-flight chapter's files, then re-queue its row ONLY if it is still
-            // in-flight (2026-07 audit): a SYSTEM stop (constraint lost / quota) leaves the row
-            // RUNNING and WorkManager reschedules the worker — without the reset the re-run pulls
-            // only QUEUED rows and the chapter showed "downloading" forever until the next
-            // app-launch reconcile. A USER cancel writes FAILED to the row, which the state-guarded
-            // update never matches, so a cancel is never undone. Rethrow so the stop is not
-            // mistaken for a crash.
-            currentChapter?.let {
-                withContext(NonCancellable) {
-                    chapterDownloadService.deleteChapterFiles(it.mangaId, it.chapterId)
-                    chapterDownloadDao.requeueIfInFlight(it.chapterId)
+                Result.success()
+            } catch (e: CancellationException) {
+                // Cooperative cancellation (isStopped throw above, or WorkManager stopping the worker).
+                // The coroutine is already cancelled, so the cleanup MUST run under NonCancellable —
+                // the DAO/file suspend calls would otherwise throw immediately and silently skip.
+                // Clean up the in-flight chapter's files, then re-queue its row ONLY if it is still
+                // in-flight (2026-07 audit): a SYSTEM stop (constraint lost / quota) leaves the row
+                // RUNNING and WorkManager reschedules the worker — without the reset the re-run pulls
+                // only QUEUED rows and the chapter showed "downloading" forever until the next
+                // app-launch reconcile. A USER cancel writes FAILED to the row, which the state-guarded
+                // update never matches, so a cancel is never undone. Rethrow so the stop is not
+                // mistaken for a crash.
+                currentChapter?.let {
+                    withContext(NonCancellable) {
+                        // collect/flowOn has unwound before this catch. The service delegates
+                        // cancellation cleanup here, so no producer-side cleanup races completion.
+                        // Read the committed row even if cancellation won the DAO return dispatch.
+                        if (ownsUnfinishedDownload(it)) {
+                            chapterDownloadService.deleteChapterFiles(it.mangaId, it.chapterId)
+                            chapterDownloadDao.requeueIfInFlight(it.chapterId)
+                        }
+                    }
                 }
+                throw e
+            } catch (e: Exception) {
+                // Last-resort guard: a failure OUTSIDE the per-chapter isolation above (e.g.
+                // getNextQueuedChapter itself, or handleErrorSafely's own DAO write, failing). Mark the
+                // in-flight row FAILED so it leaves the RUNNING state instead of being blindly
+                // re-queued on every launch.
+                currentChapter?.let {
+                    handleErrorSafely(it, e)
+                }
+                Log.w(TAG, "Worker failed: ${e.message}", e)
+                Result.failure()
+            } finally {
+                clearAllDownloadNotifications()
             }
-            throw e
-        } catch (e: Exception) {
-            // Last-resort guard: a failure OUTSIDE the per-chapter isolation above (e.g.
-            // getNextQueuedChapter itself, or handleErrorSafely's own DAO write, failing). Mark the
-            // in-flight row FAILED so it leaves the RUNNING state instead of being blindly
-            // re-queued on every launch.
-            currentChapter?.let {
-                chapterDownloadDao.updateStateAndProgress(it.chapterId, DownloadingState.FAILED, 0, e.message)
-                chapterDownloadService.deleteChapterFiles(it.mangaId, it.chapterId)
-            }
-            Log.w(TAG, "Worker failed: ${e.message}", e)
-            Result.failure()
-        } finally {
-            clearAllDownloadNotifications()
         }
-    }
 
     /**
      * One chapter's full download pass: RUNNING write → collect the download flow into DAO/
@@ -202,7 +209,7 @@ class DownloadWorkerV2(
                 is DownloadState.Compressing -> handleCompressingSafely(chapter)
                 is DownloadState.Complete -> {
                     sawTerminalState = true
-                    handleCompleteSafely(chapter)
+                    handleCompleteSafely(chapter, state.localPaths)
                 }
                 is DownloadState.Error -> {
                     sawTerminalState = true
@@ -222,14 +229,15 @@ class DownloadWorkerV2(
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun downloadChapterFlowV2(chapter: SavedChapterEntity): Flow<DownloadState> {
-        val api = mangaDao.getApiByMangaId(chapter.mangaId)
-            ?: return flowOf(
-                DownloadState.Error(
-                    Throwable("Source unavailable for downloaded chapter"),
-                    downloadedImages = 0,
-                    totalImages = 0,
-                ),
-            )
+        val api =
+            mangaDao.getApiByMangaId(chapter.mangaId)
+                ?: return flowOf(
+                    DownloadState.Error(
+                        Throwable("Source unavailable for downloaded chapter"),
+                        downloadedImages = 0,
+                        totalImages = 0,
+                    ),
+                )
         val manga = mangaDao.getMangaById(chapter.mangaId)
         val providerPages =
             chapterPageProvider.pagesOrNull(
@@ -270,12 +278,14 @@ class DownloadWorkerV2(
         chapterNumber: String,
     ) {
         val notifManager = context.getSystemService(NotificationManager::class.java)!!
-        val compressingNotification = NotificationCompat.Builder(context, CHANNEL_CHAPTER)
-            .setContentTitle(context.getString(R.string.notification_chapter_title, chapterNumber))
-            .setContentText(context.getString(R.string.notification_compressing_images))
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(0, 0, true)
-            .build()
+        val compressingNotification =
+            NotificationCompat
+                .Builder(context, CHANNEL_CHAPTER)
+                .setContentTitle(context.getString(R.string.notification_chapter_title, chapterNumber))
+                .setContentText(context.getString(R.string.notification_compressing_images))
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setProgress(0, 0, true)
+                .build()
 
         notifManager.notify(NOTIF_CHAPTER_BASE + chapterId.toInt(), compressingNotification)
         lastNotifiedChapterId = chapterId
@@ -302,19 +312,20 @@ class DownloadWorkerV2(
         }
     }
 
-    private suspend fun handleCompleteSafely(chapter: ChapterDownloadEntity) {
+    private suspend fun handleCompleteSafely(
+        chapter: ChapterDownloadEntity,
+        localPaths: List<String>,
+    ) {
         // Capture the final on-disk chapter size (the .cbz if compression ran, else the loose
         // pages) BEFORE the terminal SUCCESS write, so the single observeAllDownloads emission that
         // flips the row to SUCCESS already carries sizeBytes (native size-display parity). The
         // worker writes pages under AppFileSystem.chapterDir(mangaId, chapterId), the same layout
         // folderSize walks. Best-effort: a size-walk failure must not fail the download.
-        val sizeBytes = runCatching {
-            appFileSystem.folderSize(appFileSystem.chapterDir(chapter.mangaId, chapter.chapterId))
-        }.getOrDefault(0L)
-        chapterDownloadDao.updateSize(chapter.chapterId, sizeBytes)
-
-        chapterDownloadDao.updateStateAndProgress(chapter.chapterId, DownloadingState.SUCCESS, 100)
-        chapterDao.markChapterDownloaded(chapter.chapterId)
+        val sizeBytes =
+            runCatchingCancellable {
+                appFileSystem.folderSize(appFileSystem.chapterDir(chapter.mangaId, chapter.chapterId))
+            }.getOrDefault(0L)
+        if (!chapterDownloadDao.completeDownload(chapter, localPaths, sizeBytes)) return
 
         notificationLock.withLock {
             try {
@@ -325,7 +336,11 @@ class DownloadWorkerV2(
         }
     }
 
-    private suspend fun handleErrorSafely(chapter: ChapterDownloadEntity, exception: Throwable) {
+    private suspend fun handleErrorSafely(
+        chapter: ChapterDownloadEntity,
+        exception: Throwable,
+    ) {
+        if (!ownsUnfinishedDownload(chapter)) return
         chapterDownloadDao.updateStateAndProgress(
             chapter.chapterId,
             DownloadingState.FAILED,
@@ -343,6 +358,15 @@ class DownloadWorkerV2(
         }
     }
 
+    private suspend fun ownsUnfinishedDownload(chapter: ChapterDownloadEntity): Boolean {
+        val current = chapterDownloadDao.getDownloadByChapter(chapter.chapterId) ?: return false
+        return current.id == chapter.id &&
+            current.chapterId == chapter.chapterId &&
+            current.mangaId == chapter.mangaId &&
+            current.url == chapter.url &&
+            current.state != DownloadingState.SUCCESS
+    }
+
     private fun updateOverallNotification() {
         try {
             setForegroundAsync(buildForegroundInfo())
@@ -352,30 +376,33 @@ class DownloadWorkerV2(
     }
 
     private fun buildForegroundInfo(): ForegroundInfo {
-        val cancelAllIntent = Intent(ACTION_CANCEL).apply {
-            setPackage(context.packageName)
-            putExtra(EXTRA_WORK_ID, id.toString())
-        }
+        val cancelAllIntent =
+            Intent(ACTION_CANCEL).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_WORK_ID, id.toString())
+            }
 
-        val cancelAllPendingIntent = PendingIntent.getBroadcast(
-            context,
-            0,
-            cancelAllIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ALL)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(context.getString(R.string.notification_downloading_chapters))
-            .setContentText(context.getString(R.string.notification_downloading_background))
-            .addAction(
-                R.drawable.ic_download_cancel,
-                context.getString(R.string.action_cancel_all),
-                cancelAllPendingIntent,
+        val cancelAllPendingIntent =
+            PendingIntent.getBroadcast(
+                context,
+                0,
+                cancelAllIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .build()
+
+        val notification =
+            NotificationCompat
+                .Builder(context, CHANNEL_ALL)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(context.getString(R.string.notification_downloading_chapters))
+                .setContentText(context.getString(R.string.notification_downloading_background))
+                .addAction(
+                    R.drawable.ic_download_cancel,
+                    context.getString(R.string.action_cancel_all),
+                    cancelAllPendingIntent,
+                ).setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(NOTIF_ALL_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -391,32 +418,35 @@ class DownloadWorkerV2(
         downloaded: Int,
         total: Int,
     ) {
-        val cancelChapterIntent = Intent(ACTION_CANCEL_CHAPTER).apply {
-            setPackage(context.packageName)
-            putExtra(EXTRA_WORK_ID, id.toString())
-            putExtra(EXTRA_CHAPTER_ID, chapterId)
-            putExtra(EXTRA_MANGA_ID, mangaId)
-        }
+        val cancelChapterIntent =
+            Intent(ACTION_CANCEL_CHAPTER).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_WORK_ID, id.toString())
+                putExtra(EXTRA_CHAPTER_ID, chapterId)
+                putExtra(EXTRA_MANGA_ID, mangaId)
+            }
 
-        val cancelChapterPendingIntent = PendingIntent.getBroadcast(
-            context,
-            (chapterId and 0xFFFF).toInt(),
-            cancelChapterIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val cancelChapterPendingIntent =
+            PendingIntent.getBroadcast(
+                context,
+                (chapterId and 0xFFFF).toInt(),
+                cancelChapterIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
 
         val notifManager = context.getSystemService(NotificationManager::class.java)!!
-        val progressNotification = NotificationCompat.Builder(context, CHANNEL_CHAPTER)
-            .setContentTitle(context.getString(R.string.notification_chapter_title, chapterNumber))
-            .setContentText(context.getString(R.string.notification_images_progress, downloaded, total))
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .addAction(
-                R.drawable.ic_download_cancel,
-                context.getString(R.string.action_cancel_chapter),
-                cancelChapterPendingIntent,
-            )
-            .setProgress(total, downloaded, false)
-            .build()
+        val progressNotification =
+            NotificationCompat
+                .Builder(context, CHANNEL_CHAPTER)
+                .setContentTitle(context.getString(R.string.notification_chapter_title, chapterNumber))
+                .setContentText(context.getString(R.string.notification_images_progress, downloaded, total))
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .addAction(
+                    R.drawable.ic_download_cancel,
+                    context.getString(R.string.action_cancel_chapter),
+                    cancelChapterPendingIntent,
+                ).setProgress(total, downloaded, false)
+                .build()
 
         notifManager.notify(NOTIF_CHAPTER_BASE + chapterId.toInt(), progressNotification)
         lastNotifiedChapterId = chapterId
