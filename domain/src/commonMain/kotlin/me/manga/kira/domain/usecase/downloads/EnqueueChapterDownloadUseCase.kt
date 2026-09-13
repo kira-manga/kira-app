@@ -24,7 +24,10 @@ class EnqueueChapterDownloadUseCase(
     private val chapterIdResolver: ChapterIdResolver,
     private val enqueueDownload: EnqueueDownloadUseCase,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String): Result<Unit> {
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ): Result<Unit> {
         val chapterId = chapterIdResolver.resolveChapterId(manga, chapterUrl) ?: return Result.success(Unit)
         return enqueueDownload(chapterId = chapterId, mangaTitle = manga.title, api = manga.api)
     }

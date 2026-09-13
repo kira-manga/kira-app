@@ -136,14 +136,25 @@ open class ChapterOwnershipFixture {
     protected fun extractedPage(chapter: SavedChapterEntity): Path =
         appFs.cacheDir / "cbz_extract" / chapter.mangaId.toString() / chapter.id.toString() / "page.webp"
 
-    protected fun writeFile(path: Path, contents: String): Path {
+    protected fun writeFile(
+        path: Path,
+        contents: String,
+    ): Path {
         fs.createDirectories(assertNotNull(path.parent))
         fs.write(path) { writeUtf8(contents) }
         return path
     }
 
     protected fun manga(slug: String): Manga =
-        Manga("source", "en", "Same title", "https://owner.test/$slug", "", null, emptyList())
+        Manga(
+            "source",
+            "en",
+            "Same title",
+            "https://owner.test/$slug",
+            "",
+            null,
+            emptyList(),
+        )
 }
 
 internal const val CHAPTER_OWNERSHIP_URL = "chapter/shared"
@@ -153,14 +164,19 @@ private class ForeignKeysOnDriver(
     private val delegate: SQLiteDriver = BundledSQLiteDriver(),
 ) : SQLiteDriver by delegate {
     override fun open(fileName: String): SQLiteConnection =
-        delegate.open(fileName).also { it.execSQL("PRAGMA foreign_keys = ON") }
+        delegate.open(fileName).also {
+            it.execSQL("PRAGMA foreign_keys = ON")
+        }
 }
 
 internal class OwnerPagesSource : MangaSourceClient {
     override val api: String = "source"
     val requests = mutableListOf<Pair<Manga, Chapter>>()
 
-    override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> {
+    override fun pages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Flow<AppResult<List<Page>>> {
         requests += manga to chapter
         return flowOf(AppResult.Success(listOf(Page("${manga.url}/network-page", emptyMap()))))
     }
@@ -169,8 +185,11 @@ internal class OwnerPagesSource : MangaSourceClient {
 
     override suspend fun featured(page: Int): AppResult<List<FeaturedManga>> = error("unused")
 
-    override suspend fun search(query: String, page: Int, filters: FilterSelections): AppResult<List<HomeFeedItem>> =
-        error("unused")
+    override suspend fun search(
+        query: String,
+        page: Int,
+        filters: FilterSelections,
+    ): AppResult<List<HomeFeedItem>> = error("unused")
 
     override suspend fun details(manga: Manga): AppResult<MangaDetails> = error("unused")
 }

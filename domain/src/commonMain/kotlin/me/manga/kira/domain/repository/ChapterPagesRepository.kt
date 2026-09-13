@@ -127,7 +127,6 @@ import me.manga.kira.domain.model.reader.Page
  *  convention.
  */
 interface ChapterPagesRepository {
-
     /**
      * Stream of page-list snapshots for [chapter] (which is one entry from
      * [manga.url]'s chapter list).
@@ -143,7 +142,10 @@ interface ChapterPagesRepository {
      * Coroutine context: the `:data` impl flows on the I/O dispatcher; callers do not need to
      * switch contexts. Cancellation propagates to the underlying network/file read.
      */
-    fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>>
+    fun fetchPages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Flow<AppResult<List<Page>>>
 
     /**
      * Best-effort, fire-and-forget cleanup of the temporary images extracted from a downloaded
@@ -155,5 +157,8 @@ interface ChapterPagesRepository {
      * called safely from a ViewModel's `onCleared()` (where `viewModelScope` is already cancelled).
      * A no-op for chapters that were not downloaded / not CBZ-extracted.
      */
-    fun clearExtractedPages(manga: Manga, chapter: Chapter)
+    fun clearExtractedPages(
+        manga: Manga,
+        chapter: Chapter,
+    )
 }

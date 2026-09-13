@@ -20,6 +20,8 @@ import me.manga.kira.domain.repository.ChapterBookmarkRepository
 class ObserveChapterBookmarkUseCase(
     private val repository: ChapterBookmarkRepository,
 ) {
-    operator fun invoke(manga: Manga, chapterUrl: String): Flow<Boolean> =
-        repository.observeBookmark(manga, chapterUrl)
+    operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> = repository.observeBookmark(manga, chapterUrl)
 }

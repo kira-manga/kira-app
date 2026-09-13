@@ -60,21 +60,25 @@ class EnqueueAllChaptersDownloadUseCase(
     private val enqueueDownload: EnqueueDownloadUseCase,
     private val dispatchers: DispatcherProvider,
 ) {
-    suspend operator fun invoke(manga: Manga, details: MangaDetails): Result<Unit> = runCatchingCancellable {
-        withContext(dispatchers.io) {
-            val pending = details.chapters.filter { !it.isDownloaded }
-            // Resolve every chapter url -> id in one chunked query instead of N per-chapter Room
-            // round-trips. Urls with no in-library row are absent from the map (skipped), same as
-            // the prior per-chapter `resolveChapterId(...) ?: return@forEach` skip.
-            val idsByUrl = chapterIdResolver.resolveChapterIds(manga, pending.map { it.url })
-            pending.forEach { chapter ->
-                val chapterId = idsByUrl[chapter.url] ?: return@forEach
-                enqueueDownload(
-                    chapterId = chapterId,
-                    mangaTitle = details.title,
-                    api = details.api,
-                )
+    suspend operator fun invoke(
+        manga: Manga,
+        details: MangaDetails,
+    ): Result<Unit> =
+        runCatchingCancellable {
+            withContext(dispatchers.io) {
+                val pending = details.chapters.filter { !it.isDownloaded }
+                // Resolve every chapter url -> id in one chunked query instead of N per-chapter Room
+                // round-trips. Urls with no in-library row are absent from the map (skipped), same as
+                // the prior per-chapter `resolveChapterId(...) ?: return@forEach` skip.
+                val idsByUrl = chapterIdResolver.resolveChapterIds(manga, pending.map { it.url })
+                pending.forEach { chapter ->
+                    val chapterId = idsByUrl[chapter.url] ?: return@forEach
+                    enqueueDownload(
+                        chapterId = chapterId,
+                        mangaTitle = details.title,
+                        api = details.api,
+                    )
+                }
             }
         }
-    }
 }

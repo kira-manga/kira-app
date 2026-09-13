@@ -52,7 +52,9 @@ class DetailsDownloadOwnershipTest {
             fixture.vm.submit(DetailsIntent.OnEnter(mangaB))
             fixture.downloads.publish(mangaB, listOf(b))
 
-            val progress = fixture.vm.state.value.chapterDownloads.getValue(CHAPTER_URL)
+            val progress =
+                fixture.vm.state.value.chapterDownloads
+                    .getValue(CHAPTER_URL)
             assertEquals(202L, progress.chapterId)
             assertEquals(2L, progress.mangaId)
             assertEquals(37, progress.progress)
@@ -67,14 +69,30 @@ class DetailsDownloadOwnershipTest {
             assertEquals(listOf(mangaB to CHAPTER_URL), fixture.resolver.singleRequests)
             fixture.downloads.publish(mangaB, listOf(b.copy(state = DownloadState.SUCCESS, sizeBytes = 4_096)))
             assertEquals(1, fixture.vm.state.value.downloadedChapterCount)
-            assertEquals(4_096L, fixture.vm.state.value.chapterDownloads.getValue(CHAPTER_URL).sizeBytes)
+            assertEquals(
+                4_096L,
+                fixture.vm.state.value.chapterDownloads
+                    .getValue(CHAPTER_URL)
+                    .sizeBytes,
+            )
 
-            val failed = b.copy(state = DownloadState.FAILED, errorMsg = DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL)
+            val failed =
+                b.copy(
+                    state = DownloadState.FAILED,
+                    errorMsg = DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL,
+                )
             fixture.downloads.publish(mangaA, listOf(a.copy(state = failed.state, errorMsg = failed.errorMsg)))
             assertTrue(effects.isEmpty(), "A's challenge must not open a solver for B")
             fixture.downloads.publish(mangaB, listOf(failed))
-            assertEquals(listOf(DetailsEffect.SolveCloudflareChallenge(mangaB.url, mangaB.api)), effects)
-            assertTrue(fixture.vm.state.value.chapterDownloads.isEmpty(), "FAILED is not active or completed")
+            assertEquals(
+                listOf<DetailsEffect>(DetailsEffect.SolveCloudflareChallenge(mangaB.url, mangaB.api)),
+                effects,
+            )
+            assertTrue(
+                fixture.vm.state.value.chapterDownloads
+                    .isEmpty(),
+                "FAILED is not active or completed",
+            )
             fixture.vm.submit(DetailsIntent.OnRetry)
             assertEquals(listOf(Triple(202L, mangaB.title, mangaB.api)), fixture.actions.enqueued)
             assertTrue(fixture.resolver.singleRequests.all { it.first == mangaB })
@@ -88,16 +106,33 @@ class DetailsDownloadOwnershipTest {
             val fixture = fixture()
             fixture.vm.submit(DetailsIntent.OnEnter(mangaA))
             fixture.downloads.publish(mangaA, listOf(download(101, 1, DownloadState.RUNNING)))
-            assertEquals(101L, fixture.vm.state.value.chapterDownloads.getValue(CHAPTER_URL).chapterId)
+            assertEquals(
+                101L,
+                fixture.vm.state.value.chapterDownloads
+                    .getValue(CHAPTER_URL)
+                    .chapterId,
+            )
 
             // Metadata is identical: the exact parent URL must still establish a new owner.
             fixture.vm.submit(DetailsIntent.OnEnter(mangaB))
-            assertEquals(mangaB.url, fixture.vm.state.value.manga?.url)
+            assertEquals(
+                mangaB.url,
+                fixture.vm.state.value.manga
+                    ?.url,
+            )
             assertTrue(mangaA.url in fixture.downloads.cancelledOwners)
             assertTrue(fixture.downloads.scopedOwners.any { it.url == mangaB.url })
-            assertTrue(fixture.vm.state.value.chapterDownloads.isEmpty(), "clear A before B's first queue emission")
+            assertTrue(
+                fixture.vm.state.value.chapterDownloads
+                    .isEmpty(),
+                "clear A before B's first queue emission",
+            )
             fixture.downloads.publish(mangaA, listOf(download(101, 1, DownloadState.SUCCESS, sizeBytes = 90_000)))
-            assertTrue(fixture.vm.state.value.chapterDownloads.isEmpty(), "late A emissions cannot repaint B")
+            assertTrue(
+                fixture.vm.state.value.chapterDownloads
+                    .isEmpty(),
+                "late A emissions cannot repaint B",
+            )
 
             fixture.downloads.publish(
                 mangaB,
@@ -108,13 +143,21 @@ class DetailsDownloadOwnershipTest {
             )
             fixture.vm.submit(DetailsIntent.OnEnter(mangaA))
             assertTrue(mangaB.url in fixture.downloads.cancelledOwners)
-            assertTrue(fixture.vm.state.value.chapterDownloads.isEmpty())
+            assertTrue(
+                fixture.vm.state.value.chapterDownloads
+                    .isEmpty(),
+            )
             fixture.vm.submit(DetailsIntent.OnRetry)
             assertTrue(fixture.actions.enqueued.isEmpty(), "B's pending challenge retry must not become an A enqueue")
             fixture.downloads.publish(mangaB, listOf(download(202, 2, DownloadState.RUNNING)))
-            assertTrue(fixture.vm.state.value.chapterDownloads.isEmpty())
+            assertTrue(
+                fixture.vm.state.value.chapterDownloads
+                    .isEmpty(),
+            )
             fixture.downloads.publish(mangaA, listOf(download(303, 3, DownloadState.SUCCESS, sizeBytes = 2_048)))
-            val reentered = fixture.vm.state.value.chapterDownloads.getValue(CHAPTER_URL)
+            val reentered =
+                fixture.vm.state.value.chapterDownloads
+                    .getValue(CHAPTER_URL)
             assertEquals(303L, reentered.chapterId)
             assertEquals(3L, reentered.mangaId)
             assertEquals(2_048L, reentered.sizeBytes)
@@ -139,7 +182,12 @@ class DetailsDownloadOwnershipTest {
             vm.submit(DetailsIntent.OnDownloadSelected)
             vm.submit(DetailsIntent.OnEnter(mangaB))
             runCurrent()
-            assertEquals(setOf(101L, 102L), fixture.actions.enqueued.map { it.first }.toSet())
+            assertEquals(
+                setOf(101L, 102L),
+                fixture.actions.enqueued
+                    .map { it.first }
+                    .toSet(),
+            )
             assertEquals(2, fixture.actions.enqueued.size)
             val downloadRequest = fixture.resolver.bulkRequests.single()
             assertEquals(mangaA, downloadRequest.first)

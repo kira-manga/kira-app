@@ -28,7 +28,10 @@ import me.manga.kira.domain.model.Manga
  */
 interface MarkChapterReadRepository {
     /** Sets the chapter's `isRead` flag; no-op when the chapter has no in-library row. */
-    suspend fun markRead(manga: Manga, chapterUrl: String)
+    suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    )
 
     /**
      * Toggles the chapter's `isRead` flag (read↔unread), keyed by the chapter's canonical source
@@ -40,7 +43,10 @@ interface MarkChapterReadRepository {
      * Details chapter row can both mark-read and mark-unread, keeping the Library `readCount` +
      * UNREAD filter (`MangaDao` COUNT) consistent through Room invalidation.
      */
-    suspend fun toggleRead(manga: Manga, chapterUrl: String)
+    suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    )
 
     /**
      * Bulk-marks every chapter in [chapterUrls] as READ. No-op for any url with no in-library row;
@@ -48,5 +54,8 @@ interface MarkChapterReadRepository {
      * "mark read" action on the rework Details chapter list (GAP-LIB-02). Idempotent — already-read
      * chapters stay read.
      */
-    suspend fun markRead(manga: Manga, chapterUrls: List<String>)
+    suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    )
 }

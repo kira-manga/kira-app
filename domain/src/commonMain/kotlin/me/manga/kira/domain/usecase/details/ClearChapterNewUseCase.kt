@@ -10,5 +10,8 @@ import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 class ClearChapterNewUseCase(
     private val repository: ChapterNewBadgeRepository,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String) = repository.clearNew(manga, chapterUrl)
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ) = repository.clearNew(manga, chapterUrl)
 }

@@ -116,14 +116,14 @@ class DownloadsRepositoryImpl(
     private val legacy: DownloadRepository,
     private val chapterDownloadDao: ChapterDownloadDao,
 ) : DownloadsRepository {
-
     override fun observeAll(): Flow<List<DownloadedChapter>> =
         // distinctUntilChanged (2026-07 audit): dedupe structurally-equal Room re-emissions before
         // the per-row domain mapping (same family as LibraryRepositoryImpl.observeLibrary).
         legacy.observeAllDownloads().distinctUntilChanged().map { list -> list.map { it.toDomain() } }
 
     override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
-        chapterDownloadDao.observeDownloadsForMangaUrl(manga.url)
+        chapterDownloadDao
+            .observeDownloadsForMangaUrl(manga.url)
             .distinctUntilChanged()
             .map { list -> list.map { it.toDomain() } }
 }

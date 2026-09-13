@@ -18,7 +18,10 @@ import me.manga.kira.domain.repository.MarkChapterReadRepository
 class ToggleChapterReadUseCase(
     private val repository: MarkChapterReadRepository,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String) {
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         repository.toggleRead(manga, chapterUrl)
     }
 }

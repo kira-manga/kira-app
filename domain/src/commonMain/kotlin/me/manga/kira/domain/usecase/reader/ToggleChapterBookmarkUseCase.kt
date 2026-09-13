@@ -20,10 +20,15 @@ import me.manga.kira.domain.repository.ChapterBookmarkRepository
 class ToggleChapterBookmarkUseCase(
     private val repository: ChapterBookmarkRepository,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String): Boolean =
-        repository.toggleBookmark(manga, chapterUrl)
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean = repository.toggleBookmark(manga, chapterUrl)
 
-    suspend operator fun invoke(manga: Manga, chapterUrls: List<String>) {
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
         repository.toggleBookmark(manga, chapterUrls)
     }
 }

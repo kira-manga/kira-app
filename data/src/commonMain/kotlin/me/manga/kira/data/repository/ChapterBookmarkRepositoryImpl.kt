@@ -42,19 +42,28 @@ import me.manga.kira.domain.repository.ChapterBookmarkRepository
 class ChapterBookmarkRepositoryImpl(
     private val chapterDao: ChapterDao,
 ) : ChapterBookmarkRepository {
-
-    override fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean> =
-        chapterDao.getChapterByUrl(manga.url, chapterUrl)
+    override fun observeBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> =
+        chapterDao
+            .getChapterByUrl(manga.url, chapterUrl)
             .map { it?.isBookmarked == true }
             .distinctUntilChanged()
 
-    override suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean {
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean {
         val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: return false
         chapterDao.toggleChapterBookmark(chapterId)
         return true
     }
 
-    override suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>) {
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
         val ids = chapterDao.getChapterIdsByUrls(manga.url, chapterUrls)
         if (ids.isEmpty()) return
         chapterDao.toggleChaptersBookmark(ids)

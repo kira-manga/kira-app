@@ -45,7 +45,6 @@ import me.manga.kira.domain.usecase.downloads.CancelDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.CancelRunningDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
-import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
@@ -1182,17 +1181,29 @@ private class RecordingAdultClassifier(
 }
 
 private object NullChapterIdResolver : ChapterIdResolver {
-    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long? = null
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? = null
 
-    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> = emptyMap()
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> = emptyMap()
 }
 
 private class FixedChapterIdResolver(
     private val id: Long,
 ) : ChapterIdResolver {
-    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long = id
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long = id
 
-    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> =
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> =
         chapterUrls.associateWith {
             id
         }
@@ -1224,11 +1235,20 @@ private object NoopDownloadsActionRepository : DownloadsActionRepository {
 }
 
 private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
-    override suspend fun markRead(manga: Manga, chapterUrl: String) = Unit
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) = Unit
 
-    override suspend fun toggleRead(manga: Manga, chapterUrl: String) = Unit
+    override suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) = Unit
 
-    override suspend fun markRead(manga: Manga, chapterUrls: List<String>) = Unit
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) = Unit
 }
 
 /** Records all read mutations and keeps bulk batches distinct from single/toggle calls. */
@@ -1236,26 +1256,44 @@ private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
     val read = mutableListOf<Pair<Manga, String>>()
     val bulkReads = mutableListOf<Pair<Manga, List<String>>>()
 
-    override suspend fun markRead(manga: Manga, chapterUrl: String) {
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         read += manga to chapterUrl
     }
 
-    override suspend fun toggleRead(manga: Manga, chapterUrl: String) {
+    override suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         read += manga to chapterUrl
     }
 
-    override suspend fun markRead(manga: Manga, chapterUrls: List<String>) {
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
         bulkReads += manga to chapterUrls.toList()
         read += chapterUrls.map { manga to it }
     }
 }
 
 private object NoopChapterBookmarkRepository : ChapterBookmarkRepository {
-    override fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean> = MutableStateFlow(false)
+    override fun observeBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> = MutableStateFlow(false)
 
-    override suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean = true
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean = true
 
-    override suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>) = Unit
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) = Unit
 }
 
 /** #4: drives DetailsState.isOnline. Default online so it never blocks the existing tests. */
@@ -1295,7 +1333,10 @@ private class RecordingAnalyticsPort : AnalyticsPort {
 private class RecordingChapterNewBadgeRepository : ChapterNewBadgeRepository {
     val cleared = mutableListOf<Pair<Manga, String>>()
 
-    override suspend fun clearNew(manga: Manga, chapterUrl: String) {
+    override suspend fun clearNew(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         cleared += manga to chapterUrl
     }
 }
@@ -1336,10 +1377,15 @@ private class FakeDownloadsRepository : DownloadsRepository {
 private class MapChapterIdResolver(
     private val byUrl: Map<String, Long>,
 ) : ChapterIdResolver {
-    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long? = byUrl[chapterUrl]
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? = byUrl[chapterUrl]
 
-    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> =
-        chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> = chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
 }
 
 private fun downloadedChapter(
@@ -1439,11 +1485,6 @@ private fun createVmWithFetchFake(
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(NoopChapterBookmarkRepository),
             markChaptersRead = MarkChaptersReadUseCase(options.markReadRepo),
             enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
-            enqueueChapterDownload =
-                EnqueueChapterDownloadUseCase(
-                    chapterIdResolver = NullChapterIdResolver,
-                    enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
-                ),
             cancelChapterDownload =
                 CancelChapterDownloadUseCase(
                     chapterIdResolver = NullChapterIdResolver,

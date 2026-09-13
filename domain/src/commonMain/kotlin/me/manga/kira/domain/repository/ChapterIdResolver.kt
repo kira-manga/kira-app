@@ -36,7 +36,10 @@ interface ChapterIdResolver {
      * Resolves [chapterUrl] to its Room `saved_chapters.id`, or `null` when no in-library row
      * exists for that url within [manga]. A different manga's matching chapter URL is never used.
      */
-    suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long?
+    suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long?
 
     /**
      * Bulk-resolves [chapterUrls] to their Room `saved_chapters.id`s in a single chunked query,
@@ -44,5 +47,8 @@ interface ChapterIdResolver {
      * "skip" semantics as a `null` from [resolveChapterId]). Lets the download-all path collapse N
      * per-chapter resolution round-trips into one query per chunk.
      */
-    suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long>
+    suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long>
 }

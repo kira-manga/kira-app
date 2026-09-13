@@ -13,5 +13,8 @@ import me.manga.kira.domain.model.Manga
  */
 interface ChapterNewBadgeRepository {
     /** Clear the persisted NEW flag for [chapterUrl] within [manga]. */
-    suspend fun clearNew(manga: Manga, chapterUrl: String)
+    suspend fun clearNew(
+        manga: Manga,
+        chapterUrl: String,
+    )
 }

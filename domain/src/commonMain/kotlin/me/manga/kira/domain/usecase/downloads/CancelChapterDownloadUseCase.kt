@@ -22,7 +22,10 @@ class CancelChapterDownloadUseCase(
     private val chapterIdResolver: ChapterIdResolver,
     private val cancelDownload: CancelDownloadUseCase,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String): Result<Unit> {
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ): Result<Unit> {
         val chapterId = chapterIdResolver.resolveChapterId(manga, chapterUrl) ?: return Result.success(Unit)
         return cancelDownload(chapterId)
     }

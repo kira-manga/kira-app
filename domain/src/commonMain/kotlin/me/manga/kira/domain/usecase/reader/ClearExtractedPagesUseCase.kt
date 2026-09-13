@@ -13,5 +13,8 @@ import me.manga.kira.domain.repository.ChapterPagesRepository
 class ClearExtractedPagesUseCase(
     private val repository: ChapterPagesRepository,
 ) {
-    operator fun invoke(manga: Manga, chapter: Chapter) = repository.clearExtractedPages(manga, chapter)
+    operator fun invoke(
+        manga: Manga,
+        chapter: Chapter,
+    ) = repository.clearExtractedPages(manga, chapter)
 }

@@ -374,32 +374,75 @@ class AzoraDataRoutingTest {
         private val idByUrl: (String) -> Long? = { null },
         private val byId: (Long) -> SavedChapterEntity? = { null },
     ) : ChapterDao {
-        override suspend fun getChapterIdByUrl(mangaUrl: String, url: String): Long? = idByUrl(url)
+        override suspend fun getChapterIdByUrl(
+            mangaUrl: String,
+            url: String,
+        ): Long? = idByUrl(url)
+
         override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = byId(chapterId)
-        override suspend fun getChapterIdsByUrlsBatch(mangaUrl: String, urls: List<String>): List<Long> = urls.mapNotNull { idByUrl(it) }
-        override suspend fun getChapterIdUrlPairsBatch(mangaUrl: String, urls: List<String>) =
-            urls.mapNotNull { url -> idByUrl(url)?.let { ChapterIdUrl(id = it, url = url) } }
-        override suspend fun getChapterIdUrlPairsForMangaBatch(mangaId: Long, urls: List<String>) =
-            urls.mapNotNull { url -> idByUrl(url)?.let { ChapterIdUrl(id = it, url = url) } }
+
+        override suspend fun getChapterIdsByUrlsBatch(
+            mangaUrl: String,
+            urls: List<String>,
+        ): List<Long> = urls.mapNotNull { idByUrl(it) }
+
+        override suspend fun getChapterIdUrlPairsBatch(
+            mangaUrl: String,
+            urls: List<String>,
+        ) = urls.mapNotNull { url -> idByUrl(url)?.let { ChapterIdUrl(id = it, url = url) } }
+
+        override suspend fun getChapterIdUrlPairsForMangaBatch(
+            mangaId: Long,
+            urls: List<String>,
+        ) = urls.mapNotNull { url -> idByUrl(url)?.let { ChapterIdUrl(id = it, url = url) } }
 
         // --- unused surface ----------------------------------------------------------------------
         override suspend fun getAllDownloadedChapters(): List<SavedChapterEntity> = emptyList()
+
         override fun getChaptersByMangaId(mangaId: Long): Flow<List<SavedChapterEntity>> = flowOf(emptyList())
+
         override suspend fun insertChapters(chapters: List<SavedChapterEntity>): List<Long> = error("unused")
+
         override suspend fun insertAll(chapters: List<SavedChapterEntity>) = error("unused")
-        override suspend fun updateChapterLocalPaths(chapterId: Long, paths: List<String>) = error("unused")
+
+        override suspend fun updateChapterLocalPaths(
+            chapterId: Long,
+            paths: List<String>,
+        ) = error("unused")
+
         override suspend fun markChapterDownloaded(chapterId: Long) = error("unused")
+
         override suspend fun toggleChapterBookmark(chapterId: Long) = error("unused")
-        override suspend fun markChapterAsRead(chapterId: Long, currentTime: Long) = error("unused")
+
+        override suspend fun markChapterAsRead(
+            chapterId: Long,
+            currentTime: Long,
+        ) = error("unused")
+
         override suspend fun markChapterIsNew(chapterId: Long) = error("unused")
+
         override fun getChapterById(chapterId: Long): Flow<SavedChapterEntity?> = flowOf(null)
-        override fun getChapterByUrl(mangaUrl: String, url: String): Flow<SavedChapterEntity?> = flowOf(null)
-        override suspend fun markChaptersNotDownloaded(ids: List<Long>, emptyList: List<String>) = error("unused")
+
+        override fun getChapterByUrl(
+            mangaUrl: String,
+            url: String,
+        ): Flow<SavedChapterEntity?> = flowOf(null)
+
+        override suspend fun markChaptersNotDownloaded(
+            ids: List<Long>,
+            emptyList: List<String>,
+        ) = error("unused")
+
         override suspend fun deleteChapterById(chapterId: Long) = error("unused")
+
         override suspend fun markChaptersReadBatch(chapterIds: List<Long>) = error("unused")
+
         override suspend fun toggleChaptersReadBatch(chapterIds: List<Long>) = error("unused")
+
         override suspend fun toggleChaptersBookmarkBatch(chapterIds: List<Long>) = error("unused")
+
         override suspend fun getChaptersByMangaIdR(mangaId: Long): List<SavedChapterEntity> = error("unused")
+
         override suspend fun updateChapter(chapter: SavedChapterEntity) = error("unused")
     }
 
@@ -410,14 +453,36 @@ class AzoraDataRoutingTest {
     ) : CbzReader {
         /** Paths passed to [extractImages], in order — proves WHICH path the resolver opened. */
         val extractCalls = mutableListOf<Path>()
-        override fun cbzPath(mangaId: Long, chapterId: Long): Path = canonical
-        override fun cbzExists(mangaId: Long, chapterId: Long): Boolean = existsCanonical
+
+        override fun cbzPath(
+            mangaId: Long,
+            chapterId: Long,
+        ): Path = canonical
+
+        override fun cbzExists(
+            mangaId: Long,
+            chapterId: Long,
+        ): Boolean = existsCanonical
+
         override suspend fun pageCount(cbzPath: Path): Int = 0
-        override suspend fun extractImages(cbzPath: Path, mangaId: Long, chapterId: Long): List<Path> {
+
+        override suspend fun extractImages(
+            cbzPath: Path,
+            mangaId: Long,
+            chapterId: Long,
+        ): List<Path> {
             extractCalls += cbzPath
             return extractFor(cbzPath)
         }
-        override suspend fun deleteCbz(mangaId: Long, chapterId: Long): Boolean = false
-        override suspend fun cleanupExtractedCache(mangaId: Long, chapterId: Long) = Unit
+
+        override suspend fun deleteCbz(
+            mangaId: Long,
+            chapterId: Long,
+        ): Boolean = false
+
+        override suspend fun cleanupExtractedCache(
+            mangaId: Long,
+            chapterId: Long,
+        ) = Unit
     }
 }

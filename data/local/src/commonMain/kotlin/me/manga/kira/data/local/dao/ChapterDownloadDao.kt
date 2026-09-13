@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS
 
 // Phase 9.x.chapterdownloaddao.componentprune (Task #394): dropped 4 independently-orphan
 // members surfaced by an exhaustive 3-pass reacher-chain audit (receiver-anchored
@@ -270,13 +271,15 @@ interface ChapterDownloadDao {
     // a re-download from page 0. The nonAndroid impl passes its current activeChapterId here so that
     // legitimately-running row is left alone. Android passes the default (-1, matches no row) since
     // its WorkManager worker runs in a state where no in-process activeChapterId exists.
-    @Query("""
+    @Query(
+        """
       UPDATE chapter_downloads
          SET state = :queuedState,
              progress = 0
        WHERE state IN (:runningState, :compressingState)
          AND chapterId != :excludeChapterId
-    """)
+    """,
+    )
     suspend fun reEnqueueInterrupted(
         excludeChapterId: Long = -1L,
         runningState: DownloadingState = DownloadingState.RUNNING,
@@ -310,14 +313,15 @@ interface ChapterDownloadDao {
     // column existed, i.e. migrated up from schema v8). Used by the startup reconcile to back-fill
     // their on-disk size so the native size display is correct for pre-existing downloads too.
     @Query("SELECT * FROM chapter_downloads WHERE state = :successState AND sizeBytes = 0")
-    suspend fun getCompletedWithoutSize(
-        successState: DownloadingState = DownloadingState.SUCCESS,
-    ): List<ChapterDownloadEntity>
+    suspend fun getCompletedWithoutSize(successState: DownloadingState = SUCCESS): List<ChapterDownloadEntity>
 
     // Persist the final on-disk size (bytes) of a completed chapter download. Written once at
     // SUCCESS by both download engines (native size-display parity) and by the startup back-fill.
     @Query("UPDATE chapter_downloads SET sizeBytes = :sizeBytes WHERE chapterId = :id")
-    suspend fun updateSize(id: Long, sizeBytes: Long)
+    suspend fun updateSize(
+        id: Long,
+        sizeBytes: Long,
+    )
 }
 
 /**
@@ -410,4 +414,3 @@ interface ChapterDownloadDao {
  * the 2026-06-02 startup reconcile and the v9 size back-fill (lines 208-233), so the live surface is
  * 17 members. Retained as lineage per the audit-trail-preservation convention.
  */
-

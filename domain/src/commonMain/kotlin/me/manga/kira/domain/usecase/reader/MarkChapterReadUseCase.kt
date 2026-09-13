@@ -24,7 +24,10 @@ import me.manga.kira.domain.repository.MarkChapterReadRepository
 class MarkChapterReadUseCase(
     private val repository: MarkChapterReadRepository,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String) {
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         repository.markRead(manga, chapterUrl)
     }
 }

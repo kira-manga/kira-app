@@ -110,7 +110,10 @@ interface ChapterDao {
         WHERE manga.url = :mangaUrl AND chapter.url = :url LIMIT 1
         """,
     )
-    suspend fun getChapterIdByUrl(mangaUrl: String, url: String): Long?
+    suspend fun getChapterIdByUrl(
+        mangaUrl: String,
+        url: String,
+    ): Long?
 
     // Bulk url -> id resolution for the multi-select mark-read path. Chunked by the caller-facing
     // wrapper below to stay under SQLite's host-variable limit (999). Only the exact saved parent
@@ -122,10 +125,15 @@ interface ChapterDao {
         WHERE manga.url = :mangaUrl AND chapter.url IN (:urls)
         """,
     )
-    suspend fun getChapterIdsByUrlsBatch(mangaUrl: String, urls: List<String>): List<Long>
+    suspend fun getChapterIdsByUrlsBatch(
+        mangaUrl: String,
+        urls: List<String>,
+    ): List<Long>
 
-    suspend fun getChapterIdsByUrls(mangaUrl: String, urls: List<String>): List<Long> =
-        urls.distinct().chunked(500).flatMap { batch -> getChapterIdsByUrlsBatch(mangaUrl, batch) }
+    suspend fun getChapterIdsByUrls(
+        mangaUrl: String,
+        urls: List<String>,
+    ): List<Long> = urls.distinct().chunked(500).flatMap { batch -> getChapterIdsByUrlsBatch(mangaUrl, batch) }
 
     // Bulk url -> id MAP resolution within the exact parent URL, one round-trip per 500-url chunk.
     @Query(
@@ -135,20 +143,35 @@ interface ChapterDao {
         WHERE manga.url = :mangaUrl AND chapter.url IN (:urls)
         """,
     )
-    suspend fun getChapterIdUrlPairsBatch(mangaUrl: String, urls: List<String>): List<ChapterIdUrl>
+    suspend fun getChapterIdUrlPairsBatch(
+        mangaUrl: String,
+        urls: List<String>,
+    ): List<ChapterIdUrl>
 
-    suspend fun getChapterIdMapByUrls(mangaUrl: String, urls: List<String>): Map<String, Long> =
-        urls.distinct().chunked(500)
+    suspend fun getChapterIdMapByUrls(
+        mangaUrl: String,
+        urls: List<String>,
+    ): Map<String, Long> =
+        urls
+            .distinct()
+            .chunked(500)
             .flatMap { batch -> getChapterIdUrlPairsBatch(mangaUrl, batch) }
             .associate { it.url to it.id }
 
     // Scoped (id, url) resolution for callers that already hold a saved mangaId (refresh/notification).
     // Chunked by the wrapper below to stay under SQLite's host-variable limit.
     @Query("SELECT id, url FROM saved_chapters WHERE mangaId = :mangaId AND url IN (:urls)")
-    suspend fun getChapterIdUrlPairsForMangaBatch(mangaId: Long, urls: List<String>): List<ChapterIdUrl>
+    suspend fun getChapterIdUrlPairsForMangaBatch(
+        mangaId: Long,
+        urls: List<String>,
+    ): List<ChapterIdUrl>
 
-    suspend fun getChapterIdsByUrlForManga(mangaId: Long, urls: List<String>): Map<String, Long> =
-        urls.chunked(500)
+    suspend fun getChapterIdsByUrlForManga(
+        mangaId: Long,
+        urls: List<String>,
+    ): Map<String, Long> =
+        urls
+            .chunked(500)
             .flatMap { batch -> getChapterIdUrlPairsForMangaBatch(mangaId, batch) }
             .associate { it.url to it.id }
 
@@ -159,11 +182,16 @@ interface ChapterDao {
     suspend fun toggleChapterBookmark(chapterId: Long)
 
     @Query("UPDATE saved_chapters SET isRead = 1, lastReadDate = :currentTime WHERE id = :chapterId")
-    suspend fun markChapterAsRead(chapterId: Long, currentTime: Long = kotlin.time.Clock.System.now().toEpochMilliseconds())
+    suspend fun markChapterAsRead(
+        chapterId: Long,
+        currentTime: Long =
+            kotlin.time.Clock.System
+                .now()
+                .toEpochMilliseconds(),
+    )
 
     @Query("UPDATE saved_chapters SET isNew = 0 WHERE id = :chapterId")
     suspend fun markChapterIsNew(chapterId: Long)
-
 
     @Query("SELECT * FROM saved_chapters WHERE id = :chapterId LIMIT 1")
     fun getChapterById(chapterId: Long): Flow<SavedChapterEntity?>
@@ -177,24 +205,29 @@ interface ChapterDao {
         WHERE manga.url = :mangaUrl AND chapter.url = :url LIMIT 1
         """,
     )
-    fun getChapterByUrl(mangaUrl: String, url: String): Flow<SavedChapterEntity?>
+    fun getChapterByUrl(
+        mangaUrl: String,
+        url: String,
+    ): Flow<SavedChapterEntity?>
 
     @Query("SELECT * FROM saved_chapters WHERE id = :chapterId LIMIT 1")
     suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity?
 
-
-    @Query("""
+    @Query(
+        """
       UPDATE saved_chapters
         SET isDownloaded = 0,
             localImagePaths = :emptyList
         WHERE id IN (:ids)
-    """)
-    suspend fun markChaptersNotDownloaded(ids: List<Long>, emptyList: List<String> = emptyList())
-
+    """,
+    )
+    suspend fun markChaptersNotDownloaded(
+        ids: List<Long>,
+        emptyList: List<String> = emptyList(),
+    )
 
     @Query("DELETE FROM saved_chapters WHERE id = :chapterId")
     suspend fun deleteChapterById(chapterId: Long)
-
 
     suspend fun markChaptersRead(chapterIds: List<Long>) {
         chapterIds.chunked(500).forEach { batch ->
@@ -216,7 +249,6 @@ interface ChapterDao {
         }
     }
 
-
     @Query("UPDATE saved_chapters SET isRead = 1 WHERE id IN (:chapterIds)")
     suspend fun markChaptersReadBatch(chapterIds: List<Long>)
 
@@ -225,7 +257,6 @@ interface ChapterDao {
 
     @Query("UPDATE saved_chapters SET isBookmarked = NOT isBookmarked WHERE id IN (:chapterIds)")
     suspend fun toggleChaptersBookmarkBatch(chapterIds: List<Long>)
-
 }
 
 /** Row projection (id + url) for the bulk chapter id-resolution queries on [ChapterDao]. */
@@ -297,4 +328,3 @@ data class ChapterIdUrl(
  * cannot be private — not "private" as the prose states. Retained as lineage per the
  * audit-trail-preservation convention.
  */
-

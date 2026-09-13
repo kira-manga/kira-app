@@ -15,9 +15,13 @@ import me.manga.kira.domain.repository.ChapterIdResolver
 class ResolveChapterIdUseCase(
     private val resolver: ChapterIdResolver,
 ) {
-    suspend operator fun invoke(manga: Manga, chapterUrl: String): Long? =
-        resolver.resolveChapterId(manga, chapterUrl)
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? = resolver.resolveChapterId(manga, chapterUrl)
 
-    suspend operator fun invoke(manga: Manga, chapterUrls: List<String>): Map<String, Long> =
-        resolver.resolveChapterIds(manga, chapterUrls)
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> = resolver.resolveChapterIds(manga, chapterUrls)
 }

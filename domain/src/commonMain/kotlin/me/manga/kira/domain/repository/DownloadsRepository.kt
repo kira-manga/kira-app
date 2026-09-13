@@ -65,7 +65,6 @@ interface DownloadsRepository {
     /** Keeps observing this exact manga URL even while its saved parent row is absent. */
     fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>>
 
-
     /**
      * Reactive list of all chapter downloads (active + failed + completed).
      * Emits a fresh snapshot whenever any row's `state` or `progress`

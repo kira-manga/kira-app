@@ -86,20 +86,21 @@ class ReaderViewModelAppendTest {
     }
 
     @Test
-    fun activeChapter_andHud_deriveFromVisiblePage_afterAppend() = runTest {
-        val env = readerTestEnv(chapterList = chapters)
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("a"), readerPage("b"))))
-        env.vm.submit(ReaderIntent.OnEnter(readerManga(), readerChapter("1")))
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("c"), readerPage("d"))))
-        env.vm.submit(ReaderIntent.OnAppendNextChapter)
+    fun activeChapter_andHud_deriveFromVisiblePage_afterAppend() =
+        runTest {
+            val env = readerTestEnv(chapterList = chapters)
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("a"), readerPage("b"))))
+            env.vm.submit(ReaderIntent.OnEnter(readerManga(), readerChapter("1")))
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("c"), readerPage("d"))))
+            env.vm.submit(ReaderIntent.OnAppendNextChapter)
 
-        // Scroll to the first page of the appended chapter 2 (flat index 2).
-        env.vm.submit(ReaderIntent.OnPageChanged(2))
+            // Scroll to the first page of the appended chapter 2 (flat index 2).
+            env.vm.submit(ReaderIntent.OnPageChanged(2))
 
-        val s = env.vm.state.value
-        assertEquals("ch/2", s.activeChapterUrl, "active chapter follows the visible page across the boundary")
-        assertEquals(1, s.currentChapterIndex, "currentChapterIndex is chapter 2's position")
-        assertEquals(1, s.activeChapterPageNumber, "HUD shows within-chapter page number (1), not flat (3)")
-        assertEquals(2, s.activeChapterPageCount, "HUD total is chapter 2's page count")
-    }
+            val s = env.vm.state.value
+            assertEquals("ch/2", s.activeChapterUrl, "active chapter follows the visible page across the boundary")
+            assertEquals(1, s.currentChapterIndex, "currentChapterIndex is chapter 2's position")
+            assertEquals(1, s.activeChapterPageNumber, "HUD shows within-chapter page number (1), not flat (3)")
+            assertEquals(2, s.activeChapterPageCount, "HUD total is chapter 2's page count")
+        }
 }

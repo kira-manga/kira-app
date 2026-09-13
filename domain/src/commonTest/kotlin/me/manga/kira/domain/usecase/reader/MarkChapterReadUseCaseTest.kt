@@ -15,37 +15,52 @@ import kotlin.test.assertEquals
  * pure-`:domain` delegation test.
  */
 class MarkChapterReadUseCaseTest {
-
-    private val manga = Manga(
-        api = "src", language = "en", title = "Manga", url = "https://src/manga",
-        coverUrl = "", rating = null, genres = emptyList(),
-    )
+    private val manga =
+        Manga(
+            api = "src",
+            language = "en",
+            title = "Manga",
+            url = "https://src/manga",
+            coverUrl = "",
+            rating = null,
+            genres = emptyList(),
+        )
 
     private class FakeMarkChapterReadRepository : MarkChapterReadRepository {
         val marked = mutableListOf<Pair<Manga, String>>()
         val toggled = mutableListOf<Pair<Manga, String>>()
         val bulkMarked = mutableListOf<Pair<Manga, List<String>>>()
 
-        override suspend fun markRead(manga: Manga, chapterUrl: String) {
+        override suspend fun markRead(
+            manga: Manga,
+            chapterUrl: String,
+        ) {
             marked += manga to chapterUrl
         }
 
-        override suspend fun toggleRead(manga: Manga, chapterUrl: String) {
+        override suspend fun toggleRead(
+            manga: Manga,
+            chapterUrl: String,
+        ) {
             toggled += manga to chapterUrl
         }
 
-        override suspend fun markRead(manga: Manga, chapterUrls: List<String>) {
+        override suspend fun markRead(
+            manga: Manga,
+            chapterUrls: List<String>,
+        ) {
             bulkMarked += manga to chapterUrls
         }
     }
 
     @Test
-    fun markRead_delegates_to_repository_with_url() = runTest {
-        val repo = FakeMarkChapterReadRepository()
-        val useCase = MarkChapterReadUseCase(repo)
+    fun markRead_delegates_to_repository_with_url() =
+        runTest {
+            val repo = FakeMarkChapterReadRepository()
+            val useCase = MarkChapterReadUseCase(repo)
 
-        useCase(manga, "https://src/ch/1")
+            useCase(manga, "https://src/ch/1")
 
-        assertEquals(listOf(manga to "https://src/ch/1"), repo.marked)
-    }
+            assertEquals(listOf(manga to "https://src/ch/1"), repo.marked)
+        }
 }

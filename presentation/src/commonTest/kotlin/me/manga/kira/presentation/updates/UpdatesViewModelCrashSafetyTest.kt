@@ -42,7 +42,6 @@ import kotlin.test.assertTrue
  *   `viewModelScope.launch { … }` would stop routing the throw to the hook and this test would fail.
  */
 class UpdatesViewModelCrashSafetyTest {
-
     private val dispatcher = UnconfinedTestDispatcher()
 
     @BeforeTest fun setUp() = Dispatchers.setMain(dispatcher)
@@ -54,73 +53,95 @@ class UpdatesViewModelCrashSafetyTest {
         private val onMutate: () -> Unit = {},
     ) : UpdatesRepository {
         override fun observeUpdates(): Flow<List<UpdateEntry>> = updatesFlow
+
         override suspend fun markAsRead(entry: UpdateEntry) = onMutate()
         override suspend fun markAllAsRead() = onMutate()
         override suspend fun deleteEntry(entry: UpdateEntry) = onMutate()
         override suspend fun restoreEntry(entry: UpdateEntry) = onMutate()
+
         override suspend fun deleteAll() = onMutate()
     }
 
     private object EmptyDownloadsRepository : DownloadsRepository {
-        override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
-            error("unused scoped observation")
+        override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> = error("unused scoped observation")
 
         override fun observeAll(): Flow<List<DownloadedChapter>> = flowOf(emptyList())
     }
 
     private object NoopDownloadsActionRepository : DownloadsActionRepository {
-        override suspend fun enqueueDownload(chapterId: Long, mangaTitle: String, api: String) = Result.success(Unit)
+        override suspend fun enqueueDownload(
+            chapterId: Long,
+            mangaTitle: String,
+            api: String,
+        ) = Result.success(Unit)
+
         override suspend fun retryDownload(chapterId: Long) = Result.success(Unit)
+
         override suspend fun cancelDownload(chapterId: Long) = Result.success(Unit)
-        override suspend fun cancelRunningDownload(chapterId: Long, mangaId: Long) = Result.success(Unit)
+
+        override suspend fun cancelRunningDownload(
+            chapterId: Long,
+            mangaId: Long,
+        ) = Result.success(Unit)
+
         override suspend fun cancelAllDownloads() = Result.success(Unit)
+
         override suspend fun deleteDownload(chapterId: Long) = Result.success(Unit)
+
         override suspend fun deleteDownloadedChapter(chapterId: Long) = Result.success(Unit)
+
         override suspend fun reconcileInterrupted() = Result.success(Unit)
     }
 
     /** Subclass that records the safety-net hook so a test can assert a throw was contained. */
-    private class TestUpdatesViewModel(repo: UpdatesRepository) : UpdatesViewModel(
-        ObserveUpdatesUseCase(repo),
-        MarkUpdateAsReadUseCase(repo),
-        MarkAllUpdatesAsReadUseCase(repo),
-        DeleteUpdateEntryUseCase(repo),
-        RestoreUpdateEntryUseCase(repo),
-        DeleteAllUpdatesUseCase(repo),
-        EnqueueDownloadUseCase(NoopDownloadsActionRepository),
-        ObserveDownloadsUseCase(EmptyDownloadsRepository),
-    ) {
+    private class TestUpdatesViewModel(
+        repo: UpdatesRepository,
+    ) : UpdatesViewModel(
+            ObserveUpdatesUseCase(repo),
+            MarkUpdateAsReadUseCase(repo),
+            MarkAllUpdatesAsReadUseCase(repo),
+            DeleteUpdateEntryUseCase(repo),
+            RestoreUpdateEntryUseCase(repo),
+            DeleteAllUpdatesUseCase(repo),
+            EnqueueDownloadUseCase(NoopDownloadsActionRepository),
+            ObserveDownloadsUseCase(EmptyDownloadsRepository),
+        ) {
         var captured: Throwable? = null
             private set
 
-        override fun onUnhandledError(throwable: Throwable, intent: UpdatesIntent?) {
+        override fun onUnhandledError(
+            throwable: Throwable,
+            intent: UpdatesIntent?,
+        ) {
             captured = throwable
         }
     }
 
     @Test
-    fun throwingUpdatesFlow_doesNotCrash_projectsInlineError() = runTest {
-        // #17: the upstream Room flow throws → catch{} clears isLoading, empties the list, and sets
-        // errorMessage so the screen renders an inline error rather than crashing the collector.
-        val repo = FakeUpdatesRepository(updatesFlow = flow { throw RuntimeException("notif boom") })
-        val vm = TestUpdatesViewModel(repo)
+    fun throwingUpdatesFlow_doesNotCrash_projectsInlineError() =
+        runTest {
+            // #17: the upstream Room flow throws → catch{} clears isLoading, empties the list, and sets
+            // errorMessage so the screen renders an inline error rather than crashing the collector.
+            val repo = FakeUpdatesRepository(updatesFlow = flow { throw RuntimeException("notif boom") })
+            val vm = TestUpdatesViewModel(repo)
 
-        val state = vm.state.value
-        assertFalse(state.isLoading, "catch{} must clear the spinner on an upstream throw")
-        assertTrue(state.items.isEmpty(), "list is emptied on the upstream error")
-        assertNotNull(state.loadError, "the throw is projected into loadError for inline rendering")
-        assertEquals(null, vm.captured, "an upstream-flow throw is handled by catch{}, not the safety net")
-    }
+            val state = vm.state.value
+            assertFalse(state.isLoading, "catch{} must clear the spinner on an upstream throw")
+            assertTrue(state.items.isEmpty(), "list is emptied on the upstream error")
+            assertNotNull(state.loadError, "the throw is projected into loadError for inline rendering")
+            assertEquals(null, vm.captured, "an upstream-flow throw is handled by catch{}, not the safety net")
+        }
 
     @Test
-    fun throwingMarkAllAsRead_routesToSafetyNet_notScopeEscape() = runTest {
-        // #29: a fire-and-forget mutation that throws must route to onUnhandledError via launchSafely.
-        val boom = IllegalStateException("mark-all boom")
-        val repo = FakeUpdatesRepository(onMutate = { throw boom })
-        val vm = TestUpdatesViewModel(repo)
+    fun throwingMarkAllAsRead_routesToSafetyNet_notScopeEscape() =
+        runTest {
+            // #29: a fire-and-forget mutation that throws must route to onUnhandledError via launchSafely.
+            val boom = IllegalStateException("mark-all boom")
+            val repo = FakeUpdatesRepository(onMutate = { throw boom })
+            val vm = TestUpdatesViewModel(repo)
 
-        vm.submit(UpdatesIntent.OnMarkAllAsRead)
+            vm.submit(UpdatesIntent.OnMarkAllAsRead)
 
-        assertEquals(boom, vm.captured, "mark-all throw must route to the safety net, not escape viewModelScope")
-    }
+            assertEquals(boom, vm.captured, "mark-all throw must route to the safety net, not escape viewModelScope")
+        }
 }

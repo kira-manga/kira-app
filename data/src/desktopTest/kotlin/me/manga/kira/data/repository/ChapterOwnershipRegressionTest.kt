@@ -72,7 +72,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
     @Test
     fun scopedBulkCrossesChunkBoundaryWithoutReadingOrTogglingTheOtherManga() =
         runTest {
-            val urls = (0..501).map { "$CHAPTER_OWNERSHIP_URL/$it" }
+            val urls = (0 until BULK_CHAPTER_COUNT).map { "$CHAPTER_OWNERSHIP_URL/$it" }
             val a = seed(mangaA, urls)
             val b = seed(mangaB, urls)
             val requested = urls + urls.first() + "missing"
@@ -134,12 +134,12 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
                     assertTrue(bookmarkEvents.awaitItem())
                     assertEquals(listOf(b.id), awaitItem().map { it.chapterId })
 
-                    db.chapterDownloadingDao().updateProgress(a.id, 91)
-                    db.chapterDownloadingDao().updateProgress(b.id, 53)
+                    db.chapterDownloadingDao().updateProgress(a.id, OTHER_OWNER_PROGRESS)
+                    db.chapterDownloadingDao().updateProgress(b.id, OBSERVED_OWNER_PROGRESS)
                     val changed = awaitItem().single()
                     assertEquals(b.id, changed.chapterId)
                     assertEquals(b.mangaId, changed.mangaId)
-                    assertEquals(53, changed.progress)
+                    assertEquals(OBSERVED_OWNER_PROGRESS, changed.progress)
 
                     db.libraryDeo().deleteMangaById(b.mangaId)
                     assertFalse(bookmarkEvents.awaitItem())
@@ -176,13 +176,23 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
             val realCbz = DefaultCbzReader(appFs, dispatchers)
             val cbz =
                 object : CbzReader by realCbz {
-                    override suspend fun cleanupExtractedCache(mangaId: Long, chapterId: Long) {
+                    override suspend fun cleanupExtractedCache(
+                        mangaId: Long,
+                        chapterId: Long,
+                    ) {
                         realCbz.cleanupExtractedCache(mangaId, chapterId)
                         cleanup.complete(mangaId to chapterId)
                     }
                 }
             val source = OwnerPagesSource()
-            val repo = ChapterPagesRepositoryImpl(dispatchers, db.chapterDao(), cbz, chapterOwnershipRegistry(source), appFs)
+            val repo =
+                ChapterPagesRepositoryImpl(
+                    dispatchers,
+                    db.chapterDao(),
+                    cbz,
+                    chapterOwnershipRegistry(source),
+                    appFs,
+                )
             val chapter = Chapter("1", "shared", CHAPTER_OWNERSHIP_URL, null, false, false)
 
             assertEquals(
@@ -207,3 +217,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
             assertTrue(fs.exists(pageA), "A remains readable but must never become B's fallback")
         }
 }
+
+private const val BULK_CHAPTER_COUNT = 502
+private const val OTHER_OWNER_PROGRESS = 91
+private const val OBSERVED_OWNER_PROGRESS = 53

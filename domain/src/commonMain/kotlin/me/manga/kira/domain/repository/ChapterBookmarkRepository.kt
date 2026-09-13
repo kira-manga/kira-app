@@ -22,7 +22,10 @@ import me.manga.kira.domain.model.Manga
  */
 interface ChapterBookmarkRepository {
     /** Emits the chapter's bookmark flag; `false` when the chapter has no in-library row. */
-    fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean>
+    fun observeBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean>
 
     /**
      * Flips the chapter's bookmark flag.
@@ -30,8 +33,14 @@ interface ChapterBookmarkRepository {
      * @return `true` if an in-library `saved_chapters` row existed and was flipped; `false` if the
      *   chapter has no row (not in library) — a no-op the caller can surface as feedback (#15).
      */
-    suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean
+    suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean
 
     /** Toggles the saved selection after one manga-scoped bulk resolution; absent rows are skipped. */
-    suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>)
+    suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrls: List<String>,
+    )
 }

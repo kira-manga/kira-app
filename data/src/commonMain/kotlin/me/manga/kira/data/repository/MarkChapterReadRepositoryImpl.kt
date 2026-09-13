@@ -35,12 +35,15 @@ import me.manga.kira.domain.repository.MarkChapterReadRepository
 class MarkChapterReadRepositoryImpl(
     private val chapterDao: ChapterDao,
 ) : MarkChapterReadRepository {
-
-    override suspend fun markRead(manga: Manga, chapterUrl: String) {
-        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: run {
-            FlowLog.log("Reader", "markRead", "chapter=$chapterUrl skipped=not-in-library")
-            return
-        }
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        val chapterId =
+            chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: run {
+                FlowLog.log("Reader", "markRead", "chapter=$chapterUrl skipped=not-in-library")
+                return
+            }
         FlowLog.log("Reader", "markRead", "chapter=$chapterUrl id=$chapterId (also clears NEW)")
         chapterDao.markChapterAsRead(chapterId)
         // NEW-badge parity: clear the `saved_chapters.isNew` flag when the chapter is opened/read.
@@ -59,7 +62,10 @@ class MarkChapterReadRepositoryImpl(
      * only sets the flag + stamps `lastReadDate`), the toggle does not stamp `lastReadDate` — it
      * mirrors the native per-chapter RemoveRedEye toggle, which only flipped the read column.
      */
-    override suspend fun toggleRead(manga: Manga, chapterUrl: String) {
+    override suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: return
         chapterDao.toggleChaptersReadBatch(listOf(chapterId))
     }
@@ -69,7 +75,10 @@ class MarkChapterReadRepositoryImpl(
      * with no in-library row are skipped), then marks the resolved set read in a single batched
      * write via the existing chunked `markChaptersRead` DAO wrapper. Idempotent.
      */
-    override suspend fun markRead(manga: Manga, chapterUrls: List<String>) {
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
         val ids = chapterDao.getChapterIdsByUrls(manga.url, chapterUrls)
         if (ids.isEmpty()) return
         chapterDao.markChaptersRead(ids)

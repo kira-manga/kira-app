@@ -39,7 +39,6 @@ import me.manga.kira.domain.usecase.downloads.CancelDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.CancelRunningDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
-import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
@@ -71,14 +70,19 @@ internal class OwnerDownloads : DownloadsRepository {
             .onStart { scopedOwners += manga }
             .onCompletion { cancelledOwners += manga.url }
 
-    suspend fun publish(manga: Manga, rows: List<DownloadedChapter>) {
+    suspend fun publish(
+        manga: Manga,
+        rows: List<DownloadedChapter>,
+    ) {
         latest[manga.url] = rows
         global.value = latest.values.flatten()
         stream(manga.url).emit(rows)
     }
 
     private fun stream(url: String): MutableSharedFlow<List<DownloadedChapter>> =
-        streams.getOrPut(url) { MutableSharedFlow() }
+        streams.getOrPut(url) {
+            MutableSharedFlow()
+        }
 }
 
 internal class OwnerResolver(
@@ -87,17 +91,26 @@ internal class OwnerResolver(
     val singleRequests = mutableListOf<Pair<Manga, String>>()
     val bulkRequests = mutableListOf<Pair<Manga, List<String>>>()
 
-    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long? {
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? {
         singleRequests += manga to chapterUrl
         return id(manga, chapterUrl)
     }
 
-    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> {
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> {
         bulkRequests += manga to chapterUrls.toList()
         return chapterUrls.mapNotNull { url -> id(manga, url)?.let { url to it } }.toMap()
     }
 
-    private fun id(manga: Manga, chapterUrl: String): Long? =
+    private fun id(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? =
         idsByMangaUrl[manga.url]?.let { first ->
             when (chapterUrl) {
                 CHAPTER_URL -> first
@@ -115,7 +128,11 @@ internal class OwnerDownloadActions : DownloadsActionRepository {
     val failingDeletes = mutableSetOf<Long>()
     val deleteOrder = mutableListOf<String>()
 
-    override suspend fun enqueueDownload(chapterId: Long, mangaTitle: String, api: String): Result<Unit> {
+    override suspend fun enqueueDownload(
+        chapterId: Long,
+        mangaTitle: String,
+        api: String,
+    ): Result<Unit> {
         enqueued += Triple(chapterId, mangaTitle, api)
         return Result.success(Unit)
     }
@@ -125,7 +142,10 @@ internal class OwnerDownloadActions : DownloadsActionRepository {
         return Result.success(Unit)
     }
 
-    override suspend fun cancelRunningDownload(chapterId: Long, mangaId: Long): Result<Unit> {
+    override suspend fun cancelRunningDownload(
+        chapterId: Long,
+        mangaId: Long,
+    ): Result<Unit> {
         runningCancelled += chapterId to mangaId
         return Result.success(Unit)
     }
@@ -173,19 +193,30 @@ internal class DetailsOwnerFixture(
     private val fetch =
         object : MangaDetailsRepository {
             override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> =
-                AppResult.Success(detailsFor(manga, chapters))
+                AppResult.Success(
+                    detailsFor(manga, chapters),
+                )
         }
     private val saved =
         object : SavedMangaDetailsRepository {
-            override fun observeSavedDetails(api: String, title: String): Flow<MangaDetails?> = flowOf(null)
+            override fun observeSavedDetails(
+                api: String,
+                title: String,
+            ): Flow<MangaDetails?> = flowOf(null)
         }
     private val classifier =
         object : AdultContentClassifier {
-            override fun isAdultContent(api: String, genres: List<String>): Boolean = false
+            override fun isAdultContent(
+                api: String,
+                genres: List<String>,
+            ): Boolean = false
         }
     private val badges =
         object : ChapterNewBadgeRepository {
-            override suspend fun clearNew(manga: Manga, chapterUrl: String) = Unit
+            override suspend fun clearNew(
+                manga: Manga,
+                chapterUrl: String,
+            ) = Unit
         }
     private val deletion =
         object : ChapterDeletionRepository {
@@ -202,7 +233,11 @@ internal class DetailsOwnerFixture(
         object : AnalyticsPort {
             override fun logAppOpen() = Unit
 
-            override fun logMangaOpen(api: String, title: String, sourceScreen: String) = Unit
+            override fun logMangaOpen(
+                api: String,
+                title: String,
+                sourceScreen: String,
+            ) = Unit
         }
     private val compression =
         object : CompressionDeferralRepository {
@@ -220,7 +255,6 @@ internal class DetailsOwnerFixture(
             toggleChapterRead = ToggleChapterReadUseCase(reads),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(RecordingChapterBookmarkRepository()),
             markChaptersRead = MarkChaptersReadUseCase(reads),
-            enqueueChapterDownload = EnqueueChapterDownloadUseCase(resolver, enqueue),
             enqueueDownload = enqueue,
             cancelChapterDownload = CancelChapterDownloadUseCase(resolver, CancelDownloadUseCase(actions)),
             cancelRunningDownload = CancelRunningDownloadUseCase(actions),
@@ -262,7 +296,10 @@ internal fun download(
         sizeBytes = sizeBytes,
     )
 
-internal fun detailsFor(manga: Manga, chapters: List<Chapter>): MangaDetails =
+internal fun detailsFor(
+    manga: Manga,
+    chapters: List<Chapter>,
+): MangaDetails =
     MangaDetails(
         api = manga.api,
         language = manga.language,
