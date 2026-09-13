@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
@@ -28,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +38,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -281,6 +288,9 @@ private fun SortOptionsSection(
     onIntent: (LibraryIntent) -> Unit,
 ) {
     val ascending = sortDirection == SortDirection.ASCENDING
+    val directionLabel = stringResource(
+        if (ascending) Res.string.sort_direction_ascending else Res.string.sort_direction_descending,
+    )
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(Res.string.sort_options_title),
@@ -290,6 +300,12 @@ private fun SortOptionsSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .toggleable(
+                    value = ascending,
+                    role = Role.Switch,
+                    onValueChange = { onIntent(LibraryIntent.OnSortDirectionToggle) },
+                )
+                .semantics { stateDescription = directionLabel }
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -305,16 +321,14 @@ private fun SortOptionsSection(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (ascending) {
-                        stringResource(Res.string.sort_direction_ascending)
-                    } else {
-                        stringResource(Res.string.sort_direction_descending)
-                    },
+                    text = directionLabel,
+                    modifier = Modifier.clearAndSetSemantics {},
                 )
                 Spacer(Modifier.width(8.dp))
                 Switch(
                     checked = ascending,
-                    onCheckedChange = { onIntent(LibraryIntent.OnSortDirectionToggle) },
+                    onCheckedChange = null,
+                    modifier = Modifier.minimumInteractiveComponentSize(),
                 )
             }
         }
@@ -354,12 +368,17 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(vertical = spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            modifier = Modifier.minimumInteractiveComponentSize(),
+        )
     }
 }
 
@@ -380,17 +399,7 @@ private fun ItemsPerRowSlider(
     count: Int,
     onCountChange: (Int) -> Unit,
 ) {
-    Text(
-        text = stringResource(Res.string.items_per_row_label),
-        fontWeight = FontWeight.SemiBold,
-    )
-    Spacer(Modifier.height(8.dp))
-    Slider(
-        value = count.toFloat(),
-        onValueChange = { onCountChange(it.roundToInt()) },
-        valueRange = 0f..8f,
-        steps = 7,
-    )
+    val label = stringResource(Res.string.items_per_row_label)
     val caption = if (count == 0) {
         stringResource(Res.string.auto_text)
     } else {
@@ -400,8 +409,26 @@ private fun ItemsPerRowSlider(
             if (count > 1) stringResource(Res.string.items_plural) else stringResource(Res.string.items_singular),
         )
     }
+    // The existing slider owns the accessible name/value; these visible copies must not repeat them.
+    Text(
+        text = label,
+        modifier = Modifier.clearAndSetSemantics {},
+        fontWeight = FontWeight.SemiBold,
+    )
+    Spacer(Modifier.height(8.dp))
+    Slider(
+        value = count.toFloat(),
+        onValueChange = { onCountChange(it.roundToInt()) },
+        modifier = Modifier.semantics {
+            contentDescription = label
+            stateDescription = caption
+        },
+        valueRange = 0f..8f,
+        steps = 7,
+    )
     Text(
         text = caption,
+        modifier = Modifier.clearAndSetSemantics {},
         fontStyle = if (count == 0) FontStyle.Italic else FontStyle.Normal,
     )
 }
