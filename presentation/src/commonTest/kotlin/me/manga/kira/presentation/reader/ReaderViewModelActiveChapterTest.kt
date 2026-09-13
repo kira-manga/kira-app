@@ -102,53 +102,57 @@ class ReaderViewModelActiveChapterTest {
     }
 
     @Test
-    fun toggleBookmark_targetsActiveVisibleChapter_notAnchor() = runTest {
-        val env = enterAndAppend()
-        env.vm.submit(ReaderIntent.OnPageChanged(2)) // active = ch/2
+    fun toggleBookmark_targetsActiveVisibleChapter_notAnchor() =
+        runTest {
+            val env = enterAndAppend()
+            env.vm.submit(ReaderIntent.OnPageChanged(2)) // active = ch/2
 
-        env.vm.submit(ReaderIntent.OnToggleBookmark)
-        assertEquals(
-            readerManga() to "ch/2",
-            env.bookmark.toggled.last(),
-            "bookmark toggles the chapter in view, not the anchor",
-        )
-    }
-
-    @Test
-    fun singleAppend_addsExactlyOneChapter_noChain() = runTest {
-        val env = enterAndAppend()
-        // enterAndAppend already appended ch2; the single OnAppendNextChapter loaded exactly one chapter.
-        assertEquals(listOf("ch/1", "ch/2"), env.vm.state.value.loadedChapterUrls)
-    }
+            env.vm.submit(ReaderIntent.OnToggleBookmark)
+            assertEquals(
+                readerManga() to "ch/2",
+                env.bookmark.toggled.last(),
+                "bookmark toggles the chapter in view, not the anchor",
+            )
+        }
 
     @Test
-    fun toggleBookmark_notInLibrary_emitsShowNotInLibrary() = runTest {
-        // #15 — toggling a chapter whose manga isn't in the library is a store no-op; the VM must
-        // surface ShowNotInLibrary so the screen can nudge the user to add to Library first.
-        val env = enterAndAppend()
-        env.bookmark.inLibrary = false
-        val effects = mutableListOf<ReaderEffect>()
-        val job = launch(dispatcher) { env.vm.effects.collect { effects += it } }
-        env.vm.submit(ReaderIntent.OnToggleBookmark)
-        job.cancel()
-        assertTrue(
-            effects.any { it is ReaderEffect.ShowNotInLibrary },
-            "not-in-library bookmark toggle emits ShowNotInLibrary: $effects",
-        )
-    }
+    fun singleAppend_addsExactlyOneChapter_noChain() =
+        runTest {
+            val env = enterAndAppend()
+            // enterAndAppend already appended ch2; the single OnAppendNextChapter loaded exactly one chapter.
+            assertEquals(listOf("ch/1", "ch/2"), env.vm.state.value.loadedChapterUrls)
+        }
 
     @Test
-    fun toggleBookmark_inLibrary_doesNotEmitShowNotInLibrary() = runTest {
-        // #15 — the in-library path (default) must NOT show the hint.
-        val env = enterAndAppend()
-        env.bookmark.inLibrary = true
-        val effects = mutableListOf<ReaderEffect>()
-        val job = launch(dispatcher) { env.vm.effects.collect { effects += it } }
-        env.vm.submit(ReaderIntent.OnToggleBookmark)
-        job.cancel()
-        assertTrue(
-            effects.none { it is ReaderEffect.ShowNotInLibrary },
-            "in-library bookmark toggle is silent: $effects",
-        )
-    }
+    fun toggleBookmark_notInLibrary_emitsShowNotInLibrary() =
+        runTest {
+            // #15 — toggling a chapter whose manga isn't in the library is a store no-op; the VM must
+            // surface ShowNotInLibrary so the screen can nudge the user to add to Library first.
+            val env = enterAndAppend()
+            env.bookmark.inLibrary = false
+            val effects = mutableListOf<ReaderEffect>()
+            val job = launch(dispatcher) { env.vm.effects.collect { effects += it } }
+            env.vm.submit(ReaderIntent.OnToggleBookmark)
+            job.cancel()
+            assertTrue(
+                effects.any { it is ReaderEffect.ShowNotInLibrary },
+                "not-in-library bookmark toggle emits ShowNotInLibrary: $effects",
+            )
+        }
+
+    @Test
+    fun toggleBookmark_inLibrary_doesNotEmitShowNotInLibrary() =
+        runTest {
+            // #15 — the in-library path (default) must NOT show the hint.
+            val env = enterAndAppend()
+            env.bookmark.inLibrary = true
+            val effects = mutableListOf<ReaderEffect>()
+            val job = launch(dispatcher) { env.vm.effects.collect { effects += it } }
+            env.vm.submit(ReaderIntent.OnToggleBookmark)
+            job.cancel()
+            assertTrue(
+                effects.none { it is ReaderEffect.ShowNotInLibrary },
+                "in-library bookmark toggle is silent: $effects",
+            )
+        }
 }

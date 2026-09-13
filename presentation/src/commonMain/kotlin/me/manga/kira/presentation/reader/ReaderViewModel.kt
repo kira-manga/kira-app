@@ -11,6 +11,7 @@ import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.usecase.reader.EndReadingSessionUseCase
@@ -606,20 +607,7 @@ class ReaderViewModel(
                                 return@collect
                             }
                             updateState { prev ->
-                                // Drop any prior (streaming) snapshot of THIS chapter, then append the
-                                // latest full snapshot — so cumulative emissions don't duplicate pages.
-                                val segStart = prev.pageChapters.indexOfFirst { it == chapter.url }
-                                val keep = if (segStart < 0) prev.pages.size else segStart
-                                prev.copy(
-                                    pages = prev.pages.take(keep) + newPages,
-                                    pageChapters = prev.pageChapters.take(keep) + List(newPages.size) { chapter.url },
-                                    loadedChapterUrls =
-                                        if (chapter.url in prev.loadedChapterUrls) {
-                                            prev.loadedChapterUrls
-                                        } else {
-                                            prev.loadedChapterUrls + chapter.url
-                                        },
-                                )
+                                prev.withAppendedChapterPages(chapter.url, newPages)
                             }
                             // Re-observe progress across the full (current + appended) page set.
                             startObservingProgress(state.value.pages.map { it.url })
@@ -992,6 +980,26 @@ class ReaderViewModel(
          */
         const val MAX_CLOUDFLARE_ATTEMPTS = 2
     }
+}
+
+private fun ReaderState.withAppendedChapterPages(
+    chapterUrl: String,
+    newPages: List<Page>,
+): ReaderState {
+    // Drop any prior (streaming) snapshot of THIS chapter, then append the
+    // latest full snapshot — so cumulative emissions don't duplicate pages.
+    val segStart = pageChapters.indexOfFirst { it == chapterUrl }
+    val keep = if (segStart < 0) pages.size else segStart
+    return copy(
+        pages = pages.take(keep) + newPages,
+        pageChapters = pageChapters.take(keep) + List(newPages.size) { chapterUrl },
+        loadedChapterUrls =
+            if (chapterUrl in loadedChapterUrls) {
+                loadedChapterUrls
+            } else {
+                loadedChapterUrls + chapterUrl
+            },
+    )
 }
 
 /**

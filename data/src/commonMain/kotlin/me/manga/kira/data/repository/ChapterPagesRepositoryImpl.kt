@@ -140,17 +140,7 @@ class ChapterPagesRepositoryImpl(
                 // (the SAME layout the writer's ensureCbzDestination uses: chapterDir/chapter_<id>.cbz),
                 // so it survives a container change. Fall back to the stored path only when the
                 // re-derived one is absent (back-compat with rows whose CBZ lives elsewhere).
-                val canonical = cbzReader.cbzPath(entity.mangaId, entity.id)
-                val cbzPath =
-                    if (cbzReader.cbzExists(entity.mangaId, entity.id)) {
-                        if (canonical.toString() != single) {
-                            FlowLog.log("Reader", "cbzRederive", "stored stale; using current path | stored=$single current=$canonical")
-                        }
-                        canonical
-                    } else {
-                        FlowLog.log("Reader", "cbzRederive", "no CBZ at current path; trying stored | stored=$single")
-                        single.toPath()
-                    }
+                val cbzPath = resolveCbzPath(entity.mangaId, entity.id, single)
                 // Extraction writes into cacheDir/cbz_extract/<mangaId>/<chapterId>; hold the per-chapter
                 // cleanup lock so a concurrent clearExtractedPages delete of the same dir can't race it.
                 cleanupLockFor(entity.id).withLock {
@@ -197,8 +187,7 @@ class ChapterPagesRepositoryImpl(
                                         cbzReader.cbzPath(entity.mangaId, entity.id),
                                         entity.mangaId,
                                         entity.id,
-                                    )
-                                    .map { it.toString() }
+                                    ).map { it.toString() }
                             }
                         if (extracted.isNotEmpty()) return extracted.map { Page(url = toFileUrl(it), headers = emptyMap()) }
                     }
@@ -214,6 +203,27 @@ class ChapterPagesRepositoryImpl(
             }
         if (localPaths.isEmpty()) return null
         return localPaths.map { Page(url = toFileUrl(it), headers = emptyMap()) }
+    }
+
+    private fun resolveCbzPath(
+        mangaId: Long,
+        chapterId: Long,
+        single: String,
+    ): Path {
+        val canonical = cbzReader.cbzPath(mangaId, chapterId)
+        return if (cbzReader.cbzExists(mangaId, chapterId)) {
+            if (canonical.toString() != single) {
+                FlowLog.log(
+                    "Reader",
+                    "cbzRederive",
+                    "stored stale; using current path | stored=$single current=$canonical",
+                )
+            }
+            canonical
+        } else {
+            FlowLog.log("Reader", "cbzRederive", "no CBZ at current path; trying stored | stored=$single")
+            single.toPath()
+        }
     }
 
     /** Local filesystem path → `file://` URL (Coil 3's [FileUriFetcher] resolves it on all targets). */

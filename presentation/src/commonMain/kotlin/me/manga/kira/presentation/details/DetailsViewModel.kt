@@ -833,19 +833,7 @@ class DetailsViewModel(
             observeDownloads(manga)
                 .onEach { rows ->
                     if (generation != downloadsGeneration || state.value.manga?.url != manga.url) return@onEach
-                    downloadRowsByUrl =
-                        rows
-                            .filter { it.state != DownloadState.FAILED }
-                            .associate {
-                                it.url to
-                                    ChapterDownloadProgress(
-                                        state = it.state,
-                                        progress = it.progress,
-                                        sizeBytes = it.sizeBytes,
-                                        chapterId = it.chapterId,
-                                        mangaId = it.mangaId,
-                                    )
-                            }
+                    downloadRowsByUrl = rows.toProgressByUrl()
                     recomputeChapterDownloads()
                     // FAILED stays out of the UI map, but this owner's challenge failures can request
                     // the WebView solver and a scoped retry when it returns.
@@ -876,16 +864,7 @@ class DetailsViewModel(
         val generation = downloadsGeneration
         val chapters = current.details?.chapters.orEmpty()
         val rowsByUrl = downloadRowsByUrl
-        val byUrl =
-            if (rowsByUrl.isEmpty()) {
-                emptyMap()
-            } else {
-                chapters
-                    .mapNotNull { chapter ->
-                        val progress = rowsByUrl[chapter.url] ?: return@mapNotNull null
-                        chapter.url to progress
-                    }.toMap()
-            }
+        val byUrl = chapterDownloadsFor(chapters, rowsByUrl)
         if (byUrl != current.chapterDownloads) {
             updateState { latest ->
                 if (generation == downloadsGeneration && latest.manga?.url == current.manga?.url) {
@@ -960,13 +939,7 @@ class DetailsViewModel(
         val current = state.value
         if (current.manga?.url != manga.url) return
         val displayed = current.details?.chapters?.mapTo(HashSet()) { it.url } ?: return
-        val failedUrls =
-            rows
-                .asSequence()
-                .filter { it.state == DownloadState.FAILED && it.errorMsg == DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL }
-                .map { it.url }
-                .filter { it in displayed }
-                .toList()
+        val failedUrls = cloudflareFailedUrls(rows, displayed)
         // Self-prune: drop urls that recovered / are no longer Cloudflare-failed so a later genuine
         // failure can re-trigger (and so a re-enqueued row isn't re-counted).
         cloudflareFailedDownloadUrls.retainAll(failedUrls.toHashSet())
@@ -1252,6 +1225,44 @@ class DetailsViewModel(
         }
     }
 }
+
+private fun List<DownloadedChapter>.toProgressByUrl(): Map<String, ChapterDownloadProgress> =
+    filter { it.state != DownloadState.FAILED }
+        .associate {
+            it.url to
+                ChapterDownloadProgress(
+                    state = it.state,
+                    progress = it.progress,
+                    sizeBytes = it.sizeBytes,
+                    chapterId = it.chapterId,
+                    mangaId = it.mangaId,
+                )
+        }
+
+private fun chapterDownloadsFor(
+    chapters: List<Chapter>,
+    rowsByUrl: Map<String, ChapterDownloadProgress>,
+): Map<String, ChapterDownloadProgress> =
+    if (rowsByUrl.isEmpty()) {
+        emptyMap()
+    } else {
+        chapters
+            .mapNotNull { chapter ->
+                val progress = rowsByUrl[chapter.url] ?: return@mapNotNull null
+                chapter.url to progress
+            }.toMap()
+    }
+
+private fun cloudflareFailedUrls(
+    rows: List<DownloadedChapter>,
+    displayed: Set<String>,
+): List<String> =
+    rows
+        .asSequence()
+        .filter { it.state == DownloadState.FAILED && it.errorMsg == DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL }
+        .map { it.url }
+        .filter { it in displayed }
+        .toList()
 
 /**
  * Preserve the screen's metadata checks while also requiring the exact persisted parent URL.

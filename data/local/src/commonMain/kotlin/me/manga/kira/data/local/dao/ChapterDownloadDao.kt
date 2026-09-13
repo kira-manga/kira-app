@@ -103,7 +103,6 @@ import me.manga.kira.presentation.features.download.data.DownloadingState.SUCCES
 //     the legacy `DownloadRepository.observeAllDownloads()` re-export).
 @Dao
 interface ChapterDownloadDao {
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(download: ChapterDownloadEntity): Long
 
@@ -119,12 +118,14 @@ interface ChapterDownloadDao {
     // Active (in-flight) download chapterIds for a manga. Used by the library-removal purge to cancel
     // a RUNNING/COMPRESSING download before deleting the rows + on-disk dir, so the engine can't keep
     // writing pages into the just-purged manga directory and leave an orphan CBZ behind.
-    @Query("""
+    @Query(
+        """
       SELECT chapterId
         FROM chapter_downloads
        WHERE mangaId = :mangaId
          AND state IN (:runningState, :compressingState, :queuedState)
-    """)
+    """,
+    )
     suspend fun getActiveDownloadChapterIdsForManga(
         mangaId: Long,
         runningState: DownloadingState = DownloadingState.RUNNING,
@@ -135,48 +136,61 @@ interface ChapterDownloadDao {
     @Query("DELETE FROM chapter_downloads WHERE chapterId = :chapterId")
     suspend fun deleteByChapterId(chapterId: Long)
 
-    @Query("""
+    @Query(
+        """
       SELECT chapterId
         FROM chapter_downloads
        WHERE state = :queuedState
-    """)
-    fun getAllQueuedChapterIds(
-        queuedState: DownloadingState = DownloadingState.QUEUED
-    ): Flow<List<Long>>
+    """,
+    )
+    fun getAllQueuedChapterIds(queuedState: DownloadingState = DownloadingState.QUEUED): Flow<List<Long>>
 
-    @Query("""
+    @Query(
+        """
     UPDATE chapter_downloads
     SET state    = :state,
         progress = :progress,
         errorMsg = :errorMsg
     WHERE chapterId = :id
-  """)
+  """,
+    )
     suspend fun updateStateAndProgress(
         id: Long,
         state: DownloadingState,
         progress: Int,
-        errorMsg: String? = null
+        errorMsg: String? = null,
     )
 
     @Query("UPDATE chapter_downloads SET progress = :progress WHERE chapterId = :id")
-    suspend fun updateProgress(id: Long, progress: Int)
+    suspend fun updateProgress(
+        id: Long,
+        progress: Int,
+    )
 
     @Query("UPDATE chapter_downloads SET state = :state WHERE chapterId = :id")
-    suspend fun updateState(id: Long, state: DownloadingState)
+    suspend fun updateState(
+        id: Long,
+        state: DownloadingState,
+    )
 
     @Query("UPDATE chapter_downloads SET state = :state WHERE chapterId = :id")
-    suspend fun updateStateChId(id: Long, state: DownloadingState)
+    suspend fun updateStateChId(
+        id: Long,
+        state: DownloadingState,
+    )
 
     // Conditional QUEUED -> RUNNING claim. Flips the row only while it is still QUEUED and returns the
     // affected-row count, so a cancel that lands as FAILED between getNextQueuedChapter() and this claim
     // is NOT silently overwritten: 0 rows means another caller already changed the state and the worker
     // must skip the job. Guards the cancel-all-then-cancel-one race on the iOS/Desktop worker loop.
-    @Query("""
+    @Query(
+        """
       UPDATE chapter_downloads
          SET state = :runningState
        WHERE chapterId = :id
          AND state = :queuedState
-    """)
+    """,
+    )
     suspend fun claimQueuedAsRunning(
         id: Long,
         runningState: DownloadingState = DownloadingState.RUNNING,
@@ -184,10 +198,16 @@ interface ChapterDownloadDao {
     ): Int
 
     @Query("UPDATE chapter_downloads SET errorMsg = :errorMsg WHERE chapterId = :id")
-    suspend fun setErrorMsg(id: Long, errorMsg: String?)
+    suspend fun setErrorMsg(
+        id: Long,
+        errorMsg: String?,
+    )
 
     @Transaction
-    suspend fun updateFailure(id: Long, errorMsg: String?) {
+    suspend fun updateFailure(
+        id: Long,
+        errorMsg: String?,
+    ) {
         updateState(id, DownloadingState.FAILED)
         setErrorMsg(id, errorMsg)
     }
@@ -205,13 +225,15 @@ interface ChapterDownloadDao {
     // action (DownloadCancelReceiver) routes through. State-name semantics match the
     // native ChapterDownloadDao source of truth (enum name strings via
     // DownloadingStateConverter). No new column, no schema/version change.
-    @Query("""
+    @Query(
+        """
       UPDATE chapter_downloads
          SET state = :failedState,
              progress = 0,
              errorMsg = '__cancelled_by_user__'
        WHERE state IN (:runningState, :queuedState, :compressingState, :downloadedState)
-    """)
+    """,
+    )
     suspend fun markAllRunningOrQueuedAsFailed(
         runningState: DownloadingState = DownloadingState.RUNNING,
         queuedState: DownloadingState = DownloadingState.QUEUED,
