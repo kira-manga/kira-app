@@ -1,4 +1,5 @@
 require_relative "lib/plist_reader"
+require_relative "lib/libwebp_notices"
 
 root = File.expand_path("../..", __dir__)
 project_path = File.join(root, "iosApp/project.yml")
@@ -63,4 +64,7 @@ abort("Release APNs entitlement is not configuration-driven") unless entitlement
 domains = Array(entitlements["com.apple.developer.associated-domains"])
 abort("Associated Domains entitlement is missing kiramanga.me") unless domains.include?("applinks:kiramanga.me")
 
+KiraRelease::LibwebpNotices.validate_repository!(root)
+
 puts "Committed iOS configuration verified: app 6792232678, bundle me.manga.kira, team 7CGZ2343AA, version 1.0.5"
+puts "Vendored libwebp version/digests, legal notices and whole Settings resource configuration verified"

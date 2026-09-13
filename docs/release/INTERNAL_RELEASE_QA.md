@@ -35,6 +35,15 @@ Minimum device matrix:
   `ACCESS_ADSERVICES_ATTRIBUTION` in the final manifest.
 - [ ] Install the exact iOS Release/TestFlight archive; verify bundle `me.manga.kira`, version/build,
   production entitlements, privacy manifest, and dSYMs uploaded to Crashlytics.
+- [ ] Inspect the actual generated Xcode Copy Bundle Resources phase: exactly one intact
+  `Settings.bundle`, not flattened or duplicated. Confirm its presence at the built app root.
+- [ ] Validate libwebp 1.5.0 notices in both the exact archive app and exported IPA `Payload/*.app`;
+  record artifact hashes and decoded Root/child/localization values. Both complete original
+  COPYING/PATENTS footers must match the vendored texts; source/fixture checks alone do not count.
+- [ ] On the exact installed iOS build, open Settings → Apps → Kira Manga → Third-Party Notices
+  (older iOS omits Apps) offline. Scroll both full legal texts on iPhone and iPad, including large
+  text, English/Arabic navigation and supported-localization fallback; no clipped or hidden footer,
+  raw translation key, localized legal replacement, or missing child pane.
 - [ ] Confirm neither artifact contains placeholder Firebase project values.
 - [ ] Confirm release logs do not print API keys, complaint text/user IDs/document
   IDs, cookies, authorization headers, HTML bodies, local paths, or other private payloads.

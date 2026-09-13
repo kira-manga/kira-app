@@ -1,5 +1,6 @@
 require "json"
 require "rubygems"
+require_relative "../release/ios/lib/libwebp_ipa_notices"
 
 opt_out_usage
 default_platform(:ios)
@@ -141,13 +142,14 @@ platform :ios do
 
   desc "Upload and process the signed IPA without external distribution or Beta App Review"
   lane :upload_only do
-    api_key = connect_api_key
-    verified_app
-
     ipa_path = protected_env("KIRA_IPA_PATH")
     UI.user_error!("Signed IPA is unavailable") unless File.file?(ipa_path)
     build_number = protected_env("KIRA_BUILD_NUMBER")
     UI.user_error!("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
+
+    KiraRelease::LibwebpIpaNotices.validate!(ipa_path)
+    api_key = connect_api_key
+    verified_app
 
     upload_to_testflight(
       api_key: api_key,
@@ -170,14 +172,15 @@ platform :ios do
 
   desc "Upload, process, and submit the signed IPA for external TestFlight review"
   lane :upload_external do
-    api_key = connect_api_key
-    app = verified_app
-    ensure_testflight_groups(app)
-
     ipa_path = protected_env("KIRA_IPA_PATH")
     UI.user_error!("Signed IPA is unavailable") unless File.file?(ipa_path)
     build_number = protected_env("KIRA_BUILD_NUMBER")
     UI.user_error!("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
+
+    KiraRelease::LibwebpIpaNotices.validate!(ipa_path)
+    api_key = connect_api_key
+    app = verified_app
+    ensure_testflight_groups(app)
 
     feedback_email = protected_env("TESTFLIGHT_FEEDBACK_EMAIL")
     review_info = {
