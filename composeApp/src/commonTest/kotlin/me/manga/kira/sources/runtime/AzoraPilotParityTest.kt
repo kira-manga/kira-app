@@ -159,89 +159,108 @@ class AzoraPilotParityTest {
     }
 
     @Test
-    fun search_matches_legacy_parser() = runTest {
-        val generic = client().search("one piece", 1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
-            .toMangaItems(api, lang)
-            .map { it.toHomeFeedItem().onConfigHost() }
-        assertEquals(legacy, generic)
-    }
+    fun search_matches_legacy_parser() =
+        runTest {
+            val generic = client().search("one piece", 1).valueOrFail()
+            val legacy =
+                json
+                    .decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
+                    .toMangaItems(api, lang)
+                    .map { it.toHomeFeedItem().onConfigHost() }
+            assertEquals(legacy, generic)
+        }
 
     @Test
-    fun featured_matches_legacy_parser() = runTest {
-        val generic = client().featured(1).valueOrFail()
-        val legacy = json.decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
-            .toPopularMangaList(api, lang)
-            .map { it.toFeatured() }
-            .map { f -> f.copy(url = f.url.onConfigHost()) }
-        assertEquals(legacy, generic)
-    }
+    fun featured_matches_legacy_parser() =
+        runTest {
+            val generic = client().featured(1).valueOrFail()
+            val legacy =
+                json
+                    .decodeFromString<AzoraQueryResponse>(AZORA_QUERY_JSON)
+                    .toPopularMangaList(api, lang)
+                    .map { it.toFeatured() }
+                    .map { f -> f.copy(url = f.url.onConfigHost()) }
+            assertEquals(legacy, generic)
+        }
 
     @Test
-    fun details_match_legacy_parser_incl_chapters() = runTest {
-        val manga = Manga(api, lang, "One Piece", "$base/api/post/?postId=92", "", null, emptyList())
-        val generic = client().details(manga).valueOrFail()
-        // detail.url comes from manga.url (already on the config host); only the legacy-BUILT
-        // chapter urls carry the pre-move host and need the rewrite.
-        val legacy = json.decodeFromString<AzoraPostDetailResponse>(AZORA_DETAILS_JSON)
-            .toMangaInfo(api, lang, manga.url)
-            .toDetails()
-            .let { d -> d.copy(chapters = d.chapters.map { it.copy(url = it.url.onConfigHost()) }) }
+    fun details_match_legacy_parser_incl_chapters() =
+        runTest {
+            val manga = Manga(api, lang, "One Piece", "$base/api/post/?postId=92", "", null, emptyList())
+            val generic = client().details(manga).valueOrFail()
+            // detail.url comes from manga.url (already on the config host); only the legacy-BUILT
+            // chapter urls carry the pre-move host and need the rewrite.
+            val legacy =
+                json
+                    .decodeFromString<AzoraPostDetailResponse>(AZORA_DETAILS_JSON)
+                    .toMangaInfo(api, lang, manga.url)
+                    .toDetails()
+                    .let { d -> d.copy(chapters = d.chapters.map { it.copy(url = it.url.onConfigHost()) }) }
 
-        // Compare everything except chapter dates (legacy uses device-local TZ on full timestamps;
-        // generic uses the timestamp's date part — deterministic, asserted separately below).
-        assertEquals(legacy.copy(chapters = emptyList()), generic.copy(chapters = emptyList()))
-        assertEquals(legacy.chapters.map { it.copy(date = null) }, generic.chapters.map { it.copy(date = null) })
+            // Compare everything except chapter dates (legacy uses device-local TZ on full timestamps;
+            // generic uses the timestamp's date part — deterministic, asserted separately below).
+            assertEquals(legacy.copy(chapters = emptyList()), generic.copy(chapters = emptyList()))
+            assertEquals(legacy.chapters.map { it.copy(date = null) }, generic.chapters.map { it.copy(date = null) })
 
-        // chapter specifics: title-or-"Chapter N" fallback, formatted number, built URL, ISO date
-        assertEquals("Chapter 1", generic.chapters[0].number)
-        assertEquals("Romance Dawn", generic.chapters[0].name)
-        assertEquals("Chapter 2", generic.chapters[1].name) // null title -> "Chapter <n>"
-        assertEquals("Chapter 3", generic.chapters[2].number) // 3.0 -> format-number -> "Chapter 3"
-        assertEquals("Chapter 3", generic.chapters[2].name) // null title + whole-float -> "Chapter 3" (not "3.0")
-        assertEquals("$base/api/chapter?chapterId=85027", generic.chapters[0].url)
-        assertEquals("Pirates & adventure", generic.description) // clean-html (tags + &amp; + whitespace)
-        assertEquals("8.0", generic.rating) // integer averageRating 8 -> decimal -> "8.0" (== Double.toString())
-        assertEquals(LocalDate(2024, 1, 15), generic.chapters[0].date)
-        assertEquals(LocalDate(2024, 1, 22), generic.chapters[1].date)
-    }
-
-    @Test
-    fun pages_match_legacy_image_urls() = runTest {
-        val manga = Manga(api, lang, "One Piece", "$base/api/post/?postId=92", "", null, emptyList())
-        val chapter = Chapter("Chapter 1", "Romance Dawn", "$base/api/chapter?chapterId=85027", null, false, false)
-        val generic = client().pages(manga, chapter).first().valueOrFail().map { it.url }
-        val legacy = json.decodeFromString<AzoraChapterImagesResponse>(PAGES_JSON).toImageUrls()
-        assertEquals(legacy, generic) // both sort by `order` despite scrambled array order
-        // pages are sorted by the `order` field (1,2,3), all URLs non-blank + absolute (storage CDN)
-        assertEquals(
-            listOf(
-                "https://storage.azoramoon.com/WP-manga/data/op/1.jpg",
-                "https://storage.azoramoon.com/WP-manga/data/op/2.jpg",
-                "https://storage.azoramoon.com/WP-manga/data/op/3.jpg",
-            ),
-            generic,
-        )
-        assertTrue(generic.all { it.isNotBlank() })
-    }
+            // chapter specifics: title-or-"Chapter N" fallback, formatted number, built URL, ISO date
+            assertEquals("Chapter 1", generic.chapters[0].number)
+            assertEquals("Romance Dawn", generic.chapters[0].name)
+            assertEquals("Chapter 2", generic.chapters[1].name) // null title -> "Chapter <n>"
+            assertEquals("Chapter 3", generic.chapters[2].number) // 3.0 -> format-number -> "Chapter 3"
+            assertEquals("Chapter 3", generic.chapters[2].name) // null title + whole-float -> "Chapter 3" (not "3.0")
+            assertEquals("$base/api/chapter?chapterId=85027", generic.chapters[0].url)
+            assertEquals("Pirates & adventure", generic.description) // clean-html (tags + &amp; + whitespace)
+            assertEquals("8.0", generic.rating) // integer averageRating 8 -> decimal -> "8.0" (== Double.toString())
+            assertEquals(LocalDate(2024, 1, 15), generic.chapters[0].date)
+            assertEquals(LocalDate(2024, 1, 22), generic.chapters[1].date)
+        }
 
     @Test
-    fun pages_carry_no_download_headers() = runTest {
-        // Download parity (Phase 4): Azora is usesCapturedHeaders=false with no static `headers`, so the
-        // page image GETs the download path issues must carry NO headers — exactly what the legacy
-        // Azora download attached (none). Every page (not just the first) is header-free.
-        val manga = Manga(api, lang, "One Piece", "$base/api/post/?postId=92", "", null, emptyList())
-        val chapter = Chapter("Chapter 1", "Romance Dawn", "$base/api/chapter?chapterId=85027", null, false, false)
-        val pages = client().pages(manga, chapter).first().valueOrFail()
-        assertTrue(pages.all { it.headers.isEmpty() })
-    }
+    fun pages_match_legacy_image_urls() =
+        runTest {
+            val manga = Manga(api, lang, "One Piece", "$base/api/post/?postId=92", "", null, emptyList())
+            val chapter = Chapter("Chapter 1", "Romance Dawn", "$base/api/chapter?chapterId=85027", null, false, false)
+            val generic =
+                client()
+                    .pages(manga, chapter)
+                    .first()
+                    .valueOrFail()
+                    .map { it.url }
+            val legacy = json.decodeFromString<AzoraChapterImagesResponse>(PAGES_JSON).toImageUrls()
+            assertEquals(legacy, generic) // both sort by `order` despite scrambled array order
+            // pages are sorted by the `order` field (1,2,3), all URLs non-blank + absolute (storage CDN)
+            assertEquals(
+                listOf(
+                    "https://storage.azoramoon.com/WP-manga/data/op/1.jpg",
+                    "https://storage.azoramoon.com/WP-manga/data/op/2.jpg",
+                    "https://storage.azoramoon.com/WP-manga/data/op/3.jpg",
+                ),
+                generic,
+            )
+            assertTrue(generic.all { it.isNotBlank() })
+        }
+
+    @Test
+    fun pages_carry_no_download_headers() =
+        runTest {
+            // Download parity (Phase 4): Azora is usesCapturedHeaders=false with no static `headers`, so the
+            // page image GETs the download path issues must carry NO headers — exactly what the legacy
+            // Azora download attached (none). Every page (not just the first) is header-free.
+            val manga = Manga(api, lang, "One Piece", "$base/api/post/?postId=92", "", null, emptyList())
+            val chapter = Chapter("Chapter 1", "Romance Dawn", "$base/api/chapter?chapterId=85027", null, false, false)
+            val pages = client().pages(manga, chapter).first().valueOrFail()
+            assertTrue(pages.all { it.headers.isEmpty() })
+        }
 
     @Test
     fun config_validates_under_the_real_strategy_registry() {
         val doc = (SourceConfigParser.parse(CONFIG_BACKED_SOURCES_JSON) as AppResult.Success).value
-        val validation = me.manga.kira.sources.engine.DefaultSourceConfigValidator(
-            me.manga.kira.sources.engine.DefaultStrategyRegistry(),
-        ).validate(doc)
+        val validation =
+            me.manga.kira.sources.engine
+                .DefaultSourceConfigValidator(
+                    me.manga.kira.sources.engine
+                        .DefaultStrategyRegistry(),
+                ).validate(doc)
         assertTrue(validation.isValid, "pilot config must validate: ${validation.errors}")
     }
 }
@@ -268,13 +287,14 @@ private const val DETAIL_LOCKED_JSON = """
 private const val LEGACY_AZORA_BASE = "https://api.azoramoon.com"
 
 /** Request fixtures keyed off the CONFIG's base url, so the suite tracks the live domain. */
-private fun azoraResponses(base: String): Map<String, String> = mapOf(
-    "$base/api/query?page=1&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc" to AZORA_QUERY_JSON,
-    "$base/api/query?page=1&perPage=24&orderBy=totalViews&orderDirection=desc" to AZORA_QUERY_JSON,
-    "$base/api/query?searchTerm=one%20piece&perPage=24" to AZORA_QUERY_JSON,
-    "$base/api/post/?postId=92&includeChapters=true" to AZORA_DETAILS_JSON,
-    "$base/api/chapter?chapterId=85027" to PAGES_JSON,
-)
+private fun azoraResponses(base: String): Map<String, String> =
+    mapOf(
+        "$base/api/query?page=1&perPage=24&orderBy=lastChapterAddedAt&orderDirection=desc" to AZORA_QUERY_JSON,
+        "$base/api/query?page=1&perPage=24&orderBy=totalViews&orderDirection=desc" to AZORA_QUERY_JSON,
+        "$base/api/query?searchTerm=one%20piece&perPage=24" to AZORA_QUERY_JSON,
+        "$base/api/post/?postId=92&includeChapters=true" to AZORA_DETAILS_JSON,
+        "$base/api/chapter?chapterId=85027" to PAGES_JSON,
+    )
 
 // Real /api/chapter shape (verified live): chapter.images = [{id,url,width,height,order}], url absolute
 // on the storage CDN host. Array order is deliberately SCRAMBLED here (2,1,3) so the engine must sort
