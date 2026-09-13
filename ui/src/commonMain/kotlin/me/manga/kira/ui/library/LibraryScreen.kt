@@ -527,19 +527,16 @@ private fun LibraryTopBar(
     onOpenOptions: () -> Unit,
     onNavigateToDownloads: () -> Unit,
 ) {
-    // Library parity fix (audit p1/library finding 3): search is hidden behind a toggle that
-    // takes over the top bar (native LibraryScreen.kt:94,118-135). Screen-local UI ephemera —
-    // not lifted into LibraryState (same posture as the LibraryOptionsSheet visibility boolean).
-    // The search QUERY still lives in state.searchQuery / OnSearchQueryChange; only the bar's
-    // shown/hidden flag is local here.
-    var showSearchBar by remember { mutableStateOf(false) }
-    // Library parity fix (audit p1/library): system-back closes the search bar instead of leaving
-    // the screen — native LibraryScreen.kt:106-112 `BackHandler(enabled = showSearchBar){ showSearchBar
-    // = false; viewModel.onSearchChanged("") }`. Clearing the query mirrors native's onSearchChanged("").
-    BackHandler(enabled = showSearchBar) {
-        showSearchBar = false
+    // Retained query text must remain visible after recreation. Only opening an empty editor
+    // is local UI state; the ViewModel remains the query owner.
+    var editorOpen by remember { mutableStateOf(false) }
+    val showSearchBar = editorOpen || state.searchQuery.isNotEmpty()
+    // Keep the editor visible until the query owner publishes the requested clear.
+    val closeSearch = {
+        editorOpen = false
         onIntent(LibraryIntent.OnSearchQueryChange(""))
     }
+    BackHandler(enabled = showSearchBar, onBack = closeSearch)
     // System-back clears an active multi-select instead of leaving the screen — mirrors
     // DetailsScreen's chapter-selection BackHandler (DetailsScreen.kt:482).
     BackHandler(enabled = state.isInSelectionMode) {
@@ -570,11 +567,11 @@ private fun LibraryTopBar(
                 // borders/container. Mirrors native SearchAppBar.kt verbatim.
                 LibrarySearchBar(
                     query = state.searchQuery,
-                    onQueryChange = { onIntent(LibraryIntent.OnSearchQueryChange(it)) },
-                    onClose = {
-                        showSearchBar = false
-                        onIntent(LibraryIntent.OnSearchQueryChange(""))
+                    onQueryChange = {
+                        editorOpen = true
+                        onIntent(LibraryIntent.OnSearchQueryChange(it))
                     },
+                    onClose = closeSearch,
                 )
             } else {
                 // Redesign 2026-06: normal-mode top bar replaced with a Home-style header
@@ -607,7 +604,7 @@ private fun LibraryTopBar(
                         LibraryHeaderAction(
                             icon = KiraIcons.Search,
                             contentDescription = stringResource(Res.string.contentDescription_search),
-                            onClick = { showSearchBar = true },
+                            onClick = { editorOpen = true },
                         )
                         // UP-6: single options entry point — opens the tabbed [LibraryOptionsSheet]
                         // (Filter / Sort / Display). Replaces the pre-UP-6 trio of Filter/Sort/Density
