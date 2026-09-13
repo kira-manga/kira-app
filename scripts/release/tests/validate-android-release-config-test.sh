@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "$0")" && pwd)
 app_root=$(cd "$script_dir/../../.." && pwd)
 validator="$app_root/scripts/release/validate-android-release-config.sh"
-backend_key_tool="$app_root/../kira-backend/scripts/signing/generate-key.sh"
+fixture_tool="$script_dir/source_bootstrap_fixtures.py"
 android_gradle="$app_root/app/build.gradle.kts"
 compose_gradle="$app_root/composeApp/build.gradle.kts"
 settings_gradle="$app_root/settings.gradle.kts"
@@ -58,14 +58,14 @@ pass "project-read token fallback preserves legacy and GitHub-token precedence"
 
 key_id=validator-regression
 mkdir -p "$tmp_dir/signing"
-"$backend_key_tool" "$key_id" "$tmp_dir/signing" >/dev/null
+python3 -B "$fixture_tool" keys "$key_id" "$tmp_dir/signing"
 private_key_file="$tmp_dir/signing/$key_id.private.b64"
 public_key_file="$tmp_dir/signing/$key_id.public.b64"
 public_key_b64=$(tr -d '[:space:]' < "$public_key_file")
 
 printf '%s\n' '{"project_info":{"project_id":"validator-test"}}' > "$tmp_dir/google-services.json"
 printf '%s\n' '{"type":"service_account","project_id":"validator-test"}' > "$tmp_dir/play-service-account.json"
-printf '%s\n' '{"schemaVersion":1,"revision":4,"sources":[]}' > "$tmp_dir/source-document.json"
+python3 -B "$fixture_tool" input "$tmp_dir/source-document.json"
 printf '%s' 'validator-store-password' > "$tmp_dir/store-password.txt"
 printf '%s' 'validator-store-password' > "$tmp_dir/key-password.txt"
 printf '%s' 'validator-upload' > "$tmp_dir/key-alias.txt"
