@@ -30,9 +30,9 @@ internal class LibraryOptionsNodes(
 ) {
     val dialog get() = ui.onNode(isDialog())
 
-    fun filterChip(filter: LibraryFilter): SemanticsNodeInteraction = chip(filterLabels().getValue(filter))
+    fun filterChip(filter: LibraryFilter): SemanticsNodeInteraction = ui.optionChip(filterLabels().getValue(filter))
 
-    fun sortChip(sort: LibrarySort): SemanticsNodeInteraction = chip(sortLabels().getValue(sort))
+    fun sortChip(sort: LibrarySort): SemanticsNodeInteraction = ui.optionChip(sortLabels().getValue(sort))
 
     // Each real Switch is checked against its distinct intent; no test-only tags or fake rows.
     fun displaySwitch(index: Int): SemanticsNodeInteraction =
@@ -64,10 +64,12 @@ internal class LibraryOptionsNodes(
 
     fun tabBounds(): List<Rect> = LibraryOptionsTab.entries.map { bounds(tabNode(it)) }
 
-    private fun chip(label: String): SemanticsNodeInteraction = ui.onNode(hasText(label) and hasClickAction())
-
     fun body(): SemanticsNodeInteraction =
         ui.onNode(
             SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
         )
 }
+
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.optionChip(label: String): SemanticsNodeInteraction =
+    onNode(hasText(label) and hasClickAction())

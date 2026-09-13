@@ -111,7 +111,10 @@ internal class LibraryOptionsSheetFixture(
                         sortDirection = state.sortDirection,
                         itemsPerRow = state.itemsPerRow,
                         display = state.display,
-                        onIntent = ::accept,
+                        onIntent = { intent ->
+                            intents += intent
+                            state = state.acceptOptionsIntent(intent)
+                        },
                         onDismiss = {
                             dismissCount++
                             shown = false
@@ -188,35 +191,32 @@ internal class LibraryOptionsSheetFixture(
         ui.waitForIdle()
         nodes.dialog.assertDoesNotExist()
     }
-
-    // A controlled production-sheet host only; this is not a ViewModel/persistence test.
-    private fun accept(intent: LibraryIntent) {
-        intents += intent
-        state =
-            when (intent) {
-                is LibraryIntent.OnFilterChange -> state.copy(filter = intent.filter)
-                is LibraryIntent.OnSortChange -> state.copy(sort = intent.sort)
-                LibraryIntent.OnSortDirectionToggle ->
-                    state.copy(
-                        sortDirection =
-                            if (state.sortDirection == SortDirection.ASCENDING) {
-                                SortDirection.DESCENDING
-                            } else {
-                                SortDirection.ASCENDING
-                            },
-                    )
-                is LibraryIntent.OnItemsPerRowChange -> state.copy(itemsPerRow = intent.count)
-                is LibraryIntent.OnToggleShowDetails ->
-                    state.copy(display = state.display.copy(showDetails = intent.value))
-                is LibraryIntent.OnToggleShowSource ->
-                    state.copy(display = state.display.copy(showSource = intent.value))
-                is LibraryIntent.OnToggleShowCount ->
-                    state.copy(display = state.display.copy(showCount = intent.value))
-                is LibraryIntent.OnToggleShowButtons ->
-                    state.copy(display = state.display.copy(showButtons = intent.value))
-                is LibraryIntent.OnToggleShowTabs ->
-                    state.copy(display = state.display.copy(showTabs = intent.value))
-                else -> error("Unexpected options-sheet intent: $intent")
-            }
-    }
 }
+
+// A controlled production-sheet host only; this is not a ViewModel/persistence test.
+private fun LibraryState.acceptOptionsIntent(intent: LibraryIntent): LibraryState =
+    when (intent) {
+        is LibraryIntent.OnFilterChange -> copy(filter = intent.filter)
+        is LibraryIntent.OnSortChange -> copy(sort = intent.sort)
+        LibraryIntent.OnSortDirectionToggle ->
+            copy(
+                sortDirection =
+                    if (sortDirection == SortDirection.ASCENDING) {
+                        SortDirection.DESCENDING
+                    } else {
+                        SortDirection.ASCENDING
+                    },
+            )
+        is LibraryIntent.OnItemsPerRowChange -> copy(itemsPerRow = intent.count)
+        is LibraryIntent.OnToggleShowDetails ->
+            copy(display = display.copy(showDetails = intent.value))
+        is LibraryIntent.OnToggleShowSource ->
+            copy(display = display.copy(showSource = intent.value))
+        is LibraryIntent.OnToggleShowCount ->
+            copy(display = display.copy(showCount = intent.value))
+        is LibraryIntent.OnToggleShowButtons ->
+            copy(display = display.copy(showButtons = intent.value))
+        is LibraryIntent.OnToggleShowTabs ->
+            copy(display = display.copy(showTabs = intent.value))
+        else -> error("Unexpected options-sheet intent: $intent")
+    }

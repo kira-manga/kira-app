@@ -18,6 +18,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+private const val AUTO_HIDE_MS = 3_000L
+
 @OptIn(ExperimentalTestApi::class)
 class ReaderChromeGestureTest {
     @Test
@@ -112,24 +114,6 @@ class ReaderChromeGestureTest {
             }
         }
 
-    private fun ReaderChromeTestFixture.assertAutoHide(previousToggles: Int) {
-        val beforeDeadline = visibleSince + AUTO_HIDE_MS - 1
-        val remaining = beforeDeadline - test.mainClock.currentTime
-        assertTrue(remaining >= 0, "Test must reach the actual three-second deadline deliberately")
-        test.mainClock.advanceTimeBy(remaining, ignoreFrameDuration = true)
-        test.runOnIdle {
-            assertTrue(state.isUiVisible, "Chrome must not hide early: $context")
-            assertEquals(previousToggles, toggleCount)
-        }
-        test.mainClock.advanceTimeBy(2, ignoreFrameDuration = true)
-        test.runOnIdle {
-            assertFalse(state.isUiVisible, "Actual three-second effect must hide chrome: $context")
-            assertEquals(previousToggles + 1, toggleCount)
-        }
-        advance(CHROME_ANIMATION_MS)
-        assertChrome(visible = false, toggles = previousToggles + 1)
-    }
-
     private fun ReaderChromeTestFixture.assertNoPageControls() {
         test.onNodeWithContentDescription(backLabel).performTouchInput { click() }
         advance(doubleTapTimeout + READER_SETTLE_MS)
@@ -189,10 +173,6 @@ class ReaderChromeGestureTest {
         assertChrome(visible = true, toggles = 3)
         revealNode().assertDoesNotExist()
     }
-
-    private companion object {
-        const val AUTO_HIDE_MS = 3_000L
-    }
 }
 
 @OptIn(ExperimentalTestApi::class)
@@ -201,3 +181,22 @@ private fun ReaderChromeTestFixture.revealNode() =
         revealLabel,
         useUnmergedTree = true,
     )
+
+@OptIn(ExperimentalTestApi::class)
+private fun ReaderChromeTestFixture.assertAutoHide(previousToggles: Int) {
+    val beforeDeadline = visibleSince + AUTO_HIDE_MS - 1
+    val remaining = beforeDeadline - test.mainClock.currentTime
+    assertTrue(remaining >= 0, "Test must reach the actual three-second deadline deliberately")
+    test.mainClock.advanceTimeBy(remaining, ignoreFrameDuration = true)
+    test.runOnIdle {
+        assertTrue(state.isUiVisible, "Chrome must not hide early: $context")
+        assertEquals(previousToggles, toggleCount)
+    }
+    test.mainClock.advanceTimeBy(2, ignoreFrameDuration = true)
+    test.runOnIdle {
+        assertFalse(state.isUiVisible, "Actual three-second effect must hide chrome: $context")
+        assertEquals(previousToggles + 1, toggleCount)
+    }
+    advance(CHROME_ANIMATION_MS)
+    assertChrome(visible = false, toggles = previousToggles + 1)
+}
