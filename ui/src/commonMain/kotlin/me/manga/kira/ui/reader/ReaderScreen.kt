@@ -528,15 +528,12 @@ internal fun ReaderScreenContent(
         }
     }
 
-    // Per-page Open-in-WebView callback — closed over the screen's chapter URL +
-    // source api. Threaded down the layout chain to `ReaderPageItem`'s error slot.
-    // Each per-page tap dispatches `OnOpenInWebView(url, api)` which the VM emits as
-    // `OpenChapterInWebView`, consumed by the effect collector above and routed to
-    // the navhost via `onOpenInWebView`. The url + api don't vary per page (the whole
-    // chapter shares one source URL), so we pre-bind the closure here and the inner
-    // composables only see a parameterless `() -> Unit`.
+    // Page-error recovery follows the currently visible chapter, including appended segments.
+    // Rebind on recomposition rather than retaining the original navigation anchor; before an
+    // active chapter is available, fall back to that anchor. The VM forwards the intent as an
+    // OpenChapterInWebView effect consumed above.
     val openInWebView: () -> Unit = {
-        onIntent(ReaderIntent.OnOpenInWebView(chapter.url, manga.api))
+        onIntent(ReaderIntent.OnOpenInWebView(state.activeChapterUrl ?: chapter.url, manga.api))
     }
 
     Scaffold(
