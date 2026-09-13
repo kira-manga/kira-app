@@ -12,6 +12,7 @@ import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import okio.Path.Companion.toPath
 import okio.buffer
+import okio.use
 
 /**
  * [DownloadsActionRepository] strangler-fig delegate over the legacy `:shared`
