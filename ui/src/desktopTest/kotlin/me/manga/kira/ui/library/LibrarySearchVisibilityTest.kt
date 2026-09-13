@@ -35,7 +35,7 @@ class LibrarySearchVisibilityTest {
                 runOnIdle { assertEquals(query, fixture.state.value.searchQuery) }
             }
             runOnIdle {
-                assertEquals(List(queries.size + 1) { LibraryIntent.OnEnter }, fixture.intents)
+                assertEquals<List<LibraryIntent>>(List(queries.size + 1) { LibraryIntent.OnEnter }, fixture.intents)
             }
         }
 
