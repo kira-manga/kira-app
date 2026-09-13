@@ -3,6 +3,7 @@ require "fileutils"
 require "open3"
 require "rbconfig"
 require "tmpdir"
+require "yaml"
 
 class IosUploadOnlyWorkflowTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
@@ -28,6 +29,26 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
     assert_includes TESTFLIGHT_WORKFLOW, "bundle exec fastlane ios upload_only"
     refute_includes TESTFLIGHT_WORKFLOW, "bundle exec fastlane ios upload_external"
     refute_includes TESTFLIGHT_WORKFLOW, "bundle exec fastlane ios finalize_external"
+  end
+
+  def test_archive_and_ipa_validation_is_a_mandatory_pre_upload_gate
+    workflow = YAML.safe_load(TESTFLIGHT_WORKFLOW, aliases: false)
+    job = workflow.fetch("jobs").fetch("build-and-upload")
+    steps = job.fetch("steps")
+    validators = steps.select { |step| step["id"] == "artifact-validation" }
+    uploads = steps.select { |step| step["id"] == "testflight-upload" }
+    assert_equal 1, validators.length
+    assert_equal 1, uploads.length
+    validation, upload = validators.first, uploads.first
+    assert_equal "ruby release/ios/validate_artifacts.rb", validation.fetch("run").strip
+    assert_equal "set +x\nbundle exec fastlane ios upload_only", upload.fetch("run").strip
+    assert_operator steps.index(validation), :<, steps.index(upload)
+    [job, validation, upload].each { |node| refute node.key?("continue-on-error") }
+    [validation, upload].each do |step|
+      refute step.key?("if"), "validation/upload must retain default success-only step execution"
+      refute step.key?("shell"), "validation/upload must use the job's fail-fast shell"
+    end
+    assert_equal "bash", job.dig("defaults", "run", "shell")
   end
 
   def test_preflight_does_not_create_external_groups

@@ -9,11 +9,13 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.cbz.DefaultCbzReader
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -160,6 +162,46 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
                 cancelAndIgnoreRemainingEvents()
             }
         }
+
+    @Test
+    fun completedDownloadPublishesOnlyItsExactOwnersLedgerAndSavedFlag() =
+        runTest {
+            val a = seed(mangaA).single()
+            val b = seed(mangaB).single()
+            val page = writeFile(appFs.chapterDir(a.mangaId, a.id) / "page.webp", "A")
+            val preparedA = a.copy(localImagePaths = listOf(page.toString()))
+            db.chapterDao().updateChapter(preparedA)
+            db.chapterDownloadingDao().insert(download(a))
+            db.chapterDownloadingDao().insert(download(b))
+
+            assertCompletionStaysWithOwner(preparedA, b, assertNotNull(fs.metadata(page).size))
+        }
+
+    private suspend fun assertCompletionStaysWithOwner(
+        a: SavedChapterEntity,
+        b: SavedChapterEntity,
+        sizeBytes: Long,
+    ) {
+        val dao = db.chapterDownloadingDao()
+        val expected = assertNotNull(dao.getDownloadByChapter(a.id))
+        val untouched = assertNotNull(dao.getDownloadByChapter(b.id))
+        dao.observeDownloadsForMangaUrl(mangaA.url).distinctUntilChanged().test {
+            val aEvents = this
+            dao.observeDownloadsForMangaUrl(mangaB.url).test {
+                assertEquals(listOf(expected), aEvents.awaitItem())
+                assertEquals(listOf(untouched), awaitItem())
+                assertTrue(dao.completeDownload(expected, a.localImagePaths, sizeBytes))
+                val completed = expected.copy(state = DownloadingState.SUCCESS, progress = 100, sizeBytes = sizeBytes)
+                assertEquals(listOf(completed), aEvents.awaitItem())
+                assertEquals(a.copy(isDownloaded = true), row(a.id))
+                assertEquals(b, row(b.id))
+                // Table invalidation may re-query B too; unchanged data, not silence, proves isolation.
+                assertEquals(listOf(untouched), dao.observeDownloadsForMangaUrl(mangaB.url).first())
+                cancelAndIgnoreRemainingEvents()
+            }
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 
     @Test
     fun localPagesAndExtractedCleanupUseBWhileMissingBFilesFallBackToSourceB() =

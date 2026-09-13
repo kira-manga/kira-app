@@ -225,6 +225,34 @@ class DetailsDownloadOwnershipTest {
             assertEquals(listOf("files:202", "row:202"), fixture.actions.deleteOrder.takeLast(2))
         }
 
+    @Test
+    fun ownerRebindCancelsAnAutomaticCloudflareRetryPausedInsideScopedResolution() =
+        runTest {
+            val fixture = fixture()
+            fixture.vm.submit(DetailsIntent.OnEnter(mangaA))
+            val failure =
+                download(101, 1, DownloadState.FAILED)
+                    .copy(errorMsg = DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL)
+            fixture.downloads.publish(mangaA, listOf(failure))
+            val gate = fixture.pauseResolution()
+            fixture.vm.submit(DetailsIntent.OnRetry)
+            fixture.assertResolution(mangaA, emptyList(), listOf(listOf(CHAPTER_URL)))
+            fixture.assertEnqueued(mangaA, emptyList())
+            fixture.vm.submit(DetailsIntent.OnEnter(mangaB))
+            fixture.assertLoadedOwner(mangaB)
+            gate.complete(Unit)
+            runCurrent()
+            fixture.assertEnqueued(mangaA, emptyList())
+
+            fixture.downloads.publish(mangaB, listOf(failure.copy(chapterId = 202, mangaId = 2)))
+            fixture.vm.submit(DetailsIntent.OnRetry)
+            assertEquals(
+                listOf(mangaA to listOf(CHAPTER_URL), mangaB to listOf(CHAPTER_URL)),
+                fixture.resolver.bulkRequests,
+            )
+            fixture.assertEnqueued(mangaB, listOf(202L))
+        }
+
     private fun fixture(
         testDispatcher: CoroutineDispatcher = dispatcher,
         chapters: List<Chapter> = listOf(sharedChapter()),

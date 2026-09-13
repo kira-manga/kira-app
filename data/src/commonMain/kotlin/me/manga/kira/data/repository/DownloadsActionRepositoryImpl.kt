@@ -10,6 +10,9 @@ import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
+import okio.Path.Companion.toPath
+import okio.buffer
+import okio.use
 
 /**
  * [DownloadsActionRepository] strangler-fig delegate over the legacy `:shared`
@@ -135,75 +138,116 @@ class DownloadsActionRepositoryImpl(
     // files through the legacy FileService (same cross-platform helper native uses).
     private val fileService: FileService,
 ) : DownloadsActionRepository {
-
     override suspend fun enqueueDownload(
         chapterId: Long,
         mangaTitle: String,
         api: String,
-    ): Result<Unit> = runCatchingCancellable {
-        val savedChapter = chapterDao.getChapterByIdSuspend(chapterId)
-            ?: error("chapter row not found")
-        legacy.enqueueChapterDownload(
-            chapter = savedChapter,
-            title = mangaTitle,
-            mangaApi = api,
-        )
-    }
+    ): Result<Unit> =
+        runCatchingCancellable {
+            val savedChapter =
+                chapterDao.getChapterByIdSuspend(chapterId)
+                    ?: error("chapter row not found")
+            legacy.enqueueChapterDownload(
+                chapter = savedChapter,
+                title = mangaTitle,
+                mangaApi = api,
+            )
+        }
 
-    override suspend fun retryDownload(chapterId: Long): Result<Unit> = runCatchingCancellable {
-        val row = chapterDownloadDao.getDownloadByChapter(chapterId)
-            ?: error("download row not found")
-        legacy.enqueueChapterDownload(
-            chapter = row.toChapterEntity(),
-            title = row.mangaTitle ?: "",
-            mangaApi = row.api,
-        )
-    }
+    override suspend fun retryDownload(chapterId: Long): Result<Unit> =
+        runCatchingCancellable {
+            val row =
+                chapterDownloadDao.getDownloadByChapter(chapterId)
+                    ?: error("download row not found")
+            legacy.enqueueChapterDownload(
+                chapter = row.toChapterEntity(),
+                title = row.mangaTitle ?: "",
+                mangaApi = row.api,
+            )
+        }
 
-    override suspend fun cancelDownload(chapterId: Long): Result<Unit> = runCatchingCancellable {
-        legacy.onCancel(chapterId)
-    }
+    override suspend fun cancelDownload(chapterId: Long): Result<Unit> =
+        runCatchingCancellable {
+            legacy.onCancel(chapterId)
+        }
 
-    override suspend fun cancelRunningDownload(chapterId: Long, mangaId: Long): Result<Unit> =
-        runCatchingCancellable { legacy.cancelARunningChapter(chapterId, mangaId) }
+    override suspend fun cancelRunningDownload(
+        chapterId: Long,
+        mangaId: Long,
+    ): Result<Unit> = runCatchingCancellable { legacy.cancelARunningChapter(chapterId, mangaId) }
 
-    override suspend fun cancelAllDownloads(): Result<Unit> =
-        runCatchingCancellable { legacy.cancelAllDownloads() }
+    override suspend fun cancelAllDownloads(): Result<Unit> = runCatchingCancellable { legacy.cancelAllDownloads() }
 
-    override suspend fun deleteDownload(chapterId: Long): Result<Unit> = runCatchingCancellable {
-        // #10 (native-wins): ROW-ONLY delete — remove the chapter_downloads queue row only, exactly
-        // like native DownloadRepositoryImpl.deleteDownload (= dao.deleteByChapterId). The on-disk
-        // files and the saved_chapters `isDownloaded` flag are intentionally LEFT intact, so the
-        // chapter stays readable offline and the "Downloaded" badge stays lit. Full cleanup
-        // (clear the flag + delete files) is the SEPARATE Library "delete downloaded" path
-        // (LibraryRepository.deleteDownloadedChapters), surfaced via [deleteDownloadedChapter].
-        legacy.deleteDownload(chapterId)
-    }
+    override suspend fun deleteDownload(chapterId: Long): Result<Unit> =
+        runCatchingCancellable {
+            // #10 (native-wins): ROW-ONLY delete — remove the chapter_downloads queue row only, exactly
+            // like native DownloadRepositoryImpl.deleteDownload (= dao.deleteByChapterId). The on-disk
+            // files and the saved_chapters `isDownloaded` flag are intentionally LEFT intact, so the
+            // chapter stays readable offline and the "Downloaded" badge stays lit. Full cleanup
+            // (clear the flag + delete files) is the SEPARATE Library "delete downloaded" path
+            // (LibraryRepository.deleteDownloadedChapters), surfaced via [deleteDownloadedChapter].
+            legacy.deleteDownload(chapterId)
+        }
 
-    override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> = runCatchingCancellable {
-        // #10 (native-wins): mirror LibraryRepository.deleteDownloadedChapters — clear isDownloaded,
-        // delete the on-disk files, and drop the queue row so the Details size header updates too.
-        val saved = chapterDao.getChapterByIdSuspend(chapterId) ?: error("chapter row not found")
-        chapterDao.markChaptersNotDownloaded(listOf(chapterId))
-        fileService.deleteChapterFiles(saved.mangaId, chapterId)
-        legacy.deleteDownload(chapterId)
-    }
+    override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> =
+        runCatchingCancellable {
+            // #10 (native-wins): mirror LibraryRepository.deleteDownloadedChapters — clear isDownloaded,
+            // delete the on-disk files, and drop the queue row so the Details size header updates too.
+            val saved = chapterDao.getChapterByIdSuspend(chapterId) ?: error("chapter row not found")
+            chapterDao.markChaptersNotDownloaded(listOf(chapterId))
+            fileService.deleteChapterFiles(saved.mangaId, chapterId)
+            legacy.deleteDownload(chapterId)
+        }
 
-    override suspend fun reconcileInterrupted(): Result<Unit> = runCatchingCancellable {
-        // 1) Reset rows orphaned in RUNNING / COMPRESSING by a killed process and re-trigger the
-        //    engine (WorkManager re-enqueue on Android; worker-loop wake-up on iOS/Desktop).
-        legacy.reconcileInterruptedDownloads()
-        // 2) Back-fill the on-disk size of completed rows that pre-date the sizeBytes column (rows
-        //    migrated up from schema v8). Each is a one-time walk; once written the row no longer
-        //    matches getCompletedWithoutSize, so this self-limits. Per-row failures are swallowed so
-        //    one unreadable directory can't abort the whole reconcile.
-        chapterDownloadDao.getCompletedWithoutSize().forEach { row ->
-            runCatchingCancellable {
-                val size = appFileSystem.folderSize(
-                    appFileSystem.chapterDir(row.mangaId, row.chapterId),
-                )
-                if (size > 0L) chapterDownloadDao.updateSize(row.chapterId, size)
+    override suspend fun reconcileInterrupted(): Result<Unit> =
+        runCatchingCancellable {
+            // 1) Reset rows orphaned in RUNNING / COMPRESSING by a killed process and re-trigger the
+            //    engine (WorkManager re-enqueue on Android; worker-loop wake-up on iOS/Desktop).
+            legacy.reconcileInterruptedDownloads()
+            // 2) Back-fill the on-disk size of completed rows that pre-date the sizeBytes column (rows
+            //    migrated up from schema v8). Each is a one-time walk; once written the row no longer
+            //    matches getCompletedWithoutSize, so this self-limits. Per-row failures are swallowed so
+            //    one unreadable directory can't abort the whole reconcile.
+            chapterDownloadDao.getCompletedWithoutSize().forEach { row ->
+                runCatchingCancellable {
+                    val size =
+                        appFileSystem.folderSize(
+                            appFileSystem.chapterDir(row.mangaId, row.chapterId),
+                        )
+                    if (size > 0L) chapterDownloadDao.updateSize(row.chapterId, size)
+                }
             }
+            // 3) Repair the old separately committed SUCCESS/saved-false window, not an interrupted
+            //    full deletion (which clears paths first) or intentional history-only deletion.
+            repairCompletedDownloadFlags()
+        }
+
+    private suspend fun repairCompletedDownloadFlags() {
+        chapterDownloadDao.getCompletedWithoutDownloadedFlag().forEach { row ->
+            runCatchingCancellable {
+                val saved = chapterDao.getChapterByIdSuspend(row.chapterId) ?: return@runCatchingCancellable
+                if (saved.mangaId != row.mangaId || saved.url != row.url || saved.isDownloaded) {
+                    return@runCatchingCancellable
+                }
+                if (hasReadableDownloadPaths(saved.localImagePaths)) {
+                    chapterDownloadDao.repairCompletedDownloadFlag(row, saved.localImagePaths)
+                }
+            }
+        }
+    }
+
+    private fun hasReadableDownloadPaths(paths: List<String>): Boolean {
+        if (paths.isEmpty()) return false
+        val fs = appFileSystem.fileSystem()
+        // Open the actual retained files, not merely their directory. This is a point-in-time
+        // check outside SQL; the transaction separately rechecks the expected paths and state.
+        return paths.all { raw ->
+            if (raw.isBlank()) return@all false
+            val path = raw.toPath()
+            val metadata = fs.metadataOrNull(path) ?: return@all false
+            metadata.isRegularFile &&
+                (metadata.size ?: 0L) > 0L &&
+                fs.source(path).buffer().use { !it.exhausted() }
         }
     }
 }

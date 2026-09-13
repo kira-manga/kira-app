@@ -218,6 +218,25 @@ open class FakeChapterDownloadDao(
 
     override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? = null
 
+    override suspend fun getSavedChapterForDownload(chapterId: Long): SavedChapterEntity? = null
+
+    override suspend fun writeCompletedDownload(
+        downloadId: Long,
+        chapterId: Long,
+        sizeBytes: Long,
+        successState: DownloadingState,
+    ): Int = 0
+
+    override suspend fun markMatchingChapterDownloaded(
+        chapterId: Long,
+        mangaId: Long,
+        url: String,
+    ): Int = 0
+
+    override suspend fun getCompletedWithoutDownloadedFlag(successState: DownloadingState) = emptyDownloadRows()
+
+    private fun emptyDownloadRows(): List<ChapterDownloadEntity> = emptyList()
+
     override suspend fun deleteByChapterId(chapterId: Long) = Unit
 
     override fun getAllQueuedChapterIds(queuedState: DownloadingState): Flow<List<Long>> = flowOf(emptyList())

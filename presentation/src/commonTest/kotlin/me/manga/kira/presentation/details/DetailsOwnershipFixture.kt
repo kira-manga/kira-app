@@ -1,12 +1,10 @@
 package me.manga.kira.presentation.details
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.flow.onStart
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
@@ -17,12 +15,9 @@ import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
 import me.manga.kira.domain.repository.ChapterDeletionRepository
-import me.manga.kira.domain.repository.ChapterIdResolver
 import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 import me.manga.kira.domain.repository.CompressionDeferralRepository
 import me.manga.kira.domain.repository.ConnectivityRepository
-import me.manga.kira.domain.repository.DownloadsActionRepository
-import me.manga.kira.domain.repository.DownloadsRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
@@ -52,124 +47,11 @@ import me.manga.kira.domain.usecase.reader.ToggleChapterReadUseCase
 import me.manga.kira.presentation.testing.FakeLibraryRepository
 import me.manga.kira.presentation.testing.RecordingChapterBookmarkRepository
 import me.manga.kira.presentation.testing.RecordingMarkChapterReadRepository
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 
-/** No initial scoped emission: tests can inspect the rebind gap before the new Room query returns. */
-internal class OwnerDownloads : DownloadsRepository {
-    private val streams = mutableMapOf<String, MutableSharedFlow<List<DownloadedChapter>>>()
-    private val latest = linkedMapOf<String, List<DownloadedChapter>>()
-    private val global = MutableStateFlow<List<DownloadedChapter>>(emptyList())
-    val scopedOwners = mutableListOf<Manga>()
-    val cancelledOwners = mutableListOf<String>()
-    var globalSubscriptions = 0
-        private set
-
-    override fun observeAll(): Flow<List<DownloadedChapter>> = global.onStart { globalSubscriptions++ }
-
-    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
-        stream(manga.url)
-            .onStart { scopedOwners += manga }
-            .onCompletion { cancelledOwners += manga.url }
-
-    suspend fun publish(
-        manga: Manga,
-        rows: List<DownloadedChapter>,
-    ) {
-        latest[manga.url] = rows
-        global.value = latest.values.flatten()
-        stream(manga.url).emit(rows)
-    }
-
-    private fun stream(url: String): MutableSharedFlow<List<DownloadedChapter>> =
-        streams.getOrPut(url) {
-            MutableSharedFlow()
-        }
-}
-
-internal class OwnerResolver(
-    private val idsByMangaUrl: Map<String, Long>,
-) : ChapterIdResolver {
-    val singleRequests = mutableListOf<Pair<Manga, String>>()
-    val bulkRequests = mutableListOf<Pair<Manga, List<String>>>()
-
-    override suspend fun resolveChapterId(
-        manga: Manga,
-        chapterUrl: String,
-    ): Long? {
-        singleRequests += manga to chapterUrl
-        return id(manga, chapterUrl)
-    }
-
-    override suspend fun resolveChapterIds(
-        manga: Manga,
-        chapterUrls: List<String>,
-    ): Map<String, Long> {
-        bulkRequests += manga to chapterUrls.toList()
-        return chapterUrls.mapNotNull { url -> id(manga, url)?.let { url to it } }.toMap()
-    }
-
-    private fun id(
-        manga: Manga,
-        chapterUrl: String,
-    ): Long? =
-        idsByMangaUrl[manga.url]?.let { first ->
-            when (chapterUrl) {
-                CHAPTER_URL -> first
-                SECOND_CHAPTER_URL -> first + 1
-                else -> null
-            }
-        }
-}
-
-internal class OwnerDownloadActions : DownloadsActionRepository {
-    val runningCancelled = mutableListOf<Pair<Long, Long>>()
-    val queuedCancelled = mutableListOf<Long>()
-    val enqueued = mutableListOf<Triple<Long, String, String>>()
-    val fileDeleteAttempts = mutableListOf<Long>()
-    val failingDeletes = mutableSetOf<Long>()
-    val deleteOrder = mutableListOf<String>()
-
-    override suspend fun enqueueDownload(
-        chapterId: Long,
-        mangaTitle: String,
-        api: String,
-    ): Result<Unit> {
-        enqueued += Triple(chapterId, mangaTitle, api)
-        return Result.success(Unit)
-    }
-
-    override suspend fun cancelDownload(chapterId: Long): Result<Unit> {
-        queuedCancelled += chapterId
-        return Result.success(Unit)
-    }
-
-    override suspend fun cancelRunningDownload(
-        chapterId: Long,
-        mangaId: Long,
-    ): Result<Unit> {
-        runningCancelled += chapterId to mangaId
-        return Result.success(Unit)
-    }
-
-    override suspend fun retryDownload(chapterId: Long): Result<Unit> = error("unused")
-
-    override suspend fun cancelAllDownloads(): Result<Unit> = error("unused")
-
-    override suspend fun deleteDownload(chapterId: Long): Result<Unit> = error("unused")
-
-    override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> {
-        fileDeleteAttempts += chapterId
-        deleteOrder += "files:$chapterId"
-        return if (chapterId in failingDeletes) {
-            Result.failure(IllegalStateException("file deletion failed"))
-        } else {
-            Result.success(Unit)
-        }
-    }
-
-    override suspend fun reconcileInterrupted(): Result<Unit> = error("unused")
-}
-
-/** The existing Details fixture is private and hardwires no-op actions; reuse its public fakes only. */
+/** Exact-owner controls complement the private, single-owner Details regression fixture. */
 internal class DetailsOwnerFixture(
     idsByMangaUrl: Map<String, Long>,
     dispatcher: CoroutineDispatcher,
@@ -179,6 +61,11 @@ internal class DetailsOwnerFixture(
     val actions = OwnerDownloadActions()
     val resolver = OwnerResolver(idsByMangaUrl)
     val deletedChapters = mutableListOf<Long>()
+    val chaptersByMangaUrl = mutableMapOf<String, List<Chapter>>()
+    // Single-owner overlay control only: the legacy saved port cannot distinguish identical metadata.
+    // Opposite-owner scenarios use the exact-URL fetch map instead of pretending this port can.
+    val savedDetails = MutableStateFlow<MangaDetails?>(null)
+    var fetchGate: CompletableDeferred<Unit>? = null
     private val library = FakeLibraryRepository().apply { emitInLibrary(true) }
     private val reads = RecordingMarkChapterReadRepository()
     private val enqueue = EnqueueDownloadUseCase(actions)
@@ -192,17 +79,17 @@ internal class DetailsOwnerFixture(
         }
     private val fetch =
         object : MangaDetailsRepository {
-            override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> =
-                AppResult.Success(
-                    detailsFor(manga, chapters),
-                )
+            override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
+                fetchGate?.await()
+                return AppResult.Success(detailsFor(manga, chaptersByMangaUrl[manga.url] ?: chapters))
+            }
         }
     private val saved =
         object : SavedMangaDetailsRepository {
             override fun observeSavedDetails(
                 api: String,
                 title: String,
-            ): Flow<MangaDetails?> = flowOf(null)
+            ): Flow<MangaDetails?> = savedDetails
         }
     private val classifier =
         object : AdultContentClassifier {
@@ -243,6 +130,7 @@ internal class DetailsOwnerFixture(
         object : CompressionDeferralRepository {
             override fun observeLowPowerDeferral(): Flow<Boolean> = flowOf(false)
         }
+    val enqueueAll = EnqueueAllChaptersDownloadUseCase(resolver, enqueue, dispatchers)
 
     val vm =
         DetailsViewModel(
@@ -251,7 +139,7 @@ internal class DetailsOwnerFixture(
             observeInLibrary = ObserveInLibraryUseCase(library),
             observeSavedDetails = ObserveSavedMangaDetailsUseCase(saved),
             toggleInLibrary = ToggleInLibraryUseCase(library),
-            enqueueAllChaptersDownload = EnqueueAllChaptersDownloadUseCase(resolver, enqueue, dispatchers),
+            enqueueAllChaptersDownload = enqueueAll,
             toggleChapterRead = ToggleChapterReadUseCase(reads),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(RecordingChapterBookmarkRepository()),
             markChaptersRead = MarkChaptersReadUseCase(reads),
@@ -270,6 +158,37 @@ internal class DetailsOwnerFixture(
             logMangaOpen = LogMangaOpenUseCase(analytics),
             observeCompressionDeferred = ObserveCompressionDeferredUseCase(compression),
         )
+
+    fun pauseResolution(): CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { resolver.gate = it }
+
+    fun select(chapters: List<Chapter> = this.chapters) {
+        vm.submit(DetailsIntent.OnSelectionClear)
+        chapters.forEach { vm.submit(DetailsIntent.OnChapterLongClick(it)) }
+    }
+
+    fun assertLoadedOwner(manga: Manga): DetailsState {
+        val current = vm.state.value
+        assertEquals(manga.url, current.manga?.url)
+        assertEquals(manga.url, assertNotNull(current.details).url)
+        assertFalse(current.isLoading)
+        return current
+    }
+
+    fun assertEnqueued(
+        manga: Manga,
+        chapterIds: List<Long>,
+    ) {
+        assertEquals(chapterIds.map { Triple(it, manga.title, manga.api) }, actions.enqueued)
+    }
+
+    fun assertResolution(
+        manga: Manga,
+        singleUrls: List<String>,
+        bulkUrls: List<List<String>>,
+    ) {
+        assertEquals(singleUrls.map { manga to it }, resolver.singleRequests)
+        assertEquals(bulkUrls.map { manga to it }, resolver.bulkRequests)
+    }
 }
 
 internal const val CHAPTER_URL = "chapter/shared"

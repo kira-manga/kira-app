@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS
 
@@ -160,6 +161,96 @@ interface ChapterDownloadDao {
         progress: Int,
         errorMsg: String? = null,
     )
+
+    /**
+     * Publishes one Android completion and its saved flag in the same generated Room transaction.
+     * Files and [expectedPaths] must already be saved; filesystem work stays outside this method.
+     * A deleted, replaced or no-longer-in-flight ledger is left alone. A missing/mismatched saved
+     * chapter or changed paths fail the transaction rather than publish a partial SUCCESS.
+     */
+    @Transaction
+    suspend fun completeDownload(
+        expected: ChapterDownloadEntity,
+        expectedPaths: List<String>,
+        sizeBytes: Long,
+    ): Boolean {
+        val current =
+            getDownloadByChapter(expected.chapterId)
+                ?.takeIf { it.isSameDownload(expected) && it.isInFlight() }
+                ?: return false
+        val saved = checkNotNull(getSavedChapterForDownload(expected.chapterId))
+        check(saved.mangaId == expected.mangaId && saved.url == expected.url)
+        check(expectedPaths.isNotEmpty() && saved.localImagePaths == expectedPaths)
+        check(writeCompletedDownload(current.id, current.chapterId, sizeBytes) == 1)
+        check(markMatchingChapterDownloaded(saved.id, saved.mangaId, saved.url) == 1)
+        return true
+    }
+
+    /** Saved-row identity and converted paths used by the completion/recovery transactions. */
+    @Query("SELECT * FROM saved_chapters WHERE id = :chapterId LIMIT 1")
+    suspend fun getSavedChapterForDownload(chapterId: Long): SavedChapterEntity?
+
+    /** Terminal ledger write primitive; [completeDownload] also checks the saved-row update. */
+    @Query(
+        """
+        UPDATE chapter_downloads
+           SET state = :successState, progress = 100, sizeBytes = :sizeBytes, errorMsg = NULL
+         WHERE id = :downloadId AND chapterId = :chapterId
+        """,
+    )
+    suspend fun writeCompletedDownload(
+        downloadId: Long,
+        chapterId: Long,
+        sizeBytes: Long,
+        successState: DownloadingState = DownloadingState.SUCCESS,
+    ): Int
+
+    /** Checked saved-flag primitive; a ledger's manga foreign key does not prove this row exists. */
+    @Query("UPDATE saved_chapters SET isDownloaded = 1 WHERE id = :chapterId AND mangaId = :mangaId AND url = :url")
+    suspend fun markMatchingChapterDownloaded(
+        chapterId: Long,
+        mangaId: Long,
+        url: String,
+    ): Int
+
+    /** Only surviving, matching SUCCESS rows can be candidates for restart flag repair. */
+    @Query(
+        """
+        SELECT downloads.* FROM chapter_downloads AS downloads
+        INNER JOIN saved_chapters AS saved
+            ON saved.id = downloads.chapterId AND saved.mangaId = downloads.mangaId AND saved.url = downloads.url
+        WHERE downloads.state = :successState AND saved.isDownloaded = 0
+        """,
+    )
+    suspend fun getCompletedWithoutDownloadedFlag(successState: DownloadingState = SUCCESS): List<ChapterDownloadEntity>
+
+    /**
+     * Repairs only a previously verified readable SUCCESS. Rechecks state, row identity and the
+     * converted path list after the caller's file reads; never recreates history or cleared paths.
+     * File readability is a point-in-time caller check, not a filesystem/SQL transaction.
+     */
+    @Transaction
+    suspend fun repairCompletedDownloadFlag(
+        expected: ChapterDownloadEntity,
+        expectedPaths: List<String>,
+    ): Boolean {
+        val current =
+            if (expectedPaths.isEmpty()) {
+                null
+            } else {
+                getDownloadByChapter(expected.chapterId)
+            }
+        if (current == null || !current.isSameDownload(expected) || current.state != DownloadingState.SUCCESS) {
+            return false
+        }
+        val saved = getSavedChapterForDownload(expected.chapterId)
+        return if (saved != null && saved.canRepairDownload(expected, expectedPaths)) {
+            check(markMatchingChapterDownloaded(saved.id, saved.mangaId, saved.url) == 1)
+            true
+        } else {
+            false
+        }
+    }
 
     @Query("UPDATE chapter_downloads SET progress = :progress WHERE chapterId = :id")
     suspend fun updateProgress(
@@ -345,6 +436,22 @@ interface ChapterDownloadDao {
         sizeBytes: Long,
     )
 }
+
+private fun ChapterDownloadEntity.isSameDownload(expected: ChapterDownloadEntity): Boolean =
+    id == expected.id && chapterId == expected.chapterId && mangaId == expected.mangaId && url == expected.url
+
+private fun ChapterDownloadEntity.isInFlight(): Boolean =
+    state == DownloadingState.RUNNING ||
+        state == DownloadingState.COMPRESSING
+
+private fun SavedChapterEntity.canRepairDownload(
+    expected: ChapterDownloadEntity,
+    expectedPaths: List<String>,
+): Boolean =
+    mangaId == expected.mangaId &&
+        url == expected.url &&
+        !isDownloaded &&
+        localImagePaths == expectedPaths
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster184.staleKdocSweep.cascade,
