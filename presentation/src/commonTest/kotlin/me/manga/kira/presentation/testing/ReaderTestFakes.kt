@@ -46,7 +46,10 @@ class FakeChapterPagesRepository : ChapterPagesRepository {
     /** The flow returned for the next fetch. Default: a single empty Success. */
     var result: Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
     override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = result
-    override fun clearExtractedPages(chapter: Chapter) = Unit
+    val cleared = mutableListOf<Pair<Manga, Chapter>>()
+    override fun clearExtractedPages(manga: Manga, chapter: Chapter) {
+        cleared += manga to chapter
+    }
 }
 
 private class FakeReadingModeRepository : ReadingModeRepository {
@@ -100,11 +103,11 @@ private class FakePageProgressRepository : PageProgressRepository {
 }
 
 class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
-    /** Chapter URLs the observer subscribed to, in order — `last()` is the active observed chapter. */
-    val observed = mutableListOf<String>()
+    /** Owner and chapter URL subscribed to, in order — `last()` is the active observed chapter. */
+    val observed = mutableListOf<Pair<Manga, String>>()
 
-    /** Chapter URLs toggled, in order — for asserting the toggle targets the active chapter. */
-    val toggled = mutableListOf<String>()
+    /** Owner and chapter URL toggled, in order — for asserting the toggle targets the active chapter. */
+    val toggled = mutableListOf<Pair<Manga, String>>()
 
     /**
      * Whether [toggleBookmark] reports the chapter as in-library (#15). `true` (default) mimics a
@@ -113,14 +116,18 @@ class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
      */
     var inLibrary: Boolean = true
 
-    override fun observeBookmark(chapterUrl: String): Flow<Boolean> {
-        observed += chapterUrl
+    override fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean> {
+        observed += manga to chapterUrl
         return flowOf(false)
     }
 
-    override suspend fun toggleBookmark(chapterUrl: String): Boolean {
-        toggled += chapterUrl
+    override suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean {
+        toggled += manga to chapterUrl
         return inLibrary
+    }
+
+    override suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>) {
+        toggled += chapterUrls.map { manga to it }
     }
 }
 
@@ -137,10 +144,10 @@ class RecordingHistoryRepository : HistoryRepository {
 }
 
 class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
-    val marked = mutableListOf<String>()
-    override suspend fun markRead(chapterUrl: String) { marked += chapterUrl }
-    override suspend fun toggleRead(chapterUrl: String) = Unit
-    override suspend fun markRead(chapterUrls: List<String>) { marked += chapterUrls }
+    val marked = mutableListOf<Pair<Manga, String>>()
+    override suspend fun markRead(manga: Manga, chapterUrl: String) { marked += manga to chapterUrl }
+    override suspend fun toggleRead(manga: Manga, chapterUrl: String) = Unit
+    override suspend fun markRead(manga: Manga, chapterUrls: List<String>) { marked += chapterUrls.map { manga to it } }
 }
 
 /** Bundle exposing the handles a test needs to drive/inspect the reader VM. */

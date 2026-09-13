@@ -51,7 +51,7 @@ class ReaderViewModelAppendTest {
         )
         assertEquals(listOf("ch/1", "ch/2"), s.loadedChapterUrls)
         assertEquals(listOf("ch/1", "ch/1", "ch/2", "ch/2"), s.pageChapters)
-        assertTrue(env.markRead.marked.contains("ch/1"), "finishing chapter 1 marks it read on append")
+        assertTrue(env.markRead.marked.contains(readerManga() to "ch/1"), "finishing chapter 1 marks it read on append")
     }
 
     @Test
@@ -81,6 +81,8 @@ class ReaderViewModelAppendTest {
         val s = env.vm.state.value
         assertEquals(listOf("c", "d"), s.pages.map { it.url }, "explicit Next REPLACES the feed (clear+jump)")
         assertEquals(listOf("ch/2"), s.loadedChapterUrls)
+        assertEquals(listOf(readerManga() to readerChapter("1")), env.pages.cleared)
+        assertEquals(listOf(readerManga() to "ch/1"), env.markRead.marked)
     }
 
     @Test

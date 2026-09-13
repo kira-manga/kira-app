@@ -242,6 +242,7 @@ val detailsReworkModule: Module = module {
             toggleChapterBookmark = get(),
             markChaptersRead = get(),
             enqueueChapterDownload = get(),
+            enqueueDownload = get(),
             cancelChapterDownload = get(),
             cancelRunningDownload = get(),
             cancelAllDownloads = get(),

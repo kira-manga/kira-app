@@ -78,18 +78,18 @@ class ReaderViewModelActiveChapterTest {
     fun bookmarkAndHistory_followActiveChapter_onlyWhenChapterUrlChanges() = runTest {
         val env = enterAndAppend()
         // After enter, the anchor chapter was observed + recorded once.
-        assertEquals("ch/1", env.bookmark.observed.first())
+        assertEquals(readerManga() to "ch/1", env.bookmark.observed.first())
         assertTrue(env.history.recorded.any { it.second == "ch/1" })
 
         // Cross the boundary into chapter 2 → re-observe + record for ch/2 exactly once.
         env.vm.submit(ReaderIntent.OnPageChanged(2))
-        assertEquals("ch/2", env.bookmark.observed.last(), "bookmark observer re-points to the active chapter")
+        assertEquals(readerManga() to "ch/2", env.bookmark.observed.last(), "bookmark observer re-points to the active chapter")
         assertEquals(1, env.history.recorded.count { it.second == "ch/2" }, "history recorded for ch/2 once")
-        val observedCh2 = env.bookmark.observed.count { it == "ch/2" }
+        val observedCh2 = env.bookmark.observed.count { it == readerManga() to "ch/2" }
 
         // A further scroll WITHIN chapter 2 (page 3) must NOT re-observe or re-record (guard).
         env.vm.submit(ReaderIntent.OnPageChanged(3))
-        assertEquals(observedCh2, env.bookmark.observed.count { it == "ch/2" }, "no re-observe on same-chapter scroll")
+        assertEquals(observedCh2, env.bookmark.observed.count { it == readerManga() to "ch/2" }, "no re-observe on same-chapter scroll")
         assertEquals(1, env.history.recorded.count { it.second == "ch/2" }, "no re-record on same-chapter scroll")
     }
 
@@ -99,7 +99,7 @@ class ReaderViewModelActiveChapterTest {
         env.vm.submit(ReaderIntent.OnPageChanged(2)) // active = ch/2
 
         env.vm.submit(ReaderIntent.OnToggleBookmark)
-        assertEquals("ch/2", env.bookmark.toggled.last(), "bookmark toggles the chapter in view, not the anchor")
+        assertEquals(readerManga() to "ch/2", env.bookmark.toggled.last(), "bookmark toggles the chapter in view, not the anchor")
     }
 
     @Test

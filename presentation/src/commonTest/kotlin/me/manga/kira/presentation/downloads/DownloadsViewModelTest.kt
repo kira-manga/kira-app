@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.DownloadsActionRepository
@@ -57,6 +58,9 @@ class DownloadsViewModelTest {
     private class FakeDownloadsRepository(
         private val upstream: Flow<List<DownloadedChapter>>,
     ) : DownloadsRepository {
+        override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
+            error("unused scoped observation")
+
         override fun observeAll(): Flow<List<DownloadedChapter>> = upstream
     }
 

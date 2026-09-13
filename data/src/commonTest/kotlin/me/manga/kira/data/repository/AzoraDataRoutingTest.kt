@@ -374,10 +374,10 @@ class AzoraDataRoutingTest {
         private val idByUrl: (String) -> Long? = { null },
         private val byId: (Long) -> SavedChapterEntity? = { null },
     ) : ChapterDao {
-        override suspend fun getChapterIdByUrl(url: String): Long? = idByUrl(url)
+        override suspend fun getChapterIdByUrl(mangaUrl: String, url: String): Long? = idByUrl(url)
         override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = byId(chapterId)
-        override suspend fun getChapterIdsByUrlsBatch(urls: List<String>): List<Long> = urls.mapNotNull { idByUrl(it) }
-        override suspend fun getChapterIdUrlPairsBatch(urls: List<String>) =
+        override suspend fun getChapterIdsByUrlsBatch(mangaUrl: String, urls: List<String>): List<Long> = urls.mapNotNull { idByUrl(it) }
+        override suspend fun getChapterIdUrlPairsBatch(mangaUrl: String, urls: List<String>) =
             urls.mapNotNull { url -> idByUrl(url)?.let { ChapterIdUrl(id = it, url = url) } }
         override suspend fun getChapterIdUrlPairsForMangaBatch(mangaId: Long, urls: List<String>) =
             urls.mapNotNull { url -> idByUrl(url)?.let { ChapterIdUrl(id = it, url = url) } }
@@ -393,7 +393,7 @@ class AzoraDataRoutingTest {
         override suspend fun markChapterAsRead(chapterId: Long, currentTime: Long) = error("unused")
         override suspend fun markChapterIsNew(chapterId: Long) = error("unused")
         override fun getChapterById(chapterId: Long): Flow<SavedChapterEntity?> = flowOf(null)
-        override fun getChapterByUrl(url: String): Flow<SavedChapterEntity?> = flowOf(null)
+        override fun getChapterByUrl(mangaUrl: String, url: String): Flow<SavedChapterEntity?> = flowOf(null)
         override suspend fun markChaptersNotDownloaded(ids: List<Long>, emptyList: List<String>) = error("unused")
         override suspend fun deleteChapterById(chapterId: Long) = error("unused")
         override suspend fun markChaptersReadBatch(chapterIds: List<Long>) = error("unused")

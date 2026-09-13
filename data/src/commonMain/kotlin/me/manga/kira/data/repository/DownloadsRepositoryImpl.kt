@@ -3,7 +3,9 @@ package me.manga.kira.data.repository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.mapper.toDomain
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.DownloadsRepository
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
@@ -112,10 +114,16 @@ import me.manga.kira.presentation.features.download.domain.clean.DownloadReposit
  */
 class DownloadsRepositoryImpl(
     private val legacy: DownloadRepository,
+    private val chapterDownloadDao: ChapterDownloadDao,
 ) : DownloadsRepository {
 
     override fun observeAll(): Flow<List<DownloadedChapter>> =
         // distinctUntilChanged (2026-07 audit): dedupe structurally-equal Room re-emissions before
         // the per-row domain mapping (same family as LibraryRepositoryImpl.observeLibrary).
         legacy.observeAllDownloads().distinctUntilChanged().map { list -> list.map { it.toDomain() } }
+
+    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
+        chapterDownloadDao.observeDownloadsForMangaUrl(manga.url)
+            .distinctUntilChanged()
+            .map { list -> list.map { it.toDomain() } }
 }

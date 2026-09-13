@@ -1,6 +1,7 @@
 package me.manga.kira.domain.repository
 
 import kotlinx.coroutines.flow.Flow
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 
 /**
@@ -61,6 +62,9 @@ import me.manga.kira.domain.model.downloads.DownloadedChapter
  * post-retire legacy paths consumed them.)
  */
 interface DownloadsRepository {
+    /** Keeps observing this exact manga URL even while its saved parent row is absent. */
+    fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>>
+
 
     /**
      * Reactive list of all chapter downloads (active + failed + completed).

@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.datetime.LocalDate
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.model.updates.UpdateEntry
 import me.manga.kira.domain.repository.DownloadsActionRepository
@@ -87,6 +88,9 @@ class UpdatesViewModelRetryTest {
     }
 
     private object EmptyDownloadsRepository : DownloadsRepository {
+        override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
+            error("unused scoped observation")
+
         override fun observeAll(): Flow<List<DownloadedChapter>> = flowOf(emptyList())
     }
 

@@ -7,7 +7,8 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
 
 /**
- * Source of [Page]s for a given [Chapter].
+ * Source of [Page]s for a given [Chapter] within its owning [Manga]. Local lookup and cleanup
+ * match the exact parent URL and chapter URL; another manga's downloaded chapter is never used.
  *
  * Contract §6 SRP: owns ONE rule — "given a manga + chapter, hand back the page sequence as it
  * becomes available, or a typed failure". The data-layer impl picks the right route (downloaded
@@ -148,10 +149,11 @@ interface ChapterPagesRepository {
      * Best-effort, fire-and-forget cleanup of the temporary images extracted from a downloaded
      * chapter's CBZ archive (see the local-read branch of [fetchPages]). Reading a downloaded `.cbz`
      * extracts its pages into a per-chapter cache dir; without this the dirs accumulate unbounded.
+     * [manga] must be captured from the feed being left, not read from replacement screen state.
      *
      * Non-suspend: the impl runs the file deletion on its own app-lifetime scope so it can be
      * called safely from a ViewModel's `onCleared()` (where `viewModelScope` is already cancelled).
      * A no-op for chapters that were not downloaded / not CBZ-extracted.
      */
-    fun clearExtractedPages(chapter: Chapter)
+    fun clearExtractedPages(manga: Manga, chapter: Chapter)
 }

@@ -160,8 +160,8 @@ class LibraryRepository(
     // transfer-complete (isDownloaded + localImagePaths), or the chapter stays "Downloaded".
     suspend fun markChapterNotDownloaded(chapterId: Long) = chapterDao.markChaptersNotDownloaded(listOf(chapterId))
 
-    suspend fun getChapterIdByUrl(chapterUrl: String) =
-        chapterDao.getChapterIdByUrl(chapterUrl)
+    suspend fun getChapterIdByUrl(mangaId: Long, chapterUrl: String): Long? =
+        chapterDao.getChapterIdsByUrlForManga(mangaId, listOf(chapterUrl))[chapterUrl]
 
 
     suspend fun toggleChapterBookmark(chapterId: Long) =

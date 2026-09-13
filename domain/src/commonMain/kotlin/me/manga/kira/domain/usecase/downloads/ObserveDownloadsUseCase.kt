@@ -1,6 +1,7 @@
 package me.manga.kira.domain.usecase.downloads
 
 import kotlinx.coroutines.flow.Flow
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.DownloadsRepository
 
@@ -94,4 +95,6 @@ class ObserveDownloadsUseCase(
     private val repository: DownloadsRepository,
 ) {
     operator fun invoke(): Flow<List<DownloadedChapter>> = repository.observeAll()
+
+    operator fun invoke(manga: Manga): Flow<List<DownloadedChapter>> = repository.observeForManga(manga)
 }

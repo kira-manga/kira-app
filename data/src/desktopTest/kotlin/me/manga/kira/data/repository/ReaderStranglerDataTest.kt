@@ -38,6 +38,11 @@ import kotlin.test.assertTrue
  */
 class ReaderStranglerDataTest {
 
+    private val owner = Manga(
+        api = "src", language = "en", title = "Manga", url = "https://src/manga",
+        coverUrl = "", rating = null, genres = emptyList(),
+    )
+
     // --- ChapterDao fake (the seam the bookmark / mark-read impls now consume directly) ---------
 
     /**
@@ -54,12 +59,17 @@ class ReaderStranglerDataTest {
         val toggledBookmarkIds = mutableListOf<Long>()
         val markedReadIds = mutableListOf<Long>()
         val markedIsNewClearedIds = mutableListOf<Long>()
+        val resolved = mutableListOf<Pair<String, String>>()
+        val observed = mutableListOf<Pair<String, String>>()
 
-        override suspend fun getChapterIdByUrl(url: String): Long? = urlToId[url]
+        override suspend fun getChapterIdByUrl(mangaUrl: String, url: String): Long? {
+            resolved += mangaUrl to url
+            return urlToId[url]
+        }
 
-        override suspend fun getChapterIdsByUrlsBatch(urls: List<String>): List<Long> = urls.mapNotNull { urlToId[it] }
+        override suspend fun getChapterIdsByUrlsBatch(mangaUrl: String, urls: List<String>): List<Long> = urls.mapNotNull { urlToId[it] }
 
-        override suspend fun getChapterIdUrlPairsBatch(urls: List<String>) =
+        override suspend fun getChapterIdUrlPairsBatch(mangaUrl: String, urls: List<String>) =
             urls.mapNotNull { url -> urlToId[url]?.let { ChapterIdUrl(id = it, url = url) } }
 
         override suspend fun getChapterIdUrlPairsForMangaBatch(mangaId: Long, urls: List<String>) =
@@ -69,8 +79,10 @@ class ReaderStranglerDataTest {
 
         // url-keyed bookmark stream the post-r2-hot-8 observer mirrors: back it with bookmarkFlow
         // when the seeded row is for this url, else an absent-row flow (null → false).
-        override fun getChapterByUrl(url: String): Flow<SavedChapterEntity?> =
-            if (bookmarkFlow.value?.url == url) bookmarkFlow else flowOf(null)
+        override fun getChapterByUrl(mangaUrl: String, url: String): Flow<SavedChapterEntity?> {
+            observed += mangaUrl to url
+            return if (bookmarkFlow.value?.url == url) bookmarkFlow else flowOf(null)
+        }
 
         override suspend fun toggleChapterBookmark(chapterId: Long) {
             toggledBookmarkIds += chapterId
@@ -107,7 +119,7 @@ class ReaderStranglerDataTest {
         val dao = FakeChapterDao(urlToId = emptyMap())
         val impl = ChapterBookmarkRepositoryImpl(dao)
 
-        impl.observeBookmark("https://src/c1").test {
+        impl.observeBookmark(owner, "https://src/c1").test {
             assertFalse(awaitItem())
             // Don't pin the single-emit-then-complete behavior (open re-bind gap: the flow should
             // stay alive and re-bind if the chapter row appears later, e.g. the manga is added to
@@ -124,12 +136,13 @@ class ReaderStranglerDataTest {
         val dao = FakeChapterDao(urlToId = mapOf(url to 42L), bookmarkFlow = flow)
         val impl = ChapterBookmarkRepositoryImpl(dao)
 
-        impl.observeBookmark(url).test {
+        impl.observeBookmark(owner, url).test {
             assertFalse(awaitItem()) // initial: not bookmarked
             flow.value = savedChapter(id = 42L, url = url, isBookmarked = true)
             assertTrue(awaitItem()) // passthrough tracks the legacy column flip
             cancelAndIgnoreRemainingEvents()
         }
+        assertEquals(listOf(owner.url to url), dao.observed)
     }
 
     @Test
@@ -137,7 +150,7 @@ class ReaderStranglerDataTest {
         val dao = FakeChapterDao(urlToId = emptyMap())
         val impl = ChapterBookmarkRepositoryImpl(dao)
 
-        impl.toggleBookmark("https://src/missing")
+        impl.toggleBookmark(owner, "https://src/missing")
 
         assertTrue(dao.toggledBookmarkIds.isEmpty()) // legacy.toggleChapterBookmark never called
     }
@@ -148,8 +161,9 @@ class ReaderStranglerDataTest {
         val dao = FakeChapterDao(urlToId = mapOf(url to 7L))
         val impl = ChapterBookmarkRepositoryImpl(dao)
 
-        impl.toggleBookmark(url)
+        impl.toggleBookmark(owner, url)
 
+        assertEquals(listOf(owner.url to url), dao.resolved)
         assertEquals(listOf(7L), dao.toggledBookmarkIds)
     }
 
@@ -160,7 +174,7 @@ class ReaderStranglerDataTest {
         val dao = FakeChapterDao(urlToId = emptyMap())
         val impl = MarkChapterReadRepositoryImpl(dao)
 
-        impl.markRead("https://src/missing")
+        impl.markRead(owner, "https://src/missing")
 
         assertTrue(dao.markedReadIds.isEmpty()) // legacy.markChapterAsRead never called
     }
@@ -171,8 +185,9 @@ class ReaderStranglerDataTest {
         val dao = FakeChapterDao(urlToId = mapOf(url to 99L))
         val impl = MarkChapterReadRepositoryImpl(dao)
 
-        impl.markRead(url)
+        impl.markRead(owner, url)
 
+        assertEquals(listOf(owner.url to url), dao.resolved)
         assertEquals(listOf(99L), dao.markedReadIds)
         // Opening/reading a chapter also clears its NEW flag (native parity).
         assertEquals(listOf(99L), dao.markedIsNewClearedIds)

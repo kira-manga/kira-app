@@ -1,8 +1,10 @@
 package me.manga.kira.domain.repository
 
+import me.manga.kira.domain.model.Manga
+
 /**
- * Mark a chapter as READ, keyed by the chapter's canonical source `url`
- * (the rework [me.manga.kira.domain.model.Chapter] identity — there is no surrogate id).
+ * Mark a chapter as READ within its owning [Manga]. Persistence uses the exact manga URL
+ * together with the chapter URL, never a chapter URL shared by another manga.
  *
  * Reader-convergence R3b. The rework Reader never set the `isRead` flag — a parity gap that breaks
  * the Library `readCount` + the UNREAD filter after the route-swap. The legacy reader marked the
@@ -26,11 +28,11 @@ package me.manga.kira.domain.repository
  */
 interface MarkChapterReadRepository {
     /** Sets the chapter's `isRead` flag; no-op when the chapter has no in-library row. */
-    suspend fun markRead(chapterUrl: String)
+    suspend fun markRead(manga: Manga, chapterUrl: String)
 
     /**
      * Toggles the chapter's `isRead` flag (read↔unread), keyed by the chapter's canonical source
-     * `url`. No-op when the chapter has no in-library row.
+     * `url` within [manga]. No-op when that owner has no in-library chapter row.
      *
      * GAP-LIB-02 (per-manga library chapter management on the rework Details screen). The native
      * `LibraryMangaScreen` exposed a per-chapter RemoveRedEye toggle that flipped the read flag in
@@ -38,7 +40,7 @@ interface MarkChapterReadRepository {
      * Details chapter row can both mark-read and mark-unread, keeping the Library `readCount` +
      * UNREAD filter (`MangaDao` COUNT) consistent through Room invalidation.
      */
-    suspend fun toggleRead(chapterUrl: String)
+    suspend fun toggleRead(manga: Manga, chapterUrl: String)
 
     /**
      * Bulk-marks every chapter in [chapterUrls] as READ. No-op for any url with no in-library row;
@@ -46,5 +48,5 @@ interface MarkChapterReadRepository {
      * "mark read" action on the rework Details chapter list (GAP-LIB-02). Idempotent — already-read
      * chapters stay read.
      */
-    suspend fun markRead(chapterUrls: List<String>)
+    suspend fun markRead(manga: Manga, chapterUrls: List<String>)
 }

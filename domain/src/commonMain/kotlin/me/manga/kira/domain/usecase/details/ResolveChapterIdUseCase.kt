@@ -1,10 +1,11 @@
 package me.manga.kira.domain.usecase.details
 
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterIdResolver
 
 /**
  * Resolves a chapter's canonical source `url` into its Room `saved_chapters.id`, or `null` when
- * no in-library row exists for that url.
+ * no in-library row exists for that url within the exact owning manga URL.
  *
  * DIP seam (contract §6): the Details VM depends on this use case, never on
  * [ChapterIdResolver] directly — mirroring the established "VM → use case → repository" shape of
@@ -14,6 +15,9 @@ import me.manga.kira.domain.repository.ChapterIdResolver
 class ResolveChapterIdUseCase(
     private val resolver: ChapterIdResolver,
 ) {
-    suspend operator fun invoke(chapterUrl: String): Long? =
-        resolver.resolveChapterId(chapterUrl)
+    suspend operator fun invoke(manga: Manga, chapterUrl: String): Long? =
+        resolver.resolveChapterId(manga, chapterUrl)
+
+    suspend operator fun invoke(manga: Manga, chapterUrls: List<String>): Map<String, Long> =
+        resolver.resolveChapterIds(manga, chapterUrls)
 }

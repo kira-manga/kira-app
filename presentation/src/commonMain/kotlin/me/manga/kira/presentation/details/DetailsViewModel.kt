@@ -31,6 +31,7 @@ import me.manga.kira.domain.usecase.downloads.CancelRunningDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
+import me.manga.kira.domain.usecase.downloads.EnqueueDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.library.MarkMangaOpenedUseCase
@@ -131,6 +132,7 @@ class DetailsViewModel(
     private val toggleChapterBookmark: ToggleChapterBookmarkUseCase,
     private val markChaptersRead: MarkChaptersReadUseCase,
     private val enqueueChapterDownload: EnqueueChapterDownloadUseCase,
+    private val enqueueDownload: EnqueueDownloadUseCase,
     private val cancelChapterDownload: CancelChapterDownloadUseCase,
     // Interrupt the in-flight worker/coroutine for a RUNNING/COMPRESSING chapter (deletes partials
     // + re-enqueues the rest). The queue-prune cancelChapterDownload above is for QUEUED rows only.
@@ -182,9 +184,14 @@ class DetailsViewModel(
      */
     private var savedDetailsJob: Job? = null
 
+    private var downloadsJob: Job? = null
+    private var downloadsGeneration = 0L
+    private var cloudflareRetryJob: Job? = null
+
     /**
      * PFIX-DLPROGRESS (2026-06-01) + completion-freeze fix (2026-06-02): the most recent download
-     * rows captured from [ObserveDownloadsUseCase], keyed by chapter `url` (`DownloadedChapter.url`).
+     * rows captured from [ObserveDownloadsUseCase] for the exact owning manga URL, then keyed by
+     * chapter `url` (`DownloadedChapter.url`).
      * Carries the live [DownloadState] + 0-100 `progress` + `sizeBytes` for each QUEUED / RUNNING /
      * COMPRESSING (active) AND SUCCESS (completed) row; FAILED rows are excluded so the chapter shows
      * the idle Download button to retry.
@@ -193,8 +200,8 @@ class DetailsViewModel(
      * displayed [Chapter] list SYNCHRONOUSLY — no per-row suspend `ChapterIdResolver` round-trip, so
      * the per-chapter status map is written in one [updateState] and the running→downloaded
      * transition is atomic (the SUCCESS row arrives in the same downloads emission that dropped
-     * RUNNING). Recomputed on every downloads tick and every displayed-list change. Started once in
-     * [init] for the screen's lifetime.
+     * RUNNING). Recomputed on every downloads tick and every displayed-list change. The subscription,
+     * cache and pending challenge retries are replaced together on each owner bind.
      */
     private var downloadRowsByUrl: Map<String, ChapterDownloadProgress> = emptyMap()
 
@@ -209,33 +216,6 @@ class DetailsViewModel(
     private val cloudflareFailedDownloadUrls = mutableSetOf<String>()
 
     init {
-        // Observe the global downloads queue; project each active/completed row (state + live
-        // progress + size) into a url-keyed cache, then re-derive the per-chapter
-        // [DetailsState.chapterDownloads] map for the currently-displayed chapters. Joining by `url`
-        // keeps the whole recompute synchronous (no id-resolve), which is what makes the
-        // running→downloaded flip land in a single state snapshot (no leave/re-enter flash).
-        observeDownloads()
-            .onEach { rows ->
-                downloadRowsByUrl = rows
-                    .filter { it.state != DownloadState.FAILED }
-                    .associate {
-                        it.url to ChapterDownloadProgress(
-                            state = it.state,
-                            progress = it.progress,
-                            sizeBytes = it.sizeBytes,
-                            chapterId = it.chapterId,
-                            mangaId = it.mangaId,
-                        )
-                    }
-                recomputeChapterDownloads()
-                // A download whose page-resolution hit a Cloudflare challenge is FAILED with the engine's
-                // sentinel — auto-route to the same WebView solver the reading path uses, then re-enqueue
-                // on return (see onRetry). FAILED stays out of the UI map above (idle Download button).
-                maybeSolveCloudflareForFailedDownloads(rows)
-            }
-            .catch { /* Downloads indicator is best-effort; the chapter list still works without it. */ }
-            .launchIn(viewModelScope)
-
         // #4: track reachability into state so the download gates can block + give immediate
         // feedback while offline. Defaults to online (DetailsState.isOnline = true) so the absence
         // of an emission never blocks a download (no regression to the existing enqueue flows).
@@ -360,8 +340,11 @@ class DetailsViewModel(
                 // re-emission (typically same frame, but the reset guarantees correctness even
                 // when the Room query coldstart takes a tick).
                 isInLibrary = false,
+                chapterDownloads = emptyMap(),
+                selectedChapterUrls = emptySet(),
             )
         }
+        startObservingDownloads(manga)
         startObservingLibraryMembership(manga)
         startObservingSavedDetails(manga)
         // Native parity (LibraryDetailsViewModel reads chapters from Room; the source is only hit on
@@ -526,8 +509,11 @@ class DetailsViewModel(
                 // and is re-armed in runFetch.onSuccess once the fetched genres classify adult.
                 adultGateStep = if (tentativeAdult) AdultGateStep.AdultWarning else AdultGateStep.None,
                 isInLibrary = false,
+                chapterDownloads = emptyMap(),
+                selectedChapterUrls = emptySet(),
             )
         }
+        startObservingDownloads(tentative)
         runFetch(tentative)
     }
 
@@ -731,7 +717,7 @@ class DetailsViewModel(
         // chapter click), not later when the reader advances past it. Does NOT mark the chapter read
         // (opening != reading). Fire-and-forget; no-op for a non-saved chapter. The saved-details
         // flow re-emits and the badge clears reactively.
-        launchSafely { clearChapterNew(intent.chapter.url) }
+        launchSafely { clearChapterNew(manga, intent.chapter.url) }
         emit(DetailsEffect.NavigateToReader(manga = manga, chapter = intent.chapter))
     }
 
@@ -756,14 +742,16 @@ class DetailsViewModel(
      * A use-case-level failure surfaces via the existing [DetailsEffect.ShowError] snackbar.
      */
     private fun onDownloadAllClick() {
-        val details = state.value.details ?: return
+        val current = state.value
+        val manga = current.manga ?: return
+        val details = current.details ?: return
         launchSafely {
             // #4: same offline gate as the single-chapter download path.
             if (!state.value.isOnline) {
                 emit(DetailsEffect.ShowError(AppError.Network.NoConnectivity()))
                 return@launchSafely
             }
-            enqueueAllChaptersDownload(details)
+            enqueueAllChaptersDownload(manga, details)
                 .onFailure { t -> emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t))) }
         }
     }
@@ -824,6 +812,38 @@ class DetailsViewModel(
 
     // ---- GAP-LIB-02/03 per-chapter library management ----------------------------------------
 
+    private fun startObservingDownloads(manga: Manga) {
+        downloadsJob?.cancel()
+        cloudflareRetryJob?.cancel()
+        val generation = ++downloadsGeneration
+        downloadRowsByUrl = emptyMap()
+        cloudflareFailedDownloadUrls.clear()
+        cloudflareAttempts = 0
+        // Scope in Room before forming a URL map. Chapter URLs can legally repeat under another
+        // saved manga; neither progress nor the direct cancel IDs may come from the global queue.
+        downloadsJob = observeDownloads(manga)
+            .onEach { rows ->
+                if (generation != downloadsGeneration || state.value.manga?.url != manga.url) return@onEach
+                downloadRowsByUrl = rows
+                    .filter { it.state != DownloadState.FAILED }
+                    .associate {
+                        it.url to ChapterDownloadProgress(
+                            state = it.state,
+                            progress = it.progress,
+                            sizeBytes = it.sizeBytes,
+                            chapterId = it.chapterId,
+                            mangaId = it.mangaId,
+                        )
+                    }
+                recomputeChapterDownloads()
+                // FAILED stays out of the UI map, but this owner's challenge failures can request
+                // the WebView solver and a scoped retry when it returns.
+                maybeSolveCloudflareForFailedDownloads(manga, rows)
+            }
+            .catch { /* Downloads indicator is best-effort; the chapter list still works without it. */ }
+            .launchIn(viewModelScope)
+    }
+
     /**
      * Recompute [DetailsState.chapterDownloads] from the latest download rows ([downloadRowsByUrl])
      * and the currently-displayed chapter list (PFIX-DLPROGRESS / completion-freeze fix). For each
@@ -839,30 +859,39 @@ class DetailsViewModel(
      *
      * Runs on BOTH triggers: every downloads-queue emission (so a RUNNING progress *tick* refreshes
      * the percent) and every saved/network chapter-list change (so a list refresh re-keys the map).
-     * The diff guard avoids redundant emissions when a tick concerns some other manga's download.
+     * The diff guard avoids redundant emissions when this owner's chapter progress is unchanged.
      */
     private fun recomputeChapterDownloads() {
-        val chapters = state.value.details?.chapters
+        val current = state.value
+        val generation = downloadsGeneration
+        val chapters = current.details?.chapters.orEmpty()
         val rowsByUrl = downloadRowsByUrl
-        if (chapters.isNullOrEmpty() || rowsByUrl.isEmpty()) {
-            if (state.value.chapterDownloads.isNotEmpty()) {
-                updateState { it.copy(chapterDownloads = emptyMap()) }
+        val byUrl =
+            if (rowsByUrl.isEmpty()) {
+                emptyMap()
+            } else {
+                chapters.mapNotNull { chapter ->
+                    val progress = rowsByUrl[chapter.url] ?: return@mapNotNull null
+                    chapter.url to progress
+                }.toMap()
             }
-            return
-        }
-        val byUrl = chapters.mapNotNull { chapter ->
-            val progress = rowsByUrl[chapter.url] ?: return@mapNotNull null
-            chapter.url to progress
-        }.toMap()
-        if (byUrl != state.value.chapterDownloads) {
-            updateState { it.copy(chapterDownloads = byUrl) }
+        if (byUrl != current.chapterDownloads) {
+            updateState { latest ->
+                if (generation == downloadsGeneration && latest.manga?.url == current.manga?.url) {
+                    latest.copy(chapterDownloads = byUrl)
+                } else {
+                    latest
+                }
+            }
         }
     }
 
     /** Single-chapter read toggle (GAP-LIB-02). Gated on in-library; reactive flow re-renders. */
     private fun onToggleChapterRead(chapter: Chapter) {
-        if (!state.value.isInLibrary) return
-        launchSafely { toggleChapterRead(chapter.url) }
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        launchSafely { toggleChapterRead(manga, chapter.url) }
     }
 
     /**
@@ -871,15 +900,17 @@ class DetailsViewModel(
      * row, and the reactive saved-details flow re-emits the new flag so the row re-renders.
      */
     private fun onToggleChapterBookmark(chapter: Chapter) {
-        if (!state.value.isInLibrary) return
-        launchSafely { toggleChapterBookmark(chapter.url) }
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        launchSafely { toggleChapterBookmark(manga, chapter.url) }
     }
 
     /** Single-chapter download enqueue (GAP-LIB-03). Gated on in-library. */
     private fun onDownloadChapter(chapter: Chapter) {
-        if (!state.value.isInLibrary) return
-        val title = state.value.details?.title ?: return
-        val api = state.value.manga?.api ?: return
+        val current = state.value
+        if (!current.isInLibrary || current.details == null) return
+        val manga = current.manga ?: return
         launchSafely {
             // #4: gate the enqueue on connectivity — offline, give immediate feedback and skip the
             // enqueue (native parity: a download started offline is a no-op).
@@ -887,7 +918,7 @@ class DetailsViewModel(
                 emit(DetailsEffect.ShowError(AppError.Network.NoConnectivity()))
                 return@launchSafely
             }
-            enqueueChapterDownload(chapterUrl = chapter.url, mangaTitle = title, api = api)
+            enqueueChapterDownload(manga = manga, chapterUrl = chapter.url)
                 .onFailure { t -> emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t))) }
         }
     }
@@ -902,9 +933,10 @@ class DetailsViewModel(
      * next resolve. The set self-prunes (retainAll) as rows leave FAILED, and [onRetry] re-enqueues it
      * on WebView dismiss.
      */
-    private suspend fun maybeSolveCloudflareForFailedDownloads(rows: List<DownloadedChapter>) {
-        val manga = state.value.manga ?: return
-        val displayed = state.value.details?.chapters?.mapTo(HashSet()) { it.url } ?: return
+    private suspend fun maybeSolveCloudflareForFailedDownloads(manga: Manga, rows: List<DownloadedChapter>) {
+        val current = state.value
+        if (current.manga?.url != manga.url) return
+        val displayed = current.details?.chapters?.mapTo(HashSet()) { it.url } ?: return
         val failedUrls = rows.asSequence()
             .filter { it.state == DownloadState.FAILED && it.errorMsg == DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL }
             .map { it.url }
@@ -927,7 +959,7 @@ class DetailsViewModel(
 
     /**
      * Re-enqueue the downloads that failed on a Cloudflare challenge, now that a WebView solve refreshed
-     * the source cookies (the download analogue of [onRetry]'s re-fetch). [enqueueChapterDownload] is
+     * the source cookies (the download analogue of [onRetry]'s re-fetch). [enqueueDownload] is
      * idempotent — it drops the stale manifest, resets attempt counts, and re-queues — and the engine
      * then resolves with the fresh cookies. The pending set is NOT cleared here; it self-prunes via
      * [maybeSolveCloudflareForFailedDownloads] once each row leaves FAILED, which avoids a re-emit race.
@@ -935,12 +967,18 @@ class DetailsViewModel(
      */
     private fun retryCloudflareFailedDownloads() {
         if (cloudflareFailedDownloadUrls.isEmpty()) return
-        val title = state.value.details?.title ?: return
-        val api = state.value.manga?.api ?: return
+        val current = state.value
+        val manga = current.manga ?: return
+        val title = current.details?.title ?: return
         val urls = cloudflareFailedDownloadUrls.toList()
-        launchSafely {
+        val generation = downloadsGeneration
+        cloudflareRetryJob?.cancel()
+        cloudflareRetryJob = launchSafely {
+            val idsByUrl = resolveChapterId(manga, urls)
             urls.forEach { url ->
-                enqueueChapterDownload(chapterUrl = url, mangaTitle = title, api = api)
+                if (generation != downloadsGeneration) return@launchSafely
+                val chapterId = idsByUrl[url] ?: return@forEach
+                enqueueDownload(chapterId = chapterId, mangaTitle = title, api = manga.api)
                     .onFailure { /* best-effort; the row stays FAILED (and pending) if it can't re-queue */ }
             }
         }
@@ -954,15 +992,16 @@ class DetailsViewModel(
      * chapter isn't active, so pruning it is correct (the worker simply skips the failed row).
      */
     private fun onCancelChapterDownload(chapter: Chapter) {
+        val manga = state.value.manga ?: return
+        val row = downloadRowsByUrl[chapter.url]
         launchSafely {
-            val row = downloadRowsByUrl[chapter.url]
             val result =
                 if (row != null &&
                     (row.state == DownloadState.RUNNING || row.state == DownloadState.COMPRESSING)
                 ) {
                     cancelRunningDownload(row.chapterId, row.mangaId)
                 } else {
-                    cancelChapterDownload(chapter.url)
+                    cancelChapterDownload(manga, chapter.url)
                 }
             result.onFailure { t -> emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t))) }
         }
@@ -1006,10 +1045,12 @@ class DetailsViewModel(
      * deliberate decision.
      */
     private fun onMarkSelectedRead() {
-        if (!state.value.isInLibrary) return
-        val selected = state.value.selectedChapterUrls.toList()
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        val selected = current.selectedChapterUrls.toList()
         if (selected.isEmpty()) return
-        launchSafely { markChaptersRead(selected) }
+        launchSafely { markChaptersRead(manga, selected) }
         updateState { it.copy(selectedChapterUrls = emptySet()) }
     }
 
@@ -1020,14 +1061,15 @@ class DetailsViewModel(
      * downloaded so a range covering downloaded chapters doesn't re-fetch them.
      */
     private fun onDownloadSelected() {
-        if (!state.value.isInLibrary) return
-        val title = state.value.details?.title ?: return
-        val api = state.value.manga?.api ?: return
-        val selected = state.value.selectedChapterUrls
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        val title = current.details?.title ?: return
+        val selected = current.selectedChapterUrls
         if (selected.isEmpty()) return
         // Drop already-downloaded chapters (native filters `chapters.filter { !it.isDownloaded }`
         // before enqueueing — re-enqueuing a SUCCESS row demotes it to QUEUED and re-fetches files).
-        val toDownload = state.value.displayChapters
+        val toDownload = current.displayChapters
             .filter { it.url in selected && !it.isDownloaded }
             .map { it.url }
         launchSafely {
@@ -1036,8 +1078,10 @@ class DetailsViewModel(
                 emit(DetailsEffect.ShowError(AppError.Network.NoConnectivity()))
                 return@launchSafely
             }
+            val idsByUrl = resolveChapterId(manga, toDownload)
             toDownload.forEach { url ->
-                enqueueChapterDownload(chapterUrl = url, mangaTitle = title, api = api)
+                val chapterId = idsByUrl[url] ?: return@forEach
+                enqueueDownload(chapterId = chapterId, mangaTitle = title, api = manga.api)
                     .onFailure { t -> emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t))) }
             }
         }
@@ -1050,11 +1094,13 @@ class DetailsViewModel(
      * selection. Gated on in-library; the use case no-ops for a chapter with no saved row.
      */
     private fun onBookmarkSelected() {
-        if (!state.value.isInLibrary) return
-        val selected = state.value.selectedChapterUrls.toList()
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        val selected = current.selectedChapterUrls.toList()
         if (selected.isEmpty()) return
         launchSafely {
-            selected.forEach { url -> toggleChapterBookmark(url) }
+            toggleChapterBookmark(manga, selected)
         }
         updateState { it.copy(selectedChapterUrls = emptySet()) }
     }
@@ -1066,11 +1112,14 @@ class DetailsViewModel(
      * queue row), matching native. Clears the selection.
      */
     private fun onDeleteSelectedDownloads() {
-        val selected = state.value.selectedChapterUrls.toList()
+        val current = state.value
+        val manga = current.manga ?: return
+        val selected = current.selectedChapterUrls.toList()
         if (selected.isEmpty()) return
         launchSafely {
+            val idsByUrl = resolveChapterId(manga, selected)
             selected.forEach { url ->
-                val id = resolveChapterId(url) ?: return@forEach
+                val id = idsByUrl[url] ?: return@forEach
                 deleteDownloadedChapter(id)
                     .onFailure { t -> emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t))) }
             }
@@ -1088,9 +1137,11 @@ class DetailsViewModel(
      * so it drops out of the list. For a source-backed manga a later refresh may re-discover it.
      */
     private fun onDeleteChapter(chapter: Chapter) {
-        if (!state.value.isInLibrary) return
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
         launchSafely {
-            val id = resolveChapterId(chapter.url) ?: return@launchSafely
+            val id = resolveChapterId(manga, chapter.url) ?: return@launchSafely
             // 1) Clean the download (clear isDownloaded + files + chapter_downloads row); no-op if not
             //    downloaded. Abort before deleting the saved_chapters row if cleanup failed, so files
             //    are never orphaned under a missing referencing row.
@@ -1110,11 +1161,13 @@ class DetailsViewModel(
      * Dispatches the read mutation, then clears selection without awaiting completion.
      */
     private fun onMarkSelectedDownRead() {
-        if (!state.value.isInLibrary) return
-        val selected = state.value.selectedChapterUrls
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        val selected = current.selectedChapterUrls
         if (selected.size != 1) return
         val targetUrl = selected.first()
-        val displayed = state.value.displayChapters
+        val displayed = current.displayChapters
         val index = displayed.indexOfFirst { it.url == targetUrl }
         if (index < 0) return
         // Include the selected row and every following row in the displayed list.
@@ -1122,7 +1175,7 @@ class DetailsViewModel(
         // Unlike the native exclusive range, this matches the inclusive KMP action label.
         val urls = displayed.subList(index, displayed.size).map { it.url }
         if (urls.isEmpty()) return
-        launchSafely { markChaptersRead(urls) }
+        launchSafely { markChaptersRead(manga, urls) }
         updateState { it.copy(selectedChapterUrls = emptySet()) }
     }
 
@@ -1132,12 +1185,15 @@ class DetailsViewModel(
      * isDownloaded + deletes files + drops the queue row), matching native. Gated on in-library.
      */
     private fun onDeleteAllDownloads() {
-        if (!state.value.isInLibrary) return
-        val downloaded = state.value.details?.chapters?.filter { it.isDownloaded } ?: return
+        val current = state.value
+        if (!current.isInLibrary) return
+        val manga = current.manga ?: return
+        val downloaded = current.details?.chapters?.filter { it.isDownloaded } ?: return
         if (downloaded.isEmpty()) return
         launchSafely {
+            val idsByUrl = resolveChapterId(manga, downloaded.map { it.url })
             downloaded.forEach { chapter ->
-                val id = resolveChapterId(chapter.url) ?: return@forEach
+                val id = idsByUrl[chapter.url] ?: return@forEach
                 deleteDownloadedChapter(id)
                     .onFailure { t -> emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t))) }
             }
@@ -1146,8 +1202,8 @@ class DetailsViewModel(
 
     /**
      * Top-bar "cancel all downloads" (L-7, native `MangaTopAppBar` Stop icon → cancelAllDownloads).
-     * Cancels every currently-active download among this manga's chapters (the url set the
-     * downloads queue projects into [DetailsState.downloadingChapterUrls]).
+     * Enabled by this manga's scoped active rows, but deliberately invokes the existing GLOBAL
+     * worker stop. Per-row cancellation above is manga-scoped; this global contract is unchanged.
      */
     private fun onCancelAllDownloads() {
         if (state.value.downloadingChapterUrls.isEmpty()) return
@@ -1162,11 +1218,11 @@ class DetailsViewModel(
 }
 
 /**
- * Identity comparison on the rework's composite key (api + language + title). Mirrors the
- * legacy `SavedMangaEntity` primary-key composition documented on [Manga].
+ * Preserve the screen's metadata checks while also requiring the exact persisted parent URL.
+ * Distinct saved manga may share api, language and title, but must not share this screen's state.
  */
 private fun Manga.matches(other: Manga): Boolean =
-    api == other.api && language == other.language && title == other.title
+    api == other.api && language == other.language && title == other.title && url == other.url
 
 /**
  * Overlay the locally-persisted chapter state from [saved] onto this (network) [MangaDetails],

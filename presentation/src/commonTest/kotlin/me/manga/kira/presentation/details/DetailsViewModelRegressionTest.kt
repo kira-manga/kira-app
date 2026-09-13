@@ -708,7 +708,7 @@ class DetailsViewModelRegressionTest {
             vm.submit(DetailsIntent.OnEnter(manga()))
             vm.submit(DetailsIntent.OnChapterClick(chapter("c/2")))
 
-            assertEquals(listOf("c/2"), badgeRepo.cleared, "opening a chapter clears its NEW badge by url")
+            assertEquals(listOf(manga() to "c/2"), badgeRepo.cleared, "opening a chapter clears its NEW badge by url")
             // markRead is NOT invoked on open — opening != reading; the recording repo stays empty.
             assertTrue(markReadRepo.read.isEmpty(), "opening a chapter must not mark it read")
         }
@@ -926,8 +926,8 @@ class DetailsViewModelSelectionTest {
 
                 vm.submit(DetailsIntent.OnMarkSelectedDownRead)
 
-                assertEquals(listOf(listOf("c/3", "c/1")), recorder.bulkReads)
-                assertEquals(listOf("c/3", "c/1"), recorder.read)
+                assertEquals(listOf(manga() to listOf("c/3", "c/1")), recorder.bulkReads)
+                assertEquals(listOf(manga() to "c/3", manga() to "c/1"), recorder.read)
                 assertTrue(
                     vm.state.value.selectedChapterUrls
                         .isEmpty(),
@@ -966,8 +966,8 @@ class DetailsViewModelSelectionTest {
 
                 vm.submit(DetailsIntent.OnMarkSelectedDownRead)
 
-                assertEquals(listOf(listOf("c/3", "c/5")), recorder.bulkReads)
-                assertEquals(listOf("c/3", "c/5"), recorder.read)
+                assertEquals(listOf(manga() to listOf("c/3", "c/5")), recorder.bulkReads)
+                assertEquals(listOf(manga() to "c/3", manga() to "c/5"), recorder.read)
                 assertTrue(
                     vm.state.value.selectedChapterUrls
                         .isEmpty(),
@@ -1016,8 +1016,8 @@ class DetailsViewModelSelectionTest {
 
                 vm.submit(DetailsIntent.OnMarkSelectedDownRead)
 
-                assertEquals(listOf(listOf("c/20", "c/30")), recorder.bulkReads)
-                assertEquals(listOf("c/20", "c/30"), recorder.read)
+                assertEquals(listOf(manga() to listOf("c/20", "c/30")), recorder.bulkReads)
+                assertEquals(listOf(manga() to "c/20", manga() to "c/30"), recorder.read)
                 assertTrue(
                     vm.state.value.selectedChapterUrls
                         .isEmpty(),
@@ -1062,8 +1062,8 @@ class DetailsViewModelSelectionTest {
 
                     vm.submit(DetailsIntent.OnMarkSelectedDownRead)
 
-                    assertEquals(listOf(listOf("c/1")), recorder.bulkReads, "filter=$filter")
-                    assertEquals(listOf("c/1"), recorder.read, "filter=$filter")
+                    assertEquals(listOf(manga() to listOf("c/1")), recorder.bulkReads, "filter=$filter")
+                    assertEquals(listOf(manga() to "c/1"), recorder.read, "filter=$filter")
                     assertTrue(
                         vm.state.value.selectedChapterUrls
                             .isEmpty(),
@@ -1182,17 +1182,17 @@ private class RecordingAdultClassifier(
 }
 
 private object NullChapterIdResolver : ChapterIdResolver {
-    override suspend fun resolveChapterId(chapterUrl: String): Long? = null
+    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long? = null
 
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> = emptyMap()
+    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> = emptyMap()
 }
 
 private class FixedChapterIdResolver(
     private val id: Long,
 ) : ChapterIdResolver {
-    override suspend fun resolveChapterId(chapterUrl: String): Long = id
+    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long = id
 
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
+    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> =
         chapterUrls.associateWith {
             id
         }
@@ -1224,36 +1224,38 @@ private object NoopDownloadsActionRepository : DownloadsActionRepository {
 }
 
 private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
-    override suspend fun markRead(chapterUrl: String) = Unit
+    override suspend fun markRead(manga: Manga, chapterUrl: String) = Unit
 
-    override suspend fun toggleRead(chapterUrl: String) = Unit
+    override suspend fun toggleRead(manga: Manga, chapterUrl: String) = Unit
 
-    override suspend fun markRead(chapterUrls: List<String>) = Unit
+    override suspend fun markRead(manga: Manga, chapterUrls: List<String>) = Unit
 }
 
 /** Records all read mutations and keeps bulk batches distinct from single/toggle calls. */
 private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
-    val read = mutableListOf<String>()
-    val bulkReads = mutableListOf<List<String>>()
+    val read = mutableListOf<Pair<Manga, String>>()
+    val bulkReads = mutableListOf<Pair<Manga, List<String>>>()
 
-    override suspend fun markRead(chapterUrl: String) {
-        read += chapterUrl
+    override suspend fun markRead(manga: Manga, chapterUrl: String) {
+        read += manga to chapterUrl
     }
 
-    override suspend fun toggleRead(chapterUrl: String) {
-        read += chapterUrl
+    override suspend fun toggleRead(manga: Manga, chapterUrl: String) {
+        read += manga to chapterUrl
     }
 
-    override suspend fun markRead(chapterUrls: List<String>) {
-        bulkReads += chapterUrls.toList()
-        read += chapterUrls
+    override suspend fun markRead(manga: Manga, chapterUrls: List<String>) {
+        bulkReads += manga to chapterUrls.toList()
+        read += chapterUrls.map { manga to it }
     }
 }
 
 private object NoopChapterBookmarkRepository : ChapterBookmarkRepository {
-    override fun observeBookmark(chapterUrl: String): Flow<Boolean> = MutableStateFlow(false)
+    override fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean> = MutableStateFlow(false)
 
-    override suspend fun toggleBookmark(chapterUrl: String): Boolean = true
+    override suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean = true
+
+    override suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>) = Unit
 }
 
 /** #4: drives DetailsState.isOnline. Default online so it never blocks the existing tests. */
@@ -1291,10 +1293,10 @@ private class RecordingAnalyticsPort : AnalyticsPort {
 }
 
 private class RecordingChapterNewBadgeRepository : ChapterNewBadgeRepository {
-    val cleared = mutableListOf<String>()
+    val cleared = mutableListOf<Pair<Manga, String>>()
 
-    override suspend fun clearNew(chapterUrl: String) {
-        cleared += chapterUrl
+    override suspend fun clearNew(manga: Manga, chapterUrl: String) {
+        cleared += manga to chapterUrl
     }
 }
 
@@ -1308,6 +1310,8 @@ private class RecordingChapterDeletionRepository : ChapterDeletionRepository {
 
 private object EmptyDownloadsRepository : DownloadsRepository {
     override fun observeAll(): Flow<List<DownloadedChapter>> = MutableStateFlow(emptyList())
+
+    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> = MutableStateFlow(emptyList())
 }
 
 /**
@@ -1319,6 +1323,9 @@ private class FakeDownloadsRepository : DownloadsRepository {
     val rows = MutableStateFlow<List<DownloadedChapter>>(emptyList())
 
     override fun observeAll(): Flow<List<DownloadedChapter>> = rows
+
+    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
+        if (manga.url == "https://x/naruto") rows else MutableStateFlow(emptyList())
 }
 
 /**
@@ -1329,9 +1336,9 @@ private class FakeDownloadsRepository : DownloadsRepository {
 private class MapChapterIdResolver(
     private val byUrl: Map<String, Long>,
 ) : ChapterIdResolver {
-    override suspend fun resolveChapterId(chapterUrl: String): Long? = byUrl[chapterUrl]
+    override suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long? = byUrl[chapterUrl]
 
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
+    override suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long> =
         chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
 }
 
@@ -1431,6 +1438,7 @@ private fun createVmWithFetchFake(
             toggleChapterRead = ToggleChapterReadUseCase(options.markReadRepo),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(NoopChapterBookmarkRepository),
             markChaptersRead = MarkChaptersReadUseCase(options.markReadRepo),
+            enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
             enqueueChapterDownload =
                 EnqueueChapterDownloadUseCase(
                     chapterIdResolver = NullChapterIdResolver,

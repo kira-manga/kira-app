@@ -375,12 +375,14 @@ class ReaderViewModel(
         // #5 continuous reader: bookmark the chapter the user is CURRENTLY VIEWING ([activeChapterUrl],
         // the appended segment in view), not the anchor [chapter] — so in a multi-chapter feed the star
         // toggles the chapter on screen. Falls back to the anchor before any pages tag the feed.
-        val chapterUrl = state.value.activeChapterUrl ?: state.value.chapter?.url ?: return
+        val current = state.value
+        val manga = current.manga ?: return
+        val chapterUrl = current.activeChapterUrl ?: current.chapter?.url ?: return
         launchSafely {
             // #15 — the toggle no-ops when the manga isn't in the library (no saved_chapters row).
             // Surface that as the native "add to Library first" hint instead of silently doing
             // nothing; an in-library toggle returns true and the observe collector updates the star.
-            val toggled = toggleChapterBookmark(chapterUrl)
+            val toggled = toggleChapterBookmark(manga, chapterUrl)
             if (!toggled) emit(ReaderEffect.ShowNotInLibrary)
         }
     }
@@ -455,7 +457,7 @@ class ReaderViewModel(
         if (mangaChanged || state.value.chapters.isEmpty()) {
             runListChapters(manga)
         }
-        runObserveBookmark(chapter.url)
+        runObserveBookmark(manga, chapter.url)
         // Reading-history record (Reader-convergence R3a). Fire on every chapter establish/change
         // (open + Next/Prev) so the History screen reflects the user's progress — matching the
         // legacy reader, which recorded history on chapter open. Fire-and-forget on viewModelScope:
@@ -466,7 +468,7 @@ class ReaderViewModel(
         runFetch(manga, chapter)
     }
 
-    private fun runObserveBookmark(chapterUrl: String) {
+    private fun runObserveBookmark(manga: Manga, chapterUrl: String) {
         // Cancel the prior chapter's bookmark observer before starting a new one. Without this an
         // intra-manga Next / Prev would leave the previous chapter's collector observing and
         // writing into `state.isBookmarked` — same cancel-previous-on-change discipline as
@@ -475,8 +477,15 @@ class ReaderViewModel(
         // backing flow already projects a `distinctUntilChanged` Boolean per chapter).
         bookmarkJob?.cancel()
         bookmarkJob = launchSafely {
-            observeChapterBookmark(chapterUrl).collect { bookmarked ->
-                updateState { it.copy(isBookmarked = bookmarked) }
+            observeChapterBookmark(manga, chapterUrl).collect { bookmarked ->
+                updateState { current ->
+                    val activeUrl = current.activeChapterUrl ?: current.chapter?.url
+                    if (current.manga?.url == manga.url && activeUrl == chapterUrl) {
+                        current.copy(isBookmarked = bookmarked)
+                    } else {
+                        current
+                    }
+                }
             }
         }
     }
@@ -498,7 +507,7 @@ class ReaderViewModel(
         // chapter so a continuous-feed advance marks the appended segment in view, not the anchor.
         val leavingUrl = current.activeChapterUrl ?: current.chapter?.url
         if (leavingUrl != null) {
-            launchSafely { markChapterRead(leavingUrl) }
+            launchSafely { markChapterRead(manga, leavingUrl) }
         }
         onEnter(manga, current.chapters[nextIdx])
     }
@@ -516,7 +525,7 @@ class ReaderViewModel(
         // in-library-only, idempotent posture as [onNextChapter]. See [MarkChapterReadUseCase].
         val leavingUrl = current.activeChapterUrl ?: current.chapter?.url
         if (leavingUrl != null) {
-            launchSafely { markChapterRead(leavingUrl) }
+            launchSafely { markChapterRead(manga, leavingUrl) }
         }
         onEnter(manga, current.chapters[prevIdx])
     }
@@ -551,7 +560,7 @@ class ReaderViewModel(
         FlowLog.log("Reader", "appendNext", "tail=$tailUrl next=${next.url} loaded=${current.loadedChapterUrls.size}")
         // Finishing the tail chapter marks it read (native marks-read on advance). Fire-and-forget,
         // in-library-only + idempotent — see [MarkChapterReadUseCase].
-        launchSafely { markChapterRead(tailUrl) }
+        launchSafely { markChapterRead(manga, tailUrl) }
         appendChapterPages(manga, next)
     }
 
@@ -672,8 +681,8 @@ class ReaderViewModel(
         // observer or re-record history on every page — only the once-per-chapter crossing does.
         // Resume above already keys off the active chapter; this brings bookmark + history in line.
         if (activeUrl != current.activeChapterUrl) {
-            runObserveBookmark(activeUrl)
             val manga = current.manga
+            if (manga != null) runObserveBookmark(manga, activeUrl)
             val activeChapter = current.chapters.firstOrNull { it.url == activeUrl }
             if (manga != null && activeChapter != null) {
                 launchSafely { recordHistory(manga, activeChapter) }
@@ -911,13 +920,14 @@ class ReaderViewModel(
      * chapters that were not downloaded as a CBZ.
      */
     private fun clearLoadedExtractedPages(s: ReaderState, exclude: String?) {
+        val manga = s.manga ?: return
         val loaded = s.loadedChapterUrls
             .filter { it != exclude }
             .mapNotNull { url -> s.chapters.firstOrNull { it.url == url } }
         if (loaded.isEmpty()) {
-            s.chapter?.takeIf { it.url != exclude }?.let { clearExtractedPages(it) }
+            s.chapter?.takeIf { it.url != exclude }?.let { clearExtractedPages(manga, it) }
         } else {
-            loaded.forEach { clearExtractedPages(it) }
+            loaded.forEach { clearExtractedPages(manga, it) }
         }
     }
 

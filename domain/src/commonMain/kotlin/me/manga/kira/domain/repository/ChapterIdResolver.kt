@@ -1,8 +1,10 @@
 package me.manga.kira.domain.repository
 
+import me.manga.kira.domain.model.Manga
+
 /**
- * Resolves a chapter's canonical source `url` into the Room `saved_chapters.id` surrogate
- * (`Long`) that the download subsystem keys on.
+ * Resolves a chapter URL within its owning [Manga] into the persisted chapter ID (`Long`)
+ * that the download subsystem keys on. The parent is matched by its exact URL, not its title.
  *
  * Phase 7.x.details.downloadall. The pure-domain [me.manga.kira.domain.model.Chapter] is
  * `url`-keyed — it deliberately carries no surrogate id (see `Chapter.kt` KDoc). The download
@@ -32,9 +34,9 @@ package me.manga.kira.domain.repository
 interface ChapterIdResolver {
     /**
      * Resolves [chapterUrl] to its Room `saved_chapters.id`, or `null` when no in-library row
-     * exists for that url.
+     * exists for that url within [manga]. A different manga's matching chapter URL is never used.
      */
-    suspend fun resolveChapterId(chapterUrl: String): Long?
+    suspend fun resolveChapterId(manga: Manga, chapterUrl: String): Long?
 
     /**
      * Bulk-resolves [chapterUrls] to their Room `saved_chapters.id`s in a single chunked query,
@@ -42,5 +44,5 @@ interface ChapterIdResolver {
      * "skip" semantics as a `null` from [resolveChapterId]). Lets the download-all path collapse N
      * per-chapter resolution round-trips into one query per chunk.
      */
-    suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long>
+    suspend fun resolveChapterIds(manga: Manga, chapterUrls: List<String>): Map<String, Long>
 }

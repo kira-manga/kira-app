@@ -85,7 +85,7 @@ class ChapterNotificationHelper(
                 val realIds = chapters.mapIndexed { idx, chapter ->
                     val raw = rawIds.getOrNull(idx)
                     if (raw == null || raw == -1L) {
-                        libraryRepository.getChapterIdByUrl(chapter.url) ?: -1L
+                        libraryRepository.getChapterIdByUrl(manga.id, chapter.url) ?: -1L
                     } else raw
                 }
 
