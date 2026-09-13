@@ -226,19 +226,16 @@ class ChapterPagesRepositoryImpl(
         }
     }
 
-    /** Local filesystem path → `file://` URL (Coil 3's [FileUriFetcher] resolves it on all targets). */
-    private fun toFileUrl(path: String): String = toFileUrl(path.toPath())
-
     /**
-     * Build an RFC-8089 `file://` URL from an okio [Path]. A bare `"file://$path"` is malformed for
+     * Build an RFC-8089 `file://` URL from a local path. A bare `"file://$path"` is malformed for
      * Windows Desktop (packageMsi): `C:\Users\…\chapter_5.cbz` would yield `file://C:\…` (authority
      * "C:", unescaped backslashes), and spaces / non-ASCII in the user-profile path go through
      * unencoded. okio normalizes separators to `/`; we then prefix `file://`, ensure a leading
      * slash so the authority is empty (Unix `/d/1` → `file:///d/1`, Windows `C:/…` → `file:///C:/…`),
      * and percent-encode each segment.
      */
-    private fun toFileUrl(path: Path): String {
-        val normalized = path.toString().replace('\\', '/')
+    private fun toFileUrl(path: String): String {
+        val normalized = path.toPath().toString().replace('\\', '/')
         val withLeadingSlash = if (normalized.startsWith("/")) normalized else "/$normalized"
         val encoded = withLeadingSlash.split("/").joinToString("/") { encodePathSegment(it) }
         return "file://$encoded"

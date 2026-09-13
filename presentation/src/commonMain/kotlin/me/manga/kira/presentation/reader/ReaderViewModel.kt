@@ -256,8 +256,7 @@ class ReaderViewModel(
     private val clearPageProgress: ClearPageProgressUseCase,
 ) : MviViewModel<ReaderState, ReaderIntent, ReaderEffect>(
     initialState = ReaderState(),
-) {
-
+    ) {
     /**
      * Tracked page-fetch coroutine. Cancelled at the start of every new [runFetch] so a prior
      * streaming fetch (Prochan) cannot land emissions on top of a fresh chapter's state.
