@@ -5382,13 +5382,13 @@
         <error line="306" column="58" source="standard:class-signature" />
     </file>
     <file name="presentation/src/commonMain/kotlin/me/manga/kira/presentation/details/DetailsState.kt">
-        <error line="53" column="17" source="standard:multiline-expression-wrapping" />
-        <error line="233" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="270" column="34" source="standard:multiline-expression-wrapping" />
-        <error line="270" column="41" source="standard:chain-method-continuation" />
-        <error line="302" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="313" column="26" source="standard:multiline-expression-wrapping" />
-        <error line="368" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="52" column="17" source="standard:multiline-expression-wrapping" />
+        <error line="231" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="268" column="34" source="standard:multiline-expression-wrapping" />
+        <error line="268" column="41" source="standard:chain-method-continuation" />
+        <error line="300" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="311" column="26" source="standard:multiline-expression-wrapping" />
+        <error line="363" column="25" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="presentation/src/commonMain/kotlin/me/manga/kira/presentation/details/DetailsViewModel.kt">
         <error line="166" column="1" source="standard:indent" />
@@ -7555,23 +7555,22 @@
     </file>
     <file name="ui/src/commonMain/kotlin/me/manga/kira/ui/details/DetailsScreen.kt">
         <error line="3" column="1" source="standard:import-ordering" />
-        <error line="246" column="1" source="standard:no-unused-imports" />
         <error line="247" column="1" source="standard:no-unused-imports" />
-        <error line="252" column="1" source="standard:no-unused-imports" />
-        <error line="304" column="5" source="standard:function-naming" />
-        <error line="348" column="5" source="standard:function-naming" />
-        <error line="395" column="14" source="standard:function-naming" />
-        <error line="490" column="23" source="standard:multiline-expression-wrapping" />
-        <error line="517" column="68" source="standard:function-literal" />
-        <error line="517" column="101" source="standard:argument-list-wrapping" />
-        <error line="517" column="126" source="standard:argument-list-wrapping" />
-        <error line="517" column="138" source="standard:argument-list-wrapping" />
-        <error line="517" column="139" source="standard:argument-list-wrapping" />
-        <error line="517" column="141" source="standard:function-literal" />
-        <error line="517" column="141" source="standard:max-line-length" />
-        <error line="541" column="25" source="standard:multiline-expression-wrapping" />
-        <error line="600" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="604" column="1" source="standard:indent" />
+        <error line="248" column="1" source="standard:no-unused-imports" />
+        <error line="253" column="1" source="standard:no-unused-imports" />
+        <error line="305" column="5" source="standard:function-naming" />
+        <error line="349" column="5" source="standard:function-naming" />
+        <error line="396" column="14" source="standard:function-naming" />
+        <error line="491" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="518" column="68" source="standard:function-literal" />
+        <error line="518" column="101" source="standard:argument-list-wrapping" />
+        <error line="518" column="126" source="standard:argument-list-wrapping" />
+        <error line="518" column="138" source="standard:argument-list-wrapping" />
+        <error line="518" column="139" source="standard:argument-list-wrapping" />
+        <error line="518" column="141" source="standard:function-literal" />
+        <error line="518" column="141" source="standard:max-line-length" />
+        <error line="542" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="601" column="28" source="standard:multiline-expression-wrapping" />
         <error line="605" column="1" source="standard:indent" />
         <error line="606" column="1" source="standard:indent" />
         <error line="607" column="1" source="standard:indent" />
@@ -7581,13 +7580,13 @@
         <error line="611" column="1" source="standard:indent" />
         <error line="612" column="1" source="standard:indent" />
         <error line="613" column="1" source="standard:indent" />
-        <error line="613" column="43" source="standard:multiline-expression-wrapping" />
         <error line="614" column="1" source="standard:indent" />
+        <error line="614" column="43" source="standard:multiline-expression-wrapping" />
         <error line="615" column="1" source="standard:indent" />
         <error line="616" column="1" source="standard:indent" />
         <error line="617" column="1" source="standard:indent" />
-        <error line="617" column="55" source="standard:multiline-expression-wrapping" />
         <error line="618" column="1" source="standard:indent" />
+        <error line="618" column="55" source="standard:multiline-expression-wrapping" />
         <error line="619" column="1" source="standard:indent" />
         <error line="620" column="1" source="standard:indent" />
         <error line="621" column="1" source="standard:indent" />
@@ -7600,8 +7599,8 @@
         <error line="628" column="1" source="standard:indent" />
         <error line="629" column="1" source="standard:indent" />
         <error line="630" column="1" source="standard:indent" />
-        <error line="630" column="36" source="standard:multiline-expression-wrapping" />
         <error line="631" column="1" source="standard:indent" />
+        <error line="631" column="36" source="standard:multiline-expression-wrapping" />
         <error line="632" column="1" source="standard:indent" />
         <error line="633" column="1" source="standard:indent" />
         <error line="634" column="1" source="standard:indent" />
@@ -7627,7 +7626,6 @@
         <error line="654" column="1" source="standard:indent" />
         <error line="655" column="1" source="standard:indent" />
         <error line="656" column="1" source="standard:indent" />
-        <error line="657" column="1" source="standard:indent" />
         <error line="658" column="1" source="standard:indent" />
         <error line="659" column="1" source="standard:indent" />
         <error line="660" column="1" source="standard:indent" />
@@ -7661,7 +7659,7 @@
         <error line="688" column="1" source="standard:indent" />
         <error line="689" column="1" source="standard:indent" />
         <error line="690" column="1" source="standard:indent" />
-        <error line="692" column="1" source="standard:indent" />
+        <error line="691" column="1" source="standard:indent" />
         <error line="693" column="1" source="standard:indent" />
         <error line="694" column="1" source="standard:indent" />
         <error line="695" column="1" source="standard:indent" />
@@ -7678,7 +7676,7 @@
         <error line="706" column="1" source="standard:indent" />
         <error line="707" column="1" source="standard:indent" />
         <error line="708" column="1" source="standard:indent" />
-        <error line="710" column="1" source="standard:indent" />
+        <error line="709" column="1" source="standard:indent" />
         <error line="711" column="1" source="standard:indent" />
         <error line="712" column="1" source="standard:indent" />
         <error line="713" column="1" source="standard:indent" />
@@ -7695,22 +7693,22 @@
         <error line="724" column="1" source="standard:indent" />
         <error line="725" column="1" source="standard:indent" />
         <error line="726" column="1" source="standard:indent" />
-        <error line="726" column="47" source="standard:multiline-expression-wrapping" />
         <error line="727" column="1" source="standard:indent" />
+        <error line="727" column="47" source="standard:multiline-expression-wrapping" />
         <error line="728" column="1" source="standard:indent" />
         <error line="729" column="1" source="standard:indent" />
         <error line="730" column="1" source="standard:indent" />
         <error line="731" column="1" source="standard:indent" />
         <error line="732" column="1" source="standard:indent" />
-        <error line="732" column="41" source="standard:multiline-expression-wrapping" />
         <error line="733" column="1" source="standard:indent" />
+        <error line="733" column="41" source="standard:multiline-expression-wrapping" />
         <error line="734" column="1" source="standard:indent" />
         <error line="735" column="1" source="standard:indent" />
         <error line="736" column="1" source="standard:indent" />
         <error line="737" column="1" source="standard:indent" />
         <error line="738" column="1" source="standard:indent" />
-        <error line="738" column="41" source="standard:multiline-expression-wrapping" />
         <error line="739" column="1" source="standard:indent" />
+        <error line="739" column="41" source="standard:multiline-expression-wrapping" />
         <error line="740" column="1" source="standard:indent" />
         <error line="741" column="1" source="standard:indent" />
         <error line="742" column="1" source="standard:indent" />
@@ -7719,7 +7717,7 @@
         <error line="745" column="1" source="standard:indent" />
         <error line="746" column="1" source="standard:indent" />
         <error line="747" column="1" source="standard:indent" />
-        <error line="749" column="1" source="standard:indent" />
+        <error line="748" column="1" source="standard:indent" />
         <error line="750" column="1" source="standard:indent" />
         <error line="751" column="1" source="standard:indent" />
         <error line="752" column="1" source="standard:indent" />
@@ -7728,7 +7726,7 @@
         <error line="755" column="1" source="standard:indent" />
         <error line="756" column="1" source="standard:indent" />
         <error line="757" column="1" source="standard:indent" />
-        <error line="759" column="1" source="standard:indent" />
+        <error line="758" column="1" source="standard:indent" />
         <error line="760" column="1" source="standard:indent" />
         <error line="761" column="1" source="standard:indent" />
         <error line="762" column="1" source="standard:indent" />
@@ -7742,11 +7740,11 @@
         <error line="770" column="1" source="standard:indent" />
         <error line="771" column="1" source="standard:indent" />
         <error line="772" column="1" source="standard:indent" />
-        <error line="780" column="13" source="standard:function-naming" />
-        <error line="906" column="13" source="standard:function-naming" />
-        <error line="964" column="13" source="standard:function-naming" />
-        <error line="985" column="13" source="standard:function-naming" />
-        <error line="1036" column="1" source="standard:indent" />
+        <error line="773" column="1" source="standard:indent" />
+        <error line="781" column="13" source="standard:function-naming" />
+        <error line="907" column="13" source="standard:function-naming" />
+        <error line="965" column="13" source="standard:function-naming" />
+        <error line="986" column="13" source="standard:function-naming" />
         <error line="1037" column="1" source="standard:indent" />
         <error line="1038" column="1" source="standard:indent" />
         <error line="1039" column="1" source="standard:indent" />
@@ -7801,14 +7799,14 @@
         <error line="1088" column="1" source="standard:indent" />
         <error line="1089" column="1" source="standard:indent" />
         <error line="1090" column="1" source="standard:indent" />
-        <error line="1090" column="36" source="standard:multiline-expression-wrapping" />
         <error line="1091" column="1" source="standard:indent" />
+        <error line="1091" column="36" source="standard:multiline-expression-wrapping" />
         <error line="1092" column="1" source="standard:indent" />
         <error line="1093" column="1" source="standard:indent" />
         <error line="1094" column="1" source="standard:indent" />
         <error line="1095" column="1" source="standard:indent" />
-        <error line="1095" column="50" source="standard:multiline-expression-wrapping" />
         <error line="1096" column="1" source="standard:indent" />
+        <error line="1096" column="50" source="standard:multiline-expression-wrapping" />
         <error line="1097" column="1" source="standard:indent" />
         <error line="1098" column="1" source="standard:indent" />
         <error line="1099" column="1" source="standard:indent" />
@@ -7818,12 +7816,10 @@
         <error line="1103" column="1" source="standard:indent" />
         <error line="1104" column="1" source="standard:indent" />
         <error line="1105" column="1" source="standard:indent" />
-        <error line="1106" column="1" source="standard:indent" />
         <error line="1107" column="1" source="standard:indent" />
-        <error line="1107" column="36" source="standard:multiline-expression-wrapping" />
         <error line="1108" column="1" source="standard:indent" />
+        <error line="1108" column="36" source="standard:multiline-expression-wrapping" />
         <error line="1109" column="1" source="standard:indent" />
-        <error line="1110" column="1" source="standard:indent" />
         <error line="1111" column="1" source="standard:indent" />
         <error line="1112" column="1" source="standard:indent" />
         <error line="1113" column="1" source="standard:indent" />
@@ -7853,58 +7849,58 @@
         <error line="1137" column="1" source="standard:indent" />
         <error line="1138" column="1" source="standard:indent" />
         <error line="1139" column="1" source="standard:indent" />
-        <error line="1145" column="13" source="standard:function-naming" />
-        <error line="1163" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="1180" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="1197" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="1231" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="1258" column="32" source="standard:multiline-expression-wrapping" />
-        <error line="1317" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="1328" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="1349" column="13" source="standard:function-naming" />
-        <error line="1358" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="1366" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="1419" column="13" source="standard:function-naming" />
-        <error line="1419" column="37" source="standard:function-signature" />
-        <error line="1419" column="55" source="standard:function-signature" />
-        <error line="1419" column="82" source="standard:function-signature" />
-        <error line="1423" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="1435" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="1444" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="1447" column="29" source="standard:multiline-expression-wrapping" />
-        <error line="1448" column="34" source="standard:multiline-expression-wrapping" />
-        <error line="1474" column="29" source="standard:chain-method-continuation" />
-        <error line="1474" column="35" source="standard:chain-method-continuation" />
-        <error line="1474" column="84" source="standard:chain-method-continuation" />
-        <error line="1541" column="13" source="standard:function-naming" />
-        <error line="1541" column="26" source="standard:function-signature" />
-        <error line="1541" column="44" source="standard:function-signature" />
-        <error line="1541" column="63" source="standard:function-signature" />
-        <error line="1561" column="25" source="standard:multiline-expression-wrapping" />
-        <error line="1576" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="1609" column="13" source="standard:function-naming" />
-        <error line="1612" column="25" source="standard:multiline-expression-wrapping" />
-        <error line="1620" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="1643" column="13" source="standard:function-naming" />
-        <error line="1645" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="1651" column="13" source="standard:chain-method-continuation" />
-        <error line="1669" column="13" source="standard:function-naming" />
-        <error line="1669" column="28" source="standard:function-signature" />
-        <error line="1669" column="44" source="standard:function-signature" />
-        <error line="1669" column="63" source="standard:function-signature" />
-        <error line="1671" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="1677" column="13" source="standard:chain-method-continuation" />
-        <error line="1703" column="13" source="standard:function-naming" />
-        <error line="1730" column="32" source="standard:multiline-expression-wrapping" />
-        <error line="1733" column="37" source="standard:multiline-expression-wrapping" />
-        <error line="1745" column="38" source="standard:multiline-expression-wrapping" />
-        <error line="1772" column="13" source="standard:function-naming" />
-        <error line="1812" column="18" source="standard:multiline-expression-wrapping" />
-        <error line="1813" column="30" source="standard:multiline-expression-wrapping" />
-        <error line="1820" column="1" source="standard:indent" />
+        <error line="1140" column="1" source="standard:indent" />
+        <error line="1146" column="13" source="standard:function-naming" />
+        <error line="1164" column="1" source="standard:spacing-between-declarations-with-annotations" />
+        <error line="1181" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="1198" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="1232" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="1259" column="32" source="standard:multiline-expression-wrapping" />
+        <error line="1318" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="1329" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="1350" column="13" source="standard:function-naming" />
+        <error line="1359" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="1367" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="1420" column="13" source="standard:function-naming" />
+        <error line="1420" column="37" source="standard:function-signature" />
+        <error line="1420" column="55" source="standard:function-signature" />
+        <error line="1420" column="82" source="standard:function-signature" />
+        <error line="1424" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="1436" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="1445" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="1448" column="29" source="standard:multiline-expression-wrapping" />
+        <error line="1449" column="34" source="standard:multiline-expression-wrapping" />
+        <error line="1475" column="29" source="standard:chain-method-continuation" />
+        <error line="1475" column="35" source="standard:chain-method-continuation" />
+        <error line="1475" column="84" source="standard:chain-method-continuation" />
+        <error line="1542" column="13" source="standard:function-naming" />
+        <error line="1542" column="26" source="standard:function-signature" />
+        <error line="1542" column="44" source="standard:function-signature" />
+        <error line="1542" column="63" source="standard:function-signature" />
+        <error line="1562" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="1577" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="1610" column="13" source="standard:function-naming" />
+        <error line="1613" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="1621" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="1644" column="13" source="standard:function-naming" />
+        <error line="1646" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="1652" column="13" source="standard:chain-method-continuation" />
+        <error line="1670" column="13" source="standard:function-naming" />
+        <error line="1670" column="28" source="standard:function-signature" />
+        <error line="1670" column="44" source="standard:function-signature" />
+        <error line="1670" column="63" source="standard:function-signature" />
+        <error line="1672" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="1678" column="13" source="standard:chain-method-continuation" />
+        <error line="1704" column="13" source="standard:function-naming" />
+        <error line="1731" column="32" source="standard:multiline-expression-wrapping" />
+        <error line="1734" column="37" source="standard:multiline-expression-wrapping" />
+        <error line="1746" column="38" source="standard:multiline-expression-wrapping" />
+        <error line="1773" column="13" source="standard:function-naming" />
+        <error line="1813" column="18" source="standard:multiline-expression-wrapping" />
+        <error line="1814" column="30" source="standard:multiline-expression-wrapping" />
         <error line="1821" column="1" source="standard:indent" />
-        <error line="1821" column="20" source="standard:multiline-expression-wrapping" />
         <error line="1822" column="1" source="standard:indent" />
+        <error line="1822" column="20" source="standard:multiline-expression-wrapping" />
         <error line="1823" column="1" source="standard:indent" />
         <error line="1824" column="1" source="standard:indent" />
         <error line="1825" column="1" source="standard:indent" />
@@ -7923,8 +7919,8 @@
         <error line="1838" column="1" source="standard:indent" />
         <error line="1839" column="1" source="standard:indent" />
         <error line="1840" column="1" source="standard:indent" />
-        <error line="1840" column="29" source="standard:multiline-expression-wrapping" />
         <error line="1841" column="1" source="standard:indent" />
+        <error line="1841" column="29" source="standard:multiline-expression-wrapping" />
         <error line="1842" column="1" source="standard:indent" />
         <error line="1843" column="1" source="standard:indent" />
         <error line="1844" column="1" source="standard:indent" />
@@ -7955,10 +7951,6 @@
         <error line="1869" column="1" source="standard:indent" />
         <error line="1870" column="1" source="standard:indent" />
         <error line="1871" column="1" source="standard:indent" />
-        <error line="1872" column="1" source="standard:indent" />
-        <error line="1873" column="1" source="standard:indent" />
-        <error line="1874" column="1" source="standard:indent" />
-        <error line="1875" column="1" source="standard:indent" />
         <error line="1876" column="1" source="standard:indent" />
         <error line="1877" column="1" source="standard:indent" />
         <error line="1878" column="1" source="standard:indent" />
@@ -7970,7 +7962,6 @@
         <error line="1884" column="1" source="standard:indent" />
         <error line="1885" column="1" source="standard:indent" />
         <error line="1886" column="1" source="standard:indent" />
-        <error line="1887" column="1" source="standard:indent" />
         <error line="1888" column="1" source="standard:indent" />
         <error line="1889" column="1" source="standard:indent" />
         <error line="1890" column="1" source="standard:indent" />
@@ -7979,7 +7970,6 @@
         <error line="1893" column="1" source="standard:indent" />
         <error line="1894" column="1" source="standard:indent" />
         <error line="1895" column="1" source="standard:indent" />
-        <error line="1896" column="1" source="standard:indent" />
         <error line="1897" column="1" source="standard:indent" />
         <error line="1898" column="1" source="standard:indent" />
         <error line="1899" column="1" source="standard:indent" />
@@ -9113,9 +9103,7 @@
         <error line="50" column="46" source="standard:function-signature" />
     </file>
     <file name="ui/src/desktopTest/kotlin/me/manga/kira/ui/util/ByteSizeFormatTest.kt">
-        <error line="20" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="39" column="41" source="standard:multiline-expression-wrapping" />
-        <error line="53" column="60" source="standard:multiline-expression-wrapping" />
+        <error line="19" column="1" source="standard:no-empty-first-line-in-class-body" />
     </file>
     <file name="ui/src/iosMain/kotlin/me/manga/kira/ui/util/BackHandler.ios.kt">
         <error line="15" column="12" source="standard:function-naming" />

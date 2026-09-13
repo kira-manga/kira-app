@@ -96,12 +96,14 @@ class DetailsScreenSelectionTest {
             Locale.setDefault(Locale.US)
             runComposeUiTest {
                 val mib = 1024L * 1024
-                val loaded = selectionState().copy(
-                    chapterDownloads = mapOf(
-                        "c/2" to ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = 12 * mib),
-                        "c/1" to ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = mib),
-                    ),
-                )
+                val loaded =
+                    selectionState().copy(
+                        chapterDownloads =
+                            mapOf(
+                                "c/2" to ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = 12 * mib),
+                                "c/1" to ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = mib),
+                            ),
+                    )
                 val state = mutableStateOf(loaded)
                 val locale = mutableStateOf(Locale.US)
                 showDetails(state, mutableListOf(), locale)
@@ -145,7 +147,10 @@ class DetailsScreenSelectionTest {
         }
     }
 
-    private suspend fun ComposeUiTest.assertDownloadSizes(chapterLabel: String, totalLabel: String) {
+    private suspend fun ComposeUiTest.assertDownloadSizes(
+        chapterLabel: String,
+        totalLabel: String,
+    ) {
         awaitIdle()
         onNode(hasScrollToIndexAction()).performScrollToIndex(FIRST_CHAPTER_ITEM_INDEX - 1)
         awaitIdle()

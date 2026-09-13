@@ -654,7 +654,7 @@ internal fun DetailsScreenContent(
                     // flips to downloaded the moment Room writes isDownloaded=1 (native parity),
                     // instead of the old boolean "is downloading" membership set.
                     chapterDownloads = state.chapterDownloads,
-                    totalDownloadedSizeBytes = state.totalDownloadedSizeBytes,
+                        totalDownloadedSizeBytes = state.totalDownloadedSizeBytes,
                     downloadedChapterCount = state.downloadedChapterCount,
                     isDownloadingAll = state.isDownloadingAny,
                     onChapterClick = { chapter ->
@@ -1103,11 +1103,11 @@ private fun DetailsBody(
                     }
                     // Native TotalSizeDisplay parity: "<total size> • <N> downloaded", shown only
                     // when at least one chapter is downloaded with a known size.
-                    if (totalDownloadedSizeBytes != null) {
+                        if (totalDownloadedSizeBytes != null) {
                         Text(
                             text = stringResource(
                                 Res.string.pfix_dlsize_total_format,
-                                formatByteSize(totalDownloadedSizeBytes),
+                                    formatByteSize(totalDownloadedSizeBytes),
                                 downloadedChapterCount,
                             ),
                             style = MaterialTheme.typography.bodySmall,
@@ -1869,10 +1869,10 @@ private fun ChapterRow(
             }
             val date = chapter.date
             // Native size display (LibraryChapterItem.kt:419-..): a downloaded chapter shows its
-            // localized on-disk size next to the date, tinted primary. Raw bytes come from the
-            // SUCCESS download entry (back-filled by startup reconcile); null without a known size.
-            val sizeBytes = download?.completedSizeBytes
-            if (date != null || sizeBytes != null) {
+                // localized on-disk size next to the date, tinted primary. Raw bytes come from the
+                // SUCCESS download entry (back-filled by startup reconcile); null without a known size.
+                val sizeBytes = download?.completedSizeBytes
+                if (date != null || sizeBytes != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (date != null) {
                         Text(
@@ -1884,7 +1884,7 @@ private fun ChapterRow(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         )
                     }
-                    if (sizeBytes != null) {
+                        if (sizeBytes != null) {
                         if (date != null) {
                             Text(
                                 text = " • ",
@@ -1893,7 +1893,7 @@ private fun ChapterRow(
                             )
                         }
                         Text(
-                            text = formatByteSize(sizeBytes),
+                                text = formatByteSize(sizeBytes),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
