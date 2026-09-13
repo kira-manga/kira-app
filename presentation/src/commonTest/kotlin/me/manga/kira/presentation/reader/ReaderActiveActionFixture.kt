@@ -64,23 +64,24 @@ internal class ReaderActiveActionFixture(
     private val sessions = RecordingReadingSessionRepository()
     private val readingMode = ActiveActionReadingMode(mode)
 
-    val vm = ReaderViewModel(
-        fetchPages = FetchChapterPagesUseCase(pages),
-        observeReadingMode = ObserveReadingModeUseCase(readingMode),
-        setReadingMode = SetReadingModeUseCase(readingMode),
-        listChapters = ListChaptersUseCase(details, ActiveActionSavedDetails()),
-        startReadingSession = StartReadingSessionUseCase(sessions),
-        endReadingSession = EndReadingSessionUseCase(sessions),
-        loadPagePosition = LoadPagePositionUseCase(resume),
-        savePagePosition = SavePagePositionUseCase(resume),
-        observePageProgress = ObservePageProgressUseCase(progress),
-        observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
-        toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
-        recordHistory = RecordHistoryUseCase(history, FakeSettingsRepository()),
-        markChapterRead = MarkChapterReadUseCase(markRead),
-        clearExtractedPages = ClearExtractedPagesUseCase(pages),
-        clearPageProgress = ClearPageProgressUseCase(progress),
-    )
+    val vm =
+        ReaderViewModel(
+            fetchPages = FetchChapterPagesUseCase(pages),
+            observeReadingMode = ObserveReadingModeUseCase(readingMode),
+            setReadingMode = SetReadingModeUseCase(readingMode),
+            listChapters = ListChaptersUseCase(details, ActiveActionSavedDetails()),
+            startReadingSession = StartReadingSessionUseCase(sessions),
+            endReadingSession = EndReadingSessionUseCase(sessions),
+            loadPagePosition = LoadPagePositionUseCase(resume),
+            savePagePosition = SavePagePositionUseCase(resume),
+            observePageProgress = ObservePageProgressUseCase(progress),
+            observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
+            toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
+            recordHistory = RecordHistoryUseCase(history, FakeSettingsRepository()),
+            markChapterRead = MarkChapterReadUseCase(markRead),
+            clearExtractedPages = ClearExtractedPagesUseCase(pages),
+            clearPageProgress = ClearPageProgressUseCase(progress),
+        )
 
     fun dispatch(intent: ReaderIntent) {
         vm.submit(intent)
@@ -97,30 +98,41 @@ internal class ReaderActiveActionFixture(
         scheduler.runCurrent()
     }
 
-    fun callCounts(): Map<String, Int> = mapOf(
-        "fetch" to pages.requested.size,
-        "cleanup" to pages.cleared.size,
-        "list" to details.requested.size,
-        "resumeLoad" to resume.loaded.size,
-        "resumeSave" to resume.saved.size,
-        "bookmark" to bookmark.observed.size,
-        "history" to history.recorded.size,
-        "markRead" to markRead.marked.size,
-        "progressCancellation" to progress.cancelled.size,
-    )
+    fun callCounts(): Map<String, Int> =
+        mapOf(
+            "fetch" to pages.requested.size,
+            "cleanup" to pages.cleared.size,
+            "list" to details.requested.size,
+            "resumeLoad" to resume.loaded.size,
+            "resumeSave" to resume.saved.size,
+            "bookmark" to bookmark.observed.size,
+            "history" to history.recorded.size,
+            "markRead" to markRead.marked.size,
+            "progressCancellation" to progress.cancelled.size,
+        )
 }
 
 internal fun activeActionPages(chapter: Chapter): List<Page> =
-    listOf(readerPage("${chapter.url}/a"), readerPage("${chapter.url}/b"))
+    listOf(
+        readerPage("${chapter.url}/a"),
+        readerPage("${chapter.url}/b"),
+    )
 
-internal class ActiveActionPages(chapters: List<Chapter>) : ChapterPagesRepository {
-    val results = chapters.associate { chapter ->
-        chapter.url to flowOf<AppResult<List<Page>>>(AppResult.Success(activeActionPages(chapter)))
-    }.toMutableMap()
+internal class ActiveActionPages(
+    chapters: List<Chapter>,
+) : ChapterPagesRepository {
+    val results =
+        chapters
+            .associate { chapter ->
+                chapter.url to flowOf<AppResult<List<Page>>>(AppResult.Success(activeActionPages(chapter)))
+            }.toMutableMap()
     val requested = mutableListOf<Pair<Manga, Chapter>>()
     val cleared = mutableListOf<Chapter>()
 
-    override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> {
+    override fun fetchPages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Flow<AppResult<List<Page>>> {
         requested += manga to chapter
         return results.getValue(chapter.url)
     }
@@ -136,17 +148,21 @@ internal class ActiveActionProgress : PageProgressRepository {
     val cancelled = mutableListOf<String>()
     val activeUrls: Set<String> get() = collectors.filterValues { it > 0 }.keys
 
-    override fun observe(url: String): Flow<PageDownloadProgress> = flow {
-        collectors[url] = collectors.getOrElse(url) { 0 } + 1
-        try {
-            emitAll(stream(url))
-        } finally {
-            collectors[url] = collectors.getValue(url) - 1
-            cancelled += url
+    override fun observe(url: String): Flow<PageDownloadProgress> =
+        flow {
+            collectors[url] = collectors.getOrElse(url) { 0 } + 1
+            try {
+                emitAll(stream(url))
+            } finally {
+                collectors[url] = collectors.getValue(url) - 1
+                cancelled += url
+            }
         }
-    }
 
-    override fun report(url: String, status: PageDownloadProgress) {
+    override fun report(
+        url: String,
+        status: PageDownloadProgress,
+    ) {
         stream(url).value = status
     }
 
@@ -163,7 +179,10 @@ internal class ActiveActionResume : ReadProgressRepository {
     val loaded = mutableListOf<String>()
     val saved = mutableListOf<Pair<String, Int>>()
 
-    override suspend fun save(chapterUrl: String, pageIndex: Int) {
+    override suspend fun save(
+        chapterUrl: String,
+        pageIndex: Int,
+    ) {
         saved += chapterUrl to pageIndex
         positions[chapterUrl] = pageIndex
     }
@@ -178,7 +197,10 @@ internal class ActiveActionResume : ReadProgressRepository {
     }
 }
 
-internal class ActiveActionDetails(manga: Manga, chapters: List<Chapter>) : MangaDetailsRepository {
+internal class ActiveActionDetails(
+    manga: Manga,
+    chapters: List<Chapter>,
+) : MangaDetailsRepository {
     val lists = mutableMapOf(manga to chapters)
     val gates = mutableMapOf<Manga, CompletableDeferred<Unit>>()
     val requested = mutableListOf<Manga>()
@@ -205,12 +227,19 @@ internal class ActiveActionDetails(manga: Manga, chapters: List<Chapter>) : Mang
 }
 
 private class ActiveActionSavedDetails : SavedMangaDetailsRepository {
-    override fun observeSavedDetails(api: String, title: String): Flow<MangaDetails?> = flowOf(null)
+    override fun observeSavedDetails(
+        api: String,
+        title: String,
+    ): Flow<MangaDetails?> = flowOf(null)
 }
 
-private class ActiveActionReadingMode(mode: ReadingMode) : ReadingModeRepository {
+private class ActiveActionReadingMode(
+    mode: ReadingMode,
+) : ReadingModeRepository {
     private val value = MutableStateFlow(mode)
+
     override fun observe(): Flow<ReadingMode> = value
+
     override suspend fun set(mode: ReadingMode) {
         value.value = mode
     }

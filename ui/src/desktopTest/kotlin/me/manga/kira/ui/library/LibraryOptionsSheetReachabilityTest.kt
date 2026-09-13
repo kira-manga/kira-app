@@ -9,6 +9,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+private const val SLIDER_MIDPOINT_ITEMS_PER_ROW = 4
+private const val LAST_DISPLAY_SWITCH_INDEX = 4
+
 @OptIn(ExperimentalTestApi::class)
 class LibraryOptionsSheetReachabilityTest {
     @Test
@@ -21,8 +24,8 @@ class LibraryOptionsSheetReachabilityTest {
             fixture.expectOnly()
 
             // A center-track pointer tap selects the middle of the production 0..8 Slider.
-            fixture.activate(fixture.slider())
-            fixture.expectOnly(LibraryIntent.OnItemsPerRowChange(4))
+            fixture.activate(fixture.nodes.slider())
+            fixture.expectOnly(LibraryIntent.OnItemsPerRowChange(SLIDER_MIDPOINT_ITEMS_PER_ROW))
             val toggles =
                 listOf(
                     LibraryIntent.OnToggleShowDetails(false),
@@ -32,8 +35,8 @@ class LibraryOptionsSheetReachabilityTest {
                     LibraryIntent.OnToggleShowTabs(false),
                 )
             toggles.forEachIndexed { index, expected ->
-                fixture.activate(fixture.displaySwitch(index))
-                fixture.displaySwitch(index).assertIsOff()
+                fixture.activate(fixture.nodes.displaySwitch(index))
+                fixture.nodes.displaySwitch(index).assertIsOff()
                 fixture.expectOnly(expected)
             }
         }
@@ -42,15 +45,15 @@ class LibraryOptionsSheetReachabilityTest {
     fun compactDoubleTextFilterAndSortControlsRemainReachable() =
         runLibraryOptionsSheetTest { fixture ->
             LibraryFilter.entries.forEach { option ->
-                fixture.activate(fixture.filterChip(option))
+                fixture.activate(fixture.nodes.filterChip(option))
                 fixture.expectOnly(LibraryIntent.OnFilterChange(option))
             }
             fixture.selectTab(LibraryOptionsTab.SORT)
-            fixture.activate(fixture.directionSwitch())
-            fixture.directionSwitch().assertIsOff()
+            fixture.activate(fixture.nodes.directionSwitch())
+            fixture.nodes.directionSwitch().assertIsOff()
             fixture.expectOnly(LibraryIntent.OnSortDirectionToggle)
             LibrarySort.entries.forEach { option ->
-                fixture.activate(fixture.sortChip(option))
+                fixture.activate(fixture.nodes.sortChip(option))
                 fixture.expectOnly(LibraryIntent.OnSortChange(option))
             }
         }
@@ -59,7 +62,7 @@ class LibraryOptionsSheetReachabilityTest {
     fun shorterTabNativelyClampsThePreviousScrollOffset() =
         runLibraryOptionsSheetTest { fixture ->
             fixture.selectTab(LibraryOptionsTab.DISPLAY)
-            fixture.reveal(fixture.displaySwitch(4))
+            fixture.reveal(fixture.nodes.displaySwitch(LAST_DISPLAY_SWITCH_INDEX))
             val longRange = fixture.scrollRange()
             assertTrue(longRange.value > 0f)
 
@@ -69,11 +72,11 @@ class LibraryOptionsSheetReachabilityTest {
             assertEquals(0f, shortRange.maxValue, "The shorter filter body fits this scene")
             assertEquals(0f, shortRange.value, "Native ScrollState must discard the now-impossible offset")
             // No explicit scroll/reset after a tab change: these controls must already be visible.
-            fixture.bounds(fixture.filterChip(LibraryFilter.ALL))
+            fixture.nodes.bounds(fixture.nodes.filterChip(LibraryFilter.ALL))
             fixture.selectTab(LibraryOptionsTab.SORT)
-            fixture.bounds(fixture.directionSwitch())
+            fixture.nodes.bounds(fixture.nodes.directionSwitch())
             fixture.selectTab(LibraryOptionsTab.DISPLAY)
-            fixture.bounds(fixture.slider())
+            fixture.nodes.bounds(fixture.nodes.slider())
             fixture.expectOnly()
         }
 
@@ -81,12 +84,14 @@ class LibraryOptionsSheetReachabilityTest {
     fun portraitKeepsNaturalSizingAndRealModalDismissal() =
         runLibraryOptionsSheetTest(size = libraryOptionsPortraitSize, fontScale = 1f) { fixture ->
             assertEquals(0f, fixture.scrollRange().maxValue)
-            LibraryFilter.entries.forEach { fixture.bounds(fixture.filterChip(it)) }
+            LibraryFilter.entries.forEach { fixture.nodes.bounds(fixture.nodes.filterChip(it)) }
             fixture.selectTab(LibraryOptionsTab.DISPLAY)
             assertEquals(0f, fixture.scrollRange().maxValue)
-            fixture.bounds(fixture.slider())
-            repeat(5) { fixture.bounds(fixture.displaySwitch(it)) }
-            assertTrue(fixture.sheetBounds().height < libraryOptionsPortraitSize.height)
+            fixture.nodes.bounds(fixture.nodes.slider())
+            repeat(LIBRARY_DISPLAY_SWITCH_COUNT) {
+                fixture.nodes.bounds(fixture.nodes.displaySwitch(it))
+            }
+            assertTrue(fixture.nodes.sheetBounds().height < libraryOptionsPortraitSize.height)
             fixture.expectOnly()
 
             fixture.dismissUsingScrim()

@@ -22,11 +22,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import coil3.BitmapImage
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
+import coil3.asImage
 import coil3.decode.DataSource
 import coil3.intercept.Interceptor
 import coil3.request.ImageResult
@@ -60,11 +60,17 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.assertTrue
 
 internal const val READER_CHROME_ROOT = "app97-reader"
+internal const val READER_FRAME_MS = 16L
+internal const val READER_SETTLE_MS = 32L
 private const val PAGE_PREFIX = "app97://page/"
 private const val PAGE_COUNT = 5
 private const val PATTERN_SIZE = 400
 private const val PATTERN_BACKGROUND = 0xFF10B060.toInt()
 private const val PATTERN_STRIPE = 0xFFC020C0.toInt()
+private const val PATTERN_STRIPE_LEFT = 160f
+private const val PATTERN_STRIPE_RIGHT = 240f
+private const val STRIPE_MIN_DIVISOR = 6
+private const val STRIPE_MAX_DIVISOR = 4
 private val fixtureManga = Manga("app97", "en", "Gesture fixture", "app97://manga", "", null, emptyList())
 private val fixtureChapter = Chapter("Chapter 1", "1", "app97://chapter", null, false, false)
 
@@ -82,7 +88,10 @@ internal fun runReaderChromeTest(block: ReaderChromeTestFixture.() -> Unit) {
     }
 }
 
-internal fun loadedReaderState(mode: ReadingMode, visible: Boolean = false): ReaderState =
+internal fun loadedReaderState(
+    mode: ReadingMode,
+    visible: Boolean = false,
+): ReaderState =
     ReaderState(
         manga = fixtureManga,
         chapter = fixtureChapter,
@@ -94,14 +103,17 @@ internal fun loadedReaderState(mode: ReadingMode, visible: Boolean = false): Rea
         isUiVisible = visible,
     )
 
-internal fun emptyReaderStates(): List<ReaderState> = listOf(
-    ReaderState(isLoading = true, isUiVisible = false),
-    ReaderState(error = AppError.Network.NoConnectivity(), isUiVisible = false),
-    ReaderState(isUiVisible = false),
-)
+internal fun emptyReaderStates(): List<ReaderState> =
+    listOf(
+        ReaderState(isLoading = true, isUiVisible = false),
+        ReaderState(error = AppError.Network.NoConnectivity(), isUiVisible = false),
+        ReaderState(isUiVisible = false),
+    )
 
 @OptIn(ExperimentalTestApi::class)
-internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
+internal class ReaderChromeTestFixture(
+    val test: ComposeUiTest,
+) {
     var state by mutableStateOf(ReaderState(isLoading = true, isUiVisible = false))
     private var generation by mutableStateOf(0)
     private var direction by mutableStateOf(LayoutDirection.Ltr)
@@ -123,15 +135,20 @@ internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
     val root get() = test.onNodeWithTag(READER_CHROME_ROOT, useUnmergedTree = true)
     val toggleCount get() = intents.count { it == ReaderIntent.OnUiToggle }
     val context get() = "${state.readingMode}/$direction/loading=${state.isLoading}/error=${state.error}"
-    private val lifecycleOwner = object : LifecycleOwner {
-        override val lifecycle = LifecycleRegistry.createUnsafe(this).apply {
-            currentState = Lifecycle.State.RESUMED
+    private val lifecycleOwner =
+        object : LifecycleOwner {
+            override val lifecycle =
+                LifecycleRegistry.createUnsafe(this).apply {
+                    currentState = Lifecycle.State.RESUMED
+                }
         }
-    }
 
-    fun install() = test.setContent { KiraTheme(darkTheme = false) { Content() } }
+    fun install() = test.setContent { KiraTheme(darkTheme = false) { content() } }
 
-    fun reset(initial: ReaderState, layoutDirection: LayoutDirection = LayoutDirection.Ltr) {
+    fun reset(
+        initial: ReaderState,
+        layoutDirection: LayoutDirection = LayoutDirection.Ltr,
+    ) {
         test.runOnIdle {
             state = initial
             direction = layoutDirection
@@ -140,12 +157,12 @@ internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
             completed.clear()
             intents.clear()
         }
-        advance(32)
+        advance(READER_SETTLE_MS)
     }
 
     fun replace(initial: ReaderState) {
         test.runOnIdle { state = initial }
-        advance(32)
+        advance(READER_SETTLE_MS)
     }
 
     fun advance(milliseconds: Long) {
@@ -156,13 +173,14 @@ internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
     fun awaitPage() {
         val url = state.pages[state.currentPageIndex].url
         test.waitUntil("Successful Coil page for $context", timeoutMillis = 5_000) {
-            advance(16)
+            advance(READER_FRAME_MS)
             url in completed
         }
-        advance(32)
+        advance(READER_SETTLE_MS)
         val page = stripe()
         assertTrue(
-            page.hasGreenBackground && page.width in (page.viewportWidth / 6)..(page.viewportWidth / 4),
+            page.hasGreenBackground &&
+                page.width in (page.viewportWidth / STRIPE_MIN_DIVISOR)..(page.viewportWidth / STRIPE_MAX_DIVISOR),
             "Actual successful green page with a 20%-width magenta stripe must be painted: $context",
         )
     }
@@ -170,31 +188,32 @@ internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
     private fun accept(intent: ReaderIntent) {
         intents += intent
         // Only existing UI-observation responses are modeled; no VM or network is started.
-        state = when (intent) {
-            ReaderIntent.OnUiToggle -> state.copy(isUiVisible = !state.isUiVisible)
-            is ReaderIntent.OnPageChanged -> state.copy(currentPageIndex = intent.pageIndex)
-            else -> state
-        }
+        state =
+            when (intent) {
+                ReaderIntent.OnUiToggle -> state.copy(isUiVisible = !state.isUiVisible)
+                is ReaderIntent.OnPageChanged -> state.copy(currentPageIndex = intent.pageIndex)
+                else -> state
+            }
     }
 
     @Composable
-    private fun Content() {
+    private fun content() {
         val visible = state.isUiVisible
         SideEffect {
             if (visible && previousVisibility != true) visibleSince = test.mainClock.currentTime
             previousVisibility = visible
         }
-        ReadLabels()
+        readLabels()
         CompositionLocalProvider(
             LocalLayoutDirection provides direction,
             LocalLifecycleOwner provides lifecycleOwner,
         ) {
-            key(generation) { Reader() }
+            key(generation) { reader() }
         }
     }
 
     @Composable
-    private fun Reader() {
+    private fun reader() {
         ReaderScreenContent(
             state = state,
             effects = emptyFlow(),
@@ -213,7 +232,7 @@ internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
     }
 
     @Composable
-    private fun ReadLabels() {
+    private fun readLabels() {
         doubleTapTimeout = LocalViewConfiguration.current.doubleTapTimeoutMillis
         revealLabel = stringResource(Res.string.reader_show_controls)
         backLabel = stringResource(Res.string.back)
@@ -230,20 +249,27 @@ internal class ReaderChromeTestFixture(val test: ComposeUiTest) {
 private class ReaderChromeImages : Closeable {
     private val previous = SingletonImageLoader.get(PlatformContext.INSTANCE)
     private val bitmap = patternedBitmap()
-    private val image = BitmapImage(bitmap, shareable = true)
-    private val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
-        .memoryCache(null)
-        .diskCache(null)
-        .components {
-            add(object : Interceptor {
-                override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-                    require(chain.request.data.toString().startsWith(PAGE_PREFIX))
-                    // Successful real Coil rendering, not an error/loading placeholder or fake tap box.
-                    return SuccessResult(image, chain.request, DataSource.MEMORY)
-                }
-            })
-        }
-        .build()
+    private val image = bitmap.asImage(shareable = true)
+    private val loader =
+        ImageLoader
+            .Builder(PlatformContext.INSTANCE)
+            .memoryCache(null)
+            .diskCache(null)
+            .components {
+                add(
+                    object : Interceptor {
+                        override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+                            require(
+                                chain.request.data
+                                    .toString()
+                                    .startsWith(PAGE_PREFIX),
+                            )
+                            // Successful real Coil rendering, not an error/loading placeholder or fake tap box.
+                            return SuccessResult(image, chain.request, DataSource.MEMORY)
+                        }
+                    },
+                )
+            }.build()
 
     init {
         SingletonImageLoader.setUnsafe(loader)
@@ -258,15 +284,19 @@ private class ReaderChromeImages : Closeable {
         }
     }
 
-    private fun patternedBitmap(): Bitmap = Bitmap().apply {
-        check(allocN32Pixels(PATTERN_SIZE, PATTERN_SIZE))
-        erase(PATTERN_BACKGROUND)
-        Canvas(this).use { canvas ->
-            Paint().use { paint ->
-                paint.color = PATTERN_STRIPE
-                canvas.drawRect(Rect.makeLTRB(160f, 0f, 240f, PATTERN_SIZE.toFloat()), paint)
+    private fun patternedBitmap(): Bitmap =
+        Bitmap().apply {
+            check(allocN32Pixels(PATTERN_SIZE, PATTERN_SIZE))
+            erase(PATTERN_BACKGROUND)
+            Canvas(this).use { canvas ->
+                Paint().use { paint ->
+                    paint.color = PATTERN_STRIPE
+                    canvas.drawRect(
+                        Rect.makeLTRB(PATTERN_STRIPE_LEFT, 0f, PATTERN_STRIPE_RIGHT, PATTERN_SIZE.toFloat()),
+                        paint,
+                    )
+                }
             }
+            setImmutable()
         }
-        setImmutable()
-    }
 }

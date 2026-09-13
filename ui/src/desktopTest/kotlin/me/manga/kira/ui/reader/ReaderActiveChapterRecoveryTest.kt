@@ -37,16 +37,17 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class ReaderActiveChapterRecoveryTest {
     @Test
-    fun pageErrorRecoveryUsesActiveChapterAndRebindsWithoutRemounting() = runRecoveryTest { surface ->
-        assertEquals(surface.chapters[1].url, surface.state.activeChapterUrl)
-        clickRecoveryAndForwardEffect(surface, surface.chapters[1])
-        runOnIdle { surface.state = surface.state.copy(currentPageIndex = 2) }
-        clickRecoveryAndForwardEffect(surface, surface.chapters[2])
-        runOnIdle {
-            assertEquals(surface.chapters.first(), surface.state.chapter, "the navigation anchor stays unchanged")
-            assertEquals(1, surface.intents.count { it is ReaderIntent.OnEnter }, "the same screen remains mounted")
+    fun pageErrorRecoveryUsesActiveChapterAndRebindsWithoutRemounting() =
+        runRecoveryTest { surface ->
+            assertEquals(surface.chapters[1].url, surface.state.activeChapterUrl)
+            clickRecoveryAndForwardEffect(surface, surface.chapters[1])
+            runOnIdle { surface.state = surface.state.copy(currentPageIndex = 2) }
+            clickRecoveryAndForwardEffect(surface, surface.chapters[2])
+            runOnIdle {
+                assertEquals(surface.chapters.first(), surface.state.chapter, "the navigation anchor stays unchanged")
+                assertEquals(1, surface.intents.count { it is ReaderIntent.OnEnter }, "the same screen remains mounted")
+            }
         }
-    }
 
     @Test
     fun pageErrorRecoveryFallsBackToNavigationChapterWithoutActiveIdentity() =
@@ -93,7 +94,10 @@ class ReaderActiveChapterRecoveryTest {
         assertTrue(surface.recoveryLabel.isNotBlank())
     }
 
-    private fun ComposeUiTest.clickRecoveryAndForwardEffect(surface: RecoverySurface, chapter: Chapter) {
+    private fun ComposeUiTest.clickRecoveryAndForwardEffect(
+        surface: RecoverySurface,
+        chapter: Chapter,
+    ) {
         val request = ReaderIntent.OnOpenInWebView(chapter.url, surface.manga.api)
         val before = runOnIdle { surface.intents.filterIsInstance<ReaderIntent.OnOpenInWebView>() }
         waitUntil(timeoutMillis = IMAGE_ERROR_TIMEOUT_MILLIS) { visibleRecoveryButton(surface.recoveryLabel) != null }
@@ -117,24 +121,31 @@ class ReaderActiveChapterRecoveryTest {
             .singleOrNull { it.isDisplayed() }
     }
 
-    private class RecoverySurface(directory: Path, withoutActiveIdentity: Boolean) {
-        val manga = Manga(
-            api = "reader-recovery-fixture",
-            language = "en",
-            title = "Reader recovery fixture",
-            url = "manga/fixture",
-            coverUrl = "",
-            rating = null,
-            genres = emptyList(),
-        )
-        val chapters = listOf("1", "2", "3").map { number ->
-            Chapter(number, "Chapter $number", "chapter/$number", null, false, false)
-        }
+    private class RecoverySurface(
+        directory: Path,
+        withoutActiveIdentity: Boolean,
+    ) {
+        val manga =
+            Manga(
+                api = "reader-recovery-fixture",
+                language = "en",
+                title = "Reader recovery fixture",
+                url = "manga/fixture",
+                coverUrl = "",
+                rating = null,
+                genres = emptyList(),
+            )
+        val chapters =
+            listOf("1", "2", "3").map { number ->
+                Chapter(number, "Chapter $number", "chapter/$number", null, false, false)
+            }
+
         // These files deliberately do not exist. Coil's real request fails locally and renders
         // ReaderPageItem's actual image-error slot: no network, preview handler or surrogate button.
-        private val pages = chapters.indices.map { index ->
-            Page(directory.resolve("missing-$index.png").toUri().toString(), emptyMap())
-        }
+        private val pages =
+            chapters.indices.map { index ->
+                Page(directory.resolve("missing-$index.png").toUri().toString(), emptyMap())
+            }
         val effects = Channel<ReaderEffect>(Channel.UNLIMITED)
         val effectFlow = effects.receiveAsFlow()
         val intents = mutableListOf<ReaderIntent>()
@@ -142,18 +153,19 @@ class ReaderActiveChapterRecoveryTest {
         var recoveryLabel = ""
         var state by mutableStateOf(initialState(withoutActiveIdentity))
 
-        private fun initialState(withoutActiveIdentity: Boolean): ReaderState = ReaderState(
-            manga = manga,
-            chapter = if (withoutActiveIdentity) null else chapters.first(),
-            chapters = if (withoutActiveIdentity) emptyList() else chapters,
-            pages = if (withoutActiveIdentity) pages.take(1) else pages,
-            pageChapters = if (withoutActiveIdentity) emptyList() else chapters.map { it.url },
-            loadedChapterUrls = if (withoutActiveIdentity) emptyList() else chapters.map { it.url },
-            currentPageIndex = if (withoutActiveIdentity) 0 else 1,
-            readingMode = ReadingMode.LEFT_TO_RIGHT,
-            isLoading = false,
-            isUiVisible = false,
-        )
+        private fun initialState(withoutActiveIdentity: Boolean): ReaderState =
+            ReaderState(
+                manga = manga,
+                chapter = if (withoutActiveIdentity) null else chapters.first(),
+                chapters = if (withoutActiveIdentity) emptyList() else chapters,
+                pages = if (withoutActiveIdentity) pages.take(1) else pages,
+                pageChapters = if (withoutActiveIdentity) emptyList() else chapters.map { it.url },
+                loadedChapterUrls = if (withoutActiveIdentity) emptyList() else chapters.map { it.url },
+                currentPageIndex = if (withoutActiveIdentity) 0 else 1,
+                readingMode = ReadingMode.LEFT_TO_RIGHT,
+                isLoading = false,
+                isUiVisible = false,
+            )
     }
 
     private companion object {

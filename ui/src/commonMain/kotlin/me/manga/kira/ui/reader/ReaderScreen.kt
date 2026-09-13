@@ -583,8 +583,7 @@ internal fun ReaderScreenContent(
                     } else {
                         Modifier
                     },
-                )
-                .semantics(mergeDescendants = false) {
+                ).semantics(mergeDescendants = false) {
                     if (!state.isUiVisible) {
                         contentDescription = showControlsLabel
                         role = Role.Button

@@ -394,7 +394,10 @@ class ReaderViewModel(
         replaceChapter(manga, chapter)
     }
 
-    private suspend fun replaceChapter(manga: Manga, chapter: Chapter) {
+    private suspend fun replaceChapter(
+        manga: Manga,
+        chapter: Chapter,
+    ) {
         val current = state.value
         FlowLog.log("Reader", "enter", "chapter=${chapter.url} num=${chapter.number} api=${manga.api}")
         // Leaving a chapter (incl. intra-manga Next/Prev on this reused VM): drop the temp images

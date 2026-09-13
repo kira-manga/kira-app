@@ -21,90 +21,96 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class ReaderChromeGestureTest {
     @Test
-    fun loadedSingleTapsToggleExactlyOnceInEveryModeBeforeAndAfterRealAutoHide() = runReaderChromeTest {
-        for (mode in ReadingMode.entries) {
-            reset(loadedReaderState(mode, visible = true))
-            awaitPage()
-            assertChrome(visible = true, toggles = 0)
-            tapChrome(visible = false, toggles = 1)
-            tapChrome(visible = true, toggles = 2)
-            assertAutoHide(previousToggles = 2)
-            tapChrome(visible = true, toggles = 4)
-            tapChrome(visible = false, toggles = 5)
-        }
-    }
-
-    @Test
-    fun swipesAdvanceEveryLayoutWithoutTogglesInBothAmbientDirections() = runReaderChromeTest {
-        for (mode in ReadingMode.entries) {
-            for (direction in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
-                reset(loadedReaderState(mode), direction)
+    fun loadedSingleTapsToggleExactlyOnceInEveryModeBeforeAndAfterRealAutoHide() =
+        runReaderChromeTest {
+            for (mode in ReadingMode.entries) {
+                reset(loadedReaderState(mode, visible = true))
                 awaitPage()
-                assertForwardSwipe()
+                assertChrome(visible = true, toggles = 0)
+                tapChrome(visible = false, toggles = 1)
+                tapChrome(visible = true, toggles = 2)
+                assertAutoHide(previousToggles = 2)
+                tapChrome(visible = true, toggles = 4)
+                tapChrome(visible = false, toggles = 5)
             }
         }
-    }
 
     @Test
-    fun doubleTapZoomResetPinchAndZoomedPanMovePixelsWithoutTogglingChrome() = runReaderChromeTest {
-        for (mode in ReadingMode.entries) {
-            reset(loadedReaderState(mode))
+    fun swipesAdvanceEveryLayoutWithoutTogglesInBothAmbientDirections() =
+        runReaderChromeTest {
+            for (mode in ReadingMode.entries) {
+                for (direction in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
+                    reset(loadedReaderState(mode), direction)
+                    awaitPage()
+                    assertForwardSwipe()
+                }
+            }
+        }
+
+    @Test
+    fun doubleTapZoomResetPinchAndZoomedPanMovePixelsWithoutTogglingChrome() =
+        runReaderChromeTest {
+            for (mode in ReadingMode.entries) {
+                reset(loadedReaderState(mode))
+                awaitPage()
+                assertZoomAndPan()
+            }
+        }
+
+    @Test
+    fun toolbarPointerActionsStayIndependentOfPageTaps() =
+        runReaderChromeTest {
+            reset(loadedReaderState(ReadingMode.WEBTOON, visible = true))
             awaitPage()
-            assertZoomAndPan()
-        }
-    }
-
-    @Test
-    fun toolbarPointerActionsStayIndependentOfPageTaps() = runReaderChromeTest {
-        reset(loadedReaderState(ReadingMode.WEBTOON, visible = true))
-        awaitPage()
-        test.runOnIdle { intents.clear() }
-        for (label in listOf(backLabel, bookmarkLabel, shareLabel)) {
-            test.onNodeWithContentDescription(label).performTouchInput { click() }
-            advance(doubleTapTimeout + 32)
-            assertChrome(visible = true, toggles = 0)
-        }
-        test.onNodeWithContentDescription(settingsLabel).performTouchInput { click() }
-        advance(CHROME_ANIMATION_MS)
-        test.onNodeWithText(modeDialogLabel).assertIsDisplayed()
-        test.onNodeWithText(revertLabel).performTouchInput { click() }
-        advance(doubleTapTimeout + CHROME_ANIMATION_MS)
-        test.onNodeWithText(modeDialogLabel).assertDoesNotExist()
-        assertChrome(visible = true, toggles = 0)
-        test.runOnIdle {
-            assertEquals(
-                listOf(ReaderIntent.OnBackClick, ReaderIntent.OnToggleBookmark, ReaderIntent.OnShareCurrentPage),
-                intents,
-            )
-        }
-    }
-
-    @Test
-    fun noPageFallbackAndControlsSurviveLoadedEmptyTransitionsWithoutCompetingDetectors() = runReaderChromeTest {
-        for (empty in emptyReaderStates()) {
-            reset(empty)
-            tapChrome(visible = true, toggles = 1)
-            assertNoPageControls()
-            tapChrome(visible = false, toggles = 2)
-            // Deliberately keep the same composition identity as the fallback is removed/inserted.
-            replace(loadedReaderState(ReadingMode.VERTICAL))
-            awaitPage()
-            tapChrome(visible = true, toggles = 3)
-            replace(empty)
+            test.runOnIdle { intents.clear() }
+            for (label in listOf(backLabel, bookmarkLabel, shareLabel)) {
+                test.onNodeWithContentDescription(label).performTouchInput { click() }
+                advance(doubleTapTimeout + READER_SETTLE_MS)
+                assertChrome(visible = true, toggles = 0)
+            }
+            test.onNodeWithContentDescription(settingsLabel).performTouchInput { click() }
             advance(CHROME_ANIMATION_MS)
-            tapChrome(visible = true, toggles = 4)
+            test.onNodeWithText(modeDialogLabel).assertIsDisplayed()
+            test.onNodeWithText(revertLabel).performTouchInput { click() }
+            advance(doubleTapTimeout + CHROME_ANIMATION_MS)
+            test.onNodeWithText(modeDialogLabel).assertDoesNotExist()
+            assertChrome(visible = true, toggles = 0)
+            test.runOnIdle {
+                assertEquals(
+                    listOf(ReaderIntent.OnBackClick, ReaderIntent.OnToggleBookmark, ReaderIntent.OnShareCurrentPage),
+                    intents,
+                )
+            }
         }
-    }
 
     @Test
-    fun semanticRevealIsLocalizedNonmergingIdempotentAndRearmedAfterAutoHide() = runReaderChromeTest {
-        val states = ReadingMode.entries.map { loadedReaderState(it) } + emptyReaderStates()
-        for (initial in states) {
-            reset(initial)
-            if (initial.hasPages) awaitPage()
-            assertSemanticReveal()
+    fun noPageFallbackAndControlsSurviveLoadedEmptyTransitionsWithoutCompetingDetectors() =
+        runReaderChromeTest {
+            for (empty in emptyReaderStates()) {
+                reset(empty)
+                tapChrome(visible = true, toggles = 1)
+                assertNoPageControls()
+                tapChrome(visible = false, toggles = 2)
+                // Deliberately keep the same composition identity as the fallback is removed/inserted.
+                replace(loadedReaderState(ReadingMode.VERTICAL))
+                awaitPage()
+                tapChrome(visible = true, toggles = 3)
+                replace(empty)
+                advance(CHROME_ANIMATION_MS)
+                tapChrome(visible = true, toggles = 4)
+            }
         }
-    }
+
+    @Test
+    fun semanticRevealIsLocalizedNonmergingIdempotentAndRearmedAfterAutoHide() =
+        runReaderChromeTest {
+            val states = ReadingMode.entries.map { loadedReaderState(it) } + emptyReaderStates()
+            for (initial in states) {
+                reset(initial)
+                if (initial.hasPages) awaitPage()
+                assertSemanticReveal()
+            }
+        }
 
     private fun ReaderChromeTestFixture.assertAutoHide(previousToggles: Int) {
         val beforeDeadline = visibleSince + AUTO_HIDE_MS - 1
@@ -126,14 +132,14 @@ class ReaderChromeGestureTest {
 
     private fun ReaderChromeTestFixture.assertNoPageControls() {
         test.onNodeWithContentDescription(backLabel).performTouchInput { click() }
-        advance(doubleTapTimeout + 32)
+        advance(doubleTapTimeout + READER_SETTLE_MS)
         assertTrue(ReaderIntent.OnBackClick in intents)
         val retry = test.onNodeWithText(retryLabel)
         if (state.isInitialLoading) {
             retry.assertDoesNotExist()
         } else {
             retry.assertIsDisplayed().performTouchInput { click() }
-            advance(doubleTapTimeout + 32)
+            advance(doubleTapTimeout + READER_SETTLE_MS)
             assertTrue(ReaderIntent.OnRetry in intents)
         }
         assertChrome(visible = true, toggles = 1)
@@ -184,10 +190,14 @@ class ReaderChromeGestureTest {
         revealNode().assertDoesNotExist()
     }
 
-    private fun ReaderChromeTestFixture.revealNode() =
-        test.onNodeWithContentDescription(revealLabel, useUnmergedTree = true)
-
     private companion object {
         const val AUTO_HIDE_MS = 3_000L
     }
 }
+
+@OptIn(ExperimentalTestApi::class)
+private fun ReaderChromeTestFixture.revealNode() =
+    test.onNodeWithContentDescription(
+        revealLabel,
+        useUnmergedTree = true,
+    )
