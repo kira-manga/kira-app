@@ -62,6 +62,7 @@ internal class DetailsOwnerFixture(
     val resolver = OwnerResolver(idsByMangaUrl)
     val deletedChapters = mutableListOf<Long>()
     val chaptersByMangaUrl = mutableMapOf<String, List<Chapter>>()
+
     // Single-owner overlay control only: the legacy saved port cannot distinguish identical metadata.
     // Opposite-owner scenarios use the exact-URL fetch map instead of pretending this port can.
     val savedDetails = MutableStateFlow<MangaDetails?>(null)

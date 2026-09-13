@@ -56,7 +56,13 @@ class DetailsDeferredDownloadOwnershipTest {
                 if (!savedB) fixture.downloads.publish(b, listOf(download(202, 2, DownloadState.SUCCESS)))
                 val landed = fixture.assertLoadedOwner(b)
                 assertTrue(landed.isChapterDownloaded(CHAPTER_URL), "B must really be complete before releasing A")
-                assertEquals(savedB, landed.details?.chapters?.single()?.isDownloaded)
+                assertEquals(
+                    savedB,
+                    landed.details
+                        ?.chapters
+                        ?.single()
+                        ?.isDownloaded,
+                )
                 assertEquals(b.title, landed.details?.title)
                 assertEquals(b.api, landed.details?.api)
                 gate.complete(Unit)
