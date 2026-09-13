@@ -71,5 +71,4 @@ internal class LibraryOptionsNodes(
 }
 
 @OptIn(ExperimentalTestApi::class)
-private fun ComposeUiTest.optionChip(label: String): SemanticsNodeInteraction =
-    onNode(hasText(label) and hasClickAction())
+private fun ComposeUiTest.optionChip(label: String): SemanticsNodeInteraction = onNode(hasText(label) and hasClickAction())
