@@ -1,0 +1,31 @@
+// PRIVATE / UNBOUND / NOT_RUN. Only ordinary debug assembly after primary admission.
+// Outer owned executor binds clean exact App/Engine commits+trees before invocation.
+import org.gradle.api.GradleException
+
+def require = { ok, message -> if (!ok) throw new GradleException(message) }
+require(System.getenv('APP10_PRIMARY_ADMITTED') == '1', 'Separate primary admission required')
+def appPath = System.getenv('APP10_APP_ROOT')
+def enginePath = System.getenv('APP10_ENGINE_ROOT')
+require(appPath && enginePath, 'Exact owned App and original Engine paths required')
+def appRoot = new File(appPath).canonicalFile
+def engineRoot = new File(enginePath).canonicalFile
+require(appRoot.isDirectory() && engineRoot.isDirectory() && appRoot != engineRoot,
+    'Two existing distinct source roots required')
+
+gradle.settingsEvaluated { settings ->
+    def root = settings.settingsDir.canonicalFile
+    require(root == appRoot || root == engineRoot, 'Unexpected build root')
+    if (root == appRoot) {
+        require(gradle.startParameter.taskNames == [':app:assembleDebug'], 'Only normal :app:assembleDebug')
+        require(!gradle.startParameter.dryRun && gradle.startParameter.excludedTaskNames.isEmpty(),
+            'No dry run or task exclusion')
+        settings.includeBuild(engineRoot) {
+            name = 'original-engine-ed184165-app10-cold-root01'
+            dependencySubstitution {
+                substitute(module('me.manga.kira.source:source-engine:0.1.0')).using(project(':source-engine'))
+            }
+        }
+    } else {
+        require(settings.rootProject.name == 'kira-source-engine', 'Original Engine settings required')
+    }
+}
