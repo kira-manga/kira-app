@@ -1,0 +1,44 @@
+{
+  "schema": "app-seven-apple-native-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "514b0e3582f03356dfcaa26eb47d239ef2726efb",
+    "tree": "9ebcf2e454f7654685b096b7de7d574a9d985f15"
+  },
+  "suites": [
+    {
+      "task": ":composeApp:iosSimulatorArm64Test",
+      "class": "me.manga.kira.reader.ReaderNativeFeedProjectionTest",
+      "source": "composeApp/src/iosTest/kotlin/me/manga/kira/reader/ReaderNativeFeedProjectionTest.kt",
+      "sourceSha256": "c5542fa88ddc183202f37d0f26278228c06fb8f995acdfb13def8406b800cf9e",
+      "methods": [
+        "emptyAppendInvalidatesNativeBoundaryEvenWhenAllPageListsAreIdentical",
+        "scrollAndChromeChangesReuseTheProjectionButRecoveryRefreshesTheLabel"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.PageProgressRepositoryImplTest",
+      "source": "data/src/commonTest/kotlin/me/manga/kira/data/repository/PageProgressRepositoryImplTest.kt",
+      "sourceSha256": "74bcfa61a085aedb06615f2ebea8f99b8dc9d78a5c39148a52ca5d32be7c2f7b",
+      "methods": [
+        "cancellingNewestProducerRestoresSurvivorWithoutAffectingAnotherReader",
+        "returningToSameUrlRejectsOldAttemptsAndUnknownHandles",
+        "finishedAttemptsAreDiscardedAndCannotOverwriteRetry",
+        "repeatedSessionsRetainOnlyCurrentlyAcquiredPagesIncludingUnreportedOnes"
+      ]
+    },
+    {
+      "task": ":presentation:iosSimulatorArm64Test",
+      "class": "me.manga.kira.presentation.reader.ReaderPageProgressOwnershipTest",
+      "source": "presentation/src/commonTest/kotlin/me/manga/kira/presentation/reader/ReaderPageProgressOwnershipTest.kt",
+      "sourceSha256": "e751a47c3625616fb2291dc469c849fede1bb4d783810fa83762b0b53c0abefb",
+      "methods": [
+        "replacementRevokesUnreportedPagesBeforeResumeSuspendsAndStoreClearRevokesTheRest",
+        "cumulativeSnapshotsAndAppendKeepDuplicateUrlSurvivorsWithoutObserverGaps",
+        "sameUrlAcrossAtoBtoAUsesNewOwnersAndIdleRemovesTheCurrentValue"
+      ]
+    }
+  ]
+}
