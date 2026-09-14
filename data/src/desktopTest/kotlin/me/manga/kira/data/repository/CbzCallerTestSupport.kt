@@ -106,6 +106,6 @@ private object CbzCallerDispatchers : DispatcherProvider {
 }
 
 private val CBZ_CALLER_PNG: ByteArray = checkNotNull(
-    "iVBORw0KGgoAAAANSUhEUgAAABcAAABBCAIAAAC1n6gdAAAAMElEQVR4nO3MMQ0AAAgDsElCClLwfyGC8DXp3VTPXSwWi8VisVgsFovFYrFYLK/LAsCOedyN4Wo0AAAAAElFTkSuQmCC"
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAADsdIMmAAAAC0lEQVR42mNgQAUAABAAAaoZ+IIAAAAASUVORK5CYII="
         .decodeBase64(),
 ).toByteArray()

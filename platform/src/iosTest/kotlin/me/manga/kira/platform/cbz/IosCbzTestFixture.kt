@@ -52,10 +52,10 @@ internal class IosCbzTestFixture {
 
     fun destination(chapterId: Long = 1L): Path = directory(chapterId) / "chapter_$chapterId.cbz"
 
-    fun pages(count: Int = 2, chapterId: Long = 1L): List<Path> =
+    fun pages(count: Int = 2, chapterId: Long = 1L, bytes: ByteArray = IOS_CBZ_PNG): List<Path> =
         List(count) { index ->
             (directory(chapterId) / "input_$index.png").also { path ->
-                system.write(path) { write(IOS_CBZ_PNG) }
+                system.write(path) { write(bytes) }
             }
         }
 
@@ -82,12 +82,12 @@ internal class IosCbzTestFixture {
         assertNoTemporary(chapterId)
     }
 
-    fun archiveEntries(chapterId: Long = 1L): List<Pair<String, ByteArray>> {
-        val zip = system.openZip(destination(chapterId))
-        return zip.list("/".toPath()).sortedBy { it.name }.map { path ->
-            path.name to zip.read(path) { readByteArray() }
+    fun archiveEntries(chapterId: Long = 1L): List<Pair<String, ByteArray>> =
+        system.openZip(destination(chapterId)).use { zip ->
+            zip.list("/".toPath()).sortedBy { it.name }.map { path ->
+                path.name to zip.read(path) { readByteArray() }
+            }
         }
-    }
 
     fun assertWebpDimensions(expected: List<Pair<Int, Int>>, chapterId: Long = 1L) {
         val entries = archiveEntries(chapterId)

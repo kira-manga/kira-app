@@ -164,26 +164,27 @@ class IosCbzWriter internal constructor(
 
     /** Reopen and read the staged payloads; a readable directory alone cannot prove a complete ZIP. */
     private suspend fun validateArchive(temporary: Path, expected: List<ArchivedEntry>) {
-        val zip = system.openZip(temporary)
-        val root = "/".toPath()
-        val names = zip.list(root).map { it.name }.toSet()
-        if (names != expected.map { it.name }.toSet()) throw IOException("CBZ entry count mismatch")
-        val buffer = ByteArray(VALIDATION_BUFFER_SIZE)
-        expected.forEach { entry ->
-            currentCoroutineContext().ensureActive()
-            val checksum = Crc32()
-            var size = 0L
-            zip.source(root / entry.name).buffer().use { source ->
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val read = source.read(buffer)
-                    if (read == -1) break
-                    size += read
-                    if (size > entry.size) throw IOException("CBZ entry size mismatch")
-                    checksum.update(buffer, length = read)
+        system.openZip(temporary).use { zip ->
+            val root = "/".toPath()
+            val names = zip.list(root).map { it.name }.toSet()
+            if (names != expected.map { it.name }.toSet()) throw IOException("CBZ entry count mismatch")
+            val buffer = ByteArray(VALIDATION_BUFFER_SIZE)
+            expected.forEach { entry ->
+                currentCoroutineContext().ensureActive()
+                val checksum = Crc32()
+                var size = 0L
+                zip.source(root / entry.name).buffer().use { source ->
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = source.read(buffer)
+                        if (read == -1) break
+                        size += read
+                        if (size > entry.size) throw IOException("CBZ entry size mismatch")
+                        checksum.update(buffer, length = read)
+                    }
                 }
+                if (size != entry.size || checksum.value != entry.checksum) throw IOException("CBZ entry payload mismatch")
             }
-            if (size != entry.size || checksum.value != entry.checksum) throw IOException("CBZ entry payload mismatch")
         }
     }
 
@@ -208,7 +209,13 @@ internal fun interface IosCbzPageEncoder {
     )
 }
 
-internal object DefaultIosCbzPageEncoder : IosCbzPageEncoder {
+internal object DefaultIosCbzPageEncoder : IosCbzPageEncoder by IosCbzPageTranscoder()
+
+/** The toggle selects an encoder, never a more permissive validation or error-recovery policy. */
+internal class IosCbzPageTranscoder(
+    private val useLibWebp: Boolean = IosWebpEncoderFlags.USE_LIBWEBP,
+    private val native: IosCbzNativeCodec = IosCbzNativeCodec(),
+) : IosCbzPageEncoder {
     override suspend fun encode(
         source: ByteArray,
         metadata: PageImageMetadata,
@@ -217,11 +224,17 @@ internal object DefaultIosCbzPageEncoder : IosCbzPageEncoder {
         maxMemoryBytes: Long,
         emit: suspend (extension: String, bytes: ByteArray) -> Unit,
     ) {
-        val pages = if (IosWebpEncoderFlags.USE_LIBWEBP) {
-            IosLibWebpEncoder.encodeToWebpPages(source, quality, maxHeight, maxMemoryBytes)
+        val result = if (useLibWebp) {
+            IosLibWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes, native) {
+                emit("webp", it)
+            }
         } else {
-            SkiaWebpEncoder.encodeToWebpPages(source, quality, maxHeight, maxMemoryBytes)
-        } ?: throw IOException("CBZ source decode or WebP encode failed")
-        pages.forEach { emit("webp", it) }
+            SkiaWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes) { emit("webp", it) }
+        }
+        currentCoroutineContext().ensureActive()
+        when (result) {
+            is CbzPageEncoding.Encoded -> check(result.bandCount > 0) { "CBZ codec produced no bands" }
+            is CbzPageEncoding.PreserveOriginal -> emit(metadata.format.extension, source)
+        }
     }
 }
