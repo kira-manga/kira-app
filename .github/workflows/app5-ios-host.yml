@@ -1,0 +1,99 @@
+# Primary-bound one-attempt shipping-host validation; no release or deployment.
+name: App5 public shipping iOS host build
+on:
+  push:
+    branches: [remediation/app-5-ios-host-validation-03]
+    paths: [ci/app5-ios-host.request.json]
+permissions:
+  contents: read
+concurrency:
+  group: app5-ios-host-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  host:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-5-ios-host-validation-03' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 55
+    steps:
+      - name: Exact control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Admit bound one-attempt request
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app5-ios-host.py request
+      - name: Exact unmodified App source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Exact original public Engine source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ${{ steps.request.outputs.engine_sha }}
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Sole ordinary Debug arm64 shipping host build
+        id: host
+        timeout-minutes: 50
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app5-ios-host.py host
+      - name: Bounded evidence after final owned absence
+        if: ${{ always() && steps.host.outputs.retention_ready == 'true' }}
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ env.APP5_RUN }}/reports/request.json
+            ${{ env.APP5_RUN }}/reports/result.json
+            ${{ env.APP5_RUN }}/reports/identity.json
+            ${{ env.APP5_RUN }}/reports/source.json
+            ${{ env.APP5_RUN }}/reports/tools.json
+            ${{ env.APP5_RUN }}/reports/app-tasks.json
+            ${{ env.APP5_RUN }}/reports/engine-tasks.json
+            ${{ env.APP5_RUN }}/reports/proof.json
+            ${{ env.APP5_RUN }}/reports/commands.json
+            ${{ env.APP5_RUN }}/reports/host-build.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-immediate.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-final.log
+            ${{ env.APP5_RUN }}/reports/prerequisites.json
+            ${{ env.APP5_RUN }}/reports/project.json
+            ${{ env.APP5_RUN }}/reports/host-proof.json
+            ${{ env.APP5_RUN }}/reports/swiftpm.json
+            ${{ env.APP5_RUN }}/reports/build-result.json
+            ${{ env.APP5_RUN }}/reports/ComposeApp.h
+            ${{ env.APP5_RUN }}/reports/ComposeApp.modulemap
+            ${{ env.APP5_RUN }}/reports/generated-project.patch
+            ${{ env.APP5_RUN }}/reports/framework-arch.log
+            ${{ env.APP5_RUN }}/reports/host-binary-arch.log
+            ${{ env.APP5_RUN }}/reports/host-binary-platform.log
+            ${{ env.APP5_RUN }}/reports/host-linked-binary-arch.log
+            ${{ env.APP5_RUN }}/reports/host-linked-binary-platform.log
