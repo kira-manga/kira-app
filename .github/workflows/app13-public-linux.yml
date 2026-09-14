@@ -1,0 +1,69 @@
+name: App10 original Engine Android notification host validation
+
+on:
+  push:
+    branches: [remediation/app-10-android8-validation-01]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app10-android8-public-linux
+  cancel-in-progress: false
+
+jobs:
+  android-host:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app-10-android8-validation-01' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the event carrier without stored credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: app
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out the exact original public Engine source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Observe exactly eight Android notification methods
+        working-directory: app
+        env:
+          # Primary binds this only after actual source/static/control review.
+          # The carrier must add exactly the six controls to the frozen source.
+          APP13_ADMISSION: primary-reviewed-app10-android8-linux-01
+        run: python3 -B scripts/validate_app13_linux.py
+
+      - name: Retain only bounded public reports, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app10-android8-linux-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app10-android8-public-reports/result.json
+            ${{ runner.temp }}/app10-android8-public-reports/source-before.json
+            ${{ runner.temp }}/app10-android8-public-reports/source-after.json
+            ${{ runner.temp }}/app10-android8-public-reports/commands.json
+            ${{ runner.temp }}/app10-android8-public-reports/inputs.json
+            ${{ runner.temp }}/app10-android8-public-reports/linux-provenance.json
+            ${{ runner.temp }}/app10-android8-public-reports/gradle.log
+            ${{ runner.temp }}/app10-android8-public-reports/inputs.log
+            ${{ runner.temp }}/app10-android8-public-reports/stop-immediate.log
+            ${{ runner.temp }}/app10-android8-public-reports/stop-final.log
+            ${{ runner.temp }}/app10-android8-public-reports/TEST-me.manga.kira.core.platform.AndroidNotificationPermissionRequesterTest.xml
+            ${{ runner.temp }}/app10-android8-public-reports/TEST-me.manga.kira.navigation.routes.AndroidNotificationOnboardingNavigationTest.xml
