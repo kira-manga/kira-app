@@ -2,9 +2,11 @@ package me.manga.kira.data.remote.ktor.cache
 
 import io.ktor.client.plugins.cache.storage.CacheStorage
 import io.ktor.client.plugins.cache.storage.CachedResponseData
+import io.ktor.http.HttpHeaders
 import io.ktor.http.Url
 import io.ktor.util.date.GMTDate
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -143,25 +145,40 @@ internal class ManagedHttpCache(
 
     private inner class Storage(private val namespace: CacheNamespace) : CacheStorage {
         override suspend fun store(url: Url, data: CachedResponseData) {
-            this@ManagedHttpCache.store(namespace, url, data)
+            if (attempt()?.bypassStorage != true) this@ManagedHttpCache.store(namespace, url, data)
         }
 
-        override suspend fun find(url: Url, varyKeys: Map<String, String>): CachedResponseData? =
-            operation(null) { touch(CacheKey(namespace, url, varyKeys)) }
-
-        override suspend fun findAll(url: Url): Set<CachedResponseData> = operation(emptySet()) {
-            val keys = entries.keys.filter { it.namespace == namespace && it.url == url }
-            keys.mapNotNull(::touch).toSet()
+        override suspend fun find(url: Url, varyKeys: Map<String, String>): CachedResponseData? {
+            if (attempt()?.bypassStorage == true) return null
+            return operation(null) { touch(CacheKey(namespace, url, varyKeys)) }
         }
 
-        override suspend fun remove(url: Url, varyKeys: Map<String, String>) = operation(Unit) {
-            removeEntry(CacheKey(namespace, url, varyKeys))
+        override suspend fun findAll(url: Url): Set<CachedResponseData> {
+            val attempt = attempt()
+            if (attempt?.bypassStorage == true) return emptySet()
+            val found = operation(emptySet()) {
+                val keys = entries.keys.filter { it.namespace == namespace && it.url == url }
+                keys.mapNotNull(::touch).toSet()
+            }
+            found.forEach { data ->
+                attempt?.observeValidators(url, data.headers[HttpHeaders.ETag], data.headers[HttpHeaders.LastModified])
+            }
+            return found
         }
 
-        override suspend fun removeAll(url: Url) = operation(Unit) {
-            entries.keys.filter { it.namespace == namespace && it.url == url }.forEach(::removeEntry)
+        override suspend fun remove(url: Url, varyKeys: Map<String, String>) {
+            if (attempt()?.bypassStorage == true) return
+            operation(Unit) { removeEntry(CacheKey(namespace, url, varyKeys)) }
+        }
+
+        override suspend fun removeAll(url: Url) {
+            if (attempt()?.bypassStorage == true) return
+            operation(Unit) { entries.keys.filter { it.namespace == namespace && it.url == url }.forEach(::removeEntry) }
         }
     }
+
+    private suspend fun attempt(): CacheRevalidationAttempt? =
+        currentCoroutineContext()[CacheRevalidationAttempt]?.takeIf { it.owner === this }
 }
 
 private data class CacheKey(val namespace: CacheNamespace, val url: Url, val varyKeys: Map<String, String>)
