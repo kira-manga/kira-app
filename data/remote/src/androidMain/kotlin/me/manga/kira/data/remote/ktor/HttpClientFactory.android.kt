@@ -3,14 +3,14 @@ package me.manga.kira.data.remote.ktor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.cache.HttpCache
-import io.ktor.client.plugins.cache.storage.FileStorage
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
 import me.manga.kira.core.android.androidAppContextOrNull
 import okhttp3.Interceptor
+import okio.Path
+import okio.Path.Companion.toPath
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -51,8 +51,9 @@ private object HttpLoggingFlag
 
 actual val isHttpLoggingEnabled: Boolean = HttpLoggingFlag::class.java.desiredAssertionStatus()
 
-actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
-    HttpClient(OkHttp) {
+actual fun createHttpClient(cacheResponses: Boolean): HttpClient {
+    val cache = if (cacheResponses) createPersistentHttpCache(httpCacheDirectory()) else null
+    return HttpClient(OkHttp) {
         install(ContentNegotiation) { json(DefaultJson) }
         // HTTP logging is gated on isHttpLoggingEnabled (debug/dev only, like native's BuildConfig.DEBUG
         // HttpLoggingInterceptor); HEADERS keeps the leak-sensitive request/response BODY out of the
@@ -69,22 +70,8 @@ actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
             connectTimeoutMillis = 30_000
             socketTimeoutMillis = 60_000
         }
-        // Honors the `Cache-Control: public, max-age=86400` directive stamped by
-        // forceCacheForDados() on /dados responses (parity with source's OkHttp disk cache). Backed by
-        // a disk FileStorage rooted in the app's OWN cache dir — the default Unlimited() storage is an
-        // unbounded in-memory map that retains full response bodies for the process lifetime (a leak on
-        // the chapter-download/scrape path) and does not survive process restart.
-        if (cacheResponses) {
-            val httpCacheDir =
-                File(
-                    androidAppContextOrNull()?.cacheDir ?: File(System.getProperty("java.io.tmpdir") ?: "."),
-                    "ktor_http_cache",
-                ).apply { mkdirs() }
-            install(HttpCache) {
-                publicStorage(FileStorage(httpCacheDir))
-                privateStorage(FileStorage(httpCacheDir))
-            }
-        }
+        // Preserve forced /dados caching within the common live/disk metadata budget.
+        installManagedHttpCache(cache)
         engine {
             config {
                 retryOnConnectionFailure(true)
@@ -93,7 +80,14 @@ actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
             // Mirrors source AppModule `.addNetworkInterceptor(forceCacheForDados())`.
             addNetworkInterceptor(forceCacheForDados())
         }
-    }
+    }.attachResponseCache(cache)
+}
+
+private fun httpCacheDirectory(): Path =
+    File(
+        androidAppContextOrNull()?.cacheDir ?: File(System.getProperty("java.io.tmpdir") ?: "."),
+        "ktor_http_cache",
+    ).apply { mkdirs() }.absolutePath.toPath()
 
 /*
  * Audit-trail postscript (Phase 9.x.cluster240.staleKdocSweep.cascade, Task #696, 2026-05-29)
