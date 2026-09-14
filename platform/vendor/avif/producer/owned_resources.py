@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -14,6 +15,8 @@ import time
 
 OWNER_ENV = "KIRA_AVIF_PRODUCER_OWNER"
 MARKER = ".kira-avif-owner"
+ORIGIN = ".kira-avif-process-origin"
+ORIGIN_BYTES = 1024
 LOG_BYTES = 1024 * 1024
 MAX_NATIVE_LOGS = 24
 NATIVE_LOGS = (
@@ -61,6 +64,46 @@ def require_owned(path, owner):
         raise RuntimeError(f"Producer directory ownership mismatch: {path.name}")
 
 
+def process_start_ticks(proc):
+    try:
+        # Field 22; comm may itself contain spaces or closing parentheses.
+        ticks = int((proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])
+    except (IndexError, ValueError) as error:
+        raise RuntimeError(f"Invalid process birth: pid={proc.name}") from error
+    if ticks <= 0:
+        raise RuntimeError(f"Missing positive process birth: pid={proc.name}")
+    return ticks
+
+
+def boot_id():
+    value = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", value):
+        raise RuntimeError("Invalid Linux boot identity")
+    return value
+
+
+def process_origin(run):
+    require_owned(run.evidence, run.owner)
+    descriptor = os.open(run.evidence / ORIGIN, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as source:
+        metadata = os.fstat(source.fileno())
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                or metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) != 0o600
+                or not 0 < metadata.st_size <= ORIGIN_BYTES):
+            raise RuntimeError("Invalid private process-origin file")
+        payload = source.read(ORIGIN_BYTES + 1)
+    if len(payload) != metadata.st_size or not payload.endswith(b"\n"):
+        raise RuntimeError("Changed or malformed process-origin file")
+    values = payload.decode("utf-8").splitlines()
+    if (len(values) != 3 or values[0] != run.owner or values[1] != boot_id()
+            or not re.fullmatch(r"[1-9][0-9]*", values[2])):
+        raise RuntimeError("Process origin is not bound to this run and boot")
+    cutoff = int(values[2])
+    if cutoff > process_start_ticks(Path("/proc/self")):
+        raise RuntimeError("Process origin is later than the current helper's birth")
+    return cutoff
+
+
 def initialize(run):
     for path in (run.work, run.evidence):
         if path.exists() or path.is_symlink():
@@ -68,6 +111,14 @@ def initialize(run):
     for path in (run.work, run.evidence):
         path.mkdir(mode=0o700)
         (path / MARKER).write_text(run.owner + "\n")
+    # This exec-stable setup logger precedes every marked child. Never use cleanup's birth.
+    payload = f"{run.owner}\n{boot_id()}\n{process_start_ticks(Path('/proc/self'))}\n".encode("utf-8")
+    if len(payload) > ORIGIN_BYTES:
+        raise RuntimeError("Process origin exceeds its private record bound")
+    descriptor = os.open(run.evidence / ORIGIN, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "wb") as destination:
+        os.fchmod(destination.fileno(), 0o600)
+        destination.write(payload)
 
 
 def stream_log(source, destination):
@@ -93,6 +144,7 @@ def run_stage(run, stage):
         initialize(run)
     for path in (run.work, run.evidence):
         require_owned(path, run.owner)
+    process_origin(run)  # Reject a missing/stale origin before launching any stage child.
     script = "setup-hosted-tools.sh" if stage == "setup" else "rebuild.sh"
     environment = {**os.environ, OWNER_ENV: run.owner}
     # No detached process group: the existing step timeout still covers the stage.
@@ -130,8 +182,8 @@ def stop_gradle(run, phase):
     return status
 
 
-def signal_owned(owner, signum):
-    """Use exact inherited run markers and pidfds; never process names or broad pkill."""
+def signal_owned(owner, cutoff, signum):
+    """Only provably older processes bypass exact run-marker inspection; uncertainty fails."""
     count = 0
     marker = f"{OWNER_ENV}={owner}".encode()
     for proc in Path("/proc").iterdir():
@@ -141,8 +193,18 @@ def signal_owned(owner, signum):
         try:
             if proc.stat().st_uid != os.getuid():
                 continue
+            birth = process_start_ticks(proc)
+            if birth < cutoff:
+                if proc.stat().st_uid != os.getuid() or process_start_ticks(proc) != birth:
+                    raise RuntimeError(f"Process identity changed during preexisting exclusion: pid={proc.name}")
+                continue  # Strictly predates the first setup logger; no environ read or signal.
             descriptor = os.pidfd_open(int(proc.name))
-            if proc.stat().st_uid != os.getuid() or marker not in (proc / "environ").read_bytes().split(b"\0"):
+            if proc.stat().st_uid != os.getuid() or process_start_ticks(proc) != birth:
+                raise RuntimeError(f"Process identity changed around pidfd acquisition: pid={proc.name}")
+            environment = (proc / "environ").read_bytes()
+            if proc.stat().st_uid != os.getuid() or process_start_ticks(proc) != birth:
+                raise RuntimeError(f"Process identity changed during marker inspection: pid={proc.name}")
+            if marker not in environment.split(b"\0"):
                 continue
             signal.pidfd_send_signal(descriptor, signum)
             count += 1
@@ -154,18 +216,22 @@ def signal_owned(owner, signum):
     return count
 
 
-def terminate_owned(run):
+def terminate_owned(run, cutoff):
     counts = []
     for signum, grace in ((signal.SIGTERM, 5), (signal.SIGKILL, 2)):
-        counts.append(signal_owned(run.owner, signum))
+        counts.append(signal_owned(run.owner, cutoff, signum))
         deadline = time.monotonic() + grace
-        while signal_owned(run.owner, 0):
+        empty_censuses = 0
+        while time.monotonic() < deadline:
+            remaining = signal_owned(run.owner, cutoff, 0)
             if time.monotonic() >= deadline:
                 break
-            time.sleep(0.25)
-        else:
-            return f"owned_processes_signalled={counts}"
-    raise RuntimeError("Run-marked processes remain after bounded TERM/KILL; work retained")
+            empty_censuses = empty_censuses + 1 if remaining == 0 else 0
+            if empty_censuses == 2:
+                return f"owned_processes_signalled={counts}\nrun_marked_same_uid_empty_censuses=2"
+            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+    raise RuntimeError("Run-marked processes remain or lack two empty censuses within bounded TERM/KILL; work retained")
+
 
 
 def preserve_native_logs(run):
@@ -190,6 +256,8 @@ def cleanup_work(run):
     events, failed = [], False
     try:
         require_owned(run.work, run.owner)
+        cutoff = process_origin(run)
+        events.append(f"process_origin_verified_start_ticks={cutoff}")
         try:
             status = stop_gradle(run, "final")
             events.append(f"final_gradle_stop_exit_status={status}")
@@ -197,7 +265,7 @@ def cleanup_work(run):
         except Exception as error:
             events.append(f"final_gradle_stop_error={error}")
             failed = True
-        events.append(terminate_owned(run))
+        events.append(terminate_owned(run, cutoff))
         preserve_native_logs(run)
         events.append("bounded_evidence_copied=true")
         require_owned(run.work, run.owner)
@@ -231,6 +299,7 @@ def main():
         return cleanup(run)
     for path in (run.work, run.evidence):
         require_owned(path, run.owner)
+    process_origin(run)
     if command == ["check-stage"] and os.environ.get(OWNER_ENV) == run.owner:
         return 0
     if command == ["stop-gradle"]:
