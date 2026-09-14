@@ -5,7 +5,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.presentation.reader.ReaderEffect
 import me.manga.kira.presentation.reader.ReaderFeedItem
@@ -162,16 +161,7 @@ class ReaderNativeSession internal constructor(
     private var onShowNotInLibrary: (() -> Unit)? = null
     private var onShowError: (() -> Unit)? = null
 
-    // Memoized feed projection — mirrors the Compose reader's `remember(pages, pageChapters, chapters)`.
-    // `ReaderState.copy(currentPageIndex = …)` reuses the same list references, so reference equality
-    // detects "feed unchanged" and a page-scroll snapshot reuses the cached DTOs instead of rebuilding
-    // `buildReaderFeed` + the page/feed arrays on every emission (the iOS-only main-thread cost).
-    private var memoPages: List<Page>? = null
-    private var memoPageChapters: List<String>? = null
-    private var memoChapters: List<Chapter>? = null
-    private var memoIosPages: List<IosReaderPage> = emptyList()
-    private var memoFeedRows: List<IosReaderFeedRow> = emptyList()
-    private var feedRevision = 0
+    private val feedProjection = ReaderNativeFeedProjection()
 
     /**
      * Swift registers its UI callbacks and starts observation. [onSnapshot] fires with the current
@@ -238,42 +228,13 @@ class ReaderNativeSession internal constructor(
     }
 
     private fun ReaderState.toSnapshot(): IosReaderSnapshot {
-        // Memoized feed projection (see memo fields): rebuild the page/feed DTO arrays only when the
-        // source lists actually change (append / chapter jump), NOT on a page-scroll snapshot. This is the
-        // iOS counterpart of the Compose reader's `remember(pages, pageChapters, chapters)`.
-        if (pages !== memoPages || pageChapters !== memoPageChapters || chapters !== memoChapters) {
-            memoIosPages = pages.map { IosReaderPage(it.url, it.headers) }
-            memoFeedRows = buildReaderFeed(pages, pageChapters, chapters, chapter).items.map { item ->
-                when (item) {
-                    is ReaderFeedItem.Image -> IosReaderFeedRow(
-                        isBoundary = false,
-                        url = item.page.url,
-                        headers = item.page.headers,
-                        pageIndex = item.pageIndex,
-                        finishedLabel = "",
-                        nextLabel = null,
-                    )
-                    is ReaderFeedItem.Boundary -> IosReaderFeedRow(
-                        isBoundary = true,
-                        url = "",
-                        headers = emptyMap(),
-                        pageIndex = -1,
-                        finishedLabel = item.finishedChapter?.let { it.name.ifBlank { it.number } }.orEmpty(),
-                        nextLabel = item.nextChapter?.let { it.name.ifBlank { it.number } },
-                    )
-                }
-            }
-            memoPages = pages
-            memoPageChapters = pageChapters
-            memoChapters = chapters
-            feedRevision++
-        }
+        val feed = feedProjection.project(this)
         return IosReaderSnapshot(
             isLoading = isLoading,
             isInitialLoading = isInitialLoading,
             hasError = error != null,
-            pages = memoIosPages,
-            feedRows = memoFeedRows,
+            pages = feed.pages,
+            feedRows = feed.rows,
             pageChapters = pageChapters,
             currentPageIndex = currentPageIndex,
             readingMode = readingMode.name,
@@ -288,7 +249,7 @@ class ReaderNativeSession internal constructor(
             activeChapterPageNumber = activeChapterPageNumber,
             activeChapterPageCount = activeChapterPageCount,
             activeChapterStartIndex = activeChapterPageIndices.firstOrNull() ?: 0,
-            feedSignature = feedRevision,
+            feedSignature = feed.revision,
         )
     }
 }

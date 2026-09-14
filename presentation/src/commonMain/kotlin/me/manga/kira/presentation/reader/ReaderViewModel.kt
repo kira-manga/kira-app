@@ -446,6 +446,7 @@ class ReaderViewModel(
                 pages = emptyList(),
                 pageChapters = emptyList(),
                 loadedChapterUrls = emptyList(),
+                skippedChapterUrls = emptySet(),
                 currentPageIndex = savedPage,
                 error = null,
                 // Reset UI chrome to visible on a fresh chapter — the user's previous
@@ -556,12 +557,11 @@ class ReaderViewModel(
         }
         // The chapter whose end we reached is the tail of the loaded feed.
         val tailUrl = current.loadedChapterUrls.lastOrNull() ?: current.chapter?.url ?: return
-        val tailIdx = current.chapters.indexOfFirst { it.url == tailUrl }
-        if (tailIdx !in 0..<current.chapters.lastIndex) {
-            FlowLog.log("Reader", "appendNext", "skipped=no-next-chapter tail=$tailUrl tailIdx=$tailIdx total=${current.chapters.size}")
+        val next = nextUnskippedChapter(current.chapters, tailUrl, current.skippedChapterUrls)
+        if (next == null) {
+            FlowLog.log("Reader", "appendNext", "skipped=no-next-chapter tail=$tailUrl total=${current.chapters.size}")
             return // no next chapter
         }
-        val next = current.chapters[tailIdx + 1]
         if (next.url in current.loadedChapterUrls) {
             FlowLog.log("Reader", "appendNext", "skipped=already-loaded next=${next.url}")
             return // already appended
@@ -597,14 +597,7 @@ class ReaderViewModel(
                                 // re-attempting this one forever and re-marking it read on every retrigger,
                                 // and surface a non-blocking error so the user knows the chapter was empty.
                                 FlowLog.log("Reader", "appendNext", "chapter=${chapter.url} skipped=empty-next-chapter")
-                                updateState { prev ->
-                                    if (chapter.url in prev.loadedChapterUrls) {
-                                        prev
-                                    } else {
-                                        prev.copy(loadedChapterUrls = prev.loadedChapterUrls + chapter.url)
-                                    }
-                                }
-                                emit(ReaderEffect.ShowError(AppError.Unexpected("This chapter returned no pages.")))
+                                recordEmptyAppend(chapter.url)
                                 return@collect
                             }
                             updateState { prev ->
@@ -646,6 +639,20 @@ class ReaderViewModel(
                     }
                 }
             }
+    }
+
+    private suspend fun recordEmptyAppend(chapterUrl: String) {
+        val current = state.value
+        // A transient empty cumulative emission must not hide already resolved pages. Repeated
+        // empty emissions are one outcome, not repeated errors or permission to retry forever.
+        if (chapterUrl in current.pageChapters || chapterUrl in current.skippedChapterUrls) return
+        updateState {
+            it.copy(
+                loadedChapterUrls = (it.loadedChapterUrls + chapterUrl).distinct(),
+                skippedChapterUrls = it.skippedChapterUrls + chapterUrl,
+            )
+        }
+        emit(ReaderEffect.ShowError(AppError.Unexpected("This chapter returned no pages.")))
     }
 
     private fun onPageChanged(pageIndex: Int) {
@@ -994,6 +1001,7 @@ private fun ReaderState.withAppendedChapterPages(
     return copy(
         pages = pages.take(keep) + newPages,
         pageChapters = pageChapters.take(keep) + List(newPages.size) { chapterUrl },
+        skippedChapterUrls = skippedChapterUrls - chapterUrl,
         loadedChapterUrls =
             if (chapterUrl in loadedChapterUrls) {
                 loadedChapterUrls
