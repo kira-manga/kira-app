@@ -3,10 +3,13 @@
 **All runtime/app qualification is NOT_RUN.** The genuine candidate is now source-bound by
 `../candidate/binding.json`; its producer's structural result is not runtime qualification.
 The original Kotlin files under this `androidDeviceTest/` directory remain outside active source
-sets and byte-identical as preparation history. Exact copies of `AvifNativeLimitTestSupport.kt`,
-`AvifNativeLimitsDeviceTest.kt` and `AvifNativeLimitsFailureDeviceTest.kt` are now active under
-`platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/`. No original was moved,
-rewritten or deleted, and no test was run by activation.
+sets and byte-identical as preparation history. Exact copies of `AvifNativeLimitsDeviceTest.kt`
+and `AvifNativeLimitsFailureDeviceTest.kt` are active under
+`platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/`. The active support file is
+`AvifNativeLimitFixture.kt`, with named unsigned-byte-mask and hex-radix constants and an updated
+activation comment; its payload, checks and native calls are unchanged. Current and original
+helper hashes are recorded in `../candidate/binding.json`. No original was moved, rewritten or
+deleted, and no test was run by activation.
 
 The active copies use the existing `AvifTestFixtures`, Android Bitmaps,
 and direct `AvifDecoder` calls. **No reflection, host doubles, mocks of native admission, legacy

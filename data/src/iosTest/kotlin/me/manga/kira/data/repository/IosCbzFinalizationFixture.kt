@@ -125,11 +125,13 @@ internal class IosCbzFinalizationFixture {
             mediaInspector = IosPageMediaInspector(system = system),
         )
 
-    suspend fun saved(original: IosCbzChapter): SavedChapterEntity =
-        assertNotNull(db.chapterDao().getChapterByIdSuspend(original.saved.id))
+    suspend fun saved(original: IosCbzChapter): SavedChapterEntity = assertNotNull(
+        db.chapterDao().getChapterByIdSuspend(original.saved.id),
+    )
 
-    suspend fun download(original: IosCbzChapter): ChapterDownloadEntity =
-        assertNotNull(dao.getDownloadByChapter(original.saved.id))
+    suspend fun download(original: IosCbzChapter): ChapterDownloadEntity = assertNotNull(
+        dao.getDownloadByChapter(original.saved.id),
+    )
 
     fun archive(original: IosCbzChapter): Path =
         appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"

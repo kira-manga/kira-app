@@ -22,8 +22,9 @@ class AndroidPageMediaInspector(
         require(policy.maxSourceDimension <= MAX_NATIVE_SOURCE_DIMENSION)
     }
 
-    override fun inspect(encoded: ByteArray): PageInspection =
-        inspectBuffer(ByteBuffer.wrap(encoded).asReadOnlyBuffer())
+    override fun inspect(encoded: ByteArray): PageInspection = inspectBuffer(
+        ByteBuffer.wrap(encoded).asReadOnlyBuffer(),
+    )
 
     override fun inspect(path: Path): PageInspection =
         try {
