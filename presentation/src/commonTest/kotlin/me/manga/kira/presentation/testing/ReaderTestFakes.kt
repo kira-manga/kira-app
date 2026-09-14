@@ -222,6 +222,7 @@ class ReaderTestEnv(
     val readProgress = RecordingReadProgressRepository()
     val bookmark = RecordingChapterBookmarkRepository()
     val history = RecordingHistoryRepository()
+
     // #7: ONE shared reading-session recorder wired into both use cases (mirrors prod single binding).
     val readingSession = RecordingReadingSessionRepository()
     val pageProgress = RecordingPageProgressRepository()

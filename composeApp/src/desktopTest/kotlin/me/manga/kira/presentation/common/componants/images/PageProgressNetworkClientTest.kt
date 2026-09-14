@@ -85,11 +85,12 @@ class PageProgressNetworkClientTest {
                     val body = ProgressBody()
                     val request = NetworkRequest(url)
                     val original = response(body, null)
-                    PageProgressNetworkClient(FixedResponseClient(request, original)).executeRequest(request) { result ->
-                        assertSame(original, result)
-                        assertSame(body, result.body)
-                        result.body?.writeTo(FileSystem.SYSTEM, directory / "cover.bin")
-                    }
+                    PageProgressNetworkClient(FixedResponseClient(request, original))
+                        .executeRequest(request) { result ->
+                            assertSame(original, result)
+                            assertSame(body, result.body)
+                            result.body?.writeTo(FileSystem.SYSTEM, directory / "cover.bin")
+                        }
                     assertEquals(1, body.fileWrites, "untagged requests retain the adapter's native file fast path")
                     assertEquals(0, body.sinkWrites)
                 }
@@ -216,7 +217,8 @@ class PageProgressNetworkClientTest {
             delegate = body,
         )
 
-    private fun assertNotNullBody(response: NetworkResponse): NetworkResponseBody = kotlin.test.assertNotNull(response.body)
+    private fun assertNotNullBody(response: NetworkResponse): NetworkResponseBody =
+        kotlin.test.assertNotNull(response.body)
 }
 
 private class FixedResponseClient(

@@ -8245,12 +8245,12 @@
         <error line="54" column="5" source="standard:function-naming" />
         <error line="67" column="20" source="standard:multiline-expression-wrapping" />
         <error line="80" column="36" source="standard:multiline-expression-wrapping" />
-        <error line="110" column="61" source="standard:multiline-expression-wrapping" />
-        <error line="113" column="40" source="standard:multiline-expression-wrapping" />
-        <error line="117" column="59" source="standard:multiline-expression-wrapping" />
-        <error line="119" column="40" source="standard:multiline-expression-wrapping" />
-        <error line="137" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="161" column="32" source="standard:multiline-expression-wrapping" />
+        <error line="108" column="61" source="standard:multiline-expression-wrapping" />
+        <error line="111" column="40" source="standard:multiline-expression-wrapping" />
+        <error line="115" column="59" source="standard:multiline-expression-wrapping" />
+        <error line="117" column="40" source="standard:multiline-expression-wrapping" />
+        <error line="135" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="159" column="32" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="ui/src/commonMain/kotlin/me/manga/kira/ui/language/LanguageScreen.kt">
         <error line="3" column="1" source="standard:import-ordering" />

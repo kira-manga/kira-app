@@ -30,7 +30,8 @@ internal class ReaderNativeFeedProjection {
             )
         value =
             NativeReaderFeed(
-                pages = if (pages === state.pages) value.pages else state.pages.map { IosReaderPage(it.url, it.headers) },
+                pages =
+                    if (pages === state.pages) value.pages else state.pages.map { IosReaderPage(it.url, it.headers) },
                 rows = feed.items.map { it.toNativeRow() },
                 revision = value.revision + 1,
             )

@@ -85,13 +85,11 @@ fun SourceTabsRow(
                         } else {
                             Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                         },
-                    )
-                    .selectable(
+                    ).selectable(
                         selected = selected,
                         role = Role.Tab,
                         onClick = { onTabSelected(index) },
-                    )
-                    .padding(horizontal = 16.dp, vertical = 9.dp)
+                    ).padding(horizontal = 16.dp, vertical = 9.dp)
                 Row(
                     modifier = pillModifier,
                     verticalAlignment = Alignment.CenterVertically,

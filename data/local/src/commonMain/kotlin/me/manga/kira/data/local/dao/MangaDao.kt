@@ -178,4 +178,3 @@ interface MangaDao : MangaIdentityQueries {
  * .componentprune Task #404 respectively). Original Phase-9 componentprune
  * prose preserved verbatim per the audit-trail-preservation convention.
  */
-
