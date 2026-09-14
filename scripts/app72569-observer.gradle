@@ -116,7 +116,7 @@ def observeClasspath = { task, files, kind ->
     def entries = files.collect { fileRow(it) }
     emit('CLASSPATH', [task: task.path, kind: kind, entries: entries])
     def classContainers = [:]
-    entries.findAll { !it.neutralClasses.empty }.each { entry ->
+    entries.findAll { !it.neutralClasses.isEmpty() }.each { entry ->
         require(c.engineModules.any { entry.path.startsWith(new File(c.engineRoot, it.substring(1) + '/build/').path + '/') },
             'Foreign/cached/transformed neutral supplier: stop; no automatic transform waiver')
         entry.neutralClasses.keySet().each { name ->

@@ -26,7 +26,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: app
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
 
       - name: Check out the exact original public Engine source
@@ -43,7 +43,7 @@ jobs:
         env:
           # Primary binds this literal only after independent actual-control review.
           # The follow-up extends the pinned failed carrier; only five controls differ from source.
-          APP72569_ADMISSION: primary-reviewed-app72569-linux-02
+          APP72569_ADMISSION: primary-reviewed-app72569-linux-03
         run: python3 -B scripts/validate_app72569_linux.py
 
       - name: Retain only bounded public reports, including failures
