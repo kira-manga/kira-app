@@ -4,6 +4,7 @@ import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.MangaDao
@@ -195,6 +196,7 @@ class CompressExistingDownloadsSizeRefreshTest {
             mangaDao = InertMangaDao,
             chapterDownloadDao = downloadDao,
             appFileSystem = appFs,
+            httpCache = HttpCacheClearer { },
         )
 
     @Test
