@@ -706,12 +706,11 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
-    private suspend fun resolvePrefetch(entity: ChapterDownloadEntity): ResolvedChapter? {
-        return runCatchingCancellable { chapterPageResolver.resolve(entity) }.getOrElse { failure ->
+    private suspend fun resolvePrefetch(entity: ChapterDownloadEntity): ResolvedChapter? =
+        runCatchingCancellable { chapterPageResolver.resolve(entity) }.getOrElse { failure ->
             handlePrefetchFailure(entity, failure)
             null
         }
-    }
 
     private suspend fun handlePrefetchFailure(
         entity: ChapterDownloadEntity,
@@ -1449,10 +1448,9 @@ class BackgroundUrlSessionDownloadRepository(
     private fun cachedManifest(
         mangaId: Long,
         chapterId: Long,
-    ): DownloadManifest? {
-        return manifestCache[chapterId]
+    ): DownloadManifest? =
+        manifestCache[chapterId]
             ?: manifestStore.read(mangaId, chapterId)?.also { manifestCache[chapterId] = it }
-    }
 
     /** Mutable on-disk page-index set for [chapterId], seeded from the real directory on first access. */
     private fun cachedOnDisk(

@@ -31,9 +31,12 @@ exclusion substitutes for the genuine Java/JNI implementation.
   POM-only local repository. Missing/changed bytes cannot fall back to an upstream AAR;
   unrelated repositories and modules are untouched. The settings guard itself is **NOT_RUN**
   by this source integration; real resolved-artifact/classpath and APK evidence remain required.
-* Exact fixture copies are active in
-  `platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/`. The originals under
-  `qualification/androidDeviceTest/` and their historical comments remain byte-identical.
+* The fixtures are active in
+  `platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/`. The two test classes
+  remain exact copies. The active helper is named `AvifNativeLimitFixture.kt` and uses named
+  unsigned-byte-mask/hex-radix constants; its payload, checks and native calls are unchanged.
+  `candidate/binding.json` records the current helper hash and original preparation hash.
+  Originals under `qualification/androidDeviceTest/`, including historical comments, remain byte-identical.
   Activation is not execution: their seven native tests and existing Android suite remain pending.
 
 The original `source-manifest.json`, patch, notices and producer implementation are unchanged.

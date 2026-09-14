@@ -179,10 +179,12 @@
   "fixture_activation": [
     {
       "original": "platform/vendor/avif/qualification/androidDeviceTest/AvifNativeLimitTestSupport.kt",
-      "active_copy": "platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/AvifNativeLimitTestSupport.kt",
-      "bytes": 3010,
-      "sha256": "53019efbd554e2e4eea3cf432a48495b37d4bdd5256535618a8b9c141155fdd5",
-      "treatment": "Byte-identical copy; original and historical comments retained. No execution."
+      "active_copy": "platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/AvifNativeLimitFixture.kt",
+      "bytes": 3117,
+      "sha256": "7a1745000d160936921a817a81bcd5a335ff81de3f155ae1eb4ee8e718e1707a",
+      "treatment": "Active helper renamed to match its declaration; literal unsigned-byte mask and hex radix named without changing values, payload, checks or native calls; activation comment corrected. Original preparation helper remains byte-identical. No execution.",
+      "original_bytes": 3010,
+      "original_sha256": "53019efbd554e2e4eea3cf432a48495b37d4bdd5256535618a8b9c141155fdd5"
     },
     {
       "original": "platform/vendor/avif/qualification/androidDeviceTest/AvifNativeLimitsDeviceTest.kt",

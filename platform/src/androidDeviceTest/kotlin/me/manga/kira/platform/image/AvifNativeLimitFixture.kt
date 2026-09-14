@@ -7,7 +7,7 @@ import java.nio.ByteOrder
 import java.security.MessageDigest
 import kotlin.test.assertEquals
 
-/** Preparation only: move into the admitted platform device-test source set with the patched AAR. */
+/** Real-JNI fixture; the hostile dimension edit and payload checks are preserved from preparation. */
 internal object AvifNativeLimitFixture {
     const val SOURCE_WIDTH = 320
     const val SOURCE_HEIGHT = 640
@@ -38,9 +38,11 @@ internal object AvifNativeLimitFixture {
 
     private fun ByteArray.sha256(): String =
         MessageDigest.getInstance("SHA-256").digest(this).joinToString("") { byte ->
-            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+            (byte.toInt() and UNSIGNED_BYTE_MASK).toString(HEX_RADIX).padStart(2, '0')
         }
 
+    private const val UNSIGNED_BYTE_MASK = 0xff
+    private const val HEX_RADIX = 16
     private const val REGULAR_BYTES = 10_775
     private const val REGULAR_SHA256 = "4bc2db8cd43917b79f8c4b2ec4f0e4e5e7588336aef8dfbeedbd4326b6fd3a61"
     private const val DECLARED_SMALL_SHA256 = "82e85ff73dc302e51665ea1ee1b713a63a44ed660cff994be1c0366eb2d7eb31"

@@ -6,7 +6,6 @@ import me.manga.kira.data.repository.SettingsRepositoryImpl
 import me.manga.kira.domain.repository.SettingsRepository
 import me.manga.kira.domain.usecase.feedback.SubmitFeedbackUseCase
 import me.manga.kira.domain.usecase.reader.ObserveReadingModeUseCase
-import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.settings.ClearCacheUseCase
 import me.manga.kira.domain.usecase.settings.ClearCbzConversionUseCase
 import me.manga.kira.domain.usecase.settings.CompressExistingDownloadsUseCase
@@ -120,45 +119,46 @@ import org.koin.dsl.module
  * cross-screen-propagation smoke-test framing that was subsequently
  * fulfilled-then-collapsed as the legacy screen retired across §354.
  */
-val settingsReworkModule: Module = module {
-    factory {
-        DownloadedChapterConversion(
-            chapters = get(),
-            archives = get(),
-            manga = get(),
-            downloads = get(),
-            files = get(),
-        )
-    }
-    single<SettingsRepository> {
-        SettingsRepositoryImpl(
-            legacy = get(),
-            dispatchers = get<DispatcherProvider>(),
-            // Phase 7.x.settings.cbz — DataStoreHelper (`:platform`) bound `single` by the legacy
-            // PlatformModule; the rework slice consumes the SAME instance so the Yami Compressor
-            // toggles round-trip through the same KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ
-            // cells the legacy CbzConversionViewModel wrote.
-            dataStore = get(),
-            // Same chapter/manga/download DAOs, platform writer, and filesystem: active-download
-            // exclusion, progress titles, archive publication, and ledger-size refresh stay intact.
-            conversion = get(),
-            httpCache = get(),
-        )
-    }
+val settingsReworkModule: Module =
+    module {
+        factory {
+            DownloadedChapterConversion(
+                chapters = get(),
+                archives = get(),
+                manga = get(),
+                downloads = get(),
+                files = get(),
+            )
+        }
+        single<SettingsRepository> {
+            SettingsRepositoryImpl(
+                legacy = get(),
+                dispatchers = get<DispatcherProvider>(),
+                // Phase 7.x.settings.cbz — DataStoreHelper (`:platform`) bound `single` by the legacy
+                // PlatformModule; the rework slice consumes the SAME instance so the Yami Compressor
+                // toggles round-trip through the same KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ
+                // cells the legacy CbzConversionViewModel wrote.
+                dataStore = get(),
+                // Same chapter/manga/download DAOs, platform writer, and filesystem: active-download
+                // exclusion, progress titles, archive publication, and ledger-size refresh stay intact.
+                conversion = get(),
+                httpCache = get(),
+            )
+        }
 
-    factory { ObserveSettingsUseCase(get()) }
-    factory { UpdateSettingsToggleUseCase(get()) }
-    factory { ClearCacheUseCase(get()) }
-    factory { SubmitFeedbackUseCase(get()) }
-    factory { CompressExistingDownloadsUseCase(get()) }
-    // GAP-SET-16 — observe + stop the CBZ conversion progress stream; both thin pass-throughs over
-    // the same `single<SettingsRepository>` instance that drives the progress StateFlow.
-    factory { ObserveCbzConversionUseCase(get()) }
-    factory { StopCbzConversionUseCase(get()) }
-    // #14 — reset the CBZ progress flow to idle on dialog dismiss (native clearError()).
-    factory { ClearCbzConversionUseCase(get()) }
+        factory { ObserveSettingsUseCase(get()) }
+        factory { UpdateSettingsToggleUseCase(get()) }
+        factory { ClearCacheUseCase(get()) }
+        factory { SubmitFeedbackUseCase(get()) }
+        factory { CompressExistingDownloadsUseCase(get()) }
+        // GAP-SET-16 — observe + stop the CBZ conversion progress stream; both thin pass-throughs over
+        // the same `single<SettingsRepository>` instance that drives the progress StateFlow.
+        factory { ObserveCbzConversionUseCase(get()) }
+        factory { StopCbzConversionUseCase(get()) }
+        // #14 — reset the CBZ progress flow to idle on dialog dismiss (native clearError()).
+        factory { ClearCbzConversionUseCase(get()) }
 
-    viewModel {
-        SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        viewModel {
+            SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        }
     }
-}

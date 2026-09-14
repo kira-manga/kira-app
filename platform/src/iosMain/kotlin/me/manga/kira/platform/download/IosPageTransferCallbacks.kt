@@ -93,7 +93,12 @@ internal class IosPageTransferCallbacks(
         d: IosTransferIdentity,
         status: Int?,
     ) {
-        BgDownloadLog.warn("task.httpError", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "httpStatus" to status)
+        BgDownloadLog.warn(
+            "task.httpError",
+            "chapterId" to d.chapterId,
+            "pageIndex" to d.pageIndex,
+            "httpStatus" to status,
+        )
         reportFailureOnce(task, d, if (status == null) "Missing HTTP response" else "HTTP $status")
     }
 

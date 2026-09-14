@@ -46,6 +46,7 @@ class ChapterFinalizer(
 ) {
     private val dao: ChapterDownloadDao = records.downloads
     private val libraryRepository: LibraryRepository = records.library
+
     // Keep the notification-table copy consistent after the queue row is evicted.
     private val notificationDao: NotificationDao = records.notifications
     private val log = Logger.withTag(TAG)

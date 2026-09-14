@@ -39,7 +39,11 @@ class IosCbzNativeOwnershipTest {
                     native,
                 ) { bytes ->
                     assertEquals(emitted + 1, native.encodes, "the encoder must not precompute a list of all bands")
-                    assertEquals(native.encodes, native.frees, "libwebp's output buffer is gone before the sink callback")
+                    assertEquals(
+                        native.encodes,
+                        native.frees,
+                        "libwebp's output buffer is gone before the sink callback",
+                    )
                     assertEquals(0, native.liveOutputs)
                     assertEquals(1, native.liveImages)
                     assertEquals(1, native.liveContexts)

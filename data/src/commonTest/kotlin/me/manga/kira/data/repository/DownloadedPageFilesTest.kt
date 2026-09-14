@@ -76,9 +76,7 @@ class DownloadedPageFilesTest {
             val good = write(directory / "0.png", recoveryTestPng())
             val cancelled =
                 object : PageMediaInspector by inspector {
-                    override fun inspect(path: Path): PageInspection {
-                        throw CancellationException("cancelled inspection")
-                    }
+                    override fun inspect(path: Path): PageInspection = throw CancellationException("cancelled inspection")
                 }
             assertFailsWith<CancellationException> {
                 DownloadedPageFiles(files, cancelled).resolve(1, 2, listOf(good.toString()))

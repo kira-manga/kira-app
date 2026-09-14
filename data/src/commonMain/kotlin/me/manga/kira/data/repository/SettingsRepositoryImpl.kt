@@ -150,8 +150,10 @@ class SettingsRepositoryImpl(
     private val chapterDao: ChapterDao = conversion.chapters
     private val cbzWriter: CbzWriter = conversion.archives
     private val mangaDao: MangaDao = conversion.manga
+
     // The manual converter must skip active transfers/finalizers before touching their chapter files.
     private val chapterDownloadDao: ChapterDownloadDao = conversion.downloads
+
     // Re-walk the converted chapter directory to refresh the existing SUCCESS row's size ledger.
     private val appFileSystem: AppFileSystem = conversion.files
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)

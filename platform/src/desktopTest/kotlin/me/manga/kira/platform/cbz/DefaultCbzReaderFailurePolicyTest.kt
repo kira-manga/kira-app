@@ -71,7 +71,8 @@ class DefaultCbzReaderFailurePolicyTest {
         }
 
     @Test
-    fun cleanupFailureIsSuppressedOnTheOriginalCancellation() = assertSuppressedRollback(ReaderCancellation("cancel second page"))
+    fun cleanupFailureIsSuppressedOnTheOriginalCancellation() =
+        assertSuppressedRollback(ReaderCancellation("cancel second page"))
 
     @Test
     fun cleanupFailureIsSuppressedOnTheOriginalFatalThrowable() = assertSuppressedRollback(ReaderFatal("fatal page"))
@@ -83,7 +84,12 @@ class DefaultCbzReaderFailurePolicyTest {
             val reader = fixture.reader(access = { files }, media = fixture.failSecondInspection(primary))
             assertSame(primary, assertFailsWith<Throwable> { reader.extractImages(fixture.archive, 1, 2) })
             assertSame(cleanup, primary.suppressedExceptions.single())
-            assertTrue(files.deletions.single().segments.any { it.startsWith(".partial-") })
+            assertTrue(
+                files.deletions
+                    .single()
+                    .segments
+                    .any { it.startsWith(".partial-") },
+            )
             fixture.assertOriginalsRetained()
         }
 }

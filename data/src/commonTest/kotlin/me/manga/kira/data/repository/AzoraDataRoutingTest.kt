@@ -422,9 +422,7 @@ class AzoraDataRoutingTest {
 
         override fun isConfigBacked(api: String): Boolean = api in piloted
 
-        override fun descriptor(api: String): RuntimeSourceDescriptor? {
-            return if (api in piloted) fakeDescriptor(api) else null
-        }
+        override fun descriptor(api: String): RuntimeSourceDescriptor? = if (api in piloted) fakeDescriptor(api) else null
 
         override fun genericDescriptors(): List<RuntimeSourceDescriptor> = piloted.map(::fakeDescriptor)
     }
