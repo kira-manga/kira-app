@@ -1,0 +1,78 @@
+name: App5 current Android57 original Engine host validation (UNBOUND)
+
+on:
+  push:
+    branches: [remediation/app-5-current-android-validation-02]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app72569-public-linux
+  cancel-in-progress: false
+
+jobs:
+  android-host:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app-5-current-android-validation-02' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the event carrier without stored credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: app
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out the exact original public Engine source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Observe the normal Android graph and fifty-seven literal host methods
+        working-directory: app
+        env:
+          # Primary binds this literal only after independent actual-control review.
+          # The new carrier directly extends bound source; only five controls differ from source.
+          APP72569_ADMISSION: app5-android57-20260914-4022e09e-primary02
+        run: python3 -B scripts/validate_app72569_linux.py
+
+      - name: Retain only bounded public reports, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app72569-linux-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app72569-public-reports/result.json
+            ${{ runner.temp }}/app72569-public-reports/source-before.json
+            ${{ runner.temp }}/app72569-public-reports/source-after.json
+            ${{ runner.temp }}/app72569-public-reports/commands.json
+            ${{ runner.temp }}/app72569-public-reports/inputs.json
+            ${{ runner.temp }}/app72569-public-reports/android-provenance.json
+            ${{ runner.temp }}/app72569-public-reports/gradle.log
+            ${{ runner.temp }}/app72569-public-reports/inputs.log
+            ${{ runner.temp }}/app72569-public-reports/stop-immediate.log
+            ${{ runner.temp }}/app72569-public-reports/stop-final.log
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.core.util.notification.NotificationCoverDecoderTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.core.util.notification.NotificationCoverLoaderTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.core.util.notification.NotificationCoverOwnershipTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.core.util.notification.ChapterNotificationHelperTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.work.LibraryRefreshNotificationTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.di.KoinGraphRegistrationTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.di.KoinGraphResolutionTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.update.AndroidAppUpdateClientTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.update.MainActivityAppUpdateTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.messaging.PushNotificationIdentityTest.xml
+            ${{ runner.temp }}/app72569-public-reports/TEST-me.manga.kira.work.LibraryRefreshWorkTest.xml

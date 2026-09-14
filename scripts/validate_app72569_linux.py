@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""UNBOUND App5 current Android57 batch; results always need independent review."""
+import os
+import sys
+
+ADMISSION = "app5-android57-20260914-4022e09e-primary02"
+if ADMISSION == "UNBOUND" or os.environ.get("APP72569_ADMISSION") != ADMISSION or len(sys.argv) != 1:
+    raise SystemExit("admission UNBOUND or unexpected caller arguments")
+sys.dont_write_bytecode = True
+from pathlib import Path
+import selectors
+import shutil
+import signal
+import subprocess
+import time
+import app72569_evidence as evidence
+from app72569_evidence import ROOT, ENGINE, WORK, REPORTS, GOOGLE, OUTPUTS, require, record, sha
+
+TESTS = [
+    "me.manga.kira.core.util.notification.NotificationCoverDecoderTest.compressed4096Png_isBoundsFirstAndSampledBeforePixels",
+    "me.manga.kira.core.util.notification.NotificationCoverDecoderTest.invalidUnsupportedAndOversizedBounds_neverDecodePixels",
+    "me.manga.kira.core.util.notification.NotificationCoverDecoderTest.sizingRejectsInvalidAreaAndOverflow_andRoundsBothAxesUp",
+    "me.manga.kira.core.util.notification.NotificationCoverDecoderTest.jpegUsesTheSamePlatformRasterRoute_andReturnedAllocationIsChecked",
+    "me.manga.kira.core.util.notification.NotificationCoverLoaderTest.collector_acceptsExactLimitAndReadsOnlyOneOverflowSentinel",
+    "me.manga.kira.core.util.notification.NotificationCoverLoaderTest.wireBodies_declaredUnknownChunkedGzipAndMalformed_fallBackWithoutPixels",
+    "me.manga.kira.core.util.notification.NotificationCoverLoaderTest.relativeRedirectLoadsOnce_andInvalidOrExcessRedirectsNeverFollowForbiddenTargets",
+    "me.manga.kira.core.util.notification.NotificationCoverLoaderTest.initialCredentialsSchemesAndHttpsDowngrade_areRefusedBeforeDestinationCalls",
+    "me.manga.kira.core.util.notification.NotificationCoverLoaderTest.cancellationAfterHeaders_closesBodyAndJoinsBeforeReturn_thenFollowingCoverSucceeds",
+    "me.manga.kira.core.util.notification.NotificationCoverLoaderTest.ownBudgetDuringBodyRead_postsTextOnlyAfterTheCallHasActuallyClosed",
+    "me.manga.kira.core.util.notification.NotificationCoverOwnershipTest.separateLoaders_shareTwoPermitsUntilSynchronousFanOutReturns",
+    "me.manga.kira.core.util.notification.NotificationCoverOwnershipTest.revokedWhileQueued_doesNotFetchDecodeOrPost",
+    "me.manga.kira.core.util.notification.NotificationCoverOwnershipTest.queueAndLoadShareTenSeconds_butTextFallbackNeedsNoImagePermit",
+    "me.manga.kira.core.util.notification.NotificationCoverOwnershipTest.cancelledBlockingDecode_keepsItsPermitUntilActualWorkExits",
+    "me.manga.kira.core.util.notification.NotificationCoverOwnershipTest.cancellationAfterRealDecode_preventsPost_andNextMangaCanLoad",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.persistsAllNineIncludingIgnoreRowsThenPostsNewestSixReversedWithOneCover",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.sharedChapterUrlIgnoreFallbackKeepsCapturedOwnerAcrossDelayedDisplay",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.appPermissionAndChannelDenialKeepEveryUpdateWithoutCoverOrPost",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.swallowedRoomInsertErrorIsNotAnIgnoreFallbackOrCoverRequest",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.incompleteChapterInsertResultsFailBeforeNotificationsAndCover",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.notificationWriteFailureNeverStartsCoverOrRetriesStorage",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.incompleteOrNonpositiveNotificationIdsCannotDisplayCommittedRows",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.notificationServiceFailureDoesNotBlockConstructionOrPersistence",
+    "me.manga.kira.core.util.notification.ChapterNotificationHelperTest.coldHostKoinInstantiationPostsTextWithoutComposingUi",
+    "me.manga.kira.work.LibraryRefreshNotificationTest.startWorkCancellationJoinsWorkerAndBlockingCoverBeforeAnyLatePost",
+    "me.manga.kira.work.LibraryRefreshNotificationTest.foregroundChannelSecurityFailureStillCommitsUpdatesAndCompletesStartWork",
+    "me.manga.kira.work.LibraryRefreshNotificationTest.noNewChaptersRemainsSuccessfulWithoutCoverOrNewUpdates",
+    "me.manga.kira.work.LibraryRefreshNotificationTest.firstWorkerInsertSwallowedErrorIsFailureWithoutRetryOrCover",
+    "me.manga.kira.work.LibraryRefreshNotificationTest.optionalCoverExpiryOutsideThirtySecondPersistenceBudgetPreservesCommittedSuccess",
+    "me.manga.kira.di.KoinGraphRegistrationTest.full_production_module_graph_registers_without_conflicts",
+    "me.manga.kira.di.KoinGraphResolutionTest.full_production_graph_dependencies_are_satisfiable",
+    "me.manga.kira.update.AndroidAppUpdateClientTest.selectionAndLaunchAgreeForEverySupportedAvailabilityRow",
+    "me.manga.kira.update.AndroidAppUpdateClientTest.startRevalidatesFreshStateAndPreservesSdkFailureAndCancellation",
+    "me.manga.kira.update.AndroidAppUpdateClientTest.launchResolvesTheCurrentUsableHostOnlyAfterTheSdkQuery",
+    "me.manga.kira.update.AndroidAppUpdateClientTest.recoveryResumesImmediateButNeverPromotesAFlexibleDownload",
+    "me.manga.kira.update.AndroidAppUpdateClientTest.downloadedListenerIsReplacedAndUnregisteredIdempotently",
+    "me.manga.kira.update.MainActivityAppUpdateTest.foregroundOrdersRecoveryThenSelectedStartAndConsumesTrueOrFalseAttempts",
+    "me.manga.kira.update.MainActivityAppUpdateTest.pausedAndOldCancelledQueriesCannotLaunchOrConsumeANewerAttempt",
+    "me.manga.kira.update.MainActivityAppUpdateTest.pendingImmediateRecoveryNeverCompetesWithAFreshConsentFlow",
+    "me.manga.kira.update.MainActivityAppUpdateTest.flexibleDownloadCompletesThroughTheHostListenerEvenWhilePaused",
+    "me.manga.kira.messaging.PushNotificationIdentityTest.differentSlotsRetainTheirPayloadAndDoNotAliasOtherActivityTokens",
+    "me.manga.kira.messaging.PushNotificationIdentityTest.repeatedMessageIdReplacesOnlyItsOwnCardAndTokenPayload",
+    "me.manga.kira.messaging.PushNotificationIdentityTest.missingMessageIdsShareOneFallbackWithoutChangingNamedPushes",
+    "me.manga.kira.messaging.PushNotificationIdentityTest.collidingMessageIdsKeepTheExistingCardAndTokenReplacementRule",
+    "me.manga.kira.messaging.PushNotificationIdentityTest.olderTapReachesItsOwnDestinationAndHandlerConsumptionDoesNotReplay",
+    "me.manga.kira.work.LibraryRefreshWorkTest.allFailedPartialAndMissingSource_neverStampOrReturnSuccess",
+    "me.manga.kira.work.LibraryRefreshWorkTest.libraryAndLocalChapterReadTimeouts_areFailures_notEmptyOrSuccessfulItems",
+    "me.manga.kira.work.LibraryRefreshWorkTest.totalTimeout_settlesChildrenAndRetainsConfirmedActiveBatchWork",
+    "me.manga.kira.work.LibraryRefreshWorkTest.swallowedEmptyAndMalformedInsertReturns_failWithoutLaunchingNotifications",
+    "me.manga.kira.work.LibraryRefreshWorkTest.validIgnoreSlots_areNotFailure_andOnlyConfirmedInsertedIdsAreCounted",
+    "me.manga.kira.work.LibraryRefreshWorkTest.emptyLibrary_successDoesNotStamp",
+    "me.manga.kira.work.LibraryRefreshWorkTest.stampFailure_returnsFailure_despiteCompletedChapterWork",
+    "me.manga.kira.work.LibraryRefreshWorkTest.cancellationDuringReadInsertOrStamp_propagates_withoutMetadataRollback",
+    "me.manga.kira.work.LibraryRefreshWorkTest.updatesPersistenceRejectionOrItemTimeout_preventsCompletionDisplayAndStamp",
+    "me.manga.kira.work.LibraryRefreshWorkTest.totalTimeoutDuringDisplay_retainsObservedAccountingAndSettlesDisplay",
+    "me.manga.kira.work.LibraryRefreshWorkTest.cancellationDuringUpdatesPersistenceOrDisplay_propagatesAndSettlesOwnedWork",
+    "me.manga.kira.work.LibraryRefreshWorkTest.displayAndProgressFailures_preserveSuccessAndCapturedPayload",
+]
+GROUPS, COMMANDS, ERRORS, ENV = {}, [], [], {}
+WORK_OWNED, OWNERSHIP_SAFE, EXAMPLE_SHA = False, True, None
+DEADLINE = time.monotonic() + 25 * 60  # Reserve final shutdown/upload within the30-minute job.
+MARKER = f"-Dapp72569.validation.root={WORK}"
+GRADLE = ["./gradlew", "--gradle-user-home", str(WORK / "gradle"), "--console=plain"]
+
+def prepare_environment():
+    global WORK_OWNED, ENV
+    java = Path(os.environ["JAVA_HOME_21_X64"]).resolve()
+    sdk = Path(os.environ["ANDROID_HOME"]).resolve()
+    inputs = [java / "release", java / "bin/java", sdk / "platforms/android-37.0/android.jar",
+              sdk / "build-tools/36.0.0/aapt2", sdk / "build-tools/36.0.0/source.properties"]
+    release = evidence.bounded(inputs[0], 65536)
+    require(all(p.is_file() for p in inputs) and len(release) <= 65536 and b'JAVA_VERSION="21.' in release,
+            "Installed JDK21/stable platform37.0/build-tools36.0.0 required; no SDK provisioning/substitution")
+    WORK.mkdir(mode=0o700)
+    WORK_OWNED = True
+    for name in ("home", "gradle", "konan", "tmp", "project-cache"):
+        (WORK / name).mkdir(mode=0o700)
+    ENV = dict(PATH=f"{java / 'bin'}:/usr/bin:/bin", HOME=str(WORK / "home"), JAVA_HOME=str(java),
+        ANDROID_HOME=str(sdk), ANDROID_SDK_ROOT=str(sdk), GRADLE_USER_HOME=str(WORK / "gradle"),
+        KONAN_DATA_DIR=str(WORK / "konan"), TMPDIR=str(WORK / "tmp"), TMP=str(WORK / "tmp"), TEMP=str(WORK / "tmp"),
+        JAVA_OPTS="-Xmx512m -XX:ActiveProcessorCount=2", JAVA_TOOL_OPTIONS=f"-Djava.io.tmpdir={WORK / 'tmp'}",
+        KIRA_SOURCE_CONFIG_BASE_URL="", KIRA_SOURCE_CONFIG_PINNED_KEYS="", KIRA_APP_VERSION="1.0.5",
+        KIRA_ORIGINAL_ENGINE_WORKSPACE=str(ROOT.parent), KIRA_ORIGINAL_ENGINE_BINDING=str(WORK / "binding.json"),
+        KIRA_ORIGINAL_ENGINE_BINDING_SHA256=evidence.write_binding(TESTS), LANG="C.UTF-8", TZ="UTC")
+    return {str(p): sha(p) for p in inputs}
+
+def prepare_inputs():
+    global EXAMPLE_SHA
+    inputs = prepare_environment()
+    example = evidence.bounded(ROOT / "app/google-services.json.example", 65536)
+    require(len(example) <= 65536, "Committed Google example exceeds64KiB")
+    with GOOGLE.open("xb") as stream:
+        stream.write(example)
+    EXAMPLE_SHA = sha(ROOT / "app/google-services.json.example")
+    require(sha(GOOGLE) == EXAMPLE_SHA, "Debug example copy mismatch")
+    record("inputs.json", dict(installed_input_sha256=inputs, google_prior_absent=True, google_example_sha256=EXAMPLE_SHA,
+        binding_sha256=ENV["KIRA_ORIGINAL_ENGINE_BINDING_SHA256"], compiler_tasks=evidence.COMPILERS,
+        selectors=TESTS, gradle_heap="3g", gradle_metaspace="1g", test_heap="1g", work_seconds=1200, stop_seconds=90,
+        native="Default PREBUILT configuration inputs for original App2.4.0/Engine2.2.21; no Native task",
+        bootstrap="Unchanged normal HTTPS wrapper declaration; no distribution-byte authenticity claim"))
+    (REPORTS / "inputs.log").write_text("Installed inputs hashed; debug example copied; no SDK provisioning or executable probe.\n")
+
+def alive(group):
+    try:
+        os.killpg(group, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+def stop_group(process):
+    global OWNERSHIP_SAFE
+    try:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+    except ChildProcessError:
+        OWNERSHIP_SAFE = False
+        GROUPS.pop(process.pid, None)
+        raise RuntimeError("Leader reaped; refuse stale PGID signalling/cleanup")
+    safe, OWNERSHIP_SAFE = OWNERSHIP_SAFE, False
+    code = process.wait(timeout=5)
+    GROUPS.pop(process.pid, None)
+    require(not alive(process.pid), "Group survives reap; no further force authority or cleanup")
+    OWNERSHIP_SAFE = safe
+    return code
+
+def capture(process, log, limit, deadline):
+    with selectors.DefaultSelector() as poll:
+        poll.register(process.stdout, selectors.EVENT_READ)
+        while poll.get_map():
+            require(time.monotonic() < deadline, "Command deadline exceeded")
+            for key, _ in poll.select(0.2):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    poll.unregister(key.fileobj)
+                    continue
+                available = max(0, limit - log.tell())
+                log.write(chunk[:available])
+                require(len(chunk) <= available, "Command log cap exceeded; retained prefix")
+    while (ended := os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)) is None:
+        require(time.monotonic() < deadline, "Command deadline exceeded")
+        time.sleep(0.1)
+    return ended.si_status if ended.si_code == os.CLD_EXITED else -ended.si_status
+
+def run(argv, name, seconds=90, shutdown=False):
+    global OWNERSHIP_SAFE
+    limit = 16 * evidence.MIB if name == "gradle.log" else 512 * 1024
+    deadline = time.monotonic() + seconds if shutdown else min(time.monotonic() + seconds, DEADLINE)
+    COMMANDS.append(dict(argv=argv, log=name, exit=None))
+    command, completed = COMMANDS[-1], False
+    record("commands.json", COMMANDS)
+    with (REPORTS / name).open("ab") as log:
+        safe, OWNERSHIP_SAFE = OWNERSHIP_SAFE, False
+        process = subprocess.Popen(argv, cwd=ROOT, env=ENV, stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        GROUPS[process.pid] = process
+        OWNERSHIP_SAFE = safe
+        try:
+            command["exit"] = capture(process, log, limit, deadline)
+            completed = True
+        finally:
+            try:
+                if name != "gradle.log" or not completed:
+                    command["exit"] = stop_group(process)
+            finally:
+                process.stdout.close()
+                record("commands.json", COMMANDS)
+    return command["exit"]
+
+def stop_gradle(name, started):
+    global OWNERSHIP_SAFE
+    try:
+        if started:
+            require(run(GRADLE + ["--stop"], name, shutdown=True) == 0, "Gradle --stop failed")
+    finally:
+        for process in list(GROUPS.values()):
+            stop_group(process)
+        safe, OWNERSHIP_SAFE = OWNERSHIP_SAFE, False
+        for entry in (WORK / "gradle/daemon/9.6.1").glob("daemon-*.out.log"):
+            pid = int(entry.name[7:-8])
+            require(not alive(pid), "Recorded daemon group remains; observation only, refuse cleanup")
+            try:
+                with Path(f"/proc/{pid}/cmdline").open("rb") as stream:
+                    args = stream.read(65537)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            require(len(args) <= 65536 and MARKER.encode() not in args.split(b"\0"),
+                    "Unretained daemon/inspection uncertainty; refuse force and cleanup")
+        OWNERSHIP_SAFE = safe
+
+def arguments():
+    args = GRADLE + [evidence.TEST_PATH]
+    for test in TESTS:
+        args += ["--tests", test]
+    return args + ["--no-daemon", "--no-parallel", "--max-workers=1", "--no-build-cache", "--no-configuration-cache",
+        "--stacktrace", "--project-cache-dir", str(WORK / "project-cache"),
+        "-Pkotlin.compiler.execution.strategy=in-process", "-PkiraUseMavenLocal=false",
+        "-Porg.gradle.java.installations.auto-download=false", "-Pandroid.builder.sdkDownload=false",
+        "-Dorg.gradle.vfs.watch=false", f"-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g "
+        f"-XX:ActiveProcessorCount=2 {MARKER} -Djava.io.tmpdir={WORK / 'tmp'}",
+        "-I", str(ROOT / "scripts/app72569-original-engine.init.gradle")]
+
+def cleanup_outputs():
+    require(OWNERSHIP_SAFE and not GROUPS, "Unverified ownership; refuse output cleanup")
+    for path in OUTPUTS:
+        require(not path.is_symlink() and path.resolve() == path, "Aliased output; refuse deletion")
+        if path.exists():
+            require(path.is_dir(), "Unknown output identity; preserve it")
+            shutil.rmtree(path)
+    if EXAMPLE_SHA is not None:
+        require(GOOGLE.is_file() and GOOGLE.resolve() == GOOGLE and sha(GOOGLE) == EXAMPLE_SHA,
+                "Debug example changed; refuse deletion")
+        GOOGLE.unlink()
+
+def remove_scratch():
+    require(OWNERSHIP_SAFE and not GROUPS, "Unverified ownership; refuse scratch deletion")
+    if WORK_OWNED:
+        require(WORK.is_dir() and WORK.resolve() == WORK, "Unknown owned scratch identity")
+        shutil.rmtree(WORK)
+
+def finish(result, before, started):
+    actions = [("xml_exact", lambda: evidence.retain_xml(TESTS)), ("android_provenance", evidence.prove_android),
+               ("source_at_capture", lambda: evidence.snapshot() == before)] if started else []
+    for name, action in actions:
+        try:
+            require(OWNERSHIP_SAFE and not GROUPS, "No stable pre-cleanup evidence without positive shutdown")
+            result[name] = action()
+        except BaseException as error:
+            ERRORS.append(f"{name}: {type(error).__name__}: {error}"[:512])
+    for action in (lambda: cleanup_outputs() if before is not None else None,
+                   lambda: stop_gradle("stop-final.log", started) if WORK_OWNED else None, remove_scratch):
+        try:
+            action()
+        except BaseException as error:
+            ERRORS.append(f"cleanup: {type(error).__name__}: {error}"[:512])
+    try:
+        after = evidence.snapshot()
+        record("source-after.json", after)
+        result["source_unchanged"] = before is not None and before == after
+    except BaseException as error:
+        ERRORS.append(f"source-readback: {type(error).__name__}: {error}"[:512])
+    result["cleanup"] = OWNERSHIP_SAFE and not GROUPS and all(not p.exists() and not p.is_symlink() for p in OUTPUTS + [GOOGLE, WORK])
+
+def main():
+    evidence.admit()
+    os.umask(0o077)
+    REPORTS.mkdir(mode=0o700)
+    result = dict(host=False, xml_exact=False, android_provenance=False, source_at_capture=False, source_unchanged=False, cleanup=False)
+    before, started = None, False
+    try:
+        before = evidence.snapshot()
+        record("source-before.json", before)
+        prepare_inputs()
+        require(evidence.snapshot() == before and sha(GOOGLE) == EXAMPLE_SHA, "Admitted inputs changed before batch")
+        require(shutil.disk_usage(WORK).free >= 8 * 1024**3, "Fresh8GiB free-space floor required before Gradle")
+        started = True
+        try:
+            result["host"] = run(arguments(), "gradle.log", 1200) == 0
+        finally:
+            stop_gradle("stop-immediate.log", started)
+    except BaseException as error:
+        ERRORS.append(f"work: {type(error).__name__}: {error}"[:512])
+    finally:
+        finish(result, before, started)
+    eligible = all(result.values()) and not ERRORS
+    record("result.json", dict(status="RESULT_REVIEW_REQUIRED" if eligible else "FAIL", checks=result, errors=ERRORS,
+        app_source=evidence.SOURCE, engine_source=evidence.ENGINE_COMMIT, task=evidence.TEST_PATH, selectors=TESTS,
+        limits="16MiB Gradle;8MiB provenance;512KiB other logs;1MiB XML;64KiB other JSON;21 files<=37MiB",
+        scope="Original-source Android compilation/selected host methods only; no published-byte, ABI/device/Store or integration credit"))
+    print("RESULT_REVIEW_REQUIRED" if eligible else "FAIL", flush=True)
+    return 0 if eligible else 1
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    raise SystemExit(main())
