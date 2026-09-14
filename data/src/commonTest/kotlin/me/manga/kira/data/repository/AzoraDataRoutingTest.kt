@@ -139,7 +139,8 @@ class AzoraDataRoutingTest {
     @Test
     fun pages_source_absent_from_catalog_fails_closed() =
         runTest {
-            val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
             val result = pagesRepo(registry).fetchPages(other(), chapter("u")).first()
             val error = (result as AppResult.Failure).error
             assertTrue(error is AppError.Validation.SourceUnavailable && error.api == "Other")
@@ -254,7 +255,9 @@ class AzoraDataRoutingTest {
                     extractFor = { p -> if (p == canonical) listOf("/x/0.webp".toPath(), "/x/1.webp".toPath()) else emptyList() },
                 )
             val registry =
-                FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted; the existing CBZ serves the pages") }
+                FakeSourceRegistry(piloted = setOf("Azora")) {
+                    error("registry must not be consulted; the existing CBZ serves the pages")
+                }
 
             try {
                 val result = pagesRepo(registry, dao, cbz, appFs).fetchPages(azora(), chapter("chap-url")).first()
@@ -419,7 +422,9 @@ class AzoraDataRoutingTest {
 
         override fun isConfigBacked(api: String): Boolean = api in piloted
 
-        override fun descriptor(api: String): RuntimeSourceDescriptor? = if (api in piloted) fakeDescriptor(api) else null
+        override fun descriptor(api: String): RuntimeSourceDescriptor? {
+            return if (api in piloted) fakeDescriptor(api) else null
+        }
 
         override fun genericDescriptors(): List<RuntimeSourceDescriptor> = piloted.map(::fakeDescriptor)
     }

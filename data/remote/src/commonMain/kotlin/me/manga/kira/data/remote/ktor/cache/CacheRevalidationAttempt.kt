@@ -108,6 +108,8 @@ internal data class CacheValidators(
     ): Boolean = if (expected == null) values == null else values?.singleOrNull()?.encodeUtf8()?.sha256() == expected
 }
 
-internal fun HttpRequestBuilder.isCacheRecoveryEligible(): Boolean = isEmptyGet() && allConditions.none(headers::contains)
+internal fun HttpRequestBuilder.isCacheRecoveryEligible(): Boolean {
+    return isEmptyGet() && allConditions.none(headers::contains)
+}
 
 private fun HttpRequestBuilder.isEmptyGet(): Boolean = method == HttpMethod.Get && body is OutgoingContent.NoContent

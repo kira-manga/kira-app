@@ -20,6 +20,7 @@ import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
 import me.manga.kira.presentation.features.download.domain.clean.PageDownloadRequest
+import me.manga.kira.presentation.features.download.domain.clean.PageDownloadTransfer
 import me.manga.kira.presentation.features.download.domain.clean.downloadValidatedPage
 import me.manga.kira.presentation.features.download.domain.clean.requireUncachedPageClient
 import java.io.File
@@ -42,13 +43,16 @@ import kotlin.coroutines.cancellation.CancellationException
 class ChapterDownloadService(
     private val context: Context,
     private val persistence: ChapterDownloadPersistence,
-    private val httpClient: HttpClient,
-    private val optimizedCbzManager: OptimizedCbzManager,
-    private val dataStoreHelper: DataStoreHelper,
-    private val mediaInspector: PageMediaInspector,
-    private val pageBytePolicy: PageBytePolicy = PageBytePolicy(),
+    pageTransfer: PageDownloadTransfer,
+    archive: ChapterDownloadArchive,
     private val downloadDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(DOWNLOAD_PARALLELISM),
 ) {
+    private val httpClient: HttpClient = pageTransfer.httpClient
+    private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
+    private val pageBytePolicy: PageBytePolicy = pageTransfer.pageBytePolicy
+    private val optimizedCbzManager: OptimizedCbzManager = archive.manager
+    private val dataStoreHelper: DataStoreHelper = archive.preferences
+
     init {
         requireUncachedPageClient(httpClient)
     }

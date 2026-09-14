@@ -18,6 +18,7 @@ import me.manga.kira.platform.media.PageImageMetadata
 import me.manga.kira.platform.media.requireValid
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.presentation.features.download.domain.clean.ChapterCompletionRecords
 import me.manga.kira.presentation.features.download.domain.clean.ChapterFinalizer
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import okio.ByteString.Companion.decodeBase64
@@ -104,26 +105,33 @@ internal class IosCbzFinalizationFixture {
 
     fun finalizer(writer: CbzWriter): ChapterFinalizer =
         ChapterFinalizer(
-            dao = dao,
-            libraryRepository =
-                LibraryRepository(
-                    mangaDao = db.mangaDao(),
-                    chapterDao = db.chapterDao(),
-                    libraryDeo = db.libraryDeo(),
-                    notificationDao = db.notificationDao(),
-                    historyDao = db.historyDao(),
-                    fileService = FileService(appFileSystem),
+            records =
+                ChapterCompletionRecords(
+                    downloads = dao,
+                    library =
+                        LibraryRepository(
+                            mangaDao = db.mangaDao(),
+                            chapterDao = db.chapterDao(),
+                            libraryDeo = db.libraryDeo(),
+                            notificationDao = db.notificationDao(),
+                            historyDao = db.historyDao(),
+                            fileService = FileService(appFileSystem),
+                        ),
+                    notifications = db.notificationDao(),
                 ),
-            notificationDao = db.notificationDao(),
             appFileSystem = appFileSystem,
             cbzWriter = writer,
             dataStore = DataStoreHelper(MapSettings()),
             mediaInspector = IosPageMediaInspector(system = system),
         )
 
-    suspend fun saved(original: IosCbzChapter): SavedChapterEntity = assertNotNull(db.chapterDao().getChapterByIdSuspend(original.saved.id))
+    suspend fun saved(original: IosCbzChapter): SavedChapterEntity {
+        return assertNotNull(db.chapterDao().getChapterByIdSuspend(original.saved.id))
+    }
 
-    suspend fun download(original: IosCbzChapter): ChapterDownloadEntity = assertNotNull(dao.getDownloadByChapter(original.saved.id))
+    suspend fun download(original: IosCbzChapter): ChapterDownloadEntity {
+        return assertNotNull(dao.getDownloadByChapter(original.saved.id))
+    }
 
     fun archive(original: IosCbzChapter): Path =
         appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"

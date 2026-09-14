@@ -278,11 +278,14 @@ class CompressExistingDownloadsTest {
             legacy = legacySettings(),
             dispatchers = testDispatchers,
             dataStore = dataStore,
-            chapterDao = dao,
-            cbzWriter = writer,
-            mangaDao = FakeMangaDao,
-            chapterDownloadDao = downloadDao,
-            appFileSystem = FakeAppFileSystem,
+            conversion =
+                DownloadedChapterConversion(
+                    chapters = dao,
+                    archives = writer,
+                    manga = FakeMangaDao,
+                    downloads = downloadDao,
+                    files = FakeAppFileSystem,
+                ),
             httpCache = HttpCacheClearer { },
         )
 

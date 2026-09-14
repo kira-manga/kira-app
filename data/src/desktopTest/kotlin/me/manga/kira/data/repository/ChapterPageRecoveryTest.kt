@@ -89,7 +89,9 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
                 "0.jpg" to recoveryTestPng(),
                 "1.jpg" to recoveryTestPng(),
             )
-            db.chapterDao().updateChapter(saved.copy(isDownloaded = true, localImagePaths = listOf("$good", "$missing")))
+            db.chapterDao().updateChapter(
+                saved.copy(isDownloaded = true, localImagePaths = listOf("$good", "$missing")),
+            )
             val source = OwnerPagesSource()
             val result = repository(source).fetchPages(mangaA, chapter).first() as AppResult.Success
             assertEquals(2, result.value.size)

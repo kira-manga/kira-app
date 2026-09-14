@@ -144,17 +144,16 @@ class SettingsRepositoryImpl(
     private val legacy: LegacySettingsRepository,
     private val dispatchers: DispatcherProvider,
     private val dataStore: DataStoreHelper,
-    private val chapterDao: ChapterDao,
-    private val cbzWriter: CbzWriter,
-    private val mangaDao: MangaDao,
-    // B4: lets the manual compressor skip chapters that the background download engine is actively
-    // transferring/finalizing, so the two never race on the same chapter dir's .cbz.part + loose pages.
-    private val chapterDownloadDao: ChapterDownloadDao,
-    // Ledger-size invariant (ChapterDownloadEntity KDoc): after a convert rewrites the chapter dir,
-    // the SUCCESS row's sizeBytes must be re-walked or Details keeps showing the loose-pages size.
-    private val appFileSystem: AppFileSystem,
+    conversion: DownloadedChapterConversion,
     private val httpCache: HttpCacheClearer,
 ) : SettingsRepository {
+    private val chapterDao: ChapterDao = conversion.chapters
+    private val cbzWriter: CbzWriter = conversion.archives
+    private val mangaDao: MangaDao = conversion.manga
+    // The manual converter must skip active transfers/finalizers before touching their chapter files.
+    private val chapterDownloadDao: ChapterDownloadDao = conversion.downloads
+    // Re-walk the converted chapter directory to refresh the existing SUCCESS row's size ledger.
+    private val appFileSystem: AppFileSystem = conversion.files
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)
 
     // GAP-SET-16 — hot progress state for the CBZ bulk-convert run, native-parity port of the

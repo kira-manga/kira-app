@@ -60,7 +60,11 @@ class BoundedPageDownloadTest {
                         requests++
                         assertEquals("https://source.example/", request.headers[HttpHeaders.Referrer])
                         assertEquals("fixture-agent", request.headers[HttpHeaders.UserAgent])
-                        respond(ByteReadChannel(png), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
+                        respond(
+                            ByteReadChannel(png),
+                            HttpStatusCode.OK,
+                            headersOf(HttpHeaders.ContentType, "image/jpeg"),
+                        )
                     },
                 )
             try {

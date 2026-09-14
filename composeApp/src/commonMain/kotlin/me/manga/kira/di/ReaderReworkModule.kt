@@ -97,8 +97,8 @@ val readerReworkModule: Module =
                 // :platform okio-backed reader. Both are bound in PlatformModule.{android,ios,desktop}.
                 chapterDao = get(),
                 cbzReader = get(),
-                // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic engine for the network
-                // page fetch; the downloaded-chapter offline path and all other sources stay unchanged.
+                // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic
+                // engine for network pages; downloaded-chapter offline paths and other sources stay unchanged.
                 sourceRegistry = get(),
                 // Re-derive the live container's paths and require the entire loose roster to be valid.
                 // Uses the same platform inspector as downloads, CBZ writing, and archive recovery.

@@ -38,17 +38,16 @@ import okio.Path.Companion.toPath
  * foreground, since CBZ encoding cannot run while the app is suspended).
  */
 class ChapterFinalizer(
-    private val dao: ChapterDownloadDao,
-    private val libraryRepository: LibraryRepository,
-    // Mirrors the Android ChapterDownloadService: on completion the notification-table row's
-    // localImagePaths/isDownloaded must also be set, so anything reading the notification table
-    // (e.g. the Updates screen's download-button state) stays consistent after the queue row is evicted.
-    private val notificationDao: NotificationDao,
+    records: ChapterCompletionRecords,
     private val appFileSystem: AppFileSystem,
     private val cbzWriter: CbzWriter,
     private val dataStore: DataStoreHelper,
     private val mediaInspector: PageMediaInspector,
 ) {
+    private val dao: ChapterDownloadDao = records.downloads
+    private val libraryRepository: LibraryRepository = records.library
+    // Keep the notification-table copy consistent after the queue row is evicted.
+    private val notificationDao: NotificationDao = records.notifications
     private val log = Logger.withTag(TAG)
 
     /**

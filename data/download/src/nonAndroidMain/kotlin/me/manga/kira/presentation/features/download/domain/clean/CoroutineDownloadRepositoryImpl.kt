@@ -88,22 +88,20 @@ import me.manga.kira.presentation.features.download.data.DownloadingState
  */
 class CoroutineDownloadRepositoryImpl(
     private val dao: ChapterDownloadDao,
-    private val httpClient: HttpClient,
-    private val applicationScope: CoroutineScope,
     private val appFileSystem: AppFileSystem,
-    // iOS download-progress notifications (silent per-page progress + banner/sound on done);
-    // Desktop binds DownloadNotifier.NoOp. Android is unaffected (WorkManager handles its own).
-    private val downloadNotifier: DownloadNotifier,
-    // iOS background-execution grace period for an in-flight chapter; Desktop binds PassThrough.
-    private val backgroundGuard: BackgroundExecutionGuard,
-    // M1 (clean seam): page-URL/header resolution and the terminal CBZ/bookkeeping/SUCCESS step are
-    // extracted into these shared collaborators so the queue engine stays focused on scheduling and
-    // page transfer. The iOS background-URLSession engine reuses the very same two collaborators.
-    private val chapterPageResolver: ChapterPageResolver,
-    private val chapterFinalizer: ChapterFinalizer,
-    private val mediaInspector: PageMediaInspector,
-    private val pageBytePolicy: PageBytePolicy = PageBytePolicy(),
+    pageTransfer: PageDownloadTransfer,
+    host: CoroutineDownloadHost,
+    stages: ChapterDownloadStages,
 ) : DownloadRepository {
+    private val httpClient: HttpClient = pageTransfer.httpClient
+    private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
+    private val pageBytePolicy: PageBytePolicy = pageTransfer.pageBytePolicy
+    private val applicationScope: CoroutineScope = host.applicationScope
+    private val downloadNotifier: DownloadNotifier = host.downloadNotifier
+    private val backgroundGuard: BackgroundExecutionGuard = host.backgroundGuard
+    private val chapterPageResolver: ChapterPageResolver = stages.resolver
+    private val chapterFinalizer: ChapterFinalizer = stages.finalizer
+
     init {
         requireUncachedPageClient(httpClient)
     }

@@ -10,6 +10,7 @@ import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.media.DesktopPageMediaInspector
 import me.manga.kira.platform.storage.DataStoreHelper
+import me.manga.kira.presentation.features.download.domain.clean.ChapterCompletionRecords
 import me.manga.kira.presentation.features.download.domain.clean.ChapterFinalizer
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import okio.ByteString.Companion.decodeBase64
@@ -27,11 +28,14 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
             LegacySettingsRepository(SharedPrefsHelper(MapSettings()), DataStoreHelper(MapSettings()), appFileSystem),
         dispatchers = CbzCallerDispatchers,
         dataStore = DataStoreHelper(MapSettings()),
-        chapterDao = db.chapterDao(),
-        cbzWriter = writer,
-        mangaDao = db.mangaDao(),
-        chapterDownloadDao = dao,
-        appFileSystem = appFileSystem,
+        conversion =
+            DownloadedChapterConversion(
+                chapters = db.chapterDao(),
+                archives = writer,
+                manga = db.mangaDao(),
+                downloads = dao,
+                files = appFileSystem,
+            ),
         httpCache = HttpCacheClearer { },
     )
 
@@ -40,17 +44,20 @@ internal fun DownloadRecoveryFixture.finalizer(
     dataStore: DataStoreHelper = DataStoreHelper(MapSettings()),
 ): ChapterFinalizer =
     ChapterFinalizer(
-        dao = dao,
-        libraryRepository =
-            LibraryRepository(
-                mangaDao = db.mangaDao(),
-                chapterDao = db.chapterDao(),
-                libraryDeo = db.libraryDeo(),
-                notificationDao = db.notificationDao(),
-                historyDao = db.historyDao(),
-                fileService = FileService(appFileSystem),
+        records =
+            ChapterCompletionRecords(
+                downloads = dao,
+                library =
+                    LibraryRepository(
+                        mangaDao = db.mangaDao(),
+                        chapterDao = db.chapterDao(),
+                        libraryDeo = db.libraryDeo(),
+                        notificationDao = db.notificationDao(),
+                        historyDao = db.historyDao(),
+                        fileService = FileService(appFileSystem),
+                    ),
+                notifications = db.notificationDao(),
             ),
-        notificationDao = db.notificationDao(),
         appFileSystem = appFileSystem,
         cbzWriter = writer,
         dataStore = dataStore,

@@ -5,8 +5,10 @@ import me.manga.kira.core.util.heap.DeviceTier
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.device.DeviceTierProbe
 import me.manga.kira.platform.media.AndroidPageMediaInspector
+import me.manga.kira.presentation.features.download.domain.ChapterDownloadArchive
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadPersistence
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
+import me.manga.kira.presentation.features.download.domain.clean.PageDownloadTransfer
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 
 /** Keeps the existing five-argument App75 call and its default Android manager unchanged. */
@@ -38,10 +40,8 @@ internal fun fixtureDownloadService(
     return ChapterDownloadService(
         context = inputs.storage.context,
         persistence = ChapterDownloadPersistence(library, inputs.dao.notifications, inputs.dao, files),
-        httpClient = inputs.transport.client,
-        optimizedCbzManager = manager,
-        dataStoreHelper = inputs.storage.settings,
-        mediaInspector = AndroidPageMediaInspector(),
+        pageTransfer = PageDownloadTransfer(inputs.transport.client, AndroidPageMediaInspector()),
+        archive = ChapterDownloadArchive(manager, inputs.storage.settings),
         downloadDispatcher = inputs.sender,
     )
 }

@@ -189,11 +189,14 @@ class CompressExistingDownloadsSizeRefreshTest {
                 ),
             dispatchers = testDispatchers,
             dataStore = DataStoreHelper(MapSettings()),
-            chapterDao = chapterDao,
-            cbzWriter = writer,
-            mangaDao = InertMangaDao,
-            chapterDownloadDao = downloadDao,
-            appFileSystem = appFs,
+            conversion =
+                DownloadedChapterConversion(
+                    chapters = chapterDao,
+                    archives = writer,
+                    manga = InertMangaDao,
+                    downloads = downloadDao,
+                    files = appFs,
+                ),
             httpCache = HttpCacheClearer { },
         )
 

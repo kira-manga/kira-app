@@ -61,26 +61,27 @@ import okio.Path.Companion.toPath
  */
 @OptIn(ExperimentalForeignApi::class)
 class BackgroundUrlSessionDownloadRepository(
-    private val dao: ChapterDownloadDao,
-    private val chapterPageResolver: ChapterPageResolver,
-    private val chapterFinalizer: ChapterFinalizer,
-    private val manifestStore: DownloadManifestStore,
-    private val appFileSystem: AppFileSystem,
-    private val transport: BackgroundTransport,
-    private val applicationScope: CoroutineScope,
-    private val downloadNotifier: DownloadNotifier,
-    // B3: the live per-source header store (cf_clearance/Cookie/User-Agent), the same one a WebView
-    // re-solve writes to via saveHeadersForApi. Used to refresh the frozen manifest headers at
-    // reconcile/retry so an expired cookie baked in at resolve time is not replayed (→ 403).
+    storage: BackgroundDownloadStorage,
+    stages: ChapterDownloadStages,
+    pageTransfer: BackgroundPageTransfer,
+    host: BackgroundDownloadHost,
+    // The live store supplies fresh retry headers and the user's compression opt-in.
     private val dataStoreHelper: DataStoreHelper,
-    // M4: requests OS background CPU windows (BGProcessingTask / BGContinuedProcessingTask via the
-    // host) and a snapshot the host reads synchronously to drive BG-task submission + progress UI.
-    private val backgroundScheduler: BackgroundScheduler,
-    private val workSignal: BackgroundWorkSignal,
-    private val mediaInspector: PageMediaInspector,
-    private val pageBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : DownloadRepository,
     TransferListener {
+    private val dao: ChapterDownloadDao = storage.downloads
+    private val manifestStore: DownloadManifestStore = storage.manifests
+    private val appFileSystem: AppFileSystem = storage.files
+    private val chapterPageResolver: ChapterPageResolver = stages.resolver
+    private val chapterFinalizer: ChapterFinalizer = stages.finalizer
+    private val transport: BackgroundTransport = pageTransfer.transport
+    private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
+    private val pageBytePolicy: PageBytePolicy = pageTransfer.pageBytePolicy
+    private val applicationScope: CoroutineScope = host.applicationScope
+    private val downloadNotifier: DownloadNotifier = host.downloadNotifier
+    private val backgroundScheduler: BackgroundScheduler = host.scheduler
+    private val workSignal: BackgroundWorkSignal = host.workSignal
+
     private val mutex = Mutex()
 
     /** chapterIds with a finalize coroutine in flight — guards against double-finalize. (Guarded by [mutex].) */
@@ -593,7 +594,9 @@ class BackgroundUrlSessionDownloadRepository(
                         // auto-route to the solver and re-enqueue (downloads parity with the reading path).
                         val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
                         val failMsg = if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed")
-                        if (isChallenge) BgDownloadLog.log("prepare.resolve.cloudflare", "chapterId" to entity.chapterId)
+                        if (isChallenge) {
+                            BgDownloadLog.log("prepare.resolve.cloudflare", "chapterId" to entity.chapterId)
+                        }
                         mutex.withLock { failResolveLocked(entity.chapterId, failMsg) }
                         return@launch
                     }
@@ -688,77 +691,11 @@ class BackgroundUrlSessionDownloadRepository(
     private fun launchPrefetchResolve(entity: ChapterDownloadEntity) {
         applicationScope.launch {
             try {
-                // Gentle spacing: chained top-ups (finally → maybePrefetchLocked) scrape sequentially
-                // with at least this gap, so lookahead can never burst a source.
+                // Space chained top-ups; the network scrape must remain outside the engine mutex.
                 delay(PREFETCH_SPACING_MS)
                 BgDownloadLog.log("prefetch.resolve.start", "chapterId" to entity.chapterId, "url" to entity.url)
-                val resolved =
-                    try {
-                        chapterPageResolver.resolve(entity)
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (t: Throwable) {
-                        val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
-                        BgDownloadLog.warn(
-                            "prefetch.resolve.failed",
-                            "chapterId" to entity.chapterId,
-                            "challenge" to isChallenge,
-                            "msg" to t.message,
-                        )
-                        mutex.withLock {
-                            pausePrefetchLocked()
-                            // Turn arrived mid-scrape → we ARE the resolve; surface the failure normally.
-                            if (dao.getDownloadByChapter(entity.chapterId)?.state == DownloadingState.RUNNING) {
-                                failResolveLocked(
-                                    entity.chapterId,
-                                    if (isChallenge) {
-                                        CLOUDFLARE_CHALLENGE
-                                    } else {
-                                        (
-                                            t.message
-                                                ?: "Resolve failed"
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                        return@launch
-                    }
-                mutex.withLock {
-                    val current = dao.getDownloadByChapter(entity.chapterId)
-                    when {
-                        current == null ->
-                            BgDownloadLog.log("prefetch.discarded", "chapterId" to entity.chapterId, "reason" to "rowGone")
-                        resolved.imageUrls.isEmpty() -> {
-                            BgDownloadLog.warn("prefetch.resolve.empty", "chapterId" to entity.chapterId)
-                            pausePrefetchLocked()
-                            if (current.state == DownloadingState.RUNNING) failResolveLocked(entity.chapterId, "No images for chapter")
-                        }
-                        current.state == DownloadingState.QUEUED -> {
-                            if (!manifestStore.exists(entity.mangaId, entity.chapterId)) {
-                                val manifest = buildManifest(entity, resolved)
-                                if (!persistManifestLocked(manifest)) return@withLock
-                                BgDownloadLog.log(
-                                    "prefetch.manifest.written",
-                                    "chapterId" to entity.chapterId,
-                                    "pages" to manifest.pages.size,
-                                )
-                            }
-                        }
-                        current.state == DownloadingState.RUNNING -> {
-                            // Turn arrived mid-scrape — act as the resolve: persist + reconcile (enqueues transfers).
-                            BgDownloadLog.log("prefetch.promotedToResolve", "chapterId" to entity.chapterId)
-                            val manifest =
-                                manifestStore.read(entity.mangaId, entity.chapterId)
-                                    ?: buildManifest(entity, resolved).also {
-                                        if (!persistManifestLocked(it)) return@withLock
-                                    }
-                            reconcileChapterLocked(current, manifest)
-                        }
-                        else ->
-                            BgDownloadLog.log("prefetch.discarded", "chapterId" to entity.chapterId, "state" to current.state)
-                    }
-                }
+                val resolved = resolvePrefetch(entity) ?: return@launch
+                mutex.withLock { completePrefetchLocked(entity, resolved) }
             } finally {
                 mutex.withLock {
                     prefetching.remove(entity.chapterId)
@@ -767,6 +704,87 @@ class BackgroundUrlSessionDownloadRepository(
                 }
             }
         }
+    }
+
+    private suspend fun resolvePrefetch(entity: ChapterDownloadEntity): ResolvedChapter? {
+        return runCatchingCancellable { chapterPageResolver.resolve(entity) }.getOrElse { failure ->
+            handlePrefetchFailure(entity, failure)
+            null
+        }
+    }
+
+    private suspend fun handlePrefetchFailure(
+        entity: ChapterDownloadEntity,
+        failure: Throwable,
+    ) {
+        val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(failure.message)
+        BgDownloadLog.warn(
+            "prefetch.resolve.failed",
+            "chapterId" to entity.chapterId,
+            "challenge" to isChallenge,
+            "msg" to failure.message,
+        )
+        mutex.withLock {
+            pausePrefetchLocked()
+            // Turn arrived mid-scrape: this is now the real resolve, so surface its failure.
+            if (dao.getDownloadByChapter(entity.chapterId)?.state == DownloadingState.RUNNING) {
+                val message =
+                    if (isChallenge) CLOUDFLARE_CHALLENGE else (failure.message ?: "Resolve failed")
+                failResolveLocked(entity.chapterId, message)
+            }
+        }
+    }
+
+    private suspend fun completePrefetchLocked(
+        entity: ChapterDownloadEntity,
+        resolved: ResolvedChapter,
+    ) {
+        val current = dao.getDownloadByChapter(entity.chapterId)
+        when {
+            current == null ->
+                BgDownloadLog.log("prefetch.discarded", "chapterId" to entity.chapterId, "reason" to "rowGone")
+            resolved.imageUrls.isEmpty() -> failEmptyPrefetchLocked(current)
+            current.state == DownloadingState.QUEUED -> persistQueuedPrefetchLocked(entity, resolved)
+            current.state == DownloadingState.RUNNING -> promotePrefetchLocked(entity, current, resolved)
+            else ->
+                BgDownloadLog.log("prefetch.discarded", "chapterId" to entity.chapterId, "state" to current.state)
+        }
+    }
+
+    private suspend fun failEmptyPrefetchLocked(current: ChapterDownloadEntity) {
+        BgDownloadLog.warn("prefetch.resolve.empty", "chapterId" to current.chapterId)
+        pausePrefetchLocked()
+        if (current.state == DownloadingState.RUNNING) {
+            failResolveLocked(current.chapterId, "No images for chapter")
+        }
+    }
+
+    private suspend fun persistQueuedPrefetchLocked(
+        entity: ChapterDownloadEntity,
+        resolved: ResolvedChapter,
+    ) {
+        if (!manifestStore.exists(entity.mangaId, entity.chapterId)) {
+            val manifest = buildManifest(entity, resolved)
+            if (!persistManifestLocked(manifest)) return
+            BgDownloadLog.log(
+                "prefetch.manifest.written",
+                "chapterId" to entity.chapterId,
+                "pages" to manifest.pages.size,
+            )
+        }
+    }
+
+    private suspend fun promotePrefetchLocked(
+        entity: ChapterDownloadEntity,
+        current: ChapterDownloadEntity,
+        resolved: ResolvedChapter,
+    ) {
+        // Turn arrived mid-scrape: only a persisted manifest may reach reconcile/transfer enqueue.
+        BgDownloadLog.log("prefetch.promotedToResolve", "chapterId" to entity.chapterId)
+        val existing = manifestStore.read(entity.mangaId, entity.chapterId)
+        val manifest = existing ?: buildManifest(entity, resolved)
+        if (existing == null && !persistManifestLocked(manifest)) return
+        reconcileChapterLocked(current, manifest)
     }
 
     private fun pausePrefetchLocked() {
@@ -852,23 +870,37 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
     ) {
         val entity = dao.getDownloadByChapter(chapterId) ?: return
-        if (entity.state != DownloadingState.RUNNING && entity.state != DownloadingState.DOWNLOADED) {
+        if (entity.state == DownloadingState.RUNNING || entity.state == DownloadingState.DOWNLOADED) {
+            recordPageCompleteLocked(entity, mangaId, pageIndex)
+        } else {
             BgDownloadLog.log("page.complete.ignored", "chapterId" to chapterId, "state" to entity.state)
-            return
         }
+    }
+
+    private suspend fun recordPageCompleteLocked(
+        entity: ChapterDownloadEntity,
+        mangaId: Long,
+        pageIndex: Int,
+    ) {
+        val chapterId = entity.chapterId
         val manifest =
             cachedManifest(mangaId, chapterId) ?: run {
                 BgDownloadLog.log("manifest.missing", "chapterId" to chapterId, "fallback" to "pump")
                 pumpLocked("pageCompleteNoManifest")
                 return
             }
-        if (entity.mangaId != mangaId || manifest.pages.none { it.index == pageIndex && !it.policyRejected }) return
-        // O(1) hot path: the transport already moved this page's file to disk before this callback, so
-        // recording the index in the in-memory set is exact (and idempotent on a re-enqueue race). No
-        // per-page manifest re-parse or full directory listing — that was the on-device download lag.
+        if (entity.mangaId != mangaId || manifest.pages.none { it.index == pageIndex && !it.policyRejected }) {
+            return
+        }
+        // The transport already published the file; update the O(1), idempotent hot-path cache.
         val onDisk = cachedOnDisk(mangaId, chapterId).apply { add(pageIndex) }
         updateProgressLocked(entity, manifest, onDisk.size)
-        BgDownloadLog.log("page.complete", "chapterId" to chapterId, "onDisk" to onDisk.size, "total" to manifest.pages.size)
+        BgDownloadLog.log(
+            "page.complete",
+            "chapterId" to chapterId,
+            "onDisk" to onDisk.size,
+            "total" to manifest.pages.size,
+        )
         if (manifest.pages.all { it.index in onDisk }) {
             markDownloadedAndMaybeFinalizeLocked(chapterId)
             fillWindowLocked()
@@ -976,31 +1008,57 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
     ) {
         val entity = dao.getDownloadByChapter(chapterId) ?: return
-        if (entity.state != DownloadingState.RUNNING) {
-            BgDownloadLog.log("retry.skip.notRunning", "chapterId" to chapterId, "pageIndex" to pageIndex, "state" to entity.state)
-            return
+        if (canRetryPageLocked(entity, mangaId, pageIndex)) {
+            val manifest = manifestStore.read(mangaId, chapterId) ?: return
+            retryManifestPageLocked(entity, manifest, mangaId, pageIndex)
         }
-        if (pageOnDisk(mangaId, chapterId, pageIndex)) {
-            BgDownloadLog.log("retry.skip.onDisk", "chapterId" to chapterId, "pageIndex" to pageIndex)
-            return
+    }
+
+    private suspend fun canRetryPageLocked(
+        entity: ChapterDownloadEntity,
+        mangaId: Long,
+        pageIndex: Int,
+    ): Boolean {
+        val chapterId = entity.chapterId
+        return when {
+            entity.state != DownloadingState.RUNNING -> {
+                BgDownloadLog.log(
+                    "retry.skip.notRunning",
+                    "chapterId" to chapterId,
+                    "pageIndex" to pageIndex,
+                    "state" to entity.state,
+                )
+                false
+            }
+            pageOnDisk(mangaId, chapterId, pageIndex) -> {
+                BgDownloadLog.log("retry.skip.onDisk", "chapterId" to chapterId, "pageIndex" to pageIndex)
+                false
+            }
+            pageIndex in transport.inFlightPages(chapterId) -> {
+                BgDownloadLog.log("retry.skip.inFlight", "chapterId" to chapterId, "pageIndex" to pageIndex)
+                false
+            }
+            else -> true
         }
-        if (pageIndex in transport.inFlightPages(chapterId)) {
-            BgDownloadLog.log("retry.skip.inFlight", "chapterId" to chapterId, "pageIndex" to pageIndex)
-            return
-        }
-        val manifest = manifestStore.read(mangaId, chapterId) ?: return
+    }
+
+    private suspend fun retryManifestPageLocked(
+        entity: ChapterDownloadEntity,
+        manifest: DownloadManifest,
+        mangaId: Long,
+        pageIndex: Int,
+    ) {
         val mp = manifest.pages.firstOrNull { it.index == pageIndex } ?: return
         if (mp.policyRejected) {
             failChapterLocked(entity, "__page_policy_rejected__:ENCODED_OR_NATIVE_POLICY")
             fillWindowLocked()
-            return
+        } else {
+            // Retry overlays fresh cookies/UA only after the durable refusal check.
+            val live = freshSiteHeaders(manifest.api)
+            val headers = HeaderRefreshRules.overlayFreshHeaders(frozen = mp.headers, fresh = live)
+            BgDownloadLog.log("retry.enqueue", "chapterId" to entity.chapterId, "pageIndex" to pageIndex)
+            transport.enqueue(listOf(TransferRequest(mangaId, entity.chapterId, pageIndex, mp.url, headers)))
         }
-        // B3: refresh cookies/UA on the per-page retry too (a 403 from a stale cookie is the usual reason
-        // this page is being retried).
-        val live = freshSiteHeaders(manifest.api)
-        val headers = HeaderRefreshRules.overlayFreshHeaders(frozen = mp.headers, fresh = live)
-        BgDownloadLog.log("retry.enqueue", "chapterId" to chapterId, "pageIndex" to pageIndex)
-        transport.enqueue(listOf(TransferRequest(mangaId, chapterId, pageIndex, mp.url, headers)))
     }
 
     private suspend fun markDownloadedAndMaybeFinalizeLocked(chapterId: Long) {
@@ -1391,7 +1449,10 @@ class BackgroundUrlSessionDownloadRepository(
     private fun cachedManifest(
         mangaId: Long,
         chapterId: Long,
-    ): DownloadManifest? = manifestCache[chapterId] ?: manifestStore.read(mangaId, chapterId)?.also { manifestCache[chapterId] = it }
+    ): DownloadManifest? {
+        return manifestCache[chapterId]
+            ?: manifestStore.read(mangaId, chapterId)?.also { manifestCache[chapterId] = it }
+    }
 
     /** Mutable on-disk page-index set for [chapterId], seeded from the real directory on first access. */
     private fun cachedOnDisk(

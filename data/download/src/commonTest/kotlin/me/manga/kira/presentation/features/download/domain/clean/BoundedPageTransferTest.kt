@@ -69,7 +69,9 @@ class BoundedPageTransferTest {
         runTest {
             fs.createDirectories(directory)
             val temporary = pageTemporaryPath(directory, 0)
-            assertFailsWith<IOException> { transferPageBody(ByteReadChannel(byteArrayOf()), null, fs, temporary, policy) }
+            assertFailsWith<IOException> {
+                transferPageBody(ByteReadChannel(byteArrayOf()), null, fs, temporary, policy)
+            }
             assertFalse(fs.exists(temporary))
             val failed = ByteChannel(autoFlush = true).apply { cancel(IOException("stream failed")) }
             assertFailsWith<IOException> { transferPageBody(failed, null, fs, temporary, policy) }
@@ -97,7 +99,9 @@ class BoundedPageTransferTest {
             fs.createDirectories(directory)
             val temporary = pageTemporaryPath(directory, 0)
             fs.write(temporary) { writeUtf8("owned elsewhere") }
-            assertFailsWith<IOException> { transferPageBody(ByteReadChannel(byteArrayOf(1)), null, fs, temporary, policy) }
+            assertFailsWith<IOException> {
+                transferPageBody(ByteReadChannel(byteArrayOf(1)), null, fs, temporary, policy)
+            }
             assertEquals("owned elsewhere", fs.read(temporary) { readUtf8() })
         }
 
@@ -115,7 +119,13 @@ class BoundedPageTransferTest {
                 }
             val failure =
                 assertFailsWith<PageByteLimitExceeded> {
-                    transferPageBody(ByteReadChannel(byteArrayOf(1, 2, 3, 4, 5)), null, failingDelete, temporary, policy)
+                    transferPageBody(
+                        ByteReadChannel(byteArrayOf(1, 2, 3, 4, 5)),
+                        null,
+                        failingDelete,
+                        temporary,
+                        policy,
+                    )
                 }
             assertEquals("cleanup failed", failure.suppressedExceptions.single().message)
         }
