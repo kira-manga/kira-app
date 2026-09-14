@@ -90,6 +90,7 @@
     <!-- Background-downloads: BGTaskScheduler CPU windows for download orchestration; the durable file transfers use a background URLSession (which needs no background mode). Fixed task identifiers (no wildcard); no Background GPU Access (CBZ is CPU/foreground). `remote-notification` is declared for FCM background delivery, but the app implements NO application(_:didReceiveRemoteNotification:) handler, so data-ONLY (silent) pushes are not processed — iOS deep-link campaigns must include a notification/alert block (the tap is routed via UNUserNotificationCenter didReceive → IosPushBridge). Data-only messages are Android-only. -->
     <key>UIBackgroundModes</key>
     <array>
+        <string>fetch</string>
         <string>processing</string>
         <string>remote-notification</string>
     </array>
