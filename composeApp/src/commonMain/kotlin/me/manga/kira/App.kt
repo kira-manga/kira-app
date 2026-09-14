@@ -272,8 +272,7 @@ import org.koin.compose.viewmodel.koinViewModel
  *  NavHost-plus-singleton-ImageLoader-plus-Bug-4-layer-3-Coil-
  *  interceptor manifest. Original Phase 10.4-era prose preserved
  *  verbatim per the audit-trail-preservation convention.
- */
-/**
+ *
  * Bug 4 layer 3: per-source header injection for Coil image fetches. The diagnostic version of
  * this interceptor (which only printed `[CoilDbg] httpHeaders=NetworkHeaders(data={})`) confirmed
  * that the singleton ImageLoader was attaching nothing to outbound image requests, so covers and
@@ -332,9 +331,12 @@ private class CoilSourceHeaderInterceptor(
                 }
             val merged = static + captured
             if (merged.isNotEmpty()) {
-                val configHeaders = NetworkHeaders.Builder().apply {
-                    merged.forEach { (k, v) -> add(k, v) }
-                }.build()
+                val configHeaders =
+                    NetworkHeaders
+                        .Builder()
+                        .apply {
+                            merged.forEach { (k, v) -> add(k, v) }
+                        }.build()
                 return chain.withRequest(req.newBuilder().httpHeaders(configHeaders).build()).proceed()
             }
             // Nothing to inject (no static headers and nothing captured yet) → use the raw URL.
@@ -354,6 +356,7 @@ private class CoilSourceHeaderInterceptor(
  * directly from its system callback.
  */
 @Composable
+@Suppress("FunctionNaming", "ktlint:standard:function-naming")
 private fun PostFirstFrameStartupTasks() {
     var firstFramePresented by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -399,6 +402,7 @@ private fun PostFirstFrameStartupTasks() {
  * instead of waiting for the shared HTTP cache's freshness window.
  */
 @Composable
+@Suppress("FunctionNaming", "ktlint:standard:function-naming")
 private fun SourceCatalogRefreshEffect() {
     val lifecycleOwner = LocalLifecycleOwner.current
     val sourceUpdateManager: SourceUpdateManager = koinInject()
@@ -415,6 +419,7 @@ private fun SourceCatalogRefreshEffect() {
 private const val SOURCE_CATALOG_REFRESH_INTERVAL_MILLIS = 60_000L
 
 @Composable
+@Suppress("FunctionNaming", "ktlint:standard:function-naming")
 fun App(crashDiagnosticsEnabled: Boolean = false) {
     PostFirstFrameStartupTasks()
 
@@ -438,7 +443,8 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     val appFileSystem: AppFileSystem = koinInject()
     val imageCacheDir = remember { appFileSystem.cacheDir / "image_cache" }
     setSingletonImageLoaderFactory { ctx ->
-        ImageLoader.Builder(ctx)
+        ImageLoader
+            .Builder(ctx)
             .components {
                 // Native pipeline order: NetworkFetcher first, then decoders, then interceptors.
                 // On Android we force OkHttp (matches upstream `CoilModule.provideImageLoader`);
@@ -448,8 +454,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
                 decoderFactories.forEach { add(it) }
                 add(PageProgressInterceptor(pageProgressRepository))
                 add(CoilSourceHeaderInterceptor(coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
-            }
-            .diskCache { DiskCache.Builder().directory(imageCacheDir).build() }
+            }.diskCache { DiskCache.Builder().directory(imageCacheDir).build() }
             // Disable the default 4096×4096 maxBitmapSize cap. Coil 3.3+ tightened how this cap
             // applies to tall manga / webtoon pages (PR #3259), causing aggressive downsampling
             // before the request's `.size(Pixels(screenWidthPx), Undefined)` constraint is honored.
@@ -516,11 +521,12 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     // today — iOS since PI2 (2026-07, AppleLanguages writes are process-visible; see
     // LocalAppLocale.ios.kt) — so the guard is dormant, but it stays: if the pinned iOS behavior
     // ever regresses, flipping the iOS actual back to false re-arms this without further changes.
-    val layoutDirection = when {
-        language.isBlank() || !LocalAppLocale.isLiveLocaleSwitchSupported -> LocalLayoutDirection.current
-        isRtlLanguageTag(language) -> LayoutDirection.Rtl
-        else -> LayoutDirection.Ltr
-    }
+    val layoutDirection =
+        when {
+            language.isBlank() || !LocalAppLocale.isLiveLocaleSwitchSupported -> LocalLayoutDirection.current
+            isRtlLanguageTag(language) -> LayoutDirection.Rtl
+            else -> LayoutDirection.Ltr
+        }
     CompositionLocalProvider(
         LocalAppLocale provides language.ifBlank { null },
         LocalLayoutDirection provides layoutDirection,
@@ -552,6 +558,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
 // also validates Reader.coverUrl).
 
 @Composable
+@Suppress("FunctionNaming", "ktlint:standard:function-naming")
 private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -668,12 +675,13 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
         val systemBottom = paddingValues.calculateBottomPadding()
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Nav visible → full-bleed (capsule floats over content). Immersive reader →
-                    // full-bleed (it owns its chrome insets). Other non-tab screens (Details/…) keep
-                    // the system-bottom inset so they clear the home indicator exactly as before.
-                    .padding(bottom = if (showBottomBar || fullBleed) 0.dp else systemBottom),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Nav visible → full-bleed (capsule floats over content). Immersive reader →
+                        // full-bleed (it owns its chrome insets). Other non-tab screens (Details/…) keep
+                        // the system-bottom inset so they clear the home indicator exactly as before.
+                        .padding(bottom = if (showBottomBar || fullBleed) 0.dp else systemBottom),
             ) {
                 CompositionLocalProvider(
                     LocalBottomBarPadding provides
@@ -734,6 +742,7 @@ private suspend fun processSourceActivationRequest(
 private val FloatingNavBarSpace = 88.dp
 
 @Composable
+@Suppress("FunctionNaming", "ktlint:standard:function-naming")
 private fun AppNavHost(
     navController: NavHostController,
     crashDiagnosticsEnabled: Boolean,
@@ -760,7 +769,6 @@ private fun AppNavHost(
         navController = navController,
         startDestination = rootStart,
     ) {
-
         composable<Screen.Welcome> { backStackEntry ->
             WelcomeScreenRoute(
                 navController = navController,
