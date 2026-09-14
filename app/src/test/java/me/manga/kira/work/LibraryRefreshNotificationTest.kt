@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
 import android.database.sqlite.SQLiteException
-import android.graphics.Bitmap
 import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
 import kotlinx.coroutines.CancellationException
@@ -131,10 +130,14 @@ class LibraryRefreshNotificationTest {
             val covers = NoCoverExpected()
             val helper = room.helper(covers, repository)
             val worker = notificationRefreshWorker(context, repository, helper, chapters.asReversed())
-
             assertTrue(worker.refreshWork.refreshManga(manga))
-
-            assertEquals(2, room.db.chapterDao().getChaptersByMangaIdR(manga.id).size)
+            assertEquals(
+                2,
+                room.db
+                    .chapterDao()
+                    .getChaptersByMangaIdR(manga.id)
+                    .size,
+            )
             assertTrue(room.updates().isEmpty())
             assertEquals(0, covers.calls)
             assertTrue(chapterPosts().isEmpty())
@@ -155,11 +158,14 @@ class LibraryRefreshNotificationTest {
             val helper = room.helper(covers, repository)
             val worker =
                 notificationRefreshWorker(context, repository, helper, room.chapters(manga, 2).asReversed())
-
             assertFalse(worker.refreshWork.refreshManga(manga))
-
             assertEquals(1, attempts.get())
-            assertTrue(room.db.chapterDao().getChaptersByMangaIdR(manga.id).isEmpty())
+            assertTrue(
+                room.db
+                    .chapterDao()
+                    .getChaptersByMangaIdR(manga.id)
+                    .isEmpty(),
+            )
             assertTrue(room.updates().isEmpty())
             assertEquals(0, covers.calls)
             assertTrue(chapterPosts().isEmpty())
@@ -186,7 +192,10 @@ class LibraryRefreshNotificationTest {
             }
         }
 
-    private suspend fun startRefresh(run: NotificationWorkerRun, covers: NotificationCovers) {
+    private suspend fun startRefresh(
+        run: NotificationWorkerRun,
+        covers: NotificationCovers,
+    ) {
         val manga = room.manga()
         val repository = room.repository()
         val helper = room.helper(covers, repository)
@@ -207,7 +216,11 @@ class LibraryRefreshNotificationTest {
             covers.itemEntered.await()
         }
 
-    private suspend fun cancelBlockedDecode(run: NotificationWorkerRun, covers: BlockingRefreshCover, item: Job) {
+    private suspend fun cancelBlockedDecode(
+        run: NotificationWorkerRun,
+        covers: BlockingRefreshCover,
+        item: Job,
+    ) {
         val execution = run.execution()
         assertTrue(run.stopAndCancel())
         withTimeout(NOTIFICATION_WAIT_MILLIS) {
@@ -244,7 +257,10 @@ class LibraryRefreshNotificationTest {
         assertEquals(rows.map { it.id.toInt() }, chapterPosts().map { it.first })
     }
 
-    private suspend fun assertDeadlineSplit(deadline: RefreshDeadlineWitness, item: Deferred<Boolean>) {
+    private suspend fun assertDeadlineSplit(
+        deadline: RefreshDeadlineWitness,
+        item: Deferred<Boolean>,
+    ) {
         val scheduler = deadline.scheduler
         scheduler.awaitCondition { deadline.storageWaiting.isCompleted }
         scheduler.advanceTimeBy(25_000)
@@ -278,15 +294,6 @@ class LibraryRefreshNotificationTest {
                 delay(1)
             }
             runCurrent()
-        }
-    }
-
-    private class NoCoverExpected : NotificationCovers {
-        var calls = 0
-
-        override suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit) {
-            calls++
-            error("No display batch was committed")
         }
     }
 }

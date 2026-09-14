@@ -29,7 +29,8 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     var fetch: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(refreshDetails(it)) }
     var cover: suspend () -> Unit = {}
     var write: suspend (List<SavedChapterEntity>) -> List<Long> = { rows -> rows.indices.map { it + 1L } }
-    var persist: suspend (SavedMangaEntity, List<SavedChapterEntity>) -> List<ChapterNotification> = ::refreshNotifications
+    var persist: suspend (SavedMangaEntity, List<SavedChapterEntity>) -> List<ChapterNotification> =
+        ::refreshNotifications
     var display: suspend (List<ChapterNotification>) -> Unit = {}
     var lastSuccess = "old success"
     var stamps = 0

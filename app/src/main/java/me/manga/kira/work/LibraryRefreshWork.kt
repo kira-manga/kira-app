@@ -144,8 +144,6 @@ internal class LibraryRefreshWork(
             ItemOutcome.Failed
         }
 
-    private fun SavedMangaEntity.toManga(): Manga = Manga(api, language, title, url, imageUrl, null, genres)
-
     private suspend fun reconcile(
         manga: SavedMangaEntity,
         details: MangaDetails,
@@ -282,3 +280,5 @@ internal class LibraryRefreshWork(
         const val INTER_BATCH_DELAY_MS = 1_000L
     }
 }
+
+private fun SavedMangaEntity.toManga(): Manga = Manga(api, language, title, url, imageUrl, null, genres)
