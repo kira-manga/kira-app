@@ -1,0 +1,77 @@
+package me.manga.kira.work
+
+import kotlinx.coroutines.flow.Flow
+import me.manga.kira.data.local.entity.SavedChapterEntity
+import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.sources.contracts.MangaSourceClient
+
+private const val DEFAULT_TOTAL_TIMEOUT_MS = 15L * 60 * 1_000
+
+/** Adapter to the existing concrete facade; no DAO, identity or App6 persistence changes. */
+internal interface LibraryRefreshWorkPort {
+    fun library(): Flow<List<SavedMangaEntity>>
+
+    fun source(api: String): MangaSourceClient?
+
+    fun chapters(mangaId: Long): Flow<List<SavedChapterEntity>>
+
+    suspend fun updateCover(
+        mangaId: Long,
+        coverUrl: String,
+    )
+
+    suspend fun insert(chapters: List<SavedChapterEntity>): List<Long>
+
+    fun notify(
+        manga: SavedMangaEntity,
+        chapters: List<SavedChapterEntity>,
+    )
+
+    suspend fun stampLastSuccess()
+}
+
+internal data class LibraryRefreshWorkTimeouts(
+    val totalMs: Long = DEFAULT_TOTAL_TIMEOUT_MS,
+    val libraryReadMs: Long = 30_000,
+    val itemMs: Long = 30_000,
+    val detailsMs: Long = 20_000,
+    val localReadMs: Long = 10_000,
+)
+
+internal enum class LibraryRefreshWorkStop {
+    EXHAUSTED,
+    READ_FAILED,
+    READ_TIMEOUT,
+    TOTAL_TIMEOUT,
+    ABORTED,
+    STAMP_FAILED,
+}
+
+internal data class LibraryRefreshWorkProgress(
+    val snapshotSize: Int?,
+    val succeeded: Int,
+    val failed: Int,
+    val timedOut: Int,
+    val notAttempted: Int?,
+    val newChapterCount: Int,
+    val stop: LibraryRefreshWorkStop?,
+) {
+    val attempted: Int get() = succeeded + failed + timedOut
+    val isComplete: Boolean get() =
+        stop == LibraryRefreshWorkStop.EXHAUSTED &&
+            snapshotSize != null &&
+            succeeded == snapshotSize &&
+            failed == 0 &&
+            timedOut == 0
+
+    init {
+        require(succeeded >= 0 && failed >= 0 && timedOut >= 0 && newChapterCount >= 0)
+        require(
+            if (snapshotSize == null) {
+                attempted == 0 && notAttempted == null
+            } else {
+                notAttempted != null && notAttempted >= 0 && snapshotSize == attempted + notAttempted
+            },
+        )
+    }
+}

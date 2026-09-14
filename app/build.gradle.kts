@@ -257,6 +257,7 @@ dependencies {
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
     // Names the externally-provided Ktor engine type for the Koin verify() graph check.
     testImplementation(libs.ktor.client.core)
 }
