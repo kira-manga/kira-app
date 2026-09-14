@@ -18,10 +18,14 @@ class DetailsScreenBottomControlsTest {
     fun phoneRtlKeepsDeleteAndCancelTouchable() = runCase(Size(PHONE_WIDTH_PX, PHONE_HEIGHT_PX), LayoutDirection.Rtl)
 
     @Test
-    fun compactLtrKeepsDeleteAndCancelTouchable() = runCase(Size(COMPACT_WIDTH_PX, COMPACT_HEIGHT_PX), LayoutDirection.Ltr)
+    fun compactLtrKeepsDeleteAndCancelTouchable() {
+        runCase(Size(COMPACT_WIDTH_PX, COMPACT_HEIGHT_PX), LayoutDirection.Ltr)
+    }
 
     @Test
-    fun compactRtlKeepsDeleteAndCancelTouchable() = runCase(Size(COMPACT_WIDTH_PX, COMPACT_HEIGHT_PX), LayoutDirection.Rtl)
+    fun compactRtlKeepsDeleteAndCancelTouchable() {
+        runCase(Size(COMPACT_WIDTH_PX, COMPACT_HEIGHT_PX), LayoutDirection.Rtl)
+    }
 
     private fun runCase(
         viewport: Size,
