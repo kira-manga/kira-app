@@ -202,6 +202,12 @@ class DetailsViewModel(
      */
     private var downloadRowsByUrl: Map<String, ChapterDownloadProgress> = emptyMap()
 
+    /** Successful local deletions stay hidden for this visit until a later fetch rediscovers them. */
+    private var retractedChapterVersions: Map<String, Long> = emptyMap()
+    private var chapterRetractionVersion = 0L
+    private val retractedChapterUrls: Set<String>
+        get() = retractedChapterVersions.keys
+
     /** Consecutive Cloudflare-solve round-trips for the current screen; bounded by
      *  [MAX_CLOUDFLARE_ATTEMPTS] and reset on any successful fetch. */
     private var cloudflareAttempts = 0
@@ -305,6 +311,7 @@ class DetailsViewModel(
 
     private suspend fun onEnter(manga: Manga) {
         if (state.value.manga?.matches(manga) == true) return
+        retractedChapterVersions = emptyMap()
         FlowLog.log("Details", "open", "title=${manga.title} api=${manga.api} lang=${manga.language}")
         // #11: native manga_open — fired once per opened identity (this method early-returns on a
         // same-identity re-enter). Full-tuple entry (Home/Library/Search/Details) has the title; the
@@ -421,6 +428,7 @@ class DetailsViewModel(
                         val net = current.details
                         val merged =
                             (if (net != null) net.overlaidWith(saved) else saved)
+                                .withoutChapterUrls(retractedChapterUrls)
                                 .expireNewBadges(nowMs())
                         // P0-ADULT (compliance): a cache-first open suppresses runFetch, so this is the
                         // only place the gate gets re-classified for an in-library manga. Classify from
@@ -479,6 +487,7 @@ class DetailsViewModel(
     ) {
         val current = state.value.manga
         if (current?.api == api && current.url == mangaUrl) return
+        retractedChapterVersions = emptyMap()
         val tentative =
             Manga(
                 api = api,
@@ -581,13 +590,23 @@ class DetailsViewModel(
         // its onSuccess/onFailure must NOT write over the newer identity's state.
         val fetchApi = manga.api
         val fetchUrl = manga.url
+        val retractedBeforeFetch = retractedChapterVersions
         fetchDetails(manga)
-            .onSuccess { details ->
+            .onSuccess { fetched ->
                 val active = state.value.manga
                 if (active == null || active.api != fetchApi || active.url != fetchUrl) {
                     FlowLog.log("Details", "refreshStale", "dropped stale fetch for api=$fetchApi url=$fetchUrl")
                     return@onSuccess
                 }
+                // Only a source result requested AFTER this deletion can rediscover that chapter.
+                // Saved emissions and an older in-flight refresh cannot undo the explicit action;
+                // filter that older payload before both rendering and offering it to persistence.
+                val fetchedUrls = fetched.chapters.mapTo(HashSet()) { it.url }
+                retractedChapterVersions =
+                    retractedChapterVersions.filterNot { (url, version) ->
+                        url in fetchedUrls && retractedBeforeFetch[url] == version
+                    }
+                val details = fetched.withoutChapterUrls(retractedChapterUrls)
                 FlowLog.log("Details", "refreshOk", "title=${details.title} chapters=${details.chapters.size}")
                 // Re-classify with the authoritative genres from the fetched details — matches
                 // legacy isPlus18(info.genres, api). manga.copy() keeps the original api +
@@ -1119,8 +1138,8 @@ class DetailsViewModel(
      * FIRST ([deleteDownloadedChapter] reads the chapter row's mangaId to locate the on-disk files),
      * THEN delete the chapter row ([deleteChapter]) — but only if the cleanup succeeded, so a failed
      * file/flag cleanup can't orphan files under a deleted `saved_chapters` row. Gated on in-library
-     * (a non-library manga has no row); the reactive saved-details flow re-emits without the chapter,
-     * so it drops out of the list. For a source-backed manga a later refresh may re-discover it.
+     * (a non-library manga has no row). Explicit success retracts the captured owner's chapter;
+     * saved overlays alone do not remove chapters. A later source refresh/re-entry may rediscover it.
      */
     private fun onDeleteChapter(chapter: Chapter) {
         val current = state.value
@@ -1138,6 +1157,23 @@ class DetailsViewModel(
                 }
             // 2) Delete the saved_chapters record itself.
             deleteChapter(id)
+            retractDeletedChapter(manga, chapter.url)
+        }
+    }
+
+    private fun retractDeletedChapter(manga: Manga, chapterUrl: String) {
+        // Resolution, download cleanup and row deletion can each suspend across navigation.
+        val active = state.value.manga ?: return
+        if (active.api != manga.api || active.url != manga.url) return
+        // Versions remain monotonic across visits: an old A fetch cannot clear a newer A deletion.
+        chapterRetractionVersion++
+        retractedChapterVersions += chapterUrl to chapterRetractionVersion
+        updateState { current ->
+            current.copy(
+                details = current.details?.withoutChapterUrls(retractedChapterUrls),
+                selectedChapterUrls = current.selectedChapterUrls - chapterUrl,
+                chapterDownloads = current.chapterDownloads - chapterUrl,
+            )
         }
     }
 
@@ -1298,6 +1334,9 @@ private fun cloudflareFailedUrls(
  */
 private fun Manga.matches(other: Manga): Boolean =
     api == other.api && language == other.language && title == other.title && url == other.url
+
+private fun MangaDetails.withoutChapterUrls(urls: Set<String>): MangaDetails =
+    if (urls.isEmpty()) this else copy(chapters = chapters.filterNot { it.url in urls })
 
 /**
  * Overlay the locally-persisted chapter state from [saved] onto this (network) [MangaDetails],
