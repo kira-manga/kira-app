@@ -1,0 +1,59 @@
+name: App64 targeted Android host validation
+
+on:
+  push:
+    branches: [remediation/app-64-public-validation-04]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app64-public-linux
+  cancel-in-progress: false
+
+jobs:
+  android-host:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app-64-public-validation-04' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out the event commit without stored credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check the reviewed seventeen files and eleven Android host methods
+        env:
+          # Primary changes only this admission literal after independent control review.
+          # The new carrier must be a single child of the exact current source-only candidate.
+          APP64_ADMISSION: primary-reviewed-app64-linux-04
+        run: python3 scripts/validate_app64_linux.py
+
+      - name: Retain only the bounded public reports, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app64-linux-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app64-public-reports/result.json
+            ${{ runner.temp }}/app64-public-reports/source-before.json
+            ${{ runner.temp }}/app64-public-reports/source-after.json
+            ${{ runner.temp }}/app64-public-reports/commands.json
+            ${{ runner.temp }}/app64-public-reports/tools.log
+            ${{ runner.temp }}/app64-public-reports/ktlint.log
+            ${{ runner.temp }}/app64-public-reports/detekt.log
+            ${{ runner.temp }}/app64-public-reports/gradle.log
+            ${{ runner.temp }}/app64-public-reports/gradle-stop.log
+            ${{ runner.temp }}/app64-public-reports/TEST-me.manga.kira.core.cbz.OptimizedCbzStreamingTest.xml
+            ${{ runner.temp }}/app64-public-reports/TEST-me.manga.kira.core.cbz.OptimizedCbzCancellationTest.xml
+            ${{ runner.temp }}/app64-public-reports/TEST-me.manga.kira.core.cbz.OptimizedCbzRollbackTest.xml
+            ${{ runner.temp }}/app64-public-reports/TEST-me.manga.kira.presentation.features.download.ui.test2.CbzServiceFailureTest.xml
