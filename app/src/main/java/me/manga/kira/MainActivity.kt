@@ -12,10 +12,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import me.manga.kira.App
 import me.manga.kira.core.storage.SharedPrefsHelper
@@ -42,20 +45,17 @@ import org.koin.core.context.GlobalContext
  *   edge-to-edge and lets `Theme.KiraManga` (navigationBarColor=transparent +
  *   windowTranslucentNavigation=true) govern the bars, so matching the call matches native chrome.
  *
- * After `setContent`, two best-effort flows mirror native MainActivity.onCreate (each wrapped so
- * a failure never crashes launch):
- *  1. **In-app update** — `AppUpdateClient.checkForUpdate()` then `startFlexibleUpdate()` when an
- *     update is available (native: `AppUpdateHelper.checkForUpdate(immediate=false)` → flexible).
+ * Two best-effort flows start on foreground entry (each wrapped so a failure never crashes launch):
+ *  1. **In-app update** — recover pending work, then check/start the selected update type once per
+ *     Activity. An unfinished foreground attempt is cancelled on pause and retried on resume.
  *  2. **In-app review** — `InAppReviewClient.requestReview()`, gated on the same "20 days since
  *     first open" threshold native's `ReviewManagerHelper.shouldShowReview()` enforces.
  *
  * The SPIs are resolved from Koin's `GlobalContext` (this Activity is not a `KoinComponent`), the
  * same out-of-graph resolution pattern `DownloadWorkerV2` uses. The foreground Activity these
  * Activity-hosted dialogs need is supplied by `ActivityHolder`, populated from MyApp's
- * `onActivityResumed` callback — so the consent/review flows (which resolve the Activity via
- * `ActivityHolder` on `Dispatchers.IO`) start from the first `onResume`, not `onCreate`, or they
- * could race the create→resume transaction and find no Activity. The Main-dispatched update flow
- * queues behind the lifecycle transaction and may safely start from `onCreate`.
+ * `onActivityResumed` callback. Update/review therefore start after `super.onResume()`, never
+ * depending on coroutine dispatch happening to defer an onCreate launch until a host is available.
  */
 class MainActivity : ComponentActivity() {
     private val log = Logger.withTag("MainActivity")
@@ -68,6 +68,11 @@ class MainActivity : ComponentActivity() {
     // Once-guard: the review flow runs once per Activity instance, deferred to the first
     // onResume so ActivityHolder is guaranteed to be populated (see class KDoc).
     private var activityScopedFlowsStarted = false
+
+    // Main-thread owned. Only the foreground update job is cancelled on pause, not review or
+    // listener-driven completion. Cancelled old jobs never clear a newer job or consume its guard.
+    private var updateFlowJob: Job? = null
+    private var initialUpdateAttemptCompleted = false
 
     // POST_NOTIFICATIONS runtime-permission launcher (Android 13+). Registered here — not in a
     // composable — because MainActivity is the Android permission-UX owner. Requested once ever via
@@ -98,7 +103,6 @@ class MainActivity : ComponentActivity() {
         }
         maybeRequestNotificationPermission()
 
-        startInAppUpdateFlow()
         registerUpdateInstallListener()
     }
 
@@ -119,9 +123,13 @@ class MainActivity : ComponentActivity() {
             activityScopedFlowsStarted = true
             startInAppReviewFlow()
         }
-        // Native parity: MainActivity.onResume calls AppUpdateHelper.resumeUpdate → completeUpdate
-        // so a flexible update that finished downloading while the app was backgrounded is installed.
-        resumeInAppUpdate()
+        startInAppUpdateFlow()
+    }
+
+    override fun onPause() {
+        updateFlowJob?.cancel()
+        updateFlowJob = null
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -134,14 +142,27 @@ class MainActivity : ComponentActivity() {
         launchFlowScope.cancel()
     }
 
-    /** Mirrors native `AppUpdateHelper.checkForUpdate(immediate=false)` → flexible-update auto-start. */
+    /** Recover on every resume, then make at most one completed ordinary attempt per Activity. */
     private fun startInAppUpdateFlow() {
-        launchFlowScope.launch {
+        if (updateFlowJob?.isActive == true) return
+        updateFlowJob = launchFlowScope.launch {
             try {
                 val client = GlobalContext.get().get<AppUpdateClient>()
-                if (client.checkForUpdate() != null) {
-                    client.startFlexibleUpdate()
+                val recovered = client.resumeUpdate()
+                ensureActive()
+                if (recovered) {
+                    initialUpdateAttemptCompleted = true
+                } else if (!initialUpdateAttemptCompleted) {
+                    val update = client.checkForUpdate()
+                    ensureActive()
+                    if (update != null && !client.startUpdate(update)) {
+                        log.w { "in-app update flow did not start" }
+                    }
+                    ensureActive()
+                    initialUpdateAttemptCompleted = true
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (t: Throwable) {
                 log.e(t) { "in-app update flow failed" }
             }
@@ -168,17 +189,6 @@ class MainActivity : ComponentActivity() {
             }
         } catch (t: Throwable) {
             log.e(t) { "register in-app update listener failed" }
-        }
-    }
-
-    /** Mirrors native `AppUpdateHelper.resumeUpdate` → `completeUpdate` from `onResume`. */
-    private fun resumeInAppUpdate() {
-        launchFlowScope.launch {
-            try {
-                GlobalContext.get().get<AppUpdateClient>().resumeIfDownloaded()
-            } catch (t: Throwable) {
-                log.e(t) { "resume in-app update failed" }
-            }
         }
     }
 

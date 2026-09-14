@@ -178,6 +178,9 @@ android {
         viewBinding = true
         compose = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 kotlin {
@@ -257,6 +260,34 @@ dependencies {
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
+    testImplementation(libs.robolectric.runner)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockito.core)
     // Names the externally-provided Ktor engine type for the Koin verify() graph check.
     testImplementation(libs.ktor.client.core)
+}
+
+// Explicit SDK input: Gradle --offline alone does not constrain Robolectric's own resolver.
+// Reuse the existing SDK35 pin without adding Android SDK classes to the test classpath.
+val appUpdateHostSdkInput by configurations.creating {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+}
+dependencies {
+    add(appUpdateHostSdkInput.name, libs.robolectric.sdk35)
+}
+val appUpdateHostSdk = layout.buildDirectory.dir("app-update-host-sdk")
+val prepareAppUpdateHostSdk by tasks.registering(Sync::class) {
+    from(appUpdateHostSdkInput)
+    into(appUpdateHostSdk)
+}
+tasks.withType<Test>().matching { it.name == "testDebugUnitTest" }.configureEach {
+    dependsOn(prepareAppUpdateHostSdk)
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", appUpdateHostSdk.get().asFile.absolutePath)
+    doFirst {
+        val sdk = appUpdateHostSdk.get().file("android-all-instrumented-15-robolectric-13954326-i7.jar")
+        check(sdk.asFile.isFile) { "Pinned offline Robolectric SDK35 input was not staged" }
+    }
 }
