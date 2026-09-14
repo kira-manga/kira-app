@@ -34,7 +34,7 @@ internal fun cbzHostTest(block: suspend CoroutineScope.(CbzHostFixture) -> Unit)
         }
     }
 
-/** No SQLite/framework substitution; uniquely owned real Android chapter directories only. */
+/** Unique host-backed chapter directories from the Android context; no SQLite/framework substitution. */
 internal class CbzHostFixture : AutoCloseable {
     val context: Context = RuntimeEnvironment.getApplication()
     val mangaId: Long = maxOf(1L, UUID.randomUUID().mostSignificantBits ushr 1)
@@ -190,7 +190,11 @@ private fun assertCbzChannel(
     assertTrue(abs(expected - actual) <= CBZ_WEBP_CHANNEL_TOLERANCE, "$location expected ~$expected, got $actual")
 }
 
-private data class CbzPixelPatch(val x: Int, val y: Int, val color: Int)
+private data class CbzPixelPatch(
+    val x: Int,
+    val y: Int,
+    val color: Int,
+)
 
 private const val CBZ_PIXEL_PATCH_SIZE = 32
 private const val CBZ_WEBP_CHANNEL_TOLERANCE = 32

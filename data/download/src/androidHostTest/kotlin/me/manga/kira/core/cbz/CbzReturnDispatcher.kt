@@ -6,7 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
 
 /** One caller startup, then retain its real withContext return; no production post-commit hook. */
-internal class CbzReturnDispatcher : CoroutineDispatcher(), AutoCloseable {
+internal class CbzReturnDispatcher :
+    CoroutineDispatcher(),
+    AutoCloseable {
     private val lock = Any()
     private var started = false
     private var released = false

@@ -125,7 +125,7 @@ class OptimizedCbzManager(
         currentCoroutineContext().ensureActive()
         val width = bounds.outWidth
         val height = bounds.outHeight
-        if (width <= 0 || height <= 0) throw IOException("Invalid CBZ source: ${file.name}")
+        validateCbzSourceBounds(file, width, height)
         val estimatedBytes = width * height * ESTIMATED_BYTES_PER_PIXEL
         if (height > settings.regionDecodeThreshold) {
             streamRegions(file, width, height, consume)

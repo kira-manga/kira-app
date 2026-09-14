@@ -39,13 +39,13 @@ class OptimizedCbzCancellationTest {
     fun publishedArchiveSurvivesCancelledWithContextReturn() =
         cbzHostTest { fixture ->
             val paths = fixture.pages()
-            val manager = OptimizedCbzManager(fixture.context, cbzTier())
+            val manager = OptimizedCbzManager(fixture.context, cbzTier(), output = CbzHostArchiveOutput())
             CbzReturnDispatcher().use { caller ->
                 val conversion = async(caller) { manager.createCbzParallel(paths, fixture.mangaId, 1L) }
                 try {
-                    withTimeout(CBZ_GATE_TIMEOUT_SECONDS * 1000) { caller.returned.await() }
+                    withTimeout(CBZ_GATE_TIMEOUT_SECONDS * CBZ_MILLIS_PER_SECOND) { caller.returned.await() }
                     assertFalse(conversion.isCompleted)
-                    fixture.assertArchive(listOf(32 to 33, 33 to 33))
+                    fixture.assertArchive(CBZ_SMALL_PAGE_DIMENSIONS)
                     assertTrue(paths.none { File(it).exists() })
                     conversion.cancel()
                 } finally {
@@ -54,7 +54,7 @@ class OptimizedCbzCancellationTest {
                 assertFailsWith<CancellationException> { conversion.await() }
                 conversion.join()
             }
-            fixture.assertArchive(listOf(32 to 33, 33 to 33))
+            fixture.assertArchive(CBZ_SMALL_PAGE_DIMENSIONS)
             fixture.assertNoTemporary()
         }
 }
@@ -69,8 +69,9 @@ private class CbzQueuedCancellationCase(
 
     suspend fun verify(scope: CoroutineScope) {
         CbzEncodeGate().use { gate ->
+            val archive = CbzHostArchiveOutput()
             val manager =
-                OptimizedCbzManager(fixture.context, cbzTier(), decoder) { bitmap, format, quality, output ->
+                OptimizedCbzManager(fixture.context, cbzTier(), decoder, archive) { bitmap, format, quality, output ->
                     if (encodes.incrementAndGet() == 1) gate.hold()
                     bitmap.compress(format, quality, output)
                 }
@@ -85,8 +86,8 @@ private class CbzQueuedCancellationCase(
             // Reuse the same manager after cancellation; the permit must not leak.
             manager.createCbzParallel(second, fixture.mangaId, 2L)
         }
-        fixture.assertArchive(listOf(32 to 33, 33 to 33))
-        fixture.assertArchive(listOf(32 to 33, 33 to 33), 2L)
+        fixture.assertArchive(CBZ_SMALL_PAGE_DIMENSIONS)
+        fixture.assertArchive(CBZ_SMALL_PAGE_DIMENSIONS, 2L)
         assertTrue(decoder.bitmaps.all(Bitmap::isRecycled))
     }
 
@@ -115,7 +116,7 @@ private class CbzQueuedCancellationCase(
 private class CbzActiveCancellationCase(
     private val fixture: CbzHostFixture,
 ) {
-    private val paths = fixture.pages(1, 4, 12001)
+    private val paths = fixture.pages(1, CBZ_FAULT_PAGE_WIDTH, CBZ_CANCEL_PAGE_HEIGHT)
     private val originals = paths.map { File(it).readBytes() }
     private val previous = fixture.priorArchive()
     private val decoder = CbzObservedDecoder()
@@ -123,8 +124,9 @@ private class CbzActiveCancellationCase(
 
     suspend fun verify(scope: CoroutineScope) {
         CbzEncodeGate().use { gate ->
+            val archive = CbzHostArchiveOutput()
             val manager =
-                OptimizedCbzManager(fixture.context, cbzTier(), decoder) { bitmap, format, quality, output ->
+                OptimizedCbzManager(fixture.context, cbzTier(), decoder, archive) { bitmap, format, quality, output ->
                     if (encodes.incrementAndGet() == 2) gate.hold()
                     bitmap.compress(format, quality, output)
                 }

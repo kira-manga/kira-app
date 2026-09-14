@@ -64,11 +64,11 @@ internal fun cbzFaultManager(
         },
     )
 
-/** Real sink for all successful operations; faults are confined to the selected boundary. */
+/** Real file sink and host atomic promotion; faults are confined to the selected boundary. */
 private class FaultArchiveOutput(
     private val fault: CbzFault,
     private val failure: Throwable,
-) : CbzArchiveOutput() {
+) : CbzHostArchiveOutput() {
     override fun open(temporary: File): OutputStream {
         if (fault == CbzFault.OPEN) throw failure
         return object : FilterOutputStream(super.open(temporary)) {
@@ -90,7 +90,9 @@ private class FaultArchiveOutput(
                 when (fault) {
                     CbzFault.CLOSE -> throw failure
                     CbzFault.CENTRAL_DIRECTORY ->
-                        RandomAccessFile(temporary, "rw").use { it.setLength(it.length() - 22L) }
+                        RandomAccessFile(temporary, "rw").use {
+                            it.setLength(it.length() - CBZ_ZIP_END_SIZE)
+                        }
                     CbzFault.CRC -> corruptCentralCrc(temporary)
                     else -> Unit
                 }
@@ -111,13 +113,13 @@ private fun corruptCentralCrc(file: File) {
     // Tiny fixed test ZIP only. Change CENCRC, leaving a readable central directory and payload.
     RandomAccessFile(file, "rw").use {
         // ZIPs produced here have no comment: ENDOFF is six bytes before EOF.
-        it.seek(it.length() - 6L)
-        val start = Integer.reverseBytes(it.readInt()).toLong() and 0xffff_ffffL
+        it.seek(it.length() - CBZ_ZIP_END_OFFSET_DISTANCE)
+        val start = Integer.reverseBytes(it.readInt()).toLong() and CBZ_ZIP_UINT_MASK
         it.seek(start)
-        assertEquals(0x504b0102, it.readInt())
-        it.seek(start + 16L)
+        assertEquals(CBZ_ZIP_CENTRAL_SIGNATURE, it.readInt())
+        it.seek(start + CBZ_ZIP_CRC_OFFSET)
         val old = it.read()
-        it.seek(start + 16L)
-        it.write(old xor 0xff)
+        it.seek(start + CBZ_ZIP_CRC_OFFSET)
+        it.write(old xor CBZ_ZIP_CORRUPT_MASK)
     }
 }

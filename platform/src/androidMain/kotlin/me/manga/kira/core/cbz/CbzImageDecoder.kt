@@ -30,7 +30,9 @@ open class CbzImageDecoder {
             val read = stream.read(header)
             read == header.size &&
                 header.copyOfRange(FTYP_OFFSET, BRAND_OFFSET).contentEquals(FTYP) &&
-                header.copyOfRange(BRAND_OFFSET, AVIF_HEADER_SIZE).let { it.contentEquals(AVIF) || it.contentEquals(AVIS) }
+                header.copyOfRange(BRAND_OFFSET, AVIF_HEADER_SIZE).let {
+                    it.contentEquals(AVIF) || it.contentEquals(AVIS)
+                }
         }
 
     open fun bounds(file: File): BitmapFactory.Options =
@@ -90,8 +92,8 @@ private class AndroidCbzRegions(
     override fun close() = decoder.recycle()
 }
 
-private fun AvifDecoder.Info.validDimensions(): Boolean =
-    width in 1..MAX_AVIF_DIMENSION && height in 1..MAX_AVIF_DIMENSION
+private fun AvifDecoder.Info.validDimensions(): Boolean = width in 1..MAX_AVIF_DIMENSION &&
+    height in 1..MAX_AVIF_DIMENSION
 
 private fun readAvifBuffer(file: File): ByteBuffer {
     val bytes = file.readBytes()

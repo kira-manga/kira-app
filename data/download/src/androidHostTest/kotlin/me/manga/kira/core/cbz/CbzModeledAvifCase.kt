@@ -22,7 +22,7 @@ internal class CbzModeledAvifCase(
 ) {
     private val source =
         File(fixture.directory(chapter), "modeled.avif").apply {
-            writeBytes(byteArrayOf(0, 0, 0, 12) + "ftypavif".toByteArray(Charsets.US_ASCII))
+            writeBytes(byteArrayOf(0, 0, 0, CBZ_AVIF_HEADER_LENGTH) + "ftypavif".toByteArray(Charsets.US_ASCII))
         }
     private val parent = AtomicReference<Bitmap>()
     private val crops = CopyOnWriteArrayList<Bitmap>()
@@ -32,7 +32,7 @@ internal class CbzModeledAvifCase(
             override suspend fun decodeAvif(file: File): Bitmap {
                 assertEquals(source, file)
                 decodes.incrementAndGet()
-                return Bitmap.createBitmap(3, height, Bitmap.Config.ARGB_8888).also(parent::set)
+                return Bitmap.createBitmap(CBZ_AVIF_PAGE_WIDTH, height, Bitmap.Config.ARGB_8888).also(parent::set)
             }
 
             override fun crop(
@@ -44,6 +44,7 @@ internal class CbzModeledAvifCase(
                 return super.crop(parent, region).also { crops += it }
             }
         }
+    private val archive = CbzHostArchiveOutput()
     private val encodes = AtomicInteger()
 
     suspend fun verify(scope: CoroutineScope) {
@@ -54,7 +55,7 @@ internal class CbzModeledAvifCase(
             try {
                 gate.awaitEntry()
                 assertEquals(1, decodes.get())
-                assertEquals(if (height > 6000) 1 else 0, crops.size)
+                assertEquals(if (height > CBZ_LOW_REGION_HEIGHT) 1 else 0, crops.size)
             } finally {
                 gate.close()
             }
@@ -64,9 +65,9 @@ internal class CbzModeledAvifCase(
     }
 
     private fun createManager(gate: CbzEncodeGate): OptimizedCbzManager =
-        OptimizedCbzManager(fixture.context, cbzTier(), decoder) { bitmap, format, quality, stream ->
+        OptimizedCbzManager(fixture.context, cbzTier(), decoder, archive) { bitmap, format, quality, stream ->
             assertFalse(assertNotNull(parent.get()).isRecycled)
-            if (height <= 6000) assertSame(parent.get(), bitmap)
+            if (height <= CBZ_LOW_REGION_HEIGHT) assertSame(parent.get(), bitmap)
             if (encodes.incrementAndGet() == 1) gate.hold()
             bitmap.compress(format, quality, stream)
         }
@@ -74,7 +75,16 @@ internal class CbzModeledAvifCase(
     private fun assertCompleted() {
         assertTrue(assertNotNull(parent.get()).isRecycled)
         assertTrue(crops.all(Bitmap::isRecycled))
-        fixture.assertArchive(if (height > 6000) listOf(3 to 6000, 3 to 5) else listOf(3 to height), chapter)
+        val dimensions =
+            if (height > CBZ_LOW_REGION_HEIGHT) {
+                listOf(
+                    CBZ_AVIF_PAGE_WIDTH to CBZ_LOW_REGION_HEIGHT,
+                    CBZ_AVIF_PAGE_WIDTH to CBZ_REGION_TAIL_HEIGHT,
+                )
+            } else {
+                listOf(CBZ_AVIF_PAGE_WIDTH to height)
+            }
+        fixture.assertArchive(dimensions, chapter)
         fixture.assertNoTemporary(chapter)
     }
 }

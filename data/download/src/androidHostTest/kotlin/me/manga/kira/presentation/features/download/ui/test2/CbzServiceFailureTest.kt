@@ -58,7 +58,8 @@ class CbzServiceFailureTest {
             storage.assertImages(paths)
             // Saved paths alone do not set the saved chapter's terminal isDownloaded flag.
             assertEquals(rows.original.saved.copy(localImagePaths = paths), rows.saved())
-            val notification = assertNotNull(rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id))
+            val notification =
+                assertNotNull(rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id))
             assertEquals(paths, notification.localImagePaths)
             assertTrue(notification.isDownloaded)
             assertEquals(rows.original.download, rows.download()) // Service did not commit worker SUCCESS.
@@ -156,10 +157,17 @@ private class CbzServiceCase(
     suspend fun download(manager: OptimizedCbzManager): Flow<DownloadState> {
         val pages =
             assertNotNull(
-                transport.provider.pagesOrNull(FIXTURE_API, rows.manga.url, rows.manga.language, rows.original.saved.url),
+                transport.provider.pagesOrNull(
+                    FIXTURE_API,
+                    rows.manga.url,
+                    rows.manga.language,
+                    rows.original.saved.url,
+                ),
             )
-        return fixtureDownloadService(storage, rows, dao, transport, sender, manager)
-            .downloadChapterC(rows.original.saved, pages)
+        return fixtureDownloadService(
+            CancellationFixtureServiceInputs(storage, rows, dao, transport, sender),
+            manager,
+        ).downloadChapterC(rows.original.saved, pages)
     }
 
     fun assertNoArchiveOrTemporary() {

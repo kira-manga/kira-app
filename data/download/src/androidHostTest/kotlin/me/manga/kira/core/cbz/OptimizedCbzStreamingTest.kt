@@ -22,7 +22,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** Ordinary codec/ZIP is real. Region and AVIF tests explicitly model only codec output. */
+/**
+ * Ordinary codec/ZIP and host atomic file promotion are real. Region/AVIF codec output is modeled;
+ * these host cases do not qualify Android Os.rename or native region/AVIF pixels.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -35,25 +38,29 @@ class OptimizedCbzStreamingTest {
         }
 
     @Test
-    fun modeledRegionsAreRequestedOnlyAfterPreviousChunkIsRecycled() =
-        cbzHostTest { fixture -> verifyModeledRegions(fixture) }
+    fun modeledRegionsAreRequestedOnlyAfterPreviousChunkIsRecycled() = cbzHostTest { fixture ->
+        verifyModeledRegions(fixture)
+    }
 
     @Test
     fun modeledAvifOwnsOneParentAndAtMostOneCropIncludingUnsplitAlias() =
         cbzHostTest { fixture ->
-            listOf(5, 6005).forEachIndexed { index, height ->
+            listOf(CBZ_UNSPLIT_AVIF_HEIGHT, CBZ_SPLIT_PAGE_HEIGHT).forEachIndexed { index, height ->
                 CbzModeledAvifCase(fixture, height, index + 1L).verify(this)
             }
         }
 }
 
 private suspend fun CoroutineScope.verifyModeledRegions(fixture: CbzHostFixture) {
-    val paths = fixture.pages(1, 8, 6005) + fixture.pages(1, 32, 33, chapter = 2L)
+    val paths =
+        fixture.pages(1, CBZ_REGION_PAGE_WIDTH, CBZ_SPLIT_PAGE_HEIGHT) +
+            fixture.pages(1, CBZ_SMALL_PAGE_WIDTH, CBZ_SMALL_PAGE_HEIGHT, chapter = 2L)
     val decoder = CbzObservedDecoder()
     val encodes = AtomicInteger()
     CbzEncodeGate().use { gate ->
+        val archive = CbzHostArchiveOutput()
         val manager =
-            OptimizedCbzManager(fixture.context, cbzTier(), decoder) { bitmap, format, quality, output ->
+            OptimizedCbzManager(fixture.context, cbzTier(), decoder, archive) { bitmap, format, quality, output ->
                 if (encodes.incrementAndGet() == 1) gate.hold()
                 bitmap.compress(format, quality, output)
             }
@@ -73,7 +80,10 @@ private fun assertFirstModeledRegion(
     fixture: CbzHostFixture,
     decoder: CbzObservedDecoder,
 ) {
-    assertEquals(listOf(Rect(0, 0, 8, 6000)), decoder.regions.toList())
+    assertEquals(
+        listOf(Rect(0, 0, CBZ_REGION_PAGE_WIDTH, CBZ_LOW_REGION_HEIGHT)),
+        decoder.regions.toList(),
+    )
     assertEquals(1, decoder.requested.size)
     assertEquals(1, decoder.bitmaps.size)
     assertFalse(decoder.bitmaps.single().isRecycled)
@@ -85,11 +95,23 @@ private fun assertModeledRegionsComplete(
     paths: List<String>,
     decoder: CbzObservedDecoder,
 ) {
-    assertEquals(listOf(Rect(0, 0, 8, 6000), Rect(0, 6000, 8, 6005)), decoder.regions.toList())
+    assertEquals(
+        listOf(
+            Rect(0, 0, CBZ_REGION_PAGE_WIDTH, CBZ_LOW_REGION_HEIGHT),
+            Rect(0, CBZ_LOW_REGION_HEIGHT, CBZ_REGION_PAGE_WIDTH, CBZ_SPLIT_PAGE_HEIGHT),
+        ),
+        decoder.regions.toList(),
+    )
     assertEquals(paths, decoder.requested.map(File::getAbsolutePath))
     assertEquals(1, decoder.regionCloses.get())
     assertTrue(decoder.bitmaps.all(Bitmap::isRecycled))
-    fixture.assertArchive(listOf(8 to 6000, 8 to 5, 32 to 33))
+    fixture.assertArchive(
+        listOf(
+            CBZ_REGION_PAGE_WIDTH to CBZ_LOW_REGION_HEIGHT,
+            CBZ_REGION_PAGE_WIDTH to CBZ_REGION_TAIL_HEIGHT,
+            CBZ_SMALL_PAGE_WIDTH to CBZ_SMALL_PAGE_HEIGHT,
+        ),
+    )
     assertTrue(paths.none { File(it).exists() })
     fixture.assertNoTemporary()
 }
@@ -99,7 +121,14 @@ private class CbzTierStreamingCase(
     private val tier: DeviceTier,
 ) {
     private val chapter = tier.ordinal + 1L
-    private val paths = fixture.pages(12, 512, 512, chapter, noisy = true)
+    private val paths =
+        fixture.pages(
+            CBZ_NOISY_PAGE_COUNT,
+            CBZ_NOISY_PAGE_SIDE,
+            CBZ_NOISY_PAGE_SIDE,
+            chapter,
+            noisy = true,
+        )
     private val before = fixture.priorArchive(chapter)
     private val output = RecordingArchiveOutput(paths, before)
     private val decoder = CbzObservedDecoder()
@@ -124,7 +153,7 @@ private class CbzTierStreamingCase(
 
     private fun createManager(gate: CbzEncodeGate): OptimizedCbzManager =
         OptimizedCbzManager(fixture.context, cbzTier(tier), decoder, output) { bitmap, format, quality, stream ->
-            assertEquals(listOf(70, 75, 85)[tier.ordinal], quality)
+            assertEquals(listOf(CBZ_LOW_QUALITY, CBZ_MID_QUALITY, CBZ_HIGH_QUALITY)[tier.ordinal], quality)
             assertEquals(Bitmap.CompressFormat.WEBP_LOSSY, format)
             if (encodes.incrementAndGet() == 1) gate.hold()
             bitmap.compress(format, quality, stream)
@@ -149,25 +178,28 @@ private class CbzTierStreamingCase(
     }
 
     private fun assertCompleted() {
-        assertEquals((1..12).toList(), progress)
+        assertEquals((1..CBZ_NOISY_PAGE_COUNT).toList(), progress)
         assertEquals(1, output.publications.get())
         assertTrue(decoder.bitmaps.all(Bitmap::isRecycled))
         assertTrue(paths.none { File(it).exists() })
-        fixture.assertArchive(List(12) { (512 + it) to 512 }, chapter, ::assertCbzOrdinaryPageContent)
+        fixture.assertArchive(
+            List(CBZ_NOISY_PAGE_COUNT) { (CBZ_NOISY_PAGE_SIDE + it) to CBZ_NOISY_PAGE_SIDE },
+            chapter,
+            ::assertCbzOrdinaryPageContent,
+        )
         fixture.assertNoTemporary(chapter)
     }
 }
 
-/** Both operations forward to the real defaults; every assertion is before the commit point. */
+/** Real file sink and host atomic promotion; every assertion is before the commit point. */
 private class RecordingArchiveOutput(
     private val paths: List<String>,
     private val previous: ByteArray,
-) : CbzArchiveOutput() {
+) : CbzHostArchiveOutput() {
     val temporaryFile = AtomicReference<File>()
     val publications = AtomicInteger()
 
-    override fun open(temporary: File): OutputStream =
-        super.open(temporary).also { temporaryFile.set(temporary) }
+    override fun open(temporary: File): OutputStream = super.open(temporary).also { temporaryFile.set(temporary) }
 
     override fun publish(
         temporary: File,
