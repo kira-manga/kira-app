@@ -215,9 +215,13 @@ def collectOutgoing = { rootProject, graph ->
                 def producers = artifact.buildDependencies.getDependencies(null)
                 if (producers && producers.every { graph.hasTask(it) }) {
                     def dependencies = producers.collectMany { dependenciesOf(graph, it) }.toSet().sort()
-                    require(dependencies.contains(module + ':compileAndroidMain'), 'Outgoing artifact must retain its normal compiler dependency')
-                    outgoing.add([project: module, variant: variant.name, attributes: variant.attributes,
-                        path: artifact.file.canonicalPath, producers: producers*.path.sort(), producerDependencyPaths: dependencies])
+                    def candidate = [project: module, variant: variant.name, attributes: variant.attributes,
+                        artifactType: artifact.type, classifier: artifact.classifier, extension: artifact.extension,
+                        path: artifact.file.canonicalPath, producers: producers*.path.sort(), producerDependencyPaths: dependencies]
+                    emit('OUTGOING_CANDIDATE', candidate)
+                    // Auxiliary metadata/resources need not compile classes. They get no lineage credit;
+                    // every actual neutral supplier must still join an eligible, completed artifact below.
+                    if (dependencies.contains(module + ':compileAndroidMain')) outgoing.add(candidate)
                 }
             } }
         }
