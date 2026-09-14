@@ -1,5 +1,6 @@
 package me.manga.kira.navigation.routes
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -22,7 +23,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -60,9 +63,18 @@ class AndroidWebViewNavigationTest : AndroidWebViewComposeTest() {
     @Test
     fun refusedFailureCloseThenRealRetryAndHealthyCloseRetainsOneRetry() {
         val fixture = openFixture()
+        val close =
+            assertNotNull(
+                compose
+                    .onNodeWithContentDescription(label(Res.string.close))
+                    .fetchSemanticsNode()
+                    .config[SemanticsActions.OnClick]
+                    .action,
+            )
         pauseHost()
         compose.runOnIdle { assertEquals(Lifecycle.State.STARTED, fixture.browserEntry.lifecycle.currentState) }
-        closeToolbar()
+        // Deliver the already-rendered close action across pause, without querying invisible roots.
+        compose.runOnUiThread { assertTrue(close()) }
         compose.runOnIdle {
             assertSame(fixture.browserEntry, fixture.nav.currentBackStackEntry)
             assertEquals(0, fixture.retries)
