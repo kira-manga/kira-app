@@ -32,24 +32,31 @@ internal suspend fun downloadValidatedPage(
     currentCoroutineContext().ensureActive()
     system.createDirectories(directory)
     val temporary = pageTemporaryPath(directory, pageIndex)
-    return client.prepareGet(url) {
-        headers { pageHeaders.forEach { (name, value) -> append(name, value) } }
-    }.execute { response ->
-        if (!response.status.isSuccess()) throw IOException("Image download HTTP ${response.status.value}")
-        // transferPageBody only deletes a file it successfully created; a name collision is not ours.
-        transferPageBody(response.bodyAsChannel(), response.headers[HttpHeaders.ContentLength]?.toLongOrNull(), system, temporary, policy)
-        try {
-            currentCoroutineContext().ensureActive()
-            val metadata = inspector.inspect(temporary).requireValid()
-            currentCoroutineContext().ensureActive()
-            publishPageSnapshot(system, temporary, pageIndex, metadata)
-        } catch (failure: Throwable) {
+    return client
+        .prepareGet(url) {
+            headers { pageHeaders.forEach { (name, value) -> append(name, value) } }
+        }.execute { response ->
+            if (!response.status.isSuccess()) throw IOException("Image download HTTP ${response.status.value}")
+            // transferPageBody only deletes a file it successfully created; a name collision is not ours.
+            transferPageBody(
+                response.bodyAsChannel(),
+                response.headers[HttpHeaders.ContentLength]?.toLongOrNull(),
+                system,
+                temporary,
+                policy,
+            )
             try {
-                system.delete(temporary, mustExist = false)
-            } catch (cleanup: Throwable) {
-                failure.addSuppressed(cleanup)
+                currentCoroutineContext().ensureActive()
+                val metadata = inspector.inspect(temporary).requireValid()
+                currentCoroutineContext().ensureActive()
+                publishPageSnapshot(system, temporary, pageIndex, metadata)
+            } catch (failure: Throwable) {
+                try {
+                    system.delete(temporary, mustExist = false)
+                } catch (cleanup: Throwable) {
+                    failure.addSuppressed(cleanup)
+                }
+                throw failure
             }
-            throw failure
         }
-    }
 }

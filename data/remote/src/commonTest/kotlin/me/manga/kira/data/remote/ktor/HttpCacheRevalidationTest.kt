@@ -27,80 +27,96 @@ import kotlin.test.assertTrue
 
 class HttpCacheRevalidationTest {
     @Test
-    fun clearBetweenConditionalSendAnd304RecoversWithoutResurrectingCache() = runTest {
-        assertLost304Recovers(LostCacheCause.CLEAR)
-    }
+    fun clearBetweenConditionalSendAnd304RecoversWithoutResurrectingCache() =
+        runTest {
+            assertLost304Recovers(LostCacheCause.CLEAR)
+        }
 
     @Test
-    fun actualPluginEvictionBetweenConditionalSendAnd304RecoversWithinAggregateCap() = runTest {
-        assertLost304Recovers(LostCacheCause.EVICTION)
-    }
+    fun actualPluginEvictionBetweenConditionalSendAnd304RecoversWithinAggregateCap() =
+        runTest {
+            assertLost304Recovers(LostCacheCause.EVICTION)
+        }
 
     @Test
-    fun expiryBetweenConditionalSendAnd304RecoversWithoutKeepingStaleBodies() = runTest {
-        assertLost304Recovers(LostCacheCause.EXPIRY)
-    }
+    fun expiryBetweenConditionalSendAnd304RecoversWithoutKeepingStaleBodies() =
+        runTest {
+            assertLost304Recovers(LostCacheCause.EXPIRY)
+        }
 
     @Test
-    fun privateVaryRevalidationHasTheSameClearRecovery() = runTest {
-        assertLost304Recovers(LostCacheCause.CLEAR, visibility = "private")
-    }
+    fun privateVaryRevalidationHasTheSameClearRecovery() =
+        runTest {
+            assertLost304Recovers(LostCacheCause.CLEAR, visibility = "private")
+        }
 
     @Test
-    fun retained304ReusesItsBodyWithoutAnUnconditionalRetry() = runTest {
-        val cache = cacheOwner()
-        var calls = 0
-        withHttpCacheClient(cache, { request ->
-            request.assertOriginalMetadataHeaders()
-            if (++calls == 1) {
-                respond(OLD_METADATA_BODY, headers = revalidationHeaders())
-            } else {
-                request.assertCacheConditional()
-                respond("", HttpStatusCode.NotModified, revalidationHeaders())
+    fun retained304ReusesItsBodyWithoutAnUnconditionalRetry() =
+        runTest {
+            val cache = cacheOwner()
+            var calls = 0
+            withHttpCacheClient(cache, { request ->
+                request.assertOriginalMetadataHeaders()
+                if (++calls == 1) {
+                    respond(OLD_METADATA_BODY, headers = revalidationHeaders())
+                } else {
+                    request.assertCacheConditional()
+                    respond("", HttpStatusCode.NotModified, revalidationHeaders())
+                }
+            }) { client ->
+                repeat(2) { assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata()) }
+                assertEquals(2, calls)
+                assertEquals(1, cache.snapshot().entries)
+                cache.assertWithin(smallCachePolicy())
             }
-        }) { client ->
-            repeat(2) { assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata()) }
-            assertEquals(2, calls)
-            assertEquals(1, cache.snapshot().entries)
-            cache.assertWithin(smallCachePolicy())
         }
-    }
 
     @Test
-    fun concurrentRefillAfterTheMissCannotReAddValidatorsOrBeOverwrittenByRepair() = runTest {
-        val fixture = DeferredRevalidation(this)
-        val replacement = cachedResponse(
-            body = "refilled".encodeToByteArray(),
-            vary = mapOf("x-edition" to "phone"),
-            headers = revalidationHeaders(etag = "\"refilled\""),
-        )
-        val refilled = CompletableDeferred<Unit>()
-        val hook = refillAfterCacheMiss(fixture.cache, replacement, refilled)
-        withHttpCacheClient(fixture.cache, fixture.handler, configure = { install(hook) }) { client ->
-            assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata())
-            val request = async { client.fetchRevalidationMetadata() }
-            fixture.conditionalStarted.await()
-            fixture.loseEntry(LostCacheCause.CLEAR, client)
-            fixture.release304.complete(Unit)
-            assertEquals(NEW_METADATA_BODY, request.await())
-            assertTrue(refilled.isCompleted)
-            assertEquals(3, fixture.targetCalls)
-            assertEquals("refilled", fixture.cache.publicStorage.findAll(Url(REVALIDATION_URL)).single().body.decodeToString())
-            assertEquals(1, fixture.disk.records.size)
-            fixture.cache.assertWithin(fixture.policy)
-            assertTrue(fixture.failed304Body.isClosedForRead)
+    fun concurrentRefillAfterTheMissCannotReAddValidatorsOrBeOverwrittenByRepair() =
+        runTest {
+            val fixture = DeferredRevalidation(this)
+            val replacement =
+                cachedResponse(
+                    body = "refilled".encodeToByteArray(),
+                    vary = mapOf("x-edition" to "phone"),
+                    headers = revalidationHeaders(etag = "\"refilled\""),
+                )
+            val refilled = CompletableDeferred<Unit>()
+            val hook = refillAfterCacheMiss(fixture.cache, replacement, refilled)
+            withHttpCacheClient(fixture.cache, fixture.handler, configure = { install(hook) }) { client ->
+                assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata())
+                val request = async { client.fetchRevalidationMetadata() }
+                fixture.conditionalStarted.await()
+                fixture.loseEntry(LostCacheCause.CLEAR, client)
+                fixture.release304.complete(Unit)
+                assertEquals(NEW_METADATA_BODY, request.await())
+                assertTrue(refilled.isCompleted)
+                assertEquals(3, fixture.targetCalls)
+                assertEquals(
+                    "refilled",
+                    fixture.cache.publicStorage
+                        .findAll(Url(REVALIDATION_URL))
+                        .single()
+                        .body
+                        .decodeToString(),
+                )
+                assertEquals(1, fixture.disk.records.size)
+                fixture.cache.assertWithin(fixture.policy)
+                assertTrue(fixture.failed304Body.isClosedForRead)
+            }
         }
-    }
 
     @Test
-    fun etagAloneIsRecognizedAndOnlyItsAddedConditionIsRemoved() = runTest {
-        assertSingleValidatorRecovery(HttpHeaders.ETag, METADATA_ETAG)
-    }
+    fun etagAloneIsRecognizedAndOnlyItsAddedConditionIsRemoved() =
+        runTest {
+            assertSingleValidatorRecovery(HttpHeaders.ETag, METADATA_ETAG)
+        }
 
     @Test
-    fun lastModifiedAloneIsRecognizedAndOnlyItsAddedConditionIsRemoved() = runTest {
-        assertSingleValidatorRecovery(HttpHeaders.LastModified, METADATA_MODIFIED)
-    }
+    fun lastModifiedAloneIsRecognizedAndOnlyItsAddedConditionIsRemoved() =
+        runTest {
+            assertSingleValidatorRecovery(HttpHeaders.LastModified, METADATA_MODIFIED)
+        }
 }
 
 private fun refillAfterCacheMiss(
@@ -121,12 +137,16 @@ private fun refillAfterCacheMiss(
     }
 }
 
-private suspend fun TestScope.assertSingleValidatorRecovery(name: String, value: String) {
+private suspend fun TestScope.assertSingleValidatorRecovery(
+    name: String,
+    value: String,
+) {
     val cache = cacheOwner()
-    val headers = Headers.build {
-        appendAll(cacheHeaders(cacheControl = "public, max-age=60, no-cache"))
-        append(name, value)
-    }
+    val headers =
+        Headers.build {
+            appendAll(cacheHeaders(cacheControl = "public, max-age=60, no-cache"))
+            append(name, value)
+        }
     var calls = 0
     withHttpCacheClient(cache, { request ->
         when (++calls) {

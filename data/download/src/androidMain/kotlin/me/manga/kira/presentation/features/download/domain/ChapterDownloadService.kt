@@ -66,7 +66,16 @@ class ChapterDownloadService(
     ): String =
         withContext(Dispatchers.IO) {
             val directory = File(context.filesDir, "manga/$mangaId/chapter_$chapterId").absolutePath.toPath()
-            downloadValidatedPage(httpClient, imageUrl, pageHeaders, FileSystem.SYSTEM, directory, imageIndex, mediaInspector, pageBytePolicy).toString()
+            downloadValidatedPage(
+                httpClient,
+                imageUrl,
+                pageHeaders,
+                FileSystem.SYSTEM,
+                directory,
+                imageIndex,
+                mediaInspector,
+                pageBytePolicy,
+            ).toString()
         }
 
     private fun downloadChapterBatch(

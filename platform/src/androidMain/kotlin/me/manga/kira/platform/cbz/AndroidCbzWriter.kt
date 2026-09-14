@@ -175,9 +175,12 @@ class AndroidCbzWriter(
         val bitmap = decoder.decode(source) ?: throw IOException("CBZ source decode failed")
         bitmap.useForCbz { parent ->
             currentCoroutineContext().ensureActive()
-            if (parent.width != plan.width || parent.height != plan.height ||
+            if (parent.width != plan.width ||
+                parent.height != plan.height ||
                 parent.allocationByteCount.toLong() > plan.sourceAllocationAllowanceBytes
-            ) throw IOException("CBZ decoded source exceeds its admitted dimensions or allocation")
+            ) {
+                throw IOException("CBZ decoded source exceeds its admitted dimensions or allocation")
+            }
             if (parent.height <= plan.bandHeight) {
                 consume(parent)
                 return@useForCbz
@@ -201,13 +204,23 @@ class AndroidCbzWriter(
         }
     }
 
-    private fun requireAdmittedBand(bitmap: Bitmap, width: Int, height: Int) {
-        if (bitmap.width != width || bitmap.height != height ||
+    private fun requireAdmittedBand(
+        bitmap: Bitmap,
+        width: Int,
+        height: Int,
+    ) {
+        if (bitmap.width != width ||
+            bitmap.height != height ||
             bitmap.allocationByteCount.toLong() > width.toLong() * height * BAND_BITMAP_BYTES_PER_PIXEL
-        ) throw IOException("CBZ crop exceeds its admitted dimensions or allocation")
+        ) {
+            throw IOException("CBZ crop exceeds its admitted dimensions or allocation")
+        }
     }
 
-    private fun ensureCbzDestination(mangaId: Long, chapterId: Long): Path {
+    private fun ensureCbzDestination(
+        mangaId: Long,
+        chapterId: Long,
+    ): Path {
         val dir = fs.chapterDir(mangaId, chapterId)
         fs.fileSystem().createDirectories(dir)
         return dir / "chapter_$chapterId.cbz"
@@ -220,7 +233,10 @@ class AndroidCbzWriter(
 }
 
 /** The encoder may write incrementally; enforce its admitted output allowance before each write. */
-internal class BoundedCbzEntryOutput(private val delegate: OutputStream, private val limit: Int) : OutputStream() {
+internal class BoundedCbzEntryOutput(
+    private val delegate: OutputStream,
+    private val limit: Int,
+) : OutputStream() {
     private var written = 0
 
     override fun write(value: Int) {
@@ -229,7 +245,11 @@ internal class BoundedCbzEntryOutput(private val delegate: OutputStream, private
         written++
     }
 
-    override fun write(bytes: ByteArray, offset: Int, length: Int) {
+    override fun write(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ) {
         if (length > limit - written) throw IOException("CBZ encoded page exceeds its admitted output allowance")
         delegate.write(bytes, offset, length)
         written += length

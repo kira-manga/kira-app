@@ -4,7 +4,10 @@ import me.manga.kira.platform.backup.Crc32
 import okio.BufferedSource
 
 /** Bounded streaming CRC/framing checks supplement native decoders that tolerate a truncated PNG. */
-internal fun inspectPngFraming(source: BufferedSource, size: Long) {
+internal fun inspectPngFraming(
+    source: BufferedSource,
+    size: Long,
+) {
     source.skip(PNG_START.size.toLong())
     var offset = PNG_START.size.toLong()
     var sawHeader = false
@@ -30,7 +33,11 @@ internal fun inspectPngFraming(source: BufferedSource, size: Long) {
     requirePageFraming(false)
 }
 
-private fun readPngPayload(source: BufferedSource, length: Long, crc: Crc32) {
+private fun readPngPayload(
+    source: BufferedSource,
+    length: Long,
+    crc: Crc32,
+) {
     var remaining = length
     val buffer = ByteArray(PNG_READ_BYTES)
     while (remaining > 0) {

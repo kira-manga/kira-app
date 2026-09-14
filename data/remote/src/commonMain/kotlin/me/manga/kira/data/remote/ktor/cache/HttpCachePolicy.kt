@@ -25,30 +25,43 @@ internal data class HttpCachePolicy(
         require(maxVariantsPerUrl in 1..maxEntries)
     }
 
-    fun accepts(data: CachedResponseData, nowMillis: Long): Boolean {
+    fun accepts(
+        data: CachedResponseData,
+        nowMillis: Long,
+    ): Boolean {
         if (!data.statusCode.isSuccess() || data.body.size > maxBodyBytes || data.expires.timestamp <= nowMillis) return false
         if (data.varyKeys.keys.any { it == "*" }) return false
-        if (data.headers.getAll(HttpHeaders.Vary).orEmpty().any { value -> value.split(',').any { it.trim() == "*" } }) {
+        if (data.headers
+                .getAll(HttpHeaders.Vary)
+                .orEmpty()
+                .any { value -> value.split(',').any { it.trim() == "*" } }
+        ) {
             return false
         }
         val directives = parseHeaderValue(data.headers.getAll(HttpHeaders.CacheControl)?.joinToString(","))
         if (directives.any { it.value.equals("no-store", ignoreCase = true) }) return false
-        val explicitFreshness = directives.any {
-            it.value.substringBefore('=').equals("max-age", ignoreCase = true) &&
-                (it.value.substringAfter('=', "").toLongOrNull() ?: 0) > 0
-        } || data.headers.contains(HttpHeaders.Expires)
+        val explicitFreshness =
+            directives.any {
+                it.value.substringBefore('=').equals("max-age", ignoreCase = true) &&
+                    (it.value.substringAfter('=', "").toLongOrNull() ?: 0) > 0
+            } ||
+                data.headers.contains(HttpHeaders.Expires)
         return explicitFreshness && isMetadata(data.headers[HttpHeaders.ContentType])
     }
 
     private fun isMetadata(contentType: String?): Boolean {
         val type = contentType?.substringBefore(';')?.trim()?.lowercase() ?: return false
         if (type.startsWith("text/")) return type != "text/event-stream"
-        return type == "application/json" || type == "application/xml" || type == "application/javascript" ||
+        return type == "application/json" ||
+            type == "application/xml" ||
+            type == "application/javascript" ||
             (type.startsWith("application/") && (type.endsWith("+json") || type.endsWith("+xml")))
     }
 }
 
-internal enum class CacheNamespace(val directory: String) {
+internal enum class CacheNamespace(
+    val directory: String,
+) {
     PUBLIC("public"),
     PRIVATE("private"),
 }

@@ -21,8 +21,10 @@ internal fun requireUncachedPageClient(client: HttpClient) {
     require(client.pluginOrNull(HttpCache) == null) { "Page downloads require an uncached HTTP client" }
 }
 
-internal fun pageTemporaryPath(directory: Path, pageIndex: Int): Path =
-    directory / ".image_$pageIndex-${Random.nextLong().toULong().toString(16)}.partial"
+internal fun pageTemporaryPath(
+    directory: Path,
+    pageIndex: Int,
+): Path = directory / ".image_$pageIndex-${Random.nextLong().toULong().toString(16)}.partial"
 
 /** Owns a newly created temporary file; never touches the currently published image. */
 internal suspend fun transferPageBody(
@@ -39,9 +41,10 @@ internal suspend fun transferPageBody(
         policy.checkDeclaredLength(declaredLength)
         val output = system.sink(temporary, mustCreate = true)
         created = true
-        val count = output.buffer().use { sink ->
-            readBoundedPage(channel, policy) { bytes, size -> sink.write(bytes, 0, size) }
-        }
+        val count =
+            output.buffer().use { sink ->
+                readBoundedPage(channel, policy) { bytes, size -> sink.write(bytes, 0, size) }
+            }
         policy.checkFileSize(system.metadata(temporary).size)
         currentCoroutineContext().ensureActive()
         complete = true
@@ -51,9 +54,12 @@ internal suspend fun transferPageBody(
         throw failure
     } finally {
         val closeFailure = runCatching { channel.cancel() }.exceptionOrNull()
-        val deleteFailure = if (created && (!complete || closeFailure != null)) {
-            runCatching { system.delete(temporary, mustExist = false) }.exceptionOrNull()
-        } else null
+        val deleteFailure =
+            if (created && (!complete || closeFailure != null)) {
+                runCatching { system.delete(temporary, mustExist = false) }.exceptionOrNull()
+            } else {
+                null
+            }
         val failure = primaryFailure ?: closeFailure ?: deleteFailure
         if (failure != null) {
             if (closeFailure != null && closeFailure !== failure) failure.addSuppressed(closeFailure)

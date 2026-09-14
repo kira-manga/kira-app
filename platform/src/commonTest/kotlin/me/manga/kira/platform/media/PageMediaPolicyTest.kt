@@ -36,28 +36,41 @@ class PageMediaPolicyTest {
         assertNull(policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 1, 1024)))
         assertEquals(PageInspectionRejection.SOURCE_PIXELS, policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 33, 33))?.reason)
         assertEquals(PageInspectionRejection.SOURCE_AXIS, policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 1025, 1))?.reason)
-        assertEquals(Int.MAX_VALUE.toLong() * Int.MAX_VALUE, PageImageMetadata(PageImageFormat.PNG, Int.MAX_VALUE, Int.MAX_VALUE).pixelCount)
+        assertEquals(
+            Int.MAX_VALUE.toLong() * Int.MAX_VALUE,
+            PageImageMetadata(PageImageFormat.PNG, Int.MAX_VALUE, Int.MAX_VALUE).pixelCount,
+        )
     }
 
     @Test
     fun framingNeverMakesAValidPageWithoutTheNativeVerdict() {
         var decoded = 0
         val png = PageMediaTestImages.png()
-        val rejected = inspect(png) { format ->
-            decoded++
-            assertEquals(PageImageFormat.PNG, format)
-            PageInspection.Rejected(PageInspectionRejection.DECODER_UNAVAILABLE)
-        }
+        val rejected =
+            inspect(png) { format ->
+                decoded++
+                assertEquals(PageImageFormat.PNG, format)
+                PageInspection.Rejected(PageInspectionRejection.DECODER_UNAVAILABLE)
+            }
         assertIs<PageInspection.Rejected>(rejected)
         assertEquals(1, decoded)
-        assertIs<PageInspection.Invalid>(inspect(png) {
-            PageInspection.Valid(PageImageMetadata(PageImageFormat.JPEG, 8, 9))
-        }, "native/framing disagreement fails closed")
+        assertIs<PageInspection.Invalid>(
+            inspect(png) {
+                PageInspection.Valid(PageImageMetadata(PageImageFormat.JPEG, 8, 9))
+            },
+            "native/framing disagreement fails closed",
+        )
     }
 
     @Test
     fun emptyHtmlTruncatedAndBadPngCrcNeverReachTheDecoder() {
-        val invalid = listOf(byteArrayOf(), PageMediaTestImages.html(), PageMediaTestImages.png().dropLast(1).toByteArray(), PageMediaTestImages.badPngCrc())
+        val invalid =
+            listOf(
+                byteArrayOf(),
+                PageMediaTestImages.html(),
+                PageMediaTestImages.png().dropLast(1).toByteArray(),
+                PageMediaTestImages.badPngCrc(),
+            )
         for (bytes in invalid) {
             assertIs<PageInspection.Invalid>(inspect(bytes) { error("invalid framing reached native decoder") })
         }
@@ -65,9 +78,10 @@ class PageMediaPolicyTest {
 
     @Test
     fun byteRefusalHappensBeforeAnySourceOpenAndNativeCancellationIsNotConvertedToInvalid() {
-        val oversized = inspectPageInput(PageInspectionPolicy(bytePolicy = PageBytePolicy(1)), 2, { error("must not open") }) {
-            error("must not decode")
-        }
+        val oversized =
+            inspectPageInput(PageInspectionPolicy(bytePolicy = PageBytePolicy(1)), 2, { error("must not open") }) {
+                error("must not decode")
+            }
         assertEquals(PageInspectionRejection.ENCODED_BYTES, assertIs<PageInspection.Rejected>(oversized).reason)
         assertFailsWith<CancellationException> { inspect(PageMediaTestImages.png()) { throw CancellationException("cancel") } }
     }
@@ -86,26 +100,48 @@ class PageMediaPolicyTest {
     @Test
     fun zeroProgressSourceFailsAndClosesRatherThanSpinning() {
         var closed = false
-        val source = object : Source {
-            override fun read(sink: Buffer, byteCount: Long): Long = 0
-            override fun timeout(): Timeout = Timeout.NONE
-            override fun close() { closed = true }
-        }
+        val source =
+            object : Source {
+                override fun read(
+                    sink: Buffer,
+                    byteCount: Long,
+                ): Long = 0
+
+                override fun timeout(): Timeout = Timeout.NONE
+
+                override fun close() {
+                    closed = true
+                }
+            }
         assertFailsWith<IOException> { readPageSnapshot(source) }
         assertTrue(closed)
     }
 
-    private fun inspect(bytes: ByteArray, decode: (PageImageFormat) -> PageInspection): PageInspection =
-        inspectPageInput(PageInspectionPolicy(), bytes.size.toLong(), { Buffer().write(bytes) }, decode)
+    private fun inspect(
+        bytes: ByteArray,
+        decode: (PageImageFormat) -> PageInspection,
+    ): PageInspection = inspectPageInput(PageInspectionPolicy(), bytes.size.toLong(), { Buffer().write(bytes) }, decode)
 }
 
-private class RecordingSource(bytes: ByteArray, private val chunkSize: Int) : Source {
+private class RecordingSource(
+    bytes: ByteArray,
+    private val chunkSize: Int,
+) : Source {
     private val input = Buffer().write(bytes)
     var readBytes = 0L
     var closed = false
-    override fun read(sink: Buffer, byteCount: Long): Long = input.read(sink, minOf(byteCount, chunkSize.toLong())).also {
-        if (it > 0) readBytes += it
-    }
+
+    override fun read(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long =
+        input.read(sink, minOf(byteCount, chunkSize.toLong())).also {
+            if (it > 0) readBytes += it
+        }
+
     override fun timeout(): Timeout = Timeout.NONE
-    override fun close() { closed = true }
+
+    override fun close() {
+        closed = true
+    }
 }

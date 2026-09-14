@@ -1,8 +1,8 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.download.BgDownloadLog
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
@@ -44,32 +44,42 @@ data class ManifestPage(
  * manifest reads back as `null` (the engine then falls back to re-resolving the chapter). Traced
  * under the `KiraBgDownload` tag, including the manifest path.
  */
-class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
-
+class DownloadManifestStore(
+    private val appFileSystem: AppFileSystem,
+) {
     private val system get() = appFileSystem.fileSystem()
 
-    private fun path(mangaId: Long, chapterId: Long) =
-        appFileSystem.chapterDir(mangaId, chapterId) / MANIFEST_NAME
+    private fun path(
+        mangaId: Long,
+        chapterId: Long,
+    ) = appFileSystem.chapterDir(mangaId, chapterId) / MANIFEST_NAME
 
     /** True when a manifest file exists for the chapter — a cheap fs probe, no read/parse. Used by
      *  the resolve-ahead window check, which runs per pump and must not pay JSON parsing. */
-    fun exists(mangaId: Long, chapterId: Long): Boolean = system.exists(path(mangaId, chapterId))
+    fun exists(
+        mangaId: Long,
+        chapterId: Long,
+    ): Boolean = system.exists(path(mangaId, chapterId))
 
-    fun read(mangaId: Long, chapterId: Long): DownloadManifest? {
+    fun read(
+        mangaId: Long,
+        chapterId: Long,
+    ): DownloadManifest? {
         val p = path(mangaId, chapterId)
         if (!system.exists(p)) {
             BgDownloadLog.log("manifest.store.read.miss", "chapterId" to chapterId, "path" to p.toString())
             return null
         }
-        val manifest = runCatching {
-            val text = system.source(p).buffer().use { it.readUtf8() }
-            json.decodeFromString(DownloadManifest.serializer(), text).also {
-                require(it.mangaId == mangaId && it.chapterId == chapterId && it.hasValidPageRoster())
-            }
-        }.onFailure {
-            if (it is CancellationException) throw it
-            BgDownloadLog.warn("manifest.store.read.unreadable", "chapterId" to chapterId, "path" to p.toString())
-        }.getOrNull()
+        val manifest =
+            runCatching {
+                val text = system.source(p).buffer().use { it.readUtf8() }
+                json.decodeFromString(DownloadManifest.serializer(), text).also {
+                    require(it.mangaId == mangaId && it.chapterId == chapterId && it.hasValidPageRoster())
+                }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                BgDownloadLog.warn("manifest.store.read.unreadable", "chapterId" to chapterId, "path" to p.toString())
+            }.getOrNull()
         if (manifest != null) {
             BgDownloadLog.log("manifest.store.read.hit", "chapterId" to chapterId, "pages" to manifest.pages.size, "path" to p.toString())
         }
@@ -104,14 +114,22 @@ class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
                     }
                 }
             }
-            BgDownloadLog.log("manifest.store.write", "chapterId" to manifest.chapterId, "pages" to manifest.pages.size, "path" to (dir / MANIFEST_NAME).toString())
+            BgDownloadLog.log(
+                "manifest.store.write",
+                "chapterId" to manifest.chapterId,
+                "pages" to manifest.pages.size,
+                "path" to (dir / MANIFEST_NAME).toString(),
+            )
         }.onFailure {
             if (it is CancellationException) throw it
             BgDownloadLog.error(it, "manifest.store.write.failed", "chapterId" to manifest.chapterId)
         }.getOrThrow()
     }
 
-    fun delete(mangaId: Long, chapterId: Long) {
+    fun delete(
+        mangaId: Long,
+        chapterId: Long,
+    ) {
         val p = path(mangaId, chapterId)
         runCatching {
             if (system.exists(p)) {
@@ -122,19 +140,26 @@ class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
     }
 
     /** Increment the attempt count for [pageIndex]; returns the new count (0 when there is no manifest). */
-    fun incrementAttempt(mangaId: Long, chapterId: Long, pageIndex: Int, policyRejected: Boolean = false): Int {
+    fun incrementAttempt(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        policyRejected: Boolean = false,
+    ): Int {
         val manifest = read(mangaId, chapterId) ?: return 0
         var newCount = 0
-        val updated = manifest.copy(
-            pages = manifest.pages.map { page ->
-                if (page.index == pageIndex) {
-                    newCount = if (page.attempts == Int.MAX_VALUE) Int.MAX_VALUE else page.attempts + 1
-                    page.copy(attempts = newCount, policyRejected = page.policyRejected || policyRejected)
-                } else {
-                    page
-                }
-            },
-        )
+        val updated =
+            manifest.copy(
+                pages =
+                    manifest.pages.map { page ->
+                        if (page.index == pageIndex) {
+                            newCount = if (page.attempts == Int.MAX_VALUE) Int.MAX_VALUE else page.attempts + 1
+                            page.copy(attempts = newCount, policyRejected = page.policyRejected || policyRejected)
+                        } else {
+                            page
+                        }
+                    },
+            )
         write(updated)
         BgDownloadLog.log("manifest.store.attemptIncremented", "chapterId" to chapterId, "pageIndex" to pageIndex, "attempt" to newCount)
         return newCount
@@ -142,6 +167,10 @@ class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
 
     private companion object {
         const val MANIFEST_NAME = "manifest.json"
-        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val json =
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = true
+            }
     }
 }

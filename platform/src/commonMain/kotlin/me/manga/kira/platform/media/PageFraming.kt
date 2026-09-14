@@ -33,47 +33,64 @@ internal fun inspectPageInput(
     }
 }
 
-internal fun encodedPageRejection(size: Long, policy: PageInspectionPolicy): PageInspection? = when {
-    size <= 0 -> PageInspection.Invalid(PageInvalidReason.EMPTY)
-    size > policy.bytePolicy.maxEncodedBytes ->
-        PageInspection.Rejected(PageInspectionRejection.ENCODED_BYTES, policy.bytePolicy.maxEncodedBytes, size)
-    else -> null
-}
+internal fun encodedPageRejection(
+    size: Long,
+    policy: PageInspectionPolicy,
+): PageInspection? =
+    when {
+        size <= 0 -> PageInspection.Invalid(PageInvalidReason.EMPTY)
+        size > policy.bytePolicy.maxEncodedBytes ->
+            PageInspection.Rejected(PageInspectionRejection.ENCODED_BYTES, policy.bytePolicy.maxEncodedBytes, size)
+        else -> null
+    }
 
-private fun inspectPageFraming(source: BufferedSource, size: Long): PageImageFormat = when {
-    source.rangeEquals(0, JPEG_START) -> inspectJpegFraming(source, size)
-    source.rangeEquals(0, PNG_START) -> {
-        inspectPngFraming(source, size)
-        PageImageFormat.PNG
+private fun inspectPageFraming(
+    source: BufferedSource,
+    size: Long,
+): PageImageFormat =
+    when {
+        source.rangeEquals(0, JPEG_START) -> inspectJpegFraming(source, size)
+        source.rangeEquals(0, PNG_START) -> {
+            inspectPngFraming(source, size)
+            PageImageFormat.PNG
+        }
+        source.rangeEquals(0, "RIFF".encodeUtf8()) && source.rangeEquals(8, "WEBP".encodeUtf8()) -> {
+            inspectWebpFraming(source, size)
+            PageImageFormat.WEBP
+        }
+        source.rangeEquals(0, "GIF87a".encodeUtf8()) || source.rangeEquals(0, "GIF89a".encodeUtf8()) -> inspectGifFraming(source, size)
+        source.rangeEquals(0, "BM".encodeUtf8()) -> inspectBmpFraming(source, size)
+        source.rangeEquals(4, "ftyp".encodeUtf8()) -> {
+            inspectAvifFraming(source, size)
+            PageImageFormat.AVIF
+        }
+        else -> throw PageFramingException(PageInvalidReason.UNSUPPORTED_FORMAT)
     }
-    source.rangeEquals(0, "RIFF".encodeUtf8()) && source.rangeEquals(8, "WEBP".encodeUtf8()) -> {
-        inspectWebpFraming(source, size)
-        PageImageFormat.WEBP
-    }
-    source.rangeEquals(0, "GIF87a".encodeUtf8()) || source.rangeEquals(0, "GIF89a".encodeUtf8()) -> inspectGifFraming(source, size)
-    source.rangeEquals(0, "BM".encodeUtf8()) -> inspectBmpFraming(source, size)
-    source.rangeEquals(4, "ftyp".encodeUtf8()) -> {
-        inspectAvifFraming(source, size)
-        PageImageFormat.AVIF
-    }
-    else -> throw PageFramingException(PageInvalidReason.UNSUPPORTED_FORMAT)
-}
 
-private fun inspectJpegFraming(source: BufferedSource, size: Long): PageImageFormat {
+private fun inspectJpegFraming(
+    source: BufferedSource,
+    size: Long,
+): PageImageFormat {
     requirePageFraming(size >= 4)
     source.skip(size - 2)
     requirePageFraming(source.readByteString(2) == JPEG_END)
     return PageImageFormat.JPEG
 }
 
-private fun inspectGifFraming(source: BufferedSource, size: Long): PageImageFormat {
+private fun inspectGifFraming(
+    source: BufferedSource,
+    size: Long,
+): PageImageFormat {
     requirePageFraming(size >= 14)
     source.skip(size - 1)
     requirePageFraming(source.readByte().toInt() == 0x3b)
     return PageImageFormat.GIF
 }
 
-private fun inspectBmpFraming(source: BufferedSource, size: Long): PageImageFormat {
+private fun inspectBmpFraming(
+    source: BufferedSource,
+    size: Long,
+): PageImageFormat {
     requirePageFraming(size >= 26)
     source.skip(2)
     requirePageFraming(source.readUnsignedIntLe() == size)
@@ -90,9 +107,12 @@ internal fun requirePageFraming(valid: Boolean) {
     if (!valid) throw PageFramingException(PageInvalidReason.INCOMPLETE_OR_CORRUPT)
 }
 
-internal class PageFramingException(val reason: PageInvalidReason) : Exception()
+internal class PageFramingException(
+    val reason: PageInvalidReason,
+) : Exception()
 
 internal fun BufferedSource.readUnsignedInt(): Long = readInt().toLong() and 0xffff_ffffL
+
 internal fun BufferedSource.readUnsignedIntLe(): Long = readIntLe().toLong() and 0xffff_ffffL
 
 private val JPEG_START = "ffd8".decodeHex()

@@ -17,7 +17,9 @@ internal suspend fun <T> withAndroidAvifPermit(block: suspend () -> T): T = andr
 internal fun <T> withAndroidAvifNativePermit(block: () -> T): T = androidAvifPermit.withNativePermit(block)
 
 /** A real semaphore is injectable so cancellation tests can observe ownership without codec doubles. */
-internal class AndroidAvifPermit(private val semaphore: Semaphore) {
+internal class AndroidAvifPermit(
+    private val semaphore: Semaphore,
+) {
     suspend fun <T> withPermit(block: suspend () -> T): T {
         val context = currentCoroutineContext()
         context.ensureActive()

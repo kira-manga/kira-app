@@ -17,53 +17,54 @@ import org.koin.dsl.module
 // DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED selects the background-URLSession engine (ON)
 // vs the proven coroutine engine (OFF). The IosBackgroundScheduler / BackgroundTransport /
 // BackgroundWorkSignal facades stay in platformModule().ios and resolve via get().
-actual fun downloadModule(): Module = module {
-    single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
-    single {
-        ChapterFinalizer(
-            dao = get(),
-            libraryRepository = get(),
-            notificationDao = get(),
-            appFileSystem = get(),
-            cbzWriter = get(),
-            dataStore = get(),
-            mediaInspector = get(),
-        )
-    }
-    single { DownloadManifestStore(get()) }
-    single<DownloadRepository> {
-        BgDownloadLog.log(
-            "engine.selected",
-            "engine" to if (DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) "BackgroundUrlSession" else "CoroutineLegacy",
-            "flag" to DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED,
-        )
-        if (DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) {
-            BackgroundUrlSessionDownloadRepository(
+actual fun downloadModule(): Module =
+    module {
+        single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
+        single {
+            ChapterFinalizer(
                 dao = get(),
-                chapterPageResolver = get(),
-                chapterFinalizer = get(),
-                manifestStore = get(),
+                libraryRepository = get(),
+                notificationDao = get(),
                 appFileSystem = get(),
-                transport = get(),
-                applicationScope = get(),
-                downloadNotifier = get(),
-                dataStoreHelper = get(),
-                backgroundScheduler = get(),
-                workSignal = get(),
-                mediaInspector = get(),
-            )
-        } else {
-            CoroutineDownloadRepositoryImpl(
-                dao = get(),
-                httpClient = get(named("chapter-download-http")),
-                applicationScope = get(),
-                appFileSystem = get(),
-                downloadNotifier = get(),
-                backgroundGuard = get(),
-                chapterPageResolver = get(),
-                chapterFinalizer = get(),
+                cbzWriter = get(),
+                dataStore = get(),
                 mediaInspector = get(),
             )
         }
+        single { DownloadManifestStore(get()) }
+        single<DownloadRepository> {
+            BgDownloadLog.log(
+                "engine.selected",
+                "engine" to if (DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) "BackgroundUrlSession" else "CoroutineLegacy",
+                "flag" to DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED,
+            )
+            if (DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) {
+                BackgroundUrlSessionDownloadRepository(
+                    dao = get(),
+                    chapterPageResolver = get(),
+                    chapterFinalizer = get(),
+                    manifestStore = get(),
+                    appFileSystem = get(),
+                    transport = get(),
+                    applicationScope = get(),
+                    downloadNotifier = get(),
+                    dataStoreHelper = get(),
+                    backgroundScheduler = get(),
+                    workSignal = get(),
+                    mediaInspector = get(),
+                )
+            } else {
+                CoroutineDownloadRepositoryImpl(
+                    dao = get(),
+                    httpClient = get(named("chapter-download-http")),
+                    applicationScope = get(),
+                    appFileSystem = get(),
+                    downloadNotifier = get(),
+                    backgroundGuard = get(),
+                    chapterPageResolver = get(),
+                    chapterFinalizer = get(),
+                    mediaInspector = get(),
+                )
+            }
+        }
     }
-}

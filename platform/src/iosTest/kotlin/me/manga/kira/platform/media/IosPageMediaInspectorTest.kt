@@ -16,13 +16,14 @@ class IosPageMediaInspectorTest {
 
     @Test
     fun pngJpegWebpGifAndBmpUseRealImageIoValidation() {
-        val images = mapOf(
-            PageImageFormat.PNG to PageMediaTestImages.png(),
-            PageImageFormat.JPEG to encoded(EncodedImageFormat.JPEG),
-            PageImageFormat.WEBP to encoded(EncodedImageFormat.WEBP),
-            PageImageFormat.GIF to PageMediaTestImages.gif(),
-            PageImageFormat.BMP to PageMediaTestImages.bmp(),
-        )
+        val images =
+            mapOf(
+                PageImageFormat.PNG to PageMediaTestImages.png(),
+                PageImageFormat.JPEG to encoded(EncodedImageFormat.JPEG),
+                PageImageFormat.WEBP to encoded(EncodedImageFormat.WEBP),
+                PageImageFormat.GIF to PageMediaTestImages.gif(),
+                PageImageFormat.BMP to PageMediaTestImages.bmp(),
+            )
         for ((format, bytes) in images) {
             assertEquals(format, assertIs<PageInspection.Valid>(inspector.inspect(bytes), "$format must decode").metadata.format)
         }
@@ -44,21 +45,31 @@ class IosPageMediaInspectorTest {
 
     @Test
     fun htmlTruncationPngCrcAndCrcCorrectBrokenPixelsNeverValidate() {
-        val invalid = listOf(
-            PageMediaTestImages.html(), byteArrayOf(), PageMediaTestImages.png().dropLast(1).toByteArray(),
-            PageMediaTestImages.badPngCrc(), PageMediaTestImages.corruptPngPixels(),
-            encoded(EncodedImageFormat.JPEG).dropLast(8).toByteArray(),
-            AvifTestFixtures.regular().dropLast(32).toByteArray(),
-        )
+        val invalid =
+            listOf(
+                PageMediaTestImages.html(),
+                byteArrayOf(),
+                PageMediaTestImages.png().dropLast(1).toByteArray(),
+                PageMediaTestImages.badPngCrc(),
+                PageMediaTestImages.corruptPngPixels(),
+                encoded(EncodedImageFormat.JPEG).dropLast(8).toByteArray(),
+                AvifTestFixtures.regular().dropLast(32).toByteArray(),
+            )
         invalid.forEach { assertFalse(inspector.inspect(it) is PageInspection.Valid) }
     }
 
     @Test
     fun injectedBytePixelAndAxisLimitsStayDistinct() {
         val bytes = IosPageMediaInspector(PageInspectionPolicy(bytePolicy = PageBytePolicy(1)))
-        assertEquals(PageInspectionRejection.ENCODED_BYTES, assertIs<PageInspection.Rejected>(bytes.inspect(PageMediaTestImages.png())).reason)
+        assertEquals(
+            PageInspectionRejection.ENCODED_BYTES,
+            assertIs<PageInspection.Rejected>(bytes.inspect(PageMediaTestImages.png())).reason,
+        )
         val pixels = IosPageMediaInspector(PageInspectionPolicy(maxSourcePixels = 71))
-        assertEquals(PageInspectionRejection.SOURCE_PIXELS, assertIs<PageInspection.Rejected>(pixels.inspect(PageMediaTestImages.png())).reason)
+        assertEquals(
+            PageInspectionRejection.SOURCE_PIXELS,
+            assertIs<PageInspection.Rejected>(pixels.inspect(PageMediaTestImages.png())).reason,
+        )
         val axes = IosPageMediaInspector(PageInspectionPolicy(maxSourceDimension = 8))
         assertEquals(PageInspectionRejection.SOURCE_AXIS, assertIs<PageInspection.Rejected>(axes.inspect(PageMediaTestImages.png())).reason)
     }
@@ -78,7 +89,8 @@ class IosPageMediaInspectorTest {
         }
     }
 
-    private fun encoded(format: EncodedImageFormat): ByteArray = Image.makeFromEncoded(PageMediaTestImages.png()).use { image ->
-        requireNotNull(image.encodeToData(format, 90)).use { it.bytes }
-    }
+    private fun encoded(format: EncodedImageFormat): ByteArray =
+        Image.makeFromEncoded(PageMediaTestImages.png()).use { image ->
+            requireNotNull(image.encodeToData(format, 90)).use { it.bytes }
+        }
 }

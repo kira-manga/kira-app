@@ -33,9 +33,10 @@ internal fun HttpClientConfig<*>.installManagedHttpCache(owner: ManagedHttpCache
     }
 }
 
-internal fun HttpClient.attachResponseCache(owner: ManagedHttpCache?): HttpClient = apply {
-    if (owner != null) attributes.put(responseCacheOwnerKey, owner)
-}
+internal fun HttpClient.attachResponseCache(owner: ManagedHttpCache?): HttpClient =
+    apply {
+        if (owner != null) attributes.put(responseCacheOwnerKey, owner)
+    }
 
 internal fun createPersistentHttpCache(root: Path): ManagedHttpCache {
     val policy = HttpCachePolicy()

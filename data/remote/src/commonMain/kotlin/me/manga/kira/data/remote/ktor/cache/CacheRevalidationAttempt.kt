@@ -36,7 +36,11 @@ internal class CacheRevalidationAttempt(
     private var failedResponse: HttpResponse? = null
     private var generatedValidators: CacheValidators? = null
 
-    fun observeValidators(candidateUrl: Url, etag: String?, lastModified: String?) {
+    fun observeValidators(
+        candidateUrl: Url,
+        etag: String?,
+        lastModified: String?,
+    ) {
         if (!eligible || overflow || responseReceived || candidateUrl != url || (etag == null && lastModified == null)) return
         candidates += CacheValidators(etag?.encodeUtf8()?.sha256(), lastModified?.encodeUtf8()?.sha256())
         if (candidates.size > MAX_VALIDATOR_CANDIDATES) {
@@ -79,7 +83,10 @@ internal class CacheRevalidationAttempt(
     }
 }
 
-internal data class CacheValidators(private val etag: ByteString?, private val lastModified: ByteString?) {
+internal data class CacheValidators(
+    private val etag: ByteString?,
+    private val lastModified: ByteString?,
+) {
     fun matches(values: (String) -> List<String>?): Boolean =
         matchesField(etag, values(HttpHeaders.IfNoneMatch)) &&
             matchesField(lastModified, values(HttpHeaders.IfModifiedSince))
@@ -90,11 +97,12 @@ internal data class CacheValidators(private val etag: ByteString?, private val l
         if (lastModified != null) headers.remove(HttpHeaders.IfModifiedSince)
     }
 
-    private fun matchesField(expected: ByteString?, values: List<String>?): Boolean =
-        if (expected == null) values == null else values?.singleOrNull()?.encodeUtf8()?.sha256() == expected
+    private fun matchesField(
+        expected: ByteString?,
+        values: List<String>?,
+    ): Boolean = if (expected == null) values == null else values?.singleOrNull()?.encodeUtf8()?.sha256() == expected
 }
 
-internal fun HttpRequestBuilder.isCacheRecoveryEligible(): Boolean =
-    isEmptyGet() && allConditions.none(headers::contains)
+internal fun HttpRequestBuilder.isCacheRecoveryEligible(): Boolean = isEmptyGet() && allConditions.none(headers::contains)
 
 private fun HttpRequestBuilder.isEmptyGet(): Boolean = method == HttpMethod.Get && body is OutgoingContent.NoContent

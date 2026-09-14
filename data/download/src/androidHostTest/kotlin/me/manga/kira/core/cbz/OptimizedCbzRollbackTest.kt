@@ -129,7 +129,10 @@ private class CbzCropFailureCase(
     private var firstCrop: Bitmap? = null
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File, maxWorkingBytes: Long): Bitmap {
+            override suspend fun decodeAvif(
+                file: File,
+                maxWorkingBytes: Long,
+            ): Bitmap {
                 assertEquals(CbzWriter.DEFAULT_MAX_MEMORY_BYTES, maxWorkingBytes)
                 inspector.assertDecoderSnapshot(file)
                 return Bitmap

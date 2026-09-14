@@ -23,12 +23,17 @@ import okio.Path
 
  */
 interface CbzReader {
-
     /** Conventional location of a chapter's CBZ archive. */
-    fun cbzPath(mangaId: Long, chapterId: Long): Path
+    fun cbzPath(
+        mangaId: Long,
+        chapterId: Long,
+    ): Path
 
     /** True iff [cbzPath] for this chapter exists on disk. */
-    fun cbzExists(mangaId: Long, chapterId: Long): Boolean
+    fun cbzExists(
+        mangaId: Long,
+        chapterId: Long,
+    ): Boolean
 
     /** Complete validated image-entry count, or 0 on any invalid/read/policy failure; never a subset. */
     suspend fun pageCount(cbzPath: Path): Int
@@ -39,11 +44,21 @@ interface CbzReader {
      * Previous cache generations and the archive survive failure; cancellation propagates.
      * Filenames/existence alone never establish readability, and old extracted files are not reused.
      */
-    suspend fun extractImages(cbzPath: Path, mangaId: Long, chapterId: Long): List<Path>
+    suspend fun extractImages(
+        cbzPath: Path,
+        mangaId: Long,
+        chapterId: Long,
+    ): List<Path>
 
     /** Delete the CBZ archive for [mangaId]/[chapterId]. Returns true iff a file existed and was deleted. */
-    suspend fun deleteCbz(mangaId: Long, chapterId: Long): Boolean
+    suspend fun deleteCbz(
+        mangaId: Long,
+        chapterId: Long,
+    ): Boolean
 
     /** Recursively delete the cache directory used by [extractImages] for this chapter. */
-    suspend fun cleanupExtractedCache(mangaId: Long, chapterId: Long)
+    suspend fun cleanupExtractedCache(
+        mangaId: Long,
+        chapterId: Long,
+    )
 }

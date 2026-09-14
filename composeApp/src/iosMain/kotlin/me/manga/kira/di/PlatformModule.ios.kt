@@ -13,8 +13,6 @@ import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.cbz.DefaultCbzReader
 import me.manga.kira.platform.cbz.IosCbzWriter
-import me.manga.kira.platform.media.IosPageMediaInspector
-import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.connectivity.ConnectivityObserver
 import me.manga.kira.platform.connectivity.IosConnectivityObserver
 import me.manga.kira.platform.crash.CrashReporter
@@ -42,6 +40,8 @@ import me.manga.kira.platform.jobs.BackgroundJobScheduler
 import me.manga.kira.platform.jobs.IosBackgroundJobScheduler
 import me.manga.kira.platform.locale.IosLocaleSwitcher
 import me.manga.kira.platform.locale.LocaleSwitcher
+import me.manga.kira.platform.media.IosPageMediaInspector
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.notification.IosDownloadNotifier
 import me.manga.kira.platform.notification.IosNotificationPresenter

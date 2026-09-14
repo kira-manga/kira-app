@@ -12,24 +12,30 @@ import okio.IOException
 import okio.utf8Size
 
 /** Length-prefixed metadata; body bytes are streamed separately into the bounded disk record. */
-internal class HttpCacheMetadataCodec(private val maxBytes: Int) {
-    fun encode(data: CachedResponseData): ByteArray? = try {
-        val writer = MetadataWriter(maxBytes)
-        writer.string(data.url.toString())
-        writer.int(data.statusCode.value)
-        writer.string(data.statusCode.description)
-        writer.string(data.version.toString())
-        writer.long(data.requestTime.timestamp)
-        writer.long(data.responseTime.timestamp)
-        writer.long(data.expires.timestamp)
-        writer.headers(data.headers)
-        writer.varyKeys(data.varyKeys)
-        writer.finish()
-    } catch (_: MetadataLimitExceeded) {
-        null
-    }
+internal class HttpCacheMetadataCodec(
+    private val maxBytes: Int,
+) {
+    fun encode(data: CachedResponseData): ByteArray? =
+        try {
+            val writer = MetadataWriter(maxBytes)
+            writer.string(data.url.toString())
+            writer.int(data.statusCode.value)
+            writer.string(data.statusCode.description)
+            writer.string(data.version.toString())
+            writer.long(data.requestTime.timestamp)
+            writer.long(data.responseTime.timestamp)
+            writer.long(data.expires.timestamp)
+            writer.headers(data.headers)
+            writer.varyKeys(data.varyKeys)
+            writer.finish()
+        } catch (_: MetadataLimitExceeded) {
+            null
+        }
 
-    fun decode(metadata: ByteArray, body: ByteArray): CachedResponseData? {
+    fun decode(
+        metadata: ByteArray,
+        body: ByteArray,
+    ): CachedResponseData? {
         if (metadata.size > maxBytes) return null
         return try {
             decodeEntry(MetadataReader(metadata), body)
@@ -42,7 +48,10 @@ internal class HttpCacheMetadataCodec(private val maxBytes: Int) {
         }
     }
 
-    private fun decodeEntry(reader: MetadataReader, body: ByteArray): CachedResponseData {
+    private fun decodeEntry(
+        reader: MetadataReader,
+        body: ByteArray,
+    ): CachedResponseData {
         val url = Url(reader.string())
         val status = HttpStatusCode(reader.int(), reader.string())
         val version = HttpProtocolVersion.parse(reader.string())
@@ -58,7 +67,9 @@ internal class HttpCacheMetadataCodec(private val maxBytes: Int) {
 
 private class MetadataLimitExceeded : IllegalArgumentException()
 
-private class MetadataWriter(private val limit: Int) {
+private class MetadataWriter(
+    private val limit: Int,
+) {
     private val buffer = Buffer()
 
     fun int(value: Int) {
@@ -106,11 +117,15 @@ private class MetadataWriter(private val limit: Int) {
     }
 }
 
-private class MetadataReader(metadata: ByteArray) {
+private class MetadataReader(
+    metadata: ByteArray,
+) {
     private val buffer = Buffer().write(metadata)
 
     fun int(): Int = buffer.readInt()
+
     fun long(): Long = buffer.readLong()
+
     fun exhausted(): Boolean = buffer.exhausted()
 
     fun string(): String {

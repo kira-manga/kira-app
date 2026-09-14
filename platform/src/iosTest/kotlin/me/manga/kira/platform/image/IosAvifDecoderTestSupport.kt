@@ -79,11 +79,17 @@ internal suspend fun withIosAvifBitmap(
     }
 }
 
-internal class IosAvifTestSource(private val delegate: BufferedSource) : BufferedSource by delegate {
+internal class IosAvifTestSource(
+    private val delegate: BufferedSource,
+) : BufferedSource by delegate {
     var closed = false
     var afterRead: () -> Unit = {}
 
-    override fun read(sink: ByteArray, offset: Int, byteCount: Int): Int {
+    override fun read(
+        sink: ByteArray,
+        offset: Int,
+        byteCount: Int,
+    ): Int {
         val count = delegate.read(sink, offset, byteCount)
         afterRead()
         return count

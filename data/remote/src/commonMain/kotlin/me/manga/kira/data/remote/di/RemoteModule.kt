@@ -17,11 +17,12 @@ import org.koin.dsl.onClose
  * page streaming begins and is closed by this Koin owner. The existing shared client lifetime is
  * unchanged. All platform factories supply the same cache policy and core clear-port contract.
  */
-fun remoteModule(): Module = module {
-    single { createHttpClient() }
-    single<HttpCacheClearer> { get<HttpClient>().responseCacheClearer() }
-    single<HttpClient>(named("chapter-download-http")) {
-        createHttpClient(cacheResponses = false)
-    } onClose { it?.close() }
-    single { ApiClient(get()) }
-}
+fun remoteModule(): Module =
+    module {
+        single { createHttpClient() }
+        single<HttpCacheClearer> { get<HttpClient>().responseCacheClearer() }
+        single<HttpClient>(named("chapter-download-http")) {
+            createHttpClient(cacheResponses = false)
+        } onClose { it?.close() }
+        single { ApiClient(get()) }
+    }

@@ -20,16 +20,23 @@ import me.manga.kira.platform.media.isPagePolicyRejection
  *    `cf_clearance` 403ing every page mid-batch) died as a plain FAILED with no solver.
  */
 object TransferRetryRules {
-
     sealed interface Decision {
         /** Attempts remain — re-enqueue this page after [delayMs] (bounded exponential backoff). */
-        data class Retry(val delayMs: Long) : Decision
+        data class Retry(
+            val delayMs: Long,
+        ) : Decision
 
         /** Budget exhausted — fail the chapter; [isChallenge] routes to the Cloudflare sentinel. */
-        data class FailChapter(val isChallenge: Boolean) : Decision
+        data class FailChapter(
+            val isChallenge: Boolean,
+        ) : Decision
     }
 
-    fun decide(attempts: Int, maxAttempts: Int, message: String?): Decision =
+    fun decide(
+        attempts: Int,
+        maxAttempts: Int,
+        message: String?,
+    ): Decision =
         if (isPagePolicyRejection(message)) {
             Decision.FailChapter(isChallenge = false)
         } else if (attempts >= maxAttempts) {
@@ -43,7 +50,11 @@ object TransferRetryRules {
      * is clamped to 16 so a corrupt/huge attempt count can never overflow into a negative delay;
      * attempt values ≤ 1 (including the 0 a missing manifest reports) all get the base delay.
      */
-    fun backoffMs(attempt: Int, baseMs: Long = 2_000L, maxMs: Long = 30_000L): Long {
+    fun backoffMs(
+        attempt: Int,
+        baseMs: Long = 2_000L,
+        maxMs: Long = 30_000L,
+    ): Long {
         val shift = (attempt - 1).coerceIn(0, 16)
         return (baseMs shl shift).coerceAtMost(maxMs)
     }

@@ -29,9 +29,10 @@ class AndroidAvifPermitDeviceTest {
             val permit = AndroidAvifPermit(semaphore)
             val entered = AtomicBoolean(false)
             semaphore.acquire()
-            val waiting = launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
-                permit.withPermit { entered.set(true) }
-            }
+            val waiting =
+                launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                    permit.withPermit { entered.set(true) }
+                }
             try {
                 withContext(Dispatchers.Default) { awaitAvifPermitCondition { semaphore.hasQueuedThreads() } }
                 waiting.cancelAndJoin()
@@ -51,12 +52,13 @@ class AndroidAvifPermitDeviceTest {
             val semaphore = Semaphore(1, true)
             val permit = AndroidAvifPermit(semaphore)
             val entered = CompletableDeferred<Unit>()
-            val owner = launch {
-                permit.withPermit {
-                    entered.complete(Unit)
-                    awaitCancellation()
+            val owner =
+                launch {
+                    permit.withPermit {
+                        entered.complete(Unit)
+                        awaitCancellation()
+                    }
                 }
-            }
             try {
                 entered.await()
                 assertEquals(0, semaphore.availablePermits())
@@ -91,9 +93,10 @@ class AndroidAvifPermitDeviceTest {
         semaphore.acquire()
         var initiallyHeld = true
         var heldTask: Runnable? = null
-        val waiting = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            permit.withPermit { entered.set(true) }
-        }
+        val waiting =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                permit.withPermit { entered.set(true) }
+            }
         try {
             awaitAvifPermitCondition { semaphore.hasQueuedThreads() }
             semaphore.release()
@@ -111,7 +114,12 @@ class AndroidAvifPermitDeviceTest {
         }
     }
 
-    private fun cancelAcquiredReturn(waiting: Job, resume: Runnable, entered: AtomicBoolean, semaphore: Semaphore) {
+    private fun cancelAcquiredReturn(
+        waiting: Job,
+        resume: Runnable,
+        entered: AtomicBoolean,
+        semaphore: Semaphore,
+    ) {
         // The real IO acquisition block has completed and its return dispatch is held.
         waiting.cancel()
         resume.run()

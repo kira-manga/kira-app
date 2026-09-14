@@ -38,13 +38,15 @@ internal suspend fun <T> withValidatedCbzSnapshot(
     policy.checkFileSize(source.length())
     val snapshot = File.createTempFile(".cbz-page-", ".snapshot", source.parentFile)
     try {
-        val bytes = withContext(Dispatchers.IO) {
-            snapshot.outputStream().use { copyCbzPage(source, it, policy) }
-        }
+        val bytes =
+            withContext(Dispatchers.IO) {
+                snapshot.outputStream().use { copyCbzPage(source, it, policy) }
+            }
         // Waiting for the inspector's shared native permit remains requester-cancellable.
-        val metadata = runInterruptible(Dispatchers.IO) {
-            inspector.inspect(snapshot.absolutePath.toPath()).requireValid()
-        }
+        val metadata =
+            runInterruptible(Dispatchers.IO) {
+                inspector.inspect(snapshot.absolutePath.toPath()).requireValid()
+            }
         currentCoroutineContext().ensureActive()
         return consume(snapshot, metadata, bytes)
     } finally {
@@ -53,7 +55,11 @@ internal suspend fun <T> withValidatedCbzSnapshot(
 }
 
 /** Does not own/close the destination ZIP; cancellation is checked between bounded writes. */
-internal suspend fun copyCbzPage(source: File, destination: OutputStream, policy: PageBytePolicy): Long {
+internal suspend fun copyCbzPage(
+    source: File,
+    destination: OutputStream,
+    policy: PageBytePolicy,
+): Long {
     val buffer = ByteArray(CBZ_BUFFER_SIZE)
     var total = 0L
     source.inputStream().use { input ->

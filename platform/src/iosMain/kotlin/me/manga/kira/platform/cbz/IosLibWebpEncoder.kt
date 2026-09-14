@@ -75,8 +75,9 @@ internal object IosLibWebpEncoder {
     ): CbzPageEncoding.Encoded {
         val mark = TimeSource.Monotonic.markNow()
         // Owned CFData avoids an autoreleased NSData copy surviving past the current page.
-        val data = source.usePinned { CFDataCreate(null, it.addressOf(0).reinterpret(), source.size.toLong()) }
-            ?: throw IOException("CBZ source buffer allocation failed")
+        val data =
+            source.usePinned { CFDataCreate(null, it.addressOf(0).reinterpret(), source.size.toLong()) }
+                ?: throw IOException("CBZ source buffer allocation failed")
         try {
             val cgSource = CGImageSourceCreateWithData(data, null) ?: throw IOException("CBZ image source creation failed")
             try {
@@ -96,7 +97,10 @@ internal object IosLibWebpEncoder {
         }
     }
 
-    private fun requireAdmittedImage(image: CGImageRef, plan: CbzTranscodePlan) {
+    private fun requireAdmittedImage(
+        image: CGImageRef,
+        plan: CbzTranscodePlan,
+    ) {
         if (CGImageGetWidth(image) != plan.width.toULong() || CGImageGetHeight(image) != plan.height.toULong()) {
             throw IOException("CBZ decoded dimensions differ from validated metadata")
         }
@@ -125,11 +129,14 @@ internal object IosLibWebpEncoder {
                 if (CGBitmapContextGetWidth(context) != plan.width.toULong() ||
                     CGBitmapContextGetHeight(context) != plan.height.toULong() ||
                     CGBitmapContextGetBytesPerRow(context) != plan.rgbaRowBytes.toULong()
-                ) throw IOException("CBZ native context differs from its admitted dimensions or stride")
+                ) {
+                    throw IOException("CBZ native context differs from its admitted dimensions or stride")
+                }
                 currentCoroutineContext().ensureActive()
                 CGContextDrawImage(context, CGRectMake(0.0, 0.0, plan.width.toDouble(), plan.height.toDouble()), image)
-                val pixels: CPointer<UByteVar> = CGBitmapContextGetData(context)?.reinterpret()
-                    ?: throw IOException("CBZ native context has no pixels")
+                val pixels: CPointer<UByteVar> =
+                    CGBitmapContextGetData(context)?.reinterpret()
+                        ?: throw IOException("CBZ native context has no pixels")
                 val decodeMs = mark.elapsedNow().inWholeMilliseconds
                 val result = emitBands(pixels, plan, quality, native, emit)
                 BgDownloadLog.dlperf(
@@ -194,18 +201,19 @@ internal object IosLibWebpEncoder {
         height: Int,
         quality: Int,
         native: IosCbzNativeCodec,
-    ): ByteArray = memScoped {
-        val output = alloc<CPointerVar<UByteVar>> { value = null }
-        try {
-            val size = native.encodeBand(rgba, plan.width, height, plan.rgbaRowBytes, quality, output.ptr)
-            val pointer = output.value ?: throw IOException("CBZ WebP encode returned no output")
-            // size_t is unsigned: check it BEFORE narrowing to Long/Int or making a Kotlin copy.
-            if (size == 0uL || size > plan.maxEncodedBandBytes.toULong() || size > Int.MAX_VALUE.toULong()) {
-                throw IOException("CBZ WebP output exceeds its admitted allowance or encoding failed")
+    ): ByteArray =
+        memScoped {
+            val output = alloc<CPointerVar<UByteVar>> { value = null }
+            try {
+                val size = native.encodeBand(rgba, plan.width, height, plan.rgbaRowBytes, quality, output.ptr)
+                val pointer = output.value ?: throw IOException("CBZ WebP encode returned no output")
+                // size_t is unsigned: check it BEFORE narrowing to Long/Int or making a Kotlin copy.
+                if (size == 0uL || size > plan.maxEncodedBandBytes.toULong() || size > Int.MAX_VALUE.toULong()) {
+                    throw IOException("CBZ WebP output exceeds its admitted allowance or encoding failed")
+                }
+                native.copyEncoded(pointer, size.toInt())
+            } finally {
+                output.value?.let { native.freeEncoded(it) }
             }
-            native.copyEncoded(pointer, size.toInt())
-        } finally {
-            output.value?.let { native.freeEncoded(it) }
         }
-    }
 }

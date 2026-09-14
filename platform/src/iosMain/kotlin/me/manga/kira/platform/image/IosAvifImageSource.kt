@@ -51,7 +51,11 @@ import kotlin.coroutines.CoroutineContext
 
 /** All retained CF objects are released on failure and cancellation; CFData avoids an autorelease copy. */
 @OptIn(ExperimentalForeignApi::class)
-internal suspend fun decodeIosAvif(avif: ByteArray, options: Options, limits: AvifDecodeLimits): DecodeResult {
+internal suspend fun decodeIosAvif(
+    avif: ByteArray,
+    options: Options,
+    limits: AvifDecodeLimits,
+): DecodeResult {
     limits.checkEncoded(avif.size, iosAvifMemory)
     val context = currentCoroutineContext()
     context.ensureActive()
@@ -128,7 +132,10 @@ private fun readAvifSourceSize(source: CGImageSourceRef): AvifPixelSize {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun readAvifDimension(properties: CFDictionaryRef, key: CFStringRef?): Int =
+private fun readAvifDimension(
+    properties: CFDictionaryRef,
+    key: CFStringRef?,
+): Int =
     memScoped {
         val number =
             CFDictionaryGetValue(properties, key)
@@ -146,7 +153,10 @@ private fun readAvifDimension(properties: CFDictionaryRef, key: CFStringRef?): I
     }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun createAvifThumbnail(source: CGImageSourceRef, edge: Int): CGImageRef =
+private fun createAvifThumbnail(
+    source: CGImageSourceRef,
+    edge: Int,
+): CGImageRef =
     memScoped {
         val options =
             CFDictionaryCreateMutable(null, 0, null, null)
@@ -167,7 +177,11 @@ private fun createAvifThumbnail(source: CGImageSourceRef, edge: Int): CGImageRef
     }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun checkAvifThumbnail(image: CGImageRef, maxEdge: Int, maxBytes: Long) {
+private fun checkAvifThumbnail(
+    image: CGImageRef,
+    maxEdge: Int,
+    maxBytes: Long,
+) {
     val width = CGImageGetWidth(image)
     val height = CGImageGetHeight(image)
     val rowBytes = CGImageGetBytesPerRow(image)

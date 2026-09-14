@@ -2,7 +2,9 @@ package me.manga.kira.platform.image
 
 import okio.IOException
 
-internal class AvifDecodeException(message: String) : IOException(message)
+internal class AvifDecodeException(
+    message: String,
+) : IOException(message)
 
 /**
  * Per-decode admission, not an assertion about a native codec's allocator or the process RSS.
@@ -26,7 +28,10 @@ internal data class AvifDecodeLimits(
         require(maxWorkingBytes > 0)
     }
 
-    fun checkEncoded(byteCount: Int, memory: AvifMemoryModel) {
+    fun checkEncoded(
+        byteCount: Int,
+        memory: AvifMemoryModel,
+    ) {
         encodedAllowance(byteCount, memory)
     }
 
@@ -70,7 +75,10 @@ internal data class AvifDecodeLimits(
         return pixels.toInt()
     }
 
-    fun outputAllocation(size: AvifPixelSize, bytesPerPixel: Int): AvifOutputAllocation {
+    fun outputAllocation(
+        size: AvifPixelSize,
+        bytesPerPixel: Int,
+    ): AvifOutputAllocation {
         require(bytesPerPixel in 1..MAX_BYTES_PER_PIXEL)
         val byteLimit = minOf(maxOutputBytes, Int.MAX_VALUE.toLong())
         if (size.pixels > byteLimit / bytesPerPixel) {
@@ -82,7 +90,10 @@ internal data class AvifDecodeLimits(
         )
     }
 
-    private fun encodedAllowance(byteCount: Int, memory: AvifMemoryModel): WorkingAllowance {
+    private fun encodedAllowance(
+        byteCount: Int,
+        memory: AvifMemoryModel,
+    ): WorkingAllowance {
         if (byteCount <= 0 || byteCount > maxEncodedBytes) {
             throw AvifDecodeException("AVIF encoded input exceeds the decode limit or is empty.")
         }
@@ -121,8 +132,13 @@ internal data class AvifMemoryModel(
 }
 
 /** Subtract before multiplying, so an overflowing estimate can never become a small allocation. */
-private class WorkingAllowance(private var remaining: Long) {
-    fun reserve(count: Long, copies: Int = 1) {
+private class WorkingAllowance(
+    private var remaining: Long,
+) {
+    fun reserve(
+        count: Long,
+        copies: Int = 1,
+    ) {
         if (count < 0 || count > remaining / copies) {
             throw AvifDecodeException("AVIF working-memory estimate exceeds the decode limit.")
         }

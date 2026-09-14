@@ -86,7 +86,6 @@ import okio.Path
  *  per the audit-trail-preservation convention.
  */
 interface CbzWriter {
-
     /**
      * Encode every image at [imagePaths] (in order) as a CBZ at the conventional location.
      * Source files are deleted after a successful encode to reclaim disk space — the source

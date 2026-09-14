@@ -26,10 +26,11 @@ class CbzConversionPersistenceTest {
             val pages = installValidPages(original)
             val (archive, previous) = installPreviousArchive(original)
             fs.delete(pages.keys.last())
-            val writer = CbzCallerWriter { paths, _ ->
-                paths.forEach { path -> fs.read(path) { readByteArray() } }
-                error("the absent source must fail before a complete conversion can return")
-            }
+            val writer =
+                CbzCallerWriter { paths, _ ->
+                    paths.forEach { path -> fs.read(path) { readByteArray() } }
+                    error("the absent source must fail before a complete conversion can return")
+                }
             val repository = settingsConverter(writer)
 
             assertTrue(repository.compressExistingDownloads().isSuccess)
@@ -54,13 +55,16 @@ class CbzConversionPersistenceTest {
             val originals = List(4) { seed(isDownloaded = true, sizeBytes = 1234L) }
             val pages = originals.flatMap { installValidPages(it).entries }.associate { it.toPair() }
             val archives = originals.map { installPreviousArchive(it) }
-            val failures = originals.mapIndexed { index, original ->
-                original.saved.id to listOf("read denied", "decode failed", "encode failed", "rename failed")[index]
-            }.toMap()
-            val writer = CbzCallerWriter { paths, chapterId ->
-                assertEquals(2, paths.size)
-                throw IOException(failures.getValue(chapterId))
-            }
+            val failures =
+                originals
+                    .mapIndexed { index, original ->
+                        original.saved.id to listOf("read denied", "decode failed", "encode failed", "rename failed")[index]
+                    }.toMap()
+            val writer =
+                CbzCallerWriter { paths, chapterId ->
+                    assertEquals(2, paths.size)
+                    throw IOException(failures.getValue(chapterId))
+                }
             val repository = settingsConverter(writer)
 
             assertTrue(repository.compressExistingDownloads().isSuccess)
@@ -82,10 +86,11 @@ class CbzConversionPersistenceTest {
             val original = seed(isDownloaded = true, sizeBytes = 678L)
             val pages = installValidPages(original)
             val entered = CompletableDeferred<Unit>()
-            val writer = CbzCallerWriter { _, _ ->
-                entered.complete(Unit)
-                awaitCancellation()
-            }
+            val writer =
+                CbzCallerWriter { _, _ ->
+                    entered.complete(Unit)
+                    awaitCancellation()
+                }
             val repository = settingsConverter(writer)
             coroutineScope {
                 val conversion = async { repository.compressExistingDownloads() }

@@ -176,7 +176,9 @@ class AvifDecoderCoilDeviceTest {
             .diskCache(null)
             .build()
 
-    private class TrackingSource(private val delegate: BufferedSource) : BufferedSource by delegate {
+    private class TrackingSource(
+        private val delegate: BufferedSource,
+    ) : BufferedSource by delegate {
         var closed = false
 
         override fun close() {

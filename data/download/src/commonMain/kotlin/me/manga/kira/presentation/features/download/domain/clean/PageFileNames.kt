@@ -16,7 +16,6 @@ import me.manga.kira.platform.media.isPageImageName
  * (reconcile membership + finalize ordering).
  */
 object PageFileNames {
-
     /**
      * Parses `image_<n>.<ext>` → `n`; returns null for any other file in the chapter dir
      * (`manifest.json`, the `chapter_<id>.cbz`, a stray `.part`, …) so non-page files can never

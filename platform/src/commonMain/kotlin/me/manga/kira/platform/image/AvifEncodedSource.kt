@@ -11,7 +11,10 @@ import okio.use
  * most [maxBytes] + 1 bytes, retaining at most [maxBytes] in the staging buffer. The caller's Okio
  * buffered source may already have prefetched one segment; this cannot undo upstream buffering.
  */
-internal suspend fun readAvifBytes(source: BufferedSource, maxBytes: Int): ByteArray =
+internal suspend fun readAvifBytes(
+    source: BufferedSource,
+    maxBytes: Int,
+): ByteArray =
     source.use {
         require(maxBytes > 0)
         val context = currentCoroutineContext()

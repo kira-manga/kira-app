@@ -20,14 +20,15 @@ internal suspend fun <T> TestScope.withHttpCacheClient(
     configure: HttpClientConfig<MockEngineConfig>.() -> Unit = {},
     block: suspend (HttpClient) -> T,
 ): T {
-    val client = HttpClient(MockEngine) {
-        engine {
-            dispatcher = StandardTestDispatcher(testScheduler)
-            addHandler(handler)
-        }
-        installManagedHttpCache(owner)
-        configure()
-    }.attachResponseCache(owner)
+    val client =
+        HttpClient(MockEngine) {
+            engine {
+                dispatcher = StandardTestDispatcher(testScheduler)
+                addHandler(handler)
+            }
+            installManagedHttpCache(owner)
+            configure()
+        }.attachResponseCache(owner)
     try {
         return withTimeout(5_000) { block(client) }
     } finally {
@@ -35,7 +36,8 @@ internal suspend fun <T> TestScope.withHttpCacheClient(
         withContext(NonCancellable) {
             withTimeout(5_000) {
                 client.coroutineContext.job.cancelAndJoin()
-                client.engine.coroutineContext.job.cancelAndJoin()
+                client.engine.coroutineContext.job
+                    .cancelAndJoin()
             }
         }
     }

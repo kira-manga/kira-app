@@ -18,7 +18,12 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /** Pre-decode budget decision only; callers must already hold a validated immutable source. */
-internal fun cbzAvifOutputAdmitted(width: Int, height: Int, encodedBytes: Int, maxWorkingBytes: Long): Boolean =
+internal fun cbzAvifOutputAdmitted(
+    width: Int,
+    height: Int,
+    encodedBytes: Int,
+    maxWorkingBytes: Long,
+): Boolean =
     try {
         val limits = cbzAvifLimits(maxWorkingBytes)
         val size = AvifPixelSize(width, height)
@@ -29,15 +34,19 @@ internal fun cbzAvifOutputAdmitted(width: Int, height: Int, encodedBytes: Int, m
     }
 
 /** Called under the shared Android native permit. No native false/OOM is a preservation signal. */
-internal suspend fun decodeCbzAvif(file: File, maxWorkingBytes: Long): Bitmap {
+internal suspend fun decodeCbzAvif(
+    file: File,
+    maxWorkingBytes: Long,
+): Bitmap {
     val limits = cbzAvifLimits(maxWorkingBytes)
     val bytes = file.source().buffer().use { readAvifBytes(it, limits.maxEncodedBytes) }
     val parsePixelLimit = androidAvifNativePixelLimit(limits, bytes.size)
     currentCoroutineContext().ensureActive()
-    val buffer = ByteBuffer.allocateDirect(bytes.size).apply {
-        put(bytes)
-        rewind()
-    }
+    val buffer =
+        ByteBuffer.allocateDirect(bytes.size).apply {
+            put(bytes)
+            rewind()
+        }
     val info = boundedCbzAvifInfo(buffer, limits, parsePixelLimit)
     val size = AvifPixelSize(info.width, info.height)
     limits.checkSource(size)
@@ -56,10 +65,14 @@ private suspend fun boundedCbzAvifInfo(
     pixelLimit: Int,
 ): AvifDecoder.Info {
     val info = AvifDecoder.Info()
-    val accepted = AvifDecoder.getInfoWithLimits(
-        buffer, buffer.capacity(), info, pixelLimit,
-        minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
-    )
+    val accepted =
+        AvifDecoder.getInfoWithLimits(
+            buffer,
+            buffer.capacity(),
+            info,
+            pixelLimit,
+            minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
+        )
     currentCoroutineContext().ensureActive()
     if (!accepted) throw AvifDecodeException("CBZ AVIF metadata was rejected by the bounded native decoder.")
     return info
@@ -73,19 +86,26 @@ private suspend fun decodeCbzAvifBitmap(
     pixelLimit: Int,
 ): Bitmap {
     currentCoroutineContext().ensureActive()
-    val bitmap = createBitmap(
-        info.width, info.height,
-        if (info.alphaPresent) Bitmap.Config.ARGB_8888 else Bitmap.Config.RGB_565,
-    )
+    val bitmap =
+        createBitmap(
+            info.width,
+            info.height,
+            if (info.alphaPresent) Bitmap.Config.ARGB_8888 else Bitmap.Config.RGB_565,
+        )
     try {
         if (bitmap.allocationByteCount.toLong() > limits.maxOutputBytes) {
             throw AvifDecodeException("CBZ AVIF bitmap allocation exceeds its output allowance.")
         }
         buffer.rewind()
-        val accepted = AvifDecoder.decodeWithLimits(
-            buffer, buffer.capacity(), bitmap, NATIVE_THREADS, pixelLimit,
-            minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
-        )
+        val accepted =
+            AvifDecoder.decodeWithLimits(
+                buffer,
+                buffer.capacity(),
+                bitmap,
+                NATIVE_THREADS,
+                pixelLimit,
+                minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
+            )
         currentCoroutineContext().ensureActive()
         if (!accepted) throw AvifDecodeException("CBZ AVIF pixels were rejected by the bounded native decoder.")
         return bitmap

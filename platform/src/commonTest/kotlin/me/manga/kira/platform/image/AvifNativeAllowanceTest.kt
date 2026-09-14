@@ -61,7 +61,8 @@ class AvifNativeAllowanceTest {
             limits.copy(maxOutputBytes = 23).nativePixelLimit(10, output, memory, 1000)
         }
         assertFailsWith<AvifDecodeException> {
-            limits.copy(maxOutputBytes = Long.MAX_VALUE, maxWorkingBytes = Long.MAX_VALUE)
+            limits
+                .copy(maxOutputBytes = Long.MAX_VALUE, maxWorkingBytes = Long.MAX_VALUE)
                 .nativePixelLimit(10, AvifPixelSize(Int.MAX_VALUE, Int.MAX_VALUE), memory, Int.MAX_VALUE)
         }
     }

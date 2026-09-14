@@ -30,7 +30,10 @@ internal class CbzModeledAvifCase(
     private val inspector = CbzModeledAvifInspector(source, height)
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File, maxWorkingBytes: Long): Bitmap {
+            override suspend fun decodeAvif(
+                file: File,
+                maxWorkingBytes: Long,
+            ): Bitmap {
                 assertEquals(MODELED_AVIF_MAX_WORKING_BYTES, maxWorkingBytes, "The manager must retain its injected cap")
                 inspector.assertDecoderSnapshot(file)
                 decodes.incrementAndGet()

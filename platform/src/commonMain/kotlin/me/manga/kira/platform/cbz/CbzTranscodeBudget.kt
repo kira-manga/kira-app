@@ -2,8 +2,12 @@ package me.manga.kira.platform.cbz
 
 /** A codec decision only: the caller must first validate the exact retained encoded snapshot. */
 internal sealed interface CbzTranscodeAdmission {
-    data class Admitted(val plan: CbzTranscodePlan) : CbzTranscodeAdmission
+    data class Admitted(
+        val plan: CbzTranscodePlan,
+    ) : CbzTranscodeAdmission
+
     data object PreserveBudget : CbzTranscodeAdmission
+
     data object PreserveWebpDimensions : CbzTranscodeAdmission
 }
 
@@ -46,7 +50,9 @@ internal object CbzTranscodeBudget {
             !allowance.reserve(pixels, SOURCE_BYTES_PER_PIXEL) ||
             !allowance.reserve(FIXED_BYTES) ||
             !allowance.reserve(OUTPUT_CONTAINER_BYTES, OUTPUT_COPIES)
-        ) return CbzTranscodeAdmission.PreserveBudget
+        ) {
+            return CbzTranscodeAdmission.PreserveBudget
+        }
         val bandRows = allowance.remaining / (width.toLong() * BAND_BYTES_PER_PIXEL)
         val bandHeight = minOf(minOf(height, maxHeight, WEBP_MAX_DIMENSION).toLong(), bandRows).toInt()
         if (bandHeight <= 0) return CbzTranscodeAdmission.PreserveBudget
@@ -55,15 +61,24 @@ internal object CbzTranscodeBudget {
         if (outputBytes > Int.MAX_VALUE) return CbzTranscodeAdmission.PreserveBudget
         return CbzTranscodeAdmission.Admitted(
             CbzTranscodePlan(
-                width, height, bandHeight, width * RGBA_BYTES_PER_PIXEL,
+                width,
+                height,
+                bandHeight,
+                width * RGBA_BYTES_PER_PIXEL,
                 pixels * SOURCE_BYTES_PER_PIXEL + FIXED_BYTES,
-                outputBytes.toInt(), maxMemoryBytes - allowance.remaining + bandPixels * BAND_BYTES_PER_PIXEL,
+                outputBytes.toInt(),
+                maxMemoryBytes - allowance.remaining + bandPixels * BAND_BYTES_PER_PIXEL,
             ),
         )
     }
 
-    private class Allowance(var remaining: Long) {
-        fun reserve(count: Long, copies: Int = 1): Boolean {
+    private class Allowance(
+        var remaining: Long,
+    ) {
+        fun reserve(
+            count: Long,
+            copies: Int = 1,
+        ): Boolean {
             if (count > remaining / copies) return false
             remaining -= count * copies
             return true

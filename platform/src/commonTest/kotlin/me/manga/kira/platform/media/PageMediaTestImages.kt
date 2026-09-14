@@ -7,30 +7,34 @@ import okio.ByteString.Companion.decodeHex
 
 /** Small synthetic fixtures; their real decoder results are asserted in native-target tests. */
 internal object PageMediaTestImages {
-    fun png(): ByteArray = requireNotNull(
-        "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAJAQAAAAAnKFCDAAAAC0lEQVR42mNgQAcAABIAAeRVjecAAAAASUVORK5CYII=".decodeBase64(),
-    ).toByteArray()
+    fun png(): ByteArray =
+        requireNotNull(
+            "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAJAQAAAAAnKFCDAAAAC0lEQVR42mNgQAcAABIAAeRVjecAAAAASUVORK5CYII=".decodeBase64(),
+        ).toByteArray()
 
-    fun gif(): ByteArray = (
-        "47494638396101000100800000000000ffffff" +
-            "21f90401000000002c00000000010001000002024401003b"
-    ).decodeHex().toByteArray()
+    fun gif(): ByteArray =
+        (
+            "47494638396101000100800000000000ffffff" +
+                "21f90401000000002c00000000010001000002024401003b"
+        ).decodeHex().toByteArray()
 
-    fun bmp(): ByteArray = Buffer().apply {
-        writeUtf8("BM")
-        writeIntLe(58)
-        writeIntLe(0)
-        writeIntLe(54)
-        writeIntLe(40)
-        writeIntLe(1)
-        writeIntLe(1)
-        writeShortLe(1)
-        writeShortLe(24)
-        writeIntLe(0)
-        writeIntLe(4)
-        repeat(4) { writeIntLe(0) }
-        writeIntLe(0)
-    }.readByteArray()
+    fun bmp(): ByteArray =
+        Buffer()
+            .apply {
+                writeUtf8("BM")
+                writeIntLe(58)
+                writeIntLe(0)
+                writeIntLe(54)
+                writeIntLe(40)
+                writeIntLe(1)
+                writeIntLe(1)
+                writeShortLe(1)
+                writeShortLe(24)
+                writeIntLe(0)
+                writeIntLe(4)
+                repeat(4) { writeIntLe(0) }
+                writeIntLe(0)
+            }.readByteArray()
 
     fun html(): ByteArray = "<html><title>Just a moment</title>challenge</html>".encodeToByteArray()
 
@@ -39,11 +43,23 @@ internal object PageMediaTestImages {
     /** Structurally complete PNG with valid chunk CRCs but invalid zlib pixels. Native decode must fail. */
     fun corruptPngPixels(): ByteArray = changePngChunk("IDAT", updateCrc = true) { it.fill(0) }
 
-    fun pngDimensions(width: Int, height: Int): ByteArray = changePngChunk("IHDR", updateCrc = true) {
-        Buffer().writeInt(width).writeInt(height).readByteArray().copyInto(it)
-    }
+    fun pngDimensions(
+        width: Int,
+        height: Int,
+    ): ByteArray =
+        changePngChunk("IHDR", updateCrc = true) {
+            Buffer()
+                .writeInt(width)
+                .writeInt(height)
+                .readByteArray()
+                .copyInto(it)
+        }
 
-    private fun changePngChunk(name: String, updateCrc: Boolean, change: (ByteArray) -> Unit): ByteArray {
+    private fun changePngChunk(
+        name: String,
+        updateCrc: Boolean,
+        change: (ByteArray) -> Unit,
+    ): ByteArray {
         val input = Buffer().write(png())
         val output = Buffer().write(input.readByteArray(8))
         while (!input.exhausted()) {
@@ -53,9 +69,20 @@ internal object PageMediaTestImages {
             var crc = input.readInt()
             if (type.decodeToString() == name) {
                 change(payload)
-                if (updateCrc) crc = Crc32().apply { update(type); update(payload) }.value
+                if (updateCrc) {
+                    crc =
+                        Crc32()
+                            .apply {
+                                update(type)
+                                update(payload)
+                            }.value
+                }
             }
-            output.writeInt(count).write(type).write(payload).writeInt(crc)
+            output
+                .writeInt(count)
+                .write(type)
+                .write(payload)
+                .writeInt(crc)
         }
         return output.readByteArray()
     }

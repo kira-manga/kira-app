@@ -20,13 +20,19 @@ internal fun awaitAvifPermitCondition(condition: () -> Boolean) {
 internal class AvifPermitReturnDispatcher : CoroutineDispatcher() {
     private val tasks = LinkedBlockingQueue<Runnable>()
 
-    override fun dispatch(context: CoroutineContext, block: Runnable) {
+    override fun dispatch(
+        context: CoroutineContext,
+        block: Runnable,
+    ) {
         tasks.add(block)
     }
 
     fun takeTask(): Runnable = assertNotNull(tasks.poll(AVIF_PERMIT_WAIT_SECONDS, TimeUnit.SECONDS))
 
-    fun finishCancelled(job: Job, heldTask: Runnable?) {
+    fun finishCancelled(
+        job: Job,
+        heldTask: Runnable?,
+    ) {
         job.cancel()
         heldTask?.run()
         while (!job.isCompleted) takeTask().run()

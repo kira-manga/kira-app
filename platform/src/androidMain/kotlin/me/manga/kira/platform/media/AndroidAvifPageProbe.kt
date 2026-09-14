@@ -1,13 +1,13 @@
 package me.manga.kira.platform.media
 
 import android.graphics.Bitmap
-import java.nio.ByteBuffer
 import me.manga.kira.platform.image.AvifDecodeException
 import me.manga.kira.platform.image.AvifDecodeLimits
 import me.manga.kira.platform.image.AvifPixelSize
 import me.manga.kira.platform.image.androidAvifNativePixelLimit
 import me.manga.kira.platform.image.withAndroidAvifNativePermit
 import org.aomedia.avif.android.AvifDecoder
+import java.nio.ByteBuffer
 
 /**
  * Requires the qualified bounded-API producer, NOT the old Maven AVIF artifact. The small output
@@ -15,7 +15,10 @@ import org.aomedia.avif.android.AvifDecoder
  * The shared allowance is an estimate, not an aggregate native allocator/RSS guarantee; the
  * decoder's per-axis limit covers container dimensions, not a proven actual AV1 per-axis cap.
  */
-internal fun inspectAndroidAvifPage(encoded: ByteBuffer, policy: PageInspectionPolicy): PageInspection =
+internal fun inspectAndroidAvifPage(
+    encoded: ByteBuffer,
+    policy: PageInspectionPolicy,
+): PageInspection =
     withAndroidAvifNativePermit {
         try {
             probeAndroidAvif(encoded, policy)
@@ -24,20 +27,28 @@ internal fun inspectAndroidAvifPage(encoded: ByteBuffer, policy: PageInspectionP
         }
     }
 
-private fun probeAndroidAvif(encoded: ByteBuffer, policy: PageInspectionPolicy): PageInspection {
-    val limits = AvifDecodeLimits(
-        maxEncodedBytes = policy.bytePolicy.maxEncodedBytes.toInt(),
-        maxSourcePixels = policy.maxSourcePixels,
-        maxSourceDimension = policy.maxSourceDimension,
-        maxOutputBytes = 128L * 1024,
-    )
+private fun probeAndroidAvif(
+    encoded: ByteBuffer,
+    policy: PageInspectionPolicy,
+): PageInspection {
+    val limits =
+        AvifDecodeLimits(
+            maxEncodedBytes = policy.bytePolicy.maxEncodedBytes.toInt(),
+            maxSourcePixels = policy.maxSourcePixels,
+            maxSourceDimension = policy.maxSourceDimension,
+            maxOutputBytes = 128L * 1024,
+        )
     val length = encoded.remaining()
     val headerPixelLimit = androidAvifNativePixelLimit(limits, length)
-    val direct = if (encoded.isDirect) {
-        encoded.asReadOnlyBuffer()
-    } else {
-        ByteBuffer.allocateDirect(length).apply { put(encoded.asReadOnlyBuffer()); flip() }
-    }
+    val direct =
+        if (encoded.isDirect) {
+            encoded.asReadOnlyBuffer()
+        } else {
+            ByteBuffer.allocateDirect(length).apply {
+                put(encoded.asReadOnlyBuffer())
+                flip()
+            }
+        }
     require(direct.position() == 0 && length > 0 && length <= direct.remaining())
     val info = AvifDecoder.Info()
     if (!AvifDecoder.getInfoWithLimits(direct, length, info, headerPixelLimit, limits.maxSourceDimension)) {

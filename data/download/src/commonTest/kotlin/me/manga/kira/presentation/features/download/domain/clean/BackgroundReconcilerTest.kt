@@ -128,12 +128,13 @@ class BackgroundReconcilerTest {
     @Test
     fun mixedOnDiskInFlightAndEnqueue() {
         // 0,1 on disk; 2 in-flight; 3,4 still to enqueue.
-        val plan = BackgroundReconciler.plan(
-            manifest(page(0), page(1), page(2), page(3), page(4)),
-            pagesOnDisk = setOf(0, 1),
-            inFlightPages = setOf(2),
-            maxAttempts = 3,
-        )
+        val plan =
+            BackgroundReconciler.plan(
+                manifest(page(0), page(1), page(2), page(3), page(4)),
+                pagesOnDisk = setOf(0, 1),
+                inFlightPages = setOf(2),
+                maxAttempts = 3,
+            )
         assertEquals(listOf(3, 4), plan.toEnqueue)
         assertFalse(plan.isComplete)
         assertNull(plan.failedPageIndex)

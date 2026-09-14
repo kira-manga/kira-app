@@ -18,17 +18,18 @@ data class PageInspectionPolicy(
     }
 
     /** No aspect-ratio restriction: both independent axes and the checked pixel product are bounded. */
-    fun rejectionFor(metadata: PageImageMetadata): PageInspection.Rejected? = when {
-        metadata.width > maxSourceDimension || metadata.height > maxSourceDimension ->
-            PageInspection.Rejected(
-                PageInspectionRejection.SOURCE_AXIS,
-                maxSourceDimension.toLong(),
-                maxOf(metadata.width, metadata.height).toLong(),
-            )
-        metadata.pixelCount > maxSourcePixels ->
-            PageInspection.Rejected(PageInspectionRejection.SOURCE_PIXELS, maxSourcePixels, metadata.pixelCount)
-        else -> null
-    }
+    fun rejectionFor(metadata: PageImageMetadata): PageInspection.Rejected? =
+        when {
+            metadata.width > maxSourceDimension || metadata.height > maxSourceDimension ->
+                PageInspection.Rejected(
+                    PageInspectionRejection.SOURCE_AXIS,
+                    maxSourceDimension.toLong(),
+                    maxOf(metadata.width, metadata.height).toLong(),
+                )
+            metadata.pixelCount > maxSourcePixels ->
+                PageInspection.Rejected(PageInspectionRejection.SOURCE_PIXELS, maxSourcePixels, metadata.pixelCount)
+            else -> null
+        }
 
     companion object {
         const val MAX_SAMPLE_DIMENSION: Int = 64

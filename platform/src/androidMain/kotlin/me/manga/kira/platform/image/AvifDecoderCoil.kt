@@ -29,7 +29,6 @@ internal class AvifDecoderCoil(
     private val options: Options,
     private val limits: AvifDecodeLimits = AvifDecodeLimits(),
 ) : Decoder {
-
     override suspend fun decode(): DecodeResult =
         source.use {
             // Own the source even if cancellation occurs while waiting for the native decoder slot.
@@ -47,8 +46,8 @@ internal class AvifDecoderCoil(
             result: SourceFetchResult,
             options: Options,
             imageLoader: coil3.ImageLoader,
-        ): Decoder? {
-            return try {
+        ): Decoder? =
+            try {
                 if (result.mimeType?.lowercase() == MIME_AVIF || hasAvifHeader(result.source.source())) {
                     AvifDecoderCoil(result.source.source(), options)
                 } else {
@@ -60,7 +59,6 @@ internal class AvifDecoderCoil(
                 log.e(e) { "Error in decoder factory" }
                 null
             }
-        }
     }
 
     private companion object {

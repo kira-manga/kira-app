@@ -46,9 +46,10 @@ object BackgroundReconciler {
         if (exhausted != null) {
             return ReconcilePlan(toEnqueue = emptyList(), isComplete = false, failedPageIndex = exhausted.index)
         }
-        val toEnqueue = missing
-            .filter { it.index !in inFlightPages && it.attempts < maxAttempts }
-            .map { it.index }
+        val toEnqueue =
+            missing
+                .filter { it.index !in inFlightPages && it.attempts < maxAttempts }
+                .map { it.index }
         return ReconcilePlan(toEnqueue = toEnqueue, isComplete = false, failedPageIndex = null)
     }
 }

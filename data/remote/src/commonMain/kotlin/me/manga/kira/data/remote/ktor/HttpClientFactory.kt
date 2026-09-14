@@ -12,11 +12,12 @@ import kotlinx.serialization.json.Json
  * Ktor `OkHttp` engine on Android keeps the same `OkHttpClient`-backed transport that source
  * used. `Darwin` (iOS) and `CIO` (Desktop) are the locked-stack engines for non-Android targets.
  */
-val DefaultJson: Json = Json {
-    ignoreUnknownKeys = true
-    isLenient = true
-    coerceInputValues = true
-}
+val DefaultJson: Json =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
 
 /**
  * Per-platform Ktor client constructor.

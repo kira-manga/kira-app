@@ -62,7 +62,6 @@ class ChapterPagesRepositoryImpl(
     private val sourceRegistry: SourceRegistry,
     private val pageFiles: DownloadedPageFiles,
 ) : ChapterPagesRepository {
-
     // App-lifetime scope for fire-and-forget CBZ-extract cleanup. The repository is a Koin single,
     // so this scope outlives any reader ViewModel — letting cleanup be triggered from `onCleared()`
     // (where viewModelScope is already cancelled) and complete reliably off the main thread.
@@ -77,69 +76,80 @@ class ChapterPagesRepositoryImpl(
     private val cleanupLocks = mutableMapOf<Long, Mutex>()
     private val cleanupLocksGuard = Mutex()
 
-    private suspend fun cleanupLockFor(chapterId: Long): Mutex =
-        cleanupLocksGuard.withLock { cleanupLocks.getOrPut(chapterId) { Mutex() } }
+    private suspend fun cleanupLockFor(chapterId: Long): Mutex = cleanupLocksGuard.withLock { cleanupLocks.getOrPut(chapterId) { Mutex() } }
 
-    override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = flow {
-        // Downloaded-chapter fast path (native parity): serve local files instead of re-fetching
-        // from the source when the chapter has been downloaded for offline reading. Falls through
-        // to the network path when the chapter isn't downloaded or no readable local files exist.
-        val localPages = localPagesOrNull(manga, chapter)
-        if (localPages != null) {
-            FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=downloaded pages=${localPages.size}")
-            emit(AppResult.Success(localPages))
-            return@flow
-        }
+    override fun fetchPages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Flow<AppResult<List<Page>>> =
+        flow {
+            // Downloaded-chapter fast path (native parity): serve local files instead of re-fetching
+            // from the source when the chapter has been downloaded for offline reading. Falls through
+            // to the network path when the chapter isn't downloaded or no readable local files exist.
+            val localPages = localPagesOrNull(manga, chapter)
+            if (localPages != null) {
+                FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=downloaded pages=${localPages.size}")
+                emit(AppResult.Success(localPages))
+                return@flow
+            }
 
-        FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=catalog api=${manga.api}")
-        val client = sourceRegistry.get(manga.api)
-        if (client == null) {
-            emit(
-                AppResult.Failure(
-                    AppError.Validation.SourceUnavailable(api = manga.api),
-                ),
-            )
-            return@flow
-        }
-        emitAll(client.pages(manga, chapter))
-    }
-        .catch { t ->
+            FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=catalog api=${manga.api}")
+            val client = sourceRegistry.get(manga.api)
+            if (client == null) {
+                emit(
+                    AppResult.Failure(
+                        AppError.Validation.SourceUnavailable(api = manga.api),
+                    ),
+                )
+                return@flow
+            }
+            emitAll(client.pages(manga, chapter))
+        }.catch { t ->
             if (t is CancellationException) throw t
             emit(AppResult.Failure(classifyThrowable(t)))
-        }
-        .flowOn(dispatchers.io)
+        }.flowOn(dispatchers.io)
 
     /** Only a complete validated local roster wins over source recovery. */
-    private suspend fun localPagesOrNull(manga: Manga, chapter: Chapter): List<Page>? {
+    private suspend fun localPagesOrNull(
+        manga: Manga,
+        chapter: Chapter,
+    ): List<Page>? {
         val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return null
         val entity = chapterDao.getChapterByIdSuspend(chapterId) ?: return null
         if (!entity.isDownloaded || entity.localImagePaths.isEmpty()) return null
-        val local = cleanupLockFor(entity.id).withLock {
-            val single = entity.localImagePaths.singleOrNull()
-            if (single != null && single.endsWith(".cbz", ignoreCase = true)) {
-                extractLocalArchive(entity.mangaId, entity.id, single)
-            } else {
-                pageFiles.resolve(entity.mangaId, entity.id, entity.localImagePaths)
-                    ?: extractLocalArchive(entity.mangaId, entity.id, stored = null)
+        val local =
+            cleanupLockFor(entity.id).withLock {
+                val single = entity.localImagePaths.singleOrNull()
+                if (single != null && single.endsWith(".cbz", ignoreCase = true)) {
+                    extractLocalArchive(entity.mangaId, entity.id, single)
+                } else {
+                    pageFiles.resolve(entity.mangaId, entity.id, entity.localImagePaths)
+                        ?: extractLocalArchive(entity.mangaId, entity.id, stored = null)
+                }
             }
-        }
         return local.takeIf { it.isNotEmpty() }?.map { Page(url = toFileUrl(it.toString()), headers = emptyMap()) }
     }
 
-    private suspend fun extractLocalArchive(mangaId: Long, chapterId: Long, stored: String?): List<Path> {
+    private suspend fun extractLocalArchive(
+        mangaId: Long,
+        chapterId: Long,
+        stored: String?,
+    ): List<Path> {
         val canonical = cbzReader.cbzPath(mangaId, chapterId)
-        val candidates = buildList {
-            if (runCatchingCancellable { cbzReader.cbzExists(mangaId, chapterId) }.getOrDefault(false)) add(canonical)
-            if (stored != null) add(stored.toPath())
-        }.distinct()
+        val candidates =
+            buildList {
+                if (runCatchingCancellable { cbzReader.cbzExists(mangaId, chapterId) }.getOrDefault(false)) add(canonical)
+                if (stored != null) add(stored.toPath())
+            }.distinct()
         for (candidate in candidates) {
-            val extracted = try {
-                cbzReader.extractImages(candidate, mangaId, chapterId)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                emptyList()
-            }
+            val extracted =
+                try {
+                    cbzReader.extractImages(candidate, mangaId, chapterId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    emptyList()
+                }
             if (extracted.isNotEmpty()) return extracted
         }
         return emptyList()

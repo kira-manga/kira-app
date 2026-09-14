@@ -13,7 +13,9 @@ interface PageMediaInspector {
 }
 
 /** Actual format reported by the native image parser and checked against the encoded framing. */
-enum class PageImageFormat(val extension: String) {
+enum class PageImageFormat(
+    val extension: String,
+) {
     JPEG("jpg"),
     PNG("png"),
     WEBP("webp"),
@@ -23,7 +25,11 @@ enum class PageImageFormat(val extension: String) {
 }
 
 /** Positive native image dimensions, not dimensions guessed from a URL or response header. */
-data class PageImageMetadata(val format: PageImageFormat, val width: Int, val height: Int) {
+data class PageImageMetadata(
+    val format: PageImageFormat,
+    val width: Int,
+    val height: Int,
+) {
     init {
         require(width > 0 && height > 0)
     }
@@ -33,9 +39,18 @@ data class PageImageMetadata(val format: PageImageFormat, val width: Int, val he
 
 /** Validation failures never establish that preserving the original bytes would produce a page. */
 sealed interface PageInspection {
-    data class Valid(val metadata: PageImageMetadata) : PageInspection
-    data class Invalid(val reason: PageInvalidReason) : PageInspection
-    data class ReadFailure(val cause: Throwable) : PageInspection
+    data class Valid(
+        val metadata: PageImageMetadata,
+    ) : PageInspection
+
+    data class Invalid(
+        val reason: PageInvalidReason,
+    ) : PageInspection
+
+    data class ReadFailure(
+        val cause: Throwable,
+    ) : PageInspection
+
     data class Rejected(
         val reason: PageInspectionRejection,
         val maximum: Long? = null,
@@ -52,25 +67,30 @@ enum class PageInspectionRejection {
     SOURCE_PIXELS,
     SOURCE_AXIS,
     DECODER_UNAVAILABLE,
+
     /** The bounded native API cannot distinguish malformed input from its allocation/scale limit. */
     BOUNDED_DECODER_REJECTED,
 }
 
 /** Converts a failed inspection to the download/writer's normal failure path without losing its type. */
-fun PageInspection.requireValid(): PageImageMetadata = when (this) {
-    is PageInspection.Valid -> metadata
-    else -> throw PageMediaException(this)
-}
+fun PageInspection.requireValid(): PageImageMetadata =
+    when (this) {
+        is PageInspection.Valid -> metadata
+        else -> throw PageMediaException(this)
+    }
 
 /** Contains only a stable failure code in its message, never a page URL, request header, or file path. */
-class PageMediaException(val inspection: PageInspection) : IOException(inspection.failureCode())
+class PageMediaException(
+    val inspection: PageInspection,
+) : IOException(inspection.failureCode())
 
-private fun PageInspection.failureCode(): String = when (this) {
-    is PageInspection.Valid -> error("A valid page is not a media failure")
-    is PageInspection.Invalid -> "Invalid downloaded image: $reason"
-    is PageInspection.ReadFailure -> "Downloaded image could not be read"
-    is PageInspection.Rejected -> "$PAGE_POLICY_REJECTED_PREFIX$reason"
-}
+private fun PageInspection.failureCode(): String =
+    when (this) {
+        is PageInspection.Valid -> error("A valid page is not a media failure")
+        is PageInspection.Invalid -> "Invalid downloaded image: $reason"
+        is PageInspection.ReadFailure -> "Downloaded image could not be read"
+        is PageInspection.Rejected -> "$PAGE_POLICY_REJECTED_PREFIX$reason"
+    }
 
 const val PAGE_POLICY_REJECTED_PREFIX: String = "__page_policy_rejected__:"
 

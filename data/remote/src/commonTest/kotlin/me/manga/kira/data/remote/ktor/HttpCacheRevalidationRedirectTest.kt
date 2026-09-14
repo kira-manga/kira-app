@@ -27,37 +27,45 @@ private const val REDIRECT_TARGET_URL = "https://redirected.test/catalog"
 
 class HttpCacheRevalidationRedirectTest {
     @Test
-    fun recoveryUsesTheFailedHopAndDoesNotRestoreRedirectStrippedCredentials() = runTest {
-        val replies = RedirectedRevalidation(this)
-        val cookiePolicy = redirectedCookiePolicy()
-        withHttpCacheClient(replies.cache, replies.handler, configure = { install(cookiePolicy) }) { client ->
-            assertEquals(OLD_METADATA_BODY, client.get(REDIRECT_TARGET_URL) {
-                headers.append("X-Edition", "phone")
-            }.bodyAsText())
-            assertEquals(NEW_METADATA_BODY, client.fetchRevalidationMetadata(REDIRECT_ORIGIN_URL))
-            assertEquals(1, replies.originCalls)
-            assertEquals(3, replies.targetCalls)
-            assertEquals(0, replies.cache.snapshot().entries)
-            replies.cache.assertWithin(smallCachePolicy())
+    fun recoveryUsesTheFailedHopAndDoesNotRestoreRedirectStrippedCredentials() =
+        runTest {
+            val replies = RedirectedRevalidation(this)
+            val cookiePolicy = redirectedCookiePolicy()
+            withHttpCacheClient(replies.cache, replies.handler, configure = { install(cookiePolicy) }) { client ->
+                assertEquals(
+                    OLD_METADATA_BODY,
+                    client
+                        .get(REDIRECT_TARGET_URL) {
+                            headers.append("X-Edition", "phone")
+                        }.bodyAsText(),
+                )
+                assertEquals(NEW_METADATA_BODY, client.fetchRevalidationMetadata(REDIRECT_ORIGIN_URL))
+                assertEquals(1, replies.originCalls)
+                assertEquals(3, replies.targetCalls)
+                assertEquals(0, replies.cache.snapshot().entries)
+                replies.cache.assertWithin(smallCachePolicy())
+            }
         }
-    }
 
     @Test
-    fun redirectCopiesCannotObtainASecondRecoveryBudget() = runTest {
-        val replies = RedirectBudgetReplies(this)
-        withHttpCacheClient(replies.cache, replies.handler) { client ->
-            assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata(REDIRECT_ORIGIN_URL))
-            assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata(REDIRECT_TARGET_URL))
-            assertFailsWith<InvalidCacheStateException> { client.fetchRevalidationMetadata(REDIRECT_ORIGIN_URL) }
-            assertEquals(3, replies.originCalls) // prime, conditional304, sole repair (redirect)
-            assertEquals(2, replies.targetCalls) // prime, redirected conditional304; no second repair
-            assertEquals(0, replies.cache.snapshot().entries)
-            replies.cache.assertWithin(smallCachePolicy())
+    fun redirectCopiesCannotObtainASecondRecoveryBudget() =
+        runTest {
+            val replies = RedirectBudgetReplies(this)
+            withHttpCacheClient(replies.cache, replies.handler) { client ->
+                assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata(REDIRECT_ORIGIN_URL))
+                assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata(REDIRECT_TARGET_URL))
+                assertFailsWith<InvalidCacheStateException> { client.fetchRevalidationMetadata(REDIRECT_ORIGIN_URL) }
+                assertEquals(3, replies.originCalls) // prime, conditional304, sole repair (redirect)
+                assertEquals(2, replies.targetCalls) // prime, redirected conditional304; no second repair
+                assertEquals(0, replies.cache.snapshot().entries)
+                replies.cache.assertWithin(smallCachePolicy())
+            }
         }
-    }
 }
 
-private class RedirectedRevalidation(scope: TestScope) {
+private class RedirectedRevalidation(
+    scope: TestScope,
+) {
     val cache = scope.cacheOwner()
     var originCalls = 0
     var targetCalls = 0
@@ -95,13 +103,16 @@ private fun HttpRequestData.assertRedirectedHeaders() {
     assertEquals("phone", headers["X-Edition"])
 }
 
-private fun redirectedCookiePolicy() = createClientPlugin("RedirectedCookiePolicy") {
-    on(SendingRequest) { request, _ ->
-        if (Url(request.url) == Url(REDIRECT_TARGET_URL)) request.headers.remove(HttpHeaders.Cookie)
+private fun redirectedCookiePolicy() =
+    createClientPlugin("RedirectedCookiePolicy") {
+        on(SendingRequest) { request, _ ->
+            if (Url(request.url) == Url(REDIRECT_TARGET_URL)) request.headers.remove(HttpHeaders.Cookie)
+        }
     }
-}
 
-private class RedirectBudgetReplies(scope: TestScope) {
+private class RedirectBudgetReplies(
+    scope: TestScope,
+) {
     val cache = scope.cacheOwner()
     var originCalls = 0
     var targetCalls = 0

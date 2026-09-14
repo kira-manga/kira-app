@@ -24,12 +24,13 @@ internal suspend fun streamValidatedSkiaPage(
 ): CbzPageEncoding {
     currentCoroutineContext().ensureActive()
     val admission = CbzTranscodeBudget.admit(metadata.width, metadata.height, source.size.toLong(), maxHeight, maxMemoryBytes)
-    val plan = when (admission) {
-        CbzTranscodeAdmission.PreserveBudget -> return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
-        CbzTranscodeAdmission.PreserveWebpDimensions ->
-            return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
-        is CbzTranscodeAdmission.Admitted -> admission.plan
-    }
+    val plan =
+        when (admission) {
+            CbzTranscodeAdmission.PreserveBudget -> return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
+            CbzTranscodeAdmission.PreserveWebpDimensions ->
+                return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
+            is CbzTranscodeAdmission.Admitted -> admission.plan
+        }
     // Skiko's bundled Skia has no AVIF codec. Only the iOS native inspector's prior VALID result
     // permits this known transcode-capability preservation; an arbitrary Skia failure does not.
     if (metadata.format == PageImageFormat.AVIF) {
@@ -71,13 +72,22 @@ private suspend fun emitOneSkiaBand(
 }
 
 /** All per-band native objects close before the caller receives this one bounded encoded array. */
-private fun encodeSkiaBand(source: Image, plan: CbzTranscodePlan, top: Int, height: Int, quality: Int): ByteArray {
+private fun encodeSkiaBand(
+    source: Image,
+    plan: CbzTranscodePlan,
+    top: Int,
+    height: Int,
+    quality: Int,
+): ByteArray {
     val bitmap = Bitmap()
     try {
         if (!bitmap.allocN32Pixels(plan.width, height)) throw IOException("CBZ Skia band allocation failed")
-        if (bitmap.width != plan.width || bitmap.height != height ||
+        if (bitmap.width != plan.width ||
+            bitmap.height != height ||
             bitmap.rowBytes.toLong() > plan.width.toLong() * BAND_BITMAP_BYTES_PER_PIXEL
-        ) throw IOException("CBZ Skia band differs from its admitted dimensions or stride")
+        ) {
+            throw IOException("CBZ Skia band differs from its admitted dimensions or stride")
+        }
         Canvas(bitmap).skiaUse { canvas ->
             canvas.drawImageRect(
                 source,

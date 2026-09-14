@@ -6,8 +6,13 @@ package me.manga.kira.platform.cbz
  * to preserve bytes. The caller may emit the original only for an explicit preservation decision.
  */
 internal sealed interface CbzPageEncoding {
-    data class Encoded(val bandCount: Int) : CbzPageEncoding
-    data class PreserveOriginal(val reason: CbzPreservationReason) : CbzPageEncoding
+    data class Encoded(
+        val bandCount: Int,
+    ) : CbzPageEncoding
+
+    data class PreserveOriginal(
+        val reason: CbzPreservationReason,
+    ) : CbzPageEncoding
 }
 
 internal enum class CbzPreservationReason { MEMORY_BUDGET, WEBP_DIMENSIONS, UNSUPPORTED_TRANSCODE }

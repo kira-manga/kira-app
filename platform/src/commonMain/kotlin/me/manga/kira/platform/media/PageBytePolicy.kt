@@ -16,7 +16,10 @@ data class PageBytePolicy(
     }
 
     /** Checks the next actual chunk before a sink sees it; subtraction avoids counter overflow. */
-    fun checkedTotal(previousBytes: Long, chunkBytes: Int): Long {
+    fun checkedTotal(
+        previousBytes: Long,
+        chunkBytes: Int,
+    ): Long {
         require(previousBytes in 0..maxEncodedBytes && chunkBytes >= 0)
         val total = previousBytes + chunkBytes.toLong()
         if (chunkBytes.toLong() > maxEncodedBytes - previousBytes) {

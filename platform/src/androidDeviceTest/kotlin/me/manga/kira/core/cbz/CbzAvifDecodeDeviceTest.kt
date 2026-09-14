@@ -61,11 +61,12 @@ class CbzAvifDecodeDeviceTest {
                 // Positive control: a malformed-only failure is not evidence for the native cap.
                 assertNativeDecode(decoder, source, edge to edge)
                 assertTrue(cbzAvifOutputAdmitted(edge, edge, bytes.size, SMALL_NATIVE_WORKING_BYTES))
-                val failure = assertFailsWith<AvifDecodeException> {
-                    withTimeout(NATIVE_COMPLETION_TIMEOUT_MILLIS) {
-                        decoder.decodeAvif(source, maxWorkingBytes = SMALL_NATIVE_WORKING_BYTES)
+                val failure =
+                    assertFailsWith<AvifDecodeException> {
+                        withTimeout(NATIVE_COMPLETION_TIMEOUT_MILLIS) {
+                            decoder.decodeAvif(source, maxWorkingBytes = SMALL_NATIVE_WORKING_BYTES)
+                        }
                     }
-                }
                 // Container parsing/output admission fit. The unchanged 320x640 AV1 frame does not.
                 assertEquals("CBZ AVIF pixels were rejected by the bounded native decoder.", failure.message)
                 // The genuine native decode must recover, including the shared permit/destination owner.

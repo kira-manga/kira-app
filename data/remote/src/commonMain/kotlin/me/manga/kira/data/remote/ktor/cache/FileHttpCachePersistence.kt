@@ -46,7 +46,11 @@ internal class FileHttpCachePersistence(
         }
     }
 
-    override fun write(namespace: CacheNamespace, data: CachedResponseData, metadata: ByteArray) {
+    override fun write(
+        namespace: CacheNamespace,
+        data: CachedResponseData,
+        metadata: ByteArray,
+    ) {
         require(metadata.size <= policy.maxMetadataBytes && data.body.size <= policy.maxBodyBytes)
         require(recordBytes(metadata.size, data.body.size) <= policy.maxTotalBytes)
         ensureLayout()
@@ -70,7 +74,11 @@ internal class FileHttpCachePersistence(
         }
     }
 
-    override fun remove(namespace: CacheNamespace, url: Url, varyKeys: Map<String, String>) {
+    override fun remove(
+        namespace: CacheNamespace,
+        url: Url,
+        varyKeys: Map<String, String>,
+    ) {
         ensureLayout()
         fileSystem.delete(entryPath(namespace, url, varyKeys))
     }
@@ -97,7 +105,10 @@ internal class FileHttpCachePersistence(
         }
     }
 
-    private fun readRecord(source: BufferedSource, size: Long): DiskRecord? {
+    private fun readRecord(
+        source: BufferedSource,
+        size: Long,
+    ): DiskRecord? {
         if (source.readInt() != RECORD_MAGIC) return null
         val metadataSize = source.readInt()
         val bodySize = source.readInt()
@@ -133,7 +144,11 @@ internal class FileHttpCachePersistence(
 
     private fun directory(namespace: CacheNamespace): Path = root / namespace.directory
 
-    private fun entryPath(namespace: CacheNamespace, url: Url, varyKeys: Map<String, String>): Path {
+    private fun entryPath(
+        namespace: CacheNamespace,
+        url: Url,
+        varyKeys: Map<String, String>,
+    ): Path {
         val identity = Buffer()
         identity.writeIdentityPart(url.toString())
         varyKeys.entries.sortedBy { it.key }.forEach { (key, value) ->
@@ -144,10 +159,15 @@ internal class FileHttpCachePersistence(
     }
 }
 
-private data class DiskRecord(val data: CachedResponseData, val metadata: ByteArray)
+private data class DiskRecord(
+    val data: CachedResponseData,
+    val metadata: ByteArray,
+)
 
-private fun recordBytes(metadataSize: Int, bodySize: Int): Long =
-    CACHE_RECORD_PREFIX_BYTES + metadataSize + bodySize
+private fun recordBytes(
+    metadataSize: Int,
+    bodySize: Int,
+): Long = CACHE_RECORD_PREFIX_BYTES + metadataSize + bodySize
 
 private fun Buffer.writeIdentityPart(value: String) {
     writeInt(value.utf8Size().toInt())

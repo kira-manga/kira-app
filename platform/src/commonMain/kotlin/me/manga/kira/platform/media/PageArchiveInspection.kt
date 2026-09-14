@@ -26,21 +26,24 @@ internal suspend fun visitValidatedArchivePages(
     inspector: PageMediaInspector,
     policy: PageBytePolicy,
     visit: (Path, ByteArray, PageImageMetadata) -> Unit,
-): Int = system.openZip(archive).use { zip ->
-    val entries = zip.listRecursively(ZIP_ROOT)
-        .filter { zip.metadata(it).isRegularFile && isPageImageName(it.name) }
-        .sortedBy { it.toString() }
-        .toList()
-    if (entries.isEmpty()) throw IOException("Archive contains no readable image pages")
-    for (entry in entries) {
-        currentCoroutineContext().ensureActive()
-        val bytes = readPageSnapshot(zip, entry, policy)
-        val metadata = inspector.inspect(bytes).requireValid()
-        currentCoroutineContext().ensureActive()
-        visit(entry, bytes, metadata)
+): Int =
+    system.openZip(archive).use { zip ->
+        val entries =
+            zip
+                .listRecursively(ZIP_ROOT)
+                .filter { zip.metadata(it).isRegularFile && isPageImageName(it.name) }
+                .sortedBy { it.toString() }
+                .toList()
+        if (entries.isEmpty()) throw IOException("Archive contains no readable image pages")
+        for (entry in entries) {
+            currentCoroutineContext().ensureActive()
+            val bytes = readPageSnapshot(zip, entry, policy)
+            val metadata = inspector.inspect(bytes).requireValid()
+            currentCoroutineContext().ensureActive()
+            visit(entry, bytes, metadata)
+        }
+        entries.size
     }
-    entries.size
-}
 
 /** Candidate selection only. Matching a filename never makes its bytes a validated page. */
 fun isPageImageName(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in PAGE_IMAGE_EXTENSIONS

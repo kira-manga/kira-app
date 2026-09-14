@@ -35,12 +35,13 @@ import kotlin.test.assertNotNull
 internal class IosCbzFinalizationFixture {
     val system: FileSystem = FileSystem.SYSTEM
     private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kira-cbz-finalize-${NSUUID().UUIDString}"
-    val appFileSystem: AppFileSystem = object : AppFileSystem {
-        override val filesDir: Path = root / "files"
-        override val cacheDir: Path = root / "cache"
+    val appFileSystem: AppFileSystem =
+        object : AppFileSystem {
+            override val filesDir: Path = root / "files"
+            override val cacheDir: Path = root / "cache"
 
-        override fun fileSystem(): FileSystem = system
-    }
+            override fun fileSystem(): FileSystem = system
+        }
 
     init {
         system.createDirectories(root / "files")
@@ -51,54 +52,80 @@ internal class IosCbzFinalizationFixture {
     val dao: ChapterDownloadDao get() = db.chapterDownloadingDao()
 
     suspend fun seed(): IosCbzChapter {
-        val mangaId = db.backupDao().insertMangaRow(
-            SavedMangaEntity(
-                api = "test", language = "en", url = "https://example.test/manga/cbz", imageUrl = "",
-                title = "CBZ", description = "", status = "ongoing", rating = null, genres = emptyList(),
-                savedTimestamp = 1L, lastOpenTimestamp = 1L,
-            ),
-        )
-        val chapter = SavedChapterEntity(mangaId = mangaId, name = "Chapter", number = "1", url = "https://example.test/chapter/1", date = null)
+        val mangaId =
+            db.backupDao().insertMangaRow(
+                SavedMangaEntity(
+                    api = "test",
+                    language = "en",
+                    url = "https://example.test/manga/cbz",
+                    imageUrl = "",
+                    title = "CBZ",
+                    description = "",
+                    status = "ongoing",
+                    rating = null,
+                    genres = emptyList(),
+                    savedTimestamp = 1L,
+                    lastOpenTimestamp = 1L,
+                ),
+            )
+        val chapter =
+            SavedChapterEntity(mangaId = mangaId, name = "Chapter", number = "1", url = "https://example.test/chapter/1", date = null)
         val chapterId = db.backupDao().insertChapterRow(chapter)
         val directory = appFileSystem.chapterDir(mangaId, chapterId)
         system.createDirectories(directory)
-        val pages = listOf(IOS_FINALIZE_LARGE_PNG, IOS_FINALIZE_SMALL_PNG).mapIndexed { index, bytes ->
-            val path = directory / "page_$index.png"
-            system.write(path) { write(bytes) }
-            path to bytes
-        }.toMap()
+        val pages =
+            listOf(IOS_FINALIZE_LARGE_PNG, IOS_FINALIZE_SMALL_PNG)
+                .mapIndexed { index, bytes ->
+                    val path = directory / "page_$index.png"
+                    system.write(path) { write(bytes) }
+                    path to bytes
+                }.toMap()
         val saved = chapter.copy(id = chapterId, localImagePaths = pages.keys.map { it.toString() })
         db.backupDao().updateChapterRow(saved)
-        val download = ChapterDownloadEntity(
-            number = "1", chapterId = chapterId, mangaId = mangaId, api = "test", url = chapter.url,
-            state = DownloadingState.DOWNLOADED, progress = 100, sizeBytes = pages.values.sumOf { it.size.toLong() },
-        )
+        val download =
+            ChapterDownloadEntity(
+                number = "1",
+                chapterId = chapterId,
+                mangaId = mangaId,
+                api = "test",
+                url = chapter.url,
+                state = DownloadingState.DOWNLOADED,
+                progress = 100,
+                sizeBytes = pages.values.sumOf { it.size.toLong() },
+            )
         return IosCbzChapter(saved, download.copy(id = dao.insert(download)), pages)
     }
 
-    fun finalizer(writer: CbzWriter): ChapterFinalizer = ChapterFinalizer(
-        dao = dao,
-        libraryRepository = LibraryRepository(
-            mangaDao = db.mangaDao(), chapterDao = db.chapterDao(), libraryDeo = db.libraryDeo(),
-            notificationDao = db.notificationDao(), historyDao = db.historyDao(), fileService = FileService(appFileSystem),
-        ),
-        notificationDao = db.notificationDao(),
-        appFileSystem = appFileSystem,
-        cbzWriter = writer,
-        dataStore = DataStoreHelper(MapSettings()),
-        mediaInspector = IosPageMediaInspector(system = system),
-    )
+    fun finalizer(writer: CbzWriter): ChapterFinalizer =
+        ChapterFinalizer(
+            dao = dao,
+            libraryRepository =
+                LibraryRepository(
+                    mangaDao = db.mangaDao(),
+                    chapterDao = db.chapterDao(),
+                    libraryDeo = db.libraryDeo(),
+                    notificationDao = db.notificationDao(),
+                    historyDao = db.historyDao(),
+                    fileService = FileService(appFileSystem),
+                ),
+            notificationDao = db.notificationDao(),
+            appFileSystem = appFileSystem,
+            cbzWriter = writer,
+            dataStore = DataStoreHelper(MapSettings()),
+            mediaInspector = IosPageMediaInspector(system = system),
+        )
 
-    suspend fun saved(original: IosCbzChapter): SavedChapterEntity =
-        assertNotNull(db.chapterDao().getChapterByIdSuspend(original.saved.id))
+    suspend fun saved(original: IosCbzChapter): SavedChapterEntity = assertNotNull(db.chapterDao().getChapterByIdSuspend(original.saved.id))
 
-    suspend fun download(original: IosCbzChapter): ChapterDownloadEntity =
-        assertNotNull(dao.getDownloadByChapter(original.saved.id))
+    suspend fun download(original: IosCbzChapter): ChapterDownloadEntity = assertNotNull(dao.getDownloadByChapter(original.saved.id))
 
     fun archive(original: IosCbzChapter): Path =
         appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"
 
-    fun assertArchive(original: IosCbzChapter, expected: List<PageImageMetadata>) {
+    fun assertArchive(
+        original: IosCbzChapter,
+        expected: List<PageImageMetadata>,
+    ) {
         system.openZip(archive(original)).use { zip ->
             val entries = zip.list("/".toPath()).sortedBy { it.name }
             assertEquals(original.pages.size, entries.size)
@@ -122,7 +149,8 @@ internal class IosCbzFinalizationFixture {
     }
 
     private fun openDatabase(): MangaDatabase =
-        Room.databaseBuilder<MangaDatabase>(name = (root / "cbz.db").toString())
+        Room
+            .databaseBuilder<MangaDatabase>(name = (root / "cbz.db").toString())
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.Default)
             .build()
@@ -138,8 +166,9 @@ private fun decodeFinalizationPng(encoded: String): ByteArray =
     checkNotNull(encoded.trimIndent().replace("\n", "").decodeBase64()).toByteArray()
 
 /** Authored 512x16384 solid 1-bit PNG; 1112 encoded bytes, no user/provider data. */
-private val IOS_FINALIZE_LARGE_PNG: ByteArray = decodeFinalizationPng(
-    """
+private val IOS_FINALIZE_LARGE_PNG: ByteArray =
+    decodeFinalizationPng(
+        """
     iVBORw0KGgoAAAANSUhEUgAAAgAAAEAAAQAAAAAPl40HAAAEH0lEQVR42u3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAAAAAAAAAAAA
     AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -156,11 +185,12 @@ private val IOS_FINALIZE_LARGE_PNG: ByteArray = decodeFinalizationPng(
     AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgHcDQPAAAdSTSPsAAAAASUVORK5CYII=
     """,
-)
+    )
 
 /** Authored 8x8 solid 1-bit PNG; 68 encoded bytes, no user/provider data. */
-private val IOS_FINALIZE_SMALL_PNG: ByteArray = decodeFinalizationPng(
-    """
+private val IOS_FINALIZE_SMALL_PNG: ByteArray =
+    decodeFinalizationPng(
+        """
     iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAADsdIMmAAAAC0lEQVR42mNgQAUAABAAAaoZ+IIAAAAASUVORK5CYII=
     """,
-)
+    )

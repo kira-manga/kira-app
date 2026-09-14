@@ -31,24 +31,30 @@ internal const val OLD_METADATA_BODY = "{\"version\":1}"
 internal const val NEW_METADATA_BODY = "{\"version\":2}"
 internal const val METADATA_ETAG = "\"version-one\""
 internal const val METADATA_MODIFIED = "Mon, 14 Sep 2026 00:00:00 GMT"
-internal val revalidationRequestHeaders = mapOf(
-    HttpHeaders.UserAgent to "revalidation-test",
-    HttpHeaders.Referrer to "https://reader.test/",
-    HttpHeaders.Cookie to "session=test-only",
-    HttpHeaders.Authorization to "Bearer test-only",
-    "X-Edition" to "phone",
-)
+internal val revalidationRequestHeaders =
+    mapOf(
+        HttpHeaders.UserAgent to "revalidation-test",
+        HttpHeaders.Referrer to "https://reader.test/",
+        HttpHeaders.Cookie to "session=test-only",
+        HttpHeaders.Authorization to "Bearer test-only",
+        "X-Edition" to "phone",
+    )
 
-internal fun revalidationHeaders(visibility: String = "public", etag: String = METADATA_ETAG): Headers = Headers.build {
-    appendAll(cacheHeaders(cacheControl = "$visibility, max-age=60, no-cache"))
-    append(HttpHeaders.ETag, etag)
-    append(HttpHeaders.LastModified, METADATA_MODIFIED)
-    append(HttpHeaders.Vary, "X-Edition")
-}
+internal fun revalidationHeaders(
+    visibility: String = "public",
+    etag: String = METADATA_ETAG,
+): Headers =
+    Headers.build {
+        appendAll(cacheHeaders(cacheControl = "$visibility, max-age=60, no-cache"))
+        append(HttpHeaders.ETag, etag)
+        append(HttpHeaders.LastModified, METADATA_MODIFIED)
+        append(HttpHeaders.Vary, "X-Edition")
+    }
 
-internal suspend fun HttpClient.fetchRevalidationMetadata(url: String = REVALIDATION_URL): String = get(url) {
-    revalidationRequestHeaders.forEach { (name, value) -> headers.append(name, value) }
-}.bodyAsText()
+internal suspend fun HttpClient.fetchRevalidationMetadata(url: String = REVALIDATION_URL): String =
+    get(url) {
+        revalidationRequestHeaders.forEach { (name, value) -> headers.append(name, value) }
+    }.bodyAsText()
 
 internal fun HttpRequestData.assertOriginalMetadataHeaders() {
     revalidationRequestHeaders.forEach { (name, value) -> assertEquals(listOf(value), headers.getAll(name)) }
@@ -67,7 +73,10 @@ internal fun HttpRequestData.assertUnconditional() {
 internal enum class LostCacheCause { CLEAR, EXPIRY, EVICTION }
 
 /** Real HttpCache sends a conditional request, then the test mutates the owner before releasing its304. */
-internal class DeferredRevalidation(scope: TestScope, private val visibility: String = "public") {
+internal class DeferredRevalidation(
+    scope: TestScope,
+    private val visibility: String = "public",
+) {
     val policy = smallCachePolicy().copy(maxEntries = 1, maxVariantsPerUrl = 1)
     val disk = RecordingCachePersistence()
     var nowMillis = CACHE_TEST_NOW
@@ -102,7 +111,10 @@ internal class DeferredRevalidation(scope: TestScope, private val visibility: St
         }
     }
 
-    suspend fun loseEntry(cause: LostCacheCause, client: HttpClient) {
+    suspend fun loseEntry(
+        cause: LostCacheCause,
+        client: HttpClient,
+    ) {
         when (cause) {
             LostCacheCause.CLEAR -> client.responseCacheClearer().clear()
             LostCacheCause.EXPIRY -> nowMillis = Long.MAX_VALUE
@@ -119,7 +131,10 @@ internal class DeferredRevalidation(scope: TestScope, private val visibility: St
     }
 }
 
-internal suspend fun TestScope.assertLost304Recovers(cause: LostCacheCause, visibility: String = "public") {
+internal suspend fun TestScope.assertLost304Recovers(
+    cause: LostCacheCause,
+    visibility: String = "public",
+) {
     val fixture = DeferredRevalidation(this, visibility)
     try {
         withHttpCacheClient(fixture.cache, fixture.handler) { client ->

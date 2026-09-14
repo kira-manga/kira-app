@@ -90,7 +90,11 @@ class OptimizedCbzSnapshotPolicyTest {
         cbzHostTest { fixture ->
             val paths = fixture.pages(count = 1)
             val case = CbzPolicyCase(fixture, paths)
-            val limit = case.originals.single().size.toLong() - 1
+            val limit =
+                case.originals
+                    .single()
+                    .size
+                    .toLong() - 1
             val inspector = CbzSnapshotObserver()
             val policy = CbzPagePolicy(inspector = inspector, bytePolicy = PageBytePolicy(limit))
 

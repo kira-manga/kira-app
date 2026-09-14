@@ -83,7 +83,11 @@ class IosAvifDecoderFailureTest {
     private class RecordingFallback : Decoder.Factory {
         var calls = 0
 
-        override fun create(result: SourceFetchResult, options: Options, imageLoader: ImageLoader): Decoder? {
+        override fun create(
+            result: SourceFetchResult,
+            options: Options,
+            imageLoader: ImageLoader,
+        ): Decoder? {
             calls++
             return null
         }

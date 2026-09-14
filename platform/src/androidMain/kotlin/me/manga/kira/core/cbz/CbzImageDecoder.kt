@@ -55,7 +55,10 @@ open class CbzImageDecoder {
     ): Bitmap = Bitmap.createBitmap(parent, region.left, region.top, region.width(), region.height())
 
     /** Keep the caller's allowance at both native boundaries under the shared reader/inspector permit. */
-    open suspend fun decodeAvif(file: File, maxWorkingBytes: Long = CbzWriter.DEFAULT_MAX_MEMORY_BYTES): Bitmap =
+    open suspend fun decodeAvif(
+        file: File,
+        maxWorkingBytes: Long = CbzWriter.DEFAULT_MAX_MEMORY_BYTES,
+    ): Bitmap =
         withAndroidAvifPermit {
             decodeCbzAvif(file, maxWorkingBytes)
         }

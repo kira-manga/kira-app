@@ -35,45 +35,48 @@ private const val CLIENT_CLEANUP_TIMEOUT_MILLIS = 5_000L
 /** Actual factory/DI ownership on the JVM; not a native-network or physical-device claim. */
 class RemoteHttpClientOwnershipTest {
     @Test
-    fun uncachedActualFactoryHasNeitherPluginOwnerNorCacheDirectory() = runTest {
-        withIsolatedHome { home ->
-            val client = createHttpClient(cacheResponses = false)
-            try {
-                assertNull(client.pluginOrNull(HttpCache))
-                assertFailsWith<IllegalStateException> { client.responseCacheClearer() }
-                assertFalse(File(home, ".kira-manga/cache/ktor_http_cache").exists())
-            } finally {
-                closeAndJoin(client)
+    fun uncachedActualFactoryHasNeitherPluginOwnerNorCacheDirectory() =
+        runTest {
+            withIsolatedHome { home ->
+                val client = createHttpClient(cacheResponses = false)
+                try {
+                    assertNull(client.pluginOrNull(HttpCache))
+                    assertFailsWith<IllegalStateException> { client.responseCacheClearer() }
+                    assertFalse(File(home, ".kira-manga/cache/ktor_http_cache").exists())
+                } finally {
+                    closeAndJoin(client)
+                }
             }
         }
-    }
 
     @Test
-    fun cachedActualFactoryAttachesTheLiveAndDiskOwnerUsedByTheClearPort() = runTest {
-        withIsolatedHome { home ->
-            val client = createHttpClient()
-            try {
-                val directory = File(home, ".kira-manga/cache/ktor_http_cache")
-                assertNotNull(client.pluginOrNull(HttpCache))
-                assertTrue(directory.isDirectory)
-                val cache = assertIs<ManagedHttpCache>(client.responseCacheClearer())
-                val data = cachedResponse(expires = GMTDate().timestamp + 60_000)
-                cache.publicStorage.store(data.url, data)
-                assertNotNull(cache.publicStorage.find(data.url, emptyMap()))
-                assertEquals(1, directory.walkTopDown().count { it.isFile })
-                client.responseCacheClearer().clear()
-                assertNull(cache.publicStorage.find(data.url, emptyMap()))
-                assertEquals(0, directory.walkTopDown().count { it.isFile })
-            } finally {
-                closeAndJoin(client)
+    fun cachedActualFactoryAttachesTheLiveAndDiskOwnerUsedByTheClearPort() =
+        runTest {
+            withIsolatedHome { home ->
+                val client = createHttpClient()
+                try {
+                    val directory = File(home, ".kira-manga/cache/ktor_http_cache")
+                    assertNotNull(client.pluginOrNull(HttpCache))
+                    assertTrue(directory.isDirectory)
+                    val cache = assertIs<ManagedHttpCache>(client.responseCacheClearer())
+                    val data = cachedResponse(expires = GMTDate().timestamp + 60_000)
+                    cache.publicStorage.store(data.url, data)
+                    assertNotNull(cache.publicStorage.find(data.url, emptyMap()))
+                    assertEquals(1, directory.walkTopDown().count { it.isFile })
+                    client.responseCacheClearer().clear()
+                    assertNull(cache.publicStorage.find(data.url, emptyMap()))
+                    assertEquals(0, directory.walkTopDown().count { it.isFile })
+                } finally {
+                    closeAndJoin(client)
+                }
             }
         }
-    }
 
     @Test
-    fun productionDownloadClientIsDistinctUncachedSingletonAndClosedByItsKoinOwner() = runTest {
-        withIsolatedHome { verifyRemoteOwnership() }
-    }
+    fun productionDownloadClientIsDistinctUncachedSingletonAndClosedByItsKoinOwner() =
+        runTest {
+            withIsolatedHome { verifyRemoteOwnership() }
+        }
 
     private suspend fun verifyRemoteOwnership() {
         val clients = mutableListOf<HttpClient>()
@@ -101,7 +104,8 @@ class RemoteHttpClientOwnershipTest {
         withContext(NonCancellable + Dispatchers.Default) {
             withTimeout(CLIENT_CLEANUP_TIMEOUT_MILLIS) {
                 client.coroutineContext.job.cancelAndJoin()
-                client.engine.coroutineContext.job.cancelAndJoin()
+                client.engine.coroutineContext.job
+                    .cancelAndJoin()
             }
         }
     }

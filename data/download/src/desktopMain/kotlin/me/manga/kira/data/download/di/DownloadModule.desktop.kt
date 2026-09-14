@@ -11,30 +11,31 @@ import org.koin.dsl.module
 // Desktop download engine: the shared non-Android coroutine queue (CoroutineDownloadRepositoryImpl),
 // reusing the M1 ChapterPageResolver + ChapterFinalizer collaborators. Downloads pages with the
 // Koin-injected Ktor HttpClient (CIO engine) into AppFileSystem.chapterDir.
-actual fun downloadModule(): Module = module {
-    single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
-    single {
-        ChapterFinalizer(
-            dao = get(),
-            libraryRepository = get(),
-            notificationDao = get(),
-            appFileSystem = get(),
-            cbzWriter = get(),
-            dataStore = get(),
-            mediaInspector = get(),
-        )
+actual fun downloadModule(): Module =
+    module {
+        single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
+        single {
+            ChapterFinalizer(
+                dao = get(),
+                libraryRepository = get(),
+                notificationDao = get(),
+                appFileSystem = get(),
+                cbzWriter = get(),
+                dataStore = get(),
+                mediaInspector = get(),
+            )
+        }
+        single<DownloadRepository> {
+            CoroutineDownloadRepositoryImpl(
+                dao = get(),
+                httpClient = get(named("chapter-download-http")),
+                applicationScope = get(),
+                appFileSystem = get(),
+                downloadNotifier = get(),
+                backgroundGuard = get(),
+                chapterPageResolver = get(),
+                chapterFinalizer = get(),
+                mediaInspector = get(),
+            )
+        }
     }
-    single<DownloadRepository> {
-        CoroutineDownloadRepositoryImpl(
-            dao = get(),
-            httpClient = get(named("chapter-download-http")),
-            applicationScope = get(),
-            appFileSystem = get(),
-            downloadNotifier = get(),
-            backgroundGuard = get(),
-            chapterPageResolver = get(),
-            chapterFinalizer = get(),
-            mediaInspector = get(),
-        )
-    }
-}

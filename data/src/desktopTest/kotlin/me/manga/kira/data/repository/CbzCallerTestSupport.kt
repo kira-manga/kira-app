@@ -37,22 +37,24 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
 internal fun DownloadRecoveryFixture.finalizer(
     writer: CbzWriter,
     dataStore: DataStoreHelper = DataStoreHelper(MapSettings()),
-): ChapterFinalizer = ChapterFinalizer(
-    dao = dao,
-    libraryRepository = LibraryRepository(
-        mangaDao = db.mangaDao(),
-        chapterDao = db.chapterDao(),
-        libraryDeo = db.libraryDeo(),
+): ChapterFinalizer =
+    ChapterFinalizer(
+        dao = dao,
+        libraryRepository =
+            LibraryRepository(
+                mangaDao = db.mangaDao(),
+                chapterDao = db.chapterDao(),
+                libraryDeo = db.libraryDeo(),
+                notificationDao = db.notificationDao(),
+                historyDao = db.historyDao(),
+                fileService = FileService(appFileSystem),
+            ),
         notificationDao = db.notificationDao(),
-        historyDao = db.historyDao(),
-        fileService = FileService(appFileSystem),
-    ),
-    notificationDao = db.notificationDao(),
-    appFileSystem = appFileSystem,
-    cbzWriter = writer,
-    dataStore = dataStore,
-    mediaInspector = DesktopPageMediaInspector(system = fs),
-)
+        appFileSystem = appFileSystem,
+        cbzWriter = writer,
+        dataStore = dataStore,
+        mediaInspector = DesktopPageMediaInspector(system = fs),
+    )
 
 internal fun DownloadRecoveryFixture.installValidPages(original: RetainedDownload): Map<Path, ByteArray> =
     original.saved.localImagePaths.associate { stored ->
@@ -66,25 +68,33 @@ internal fun DownloadRecoveryFixture.installPreviousArchive(
     pages: List<ByteArray> = listOf(CBZ_CALLER_PNG),
 ): Pair<Path, ByteArray> {
     val path = appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"
-    val bytes = ByteArrayOutputStream().use { buffer ->
-        ZipOutputStream(buffer).use { zip ->
-            pages.forEachIndexed { index, page ->
-                zip.putNextEntry(ZipEntry("page_${index.toString().padStart(4, '0')}.png"))
-                zip.write(page)
-                zip.closeEntry()
+    val bytes =
+        ByteArrayOutputStream().use { buffer ->
+            ZipOutputStream(buffer).use { zip ->
+                pages.forEachIndexed { index, page ->
+                    zip.putNextEntry(ZipEntry("page_${index.toString().padStart(4, '0')}.png"))
+                    zip.write(page)
+                    zip.closeEntry()
+                }
             }
+            buffer.toByteArray()
         }
-        buffer.toByteArray()
-    }
     fs.write(path) { write(bytes) }
     return path to bytes
 }
 
 /** Failure injection only at the writer boundary; the native writer has separate platform tests. */
-internal class CbzCallerWriter(private val convert: suspend (List<Path>, Long) -> Path) : CbzWriter {
+internal class CbzCallerWriter(
+    private val convert: suspend (List<Path>, Long) -> Path,
+) : CbzWriter {
     val requests = mutableListOf<Pair<Long, List<Path>>>()
 
-    override suspend fun createCbz(imagePaths: List<Path>, mangaId: Long, chapterId: Long, quality: Int): Path = error("unused")
+    override suspend fun createCbz(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        quality: Int,
+    ): Path = error("unused")
 
     override suspend fun createCbzWithSplitting(
         imagePaths: List<Path>,
@@ -107,7 +117,8 @@ private object CbzCallerDispatchers : DispatcherProvider {
     override val unconfined get() = Dispatchers.Unconfined
 }
 
-private val CBZ_CALLER_PNG: ByteArray = checkNotNull(
-    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAADsdIMmAAAAC0lEQVR42mNgQAUAABAAAaoZ+IIAAAAASUVORK5CYII="
-        .decodeBase64(),
-).toByteArray()
+private val CBZ_CALLER_PNG: ByteArray =
+    checkNotNull(
+        "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAADsdIMmAAAAC0lEQVR42mNgQAUAABAAAaoZ+IIAAAAASUVORK5CYII="
+            .decodeBase64(),
+    ).toByteArray()

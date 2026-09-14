@@ -38,7 +38,10 @@ internal open class IosCbzRecordingCodec : IosCbzNativeCodec() {
         return super.decode(source)?.also { liveImages++ }
     }
 
-    override fun createContext(plan: CbzTranscodePlan, colorSpace: CGColorSpaceRef): CGContextRef? {
+    override fun createContext(
+        plan: CbzTranscodePlan,
+        colorSpace: CGColorSpaceRef,
+    ): CGContextRef? {
         contexts++
         return super.createContext(plan, colorSpace)?.also { liveContexts++ }
     }
@@ -58,7 +61,10 @@ internal open class IosCbzRecordingCodec : IosCbzNativeCodec() {
         }
     }
 
-    override fun copyEncoded(pointer: CPointer<UByteVar>, size: Int): ByteArray {
+    override fun copyEncoded(
+        pointer: CPointer<UByteVar>,
+        size: Int,
+    ): ByteArray {
         copies++
         return super.copyEncoded(pointer, size)
     }

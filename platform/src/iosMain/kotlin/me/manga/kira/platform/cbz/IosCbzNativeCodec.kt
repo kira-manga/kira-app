@@ -26,7 +26,10 @@ import platform.ImageIO.CGImageSourceRef
 internal open class IosCbzNativeCodec {
     open fun decode(source: CGImageSourceRef): CGImageRef? = CGImageSourceCreateImageAtIndex(source, 0uL, null)
 
-    open fun createContext(plan: CbzTranscodePlan, colorSpace: CGColorSpaceRef): CGContextRef? =
+    open fun createContext(
+        plan: CbzTranscodePlan,
+        colorSpace: CGColorSpaceRef,
+    ): CGContextRef? =
         CGBitmapContextCreate(
             data = null,
             width = plan.width.toULong(),
@@ -46,7 +49,10 @@ internal open class IosCbzNativeCodec {
         output: CPointer<CPointerVar<UByteVar>>,
     ): ULong = WebPEncodeRGBA(rgba, width, height, stride, quality.toFloat(), output)
 
-    open fun copyEncoded(pointer: CPointer<UByteVar>, size: Int): ByteArray = pointer.readBytes(size)
+    open fun copyEncoded(
+        pointer: CPointer<UByteVar>,
+        size: Int,
+    ): ByteArray = pointer.readBytes(size)
 
     open fun freeEncoded(pointer: CPointer<UByteVar>) = WebPFree(pointer)
 

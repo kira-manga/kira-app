@@ -164,10 +164,13 @@ class IosBackgroundTransportTest {
     fun htmlTruncationBadCrcAndCrcCorrectCorruptPixelsCannotReplaceAGoodPage() {
         withHarness { h ->
             val png = PageMediaTestImages.png()
-            val invalid = listOf(
-                PageMediaTestImages.html(), png.copyOf(png.size - 1),
-                PageMediaTestImages.badPngCrc(), PageMediaTestImages.corruptPngPixels(),
-            )
+            val invalid =
+                listOf(
+                    PageMediaTestImages.html(),
+                    png.copyOf(png.size - 1),
+                    PageMediaTestImages.badPngCrc(),
+                    PageMediaTestImages.corruptPngPixels(),
+                )
             invalid.forEachIndexed { index, bytes ->
                 val prior = h.seedPage(index, "png", png)
                 val alternate = h.seedPage(index, "jpg", PageMediaTestImages.gif())
@@ -207,12 +210,16 @@ class IosBackgroundTransportTest {
     @Test
     fun failedPublicationRetainsBothThePriorTargetAndAlternateAndDiscardsOnlyItsOwnedFile() {
         var renameAttempts = 0
-        val failing = object : ForwardingFileSystem(FileSystem.SYSTEM) {
-            override fun atomicMove(source: Path, target: Path) {
-                renameAttempts++
-                throw IOException("synthetic publication failure")
+        val failing =
+            object : ForwardingFileSystem(FileSystem.SYSTEM) {
+                override fun atomicMove(
+                    source: Path,
+                    target: Path,
+                ) {
+                    renameAttempts++
+                    throw IOException("synthetic publication failure")
+                }
             }
-        }
         withHarness(fileSystem = failing) { h ->
             val previous = PageMediaTestImages.gif()
             val target = h.seedPage(0, "png", previous)
@@ -237,16 +244,20 @@ class IosBackgroundTransportTest {
     fun retainedFileSizeIsRecheckedBeforeNativeInspection() {
         val png = PageMediaTestImages.png()
         var changed = false
-        val changing = object : ForwardingFileSystem(FileSystem.SYSTEM) {
-            override fun metadataOrNull(path: Path): FileMetadata? {
-                if (!changed && path.name.endsWith(".partial")) {
-                    changed = true
-                    // Deliberate filesystem fault: mutate only the newly adopted owned snapshot.
-                    FileSystem.SYSTEM.appendingSink(path).buffer().use { it.writeByte(0) }
+        val changing =
+            object : ForwardingFileSystem(FileSystem.SYSTEM) {
+                override fun metadataOrNull(path: Path): FileMetadata? {
+                    if (!changed && path.name.endsWith(".partial")) {
+                        changed = true
+                        // Deliberate filesystem fault: mutate only the newly adopted owned snapshot.
+                        FileSystem.SYSTEM
+                            .appendingSink(path)
+                            .buffer()
+                            .use { it.writeByte(0) }
+                    }
+                    return super.metadataOrNull(path)
                 }
-                return super.metadataOrNull(path)
             }
-        }
         withHarness(PageBytePolicy(png.size.toLong()), fileSystem = changing) { h ->
             val prior = h.seedPage(0, "png", PageMediaTestImages.gif())
             val source = h.sourceFile(png)

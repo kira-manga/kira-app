@@ -46,10 +46,11 @@ class AndroidAvifPermitFailureDeviceTest {
         val permit = AndroidAvifPermit(semaphore)
         val outcome = WorkerOutcome()
         val returned = AtomicBoolean(false)
-        val worker = outcome.start {
-            permit.withNativePermit { Thread.currentThread().interrupt() }
-            returned.set(true)
-        }
+        val worker =
+            outcome.start {
+                permit.withNativePermit { Thread.currentThread().interrupt() }
+                returned.set(true)
+            }
         try {
             outcome.await()
             assertFalse(returned.get())

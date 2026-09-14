@@ -23,18 +23,23 @@ class DownloadedPageFiles(
     private val bytePolicy: PageBytePolicy = PageBytePolicy(),
 ) {
     /** Performs no deletion or Room mutation; originals remain available for explicit recovery. */
-    suspend fun resolve(mangaId: Long, chapterId: Long, storedPaths: List<String>): List<Path>? {
+    suspend fun resolve(
+        mangaId: Long,
+        chapterId: Long,
+        storedPaths: List<String>,
+    ): List<Path>? {
         if (storedPaths.isEmpty()) return null
         val directory = appFileSystem.chapterDir(mangaId, chapterId)
         val resolved = mutableListOf<Path>()
         for (stored in storedPaths) {
             currentCoroutineContext().ensureActive()
             if (stored.isBlank()) return null
-            val path = try {
-                stored.toPath()
-            } catch (_: IllegalArgumentException) {
-                return null
-            }
+            val path =
+                try {
+                    stored.toPath()
+                } catch (_: IllegalArgumentException) {
+                    return null
+                }
             val current = directory / path.name
             val readable = listOf(current, path).distinct().firstOrNull(::readable) ?: return null
             if (readable in resolved) return null
@@ -43,18 +48,19 @@ class DownloadedPageFiles(
         return resolved
     }
 
-    private fun readable(path: Path): Boolean = try {
-        val metadata = appFileSystem.fileSystem().metadataOrNull(path)
-        if (metadata?.isRegularFile == true) {
-            bytePolicy.checkFileSize(metadata.size)
-            mediaInspector.inspect(path) is PageInspection.Valid
-        } else {
+    private fun readable(path: Path): Boolean =
+        try {
+            val metadata = appFileSystem.fileSystem().metadataOrNull(path)
+            if (metadata?.isRegularFile == true) {
+                bytePolicy.checkFileSize(metadata.size)
+                mediaInspector.inspect(path) is PageInspection.Valid
+            } else {
+                false
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // An unreadable local page is not a reason to hide the network/recovery path.
             false
         }
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        // An unreadable local page is not a reason to hide the network/recovery path.
-        false
-    }
 }

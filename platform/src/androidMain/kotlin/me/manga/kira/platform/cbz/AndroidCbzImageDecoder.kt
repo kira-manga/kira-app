@@ -17,6 +17,8 @@ open class AndroidCbzImageDecoder {
             BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 },
         )
 
-    open fun crop(parent: Bitmap, region: Rect): Bitmap =
-        Bitmap.createBitmap(parent, region.left, region.top, region.width(), region.height())
+    open fun crop(
+        parent: Bitmap,
+        region: Rect,
+    ): Bitmap = Bitmap.createBitmap(parent, region.left, region.top, region.width(), region.height())
 }

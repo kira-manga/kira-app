@@ -49,7 +49,6 @@ class ChapterFinalizer(
     private val dataStore: DataStoreHelper,
     private val mediaInspector: PageMediaInspector,
 ) {
-
     private val log = Logger.withTag(TAG)
 
     /**
@@ -70,21 +69,27 @@ class ChapterFinalizer(
      * [finalize] when a CPU window arrives); `false` when CBZ is off (loose pages ARE the final artifact,
      * so the caller can go straight to the terminal `SUCCESS` write).
      */
-    suspend fun markReadable(entity: ChapterDownloadEntity, loosePaths: List<String>): Boolean {
+    suspend fun markReadable(
+        entity: ChapterDownloadEntity,
+        loosePaths: List<String>,
+    ): Boolean {
         // A cancel/delete owns the row; validation adds an off-mutex window, so re-check ownership
         // afterward as well as before it. Never resurrect readable bookkeeping over a user cancel.
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable")) return false
         requireReadablePages(loosePaths)
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable.postValidation")) return false
-        val sizeBytes = runCatching {
-            appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-        }.getOrDefault(0L)
+        val sizeBytes =
+            runCatching {
+                appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
+            }.getOrDefault(0L)
         dao.updateSize(entity.chapterId, sizeBytes)
         libraryRepository.updateChapterLocalPaths(entity.chapterId, loosePaths)
         libraryRepository.markChapterAsDownloaded(entity.chapterId)
         notificationDao.addLocalImagePathByChapterId(entity.chapterId, loosePaths)
         val compressionPending = dataStore.useCbzFormatFlow.first()
-        log.i { "Chapter ${entity.chapterId} readable from ${loosePaths.size} loose page(s) ($sizeBytes bytes); cbzPending=$compressionPending" }
+        log.i {
+            "Chapter ${entity.chapterId} readable from ${loosePaths.size} loose page(s) ($sizeBytes bytes); cbzPending=$compressionPending"
+        }
         return compressionPending
     }
 
@@ -104,7 +109,10 @@ class ChapterFinalizer(
         log.i { "Chapter $chapterId readable bookkeeping reverted (cancel during finalize window)" }
     }
 
-    suspend fun finalize(entity: ChapterDownloadEntity, downloadedPaths: List<String>) {
+    suspend fun finalize(
+        entity: ChapterDownloadEntity,
+        downloadedPaths: List<String>,
+    ) {
         currentCoroutineContext().ensureActive()
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "finalize.entry")) return
         require(downloadedPaths.isNotEmpty()) { "Cannot finalize an empty chapter" }
@@ -113,29 +121,31 @@ class ChapterFinalizer(
         // returns the archive path; we then point localImagePaths at that single .cbz instead of
         // the loose page list. Copy the nullable preference into a local before branching.
         val useCbz: Boolean = dataStore.useCbzFormatFlow.first()
-        val finalPaths: List<String> = if (useCbz) {
-            dao.updateStateChId(entity.chapterId, DownloadingState.COMPRESSING)
-            // DLPERF (default-off, gated by BgDownloadLog.DLPERF): measure main-thread scheduling stalls
-            // WHILE the CBZ encode runs, to quantify COMPRESSING-stage scroll jank and distinguish CPU
-            // starvation from GC. Off by default → no Main heartbeat coroutine; flip DLPERF to profile.
-            val watchdog = if (BgDownloadLog.DLPERF) startMainThreadStallWatchdog(entity.chapterId) else null
-            val archived = try {
-                // A returned path guarantees all requested inputs were represented. Validated
-                // resource-policy preservation belongs inside the writer; arbitrary read/decode/
-                // encode/IO failures must reach the caller, never become loose-page SUCCESS here.
-                cbzWriter.createCbzWithSplitting(
-                    imagePaths = downloadedPaths.map { it.toPath() },
-                    mangaId = entity.mangaId,
-                    chapterId = entity.chapterId,
-                )
-            } finally {
-                watchdog?.cancel()
+        val finalPaths: List<String> =
+            if (useCbz) {
+                dao.updateStateChId(entity.chapterId, DownloadingState.COMPRESSING)
+                // DLPERF (default-off, gated by BgDownloadLog.DLPERF): measure main-thread scheduling stalls
+                // WHILE the CBZ encode runs, to quantify COMPRESSING-stage scroll jank and distinguish CPU
+                // starvation from GC. Off by default → no Main heartbeat coroutine; flip DLPERF to profile.
+                val watchdog = if (BgDownloadLog.DLPERF) startMainThreadStallWatchdog(entity.chapterId) else null
+                val archived =
+                    try {
+                        // A returned path guarantees all requested inputs were represented. Validated
+                        // resource-policy preservation belongs inside the writer; arbitrary read/decode/
+                        // encode/IO failures must reach the caller, never become loose-page SUCCESS here.
+                        cbzWriter.createCbzWithSplitting(
+                            imagePaths = downloadedPaths.map { it.toPath() },
+                            mangaId = entity.mangaId,
+                            chapterId = entity.chapterId,
+                        )
+                    } finally {
+                        watchdog?.cancel()
+                    }
+                listOf(archived.toString())
+            } else {
+                requireReadablePages(downloadedPaths)
+                downloadedPaths
             }
-            listOf(archived.toString())
-        } else {
-            requireReadablePages(downloadedPaths)
-            downloadedPaths
-        }
 
         // Re-check AFTER the encode — the long window where a user cancel can land (2026-07
         // audit): on the iOS background engine `cancelARunningChapter` writes FAILED + deletes the
@@ -150,9 +160,10 @@ class ChapterFinalizer(
         // the row to SUCCESS already carries sizeBytes — the Details/Library size shows the instant
         // the row completes (native size-display parity). Best-effort: a size-walk failure must not
         // fail the download.
-        val sizeBytes = runCatching {
-            appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-        }.getOrDefault(0L)
+        val sizeBytes =
+            runCatching {
+                appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
+            }.getOrDefault(0L)
         dao.updateSize(entity.chapterId, sizeBytes)
 
         libraryRepository.updateChapterLocalPaths(entity.chapterId, finalPaths)
@@ -198,16 +209,20 @@ class ChapterFinalizer(
      * pages and wrongly fail. Repoints `localImagePaths` + the notification row at the archive and writes
      * the terminal SUCCESS, exactly like [finalize]'s tail. Idempotent (re-writes the same rows).
      */
-    suspend fun adoptExistingArchive(entity: ChapterDownloadEntity, cbzPath: String) {
+    suspend fun adoptExistingArchive(
+        entity: ChapterDownloadEntity,
+        cbzPath: String,
+    ) {
         currentCoroutineContext().ensureActive()
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "adopt.entry")) return
         inspectPageArchive(appFileSystem.fileSystem(), cbzPath.toPath(), mediaInspector)
         currentCoroutineContext().ensureActive()
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "adopt.postValidation")) return
         val finalPaths = listOf(cbzPath)
-        val sizeBytes = runCatching {
-            appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-        }.getOrDefault(0L)
+        val sizeBytes =
+            runCatching {
+                appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
+            }.getOrDefault(0L)
         dao.updateSize(entity.chapterId, sizeBytes)
         libraryRepository.updateChapterLocalPaths(entity.chapterId, finalPaths)
         libraryRepository.markChapterAsDownloaded(entity.chapterId)

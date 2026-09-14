@@ -24,22 +24,23 @@ import okio.Path
  * under a throwaway temp root, mirroring the `:data` `TempDirAppFileSystem` pattern.
  */
 class DownloadManifestStoreTest {
-
     private val appFs = TempDirAppFileSystem()
     private val store = DownloadManifestStore(appFs)
 
     @AfterTest
     fun tearDown() = appFs.cleanUp()
 
-    private fun manifest() = DownloadManifest(
-        mangaId = 7L,
-        chapterId = 42L,
-        api = "azora",
-        pages = listOf(
-            ManifestPage(index = 0, url = "https://cdn.example/p0.webp", headers = mapOf("Referer" to "https://example")),
-            ManifestPage(index = 1, url = "https://cdn.example/p1.webp", headers = emptyMap(), attempts = 2),
-        ),
-    )
+    private fun manifest() =
+        DownloadManifest(
+            mangaId = 7L,
+            chapterId = 42L,
+            api = "azora",
+            pages =
+                listOf(
+                    ManifestPage(index = 0, url = "https://cdn.example/p0.webp", headers = mapOf("Referer" to "https://example")),
+                    ManifestPage(index = 1, url = "https://cdn.example/p1.webp", headers = emptyMap(), attempts = 2),
+                ),
+        )
 
     @Test
     fun policyRejectionPersistsForRelaunchAndDoesNotMarkOtherPages() {
@@ -54,11 +55,16 @@ class DownloadManifestStoreTest {
     @Test
     fun failedRefusalWriteIsReportedAndPreservesThePreviousAtomicManifest() {
         store.write(manifest())
-        val failingFiles = object : AppFileSystem by appFs {
-            override fun fileSystem(): FileSystem = object : ForwardingFileSystem(appFs.fileSystem()) {
-                override fun atomicMove(source: Path, target: Path) = throw IOException("synthetic manifest rename failure")
+        val failingFiles =
+            object : AppFileSystem by appFs {
+                override fun fileSystem(): FileSystem =
+                    object : ForwardingFileSystem(appFs.fileSystem()) {
+                        override fun atomicMove(
+                            source: Path,
+                            target: Path,
+                        ) = throw IOException("synthetic manifest rename failure")
+                    }
             }
-        }
         val failingStore = DownloadManifestStore(failingFiles)
         assertFailsWith<IOException> { failingStore.incrementAttempt(7, 42, 0, policyRejected = true) }
         assertEquals(manifest(), store.read(7, 42))
@@ -123,7 +129,14 @@ class DownloadManifestStoreTest {
         store.incrementAttempt(7L, 42L, pageIndex = 0)
         store.incrementAttempt(7L, 42L, pageIndex = 0)
         assertEquals(3, store.incrementAttempt(7L, 42L, pageIndex = 0))
-        assertEquals(3, store.read(7L, 42L)!!.pages.first { it.index == 0 }.attempts)
+        assertEquals(
+            3,
+            store
+                .read(7L, 42L)!!
+                .pages
+                .first { it.index == 0 }
+                .attempts,
+        )
     }
 
     @Test
@@ -170,7 +183,9 @@ class DownloadManifestStoreTest {
                 "yami-manifest-test-${Random.nextLong().toString().trimStart('-')}"
         override val filesDir: Path = root
         override val cacheDir: Path = root / "cache"
+
         override fun fileSystem(): FileSystem = fs
+
         fun cleanUp() = fs.deleteRecursively(root, mustExist = false)
     }
 }

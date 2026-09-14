@@ -106,13 +106,19 @@ class AvifDecoderCoilFailureDeviceTest {
     private class RecordingFallback : Decoder.Factory {
         var calls = 0
 
-        override fun create(result: SourceFetchResult, options: Options, imageLoader: ImageLoader): Decoder? {
+        override fun create(
+            result: SourceFetchResult,
+            options: Options,
+            imageLoader: ImageLoader,
+        ): Decoder? {
             calls++
             return null
         }
     }
 
-    private class TrackingSource(private val delegate: BufferedSource) : BufferedSource by delegate {
+    private class TrackingSource(
+        private val delegate: BufferedSource,
+    ) : BufferedSource by delegate {
         var closed = false
 
         override fun close() {

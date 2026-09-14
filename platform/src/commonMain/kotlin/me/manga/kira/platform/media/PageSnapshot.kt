@@ -20,18 +20,22 @@ fun readPageSnapshot(
 }
 
 /** Owns/closes [source]. Reads no more than limit+1 bytes and checks before making the final array. */
-fun readPageSnapshot(source: Source, policy: PageBytePolicy = PageBytePolicy()): ByteArray = source.use {
-    val buffer = Buffer()
-    var count = 0L
-    while (true) {
-        val requested = minOf(SNAPSHOT_CHUNK_BYTES, policy.maxEncodedBytes - count + 1)
-        val read = it.read(buffer, requested)
-        if (read == -1L) break
-        if (read == 0L) throw IOException("Page source made no read progress")
-        count = policy.checkedTotal(count, read.toInt())
+fun readPageSnapshot(
+    source: Source,
+    policy: PageBytePolicy = PageBytePolicy(),
+): ByteArray =
+    source.use {
+        val buffer = Buffer()
+        var count = 0L
+        while (true) {
+            val requested = minOf(SNAPSHOT_CHUNK_BYTES, policy.maxEncodedBytes - count + 1)
+            val read = it.read(buffer, requested)
+            if (read == -1L) break
+            if (read == 0L) throw IOException("Page source made no read progress")
+            count = policy.checkedTotal(count, read.toInt())
+        }
+        policy.checkFileSize(count)
+        buffer.readByteArray()
     }
-    policy.checkFileSize(count)
-    buffer.readByteArray()
-}
 
 private const val SNAPSHOT_CHUNK_BYTES: Long = 8192

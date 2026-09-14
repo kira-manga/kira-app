@@ -60,7 +60,10 @@ class ChapterFinalizerCompletenessTest {
             listOf(false, true).forEach { corrupt ->
                 val original = seed(state = DownloadingState.DOWNLOADED, sizeBytes = 456L)
                 installValidPages(original)
-                val bad = original.saved.localImagePaths.last().toPath()
+                val bad =
+                    original.saved.localImagePaths
+                        .last()
+                        .toPath()
                 if (corrupt) fs.write(bad) { writeUtf8("not an image") } else fs.delete(bad)
                 val dataStore = DataStoreHelper(MapSettings()).apply { setUseCbzFormat(false) }
                 val writer = CbzCallerWriter { _, _ -> error("loose completion must not encode") }
@@ -81,10 +84,11 @@ class ChapterFinalizerCompletenessTest {
             val original = seed(state = DownloadingState.DOWNLOADED, sizeBytes = 456L)
             val pages = installValidPages(original)
             val entered = CompletableDeferred<Unit>()
-            val writer = CbzCallerWriter { _, _ ->
-                entered.complete(Unit)
-                awaitCancellation()
-            }
+            val writer =
+                CbzCallerWriter { _, _ ->
+                    entered.complete(Unit)
+                    awaitCancellation()
+                }
             coroutineScope {
                 val conversion = async { finalizer(writer).finalize(original.download, original.saved.localImagePaths) }
                 try {

@@ -2,11 +2,11 @@ package me.manga.kira.platform.media
 
 import android.graphics.Bitmap
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.ByteArrayOutputStream
 import me.manga.kira.platform.image.AvifTestFixtures
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,14 +18,15 @@ class AndroidPageMediaInspectorDeviceTest {
 
     @Test
     fun nativeCodecsValidateAllSixFormatsWithActualMetadata() {
-        val images = mapOf(
-            PageImageFormat.PNG to PageMediaTestImages.png(),
-            PageImageFormat.JPEG to encoded(Bitmap.CompressFormat.JPEG),
-            PageImageFormat.WEBP to encoded(Bitmap.CompressFormat.WEBP),
-            PageImageFormat.GIF to PageMediaTestImages.gif(),
-            PageImageFormat.BMP to PageMediaTestImages.bmp(),
-            PageImageFormat.AVIF to AvifTestFixtures.regular(),
-        )
+        val images =
+            mapOf(
+                PageImageFormat.PNG to PageMediaTestImages.png(),
+                PageImageFormat.JPEG to encoded(Bitmap.CompressFormat.JPEG),
+                PageImageFormat.WEBP to encoded(Bitmap.CompressFormat.WEBP),
+                PageImageFormat.GIF to PageMediaTestImages.gif(),
+                PageImageFormat.BMP to PageMediaTestImages.bmp(),
+                PageImageFormat.AVIF to AvifTestFixtures.regular(),
+            )
         for ((format, bytes) in images) {
             assertEquals(format, assertIs<PageInspection.Valid>(inspector.inspect(bytes), "$format must decode").metadata.format)
         }
@@ -36,21 +37,31 @@ class AndroidPageMediaInspectorDeviceTest {
 
     @Test
     fun htmlTruncationPngCrcAndCrcCorrectBrokenPixelsNeverValidate() {
-        val invalid = listOf(
-            PageMediaTestImages.html(), byteArrayOf(), PageMediaTestImages.png().dropLast(1).toByteArray(),
-            PageMediaTestImages.badPngCrc(), PageMediaTestImages.corruptPngPixels(),
-            encoded(Bitmap.CompressFormat.JPEG).dropLast(8).toByteArray(),
-            AvifTestFixtures.regular().dropLast(32).toByteArray(),
-        )
+        val invalid =
+            listOf(
+                PageMediaTestImages.html(),
+                byteArrayOf(),
+                PageMediaTestImages.png().dropLast(1).toByteArray(),
+                PageMediaTestImages.badPngCrc(),
+                PageMediaTestImages.corruptPngPixels(),
+                encoded(Bitmap.CompressFormat.JPEG).dropLast(8).toByteArray(),
+                AvifTestFixtures.regular().dropLast(32).toByteArray(),
+            )
         invalid.forEach { assertFalse(inspector.inspect(it) is PageInspection.Valid) }
     }
 
     @Test
     fun injectedBytePixelAndAxisLimitsRefuseBeforeLargeSamples() {
         val bytes = AndroidPageMediaInspector(PageInspectionPolicy(bytePolicy = PageBytePolicy(1)))
-        assertEquals(PageInspectionRejection.ENCODED_BYTES, assertIs<PageInspection.Rejected>(bytes.inspect(PageMediaTestImages.png())).reason)
+        assertEquals(
+            PageInspectionRejection.ENCODED_BYTES,
+            assertIs<PageInspection.Rejected>(bytes.inspect(PageMediaTestImages.png())).reason,
+        )
         val pixels = AndroidPageMediaInspector(PageInspectionPolicy(maxSourcePixels = 71))
-        assertEquals(PageInspectionRejection.SOURCE_PIXELS, assertIs<PageInspection.Rejected>(pixels.inspect(PageMediaTestImages.png())).reason)
+        assertEquals(
+            PageInspectionRejection.SOURCE_PIXELS,
+            assertIs<PageInspection.Rejected>(pixels.inspect(PageMediaTestImages.png())).reason,
+        )
         val axes = AndroidPageMediaInspector(PageInspectionPolicy(maxSourceDimension = 8))
         assertEquals(PageInspectionRejection.SOURCE_AXIS, assertIs<PageInspection.Rejected>(axes.inspect(PageMediaTestImages.png())).reason)
     }

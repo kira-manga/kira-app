@@ -59,14 +59,15 @@ class AndroidCbzCompletenessTest {
                 val previous = fixture.priorArchive(chapter)
                 val fileSystem = unreadableFileSystem(fixture, bad, fault == SourceFault.UNREADABLE)
                 var encoded = 0
-                val writer = AndroidCbzWriter(
-                    fileSystem,
-                    output = CbzHostArchiveOutput(),
-                    encode = { bitmap, format, quality, output ->
-                        encoded++
-                        bitmap.compress(format, quality, output)
-                    },
-                )
+                val writer =
+                    AndroidCbzWriter(
+                        fileSystem,
+                        output = CbzHostArchiveOutput(),
+                        encode = { bitmap, format, quality, output ->
+                            encoded++
+                            bitmap.compress(format, quality, output)
+                        },
+                    )
 
                 assertFailsWith<IOException> {
                     if (fault == SourceFault.UNREADABLE) {
@@ -92,16 +93,17 @@ class AndroidCbzCompletenessTest {
                 val bitmaps = mutableListOf<Bitmap>()
                 val decoder = cropFailureDecoder(failCrop, bitmaps)
                 var encoded = 0
-                val writer = AndroidCbzWriter(
-                    AndroidAppFileSystem(fixture.context),
-                    decoder = decoder,
-                    output = CbzHostArchiveOutput(),
-                    encode = { bitmap, format, quality, output ->
-                        encoded++
-                        val written = bitmap.compress(format, quality, output)
-                        written && (failCrop || encoded != 2)
-                    },
-                )
+                val writer =
+                    AndroidCbzWriter(
+                        AndroidAppFileSystem(fixture.context),
+                        decoder = decoder,
+                        output = CbzHostArchiveOutput(),
+                        encode = { bitmap, format, quality, output ->
+                            encoded++
+                            val written = bitmap.compress(format, quality, output)
+                            written && (failCrop || encoded != 2)
+                        },
+                    )
 
                 assertFailsWith<IOException> {
                     writer.createCbzWithSplitting(paths.map { it.toPath() }, fixture.mangaId, chapter, maxHeight = 32)
@@ -118,13 +120,17 @@ class AndroidCbzCompletenessTest {
         cbzHostTest { fixture ->
             val paths = fixture.pages(count = 1, width = 23, height = 65)
             var published = false
-            val output = object : CbzHostArchiveOutput() {
-                override fun publish(temporary: File, destination: File) {
-                    assertTrue(paths.all { File(it).isFile })
-                    published = true
-                    super.publish(temporary, destination)
+            val output =
+                object : CbzHostArchiveOutput() {
+                    override fun publish(
+                        temporary: File,
+                        destination: File,
+                    ) {
+                        assertTrue(paths.all { File(it).isFile })
+                        published = true
+                        super.publish(temporary, destination)
+                    }
                 }
-            }
             val writer = AndroidCbzWriter(AndroidAppFileSystem(fixture.context), output = output)
 
             val archive = writer.createCbzWithSplitting(paths.map { it.toPath() }, fixture.mangaId, 1L, maxHeight = 24)
@@ -143,20 +149,25 @@ class AndroidCbzCompletenessTest {
             var inspected: ByteArray? = null
             var decoded = false
             val nativeInspector = AndroidPageMediaInspector()
-            val inspector = object : PageMediaInspector by nativeInspector {
-                override fun inspect(encoded: ByteArray): PageInspection =
-                    nativeInspector.inspect(encoded).also { inspected = encoded }
-            }
-            val decoder = object : AndroidCbzImageDecoder() {
-                override fun decode(source: ByteArray): Bitmap? {
-                    assertSame(assertNotNull(inspected), source)
-                    decoded = true
-                    return super.decode(source)
+            val inspector =
+                object : PageMediaInspector by nativeInspector {
+                    override fun inspect(encoded: ByteArray): PageInspection = nativeInspector.inspect(encoded).also { inspected = encoded }
                 }
-            }
-            val writer = AndroidCbzWriter(
-                AndroidAppFileSystem(fixture.context), decoder, CbzHostArchiveOutput(), inspector = inspector,
-            )
+            val decoder =
+                object : AndroidCbzImageDecoder() {
+                    override fun decode(source: ByteArray): Bitmap? {
+                        assertSame(assertNotNull(inspected), source)
+                        decoded = true
+                        return super.decode(source)
+                    }
+                }
+            val writer =
+                AndroidCbzWriter(
+                    AndroidAppFileSystem(fixture.context),
+                    decoder,
+                    CbzHostArchiveOutput(),
+                    inspector = inspector,
+                )
 
             writer.createCbz(paths.map { it.toPath() }, fixture.mangaId, 1L)
 
@@ -171,11 +182,15 @@ class AndroidCbzCompletenessTest {
             val originals = captureSources(paths)
             val previous = fixture.priorArchive()
             val bitmaps = mutableListOf<Bitmap>()
-            val decoder = object : AndroidCbzImageDecoder() {
-                override fun decode(source: ByteArray): Bitmap? = super.decode(source)?.also { bitmaps += it }
+            val decoder =
+                object : AndroidCbzImageDecoder() {
+                    override fun decode(source: ByteArray): Bitmap? = super.decode(source)?.also { bitmaps += it }
 
-                override fun crop(parent: Bitmap, region: Rect): Bitmap = parent
-            }
+                    override fun crop(
+                        parent: Bitmap,
+                        region: Rect,
+                    ): Bitmap = parent
+                }
             val writer = AndroidCbzWriter(AndroidAppFileSystem(fixture.context), decoder, CbzHostArchiveOutput())
 
             assertFailsWith<IOException> {
@@ -192,9 +207,13 @@ class AndroidCbzCompletenessTest {
             val paths = fixture.pages()
             val originals = captureSources(paths)
             val previous = fixture.priorArchive()
-            val output = object : CbzHostArchiveOutput() {
-                override fun publish(temporary: File, destination: File): Unit = throw IOException("rename denied")
-            }
+            val output =
+                object : CbzHostArchiveOutput() {
+                    override fun publish(
+                        temporary: File,
+                        destination: File,
+                    ): Unit = throw IOException("rename denied")
+                }
             val writer = AndroidCbzWriter(AndroidAppFileSystem(fixture.context), output = output)
 
             assertFailsWith<IOException> { writer.createCbz(paths.map { it.toPath() }, fixture.mangaId, 1L) }
@@ -210,16 +229,17 @@ class AndroidCbzCompletenessTest {
             val previous = fixture.priorArchive()
             CbzEncodeGate().use { gate ->
                 var bitmap: Bitmap? = null
-                val writer = AndroidCbzWriter(
-                    AndroidAppFileSystem(fixture.context),
-                    output = CbzHostArchiveOutput(),
-                    encode = { page, format, quality, output ->
-                        bitmap = page
-                        val written = page.compress(format, quality, output)
-                        gate.hold()
-                        written
-                    },
-                )
+                val writer =
+                    AndroidCbzWriter(
+                        AndroidAppFileSystem(fixture.context),
+                        output = CbzHostArchiveOutput(),
+                        encode = { page, format, quality, output ->
+                            bitmap = page
+                            val written = page.compress(format, quality, output)
+                            gate.hold()
+                            written
+                        },
+                    )
                 val conversion = async { writer.createCbz(paths.map { it.toPath() }, fixture.mangaId, 1L) }
                 try {
                     gate.awaitEntry()
@@ -240,9 +260,10 @@ class AndroidCbzCompletenessTest {
         cbzHostTest { fixture ->
             val paths = fixture.pages(count = 1)
             val original = File(paths.single()).readBytes()
-            val decoder = object : AndroidCbzImageDecoder() {
-                override fun decode(source: ByteArray): Bitmap? = error("budget denial must precede full decode")
-            }
+            val decoder =
+                object : AndroidCbzImageDecoder() {
+                    override fun decode(source: ByteArray): Bitmap? = error("budget denial must precede full decode")
+                }
             val writer = AndroidCbzWriter(AndroidAppFileSystem(fixture.context), decoder, CbzHostArchiveOutput())
 
             writer.createCbzWithSplitting(paths.map { it.toPath() }, fixture.mangaId, 1L, maxMemoryBytes = 1)
@@ -276,26 +297,37 @@ class AndroidCbzCompletenessTest {
 
 private enum class SourceFault { MISSING, UNREADABLE, CORRUPT }
 
-private fun unreadableFileSystem(fixture: CbzHostFixture, bad: File, failRead: Boolean): AppFileSystem {
+private fun unreadableFileSystem(
+    fixture: CbzHostFixture,
+    bad: File,
+    failRead: Boolean,
+): AppFileSystem {
     val base = AndroidAppFileSystem(fixture.context)
-    val system = object : ForwardingFileSystem(base.fileSystem()) {
-        override fun source(file: Path): Source {
-            if (failRead && file.toString() == bad.absolutePath) throw IOException("source read denied")
-            return super.source(file)
+    val system =
+        object : ForwardingFileSystem(base.fileSystem()) {
+            override fun source(file: Path): Source {
+                if (failRead && file.toString() == bad.absolutePath) throw IOException("source read denied")
+                return super.source(file)
+            }
         }
-    }
     return object : AppFileSystem by base {
         override fun fileSystem(): FileSystem = system
     }
 }
 
-private fun cropFailureDecoder(failCrop: Boolean, bitmaps: MutableList<Bitmap>): AndroidCbzImageDecoder =
+private fun cropFailureDecoder(
+    failCrop: Boolean,
+    bitmaps: MutableList<Bitmap>,
+): AndroidCbzImageDecoder =
     object : AndroidCbzImageDecoder() {
         private var crops = 0
 
         override fun decode(source: ByteArray): Bitmap? = super.decode(source)?.also { bitmaps += it }
 
-        override fun crop(parent: Bitmap, region: Rect): Bitmap {
+        override fun crop(
+            parent: Bitmap,
+            region: Rect,
+        ): Bitmap {
             crops++
             if (failCrop && crops == 2) throw IOException("second band failed")
             return super.crop(parent, region).also { bitmaps += it }

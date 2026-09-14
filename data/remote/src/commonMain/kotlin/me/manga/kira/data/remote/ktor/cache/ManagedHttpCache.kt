@@ -35,26 +35,36 @@ internal class ManagedHttpCache(
     val publicStorage: CacheStorage = Storage(CacheNamespace.PUBLIC)
     val privateStorage: CacheStorage = Storage(CacheNamespace.PRIVATE)
 
-    override suspend fun clear() = withContext(dispatcher) {
-        mutex.withLock {
-            // A failed disk clear must not leave live hits or allow repeated failing writes to grow disk.
-            discardLiveEntries()
-            disabled = true
-            persistence?.clear()
-            loaded = true
-            disabled = false
+    override suspend fun clear() =
+        withContext(dispatcher) {
+            mutex.withLock {
+                // A failed disk clear must not leave live hits or allow repeated failing writes to grow disk.
+                discardLiveEntries()
+                disabled = true
+                persistence?.clear()
+                loaded = true
+                disabled = false
+            }
         }
-    }
 
-    internal suspend fun snapshot(): HttpCacheSnapshot = operation(HttpCacheSnapshot(0, 0, 0)) {
-        HttpCacheSnapshot(
-            entries.size,
-            totalBytes,
-            entries.keys.groupingBy { it.url }.eachCount().values.maxOrNull() ?: 0,
-        )
-    }
+    internal suspend fun snapshot(): HttpCacheSnapshot =
+        operation(HttpCacheSnapshot(0, 0, 0)) {
+            HttpCacheSnapshot(
+                entries.size,
+                totalBytes,
+                entries.keys
+                    .groupingBy { it.url }
+                    .eachCount()
+                    .values
+                    .maxOrNull() ?: 0,
+            )
+        }
 
-    private suspend fun store(namespace: CacheNamespace, url: Url, data: CachedResponseData) = operation(Unit) {
+    private suspend fun store(
+        namespace: CacheNamespace,
+        url: Url,
+        data: CachedResponseData,
+    ) = operation(Unit) {
         if (url != data.url) return@operation
         val metadata = codec.encode(data) ?: return@operation
         if (!policy.accepts(data, nowMillis())) return@operation
@@ -68,7 +78,11 @@ internal class ManagedHttpCache(
         retain(key, owned, charge)
     }
 
-    private fun restore(namespace: CacheNamespace, data: CachedResponseData, metadata: ByteArray) {
+    private fun restore(
+        namespace: CacheNamespace,
+        data: CachedResponseData,
+        metadata: ByteArray,
+    ) {
         val key = CacheKey(namespace, data.url, data.varyKeys.toMap())
         val charge = recordBytes(data, metadata)
         if (!policy.accepts(data, nowMillis()) || metadata.size > policy.maxMetadataBytes) {
@@ -80,7 +94,10 @@ internal class ManagedHttpCache(
         }
     }
 
-    private fun makeRoom(key: CacheKey, charge: Long): Boolean {
+    private fun makeRoom(
+        key: CacheKey,
+        charge: Long,
+    ): Boolean {
         if (charge > policy.maxTotalBytes) return false
         removeEntry(key)
         while (entries.keys.count { it.url == key.url } >= policy.maxVariantsPerUrl) {
@@ -92,7 +109,11 @@ internal class ManagedHttpCache(
         return true
     }
 
-    private fun retain(key: CacheKey, data: CachedResponseData, charge: Long) {
+    private fun retain(
+        key: CacheKey,
+        data: CachedResponseData,
+        charge: Long,
+    ) {
         entries[key] = CacheEntry(data, charge)
         totalBytes += charge
     }
@@ -126,29 +147,41 @@ internal class ManagedHttpCache(
         totalBytes = 0
     }
 
-    private suspend fun <T> operation(miss: T, block: () -> T): T = withContext(dispatcher) {
-        mutex.withLock {
-            if (disabled) return@withLock miss
-            try {
-                loadIfNeeded()
-                sweepExpired()
-                block()
-            } catch (_: IOException) {
-                // The cache is optional. Stop all further I/O/growth until an explicit successful clear.
-                // Do not catch cancellation, programming errors, or return success from clear().
-                discardLiveEntries()
-                disabled = true
-                miss
+    private suspend fun <T> operation(
+        miss: T,
+        block: () -> T,
+    ): T =
+        withContext(dispatcher) {
+            mutex.withLock {
+                if (disabled) return@withLock miss
+                try {
+                    loadIfNeeded()
+                    sweepExpired()
+                    block()
+                } catch (_: IOException) {
+                    // The cache is optional. Stop all further I/O/growth until an explicit successful clear.
+                    // Do not catch cancellation, programming errors, or return success from clear().
+                    discardLiveEntries()
+                    disabled = true
+                    miss
+                }
             }
         }
-    }
 
-    private inner class Storage(private val namespace: CacheNamespace) : CacheStorage {
-        override suspend fun store(url: Url, data: CachedResponseData) {
+    private inner class Storage(
+        private val namespace: CacheNamespace,
+    ) : CacheStorage {
+        override suspend fun store(
+            url: Url,
+            data: CachedResponseData,
+        ) {
             if (attempt()?.bypassStorage != true) this@ManagedHttpCache.store(namespace, url, data)
         }
 
-        override suspend fun find(url: Url, varyKeys: Map<String, String>): CachedResponseData? {
+        override suspend fun find(
+            url: Url,
+            varyKeys: Map<String, String>,
+        ): CachedResponseData? {
             if (attempt()?.bypassStorage == true) return null
             return operation(null) { touch(CacheKey(namespace, url, varyKeys)) }
         }
@@ -156,17 +189,21 @@ internal class ManagedHttpCache(
         override suspend fun findAll(url: Url): Set<CachedResponseData> {
             val attempt = attempt()
             if (attempt?.bypassStorage == true) return emptySet()
-            val found = operation(emptySet()) {
-                val keys = entries.keys.filter { it.namespace == namespace && it.url == url }
-                keys.mapNotNull(::touch).toSet()
-            }
+            val found =
+                operation(emptySet()) {
+                    val keys = entries.keys.filter { it.namespace == namespace && it.url == url }
+                    keys.mapNotNull(::touch).toSet()
+                }
             found.forEach { data ->
                 attempt?.observeValidators(url, data.headers[HttpHeaders.ETag], data.headers[HttpHeaders.LastModified])
             }
             return found
         }
 
-        override suspend fun remove(url: Url, varyKeys: Map<String, String>) {
+        override suspend fun remove(
+            url: Url,
+            varyKeys: Map<String, String>,
+        ) {
             if (attempt()?.bypassStorage == true) return
             operation(Unit) { removeEntry(CacheKey(namespace, url, varyKeys)) }
         }
@@ -181,9 +218,24 @@ internal class ManagedHttpCache(
         currentCoroutineContext()[CacheRevalidationAttempt]?.takeIf { it.owner === this }
 }
 
-private data class CacheKey(val namespace: CacheNamespace, val url: Url, val varyKeys: Map<String, String>)
-private data class CacheEntry(val data: CachedResponseData, val bytes: Long)
-internal data class HttpCacheSnapshot(val entries: Int, val bytes: Long, val mostVariantsPerUrl: Int)
+private data class CacheKey(
+    val namespace: CacheNamespace,
+    val url: Url,
+    val varyKeys: Map<String, String>,
+)
 
-private fun recordBytes(data: CachedResponseData, metadata: ByteArray): Long =
-    CACHE_RECORD_PREFIX_BYTES + data.body.size + metadata.size
+private data class CacheEntry(
+    val data: CachedResponseData,
+    val bytes: Long,
+)
+
+internal data class HttpCacheSnapshot(
+    val entries: Int,
+    val bytes: Long,
+    val mostVariantsPerUrl: Int,
+)
+
+private fun recordBytes(
+    data: CachedResponseData,
+    metadata: ByteArray,
+): Long = CACHE_RECORD_PREFIX_BYTES + data.body.size + metadata.size

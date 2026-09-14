@@ -176,7 +176,10 @@ class CoroutineDownloadRepositoryImpl(
         dao.updateFailure(chapterId, CANCELLED_BY_USER)
     }
 
-    override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
+    override suspend fun cancelARunningChapter(
+        chapterId: Long,
+        mangaId: Long,
+    ) {
         val toCancel: Job?
         activeJobMutex.withLock {
             toCancel = if (activeChapterId == chapterId) activeJob else null
@@ -254,22 +257,23 @@ class CoroutineDownloadRepositoryImpl(
                 try {
                     val next = dao.getNextQueuedChapter() ?: break
                     val done = CompletableDeferred<Unit>()
-                    val job = applicationScope.launch(Dispatchers.Default) {
-                        try {
-                            // Hold an iOS background-task assertion for the chapter so it can keep
-                            // going briefly if the app is backgrounded (no-op on Desktop).
-                            backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next) }
-                        } catch (ce: CancellationException) {
-                            log.w { "Job for chapter ${next.chapterId} cancelled" }
-                            runCatching { dao.updateFailure(next.chapterId, CANCELLED_BY_USER) }
-                            throw ce
-                        } catch (t: Throwable) {
-                            log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
-                            runCatching { dao.updateFailure(next.chapterId, t.message) }
-                        } finally {
-                            done.complete(Unit)
+                    val job =
+                        applicationScope.launch(Dispatchers.Default) {
+                            try {
+                                // Hold an iOS background-task assertion for the chapter so it can keep
+                                // going briefly if the app is backgrounded (no-op on Desktop).
+                                backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next) }
+                            } catch (ce: CancellationException) {
+                                log.w { "Job for chapter ${next.chapterId} cancelled" }
+                                runCatching { dao.updateFailure(next.chapterId, CANCELLED_BY_USER) }
+                                throw ce
+                            } catch (t: Throwable) {
+                                log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
+                                runCatching { dao.updateFailure(next.chapterId, t.message) }
+                            } finally {
+                                done.complete(Unit)
+                            }
                         }
-                    }
                     activeJobMutex.withLock {
                         activeJob = job
                         activeChapterId = next.chapterId
@@ -321,16 +325,17 @@ class CoroutineDownloadRepositoryImpl(
         // auto-routes to the solver and re-enqueues, exactly like the iOS background engine and the
         // reading path. Non-challenge failures keep the raw message; the worker loop's terminal
         // notification (NotifierRules → onFailed) fires identically either way.
-        val resolved = try {
-            chapterPageResolver.resolve(entity)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
-            log.e(t) { "Resolve failed for chapter ${entity.chapterId} (challenge=$isChallenge): ${t.message}" }
-            dao.updateFailure(entity.chapterId, if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed"))
-            return
-        }
+        val resolved =
+            try {
+                chapterPageResolver.resolve(entity)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
+                log.e(t) { "Resolve failed for chapter ${entity.chapterId} (challenge=$isChallenge): ${t.message}" }
+                dao.updateFailure(entity.chapterId, if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed"))
+                return
+            }
         val imageUrls = resolved.imageUrls
         if (imageUrls.isEmpty()) {
             dao.updateFailure(entity.chapterId, "No images for chapter")
@@ -393,12 +398,25 @@ class CoroutineDownloadRepositoryImpl(
         chapter: SavedChapterEntity,
         imageIndex: Int,
         pageHeaders: Map<String, String>,
-    ): String = withContext(Dispatchers.Default) {
-        val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
-        downloadValidatedPage(httpClient, imageUrl, pageHeaders, appFileSystem.fileSystem(), dir, imageIndex, mediaInspector, pageBytePolicy).toString()
-    }
+    ): String =
+        withContext(Dispatchers.Default) {
+            val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
+            downloadValidatedPage(
+                httpClient,
+                imageUrl,
+                pageHeaders,
+                appFileSystem.fileSystem(),
+                dir,
+                imageIndex,
+                mediaInspector,
+                pageBytePolicy,
+            ).toString()
+        }
 
-    private fun deleteChapterFiles(mangaId: Long, chapterId: Long) {
+    private fun deleteChapterFiles(
+        mangaId: Long,
+        chapterId: Long,
+    ) {
         val dir = appFileSystem.chapterDir(mangaId, chapterId)
         runCatching {
             if (appFileSystem.fileSystem().exists(dir)) {
@@ -409,11 +427,13 @@ class CoroutineDownloadRepositoryImpl(
 
     private companion object {
         const val TAG = "CoroutineDownloadRepository"
+
         // Locale-independent sentinel for a user-cancelled download. Persisted into errorMsg and
         // mapped to the localized "cancelled by user" string at render time in :ui, so a localized
         // device never shows English here (and the label tracks the current app locale). Must match
         // DownloadedChapter.CANCELLED_BY_USER_SENTINEL in :domain (which :ui compares against).
         const val CANCELLED_BY_USER = "__cancelled_by_user__"
+
         // Mirrors DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL in :domain (and the iOS background
         // engine's local copy): written into errorMsg when a resolve fails on a Cloudflare/anti-bot
         // challenge so the Details VM auto-routes to the WebView solver. Kept as a local literal

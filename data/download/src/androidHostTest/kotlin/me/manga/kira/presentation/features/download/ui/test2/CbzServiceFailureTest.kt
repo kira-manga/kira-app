@@ -57,7 +57,14 @@ class CbzServiceFailureTest {
             assertTrue(assertNotNull(encoded.get()).isRecycled)
             storage.assertImages(paths)
             assertEquals(rows.original.saved, rows.saved())
-            assertEquals(emptyList(), rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id)?.localImagePaths.orEmpty())
+            assertEquals(
+                emptyList(),
+                rows.db
+                    .notificationDao()
+                    .getNotificationByChapterId(rows.original.saved.id)
+                    ?.localImagePaths
+                    .orEmpty(),
+            )
             assertFalse(rows.download().state == me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS)
             assertNoArchiveOrTemporary()
         }
@@ -65,9 +72,10 @@ class CbzServiceFailureTest {
     @Test
     fun anExceptionMentioningMemoryIsNotATypedBudgetPreservationResult() =
         cbzServiceTest {
-            val manager = OptimizedCbzManager(storage.context, cbzTier(), encode = { _, _, _, _ ->
-                throw IllegalStateException("synthetic memory write failure")
-            })
+            val manager =
+                OptimizedCbzManager(storage.context, cbzTier(), encode = { _, _, _, _ ->
+                    throw IllegalStateException("synthetic memory write failure")
+                })
             val states = download(manager).toList()
             assertIs<DownloadState.Error>(states.last())
             assertTrue(states.none { it is DownloadState.Complete })

@@ -35,7 +35,6 @@ import org.jetbrains.skia.impl.use as skiaUse
  *    `.webp`.
  */
 internal object SkiaWebpEncoder {
-
     private val log = Logger.withTag(TAG)
 
     /**
@@ -74,7 +73,12 @@ internal object SkiaWebpEncoder {
                 null
             }
 
-    private fun encode(source: ByteArray, quality: Int, maxHeight: Int, maxMemoryBytes: Long): List<ByteArray> {
+    private fun encode(
+        source: ByteArray,
+        quality: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): List<ByteArray> {
         val mark = TimeSource.Monotonic.markNow() // DLPERF: per-page Skia decode + WebP re-encode cost
         val image = Image.makeFromEncoded(source) // throws on undecodable input (e.g. AVIF)
         val decodeMs = mark.elapsedNow().inWholeMilliseconds
@@ -84,18 +88,19 @@ internal object SkiaWebpEncoder {
             require(width > 0 && height > 0) { "non-positive image dimensions ${width}x$height" }
 
             val bandHeight = effectiveBandHeight(width, maxHeight, maxMemoryBytes)
-            val pages = if (height <= bandHeight) {
-                listOf(encodeWebp(image, quality))
-            } else {
-                buildList {
-                    var top = 0
-                    while (top < height) {
-                        val h = minOf(bandHeight, height - top)
-                        add(encodeBand(image, width, top, h, quality))
-                        top += h
+            val pages =
+                if (height <= bandHeight) {
+                    listOf(encodeWebp(image, quality))
+                } else {
+                    buildList {
+                        var top = 0
+                        while (top < height) {
+                            val h = minOf(bandHeight, height - top)
+                            add(encodeBand(image, width, top, h, quality))
+                            top += h
+                        }
                     }
                 }
-            }
             // DLPERF: dims + the decoded-bitmap size (peak native alloc if unbanded) + band count + I/O +
             // decode/total ms — quantifies the per-page CPU + memory pressure of the WebP transcode.
             BgDownloadLog.dlperf(
@@ -117,14 +122,24 @@ internal object SkiaWebpEncoder {
     }
 
     /** Encode a whole [image] to WebP bytes. Throws if Skia returns no data (→ verbatim fallback). */
-    private fun encodeWebp(image: Image, quality: Int): ByteArray {
-        val data = image.encodeToData(EncodedImageFormat.WEBP, quality)
-            ?: error("Skia WEBP encoder returned no data")
+    private fun encodeWebp(
+        image: Image,
+        quality: Int,
+    ): ByteArray {
+        val data =
+            image.encodeToData(EncodedImageFormat.WEBP, quality)
+                ?: error("Skia WEBP encoder returned no data")
         return data.skiaUse { it.bytes }
     }
 
     /** Copy the `[top, top+height)` band of [source] into a fresh N32 bitmap and encode it to WebP. */
-    private fun encodeBand(source: Image, width: Int, top: Int, height: Int, quality: Int): ByteArray {
+    private fun encodeBand(
+        source: Image,
+        width: Int,
+        top: Int,
+        height: Int,
+        quality: Int,
+    ): ByteArray {
         val bitmap = Bitmap()
         try {
             check(bitmap.allocN32Pixels(width, height)) { "allocN32Pixels failed for ${width}x$height" }
@@ -154,7 +169,11 @@ internal object SkiaWebpEncoder {
      * a band Skia's WebP encoder refuses). Always ≥ 1 so a single absurdly-wide row still makes
      * progress.
      */
-    private fun effectiveBandHeight(width: Int, maxHeight: Int, maxMemoryBytes: Long): Int {
+    private fun effectiveBandHeight(
+        width: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): Int {
         val byteBudget = minOf(maxMemoryBytes, MAX_BAND_BYTES).coerceAtLeast(1L)
         val byMemory = (byteBudget / (width.toLong() * BYTES_PER_PIXEL)).toInt().coerceAtLeast(1)
         return minOf(maxHeight, byMemory, WEBP_MAX_DIMENSION).coerceAtLeast(1)

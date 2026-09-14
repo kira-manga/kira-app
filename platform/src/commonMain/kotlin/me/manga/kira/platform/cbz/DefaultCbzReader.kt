@@ -34,23 +34,33 @@ class DefaultCbzReader(
     private val log = Logger.withTag("CbzReader")
     private val system: FileSystem get() = fs.fileSystem()
 
-    override fun cbzPath(mangaId: Long, chapterId: Long): Path =
-        fs.chapterDir(mangaId, chapterId) / "chapter_$chapterId.cbz"
+    override fun cbzPath(
+        mangaId: Long,
+        chapterId: Long,
+    ): Path = fs.chapterDir(mangaId, chapterId) / "chapter_$chapterId.cbz"
 
-    override fun cbzExists(mangaId: Long, chapterId: Long): Boolean = system.exists(cbzPath(mangaId, chapterId))
+    override fun cbzExists(
+        mangaId: Long,
+        chapterId: Long,
+    ): Boolean = system.exists(cbzPath(mangaId, chapterId))
 
-    override suspend fun pageCount(cbzPath: Path): Int = withContext(dispatchers.io) {
-        try {
-            inspectPageArchive(system, cbzPath, mediaInspector, bytePolicy)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            log.w(failure) { "Archive did not contain a complete validated image set" }
-            0
+    override suspend fun pageCount(cbzPath: Path): Int =
+        withContext(dispatchers.io) {
+            try {
+                inspectPageArchive(system, cbzPath, mediaInspector, bytePolicy)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                log.w(failure) { "Archive did not contain a complete validated image set" }
+                0
+            }
         }
-    }
 
-    override suspend fun extractImages(cbzPath: Path, mangaId: Long, chapterId: Long): List<Path> =
+    override suspend fun extractImages(
+        cbzPath: Path,
+        mangaId: Long,
+        chapterId: Long,
+    ): List<Path> =
         withContext(dispatchers.io) {
             try {
                 extractValidated(cbzPath, extractRoot(mangaId, chapterId))
@@ -62,7 +72,10 @@ class DefaultCbzReader(
             }
         }
 
-    private suspend fun extractValidated(archive: Path, root: Path): List<Path> {
+    private suspend fun extractValidated(
+        archive: Path,
+        root: Path,
+    ): List<Path> {
         system.createDirectories(root)
         val generation = "${Random.nextLong().toULong()}-${Random.nextLong().toULong()}"
         val temporary = root / ".partial-$generation"
@@ -83,7 +96,10 @@ class DefaultCbzReader(
         }
     }
 
-    private suspend fun writeValidatedPages(archive: Path, directory: Path): List<String> {
+    private suspend fun writeValidatedPages(
+        archive: Path,
+        directory: Path,
+    ): List<String> {
         val names = mutableListOf<String>()
         visitValidatedArchivePages(system, archive, mediaInspector, bytePolicy) { _, bytes, metadata ->
             // Never flatten attacker-controlled ZIP names: nested duplicate basenames cannot overwrite
@@ -95,7 +111,10 @@ class DefaultCbzReader(
         return names
     }
 
-    private fun discardOwnedGeneration(path: Path, failure: Throwable) {
+    private fun discardOwnedGeneration(
+        path: Path,
+        failure: Throwable,
+    ) {
         try {
             system.deleteRecursively(path, mustExist = false)
         } catch (cleanup: Throwable) {
@@ -103,22 +122,31 @@ class DefaultCbzReader(
         }
     }
 
-    override suspend fun deleteCbz(mangaId: Long, chapterId: Long): Boolean = withContext(dispatchers.io) {
-        val target = cbzPath(mangaId, chapterId)
-        try {
-            if (!system.exists(target)) false else {
-                system.delete(target)
-                true
+    override suspend fun deleteCbz(
+        mangaId: Long,
+        chapterId: Long,
+    ): Boolean =
+        withContext(dispatchers.io) {
+            val target = cbzPath(mangaId, chapterId)
+            try {
+                if (!system.exists(target)) {
+                    false
+                } else {
+                    system.delete(target)
+                    true
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                log.w(failure) { "Could not delete archive" }
+                false
             }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            log.w(failure) { "Could not delete archive" }
-            false
         }
-    }
 
-    override suspend fun cleanupExtractedCache(mangaId: Long, chapterId: Long) = withContext(dispatchers.io) {
+    override suspend fun cleanupExtractedCache(
+        mangaId: Long,
+        chapterId: Long,
+    ) = withContext(dispatchers.io) {
         try {
             system.deleteRecursively(extractRoot(mangaId, chapterId), mustExist = false)
         } catch (cancelled: CancellationException) {
@@ -128,8 +156,10 @@ class DefaultCbzReader(
         }
     }
 
-    private fun extractRoot(mangaId: Long, chapterId: Long): Path =
-        fs.cacheDir / "cbz_extract" / mangaId.toString() / chapterId.toString()
+    private fun extractRoot(
+        mangaId: Long,
+        chapterId: Long,
+    ): Path = fs.cacheDir / "cbz_extract" / mangaId.toString() / chapterId.toString()
 
     private companion object {
         const val PAGE_INDEX_WIDTH = 6

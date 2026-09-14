@@ -22,11 +22,13 @@ import kotlin.test.assertTrue
 class IosCbzReaderValidationTest {
     private val system = FileSystem.SYSTEM
     private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ios-cbz-media-${Random.nextLong().toULong()}"
-    private val files = object : AppFileSystem {
-        override val filesDir: Path = root / "files"
-        override val cacheDir: Path = root / "cache"
-        override fun fileSystem(): FileSystem = system
-    }
+    private val files =
+        object : AppFileSystem {
+            override val filesDir: Path = root / "files"
+            override val cacheDir: Path = root / "cache"
+
+            override fun fileSystem(): FileSystem = system
+        }
     private val reader = DefaultCbzReader(files, IosReaderTestDispatchers, IosPageMediaInspector())
     private val archive get() = reader.cbzPath(1, 2)
 
@@ -34,29 +36,31 @@ class IosCbzReaderValidationTest {
     fun cleanup() = system.deleteRecursively(root, mustExist = false)
 
     @Test
-    fun invalidMemberCannotBecomeAPartialChapterOrMakeAnExistingCacheAuthoritative() = runTest {
-        val old = files.cacheDir / "cbz_extract" / "1" / "2" / "old.jpg"
-        system.createDirectories(requireNotNull(old.parent))
-        system.write(old) { write(PageMediaTestImages.png()) }
-        archive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.corruptPngPixels())
-        val original = system.read(archive) { readByteArray() }
-        assertEquals(0, reader.pageCount(archive))
-        assertTrue(reader.extractImages(archive, 1, 2).isEmpty())
-        assertTrue(system.exists(old))
-        assertContentEquals(original, system.read(archive) { readByteArray() })
-        assertTrue(system.listRecursively(files.cacheDir).none { it.name.startsWith(".partial-") })
-    }
+    fun invalidMemberCannotBecomeAPartialChapterOrMakeAnExistingCacheAuthoritative() =
+        runTest {
+            val old = files.cacheDir / "cbz_extract" / "1" / "2" / "old.jpg"
+            system.createDirectories(requireNotNull(old.parent))
+            system.write(old) { write(PageMediaTestImages.png()) }
+            archive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.corruptPngPixels())
+            val original = system.read(archive) { readByteArray() }
+            assertEquals(0, reader.pageCount(archive))
+            assertTrue(reader.extractImages(archive, 1, 2).isEmpty())
+            assertTrue(system.exists(old))
+            assertContentEquals(original, system.read(archive) { readByteArray() })
+            assertTrue(system.listRecursively(files.cacheDir).none { it.name.startsWith(".partial-") })
+        }
 
     @Test
-    fun validatedArchiveUsesActualSuffixAndNeverFlattensDuplicateZipBasenames() = runTest {
-        archive("a/page.jpg" to PageMediaTestImages.png(), "b/page.jpg" to PageMediaTestImages.png())
-        assertEquals(2, reader.pageCount(archive))
-        val pages = reader.extractImages(archive, 1, 2)
-        assertEquals(2, pages.distinct().size)
-        assertTrue(pages.all { it.name.endsWith(".png") })
-        pages.forEach { assertContentEquals(PageMediaTestImages.png(), system.read(it) { readByteArray() }) }
-        assertTrue(system.listRecursively(files.cacheDir).none { it.name.startsWith(".partial-") })
-    }
+    fun validatedArchiveUsesActualSuffixAndNeverFlattensDuplicateZipBasenames() =
+        runTest {
+            archive("a/page.jpg" to PageMediaTestImages.png(), "b/page.jpg" to PageMediaTestImages.png())
+            assertEquals(2, reader.pageCount(archive))
+            val pages = reader.extractImages(archive, 1, 2)
+            assertEquals(2, pages.distinct().size)
+            assertTrue(pages.all { it.name.endsWith(".png") })
+            pages.forEach { assertContentEquals(PageMediaTestImages.png(), system.read(it) { readByteArray() }) }
+            assertTrue(system.listRecursively(files.cacheDir).none { it.name.startsWith(".partial-") })
+        }
 
     private fun archive(vararg entries: Pair<String, ByteArray>) {
         system.createDirectories(requireNotNull(archive.parent))

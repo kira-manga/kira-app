@@ -16,7 +16,10 @@ class TransferRetryRulesTest {
     @Test
     fun byteAndNativePolicyRejectionNeverConsumeARetryLoop() {
         for (reason in listOf("ENCODED_BYTES", "SOURCE_PIXELS", "BOUNDED_DECODER_REJECTED", "DECODER_UNAVAILABLE")) {
-            assertEquals(TransferRetryRules.Decision.FailChapter(false), TransferRetryRules.decide(1, 3, "__page_policy_rejected__:$reason"))
+            assertEquals(
+                TransferRetryRules.Decision.FailChapter(false),
+                TransferRetryRules.decide(1, 3, "__page_policy_rejected__:$reason"),
+            )
         }
     }
 

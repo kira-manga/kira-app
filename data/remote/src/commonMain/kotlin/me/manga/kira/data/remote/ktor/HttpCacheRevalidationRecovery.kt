@@ -26,26 +26,30 @@ internal class HttpCacheRevalidationRecoveryConfig {
 }
 
 /** Recovers only a lost, positively identified cache-owned revalidation, never arbitrary HTTP failures. */
-internal val HttpCacheRevalidationRecovery = createClientPlugin(
-    "KiraHttpCacheRevalidationRecovery",
-    ::HttpCacheRevalidationRecoveryConfig,
-) {
-    val owner = checkNotNull(pluginConfig.owner)
-    on(SetupRequest) { request ->
-        // Redirects/retries copy attribute values by reference; a new top-level request gets a new budget.
-        request.attributes.put(recoveryBudgetKey, CacheRecoveryBudget())
+internal val HttpCacheRevalidationRecovery =
+    createClientPlugin(
+        "KiraHttpCacheRevalidationRecovery",
+        ::HttpCacheRevalidationRecoveryConfig,
+    ) {
+        val owner = checkNotNull(pluginConfig.owner)
+        on(SetupRequest) { request ->
+            // Redirects/retries copy attribute values by reference; a new top-level request gets a new budget.
+            request.attributes.put(recoveryBudgetKey, CacheRecoveryBudget())
+        }
+        onResponse { response ->
+            currentCoroutineContext()[CacheRevalidationAttempt]
+                ?.takeIf { it.owner === owner }
+                ?.observeResponse(response)
+        }
+        on(Send) { request ->
+            recoverCacheState(owner, request)
+        }
     }
-    onResponse { response ->
-        currentCoroutineContext()[CacheRevalidationAttempt]
-            ?.takeIf { it.owner === owner }
-            ?.observeResponse(response)
-    }
-    on(Send) { request ->
-        recoverCacheState(owner, request)
-    }
-}
 
-private suspend fun Send.Sender.recoverCacheState(owner: ManagedHttpCache, request: HttpRequestBuilder): HttpClientCall {
+private suspend fun Send.Sender.recoverCacheState(
+    owner: ManagedHttpCache,
+    request: HttpRequestBuilder,
+): HttpClientCall {
     val attempt = CacheRevalidationAttempt(owner, Url(request.url), request.isCacheRecoveryEligible())
     return try {
         executeCacheAttempt(request, attempt)
@@ -63,16 +67,17 @@ private suspend fun Send.Sender.recoverCacheState(owner: ManagedHttpCache, reque
 private suspend fun Send.Sender.executeCacheAttempt(
     request: HttpRequestBuilder,
     attempt: CacheRevalidationAttempt,
-): HttpClientCall = try {
-    // Do not use Send.Sender.coroutineContext: that is the client scope, not the requesting coroutine.
-    withContext(attempt) { proceed(request) }
-} catch (cause: Throwable) {
-    // Ktor's DefaultSender has not assigned currentCall when the receive-cache phase throws.
-    attempt.disposeFailedResponse(cause)
-    throw cause
-} finally {
-    attempt.releaseResponse()
-}
+): HttpClientCall =
+    try {
+        // Do not use Send.Sender.coroutineContext: that is the client scope, not the requesting coroutine.
+        withContext(attempt) { proceed(request) }
+    } catch (cause: Throwable) {
+        // Ktor's DefaultSender has not assigned currentCall when the receive-cache phase throws.
+        attempt.disposeFailedResponse(cause)
+        throw cause
+    } finally {
+        attempt.releaseResponse()
+    }
 
 @OptIn(InternalAPI::class)
 private fun HttpRequestBuilder.recoveryCopy(validators: CacheValidators): HttpRequestBuilder? {
@@ -87,9 +92,10 @@ private class CacheRecoveryBudget {
     private val mutex = Mutex()
     private var used = false
 
-    suspend fun take(): Boolean = mutex.withLock {
-        if (used) return@withLock false
-        used = true
-        true
-    }
+    suspend fun take(): Boolean =
+        mutex.withLock {
+            if (used) return@withLock false
+            used = true
+            true
+        }
 }

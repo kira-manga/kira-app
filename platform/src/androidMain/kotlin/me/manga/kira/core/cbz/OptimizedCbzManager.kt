@@ -120,9 +120,14 @@ class OptimizedCbzManager(
         zip: ZipOutputStream,
         entries: MutableList<String>,
     ) {
-        val admission = CbzTranscodeBudget.admit(
-            metadata.width, metadata.height, encodedBytes, settings.regionDecodeThreshold, pagePolicy.maxMemoryBytes,
-        )
+        val admission =
+            CbzTranscodeBudget.admit(
+                metadata.width,
+                metadata.height,
+                encodedBytes,
+                settings.regionDecodeThreshold,
+                pagePolicy.maxMemoryBytes,
+            )
         if (admission is CbzTranscodeAdmission.Admitted && canTranscode(metadata, encodedBytes, admission.plan.bandHeight)) {
             streamPage(file, metadata, admission.plan.bandHeight) { bitmap ->
                 currentCoroutineContext().ensureActive()
@@ -145,11 +150,19 @@ class OptimizedCbzManager(
         }
     }
 
-    private fun canTranscode(metadata: PageImageMetadata, encodedBytes: Long, bandHeight: Int): Boolean =
+    private fun canTranscode(
+        metadata: PageImageMetadata,
+        encodedBytes: Long,
+        bandHeight: Int,
+    ): Boolean =
         when (metadata.format) {
-            PageImageFormat.AVIF -> cbzAvifOutputAdmitted(
-                metadata.width, metadata.height, encodedBytes.toInt(), pagePolicy.maxMemoryBytes,
-            )
+            PageImageFormat.AVIF ->
+                cbzAvifOutputAdmitted(
+                    metadata.width,
+                    metadata.height,
+                    encodedBytes.toInt(),
+                    pagePolicy.maxMemoryBytes,
+                )
             // BitmapRegionDecoder supports JPEG/PNG/WebP, not GIF/BMP. Inspection already passed.
             PageImageFormat.GIF, PageImageFormat.BMP -> metadata.height <= bandHeight
             else -> true

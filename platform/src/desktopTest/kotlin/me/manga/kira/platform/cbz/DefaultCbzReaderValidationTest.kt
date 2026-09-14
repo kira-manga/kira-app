@@ -37,89 +37,103 @@ class DefaultCbzReaderValidationTest {
     fun cleanup() = system.deleteRecursively(root, mustExist = false)
 
     @Test
-    fun nestedDuplicateBasenamesPublishDistinctPagesWithNativeExtensionsAndNewGeneration() = runTest {
-        writeArchive("a/page.jpg" to PageMediaTestImages.png(), "b/page.jpg" to PageMediaTestImages.png())
-        val reader = reader()
-        assertEquals(2, reader.pageCount(archive))
-        val first = reader.extractImages(archive, 1, 2)
-        val second = reader.extractImages(archive, 1, 2)
-        assertEquals(2, first.size)
-        assertEquals(2, first.distinct().size)
-        assertTrue(first.all { it.name.endsWith(".png") })
-        assertTrue(second.none { it in first }, "existence of a previous cache cannot bypass validation")
-        (first + second).forEach { assertContentEquals(PageMediaTestImages.png(), system.read(it) { readByteArray() }) }
-        assertNoPartials()
-    }
-
-    @Test
-    fun oneInvalidImageRejectsTheWholeArchiveAndLeavesPreviousCacheAndSourceUntouched() = runTest {
-        writeArchive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.html())
-        val source = system.read(archive) { readByteArray() }
-        val previous = writeOldCache()
-        val reader = reader()
-        assertEquals(0, reader.pageCount(archive))
-        repeat(2) { assertTrue(reader.extractImages(archive, 1, 2).isEmpty()) }
-        assertContentEquals(source, system.read(archive) { readByteArray() })
-        assertContentEquals(PageMediaTestImages.png(), system.read(previous) { readByteArray() })
-        assertEquals(listOf(previous), system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList())
-        assertNoPartials()
-    }
-
-    @Test
-    fun renameFailureCannotPublishASubsetOrDeletePreviousGenerations() = runTest {
-        writeArchive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.png())
-        val previous = writeOldCache()
-        val failing = object : ForwardingFileSystem(system) {
-            override fun atomicMove(source: Path, target: Path) {
-                throw IOException("injected extraction publication failure")
-            }
+    fun nestedDuplicateBasenamesPublishDistinctPagesWithNativeExtensionsAndNewGeneration() =
+        runTest {
+            writeArchive("a/page.jpg" to PageMediaTestImages.png(), "b/page.jpg" to PageMediaTestImages.png())
+            val reader = reader()
+            assertEquals(2, reader.pageCount(archive))
+            val first = reader.extractImages(archive, 1, 2)
+            val second = reader.extractImages(archive, 1, 2)
+            assertEquals(2, first.size)
+            assertEquals(2, first.distinct().size)
+            assertTrue(first.all { it.name.endsWith(".png") })
+            assertTrue(second.none { it in first }, "existence of a previous cache cannot bypass validation")
+            (first + second).forEach { assertContentEquals(PageMediaTestImages.png(), system.read(it) { readByteArray() }) }
+            assertNoPartials()
         }
-        assertTrue(reader(failing).extractImages(archive, 1, 2).isEmpty())
-        assertTrue(system.exists(previous))
-        assertTrue(system.exists(archive))
-        assertNoPartials()
-        assertEquals(listOf(previous), system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList())
-    }
 
     @Test
-    fun cancellationAfterAnEarlierPageWasWrittenDeletesOnlyTheOwnedPartialGeneration() = runTest {
-        writeArchive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.png())
-        val previous = writeOldCache()
-        var calls = 0
-        val cancelling = object : PageMediaInspector by inspector {
-            override fun inspect(encoded: ByteArray): PageInspection {
-                if (++calls == 2) throw CancellationException("cancel during next page")
-                return inspector.inspect(encoded)
-            }
+    fun oneInvalidImageRejectsTheWholeArchiveAndLeavesPreviousCacheAndSourceUntouched() =
+        runTest {
+            writeArchive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.html())
+            val source = system.read(archive) { readByteArray() }
+            val previous = writeOldCache()
+            val reader = reader()
+            assertEquals(0, reader.pageCount(archive))
+            repeat(2) { assertTrue(reader.extractImages(archive, 1, 2).isEmpty()) }
+            assertContentEquals(source, system.read(archive) { readByteArray() })
+            assertContentEquals(PageMediaTestImages.png(), system.read(previous) { readByteArray() })
+            assertEquals(listOf(previous), system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList())
+            assertNoPartials()
         }
-        assertFailsWith<CancellationException> { reader(media = cancelling).extractImages(archive, 1, 2) }
-        assertEquals(2, calls)
-        assertTrue(system.exists(previous))
-        assertTrue(system.exists(archive))
-        assertNoPartials()
-    }
 
     @Test
-    fun bytePolicyOrNoImagesNeverMakesACacheReadable() = runTest {
-        writeArchive("0.jpg" to PageMediaTestImages.png())
-        val reader = reader(policy = PageBytePolicy(PageMediaTestImages.png().size - 1L))
-        assertEquals(0, reader.pageCount(archive))
-        assertTrue(reader.extractImages(archive, 1, 2).isEmpty())
-        writeArchive("ComicInfo.xml" to "metadata only".encodeToByteArray())
-        assertEquals(0, reader().pageCount(archive))
-        assertTrue(reader().extractImages(archive, 1, 2).isEmpty())
-        assertNoPartials()
-    }
+    fun renameFailureCannotPublishASubsetOrDeletePreviousGenerations() =
+        runTest {
+            writeArchive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.png())
+            val previous = writeOldCache()
+            val failing =
+                object : ForwardingFileSystem(system) {
+                    override fun atomicMove(
+                        source: Path,
+                        target: Path,
+                    ): Unit = throw IOException("injected extraction publication failure")
+                }
+            assertTrue(reader(failing).extractImages(archive, 1, 2).isEmpty())
+            assertTrue(system.exists(previous))
+            assertTrue(system.exists(archive))
+            assertNoPartials()
+            assertEquals(listOf(previous), system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList())
+        }
+
+    @Test
+    fun cancellationAfterAnEarlierPageWasWrittenDeletesOnlyTheOwnedPartialGeneration() =
+        runTest {
+            writeArchive("0.jpg" to PageMediaTestImages.png(), "1.jpg" to PageMediaTestImages.png())
+            val previous = writeOldCache()
+            var calls = 0
+            val cancelling =
+                object : PageMediaInspector by inspector {
+                    override fun inspect(encoded: ByteArray): PageInspection {
+                        if (++calls == 2) throw CancellationException("cancel during next page")
+                        return inspector.inspect(encoded)
+                    }
+                }
+            assertFailsWith<CancellationException> { reader(media = cancelling).extractImages(archive, 1, 2) }
+            assertEquals(2, calls)
+            assertTrue(system.exists(previous))
+            assertTrue(system.exists(archive))
+            assertNoPartials()
+        }
+
+    @Test
+    fun bytePolicyOrNoImagesNeverMakesACacheReadable() =
+        runTest {
+            writeArchive("0.jpg" to PageMediaTestImages.png())
+            val reader = reader(policy = PageBytePolicy(PageMediaTestImages.png().size - 1L))
+            assertEquals(0, reader.pageCount(archive))
+            assertTrue(reader.extractImages(archive, 1, 2).isEmpty())
+            writeArchive("ComicInfo.xml" to "metadata only".encodeToByteArray())
+            assertEquals(0, reader().pageCount(archive))
+            assertTrue(reader().extractImages(archive, 1, 2).isEmpty())
+            assertNoPartials()
+        }
 
     private fun reader(
         fileSystem: FileSystem = system,
         media: PageMediaInspector = inspector,
         policy: PageBytePolicy = PageBytePolicy(),
-    ) = DefaultCbzReader(object : AppFileSystem {
-        override val filesDir: Path = root / "files"
-        override val cacheDir: Path = root / "cache"
-        override fun fileSystem(): FileSystem = fileSystem
-    }, ReaderTestDispatchers, media, policy)
+    ) = DefaultCbzReader(
+        object : AppFileSystem {
+            override val filesDir: Path = root / "files"
+            override val cacheDir: Path = root / "cache"
+
+            override fun fileSystem(): FileSystem = fileSystem
+        },
+        ReaderTestDispatchers,
+        media,
+        policy,
+    )
 
     private fun writeOldCache(): Path {
         system.createDirectories(cache)

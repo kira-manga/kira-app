@@ -74,13 +74,19 @@ class AvifEncodedSourceTest {
             assertEquals(8192, source.consumed)
         }
 
-    private class RecordingSource(private val delegate: BufferedSource) : BufferedSource by delegate {
+    private class RecordingSource(
+        private val delegate: BufferedSource,
+    ) : BufferedSource by delegate {
         var consumed = 0
         var largestRead = 0
         var closed = false
         var afterRead: () -> Unit = {}
 
-        override fun read(sink: ByteArray, offset: Int, byteCount: Int): Int {
+        override fun read(
+            sink: ByteArray,
+            offset: Int,
+            byteCount: Int,
+        ): Int {
             largestRead = maxOf(largestRead, byteCount)
             val read = delegate.read(sink, offset, byteCount)
             if (read > 0) consumed += read

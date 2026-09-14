@@ -11,12 +11,15 @@ import okio.FileSystem
 import okio.Path
 
 /** Fixed 1x1 PNG; shipping/native adapters, not this protocol fake, establish decoder support. */
-internal fun recoveryTestPng(): ByteArray = requireNotNull(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=".decodeBase64(),
-).toByteArray()
+internal fun recoveryTestPng(): ByteArray =
+    requireNotNull(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=".decodeBase64(),
+    ).toByteArray()
 
 /** Exact-fixture fake for common routing tests ONLY. It cannot qualify native media validation. */
-internal class RecoveryFixtureInspector(private val system: FileSystem) : PageMediaInspector {
+internal class RecoveryFixtureInspector(
+    private val system: FileSystem,
+) : PageMediaInspector {
     override fun inspect(encoded: ByteArray): PageInspection =
         if (encoded.contentEquals(recoveryTestPng())) {
             PageInspection.Valid(PageImageMetadata(PageImageFormat.PNG, 1, 1))

@@ -116,203 +116,259 @@ class AzoraDataRoutingTest {
         cbz: CbzReader = FakeCbzReader(),
         appFs: AppFileSystem = TempDirAppFileSystem(),
     ) = ChapterPagesRepositoryImpl(
-        testDispatchers, dao, cbz, registry,
+        testDispatchers,
+        dao,
+        cbz,
+        registry,
         DownloadedPageFiles(appFs, RecoveryFixtureInspector(appFs.fileSystem())),
     )
 
     @Test
-    fun pages_azora_routes_through_registry_not_legacy() = runTest {
-        val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
-            StubSourceClient(it, pages = { AppResult.Success(sentinel) })
-        }
-        val result = pagesRepo(registry).fetchPages(azora(), chapter()).first()
-        assertEquals(AppResult.Success(sentinel), result)
-        assertEquals(listOf("Azora"), registry.getCalls)
-    }
-
-    @Test
-    fun pages_source_absent_from_catalog_fails_closed() = runTest {
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
-        val result = pagesRepo(registry).fetchPages(other(), chapter("u")).first()
-        val error = (result as AppResult.Failure).error
-        assertTrue(error is AppError.Validation.SourceUnavailable && error.api == "Other")
-        assertEquals(listOf("Other"), registry.getCalls)
-    }
-
-    @Test
-    fun pages_azora_downloaded_chapter_uses_local_files_not_registry() = runTest {
-        // Offline preservation: a downloaded chapter serves local files even for the piloted Azora,
-        // and the registry is NOT consulted (the offline fast-path wins first). The loose per-page
-        // paths are re-derived under the live chapter dir (mangaId=10, chapterId=1) where the files
-        // actually exist, so the served URLs point at the current location.
-        val downloaded = SavedChapterEntity(
-            id = 1, mangaId = 10, name = "c", number = "1", url = "chap-url",
-            isDownloaded = true, localImagePaths = listOf("/d/1.webp", "/d/2.webp"),
-        )
-        val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
-        val appFs = TempDirAppFileSystem().apply { seedChapterFiles(10L, 1L, "1.webp", "2.webp") }
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted for a downloaded chapter") }
-
-        try {
-            val result = pagesRepo(registry, dao, appFs = appFs).fetchPages(azora(), chapter("chap-url")).first()
-            val pages = (result as AppResult.Success).value
-            val dir = appFs.chapterDir(10L, 1L)
-            assertEquals(
-                listOf(toExpectedFileUrl("$dir/1.webp"), toExpectedFileUrl("$dir/2.webp")),
-                pages.map { it.url },
-            )
-            assertEquals(emptyList(), registry.getCalls)
-        } finally {
-            appFs.cleanUp()
-        }
-    }
-
-    @Test
-    fun pages_loose_downloaded_chapter_missing_files_falls_back_to_network() = runTest {
-        // r2-hot-2: loose downloaded pages whose files no longer exist anywhere (e.g. iOS container
-        // change wiped them, isDownloaded still true) must NOT be served as broken file:// URLs —
-        // the reader falls through to the source fetch.
-        val downloaded = SavedChapterEntity(
-            id = 1, mangaId = 10, name = "c", number = "1", url = "chap-url",
-            isDownloaded = true, localImagePaths = listOf("/gone/1.webp", "/gone/2.webp"),
-        )
-        val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
-        val appFs = TempDirAppFileSystem() // nothing seeded → no file exists
-        val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
-            StubSourceClient(it, pages = { AppResult.Success(sentinel) })
-        }
-
-        try {
-            val result = pagesRepo(registry, dao, appFs = appFs).fetchPages(azora(), chapter("chap-url")).first()
-            assertEquals(AppResult.Success(sentinel), result, "no readable local pages -> source fallback")
+    fun pages_azora_routes_through_registry_not_legacy() =
+        runTest {
+            val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) {
+                    StubSourceClient(it, pages = { AppResult.Success(sentinel) })
+                }
+            val result = pagesRepo(registry).fetchPages(azora(), chapter()).first()
+            assertEquals(AppResult.Success(sentinel), result)
             assertEquals(listOf("Azora"), registry.getCalls)
-        } finally {
-            appFs.cleanUp()
         }
-    }
 
     @Test
-    fun pages_azora_registry_failure_is_surfaced_through_data() = runTest {
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
-            StubSourceClient(it, pages = { AppResult.Failure(AppError.Network.Http(403)) })
+    fun pages_source_absent_from_catalog_fails_closed() =
+        runTest {
+            val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("inactive source must not have a client") }
+            val result = pagesRepo(registry).fetchPages(other(), chapter("u")).first()
+            val error = (result as AppResult.Failure).error
+            assertTrue(error is AppError.Validation.SourceUnavailable && error.api == "Other")
+            assertEquals(listOf("Other"), registry.getCalls)
         }
-        val result = pagesRepo(registry).fetchPages(azora(), chapter()).first()
-        assertTrue(result is AppResult.Failure && (result.error as? AppError.Network.Http)?.statusCode == 403)
-    }
+
+    @Test
+    fun pages_azora_downloaded_chapter_uses_local_files_not_registry() =
+        runTest {
+            // Offline preservation: a downloaded chapter serves local files even for the piloted Azora,
+            // and the registry is NOT consulted (the offline fast-path wins first). The loose per-page
+            // paths are re-derived under the live chapter dir (mangaId=10, chapterId=1) where the files
+            // actually exist, so the served URLs point at the current location.
+            val downloaded =
+                SavedChapterEntity(
+                    id = 1,
+                    mangaId = 10,
+                    name = "c",
+                    number = "1",
+                    url = "chap-url",
+                    isDownloaded = true,
+                    localImagePaths = listOf("/d/1.webp", "/d/2.webp"),
+                )
+            val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
+            val appFs = TempDirAppFileSystem().apply { seedChapterFiles(10L, 1L, "1.webp", "2.webp") }
+            val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted for a downloaded chapter") }
+
+            try {
+                val result = pagesRepo(registry, dao, appFs = appFs).fetchPages(azora(), chapter("chap-url")).first()
+                val pages = (result as AppResult.Success).value
+                val dir = appFs.chapterDir(10L, 1L)
+                assertEquals(
+                    listOf(toExpectedFileUrl("$dir/1.webp"), toExpectedFileUrl("$dir/2.webp")),
+                    pages.map { it.url },
+                )
+                assertEquals(emptyList(), registry.getCalls)
+            } finally {
+                appFs.cleanUp()
+            }
+        }
+
+    @Test
+    fun pages_loose_downloaded_chapter_missing_files_falls_back_to_network() =
+        runTest {
+            // r2-hot-2: loose downloaded pages whose files no longer exist anywhere (e.g. iOS container
+            // change wiped them, isDownloaded still true) must NOT be served as broken file:// URLs —
+            // the reader falls through to the source fetch.
+            val downloaded =
+                SavedChapterEntity(
+                    id = 1,
+                    mangaId = 10,
+                    name = "c",
+                    number = "1",
+                    url = "chap-url",
+                    isDownloaded = true,
+                    localImagePaths = listOf("/gone/1.webp", "/gone/2.webp"),
+                )
+            val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
+            val appFs = TempDirAppFileSystem() // nothing seeded → no file exists
+            val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) {
+                    StubSourceClient(it, pages = { AppResult.Success(sentinel) })
+                }
+
+            try {
+                val result = pagesRepo(registry, dao, appFs = appFs).fetchPages(azora(), chapter("chap-url")).first()
+                assertEquals(AppResult.Success(sentinel), result, "no readable local pages -> source fallback")
+                assertEquals(listOf("Azora"), registry.getCalls)
+            } finally {
+                appFs.cleanUp()
+            }
+        }
+
+    @Test
+    fun pages_azora_registry_failure_is_surfaced_through_data() =
+        runTest {
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) {
+                    StubSourceClient(it, pages = { AppResult.Failure(AppError.Network.Http(403)) })
+                }
+            val result = pagesRepo(registry).fetchPages(azora(), chapter()).first()
+            assertTrue(result is AppResult.Failure && (result.error as? AppError.Network.Http)?.statusCode == 403)
+        }
 
     // --- B2: loose pages gone, published CBZ present (finalize-swap window / manual compressor) --
 
     @Test
-    fun pages_looseGone_existingCbz_isExtractedInsteadOfNetwork() = runTest {
-        // B2 (reader): the background finalize deletes the loose source pages before Room is
-        // repointed from the loose list to the [cbz] path — during that window (or after a kill in
-        // it, or after a manual compressor run) Room still lists loose paths while only the .cbz is
-        // on disk. The reader must extract the durable CBZ, NOT silently re-download from network.
-        val downloaded = SavedChapterEntity(
-            id = 1, mangaId = 10, name = "c", number = "1", url = "chap-url",
-            isDownloaded = true, localImagePaths = listOf("/gone/1.webp", "/gone/2.webp"),
-        )
-        val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
-        val appFs = TempDirAppFileSystem() // nothing seeded → no loose file exists
-        val canonical = "/current/manga/10/chapter_1/chapter_1.cbz".toPath()
-        val cbz = FakeCbzReader(
-            canonical = canonical,
-            existsCanonical = true,
-            extractFor = { p -> if (p == canonical) listOf("/x/0.webp".toPath(), "/x/1.webp".toPath()) else emptyList() },
-        )
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted; the existing CBZ serves the pages") }
+    fun pages_looseGone_existingCbz_isExtractedInsteadOfNetwork() =
+        runTest {
+            // B2 (reader): the background finalize deletes the loose source pages before Room is
+            // repointed from the loose list to the [cbz] path — during that window (or after a kill in
+            // it, or after a manual compressor run) Room still lists loose paths while only the .cbz is
+            // on disk. The reader must extract the durable CBZ, NOT silently re-download from network.
+            val downloaded =
+                SavedChapterEntity(
+                    id = 1,
+                    mangaId = 10,
+                    name = "c",
+                    number = "1",
+                    url = "chap-url",
+                    isDownloaded = true,
+                    localImagePaths = listOf("/gone/1.webp", "/gone/2.webp"),
+                )
+            val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
+            val appFs = TempDirAppFileSystem() // nothing seeded → no loose file exists
+            val canonical = "/current/manga/10/chapter_1/chapter_1.cbz".toPath()
+            val cbz =
+                FakeCbzReader(
+                    canonical = canonical,
+                    existsCanonical = true,
+                    extractFor = { p -> if (p == canonical) listOf("/x/0.webp".toPath(), "/x/1.webp".toPath()) else emptyList() },
+                )
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted; the existing CBZ serves the pages") }
 
-        try {
-            val result = pagesRepo(registry, dao, cbz, appFs).fetchPages(azora(), chapter("chap-url")).first()
-            val pages = (result as AppResult.Success).value
-            assertEquals(listOf("file:///x/0.webp", "file:///x/1.webp"), pages.map { it.url })
-            assertEquals(listOf(canonical), cbz.extractCalls, "extracted the published CBZ at its canonical path")
-            assertEquals(emptyList(), registry.getCalls)
-        } finally {
-            appFs.cleanUp()
+            try {
+                val result = pagesRepo(registry, dao, cbz, appFs).fetchPages(azora(), chapter("chap-url")).first()
+                val pages = (result as AppResult.Success).value
+                assertEquals(listOf("file:///x/0.webp", "file:///x/1.webp"), pages.map { it.url })
+                assertEquals(listOf(canonical), cbz.extractCalls, "extracted the published CBZ at its canonical path")
+                assertEquals(emptyList(), registry.getCalls)
+            } finally {
+                appFs.cleanUp()
+            }
         }
-    }
 
     @Test
-    fun pages_looseGone_cbzExtractsEmpty_fallsBackToNetwork() = runTest {
-        // B2 guard-rail: a present-but-unreadable CBZ (corrupt/empty archive) must fall through to
-        // the network fetch — never surface an empty Success (zero readable pages) to the reader.
-        val downloaded = SavedChapterEntity(
-            id = 1, mangaId = 10, name = "c", number = "1", url = "chap-url",
-            isDownloaded = true, localImagePaths = listOf("/gone/1.webp", "/gone/2.webp"),
-        )
-        val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
-        val appFs = TempDirAppFileSystem()
-        val cbz = FakeCbzReader(existsCanonical = true, extractFor = { emptyList() })
-        val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
-            StubSourceClient(it, pages = { AppResult.Success(sentinel) })
-        }
+    fun pages_looseGone_cbzExtractsEmpty_fallsBackToNetwork() =
+        runTest {
+            // B2 guard-rail: a present-but-unreadable CBZ (corrupt/empty archive) must fall through to
+            // the network fetch — never surface an empty Success (zero readable pages) to the reader.
+            val downloaded =
+                SavedChapterEntity(
+                    id = 1,
+                    mangaId = 10,
+                    name = "c",
+                    number = "1",
+                    url = "chap-url",
+                    isDownloaded = true,
+                    localImagePaths = listOf("/gone/1.webp", "/gone/2.webp"),
+                )
+            val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
+            val appFs = TempDirAppFileSystem()
+            val cbz = FakeCbzReader(existsCanonical = true, extractFor = { emptyList() })
+            val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) {
+                    StubSourceClient(it, pages = { AppResult.Success(sentinel) })
+                }
 
-        try {
-            val result = pagesRepo(registry, dao, cbz, appFs).fetchPages(azora(), chapter("chap-url")).first()
-            assertEquals(AppResult.Success(sentinel), result, "empty CBZ extraction -> source fallback")
-            assertEquals(listOf("Azora"), registry.getCalls)
-        } finally {
-            appFs.cleanUp()
+            try {
+                val result = pagesRepo(registry, dao, cbz, appFs).fetchPages(azora(), chapter("chap-url")).first()
+                assertEquals(AppResult.Success(sentinel), result, "empty CBZ extraction -> source fallback")
+                assertEquals(listOf("Azora"), registry.getCalls)
+            } finally {
+                appFs.cleanUp()
+            }
         }
-    }
 
     // --- downloaded-CBZ path resolution (container-UUID staleness fix) ---------------------------
 
     @Test
-    fun pages_downloadedCbz_staleStoredPath_recoversViaRederivedCurrentPath() = runTest {
-        // The chapter is downloaded; the STORED localImagePath is a stale absolute CBZ path captured
-        // at download time (an old iOS container UUID). The CBZ now lives at the canonical current
-        // filesDir path. The reader must extract from the RE-DERIVED path and serve local pages —
-        // NOT log "CBZ file does not exist" and fall back to the network.
-        val canonical = "/current/manga/10/chapter_1/chapter_1.cbz".toPath()
-        val stale = "/var/mobile/Containers/Data/Application/OLD-UUID/Documents/manga/10/chapter_1/chapter_1.cbz"
-        val downloaded = SavedChapterEntity(
-            id = 1, mangaId = 10, name = "c", number = "1", url = "chap-url",
-            isDownloaded = true, localImagePaths = listOf(stale),
-        )
-        val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
-        val cbz = FakeCbzReader(
-            canonical = canonical,
-            existsCanonical = true,
-            extractFor = { p -> if (p == canonical) listOf("/x/0.webp".toPath(), "/x/1.webp".toPath()) else emptyList() },
-        )
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted; CBZ resolves locally") }
+    fun pages_downloadedCbz_staleStoredPath_recoversViaRederivedCurrentPath() =
+        runTest {
+            // The chapter is downloaded; the STORED localImagePath is a stale absolute CBZ path captured
+            // at download time (an old iOS container UUID). The CBZ now lives at the canonical current
+            // filesDir path. The reader must extract from the RE-DERIVED path and serve local pages —
+            // NOT log "CBZ file does not exist" and fall back to the network.
+            val canonical = "/current/manga/10/chapter_1/chapter_1.cbz".toPath()
+            val stale = "/var/mobile/Containers/Data/Application/OLD-UUID/Documents/manga/10/chapter_1/chapter_1.cbz"
+            val downloaded =
+                SavedChapterEntity(
+                    id = 1,
+                    mangaId = 10,
+                    name = "c",
+                    number = "1",
+                    url = "chap-url",
+                    isDownloaded = true,
+                    localImagePaths = listOf(stale),
+                )
+            val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
+            val cbz =
+                FakeCbzReader(
+                    canonical = canonical,
+                    existsCanonical = true,
+                    extractFor = { p -> if (p == canonical) listOf("/x/0.webp".toPath(), "/x/1.webp".toPath()) else emptyList() },
+                )
+            val registry = FakeSourceRegistry(piloted = setOf("Azora")) { error("registry must not be consulted; CBZ resolves locally") }
 
-        val result = pagesRepo(registry, dao, cbz).fetchPages(azora(), chapter("chap-url")).first()
+            val result = pagesRepo(registry, dao, cbz).fetchPages(azora(), chapter("chap-url")).first()
 
-        val pages = (result as AppResult.Success).value
-        assertEquals(listOf("file:///x/0.webp", "file:///x/1.webp"), pages.map { it.url })
-        assertEquals(listOf(canonical), cbz.extractCalls, "extracted from the re-derived current path, not the stale stored path")
-        assertEquals(emptyList(), registry.getCalls)
-    }
-
-    @Test
-    fun pages_downloadedCbz_missingEverywhere_fallsBackToNetwork() = runTest {
-        // Neither the re-derived current path nor the stored path has a readable CBZ -> the chapter
-        // genuinely has no local file, so the reader falls back to the source (the stored path is
-        // still tried for back-compat before giving up).
-        val stale = "/OLD/manga/10/chapter_1/chapter_1.cbz"
-        val downloaded = SavedChapterEntity(
-            id = 1, mangaId = 10, name = "c", number = "1", url = "chap-url",
-            isDownloaded = true, localImagePaths = listOf(stale),
-        )
-        val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
-        val cbz = FakeCbzReader(existsCanonical = false, extractFor = { emptyList() })
-        val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
-        val registry = FakeSourceRegistry(piloted = setOf("Azora")) {
-            StubSourceClient(it, pages = { AppResult.Success(sentinel) })
+            val pages = (result as AppResult.Success).value
+            assertEquals(listOf("file:///x/0.webp", "file:///x/1.webp"), pages.map { it.url })
+            assertEquals(listOf(canonical), cbz.extractCalls, "extracted from the re-derived current path, not the stale stored path")
+            assertEquals(emptyList(), registry.getCalls)
         }
 
-        val result = pagesRepo(registry, dao, cbz).fetchPages(azora(), chapter("chap-url")).first()
+    @Test
+    fun pages_downloadedCbz_missingEverywhere_fallsBackToNetwork() =
+        runTest {
+            // Neither the re-derived current path nor the stored path has a readable CBZ -> the chapter
+            // genuinely has no local file, so the reader falls back to the source (the stored path is
+            // still tried for back-compat before giving up).
+            val stale = "/OLD/manga/10/chapter_1/chapter_1.cbz"
+            val downloaded =
+                SavedChapterEntity(
+                    id = 1,
+                    mangaId = 10,
+                    name = "c",
+                    number = "1",
+                    url = "chap-url",
+                    isDownloaded = true,
+                    localImagePaths = listOf(stale),
+                )
+            val dao = FakeChapterDao(idByUrl = { if (it == "chap-url") 1L else null }, byId = { if (it == 1L) downloaded else null })
+            val cbz = FakeCbzReader(existsCanonical = false, extractFor = { emptyList() })
+            val sentinel = listOf(Page("https://img.azoramoon.com/1.webp", emptyMap()))
+            val registry =
+                FakeSourceRegistry(piloted = setOf("Azora")) {
+                    StubSourceClient(it, pages = { AppResult.Success(sentinel) })
+                }
 
-        assertEquals(AppResult.Success(sentinel), result, "no readable local CBZ -> source fallback")
-        assertEquals(listOf(stale.toPath()), cbz.extractCalls, "stored path is tried (back-compat) when the current path is absent")
-        assertEquals(listOf("Azora"), registry.getCalls)
-    }
+            val result = pagesRepo(registry, dao, cbz).fetchPages(azora(), chapter("chap-url")).first()
+
+            assertEquals(AppResult.Success(sentinel), result, "no readable local CBZ -> source fallback")
+            assertEquals(listOf(stale.toPath()), cbz.extractCalls, "stored path is tried (back-compat) when the current path is absent")
+            assertEquals(listOf("Azora"), registry.getCalls)
+        }
 
     // --- fakes -----------------------------------------------------------------------------------
 
@@ -327,11 +383,17 @@ class AzoraDataRoutingTest {
             FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "yami-pages-test-${Random.nextLong().toString().trimStart('-')}"
         override val filesDir: Path = root
         override val cacheDir: Path = root / "cache"
+
         override fun fileSystem(): FileSystem = fs
+
         fun cleanUp() = fs.deleteRecursively(root, mustExist = false)
     }
 
-    private fun TempDirAppFileSystem.seedChapterFiles(mangaId: Long, chapterId: Long, vararg names: String) {
+    private fun TempDirAppFileSystem.seedChapterFiles(
+        mangaId: Long,
+        chapterId: Long,
+        vararg names: String,
+    ) {
         val dir = chapterDir(mangaId, chapterId)
         fileSystem().createDirectories(dir)
         names.forEach { name -> fileSystem().write(dir / name) { write(recoveryTestPng()) } }
@@ -349,13 +411,16 @@ class AzoraDataRoutingTest {
         private val client: (String) -> MangaSourceClient?,
     ) : SourceRegistry {
         val getCalls = mutableListOf<String>()
+
         override fun get(api: String): MangaSourceClient? {
             getCalls += api
             return if (api in piloted) client(api) else null
         }
+
         override fun isConfigBacked(api: String): Boolean = api in piloted
-        override fun descriptor(api: String): RuntimeSourceDescriptor? =
-            if (api in piloted) fakeDescriptor(api) else null
+
+        override fun descriptor(api: String): RuntimeSourceDescriptor? = if (api in piloted) fakeDescriptor(api) else null
+
         override fun genericDescriptors(): List<RuntimeSourceDescriptor> = piloted.map(::fakeDescriptor)
     }
 
@@ -367,10 +432,21 @@ class AzoraDataRoutingTest {
         private val pages: () -> AppResult<List<Page>> = { fail("pages not expected") },
     ) : MangaSourceClient {
         override suspend fun home(page: Int): AppResult<List<HomeFeedItem>> = home()
+
         override suspend fun featured(page: Int): AppResult<List<FeaturedManga>> = AppResult.Success(emptyList())
-        override suspend fun search(query: String, page: Int, filters: FilterSelections): AppResult<List<HomeFeedItem>> = search()
+
+        override suspend fun search(
+            query: String,
+            page: Int,
+            filters: FilterSelections,
+        ): AppResult<List<HomeFeedItem>> = search()
+
         override suspend fun details(manga: Manga): AppResult<MangaDetails> = details()
-        override fun pages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = flowOf(pages())
+
+        override fun pages(
+            manga: Manga,
+            chapter: Chapter,
+        ): Flow<AppResult<List<Page>>> = flowOf(pages())
     }
 
     private class FakeChapterDao(

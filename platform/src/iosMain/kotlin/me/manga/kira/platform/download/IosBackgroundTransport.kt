@@ -54,29 +54,30 @@ class IosBackgroundTransport(
     private val mediaInspector: PageMediaInspector,
     private val pageBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : BackgroundTransport {
-
     private var listener: TransferListener? = null
     private var systemCompletionHandler: (() -> Unit)? = null
     private val delegate = Delegate(this)
+
     // The default URLSession delegate queue is serial. Entries live only until didComplete.
     private val outcomes = mutableMapOf<ULong, PageOutcome>()
 
     // The ONE background session. iOS persists its tasks across suspension/termination; recreating
     // the SAME identifier on relaunch re-attaches us to receive the pending callbacks.
     private val session: NSURLSession by lazy {
-        val config = NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(SESSION_ID).apply {
-            sessionSendsLaunchEvents = true
-            discretionary = false
-            HTTPMaximumConnectionsPerHost = MAX_CONNECTIONS_PER_HOST
-            // DELIBERATELY no timeoutIntervalForResource override (OS default ≈ 7 days). The
-            // resource clock keeps running while a task merely WAITS for connectivity, so any
-            // tighter bound would expire offline-queued downloads (queue on airplane mode, come
-            // online hours later) — owner decision 2026-07-02. Accepted cost: a genuinely
-            // stalled-but-alive page can pin its chapter RUNNING for a long time. Follow-up after
-            // device QA: an engine-side PROGRESS-STALL watchdog (no didWriteData/completion
-            // movement for N minutes while connectivity is up → cancel + re-enqueue that page)
-            // instead of a wall-clock resource cap.
-        }
+        val config =
+            NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(SESSION_ID).apply {
+                sessionSendsLaunchEvents = true
+                discretionary = false
+                HTTPMaximumConnectionsPerHost = MAX_CONNECTIONS_PER_HOST
+                // DELIBERATELY no timeoutIntervalForResource override (OS default ≈ 7 days). The
+                // resource clock keeps running while a task merely WAITS for connectivity, so any
+                // tighter bound would expire offline-queued downloads (queue on airplane mode, come
+                // online hours later) — owner decision 2026-07-02. Accepted cost: a genuinely
+                // stalled-but-alive page can pin its chapter RUNNING for a long time. Follow-up after
+                // device QA: an engine-side PROGRESS-STALL watchdog (no didWriteData/completion
+                // movement for N minutes while connectivity is up → cancel + re-enqueue that page)
+                // instead of a wall-clock resource cap.
+            }
         BgDownloadLog.log("session.created", "sessionId" to SESSION_ID, "maxPerHost" to MAX_CONNECTIONS_PER_HOST)
         NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
     }
@@ -126,7 +127,10 @@ class IosBackgroundTransport(
         var cancelled = 0
         allTasks().forEach { task ->
             val d = decodeDesc(task.taskDescription) ?: return@forEach
-            if (d.chapterId == chapterId) { task.cancel(); cancelled++ }
+            if (d.chapterId == chapterId) {
+                task.cancel()
+                cancelled++
+            }
         }
         BgDownloadLog.log("task.cancelChapter", "chapterId" to chapterId, "cancelled" to cancelled)
     }
@@ -147,15 +151,21 @@ class IosBackgroundTransport(
         return out
     }
 
-    private suspend fun allTasks(): List<NSURLSessionTask> = suspendCancellableCoroutine { cont ->
-        session.getAllTasksWithCompletionHandler { tasks ->
-            cont.resume((tasks ?: emptyList<Any?>()).filterIsInstance<NSURLSessionTask>())
+    private suspend fun allTasks(): List<NSURLSessionTask> =
+        suspendCancellableCoroutine { cont ->
+            session.getAllTasksWithCompletionHandler { tasks ->
+                cont.resume((tasks ?: emptyList<Any?>()).filterIsInstance<NSURLSessionTask>())
+            }
         }
-    }
 
     // ---- invoked by the Delegate (on the session's delegate queue) ----
 
-    internal fun handleWroteData(task: NSURLSessionTask, bytesWritten: Long, totalBytesWritten: Long, totalExpected: Long) {
+    internal fun handleWroteData(
+        task: NSURLSessionTask,
+        bytesWritten: Long,
+        totalBytesWritten: Long,
+        totalExpected: Long,
+    ) {
         val d = decodeDesc(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         if (totalBytesWritten > pageBytePolicy.maxEncodedBytes || totalExpected > pageBytePolicy.maxEncodedBytes) {
@@ -165,7 +175,12 @@ class IosBackgroundTransport(
             reportFailureOnce(task, d, requireNotNull(outcome.failure))
             task.cancel()
         } else if (totalBytesWritten == bytesWritten) {
-            BgDownloadLog.log("task.didWriteData.started", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "bytesExpected" to totalExpected)
+            BgDownloadLog.log(
+                "task.didWriteData.started",
+                "chapterId" to d.chapterId,
+                "pageIndex" to d.pageIndex,
+                "bytesExpected" to totalExpected,
+            )
         }
     }
 
@@ -178,11 +193,16 @@ class IosBackgroundTransport(
         val d = decodeDesc(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         if (outcome.reported) return
-        outcome.failure?.let { reportFailureOnce(task, d, it); return }
+        outcome.failure?.let {
+            reportFailureOnce(task, d, it)
+            return
+        }
         val status = response?.statusCode?.toInt()
         BgDownloadLog.log(
             "task.didFinishDownloading",
-            "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "taskId" to task.taskIdentifier,
+            "chapterId" to d.chapterId,
+            "pageIndex" to d.pageIndex,
+            "taskId" to task.taskIdentifier,
             "httpStatus" to status,
         )
         if (status == null || status !in 200..299) {
@@ -219,23 +239,36 @@ class IosBackgroundTransport(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            val reason = if (failure is PageByteLimitExceeded || failure is PageMediaException) {
-                failure.message ?: "Page validation failed"
-            } else "Downloaded page could not be saved"
+            val reason =
+                if (failure is PageByteLimitExceeded || failure is PageMediaException) {
+                    failure.message ?: "Page validation failed"
+                } else {
+                    "Downloaded page could not be saved"
+                }
             reportFailureOnce(task, d, reason)
         } finally {
             ownedTemporary?.let { path ->
-                try { system.delete(path, mustExist = false) } catch (_: IOException) { /* No published page was removed. */ }
+                try {
+                    system.delete(path, mustExist = false)
+                } catch (_: IOException) {
+                    // No published page was removed.
+                }
             }
         }
     }
 
-    internal fun handleCompleted(task: NSURLSessionTask, error: NSError?) {
+    internal fun handleCompleted(
+        task: NSURLSessionTask,
+        error: NSError?,
+    ) {
         val d = decodeDesc(task.taskDescription) ?: return
         try {
             val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
             if (outcome.reported) return
-            outcome.failure?.let { reportFailureOnce(task, d, it); return }
+            outcome.failure?.let {
+                reportFailureOnce(task, d, it)
+                return
+            }
             if (error?.code == NSURLErrorCancelled) {
                 BgDownloadLog.log("task.didComplete.cancelled", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
                 return // user/engine cancel, not a byte-budget cancellation
@@ -246,7 +279,11 @@ class IosBackgroundTransport(
         }
     }
 
-    private fun reportFailureOnce(task: NSURLSessionTask, d: Desc, reason: String) {
+    private fun reportFailureOnce(
+        task: NSURLSessionTask,
+        d: Desc,
+        reason: String,
+    ) {
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         outcome.failure = reason
         if (outcome.reported) return
@@ -270,7 +307,11 @@ class IosBackgroundTransport(
         }
     }
 
-    private fun encodeDesc(mangaId: Long, chapterId: Long, pageIndex: Int): String = "$mangaId|$chapterId|$pageIndex"
+    private fun encodeDesc(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+    ): String = "$mangaId|$chapterId|$pageIndex"
 
     private fun decodeDesc(s: String?): Desc? {
         val parts = s?.split('|') ?: return null
@@ -281,8 +322,16 @@ class IosBackgroundTransport(
         return Desc(m, c, p)
     }
 
-    private data class Desc(val mangaId: Long, val chapterId: Long, val pageIndex: Int)
-    private data class PageOutcome(var failure: String? = null, var reported: Boolean = false)
+    private data class Desc(
+        val mangaId: Long,
+        val chapterId: Long,
+        val pageIndex: Int,
+    )
+
+    private data class PageOutcome(
+        var failure: String? = null,
+        var reported: Boolean = false,
+    )
 
     private companion object {
         const val SESSION_ID = "me.manga.kira.download.transfers"
@@ -299,8 +348,8 @@ class IosBackgroundTransport(
 @OptIn(ExperimentalForeignApi::class)
 private class Delegate(
     private val transport: IosBackgroundTransport,
-) : NSObject(), NSURLSessionDownloadDelegateProtocol {
-
+) : NSObject(),
+    NSURLSessionDownloadDelegateProtocol {
     override fun URLSession(
         session: NSURLSession,
         downloadTask: NSURLSessionDownloadTask,

@@ -19,7 +19,9 @@ internal suspend fun withCacheDirectory(block: suspend (CacheDiskFixture) -> Uni
 }
 
 /** Real JVM filesystem tests exercise the common persistence used by Android, not a Desktop feature. */
-internal class CacheDiskFixture(val home: File) {
+internal class CacheDiskFixture(
+    val home: File,
+) {
     val root = File(home, "ktor_http_cache").absolutePath.toPath()
     val fileSystem = FileSystem.SYSTEM
 
@@ -28,12 +30,16 @@ internal class CacheDiskFixture(val home: File) {
         storage: FileSystem = fileSystem,
     ): FileHttpCachePersistence = FileHttpCachePersistence(storage, root, policy)
 
-    fun records(): List<Path> = CacheNamespace.entries.flatMap { namespace ->
-        val directory = root / namespace.directory
-        if (fileSystem.exists(directory)) fileSystem.list(directory).filter { it.name.endsWith(".khc") } else emptyList()
-    }
+    fun records(): List<Path> =
+        CacheNamespace.entries.flatMap { namespace ->
+            val directory = root / namespace.directory
+            if (fileSystem.exists(directory)) fileSystem.list(directory).filter { it.name.endsWith(".khc") } else emptyList()
+        }
 
-    suspend fun assertMatches(cache: ManagedHttpCache, policy: HttpCachePolicy) {
+    suspend fun assertMatches(
+        cache: ManagedHttpCache,
+        policy: HttpCachePolicy,
+    ) {
         val snapshot = cache.snapshot()
         val files = records()
         cache.assertWithin(policy)
@@ -52,7 +58,10 @@ internal class StagingBudgetObserver(
     var moves = 0
         private set
 
-    override fun atomicMove(source: Path, target: Path) {
+    override fun atomicMove(
+        source: Path,
+        target: Path,
+    ) {
         val stagedBytes = delegate.metadata(source).size ?: 0L
         val committedBytes = fixture.records().sumOf { delegate.metadata(it).size ?: 0L }
         val stagingLimit = CACHE_RECORD_PREFIX_BYTES + policy.maxBodyBytes + policy.maxMetadataBytes

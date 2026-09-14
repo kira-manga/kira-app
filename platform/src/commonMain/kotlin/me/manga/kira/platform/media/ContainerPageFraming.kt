@@ -3,7 +3,10 @@ package me.manga.kira.platform.media
 import okio.BufferedSource
 
 /** Container lengths only; the native sample/status check must establish actual image decodability. */
-internal fun inspectWebpFraming(source: BufferedSource, size: Long) {
+internal fun inspectWebpFraming(
+    source: BufferedSource,
+    size: Long,
+) {
     requirePageFraming(size >= 20)
     source.skip(4)
     requirePageFraming(source.readUnsignedIntLe() == size - 8)
@@ -27,7 +30,10 @@ internal fun inspectWebpFraming(source: BufferedSource, size: Long) {
 }
 
 /** No item/AV1 parser: check bounded top-level box framing, leaving payload validation to libavif. */
-internal fun inspectAvifFraming(source: BufferedSource, size: Long) {
+internal fun inspectAvifFraming(
+    source: BufferedSource,
+    size: Long,
+) {
     var offset = 0L
     var avifBrand = false
     var hasImageContainer = false
@@ -37,11 +43,12 @@ internal fun inspectAvifFraming(source: BufferedSource, size: Long) {
         val name = source.readUtf8(4)
         val header = if (shortLength == 1L) 16L else 8L
         requirePageFraming(size - offset >= header)
-        val length = when (shortLength) {
-            0L -> size - offset
-            1L -> source.readLong()
-            else -> shortLength
-        }
+        val length =
+            when (shortLength) {
+                0L -> size - offset
+                1L -> source.readLong()
+                else -> shortLength
+            }
         requirePageFraming(length >= header && length <= size - offset)
         val payload = length - header
         if (name == "ftyp") {
@@ -56,7 +63,10 @@ internal fun inspectAvifFraming(source: BufferedSource, size: Long) {
     requirePageFraming(avifBrand && hasImageContainer && offset == size)
 }
 
-private fun readAvifBrands(source: BufferedSource, payload: Long): Boolean {
+private fun readAvifBrands(
+    source: BufferedSource,
+    payload: Long,
+): Boolean {
     var matched = source.readUtf8(4).isAvifBrand()
     source.skip(4) // Minor version is not a compatible brand.
     var remaining = payload - 8

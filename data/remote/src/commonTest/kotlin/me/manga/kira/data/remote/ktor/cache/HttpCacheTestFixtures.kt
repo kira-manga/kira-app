@@ -16,10 +16,11 @@ internal const val CACHE_TEST_NOW = 1_000L
 internal fun cacheHeaders(
     contentType: String? = "application/json",
     cacheControl: String? = "public, max-age=60",
-): Headers = Headers.build {
-    contentType?.let { append(HttpHeaders.ContentType, it) }
-    cacheControl?.let { append(HttpHeaders.CacheControl, it) }
-}
+): Headers =
+    Headers.build {
+        contentType?.let { append(HttpHeaders.ContentType, it) }
+        cacheControl?.let { append(HttpHeaders.CacheControl, it) }
+    }
 
 internal fun cachedResponse(
     url: String = "https://metadata.test/catalog",
@@ -27,25 +28,27 @@ internal fun cachedResponse(
     vary: Map<String, String> = emptyMap(),
     headers: Headers = cacheHeaders(),
     expires: Long = CACHE_TEST_NOW + 60_000,
-): CachedResponseData = CachedResponseData(
-    Url(url),
-    HttpStatusCode.OK,
-    GMTDate(CACHE_TEST_NOW),
-    GMTDate(CACHE_TEST_NOW),
-    HttpProtocolVersion.HTTP_1_1,
-    GMTDate(expires),
-    headers,
-    vary,
-    body,
-)
+): CachedResponseData =
+    CachedResponseData(
+        Url(url),
+        HttpStatusCode.OK,
+        GMTDate(CACHE_TEST_NOW),
+        GMTDate(CACHE_TEST_NOW),
+        HttpProtocolVersion.HTTP_1_1,
+        GMTDate(expires),
+        headers,
+        vary,
+        body,
+    )
 
-internal fun smallCachePolicy(): HttpCachePolicy = HttpCachePolicy(
-    maxTotalBytes = 4_096,
-    maxBodyBytes = 512,
-    maxMetadataBytes = 1_024,
-    maxEntries = 8,
-    maxVariantsPerUrl = 4,
-)
+internal fun smallCachePolicy(): HttpCachePolicy =
+    HttpCachePolicy(
+        maxTotalBytes = 4_096,
+        maxBodyBytes = 512,
+        maxMetadataBytes = 1_024,
+        maxEntries = 8,
+        maxVariantsPerUrl = 4,
+    )
 
 internal fun TestScope.cacheOwner(
     policy: HttpCachePolicy = smallCachePolicy(),
@@ -76,13 +79,21 @@ internal class RecordingCachePersistence : HttpCachePersistence {
         records.toList().forEach { (key, record) -> consume(key.namespace, record.first, record.second) }
     }
 
-    override fun write(namespace: CacheNamespace, data: CachedResponseData, metadata: ByteArray) {
+    override fun write(
+        namespace: CacheNamespace,
+        data: CachedResponseData,
+        metadata: ByteArray,
+    ) {
         writeCalls++
         writeFailure?.let { throw it }
         records[RecordedCacheKey(namespace, data.url, data.varyKeys)] = data to metadata
     }
 
-    override fun remove(namespace: CacheNamespace, url: Url, varyKeys: Map<String, String>) {
+    override fun remove(
+        namespace: CacheNamespace,
+        url: Url,
+        varyKeys: Map<String, String>,
+    ) {
         removeFailure?.let { throw it }
         records.remove(RecordedCacheKey(namespace, url, varyKeys))
     }
@@ -94,4 +105,8 @@ internal class RecordingCachePersistence : HttpCachePersistence {
     }
 }
 
-internal data class RecordedCacheKey(val namespace: CacheNamespace, val url: Url, val vary: Map<String, String>)
+internal data class RecordedCacheKey(
+    val namespace: CacheNamespace,
+    val url: Url,
+    val vary: Map<String, String>,
+)

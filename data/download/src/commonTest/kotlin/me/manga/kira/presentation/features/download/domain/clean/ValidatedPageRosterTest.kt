@@ -22,13 +22,17 @@ class ValidatedPageRosterTest {
     private val directory = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "page-roster-${Random.nextLong().toULong()}"
     private val policy = PageBytePolicy(4)
     private val manifest = DownloadManifest(1, 2, "fixture", List(2) { ManifestPage(it, "page-$it", emptyMap()) })
-    private val inspector = object : PageMediaInspector {
-        override fun inspect(encoded: ByteArray): PageInspection =
-            if (encoded.contentEquals("good".encodeToByteArray())) PageInspection.Valid(PageImageMetadata(PageImageFormat.PNG, 1, 1))
-            else PageInspection.Invalid(PageInvalidReason.INCOMPLETE_OR_CORRUPT)
+    private val inspector =
+        object : PageMediaInspector {
+            override fun inspect(encoded: ByteArray): PageInspection =
+                if (encoded.contentEquals("good".encodeToByteArray())) {
+                    PageInspection.Valid(PageImageMetadata(PageImageFormat.PNG, 1, 1))
+                } else {
+                    PageInspection.Invalid(PageInvalidReason.INCOMPLETE_OR_CORRUPT)
+                }
 
-        override fun inspect(path: Path): PageInspection = inspect(fs.read(path) { readByteArray() })
-    }
+            override fun inspect(path: Path): PageInspection = inspect(fs.read(path) { readByteArray() })
+        }
 
     @AfterTest
     fun cleanup() = fs.deleteRecursively(directory, mustExist = false)
@@ -50,7 +54,15 @@ class ValidatedPageRosterTest {
     fun completePathsAreBoundToEveryExpectedIndexAndSortedNumerically() {
         write("image_1.png", "good")
         write("image_0.png", "good")
-        assertEquals(listOf("image_0.png", "image_1.png"), inspectPageRoster(fs, directory, manifest, inspector, policy).completePaths?.map { it.substringAfterLast('/') })
+        assertEquals(
+            listOf(
+                "image_0.png",
+                "image_1.png",
+            ),
+            inspectPageRoster(fs, directory, manifest, inspector, policy).completePaths?.map {
+                it.substringAfterLast('/')
+            },
+        )
     }
 
     @Test
@@ -72,7 +84,10 @@ class ValidatedPageRosterTest {
         }
     }
 
-    private fun write(name: String, bytes: String) {
+    private fun write(
+        name: String,
+        bytes: String,
+    ) {
         fs.createDirectories(directory)
         fs.write(directory / name) { writeUtf8(bytes) }
     }

@@ -33,7 +33,11 @@ internal suspend fun decodeAndroidAvif(
     return decodeNativeAvifPixels(input, plan, limits)
 }
 
-private suspend fun readNativeAvifInfo(input: ByteBuffer, limits: AvifDecodeLimits, pixelLimit: Int): AomAvifDecoder.Info {
+private suspend fun readNativeAvifInfo(
+    input: ByteBuffer,
+    limits: AvifDecodeLimits,
+    pixelLimit: Int,
+): AomAvifDecoder.Info {
     val info = AomAvifDecoder.Info()
     val accepted =
         AomAvifDecoder.getInfoWithLimits(
@@ -88,7 +92,12 @@ private suspend fun decodeNativeAvifPixels(
     }
 }
 
-private fun decodeWithNativeLimits(input: ByteBuffer, bitmap: Bitmap, pixelLimit: Int, dimensionLimit: Int): Boolean =
+private fun decodeWithNativeLimits(
+    input: ByteBuffer,
+    bitmap: Bitmap,
+    pixelLimit: Int,
+    dimensionLimit: Int,
+): Boolean =
     AomAvifDecoder.decodeWithLimits(
         input,
         input.capacity(),
@@ -98,7 +107,11 @@ private fun decodeWithNativeLimits(input: ByteBuffer, bitmap: Bitmap, pixelLimit
         minOf(dimensionLimit, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
     )
 
-private fun createOutputBitmap(size: AvifPixelSize, hasAlpha: Boolean, maxBytes: Long): Bitmap {
+private fun createOutputBitmap(
+    size: AvifPixelSize,
+    hasAlpha: Boolean,
+    maxBytes: Long,
+): Bitmap {
     if (size.width > ANDROID_AVIF_NATIVE_MAX_DIMENSION || size.height > ANDROID_AVIF_NATIVE_MAX_DIMENSION) {
         throw AvifDecodeException("AVIF target exceeds the native scaling dimension limit.")
     }

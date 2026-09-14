@@ -88,9 +88,10 @@ class IosCbzWriter internal constructor(
         val chapterDir = fs.chapterDir(mangaId, chapterId)
         system.createDirectories(chapterDir)
         val destination = chapterDir / "chapter_$chapterId.cbz"
-        val sources = imagePaths.map { path ->
-            PagePathRederivation.resolveSourcePage(stored = path, chapterDir = chapterDir, exists = system::exists)
-        }
+        val sources =
+            imagePaths.map { path ->
+                PagePathRederivation.resolveSourcePage(stored = path, chapterDir = chapterDir, exists = system::exists)
+            }
         val temporary = chapterDir / ".chapter_$chapterId-${NSUUID().UUIDString}.cbz.tmp"
         // Ownership starts only after exclusive creation succeeds; a collision/open failure must
         // not delete a pre-existing file at this path.
@@ -164,7 +165,10 @@ class IosCbzWriter internal constructor(
     }
 
     /** Reopen and read the staged payloads; a readable directory alone cannot prove a complete ZIP. */
-    private suspend fun validateArchive(temporary: Path, expected: List<ArchivedEntry>) {
+    private suspend fun validateArchive(
+        temporary: Path,
+        expected: List<ArchivedEntry>,
+    ) {
         system.openZip(temporary).use { zip ->
             val root = "/".toPath()
             val names = zip.list(root).map { it.name }.toSet()
@@ -189,7 +193,11 @@ class IosCbzWriter internal constructor(
         }
     }
 
-    private data class ArchivedEntry(val name: String, val size: Long, val checksum: Int)
+    private data class ArchivedEntry(
+        val name: String,
+        val size: Long,
+        val checksum: Int,
+    )
 
     private companion object {
         const val YIELD_EVERY_N_PAGES = 2
@@ -225,13 +233,14 @@ internal class IosCbzPageTranscoder(
         maxMemoryBytes: Long,
         emit: suspend (extension: String, bytes: ByteArray) -> Unit,
     ) {
-        val result = if (useLibWebp) {
-            IosLibWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes, native) {
-                emit("webp", it)
+        val result =
+            if (useLibWebp) {
+                IosLibWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes, native) {
+                    emit("webp", it)
+                }
+            } else {
+                SkiaWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes) { emit("webp", it) }
             }
-        } else {
-            SkiaWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes) { emit("webp", it) }
-        }
         currentCoroutineContext().ensureActive()
         when (result) {
             is CbzPageEncoding.Encoded -> check(result.bandCount > 0) { "CBZ codec produced no bands" }
