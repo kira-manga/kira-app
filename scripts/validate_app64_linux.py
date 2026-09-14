@@ -68,7 +68,7 @@ def source_record():
 
 def preflight():
     global WORK_OWNED
-    require(ENV.get("APP64_ADMISSION") == "primary-reviewed-app64-linux-01", "admission UNBOUND")
+    require(ENV.get("APP64_ADMISSION") == "primary-reviewed-app64-linux-02", "admission UNBOUND")
     for key, expected in {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "push",
                           "GITHUB_REPOSITORY": "kira-manga/kira-app", "GITHUB_RUN_ATTEMPT": "1",
                           "GITHUB_REF": "refs/heads/remediation/app-64-public-validation",
@@ -76,15 +76,15 @@ def preflight():
         require(ENV.get(key) == expected, f"unexpected {key}")
     require(ROOT == Path(ENV["GITHUB_WORKSPACE"]).resolve(), "unexpected checkout directory")
     require(git("rev-parse", "HEAD") == ENV["GITHUB_SHA"], "event/checkout SHA mismatch")
-    require(git("rev-parse", "HEAD^") == SOURCE, "carrier is not a direct child of source")
+    require(git("rev-parse", "HEAD^") == "c7c036efa136f113bff8ecf17df3b114eaf27cd3", "follow-up parent mismatch")
     require(git("rev-parse", f"{SOURCE}^{{tree}}") == SOURCE_TREE, "source tree mismatch")
     require(git("diff", "--name-status", SOURCE, "HEAD").splitlines() ==
             [f"A\t{name}" for name in CONTROLS], "carrier changes more than the two new controls")
     require(source_record()["clean"], "checkout is not clean")
     java = Path(ENV["JAVA_HOME_21_X64"])
     require('JAVA_VERSION="21.' in (java / "release").read_text(), "installed Java 21 required")
-    require((Path(ENV["ANDROID_HOME"]) / "platforms/android-37/android.jar").is_file(),
-            "installed Android platform 37 required; no SDK substitution/download")
+    require((Path(ENV["ANDROID_HOME"]) / "platforms/android-37.0/android.jar").is_file(),
+            "installed stable Android platform 37.0 required; no SDK substitution/download")
     ENV.update(JAVA_HOME=str(java), PATH=f"{java / 'bin'}:{ENV['PATH']}",
                KONAN_DATA_DIR=str(WORK / "konan"),
                GRADLE_USER_HOME=str(WORK / "gradle"), JAVA_OPTS="-Xmx512m -XX:ActiveProcessorCount=2")

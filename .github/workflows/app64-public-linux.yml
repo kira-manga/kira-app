@@ -25,14 +25,14 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
 
       - name: Check the reviewed thirteen files and eleven Android host methods
         env:
           # Primary changes only this admission literal after independent control review.
-          # The carrier must be a direct child of the runner's fixed source checkpoint.
-          APP64_ADMISSION: primary-reviewed-app64-linux-01
+          # The follow-up carrier must be a direct child of the reviewed first public carrier.
+          APP64_ADMISSION: primary-reviewed-app64-linux-02
         run: python3 scripts/validate_app64_linux.py
 
       - name: Retain only the bounded public reports, including failures
