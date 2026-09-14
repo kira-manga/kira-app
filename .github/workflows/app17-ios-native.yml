@@ -1,0 +1,84 @@
+name: App17 source03 Native SVG3 (public preparation)
+
+on:
+  push:
+    branches: [remediation/app-17-public-native-validation-02]
+    paths: [ci/app17-ios-native.request.json]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app17-public-native01
+  cancel-in-progress: false
+
+jobs:
+  native3:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' &&
+          github.event.repository.private == false && github.event_name == 'push' &&
+          github.ref == 'refs/heads/remediation/app-17-public-native-validation-02' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Exact public carrier and its source-only parent, without persisted credentials
+        timeout-minutes: 1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Require separate primary source and public Native acquisition authorizations
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app17-ios-native.py request
+      - name: Exact reviewed public app source, without persisted credentials
+        timeout-minutes: 1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app17-source
+          fetch-depth: 1
+          persist-credentials: false
+      # Existing JAVA_HOME_21_arm64 only: no JDK/SDK/runtime installation or fallback.
+      # The 25-minute step contains a 1200s work budget plus 240s owned cleanup reserve.
+      - name: Normal core and platform Native3 compile, cinterop, link and owned-simulator tests, then clean
+        id: test
+        timeout-minutes: 25
+        env:
+          APP17_RUN: ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app17-ios-native.py test
+      - name: Retain exactly bounded public Native3 reports, never source or Native binary archives
+        if: always() && steps.test.outcome != 'skipped' && steps.test.outputs.retention_ready == 'true'
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/request.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/result.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/carrier.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/source.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/source-after.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/tools.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/simulator.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/simulator-cleanup.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/native-proof.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/native-markers.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/commands.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/task-graph.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/compilation-inputs.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/native-closure.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/link-inputs.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/linked-binary.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/test-invocation.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/task-proof.json
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/native3.log
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/gradle-stop-immediate.log
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/gradle-stop-final.log
+            ${{ runner.temp }}/app17-ios-native-${{ github.run_id }}-${{ github.run_attempt }}/reports/xml/TEST-iosSimulatorArm64Test.me.manga.kira.platform.image.IosSvgDecoderRoutingTest.xml
+          retention-days: 3
+          if-no-files-found: error
