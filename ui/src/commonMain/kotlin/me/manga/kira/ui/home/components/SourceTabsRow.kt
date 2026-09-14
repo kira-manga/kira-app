@@ -86,7 +86,11 @@ fun SourceTabsRow(
                             Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                         },
                     )
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onTabSelected(index) })
+                    .selectable(
+                        selected = selected,
+                        role = Role.Tab,
+                        onClick = { onTabSelected(index) },
+                    )
                     .padding(horizontal = 16.dp, vertical = 9.dp)
                 Row(
                     modifier = pillModifier,
@@ -146,9 +150,10 @@ fun SourceTabsRow(
                 contentDescription = editContentDescription,
                 onClick = onEditSources,
                 // Announce the badge on the edit action; the visual dot is not another focus target.
-                modifier = Modifier.semantics {
-                    if (showNewBadge && newBadgeLabel != null) stateDescription = newBadgeLabel
-                },
+                modifier =
+                    Modifier.semantics {
+                        if (showNewBadge && newBadgeLabel != null) stateDescription = newBadgeLabel
+                    },
                 tint = MaterialTheme.colorScheme.primary,
             )
             if (showNewBadge && newBadgeLabel != null) {
