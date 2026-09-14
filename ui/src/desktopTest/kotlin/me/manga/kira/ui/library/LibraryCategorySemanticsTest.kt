@@ -36,8 +36,9 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class LibraryCategorySemanticsTest {
     @Test
-    fun englishCategoriesExposeExactlyOneSelectionAndPreserveIntents() =
+    fun englishCategoriesExposeExactlyOneSelectionAndPreserveIntents() {
         categoryControls(Locale.US, LayoutDirection.Ltr)
+    }
 
     @Test
     fun arabicRtlCategoriesExposeExactlyOneSelectionAndPreserveIntents() =

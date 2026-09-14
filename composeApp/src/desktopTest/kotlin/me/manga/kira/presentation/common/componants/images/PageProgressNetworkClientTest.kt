@@ -25,6 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -217,8 +218,7 @@ class PageProgressNetworkClientTest {
             delegate = body,
         )
 
-    private fun assertNotNullBody(response: NetworkResponse): NetworkResponseBody =
-        kotlin.test.assertNotNull(response.body)
+    private fun assertNotNullBody(response: NetworkResponse): NetworkResponseBody = assertNotNull(response.body)
 }
 
 private class FixedResponseClient(

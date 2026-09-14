@@ -131,8 +131,7 @@ class DetailsChapterRediscoveryTest {
             assertTrue(loadedChapters(fixture).isEmpty(), "the first visit's refresh cannot undo the second deletion")
         }
 
-    private fun loadedChapters(fixture: DetailsOwnerFixture): List<Chapter> =
-        assertNotNull(fixture.vm.state.value.details).chapters
+    private fun loadedChapters(fixture: DetailsOwnerFixture) = assertNotNull(fixture.vm.state.value.details).chapters
 
     private fun fixture(chapters: List<Chapter>): DetailsOwnerFixture =
         DetailsOwnerFixture(mapOf(mangaA.url to 101L, mangaB.url to 202L), dispatcher, chapters).also {
