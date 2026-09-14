@@ -45,7 +45,12 @@ import me.manga.kira.presentation.reader.ReaderViewModel
 class FakeChapterPagesRepository : ChapterPagesRepository {
     /** The flow returned for the next fetch. Default: a single empty Success. */
     var result: Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
-    override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = result
+    val fetched = mutableListOf<Pair<Manga, Chapter>>()
+
+    override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> {
+        fetched += manga to chapter
+        return result
+    }
     val cleared = mutableListOf<Pair<Manga, Chapter>>()
 
     override fun clearExtractedPages(

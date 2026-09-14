@@ -151,11 +151,13 @@ data class ReaderState(
      */
     val pageChapters: List<String> = emptyList(),
     /**
-     * The chapter URLs currently loaded into [pages], in append order (the anchor chapter first,
-     * then each appended next chapter). Used to dedupe appends and to find the tail chapter whose
+     * The resolved chapter URLs, including empty outcomes, in append order (the anchor chapter
+     * first, then each appended next chapter). Used to dedupe appends and find the tail whose
      * end triggers the next append. Reset to the single anchor chapter on an explicit chapter jump.
      */
     val loadedChapterUrls: List<String> = emptyList(),
+    /** Empty append outcomes, retained until a replacement or a later non-empty streaming snapshot. */
+    val skippedChapterUrls: Set<String> = emptySet(),
     val currentPageIndex: Int = 0,
     val error: AppError? = null,
     /**

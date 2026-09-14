@@ -680,6 +680,7 @@ internal fun ReaderScreenContent(
                         // Inline boundary-card tap (continuous modes): append the next chapter below.
                         onAppendNext = { onIntent(ReaderIntent.OnAppendNextChapter) },
                         pageChapters = state.pageChapters,
+                        skippedChapterUrls = state.skippedChapterUrls,
                         chapters = state.chapters,
                         anchorChapter = state.chapter,
                         // Paged modes (#14): the chapter currently in view + the next chapter (null
@@ -1277,6 +1278,7 @@ private fun ReaderPageLayout(
     onReachedEnd: () -> Unit,
     onAppendNext: () -> Unit,
     pageChapters: List<String>,
+    skippedChapterUrls: Set<String>,
     chapters: List<Chapter>,
     anchorChapter: Chapter?,
     activeChapter: Chapter,
@@ -1347,6 +1349,7 @@ private fun ReaderPageLayout(
         -> ReaderVerticalList(
             pages = pages,
             pageChapters = pageChapters,
+            skippedChapterUrls = skippedChapterUrls,
             chapters = chapters,
             anchorChapter = anchorChapter,
             currentPageIndex = currentPageIndex,
@@ -1371,6 +1374,7 @@ private fun ReaderPageLayout(
 private fun ReaderVerticalList(
     pages: List<Page>,
     pageChapters: List<String>,
+    skippedChapterUrls: Set<String>,
     chapters: List<Chapter>,
     anchorChapter: Chapter?,
     currentPageIndex: Int,
@@ -1388,8 +1392,8 @@ private fun ReaderVerticalList(
     // of the raw page list. `pages`/`currentPageIndex` stay in PAGE-index space (the VM is unchanged);
     // the two maps translate between page-index space and feed-index (LazyColumn) space. Memoized so
     // the feed + maps rebuild only when the page list / tags / chapter list change.
-    val feed = remember(pages, pageChapters, chapters, anchorChapter) {
-        buildReaderFeed(pages, pageChapters, chapters, anchorChapter)
+    val feed = remember(pages, pageChapters, chapters, anchorChapter, skippedChapterUrls) {
+        buildReaderFeed(pages, pageChapters, chapters, anchorChapter, skippedChapterUrls)
     }
     val lastPageIndex = (pages.size - 1).coerceAtLeast(0)
     // `currentPageIndex` is honoured by `rememberLazyListState` only on the FIRST
