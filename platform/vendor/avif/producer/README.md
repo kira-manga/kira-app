@@ -1,8 +1,9 @@
 # Inert, primary-admitted hosted producer
 
-**NOT_RUN in its entirety, including shell/Python/Groovy/YAML syntax checks.** These files were
-authored and reviewed by reading public pinned sources and local recipe text only. No producer,
-checker, dependency/tool download, native build, or workflow dispatch was executed by the author.
+**This successor correction is SOURCE_ONLY / NOT_RUN, including its syntax checks and fixtures.**
+The original preparation and this correction were authored by reading pinned source and retained
+evidence only. The correction author did not execute a producer, checker, tool download, build,
+or workflow dispatch; predecessor-run observations do not verify these successor changes.
 
 ## Admission, not an automatic workflow
 
@@ -15,7 +16,7 @@ The narrowly branch-scoped push avoids registering an unvalidated workflow on th
 
 The proposed workflow:
 
-* runs only for a push to `remediation/app-native15-producer-20260914-01` in `kira-manga/kira-app`,
+* runs only for a push to `remediation/app-native15-producer-20260914-04` in `kira-manga/kira-app`,
   refusing `main`, tags, other branches/repositories and non-public repositories;
 * binds the primary-admitted carrier's 40-character `GITHUB_SHA == checkout HEAD`, and preserves
   the `native15-reviewed-source-only` resource-admission guard;
@@ -24,6 +25,11 @@ The proposed workflow:
 * has no app build, aggregate tests, release, signing, private configuration, or private secrets;
 * uses fresh hosted temporary source/result directories and an isolated Gradle user home;
 * uploads only explicit candidate/provenance/notice paths after successful collection.
+
+The compiler-evidence correction and failure-only retention described below are **SOURCE_ONLY /
+NOT_RUN**, including their fixtures. The predecessor run `34901160491` assembled all four ABIs
+(36 tasks), then failed when its collector assumed `CMAKE_CXX_COMPILER` was in `CMakeCache.txt`.
+Only cleanup/log evidence survived; its AAR is not retained or recoverable by this amendment.
 
 Do not move this recipe into an active workflow, invoke its scripts, or relax a failed guard as
 part of ordinary source review. Missing SDK license acceptance, source availability, package
@@ -112,7 +118,14 @@ resolved producer output and requires that mapping and command equality.
    and the pinned NDK's `llvm-nm`, never source text as a replacement for binary API evidence.
 6. **`native_build_evidence.py`**: checks actual `RelWithDebInfo` CMake caches, AGP build-command
    executable equality, generated Ninja job pools, and the JNI link edge's references to the
-   reviewed prebuilt static libraries; records hashes.
+   reviewed prebuilt static libraries; records hashes. The CXX compiler must be named literally
+   in the single generated `CMakeFiles/3.22.1-g37088a8/CMakeCXXCompiler.cmake`, with Clang 14.0.7,
+   no compiler argument prefix, and the exact pinned NDK's `linux-x86_64/bin/clang++` path; its
+   resolved binary must stay inside that NDK. The generated CXX identification log must agree
+   with that path and the observed ABI-specific API-21 target. A cache compiler entry, if present,
+   must agree; its absence never substitutes a guessed compiler. Generated files are read, not
+   executed. Missing/ambiguous/nonliteral evidence fails closed. The predecessor retained the
+   identification logs, not the compiler metadata files; those metadata bytes remain unverified.
 7. **`producer_inputs.py`** and **`collect_provenance.py`**: recheck recipe/source revision and
    modified-source scope, collect actual tool/compiler/distribution/resolved-public-dependency
    hashes, and package the allowlisted candidate and provenance. They do not run native behavior
@@ -123,6 +136,37 @@ They are part of the hosted producer lane and include tool execution. The source
 hermetic-build claim: the hosted OS/JDK patch and resolved Gradle artifacts are observed and
 hashed, not all pre-attested by this preparation. No private dependency cache or environment dump
 is uploaded. Generated build/source paths in public evidence are hosted-temporary paths only.
+
+### Failure-only diagnostic custody (not candidate provenance)
+
+If, and only if, AAR inspection plus recipe/source/tool checks have completed and native build
+provenance subsequently raises, `retain_unqualified.py` may preserve an **UNQUALIFIED** snapshot
+in a fresh subdirectory of the marked run evidence root. The original exception is always
+re-raised; failed retention also leaves the producer failed. No successful producer path or
+positive provenance/AAR check is skipped or replaced.
+
+This is at most 32 files / 96 MiB total: the same inspected AAR (at most 64 MiB), its structural
+report, checked partial input provenance, source-preparation report, an explicit UNQUALIFIED
+marker, checksums, a missing/ambiguous-input index, eight static-output hashes, and at most six
+raw CMake/Ninja/AGP metadata files per ABI. Every metadata file is at most 1 MiB, whole rather
+than truncated. Only same-UID, single-link regular source files under the owned work root can
+be read; copies are hashed and the AAR/preparation hashes must match prior inspection. Static
+archives are hashed only (eight files of at most 64 MiB each), not uploaded. There is no source
+tree, dependency cache, tool binary, environment, credential, or arbitrary-path export.
+
+Only a fully written allowlisted snapshot sets the producer step's readiness output. A separate
+two-minute, failure-conditioned upload names the artifact `avif-native15-UNQUALIFIED-collector-*`
+and retains it for seven days. The normal candidate upload remains success-only; both the
+original failure and the existing final owned cleanup/log upload remain unchanged. This new
+upload is last, after cleanup and the original log upload, so it cannot spend cleanup's remaining
+job time first. Capture uses
+the existing producer timeout, and all steps remain within the 45-minute job limit. Earlier
+failures, cancellation, runner loss, snapshot errors, or deadline exhaustion can prevent capture.
+
+Raw evidence can support diagnosis without repeating a build; missing evidence is recorded,
+never invented. This does **not** implement replay, resume, automatic reuse, or candidate
+acceptance. A retained AAR is not a source-qualified dependency. Independent review must still
+establish every required provenance and qualification claim before any later binding.
 
 ## Owned cleanup and bounded operational evidence
 
@@ -171,7 +215,7 @@ status files for seven days, including failures. The workflow records cleanup's 
 its step output and job summary even if the checkout/helper is unavailable. Its two-minute
 cleanup step fits inside the unchanged 45-minute job ceiling; it is not extra producer budget.
 
-This cleanup remains **NOT_RUN**. SIGKILL, runner loss, or the overall job deadline can prevent
+This amendment changes no cleanup bounds or ownership checks. SIGKILL, runner loss, or the overall job deadline can prevent
 traps/final steps from running; `always()` is not a guarantee against those failures. A cleanup
 log or upload is operational evidence only, never native/app qualification or acceptance.
 

@@ -4,7 +4,7 @@ name: Reviewed AVIF native candidate producer
 
 on:
   push:
-    branches: [remediation/app-native15-producer-20260914-03]
+    branches: [remediation/app-native15-producer-20260914-04]
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   candidate:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-native15-producer-20260914-03' && github.repository == 'kira-manga/kira-app' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-native15-producer-20260914-04' && github.repository == 'kira-manga/kira-app' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
@@ -32,7 +32,7 @@ jobs:
           [[ "$KIRA_AVIF_PRODUCER_ADMITTED" == native15-reviewed-source-only ]]
           [[ "$EXPECTED_RECIPE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$GITHUB_SHA" == "$EXPECTED_RECIPE_COMMIT" ]]
-          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == remediation/app-native15-producer-20260914-03 ]]
+          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == remediation/app-native15-producer-20260914-04 ]]
           [[ "$REPOSITORY_VISIBILITY" == public ]]
           [[ "$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')" -ge 8388608 ]]
       - name: Checkout only the reviewed public producer inputs
@@ -56,6 +56,7 @@ jobs:
         shell: bash
         run: bash platform/vendor/avif/producer/setup-hosted-tools.sh
       - name: Produce and inspect the four-ABI AAR candidate
+        id: producer
         timeout-minutes: 31
         shell: bash
         run: timeout --kill-after=20s 30m bash platform/vendor/avif/producer/rebuild.sh
@@ -117,3 +118,28 @@ jobs:
             ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/cleanup-status.txt
             ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/native-log-index.txt
             ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/native-logs/*.log
+      - name: Retain bounded UNQUALIFIED bytes after native provenance failure
+        if: ${{ failure() && steps.producer.outcome == 'failure' && steps.producer.outputs.unqualified_retention_ready == 'true' }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: avif-native15-UNQUALIFIED-collector-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/UNQUALIFIED.json
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/UNQUALIFIED-avif-1.3.0.841110fd-kira-limits1.aar
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/partial-provenance.json
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/artifact-report.json
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/source-preparation.json
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-input-index.json
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/static-output-hashes.json
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/SHA256SUMS
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-inputs/*/CMakeCache.txt
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-inputs/*/CMakeCXXCompiler.cmake
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-inputs/*/CMakeOutput.log
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-inputs/*/build.ninja
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-inputs/*/rules.ninja
+            ${{ runner.temp }}/avif-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}/unqualified-collector/native-inputs/*/android_gradle_build.json

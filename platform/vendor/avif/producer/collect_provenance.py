@@ -11,6 +11,7 @@ import sys
 from artifact_checks import inspect_aar, sha256_file
 from native_build_evidence import native_build_evidence
 from producer_inputs import recipe_evidence, source_evidence, tool_evidence
+from retain_unqualified import retain_unqualified
 
 
 def require_admitted_context(recipe, work, result):
@@ -42,7 +43,7 @@ def write_json(path, value):
 
 
 def candidate_provenance(recipe, work, ndk, java_home, manifest, artifact):
-    return {
+    provenance = {
         "schema_version": 1,
         "state": "PRODUCED_CANDIDATE_NOT_RUNTIME_QUALIFIED",
         "candidate_version": manifest["candidate_version"],
@@ -52,7 +53,6 @@ def candidate_provenance(recipe, work, ndk, java_home, manifest, artifact):
         "recipe": recipe_evidence(recipe),
         "source_inputs": source_evidence(recipe, work, ndk, manifest),
         "tools": tool_evidence(work, ndk, java_home, manifest),
-        "native_builds": native_build_evidence(work, ndk),
         "hosted_run": {"run_id": os.environ["GITHUB_RUN_ID"], "attempt": os.environ["GITHUB_RUN_ATTEMPT"],
                        "image_os": os.environ.get("ImageOS"), "image_version": os.environ.get("ImageVersion")},
         "declared_resource_limits": manifest["producer"],
@@ -61,6 +61,17 @@ def candidate_provenance(recipe, work, ndk, java_home, manifest, artifact):
         "app_compile_runtime_and_packaging_qualification": "NOT_RUN",
         "byte_identical_rebuild_or_baseline_maven_equivalence": "NOT_CLAIMED",
     }
+    try:
+        provenance["native_builds"] = native_build_evidence(work, ndk)
+    except Exception:
+        # AAR/recipe/source/tool checks above have passed. Retention is diagnostic, not fallback
+        # provenance: it cannot change this failure, and no candidate result is published.
+        try:
+            retain_unqualified(work, ndk, artifact, provenance)
+        except Exception as error:
+            print(f"unqualified_retention_failed error_type={type(error).__name__}", file=sys.stderr)
+        raise
+    return provenance
 
 
 def copy_public_inputs(recipe, work, result, manifest):

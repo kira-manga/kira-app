@@ -5,7 +5,76 @@ import os
 from pathlib import Path
 import re
 
-from artifact_checks import ABI_ELF, sha256_file
+from artifact_checks import ABI_ELF, sha256_bytes, sha256_file
+
+
+CMAKE_GENERATED_VERSION = "3.22.1-g37088a8"
+CXX_ID_TARGETS = {
+    "armeabi-v7a": "armv7-none-linux-androideabi21",
+    "arm64-v8a": "aarch64-none-linux-android21",
+    "x86": "i686-none-linux-android21",
+    "x86_64": "x86_64-none-linux-android21",
+}
+MAX_COMPILER_EVIDENCE_BYTES = 1024 * 1024
+
+
+def compiler_evidence_text(path):
+    if path.is_symlink() or path.resolve(strict=True) != path or not path.is_file():
+        raise RuntimeError("Expected an unlinked generated compiler evidence file")
+    with path.open("rb") as source:
+        payload = source.read(MAX_COMPILER_EVIDENCE_BYTES + 1)
+    if not payload or len(payload) > MAX_COMPILER_EVIDENCE_BYTES or b"\0" in payload:
+        raise RuntimeError("Generated compiler evidence is empty, oversized, or non-text")
+    return payload.decode("utf-8"), sha256_bytes(payload)
+
+
+def cmake_compiler_literal(text, key):
+    # Read only CMake's literal generated assignments; never execute/evaluate CMake text.
+    lines = [line for line in text.splitlines()
+             if re.match(rf"\s*set\s*\(\s*{re.escape(key)}(?:\s|\))", line, re.IGNORECASE)]
+    match = re.fullmatch(rf'set\({re.escape(key)} "([^"\\$;\r\n]*)"\)[ \t]*', lines[0]) if len(lines) == 1 else None
+    if match is None:
+        raise RuntimeError(f"Missing, ambiguous, or nonliteral generated compiler field: {key}")
+    return match.group(1)
+
+
+def inspect_cxx_compiler(directory, ndk, abi, cache):
+    # Android's toolchain can set CMAKE_CXX_COMPILER as a normal variable, not a cache entry.
+    # Its generated language-compiler file is mandatory; a known NDK path is not a fallback.
+    candidates = list(directory.glob("CMakeFiles/*/CMakeCXXCompiler.cmake"))
+    expected_metadata = directory / f"CMakeFiles/{CMAKE_GENERATED_VERSION}/CMakeCXXCompiler.cmake"
+    if candidates != [expected_metadata]:
+        raise RuntimeError(f"Expected one compiler metadata file from the pinned CMake: {abi}")
+    text, metadata_hash = compiler_evidence_text(expected_metadata)
+    keys = ("CMAKE_CXX_COMPILER", "CMAKE_CXX_COMPILER_ID", "CMAKE_CXX_COMPILER_VERSION", "CMAKE_CXX_COMPILER_ARG1")
+    values = {key: cmake_compiler_literal(text, key) for key in keys}
+    expected_compiler = ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+    compiler = Path(values["CMAKE_CXX_COMPILER"])
+    if (not compiler.is_absolute() or compiler.name != expected_compiler.name
+            or compiler.parent.resolve(strict=True) != expected_compiler.parent.resolve(strict=True)
+            or values["CMAKE_CXX_COMPILER_ID"] != "Clang"
+            or values["CMAKE_CXX_COMPILER_VERSION"] != "14.0.7"
+            or values["CMAKE_CXX_COMPILER_ARG1"] != ""):
+        raise RuntimeError(f"Generated CXX compiler differs from the reviewed NDK compiler: {abi}")
+    resolved = compiler.resolve(strict=True)
+    if (resolved != expected_compiler.resolve(strict=True)
+            or not resolved.is_relative_to(ndk.resolve(strict=True)) or not resolved.is_file()):
+        raise RuntimeError("Generated CXX compiler resolves outside the pinned NDK")
+    if "CMAKE_CXX_COMPILER" in cache and cache["CMAKE_CXX_COMPILER"] != str(compiler):
+        raise RuntimeError("CMake cache contradicts generated CXX compiler metadata")
+    log, log_hash = compiler_evidence_text(directory / "CMakeFiles/CMakeOutput.log")
+    heading = 'Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.'
+    pattern = (rf"(?m)^{re.escape(heading)}\nCompiler: ([^\r\n]+)\n"
+               r"Build flags: [^\r\n]*\nId flags: -c;--target=([A-Za-z0-9_+-]+)[ \t]*$")
+    identities = re.findall(pattern, log)
+    if (log.count(heading) != 1 or len(identities) != 1
+            or identities[0][0].rstrip() != str(compiler)
+            or identities[0][1] != CXX_ID_TARGETS[abi]):
+        raise RuntimeError(f"Generated CXX identification does not bind the reviewed compiler/ABI/API: {abi}")
+    return {"compiler_sha256": sha256_file(resolved), "compiler_path": str(compiler),
+            "resolved_compiler_path": str(resolved), "compiler_metadata_sha256": metadata_hash,
+            "compiler_metadata_values": values, "compiler_identification_log_sha256": log_hash,
+            "compiler_identification_target": identities[0][1]}
 
 
 def cache_values(path):
@@ -58,12 +127,10 @@ def inspect_abi_build(work, ndk, abi, ninja):
         raise RuntimeError(f"Unreviewed codec, ABI, or build concurrency inputs: {abi}")
     if Path(values["CMAKE_MAKE_PROGRAM"]).resolve() != ninja.resolve():
         raise RuntimeError("CMake used a Ninja outside the pinned SDK CMake package")
-    compiler = Path(values["CMAKE_CXX_COMPILER"]).resolve()
-    if not compiler.is_relative_to(ndk.resolve()):
-        raise RuntimeError("Native CMake compiler is outside the pinned NDK")
+    compiler = inspect_cxx_compiler(cache.parent, ndk, abi, values)
     static_inputs = check_static_link_inputs(work, cache.parent, abi)
     return {"cmake_cache_sha256": sha256_file(cache), "reviewed_cache_values": expected,
-            "compiler_sha256": sha256_file(compiler), "ninja_sha256": sha256_file(ninja),
+            **compiler, "ninja_sha256": sha256_file(ninja),
             "agp_build_command": check_agp_ninja_command(cache.parent, ninja),
             "job_pools": check_job_pools(cache.parent), "static_inputs": static_inputs}
 
