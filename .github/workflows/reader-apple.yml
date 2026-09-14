@@ -1,0 +1,84 @@
+name: Reader/UI Apple mains and existing VM Native11 (public)
+
+on:
+  push:
+    branches: [remediation/app-reader-ui-public-validation]
+    paths: [ci/reader-apple.request.json]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reader-public-apple01
+  cancel-in-progress: false
+
+jobs:
+  apple01:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' &&
+          github.event.repository.private == false && github.event_name == 'push' &&
+          github.ref == 'refs/heads/remediation/app-reader-ui-public-validation' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Exact public carrier, without persisted credentials
+        timeout-minutes: 2
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          persist-credentials: false
+      - name: Require separate primary source and public Native acquisition authorizations
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/reader-apple.py request
+      - name: Exact reviewed public app source, without persisted credentials
+        timeout-minutes: 2
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: reader-apple-source
+          persist-credentials: false
+      # JAVA_HOME_21_arm64 must identify an already installed runner JDK21.
+      # No setup-java, tool installation, shared cache or fallback step is included.
+      - name: Normal both-target UI mains and owned-simulator presentation Native11, then clean
+        id: test
+        timeout-minutes: 25
+        env:
+          READER_APPLE_RUN: ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/reader-apple.py test
+      - name: Retain bounded public app diagnostics, never source or KLIB/executable archives
+        if: always() && steps.test.outcome != 'skipped' && steps.test.outputs.retention_ready == 'true'
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/request.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/result.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/source.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/source-after.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/tools.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/simulator.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/simulator-cleanup.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/native-proof.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/native-markers.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/commands.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/library-artifacts.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/task-graph.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/resource-outputs.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/compilation-inputs.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/link-inputs.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/linked-binary.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/test-invocation.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/task-proof.json
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/[0-9][0-9][0-9]*-apple-mains-and-native11.log
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/[0-9][0-9][0-9]*-gradle-stop-immediate.log
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/[0-9][0-9][0-9]*-gradle-stop-final.log
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/xml/TEST-iosSimulatorArm64Test.me.manga.kira.presentation.reader.ReaderViewModelActiveNavigationTest.xml
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/xml/TEST-iosSimulatorArm64Test.me.manga.kira.presentation.reader.ReaderViewModelAppendTest.xml
+            ${{ runner.temp }}/app-reader-apple01-${{ github.run_id }}-${{ github.run_attempt }}/reports/xml/TEST-iosSimulatorArm64Test.me.manga.kira.presentation.reader.ReaderViewModelActiveChapterTest.xml
+          retention-days: 3
+          if-no-files-found: error
