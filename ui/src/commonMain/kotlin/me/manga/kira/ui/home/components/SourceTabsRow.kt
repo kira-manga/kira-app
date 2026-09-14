@@ -2,7 +2,6 @@ package me.manga.kira.ui.home.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,9 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,16 +24,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import me.manga.kira.domain.model.home.SourceTab
 import me.manga.kira.ui.common.LocalSourceIconResolver
 import me.manga.kira.ui.common.RemoteSourceIcon
 import me.manga.kira.ui.common.SourceIconResolution
-import org.jetbrains.compose.resources.painterResource
 import me.manga.kira.ui.components.KiraIconButton
 import me.manga.kira.ui.components.KiraIcons
 import me.manga.kira.ui.theme.KiraBrand
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Horizontal source-tab strip + a trailing edit-sources action (Home redesign 2026-06).
@@ -67,7 +70,7 @@ fun SourceTabsRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LazyRow(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).selectableGroup(),
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -82,9 +85,11 @@ fun SourceTabsRow(
                         } else {
                             Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                         },
-                    )
-                    .clickable { onTabSelected(index) }
-                    .padding(horizontal = 16.dp, vertical = 9.dp)
+                    ).selectable(
+                        selected = selected,
+                        role = Role.Tab,
+                        onClick = { onTabSelected(index) },
+                    ).padding(horizontal = 16.dp, vertical = 9.dp)
                 Row(
                     modifier = pillModifier,
                     verticalAlignment = Alignment.CenterVertically,
@@ -142,6 +147,11 @@ fun SourceTabsRow(
                 icon = KiraIcons.Edit,
                 contentDescription = editContentDescription,
                 onClick = onEditSources,
+                // Announce the badge on the edit action; the visual dot is not another focus target.
+                modifier =
+                    Modifier.semantics {
+                        if (showNewBadge && newBadgeLabel != null) stateDescription = newBadgeLabel
+                    },
                 tint = MaterialTheme.colorScheme.primary,
             )
             if (showNewBadge && newBadgeLabel != null) {

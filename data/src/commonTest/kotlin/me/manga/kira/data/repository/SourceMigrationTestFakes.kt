@@ -180,6 +180,11 @@ internal class StatefulMangaDao(
         api: String,
         title: String,
     ): Long? = rows.firstOrNull { it.api == api && it.title == title }?.id
+
+    override suspend fun getIdByApiAndUrl(
+        api: String,
+        mangaUrl: String,
+    ): Long? = rows.firstOrNull { it.api == api && it.url == mangaUrl }?.id
 }
 
 internal class StatefulChapterDao(

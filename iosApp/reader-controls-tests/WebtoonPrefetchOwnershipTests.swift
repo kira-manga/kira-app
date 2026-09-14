@@ -11,7 +11,7 @@ final class WebtoonPrefetchOwnershipTests: XCTestCase {
         XCTAssertEqual(requests.count, 2)
         XCTAssertEqual(requests[0].url, requests[1].url)
         XCTAssertNotEqual(requests[0].token, requests[1].token)
-        XCTAssertTrue(fixture.prefetch([3]).isEmpty())
+        XCTAssertTrue(fixture.prefetch([3]).isEmpty)
         fixture.controller.collectionView(fixture.collection, cancelPrefetchingForItemsAt: [IndexPath(item: 3, section: 0)])
         let changed = Set(fixture.loader.cancelled).subtracting(baseline)
         XCTAssertTrue(changed.contains(requests[0].token))
@@ -25,8 +25,21 @@ final class WebtoonPrefetchOwnershipTests: XCTestCase {
     func testHeaderReplacementCancelsOldPrefetchAndNewRequestsUseFreshHeaders() throws {
         let fixture = try WebtoonPrefetchFixture()
         let prior = fixture.prefetch([3, 4])
+        XCTAssertEqual(prior.count, 2)
+        let changedRow = try XCTUnwrap(prior.first)
+        let unchangedRow = try XCTUnwrap(prior.last)
+        var partialPages = fixture.pages
+        partialPages[3] = ReaderPageItem(url: partialPages[3].url, headers: ["Cookie": "partial"])
+        fixture.set(partialPages)
+        XCTAssertTrue(fixture.loader.cancelled.contains(changedRow.token))
+        XCTAssertFalse(fixture.loader.cancelled.contains(unchangedRow.token), "another row's fresh headers must not cancel this subscriber")
+        let partial = fixture.prefetch([3, 4])
+        XCTAssertEqual(partial.count, 1, "only the changed row needs a new prefetch")
+        XCTAssertTrue(partial.allSatisfy { $0.headers == ["Cookie": "partial"] })
+
         fixture.set(fixture.pages.map { ReaderPageItem(url: $0.url, headers: ["Cookie": "fresh"]) })
         prior.forEach { XCTAssertTrue(fixture.loader.cancelled.contains($0.token)) }
+        partial.forEach { XCTAssertTrue(fixture.loader.cancelled.contains($0.token)) }
         let refreshed = fixture.prefetch([3, 4])
         XCTAssertEqual(refreshed.count, 2)
         XCTAssertTrue(refreshed.allSatisfy { $0.headers == ["Cookie": "fresh"] })
@@ -38,7 +51,7 @@ final class WebtoonPrefetchOwnershipTests: XCTestCase {
         let prior = try XCTUnwrap(fixture.prefetch([3]).first)
         fixture.set(fixture.pages + [ReaderPageItem(url: "https://reader.test/appended", headers: [:])])
         XCTAssertFalse(fixture.loader.cancelled.contains(prior.token), "an unchanged append is not content replacement")
-        XCTAssertTrue(fixture.prefetch([3]).isEmpty())
+        XCTAssertTrue(fixture.prefetch([3]).isEmpty)
         let refreshed = fixture.pages.map { ReaderPageItem(url: $0.url, headers: ["Cookie": "new"]) }
         fixture.set(refreshed + [ReaderPageItem(url: "https://reader.test/next", headers: [:])])
         XCTAssertTrue(fixture.loader.cancelled.contains(prior.token))

@@ -12,7 +12,6 @@ import me.manga.kira.core.platform.HideNavigationBarSideEffect
 import me.manga.kira.core.platform.encodeImageBitmapToPng
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
@@ -83,7 +82,6 @@ fun ChapterImagesReworkScreenRoute(
     // (per-URL collectors started in the `runFetch` Success branch). Splitting reporter +
     // observer across two consumers is intentional — `:ui` only knows the `:domain` callback
     // shape, never the repository type, which keeps `:ui` decoupled from `:data`.
-    val pageProgressRepo: PageProgressRepository = koinInject()
 
     // Reader parity item #5 (share current page): the existing `:platform` ScreenshotProvider SPI
     // (relocated in Phase 5.y.3 — Android shares via Intent.ACTION_SEND + FileProvider, iOS via
@@ -158,7 +156,6 @@ fun ChapterImagesReworkScreenRoute(
         },
         // Reader parity item #6: AUTO 403→WebView recovery + auto-retry-on-return.
         onSolveCloudflareChallenge = solveCloudflare,
-        onReportProgress = pageProgressRepo::report,
     )
 }
 

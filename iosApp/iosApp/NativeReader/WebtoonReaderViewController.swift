@@ -7,8 +7,8 @@ struct ReaderPageItem: Equatable {
 }
 
 /// One row of the continuous feed: an image (with its absolute page index) or a chapter boundary panel.
-/// Equatable so `setContent` can detect a same-URL/new-HEADERS resend (post-Cloudflare-solve
-/// re-fetch) that the position-preserving key diff deliberately ignores.
+/// Equatable so `setContent` can detect boundary-label updates and same-URL/new-HEADERS resends
+/// (post-Cloudflare-solve re-fetches) that the position-preserving key diff deliberately ignores.
 enum ReaderFeedRowItem: Equatable {
     case image(ReaderPageItem, pageIndex: Int)
     /// `next == nil` ⇒ terminal "last chapter" panel.
@@ -47,7 +47,7 @@ final class WebtoonReaderViewController: UIViewController,
     private var aspects: [Int: CGFloat] = [:]
     /// Each row owns its subscriber, including duplicate URLs. Never overwrite/drop an owned token.
     private var prefetchTokens: [IndexPath: String] = [:]
-    /// Bumped on each content change to abandon a stale background aspect-seed pass.
+    /// Bumped on each full content replacement to abandon a stale background aspect-seed pass.
     private var aspectSeedGeneration = 0
     /// The saved page to restore to (set by setResume). The reload-time scroll uses placeholder heights;
     /// the aspect-seed pass re-applies this once cells are sized from real dimensions.
@@ -162,19 +162,31 @@ final class WebtoonReaderViewController: UIViewController,
         let isAppend = !oldKeys.isEmpty &&
             newKeys.count > oldKeys.count &&
             Array(newKeys.prefix(oldKeys.count)) == oldKeys
+        // Equal keys preserve row positions/heights, not content. A skipped or recovered chapter can
+        // change an existing boundary while appending pages; fresh headers can also change in a prefix.
+        // Rebind only changed visible rows, leaving unchanged image cells and their loads intact.
+        let changedVisible = collectionView.indexPathsForVisibleItems.filter { ip in
+            ip.item < rows.count && ip.item < newRows.count && rows[ip.item] != newRows[ip.item]
+        }
+        if isAppend || newKeys == oldKeys {
+            // Stable row positions can carry fresh headers. Cancel only those image subscribers;
+            // boundary-label changes and unchanged rows keep their prefetch ownership.
+            for ip in Array(prefetchTokens.keys) {
+                if case .image(let page, _) = rows[ip.item],
+                   case .image(let newPage, _) = newRows[ip.item], page != newPage,
+                   let token = prefetchTokens.removeValue(forKey: ip) {
+                    imageLoader.cancel(token: token)
+                }
+            }
+        }
         if isAppend {
             let firstNew = rows.count
-            // Append identity intentionally ignores headers. A source refresh may append a chapter
-            // AND replace the previous pages' credentials; those subscriptions must not survive.
-            let changed = rows.indices.filter { rows[$0] != newRows[$0] }
-            if !changed.isEmpty { cancelPrefetches() }
-            let visibleChanges = collectionView.indexPathsForVisibleItems.filter { changed.contains($0.item) }
             rows = newRows
             rebuildMaps()
             let added = (firstNew..<newRows.count).map { IndexPath(item: $0, section: 0) }
             collectionView.performBatchUpdates({
                 collectionView.insertItems(at: added)
-                collectionView.reloadItems(at: visibleChanges)
+                if !changedVisible.isEmpty { collectionView.reloadItems(at: changedVisible) }
             })
         } else if newKeys != oldKeys {
             cancelPrefetches()
@@ -190,17 +202,13 @@ final class WebtoonReaderViewController: UIViewController,
             // appended pages are below the viewport and size on decode (anchored), so no seed is needed.
             seedLocalAspects()
         } else if newRows != rows {
-            // Audit P1: identical keys but different row CONTENT — the only field outside the key
-            // is the per-page HEADERS map. This is the post-Cloudflare-solve re-fetch: the bridge
-            // resends the SAME urls with FRESH cookies, which the key diff above deliberately
-            // ignores (it exists to preserve scroll position). Swap the backing rows so every
-            // future dequeue binds the fresh headers, and rebind the visible cells so an errored
-            // page retries with them instead of 403-ing on the stale cookie forever. No layout
-            // change (equal keys ⇒ equal rows/heights), so position is preserved.
-            cancelPrefetches()
+            // Boundary labels and page headers are content, not replacement identity. Keep the
+            // viewport, user-scroll latch, aspects and unchanged-row prefetches; do not seed/reapply an old
+            // resume target. Future dequeues see the new content, and changed visible image rows still
+            // retry with fresh headers after Cloudflare recovery.
             rows = newRows
             rebuildMaps()
-            collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems)
+            if !changedVisible.isEmpty { collectionView.reloadItems(at: changedVisible) }
         }
         reachedEndLatched = false
     }
@@ -449,6 +457,12 @@ final class WebtoonReaderViewController: UIViewController,
 
     // MARK: - Scroll → page tracking + reach-end (vertical collection view only)
 
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        guard scrollView === collectionView else { return }
+        // The user owns the viewport as soon as a drag starts, even before its first didScroll.
+        didUserScroll = true
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard scrollView === collectionView, !rows.isEmpty else { return }
         // Only report the visible page for USER-driven scrolls (drag/momentum) — programmatic scrolls,
@@ -479,7 +493,9 @@ final class WebtoonReaderViewController: UIViewController,
     private static func key(_ r: ReaderFeedRowItem) -> String {
         switch r {
         case .image(let item, _): return "i:" + item.url
-        case .boundary(let f, let n): return "b:\(f)>\(n ?? "·")"
+        // Boundaries have a fixed height. Their labels (including terminal/nonterminal state) may
+        // change without replacing the images or the feed shape.
+        case .boundary: return "b"
         }
     }
 }

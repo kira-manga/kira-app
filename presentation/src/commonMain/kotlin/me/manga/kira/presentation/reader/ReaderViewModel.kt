@@ -2,10 +2,6 @@ package me.manga.kira.presentation.reader
 
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
@@ -13,6 +9,8 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.PageDownloadProgress
+import me.manga.kira.domain.model.reader.PageProgressHandle
+import me.manga.kira.domain.model.reader.PageProgressObservation
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.usecase.reader.EndReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ClearExtractedPagesUseCase
@@ -251,8 +249,7 @@ class ReaderViewModel(
     private val markChapterRead: MarkChapterReadUseCase,
     // Best-effort cleanup of a downloaded chapter's extracted-CBZ temp dir (fire-and-forget).
     private val clearExtractedPages: ClearExtractedPagesUseCase,
-    // Prunes the per-page progress entries from the process-singleton map on teardown so it does
-    // not grow without bound across long sessions.
+    // Revokes this Reader's page ownership on replacement, shrink and teardown.
     private val clearPageProgress: ClearPageProgressUseCase,
 ) : MviViewModel<ReaderState, ReaderIntent, ReaderEffect>(
     initialState = ReaderState(),
@@ -282,21 +279,10 @@ class ReaderViewModel(
      */
     private var chaptersJob: Job? = null
 
-    /**
-     * Tracked per-page progress-observer coroutine (Phase 7.x.reader.modelayout.pageprogress).
-     * Parent job that supervises N per-URL child collectors (one per page in the active chapter,
-     * launched by [startObservingProgress]). Cancelled in [onEnter] before the new chapter's
-     * state lands and re-launched in [runFetch]'s Success branch once the new page list arrives.
-     *
-     * Why cancel in onEnter rather than relying on [startObservingProgress]'s own cancel: between
-     * onEnter's state reset and the new fetch's first Success, the prior chapter's collectors are
-     * still observing the repository. If a neighbor URL (page from the prior chapter) emitted a
-     * late tick, those collectors would re-add entries to the freshly-cleared `pageProgress` map.
-     * Cancelling early closes that race window.
-     *
-     * Same mutation discipline as [fetchJob] / [chaptersJob].
-     */
-    private var progressJob: Job? = null
+    // Canonical ownership includes pages that never emitted a progress tick. Reducer-thread only.
+    private val ownedPageProgress = mutableMapOf<String, PageProgressObservation>()
+    private val pageProgressJobs = mutableMapOf<String, Job>()
+    private var chapterGeneration = 0L
 
     /** Consecutive Cloudflare-solve round-trips; bounded by [MAX_CLOUDFLARE_ATTEMPTS], reset on a
      *  successful page fetch. */
@@ -307,7 +293,7 @@ class ReaderViewModel(
      * Cancelled and re-launched in [onEnter] on every chapter establish/change so the collector
      * always observes the CURRENT chapter's bookmark state — a stale collector for the prior
      * chapter's URL would otherwise keep writing into `state.isBookmarked` after a chapter swap.
-     * Same mutation discipline as [fetchJob] / [chaptersJob] / [progressJob].
+     * Same mutation discipline as [fetchJob] / [chaptersJob].
      */
     private var bookmarkJob: Job? = null
 
@@ -404,40 +390,18 @@ class ReaderViewModel(
         chapter: Chapter,
     ) {
         val current = state.value
-        FlowLog.log("Reader", "enter", "chapter=${chapter.url} num=${chapter.number} api=${manga.api}")
-        // Leaving a chapter (incl. intra-manga Next/Prev on this reused VM): drop the temp images
-        // extracted from the previous downloaded chapter's CBZ so they don't accumulate. In a
-        // continuous feed several chapters may have been appended, so clear EVERY loaded chapter
-        // (excluding the one being entered, whose pages are about to load) rather than only the
-        // anchor. Their page file:// paths are no longer referenced once state.pages is replaced below.
-        clearLoadedExtractedPages(current, exclude = chapter.url)
-        // Fresh chapter (incl. intra-manga Next/Prev, which reuse this single VM instance) gets its
-        // own Cloudflare-solve budget — otherwise a chapter that exhausted the budget would starve
-        // the auto-recovery for the next, genuinely-solvable chapter. Mirrors native's per-route
-        // `remember` scoping of the dismissal count.
-        cloudflareAttempts = 0
-        // Whether the user is moving to a different manga vs. navigating between chapters of
-        // the same manga (intra-manga Next / Prev). On manga change we clear `chapters` and
-        // refetch; on intra-manga nav we preserve the existing list (same source = same list,
-        // no reason to refetch). Phase 7.x.reader.next.
-        val mangaChanged = current.manga?.matches(manga) != true
-        // Resume-position seed (Phase 7.x.reader.resumeposition): load the persisted page index
-        // BEFORE the state update so the new chapter's state lands with the right seed in one
-        // atomic transition. Null means no saved position — start at page 0. The load is suspend
-        // but cheap (a single ObservableSettings read); we accept the brief block here rather
-        // than fanning out to a separate coroutine because the in-flight value is needed
-        // synchronously to populate the state. The subsequent `runFetch` Success branch clamps
-        // the seed to `pages.lastIndex` once the page list arrives — handles the "chapter
-        // shrank since last open" edge case without an extra check here.
-        val savedPage = loadPagePosition(chapter.url) ?: 0
-        FlowLog.log("Reader", "resume", "chapter=${chapter.url} savedPage=$savedPage")
-        // Cancel the prior chapter's progress observers before resetting state. Closes the race
-        // window where a late emission from the OLD chapter's URLs would write into the NEW
-        // chapter's freshly-cleared `pageProgress` map — see [progressJob] KDoc.
-        progressJob?.cancel()
-        // #5: an explicit jump / fresh entry CLEARS the continuous feed — cancel any in-flight append
-        // and reset the page→chapter tags + loaded-chapter list (the replace fetch re-seeds them).
+        val generation = ++chapterGeneration
+        // Revoke before any suspending resume read. Old fetches cannot reacquire removed slots,
+        // and remembered requests keep only revoked handles, even if their cancellation is late.
+        fetchJob?.cancel()
         appendJob?.cancel()
+        chaptersJob?.cancel()
+        bookmarkJob?.cancel()
+        revokePageProgress()
+        clearLoadedExtractedPages(current, exclude = chapter.url)
+        cloudflareAttempts = 0
+        val mangaChanged = current.manga?.matches(manga) != true
+        FlowLog.log("Reader", "enter", "chapter=${chapter.url} num=${chapter.number} api=${manga.api}")
         updateState {
             it.copy(
                 manga = manga,
@@ -446,19 +410,22 @@ class ReaderViewModel(
                 pages = emptyList(),
                 pageChapters = emptyList(),
                 loadedChapterUrls = emptyList(),
-                currentPageIndex = savedPage,
+                skippedChapterUrls = emptySet(),
+                currentPageIndex = 0,
                 error = null,
-                // Reset UI chrome to visible on a fresh chapter — the user's previous
-                // chapter's hide/show choice doesn't carry across, matches legacy posture.
                 isUiVisible = true,
+                isBookmarked = false,
                 chapters = if (mangaChanged) emptyList() else it.chapters,
-                // Reset per-page progress to a blank slate. The new chapter's collectors start in
-                // [runFetch]'s Success branch and populate this map as ticks arrive. Stale entries
-                // for prior-chapter URLs would be harmless to the UI (it only reads URLs from the
-                // current pages list) but would clutter memory across long sessions.
+                pageProgressHandles = emptyMap(),
                 pageProgress = emptyMap(),
             )
         }
+        // No image is shown until the resume seed is known. Another replacement may have won
+        // while this read suspended; it owns both the feed and the right to acquire progress.
+        val savedPage = loadPagePosition(chapter.url) ?: 0
+        if (generation != chapterGeneration) return
+        updateState { it.copy(currentPageIndex = savedPage) }
+        FlowLog.log("Reader", "resume", "chapter=${chapter.url} savedPage=$savedPage")
         if (mangaChanged || state.value.chapters.isEmpty()) {
             runListChapters(manga)
         }
@@ -556,12 +523,11 @@ class ReaderViewModel(
         }
         // The chapter whose end we reached is the tail of the loaded feed.
         val tailUrl = current.loadedChapterUrls.lastOrNull() ?: current.chapter?.url ?: return
-        val tailIdx = current.chapters.indexOfFirst { it.url == tailUrl }
-        if (tailIdx !in 0..<current.chapters.lastIndex) {
-            FlowLog.log("Reader", "appendNext", "skipped=no-next-chapter tail=$tailUrl tailIdx=$tailIdx total=${current.chapters.size}")
+        val next = nextUnskippedChapter(current.chapters, tailUrl, current.skippedChapterUrls)
+        if (next == null) {
+            FlowLog.log("Reader", "appendNext", "skipped=no-next-chapter tail=$tailUrl total=${current.chapters.size}")
             return // no next chapter
         }
-        val next = current.chapters[tailIdx + 1]
         if (next.url in current.loadedChapterUrls) {
             FlowLog.log("Reader", "appendNext", "skipped=already-loaded next=${next.url}")
             return // already appended
@@ -584,9 +550,11 @@ class ReaderViewModel(
         chapter: Chapter,
     ) {
         appendJob?.cancel()
+        val generation = chapterGeneration
         appendJob =
             launchSafely {
                 fetchPages(manga, chapter).collect { result ->
+                    if (generation != chapterGeneration) return@collect
                     when (result) {
                         is AppResult.Success -> {
                             val newPages = result.value
@@ -597,21 +565,10 @@ class ReaderViewModel(
                                 // re-attempting this one forever and re-marking it read on every retrigger,
                                 // and surface a non-blocking error so the user knows the chapter was empty.
                                 FlowLog.log("Reader", "appendNext", "chapter=${chapter.url} skipped=empty-next-chapter")
-                                updateState { prev ->
-                                    if (chapter.url in prev.loadedChapterUrls) {
-                                        prev
-                                    } else {
-                                        prev.copy(loadedChapterUrls = prev.loadedChapterUrls + chapter.url)
-                                    }
-                                }
-                                emit(ReaderEffect.ShowError(AppError.Unexpected("This chapter returned no pages.")))
+                                recordEmptyAppend(chapter.url)
                                 return@collect
                             }
-                            updateState { prev ->
-                                prev.withAppendedChapterPages(chapter.url, newPages)
-                            }
-                            // Re-observe progress across the full (current + appended) page set.
-                            startObservingProgress(state.value.pages.map { it.url })
+                            publishPageSnapshot(state.value.withAppendedChapterPages(chapter.url, newPages))
                             FlowLog.log(
                                 "Reader",
                                 "appended",
@@ -646,6 +603,20 @@ class ReaderViewModel(
                     }
                 }
             }
+    }
+
+    private suspend fun recordEmptyAppend(chapterUrl: String) {
+        val current = state.value
+        // A transient empty cumulative emission must not hide already resolved pages. Repeated
+        // empty emissions are one outcome, not repeated errors or permission to retry forever.
+        if (chapterUrl in current.pageChapters || chapterUrl in current.skippedChapterUrls) return
+        updateState {
+            it.copy(
+                loadedChapterUrls = (it.loadedChapterUrls + chapterUrl).distinct(),
+                skippedChapterUrls = it.skippedChapterUrls + chapterUrl,
+            )
+        }
+        emit(ReaderEffect.ShowError(AppError.Unexpected("This chapter returned no pages.")))
     }
 
     private fun onPageChanged(pageIndex: Int) {
@@ -752,9 +723,11 @@ class ReaderViewModel(
         // chapter's flow still streaming pages and overwriting the new chapter's state. See
         // class-level "Concurrent-fetch protection" KDoc.
         fetchJob?.cancel()
+        val generation = chapterGeneration
         fetchJob =
             launchSafely {
                 fetchPages(manga, chapter).collect { result ->
+                    if (generation != chapterGeneration) return@collect
                     when (result) {
                         is AppResult.Success -> {
                             val pages = result.value
@@ -773,28 +746,17 @@ class ReaderViewModel(
                                 emit(ReaderEffect.ShowError(error))
                             } else {
                                 FlowLog.log("Reader", "pages", "chapter=${chapter.url} count=${pages.size}")
-                                updateState { prev ->
-                                    val nextIndex = prev.currentPageIndex.coerceIn(0, pages.lastIndex)
-                                    prev.copy(
+                                val previous = state.value
+                                publishPageSnapshot(
+                                    previous.copy(
                                         isLoading = false,
                                         pages = pages,
-                                        // #5: this is the (replace) initial/explicit-jump load, so the
-                                        // page→chapter tags and the loaded-chapter list reset to this one
-                                        // chapter. Appends (onAppendNextChapter) extend them instead.
                                         pageChapters = List(pages.size) { chapter.url },
                                         loadedChapterUrls = listOf(chapter.url),
-                                        currentPageIndex = nextIndex,
+                                        currentPageIndex = previous.currentPageIndex.coerceIn(0, pages.lastIndex),
                                         error = null,
-                                    )
-                                }
-                                // Start per-page progress observers for this chapter's URLs. For one-shot
-                                // sources this fires once and the collectors run for the chapter's lifetime;
-                                // for streaming sources (Prochan) this fires on every cumulative Success,
-                                // restarting collectors with the growing URL set — acceptable churn given
-                                // Prochan chapters are ≤5 pages typically. Restart vs incremental-add: keep
-                                // the contract simple (current URL set = current observers) and accept the
-                                // wasteful re-subscription.
-                                startObservingProgress(pages.map { it.url })
+                                    ),
+                                )
                                 // Successful fetch clears the Cloudflare-solve budget for this reader.
                                 cloudflareAttempts = 0
                             }
@@ -845,51 +807,57 @@ class ReaderViewModel(
             }
     }
 
-    /**
-     * Start (or restart) per-page progress observers for the active chapter's [urls]
-     * (Phase 7.x.reader.modelayout.pageprogress).
-     *
-     * Cancels any prior [progressJob] then launches a supervisor parent coroutine that hosts N
-     * child collectors (one per URL). Each collector observes
-     * [ObservePageProgressUseCase] for its URL and lifts non-Idle emissions into
-     * `state.pageProgress`. The [filter] drop on [PageDownloadProgress.Idle] is critical — the
-     * repository's `observe()` projection emits [PageDownloadProgress.Idle] for never-reported
-     * URLs on subscription, so without the filter chapter entry would trigger N spurious
-     * `updateState` calls before any real platform tick lands.
-     *
-     * Why N per-URL collectors rather than one whole-map collector:
-     *  - The repository's per-URL projection includes `distinctUntilChanged`, so a collector for
-     *    URL X only re-emits when X's state actually changes. A whole-map collector would re-fire
-     *    on every neighbor URL's tick (the underlying `MutableStateFlow<Map>` emits the whole map
-     *    on any entry change), forcing the VM to diff against the prior map to know which URL
-     *    actually changed. The per-URL fan-out moves that distinct-checking into the repository
-     *    where it belongs.
-     *  - Memory cost is bounded by chapter page count (≤200 typical). Each child coroutine has
-     *    O(KB) overhead; 200 × few KB = sub-MB. Negligible.
-     *
-     * Cancellation: cancelling [progressJob] cancels all N children (structured concurrency
-     * propagates through the parent). Called by [onEnter] before a chapter swap and by this
-     * method itself before restarting.
-     */
-    private fun startObservingProgress(urls: List<String>) {
-        progressJob?.cancel()
-        if (urls.isEmpty()) return
-        progressJob =
-            launchSafely {
-                urls.forEach { url ->
-                    // A child coroutine's failure bypasses launchSafely's try/catch (it propagates
-                    // through the Job tree, not the parent's body), so each per-URL collector carries
-                    // its own absorption — onEach BEFORE catch, so a state-update throw is also routed
-                    // to onUnhandledError instead of killing the process. launchIn(this) keeps the
-                    // one-child-per-URL structure (all cancelled with [progressJob]).
-                    observePageProgress(url)
-                        .filter { it !is PageDownloadProgress.Idle }
-                        .onEach { status ->
-                            updateState { it.copy(pageProgress = it.pageProgress + (url to status)) }
-                        }.catch { t -> onUnhandledError(t) }
-                        .launchIn(this)
-                }
+    /** Publish pages and their opaque ownership together, retaining observers for surviving URLs. */
+    private fun publishPageSnapshot(next: ReaderState) {
+        val urls = next.pages.map { it.url }.toSet()
+        (ownedPageProgress.keys - urls).forEach { url ->
+            ownedPageProgress.remove(url)?.let { clearPageProgress(it.handle) }
+            pageProgressJobs.remove(url)?.cancel()
+        }
+        urls.forEach { url -> ownedPageProgress.getOrPut(url) { observePageProgress(url) } }
+        val handles = ownedPageProgress.mapValues { it.value.handle }
+        updateState { current ->
+            next.copy(
+                pageProgressHandles = handles,
+                pageProgress =
+                    current.pageProgress.filterKeys { url ->
+                        handles[url] != null && handles[url] === current.pageProgressHandles[url]
+                    },
+            )
+        }
+        ownedPageProgress.forEach { (url, observation) ->
+            if (url !in pageProgressJobs) {
+                pageProgressJobs[url] =
+                    launchSafely {
+                        observation.progress.collect { status -> reducePageProgress(observation.handle, status) }
+                    }
             }
+        }
+    }
+
+    private fun reducePageProgress(
+        handle: PageProgressHandle,
+        status: PageDownloadProgress,
+    ) {
+        if (ownedPageProgress[handle.url]?.handle !== handle) return
+        updateState { current ->
+            if (current.pageProgressHandles[handle.url] !== handle) return@updateState current
+            val progress =
+                if (status == PageDownloadProgress.Idle) {
+                    current.pageProgress - handle.url
+                } else {
+                    current.pageProgress + (handle.url to status)
+                }
+            if (progress == current.pageProgress) current else current.copy(pageProgress = progress)
+        }
+    }
+
+    private fun revokePageProgress() {
+        val observations = ownedPageProgress.values.toList()
+        ownedPageProgress.clear()
+        observations.forEach { clearPageProgress(it.handle) }
+        pageProgressJobs.values.forEach { it.cancel() }
+        pageProgressJobs.clear()
     }
 
     private fun runListChapters(manga: Manga) {
@@ -922,17 +890,15 @@ class ReaderViewModel(
     }
 
     override fun onCleared() {
+        chapterGeneration++
+        revokePageProgress()
+        updateState { it.copy(pageProgressHandles = emptyMap(), pageProgress = emptyMap()) }
         super.onCleared()
         // Reader closing: drop the extracted-CBZ temp dirs of every chapter still loaded into the
         // feed (the anchor plus any chapters appended in continuous mode). clearExtractedPages is
         // fire-and-forget on the repository's app-lifetime scope, so it completes even though
         // viewModelScope is now cancelled.
         clearLoadedExtractedPages(state.value, exclude = null)
-        // Prune this session's per-page progress entries from the process-singleton map so it does
-        // not accumulate across reader sessions. clear() is a synchronous map update, safe to call
-        // even though viewModelScope is now cancelled.
-        state.value.pageProgress.keys
-            .forEach { clearPageProgress(it) }
     }
 
     /**
@@ -994,6 +960,7 @@ private fun ReaderState.withAppendedChapterPages(
     return copy(
         pages = pages.take(keep) + newPages,
         pageChapters = pageChapters.take(keep) + List(newPages.size) { chapterUrl },
+        skippedChapterUrls = skippedChapterUrls - chapterUrl,
         loadedChapterUrls =
             if (chapterUrl in loadedChapterUrls) {
                 loadedChapterUrls

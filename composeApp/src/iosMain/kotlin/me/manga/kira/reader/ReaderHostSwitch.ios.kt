@@ -38,7 +38,6 @@ import me.manga.kira.composeapp.generated.resources.reading_mode_webtoon
 import me.manga.kira.composeapp.generated.resources.retry
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.presentation.reader.ReaderViewModel
 import me.manga.kira.ui.reader.ReaderScreen
 import org.jetbrains.compose.resources.stringResource
@@ -61,7 +60,6 @@ internal actual fun ReaderHostSwitch(
     onOpenInWebView: (url: String, api: String) -> Unit,
     onSharePage: (ImageBitmap) -> Unit,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
 ) {
     if (IosReaderFlags.NATIVE_READER_ENABLED && ReaderNativeBridge.hasFactory()) {
         NativeReaderHost(
@@ -81,7 +79,6 @@ internal actual fun ReaderHostSwitch(
             onOpenInWebView = onOpenInWebView,
             onSharePage = onSharePage,
             onSolveCloudflareChallenge = onSolveCloudflareChallenge,
-            onReportProgress = onReportProgress,
         )
     }
 }

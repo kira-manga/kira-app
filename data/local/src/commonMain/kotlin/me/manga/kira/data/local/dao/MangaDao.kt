@@ -59,7 +59,7 @@ import me.manga.kira.presentation.features.library.data.MangaChapterMetrics
 //     `LibraryRepositoryImpl.kt` (rework save / toggle-liked / toggle-watchingnow / bulk-remove
 //     paths). The rework `:data` impl reaches the DAO directly without the legacy facade.
 @Dao
-interface MangaDao {
+interface MangaDao : MangaIdentityQueries {
 
     @Query(
         """
@@ -94,15 +94,6 @@ interface MangaDao {
 
     @Query("UPDATE saved_manga SET lastOpenTimestamp = :timestamp WHERE id = :mangaId")
     suspend fun updateLastOpenTimestamp(mangaId: Long, timestamp: Long)
-
-    @Query("""
-      SELECT id
-      FROM saved_manga
-      WHERE api   = :api
-        AND title = :title
-      LIMIT 1
-    """)
-    suspend fun getIdByApiAndTitle(api: String, title: String): Long?
 
     @Query("SELECT * FROM saved_manga WHERE id = :mangaId LIMIT 1")
     suspend fun getMangaById(mangaId: Long): SavedMangaEntity?
@@ -187,4 +178,3 @@ interface MangaDao {
  * .componentprune Task #404 respectively). Original Phase-9 componentprune
  * prose preserved verbatim per the audit-trail-preservation convention.
  */
-

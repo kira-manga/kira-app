@@ -216,6 +216,11 @@ class CompressExistingDownloadsTest {
             title: String,
         ): Long? = error("unused")
 
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
+        ): Long? = error("unused")
+
         override suspend fun getMangaByApi(api: String): List<SavedMangaEntity> = error("unused")
 
         override suspend fun getMangaIdsByApi(api: String): List<Long> = error("unused")
