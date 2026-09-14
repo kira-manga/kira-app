@@ -15,7 +15,10 @@ internal fun fixtureDownloadService(
     dao: DownloadWorkerCancellationDao,
     transport: CancellationPageTransport,
     sender: CompleteSendDispatcher,
-): ChapterDownloadService = fixtureDownloadService(CancellationFixtureServiceInputs(storage, rows, dao, transport, sender))
+): ChapterDownloadService {
+    val inputs = CancellationFixtureServiceInputs(storage, rows, dao, transport, sender)
+    return fixtureDownloadService(inputs)
+}
 
 internal fun fixtureDownloadService(
     inputs: CancellationFixtureServiceInputs,
