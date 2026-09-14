@@ -1,0 +1,75 @@
+name: App13 original Engine Android and Desktop validation
+
+on:
+  push:
+    branches: [remediation/app-13-public-validation-04]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app13-public-linux
+  cancel-in-progress: false
+
+jobs:
+  linux-hosts:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app-13-public-validation-04' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the event carrier without stored credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: app
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out the exact original public Engine source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Observe two normal Test roots and changed-owner locale parity
+        working-directory: app
+        env:
+          # Primary binds this only after actual source/static/control review.
+          # The carrier must add exactly the six controls to the frozen source.
+          APP13_ADMISSION: primary-reviewed-app13-linux-04
+        run: python3 -B scripts/validate_app13_linux.py
+
+      - name: Retain only bounded public reports, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app13-linux-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app13-public-reports/result.json
+            ${{ runner.temp }}/app13-public-reports/source-before.json
+            ${{ runner.temp }}/app13-public-reports/source-after.json
+            ${{ runner.temp }}/app13-public-reports/commands.json
+            ${{ runner.temp }}/app13-public-reports/inputs.json
+            ${{ runner.temp }}/app13-public-reports/linux-provenance.json
+            ${{ runner.temp }}/app13-public-reports/gradle.log
+            ${{ runner.temp }}/app13-public-reports/inputs.log
+            ${{ runner.temp }}/app13-public-reports/stop-immediate.log
+            ${{ runner.temp }}/app13-public-reports/stop-final.log
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.core.webview.AndroidWebViewCapabilityTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.core.webview.AndroidWebViewExternalBrowserTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.core.webview.AndroidWebViewHostTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.core.webview.AndroidWebViewInitializationTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.navigation.routes.AndroidWebViewNavigationTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.core.webview.WebViewUrlSandboxTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.navigation.routes.WebViewSolverNavigationTest.xml
+            ${{ runner.temp }}/app13-public-reports/TEST-me.manga.kira.presentation.features.webview.ui.screens.WebViewScreenCaptureTest.xml
