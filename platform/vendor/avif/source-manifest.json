@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "state": "SOURCE_PREPARATION_ONLY",
+  "candidate_version": "1.3.0.841110fd-kira-limits1",
+  "producer_status": "NOT_RUN",
+  "native_qualification_status": "NOT_RUN",
+  "candidate_aar_sha256": null,
+  "baseline_maven": {
+    "coordinate": "org.aomedia.avif.android:avif:1.3.0.841110fd",
+    "observed_aar_sha256": "d2e3e0ac5ca2512b12527027b3bf815c54afdb3a2261855ed0f1ca8d06ab0c97",
+    "relationship": "Version suffix/source recipe basis, not an attestation of the Maven artifact build inputs."
+  },
+  "sources": [
+    {
+      "id": "libavif",
+      "repository": "https://github.com/AOMediaCodec/libavif.git",
+      "commit": "841110fd8723abd0d5439cbb2cfb8e9cfa11f808",
+      "path": "libavif",
+      "files": {
+        "android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java": "986c8b7d5bd39538e863c30a05e274ee3dee3a66041a5d77f714c5ab444f2e0a",
+        "android_jni/avifandroidjni/src/main/jni/libavif_jni.cc": "21918cf88d1524925402fb81573749fdd2855a21489f29714617d4adfdcfeaf8",
+        "android_jni/avifandroidjni/src/main/jni/CMakeLists.txt": "42dac9d9cb66de682e4498cab1a850c57e0355be4b06cdfe9efcc041941fd46b",
+        "android_jni/avifandroidjni/build.gradle": "cac4cbaa9398c1f8aca72d55fabb39e060e66bd65243dbb25c535a6f55ef43b6",
+        "android_jni/build.gradle": "6bef0a994f91bf0464e30cc69d9f3f56f23067ff049b935a82b528a2f2a37079",
+        "android_jni/gradle/wrapper/gradle-wrapper.properties": "bb5eb08550f0d4d46c86ba6747b3ce51a0cc6824a61ebb96fba7b1c69c320fcd",
+        "CMakeLists.txt": "d1bba0d161d20eb316199e44151ec629032a9f50cda4ed064ae52796d540ac94",
+        "include/avif/avif.h": "0f82a8fc1233f5ac6b1c2334660bb905ee96c2ca17185f73da2d2fb8df7209a9",
+        "src/read.c": "1c742bcdb233ea105b142a9125d2178f069c74c24013df6a35299f372cd7b9fc",
+        "src/codec_dav1d.c": "41172192e5e7b305c8e7e66220f13cf664a2935bb7581cff87655dd66c3dc6e9",
+        "src/scale.c": "724b3a786aba363ea1c2657f8a6851892eb5ca462349caa8afab8020eb5659e2",
+        "cmake/Modules/LocalDav1d.cmake": "f514283236cd8b355ea82c4b3b96a2b1be63f64a082dc1162bca9af0ecb99d6d",
+        "cmake/Modules/LocalLibyuv.cmake": "663c7b5f43a18828f7694ab4f75c5a7ed25413298d887f967f9a5e09ff2f7217",
+        "ext/dav1d_android.sh": "8d8433730a958f529242b494e411febc53a02d890bfbb3375831ce3d2fbc1266",
+        "ext/libyuv_android.sh": "51d969181cf1422e325dfe1f8e714c93e3ab6754cdfa4ba2da2238a1b6bcb7e6",
+        "LICENSE": "165abf92cc04b39e80d29cadea7a6a7e8fddf59407d4ad2616507a7ebe8216f9"
+      }
+    },
+    {
+      "id": "dav1d",
+      "repository": "https://code.videolan.org/videolan/dav1d.git",
+      "commit": "42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa",
+      "version": "1.5.1",
+      "path": "libavif/ext/dav1d",
+      "files": {
+        "COPYING": "b327887de263238deaa80c34cdd2ff3e0ba1d35db585ce14a37ce3e74ee389e9",
+        "src/obu.c": "d0888948e3a182b7f403444dab61eb953b4e9f8c406e6faf0f4a1b6fd1e314d2",
+        "package/crossfiles/aarch64-android.meson": "b613f9f7ad07ef74c4a0ac10317be67decc5459b3823f303f32edfbf33f5c3fc",
+        "meson.build": "f076aa5af5fa5c85ce78faaba3f04859609948897022d81658aa6a94165b75e1"
+      }
+    },
+    {
+      "id": "libyuv",
+      "repository": "https://chromium.googlesource.com/libyuv/libyuv",
+      "commit": "464c51a0353c71f08fe45f683d6a97a638d47833",
+      "path": "libavif/ext/libyuv",
+      "files": {
+        "LICENSE": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+        "PATENTS": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495"
+      }
+    }
+  ],
+  "ndk_source_basis": {
+    "repository": "https://android.googlesource.com/platform/ndk",
+    "tag": "ndk-r25c",
+    "commit": "e52b1c3b7b38a89aa1643631e8e4fb407f9d8757",
+    "files": {
+      "sources/android/cpufeatures/cpu-features.c": "ab4b8f1d2ef649069867a33540928d8ab8fa0eb1873b53f146629f656d7cfe18",
+      "sources/android/cpufeatures/cpu-features.h": "7867cc62277f04859e8eeb33573996f18839b577f8ec874b0818d92aeee20726",
+      "sources/android/cpufeatures/NOTICE": "c870d52f42a8f93023b99a85fe68d02637d6b04e5f35bbcd7f98759adb4e4d49"
+    },
+    "note": "Producer must compare the installed NDK input files to these public-tag bytes."
+  },
+  "patch": {
+    "path": "limits.patch",
+    "sha256": "9ddfc543b54a30f0422cccb98f2f89eb7c27424bbe503ce5eab97f6f43b69abe",
+    "paths": [
+      "android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java",
+      "android_jni/avifandroidjni/src/main/jni/libavif_jni.cc"
+    ]
+  },
+  "producer": {
+    "runner": "ubuntu-22.04",
+    "jdk_major": 17,
+    "gradle": "7.5",
+    "gradle_distribution_sha256": "cb87f222c5585bd46838ad4db78463a5c5f3d336e5e2b98dc7c0c586527351c2",
+    "agp": "7.4.1",
+    "ndk": "25.2.9519653",
+    "cmake": "3.22.1",
+    "compile_sdk": 31,
+    "min_sdk": 21,
+    "build_tools": "30.0.3",
+    "meson": "1.7.0",
+    "ninja": {
+      "sdk_package": "cmake;3.22.1",
+      "relative_executable": "cmake/3.22.1/bin/ninja",
+      "actual_version": null,
+      "actual_executable_sha256": null,
+      "identity_status": "PENDING_ADMITTED_ACQUISITION; actual version/hash required in produced provenance"
+    },
+    "nasm": "2.15.05",
+    "nasm_ubuntu_package": "2.15.05-1",
+    "abis": [
+      "armeabi-v7a",
+      "arm64-v8a",
+      "x86",
+      "x86_64"
+    ],
+    "parallel_jobs": 2,
+    "job_timeout_minutes": 45,
+    "build_timeout_minutes": 30,
+    "minimum_free_bytes": 8589934592,
+    "maximum_aar_bytes": 67108864,
+    "generated_source_changes": [
+      "Gradle distribution checksum property",
+      "AAR asset notice bundle"
+    ],
+    "ninja_origin": "Genuine, unmodified Android SDK CMake 3.22.1 package payload; explicitly shared by Meson, CMake, and the AGP generated build command.",
+    "meson_wheel": {
+      "filename": "meson-1.7.0-py3-none-any.whl",
+      "sha256": "ae3f12953045f3c7c60e27f2af1ad862f14dee125b4ed9bcb8a842a5080dbf85",
+      "url": "https://files.pythonhosted.org/packages/ab/3b/63fdad828b4cbeb49cef3aad26f3edfbc72f37a0ab54917d445ec0b9d9ff/meson-1.7.0-py3-none-any.whl"
+    },
+    "gradle_workers": 1,
+    "cmake_job_pools": {
+      "kira_compile": 2,
+      "kira_link": 1
+    },
+    "producer_init_script": "producer/native-build.init.gradle",
+    "jni_cmake_build_type": "RelWithDebInfo",
+    "approved_recipe_amendment": "Primary explicitly replaced proposed Ninja 1.12.1 source bootstrap with the genuine SDK CMake 3.22.1 bundled Ninja. No SDK modification, invented binary version/hash, native-source/NDK/compiler change, or execution is authorized by source preparation."
+  },
+  "native_contract": {
+    "pixel_limit_range": [
+      1,
+      268435456
+    ],
+    "container_axis_limit_range": [
+      1,
+      32768
+    ],
+    "actual_av1_frame_or_tile_pixel_limit": "dav1d frame_size_limit before frame decode/allocation",
+    "actual_av1_independent_axis_limit": false,
+    "aggregate_native_allocator_or_rss_ceiling": false,
+    "get_info_is_readability_proof": false,
+    "require_existing_apis_and_all_four_abis": true
+  },
+  "qualification_fixture": {
+    "source": "AvifTestFixtures.regular()",
+    "encoded_bytes": 10775,
+    "original_sha256": "4bc2db8cd43917b79f8c4b2ec4f0e4e5e7588336aef8dfbeedbd4326b6fd3a61",
+    "declared_small_sha256": "82e85ff73dc302e51665ea1ee1b713a63a44ed660cff994be1c0366eb2d7eb31",
+    "mutated_u32_big_endian_offsets": {
+      "221": 32,
+      "225": 32
+    },
+    "declared_dimensions": [
+      32,
+      32
+    ],
+    "expected_actual_av1_dimensions": [
+      320,
+      640
+    ],
+    "required_controls": "Legacy and 204800/+1 pixel caps succeed; 204799 fails; all NOT_RUN."
+  },
+  "notices": {
+    "notices/Apache-2.0.txt": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a",
+    "notices/dav1d-COPYING.txt": "b327887de263238deaa80c34cdd2ff3e0ba1d35db585ce14a37ce3e74ee389e9",
+    "notices/jni-LICENSE.txt": "05d27d3e3cf78bbc8d1306c9909fbc5e2aaf01f7e83a460ac431cc88012095ff",
+    "notices/libavif-LICENSE.txt": "165abf92cc04b39e80d29cadea7a6a7e8fddf59407d4ad2616507a7ebe8216f9",
+    "notices/libyuv-LICENSE.txt": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+    "notices/libyuv-PATENTS.txt": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495",
+    "notices/ndk-cpufeatures-BSD.txt": "4102cd5ae35cbdeb0638c350966185e028ea9da863859f70e231c3cb273118d1",
+    "notices/ndk-cpufeatures-NOTICE.txt": "c870d52f42a8f93023b99a85fe68d02637d6b04e5f35bbcd7f98759adb4e4d49"
+  }
+}
