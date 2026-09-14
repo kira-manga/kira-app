@@ -53,15 +53,15 @@ class LibraryCategorySemanticsTest {
         awaitIdle()
         val expectedLabels =
             if (locale.language == "ar") {
-                listOf("الكل", "الإعجابات", "تشاهد الآن")
+                listOf("الكل", "تشاهد الآن", "الإعجابات")
             } else {
-                listOf("All", "Liked", "Watching")
+                listOf("All", "Watching", "Liked")
             }
         assertEquals(expectedLabels, surface.labels)
         assertTabSelector(surface.labels, selectedIndex = 0, direction)
         assertCategoryActions(surface, direction)
         assertEquals<List<LibraryIntent>>(
-            listOf(LibraryCategory.LIKED, LibraryCategory.WATCHING_NOW, LibraryCategory.NAN, LibraryCategory.NAN)
+            listOf(LibraryCategory.WATCHING_NOW, LibraryCategory.LIKED, LibraryCategory.NAN, LibraryCategory.NAN)
                 .map { LibraryIntent.OnCategoryChange(it) },
             surface.intents,
         )
@@ -106,8 +106,8 @@ private class LibraryCategorySemanticsFixture {
                     labels =
                         listOf(
                             stringResource(Res.string.filter_all),
-                            stringResource(Res.string.library_category_liked),
                             stringResource(Res.string.library_category_watching),
+                            stringResource(Res.string.library_category_liked),
                         )
                     CategoryTabs(category = category, onIntent = ::accept)
                 }
