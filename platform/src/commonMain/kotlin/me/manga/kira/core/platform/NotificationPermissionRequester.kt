@@ -50,9 +50,9 @@ interface NotificationPermissionRequester {
 /**
  * Supported notification-permission onboarding behaviors.
  *
- * Android retains its required, automatic permission step. iOS presents an optional explanation
- * and waits for an explicit user action before showing Apple's system prompt. Desktop has no
- * runtime notification permission, so the control is omitted there.
+ * Android and iOS present an optional explanation and wait for an explicit user action before
+ * requesting notification permission during onboarding. Desktop has no runtime notification
+ * permission, so the control is omitted there.
  */
 enum class NotificationPermissionOnboardingPolicy(
     val showPermissionControl: Boolean,
