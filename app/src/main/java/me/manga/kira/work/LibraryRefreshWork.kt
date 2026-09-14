@@ -118,7 +118,7 @@ internal class LibraryRefreshWork(
         onObserved(outcome)
         currentCoroutineContext().ensureActive()
         if (outcome !is ItemOutcome.Completed) return false
-        displayBestEffort(outcome.notifications)
+        displayBestEffort(outcome.notifications, port, log)
         return true
     }
 
@@ -196,17 +196,6 @@ internal class LibraryRefreshWork(
         }
     }
 
-    private suspend fun displayBestEffort(notifications: List<ChapterNotification>) {
-        if (notifications.isEmpty()) return
-        runCatchingCancellable {
-            // Outside the item deadline, but joined within the total budget and caller ownership.
-            port.displayNotifications(notifications)
-        }.onFailure { t ->
-            log.w(t) { "Optional chapter notification display failed" }
-        }
-        currentCoroutineContext().ensureActive()
-    }
-
     private fun reportProgress(progress: LibraryRefreshWorkProgress) {
         runCatchingCancellable {
             onProgress(progress)
@@ -282,3 +271,18 @@ internal class LibraryRefreshWork(
 }
 
 private fun SavedMangaEntity.toManga(): Manga = Manga(api, language, title, url, imageUrl, null, genres)
+
+private suspend fun displayBestEffort(
+    notifications: List<ChapterNotification>,
+    port: LibraryRefreshWorkPort,
+    log: Logger,
+) {
+    if (notifications.isEmpty()) return
+    runCatchingCancellable {
+        // Outside the item deadline, but joined within the total budget and caller ownership.
+        port.displayNotifications(notifications)
+    }.onFailure { t ->
+        log.w(t) { "Optional chapter notification display failed" }
+    }
+    currentCoroutineContext().ensureActive()
+}
