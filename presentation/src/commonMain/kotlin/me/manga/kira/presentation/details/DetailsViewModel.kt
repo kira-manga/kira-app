@@ -202,10 +202,7 @@ class DetailsViewModel(
     private var downloadRowsByUrl: Map<String, ChapterDownloadProgress> = emptyMap()
 
     /** Successful local deletions stay hidden for this visit until a later fetch rediscovers them. */
-    private var retractedChapterVersions: Map<String, Long> = emptyMap()
-    private var chapterRetractionVersion = 0L
-    private val retractedChapterUrls: Set<String>
-        get() = retractedChapterVersions.keys
+    private val chapterRetractions = DetailsChapterRetractions()
 
     /** Consecutive Cloudflare-solve round-trips for the current screen; bounded by
      *  [MAX_CLOUDFLARE_ATTEMPTS] and reset on any successful fetch. */
@@ -310,7 +307,7 @@ class DetailsViewModel(
 
     private suspend fun onEnter(manga: Manga) {
         if (state.value.manga?.matches(manga) == true) return
-        retractedChapterVersions = emptyMap()
+        chapterRetractions.clearVisit()
         FlowLog.log("Details", "open", "title=${manga.title} api=${manga.api} lang=${manga.language}")
         // #11: native manga_open — fired once per opened identity (this method early-returns on a
         // same-identity re-enter). Full-tuple entry (Home/Library/Search/Details) has the title; the
@@ -426,7 +423,7 @@ class DetailsViewModel(
                         val net = current.details
                         val merged =
                             (if (net != null) net.overlaidWith(saved) else saved)
-                                .withoutChapterUrls(retractedChapterUrls)
+                                .withoutChapterUrls(chapterRetractions.urls)
                                 .expireNewBadges(nowMs())
                         // P0-ADULT (compliance): a cache-first open suppresses runFetch, so this is the
                         // only place the gate gets re-classified for an in-library manga. Classify from
@@ -485,7 +482,7 @@ class DetailsViewModel(
     ) {
         val current = state.value.manga
         if (current?.api == api && current.url == mangaUrl) return
-        retractedChapterVersions = emptyMap()
+        chapterRetractions.clearVisit()
         val tentative =
             Manga(
                 api = api,
@@ -588,7 +585,7 @@ class DetailsViewModel(
         // its onSuccess/onFailure must NOT write over the newer identity's state.
         val fetchApi = manga.api
         val fetchUrl = manga.url
-        val retractedBeforeFetch = retractedChapterVersions
+        val retractedBeforeFetch = chapterRetractions.snapshot
         fetchDetails(manga)
             .onSuccess { fetched ->
                 val active = state.value.manga
@@ -596,15 +593,7 @@ class DetailsViewModel(
                     FlowLog.log("Details", "refreshStale", "dropped stale fetch for api=$fetchApi url=$fetchUrl")
                     return@onSuccess
                 }
-                // Only a source result requested AFTER this deletion can rediscover that chapter.
-                // Saved emissions and an older in-flight refresh cannot undo the explicit action;
-                // filter that older payload before both rendering and offering it to persistence.
-                val fetchedUrls = fetched.chapters.mapTo(HashSet()) { it.url }
-                retractedChapterVersions =
-                    retractedChapterVersions.filterNot { (url, version) ->
-                        url in fetchedUrls && retractedBeforeFetch[url] == version
-                    }
-                val details = fetched.withoutChapterUrls(retractedChapterUrls)
+                val details = chapterRetractions.acceptFetch(fetched, retractedBeforeFetch)
                 FlowLog.log("Details", "refreshOk", "title=${details.title} chapters=${details.chapters.size}")
                 // Re-classify with the authoritative genres from the fetched details — matches
                 // legacy isPlus18(info.genres, api). manga.copy() keeps the original api +
@@ -1152,26 +1141,8 @@ class DetailsViewModel(
                 }
             // 2) Delete the saved_chapters record itself.
             deleteChapter(id)
-            retractDeletedChapter(manga, chapter.url)
-        }
-    }
-
-    private fun retractDeletedChapter(
-        manga: Manga,
-        chapterUrl: String,
-    ) {
-        // Resolution, download cleanup and row deletion can each suspend across navigation.
-        val active = state.value.manga ?: return
-        if (active.api != manga.api || active.url != manga.url) return
-        // Versions remain monotonic across visits: an old A fetch cannot clear a newer A deletion.
-        chapterRetractionVersion++
-        retractedChapterVersions += chapterUrl to chapterRetractionVersion
-        updateState { current ->
-            current.copy(
-                details = current.details?.withoutChapterUrls(retractedChapterUrls),
-                selectedChapterUrls = current.selectedChapterUrls - chapterUrl,
-                chapterDownloads = current.chapterDownloads - chapterUrl,
-            )
+            if (!chapterRetractions.retractIfOwned(manga, state.value.manga, chapter.url)) return@launchSafely
+            updateState { it.withoutDeletedChapter(chapter.url, chapterRetractions.urls) }
         }
     }
 
@@ -1332,9 +1303,6 @@ private fun cloudflareFailedUrls(
  */
 private fun Manga.matches(other: Manga): Boolean =
     api == other.api && language == other.language && title == other.title && url == other.url
-
-private fun MangaDetails.withoutChapterUrls(urls: Set<String>): MangaDetails =
-    if (urls.isEmpty()) this else copy(chapters = chapters.filterNot { it.url in urls })
 
 /**
  * Overlay the locally-persisted chapter state from [saved] onto this (network) [MangaDetails],
