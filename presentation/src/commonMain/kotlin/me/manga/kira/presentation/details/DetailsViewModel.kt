@@ -91,10 +91,9 @@ import kotlin.time.ExperimentalTime
  * a saved chapter list, the open renders purely from the offline saved-details flow and fires no
  * network fetch; a not-in-library manga (or an in-library one with no cached chapters yet) still
  * fetches. [DetailsIntent.OnRetry] always fetches regardless of membership (pull-to-refresh parity).
- * Limitation: the in-library-but-no-cached-chapters case fetches but does NOT persist the fetched
- * list back to Room on open (that needs a dedicated persist-chapters-for-saved-manga use case +
- * repo method + cross-module DI wiring — out of scope for this minimal fix); such a manga re-fetches
- * on each open until its chapters are persisted by another path (e.g. a re-add or a library refresh).
+ * Every successful fetch offers its chapters to [PersistNewChaptersUseCase], including URL-only
+ * entries and saved manga without cached chapters. The repository's saved-row lookup, not the
+ * timing of the membership observer, decides whether any chapters can be written.
  *
  * Re-entrance guard on [DetailsIntent.OnRetry]: if a fetch is already in flight
  * (`state.value.isLoading == true`), the intent is dropped. This prevents concurrent fetches
@@ -373,8 +372,7 @@ class DetailsViewModel(
      *  - saved + non-empty chapters → cache-only (no fetch on open). Mirrors native's
      *    `LibraryMangaScreen`, which reads `getChaptersByMangaId` and never fetches on open.
      *  - saved + empty chapters (e.g. added before this fix, or via an empty-chapter entry point) →
-     *    fetch once so the list isn't empty. (Persist-on-fetch for this case is NOT implemented —
-     *    see the class KDoc note; the reactive overlay still merges read-state.)
+     *    fetch once so the list isn't empty, then offer the chapters to the saved-row-gated repository.
      *  - not saved (`null`) → fetch (fresh network open, as before).
      *
      * Best-effort: any failure resolving the local store falls back to fetching (returns `false`),
@@ -645,15 +643,12 @@ class DetailsViewModel(
                 }
                 // Network chapter list landed — re-derive per-chapter download status (PFIX-DLPROGRESS).
                 recomputeChapterDownloads()
-                // #3: persist refresh-discovered chapters for an in-library manga so they survive
-                // nav-away (written to Room, not just VM state) and gain the NEW badge. Gated on
-                // membership — a not-in-library Details open must not create saved rows. Diff/dedup +
-                // isNew/fetchedAt stamping live in the use case; fire-and-forget (the saved-details
-                // flow re-emits and re-overlays the new rows). Uses the authoritative fetched identity.
-                if (state.value.isInLibrary) {
-                    launchSafely {
-                        persistNewChapters(details.api, details.language, details.title, details.chapters)
-                    }
+                // Offer every successful fetch using its enriched identity. The membership observer
+                // can still be awaiting its first emission (especially after OnEnterByUrl); it is a
+                // UI affordance, not persistence authority. The repository resolves the saved row,
+                // inserts only new chapters with NEW/fetchedAt, and writes nothing for unsaved manga.
+                launchSafely {
+                    persistNewChapters(details.api, details.language, details.title, details.chapters)
                 }
                 // A successful fetch clears the Cloudflare-solve budget so a later genuine challenge
                 // gets its full allowance again (not starved by earlier attempts this session).
