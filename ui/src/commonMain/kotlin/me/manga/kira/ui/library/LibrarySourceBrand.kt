@@ -70,7 +70,10 @@ internal val String.libraryBrandColor: Color
  */
 internal fun Color.libraryBrandContentColor(): Color {
     val relativeLuminance = luminance().toDouble()
-    val blackContrast = (relativeLuminance + 0.05) / 0.05
-    val whiteContrast = 1.05 / (relativeLuminance + 0.05)
+    val blackContrast = (relativeLuminance + WCAG_LUMINANCE_OFFSET) / WCAG_LUMINANCE_OFFSET
+    val whiteContrast = WCAG_WHITE_LUMINANCE_WITH_OFFSET / (relativeLuminance + WCAG_LUMINANCE_OFFSET)
     return if (blackContrast >= whiteContrast) Color.Black else Color.White
 }
+
+private const val WCAG_LUMINANCE_OFFSET: Double = 0.05
+private const val WCAG_WHITE_LUMINANCE_WITH_OFFSET: Double = 1.05

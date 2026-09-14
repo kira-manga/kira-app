@@ -12,6 +12,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.click
@@ -47,14 +48,19 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class LibraryControlSemanticsTest {
     @Test
-    fun englishLabelsAssociateWithDirectionDisplayAndRangeActions() =
-        libraryControls(Locale.US, LayoutDirection.Ltr)
+    fun englishLabelsAssociateWithDirectionDisplayAndRangeActions() = libraryControls(Locale.US, LayoutDirection.Ltr)
 
     @Test
     fun arabicResourcesAndRtlPreserveNamesStatesAndActions() =
-        libraryControls(Locale.forLanguageTag("ar"), LayoutDirection.Rtl)
+        libraryControls(
+            Locale.forLanguageTag("ar"),
+            LayoutDirection.Rtl,
+        )
 
-    private fun libraryControls(locale: Locale, direction: LayoutDirection) = runSharedControlSemanticsTest(locale) {
+    private fun libraryControls(
+        locale: Locale,
+        direction: LayoutDirection,
+    ) = runSharedControlSemanticsTest(locale) {
         val surface = LibraryControlSemanticsFixture()
         surface.render(this, direction)
         awaitIdle()
@@ -84,19 +90,23 @@ class LibraryControlSemanticsTest {
         val descending = surface.label(Res.string.sort_direction_descending)
         onNodeWithText(surface.label(Res.string.library_bottom_sheet_tab_sort)).performClick()
         awaitIdle()
-        assertSingleSwitch(label, true, stateDescription = ascending, minimumHeight = 64.dp)
+        assertSingleSwitch(label, true, stateDescription = ascending).assertHeightIsAtLeast(64.dp)
         assertSwitchLabelOrder(label, direction)
         clickSwitchLabel(label)
         awaitIdle()
-        assertSingleSwitch(label, false, stateDescription = descending, minimumHeight = 64.dp)
+        assertSingleSwitch(label, false, stateDescription = descending)
+            .assertHeightIsAtLeast(64.dp)
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         awaitIdle()
-        assertSingleSwitch(label, true, stateDescription = ascending, minimumHeight = 64.dp)
+        assertSingleSwitch(label, true, stateDescription = ascending).assertHeightIsAtLeast(64.dp)
         clickSwitchControl(label, direction)
         awaitIdle()
-        assertSingleSwitch(label, false, stateDescription = descending, minimumHeight = 64.dp)
+        assertSingleSwitch(label, false, stateDescription = descending).assertHeightIsAtLeast(64.dp)
         onAllNodesWithText(descending, useUnmergedTree = true).assertCountEquals(0)
-        assertEquals<List<LibraryIntent>>(List(3) { LibraryIntent.OnSortDirectionToggle }, surface.intents)
+        assertEquals<List<LibraryIntent>>(
+            List(TOGGLE_ACTIVATION_COUNT) { LibraryIntent.OnSortDirectionToggle },
+            surface.intents,
+        )
         runOnIdle { surface.intents.clear() }
     }
 
@@ -106,17 +116,18 @@ class LibraryControlSemanticsTest {
     ) {
         for ((key, intent) in libraryDisplayToggleCases) {
             val label = surface.label(key)
-            assertSingleSwitch(label, true, minimumHeight = 56.dp)
+            assertSingleSwitch(label, true).assertHeightIsAtLeast(56.dp)
             assertSwitchLabelOrder(label, direction)
             clickSwitchLabel(label)
             awaitIdle()
-            assertSingleSwitch(label, false, minimumHeight = 56.dp)
+            assertSingleSwitch(label, false)
+                .assertHeightIsAtLeast(56.dp)
                 .performSemanticsAction(SemanticsActions.OnClick) { it() }
             awaitIdle()
-            assertSingleSwitch(label, true, minimumHeight = 56.dp)
+            assertSingleSwitch(label, true).assertHeightIsAtLeast(56.dp)
             clickSwitchControl(label, direction)
             awaitIdle()
-            assertSingleSwitch(label, false, minimumHeight = 56.dp)
+            assertSingleSwitch(label, false).assertHeightIsAtLeast(56.dp)
             assertEquals(listOf(intent(false), intent(true), intent(false)), surface.intents)
             runOnIdle { surface.intents.clear() }
         }
@@ -126,12 +137,16 @@ class LibraryControlSemanticsTest {
         surface: LibraryControlSemanticsFixture,
         direction: LayoutDirection,
     ) {
-        assertRange(surface, 0).performSemanticsAction(SemanticsActions.SetProgress) { it(3.4f) }
+        assertRange(surface, 0).performSemanticsAction(SemanticsActions.SetProgress) { it(INITIAL_FRACTIONAL_PROGRESS) }
         awaitIdle()
-        assertRange(surface, 3).performSemanticsAction(SemanticsActions.SetProgress) { it(3.2f) }
+        assertRange(surface, ROUNDED_ITEMS_PER_ROW)
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(SAME_ROUNDED_PROGRESS) }
         awaitIdle()
-        assertEquals<List<LibraryIntent>>(listOf(LibraryIntent.OnItemsPerRowChange(3)), surface.intents)
-        assertRange(surface, 3).performSemanticsAction(SemanticsActions.SetProgress) { it(1f) }
+        assertEquals<List<LibraryIntent>>(
+            listOf(LibraryIntent.OnItemsPerRowChange(ROUNDED_ITEMS_PER_ROW)),
+            surface.intents,
+        )
+        assertRange(surface, ROUNDED_ITEMS_PER_ROW).performSemanticsAction(SemanticsActions.SetProgress) { it(1f) }
         awaitIdle()
         assertRange(surface, 1).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         awaitIdle()
@@ -142,7 +157,7 @@ class LibraryControlSemanticsTest {
         assertRange(surface, 2)
         assertEquals<List<LibraryIntent>>(
             listOf(
-                LibraryIntent.OnItemsPerRowChange(3),
+                LibraryIntent.OnItemsPerRowChange(ROUNDED_ITEMS_PER_ROW),
                 LibraryIntent.OnItemsPerRowChange(1),
                 LibraryIntent.OnItemsPerRowChange(2),
             ),
@@ -152,27 +167,36 @@ class LibraryControlSemanticsTest {
         assertRange(surface, 2).performTouchInput {
             // Stay inside the pointer region, beyond Material3's 10dp semantics-only margin.
             // This fixture uses Density(1); mirror the interior maximum endpoint for RTL.
-            click(Offset(if (direction == LayoutDirection.Ltr) width - 16f else 16f, center.y))
+            click(
+                Offset(
+                    if (direction == LayoutDirection.Ltr) width - SLIDER_POINTER_INSET_PX else SLIDER_POINTER_INSET_PX,
+                    center.y,
+                ),
+            )
         }
         awaitIdle()
-        assertRange(surface, 8)
+        assertRange(surface, MAX_ITEMS_PER_ROW)
         assertTrue(surface.intents.isNotEmpty())
-        assertTrue(surface.intents.all { it == LibraryIntent.OnItemsPerRowChange(8) })
+        assertTrue(surface.intents.all { it == LibraryIntent.OnItemsPerRowChange(MAX_ITEMS_PER_ROW) })
     }
 
-    private fun ComposeUiTest.assertRange(surface: LibraryControlSemanticsFixture, count: Int): SemanticsNodeInteraction {
+    private fun ComposeUiTest.assertRange(
+        surface: LibraryControlSemanticsFixture,
+        count: Int,
+    ): SemanticsNodeInteraction {
         val label = surface.label(Res.string.items_per_row_label)
         val caption = surface.caption(count)
         onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).assertCountEquals(1)
-        val slider = onNodeWithContentDescription(label)
-            .assertIsDisplayed()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, caption))
-            .assert(
-                SemanticsMatcher.expectValue(
-                    SemanticsProperties.ProgressBarRangeInfo,
-                    ProgressBarRangeInfo(count.toFloat(), 0f..8f, steps = 7),
-                ),
-            )
+        val slider =
+            onNodeWithContentDescription(label)
+                .assertIsDisplayed()
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, caption))
+                .assert(
+                    SemanticsMatcher.expectValue(
+                        SemanticsProperties.ProgressBarRangeInfo,
+                        ProgressBarRangeInfo(count.toFloat(), 0f..MAX_ITEMS_PER_ROW_PROGRESS, steps = 7),
+                    ),
+                )
         val raw = rawSubtree(slider)
         assertEquals(1, raw.count { it.config.getOrNull(SemanticsActions.SetProgress) != null })
         assertEquals(1, raw.count { it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo) != null })
@@ -181,3 +205,10 @@ class LibraryControlSemanticsTest {
         return slider
     }
 }
+
+private const val TOGGLE_ACTIVATION_COUNT = 3
+private const val INITIAL_FRACTIONAL_PROGRESS = 3.4f
+private const val SAME_ROUNDED_PROGRESS = 3.2f
+private const val ROUNDED_ITEMS_PER_ROW = 3
+private const val SLIDER_POINTER_INSET_PX = 16f
+private const val MAX_ITEMS_PER_ROW_PROGRESS = 8f

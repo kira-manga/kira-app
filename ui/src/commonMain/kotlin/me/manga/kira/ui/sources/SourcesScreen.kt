@@ -563,9 +563,10 @@ private fun SourcesList(
             item(key = "import-from-storage") {
                 OutlinedButton(
                     onClick = onImportFromStorage,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = spacingLg, vertical = spacingMd),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacingLg, vertical = spacingMd),
                 ) {
                     Text(stringResource(Res.string.source_import_from_storage))
                 }
@@ -920,9 +921,10 @@ private fun SourceRow(
     paddingHorizontal: androidx.compose.ui.unit.Dp,
     paddingVertical: androidx.compose.ui.unit.Dp,
 ) {
-    val status = stringResource(
-        if (source.isEnabled) Res.string.source_enabled else Res.string.source_disabled,
-    )
+    val status =
+        stringResource(
+            if (source.isEnabled) Res.string.source_enabled else Res.string.source_disabled,
+        )
     Row(
         modifier = Modifier
             .fillMaxWidth()

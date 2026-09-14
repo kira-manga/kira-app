@@ -24,54 +24,60 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class BackupControlSemanticsTest {
     @Test
-    fun includeDownloadsHasOneNamedActionAndKeepsDisabledStates() = runSharedControlSemanticsTest {
-        var state by mutableStateOf(BackupState())
-        val intents = mutableListOf<BackupIntent>()
-        var label = ""
-        var hint = ""
-        setContent {
-            KiraTheme(darkTheme = false) {
-                label = stringResource(Res.string.backup_include_downloads)
-                hint = stringResource(Res.string.backup_include_downloads_hint)
-                BackupScreenContent(
-                    state = state,
-                    effects = emptyFlow(),
-                    onIntent = {
-                        intents += it
-                        if (it == BackupIntent.OnToggleIncludeDownloads) {
-                            state = state.copy(includeDownloads = !state.includeDownloads)
-                        }
-                    },
-                    onNavigateBack = {},
-                    onLaunchExportPicker = { _, _ -> },
-                    onLaunchImportPicker = {},
-                )
+    fun includeDownloadsHasOneNamedActionAndKeepsDisabledStates() =
+        runSharedControlSemanticsTest {
+            var state by mutableStateOf(BackupState())
+            val intents = mutableListOf<BackupIntent>()
+            var label = ""
+            var hint = ""
+            setContent {
+                KiraTheme(darkTheme = false) {
+                    label = stringResource(Res.string.backup_include_downloads)
+                    hint = stringResource(Res.string.backup_include_downloads_hint)
+                    BackupScreenContent(
+                        state = state,
+                        effects = emptyFlow(),
+                        onIntent = {
+                            intents += it
+                            if (it == BackupIntent.OnToggleIncludeDownloads) {
+                                state = state.copy(includeDownloads = !state.includeDownloads)
+                            }
+                        },
+                        onNavigateBack = {},
+                        onLaunchExportPicker = { _, _ -> },
+                        onLaunchImportPicker = {},
+                    )
+                }
             }
-        }
-        awaitIdle()
-        assertSingleSwitch(label, checked = false, hint = hint)
-            .performSemanticsAction(SemanticsActions.OnClick) { it() }
-        awaitIdle()
-        assertSingleSwitch(label, checked = true, hint = hint)
-        clickSwitchLabel(label)
-        awaitIdle()
-        assertSingleSwitch(label, checked = false, hint = hint)
-        clickSwitchControl(label)
-        awaitIdle()
-        assertSingleSwitch(label, checked = true, hint = hint)
-        assertEquals<List<BackupIntent>>(List(3) { BackupIntent.OnToggleIncludeDownloads }, intents)
-
-        for (checked in listOf(false, true)) {
-            runOnIdle {
-                intents.clear()
-                state = state.copy(includeDownloads = checked, isCbzConversionRunning = true)
-            }
-            assertSingleSwitch(label, checked = checked, enabled = false, hint = hint)
+            awaitIdle()
+            assertSingleSwitch(label, checked = false, hint = hint)
+                .performSemanticsAction(SemanticsActions.OnClick) { it() }
+            awaitIdle()
+            assertSingleSwitch(label, checked = true, hint = hint)
             clickSwitchLabel(label)
+            awaitIdle()
+            assertSingleSwitch(label, checked = false, hint = hint)
             clickSwitchControl(label)
             awaitIdle()
-            assertEquals(emptyList(), intents)
-            assertSingleSwitch(label, checked = checked, enabled = false, hint = hint)
+            assertSingleSwitch(label, checked = true, hint = hint)
+            assertEquals<List<BackupIntent>>(
+                List(TOGGLE_ACTIVATION_COUNT) { BackupIntent.OnToggleIncludeDownloads },
+                intents,
+            )
+
+            for (checked in listOf(false, true)) {
+                runOnIdle {
+                    intents.clear()
+                    state = state.copy(includeDownloads = checked, isCbzConversionRunning = true)
+                }
+                assertSingleSwitch(label, checked = checked, enabled = false, hint = hint)
+                clickSwitchLabel(label)
+                clickSwitchControl(label)
+                awaitIdle()
+                assertEquals(emptyList(), intents)
+                assertSingleSwitch(label, checked = checked, enabled = false, hint = hint)
+            }
         }
-    }
 }
+
+private const val TOGGLE_ACTIVATION_COUNT = 3

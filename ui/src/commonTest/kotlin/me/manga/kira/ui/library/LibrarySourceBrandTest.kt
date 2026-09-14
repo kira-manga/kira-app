@@ -40,13 +40,19 @@ class LibrarySourceBrandTest {
         }
     }
 
-    private fun assertSourcePair(api: String, argb: Long) {
+    private fun assertSourcePair(
+        api: String,
+        argb: Long,
+    ) {
         val brand = api.libraryBrandColor
         assertEquals(Color(argb), brand, api)
         assertContrastPair(brand, api)
     }
 
-    private fun assertContrastPair(brand: Color, context: String) {
+    private fun assertContrastPair(
+        brand: Color,
+        context: String,
+    ) {
         val foreground = brand.libraryBrandContentColor()
         val expected =
             if (contrastRatio(brand, Color.Black) >= contrastRatio(brand, Color.White)) {
@@ -61,7 +67,10 @@ class LibrarySourceBrandTest {
         assertTrue(contrast >= 4.5, "$context has unrounded contrast $contrast")
     }
 
-    private fun contrastRatio(first: Color, second: Color): Double {
+    private fun contrastRatio(
+        first: Color,
+        second: Color,
+    ): Double {
         val firstLuminance = wcagLuminance(first)
         val secondLuminance = wcagLuminance(second)
         return (maxOf(firstLuminance, secondLuminance) + 0.05) /

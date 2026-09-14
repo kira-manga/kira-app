@@ -292,50 +292,17 @@ private fun SortOptionsSection(
     onIntent: (LibraryIntent) -> Unit,
 ) {
     val ascending = sortDirection == SortDirection.ASCENDING
-    val directionLabel = stringResource(
-        if (ascending) Res.string.sort_direction_ascending else Res.string.sort_direction_descending,
-    )
+    val directionLabel =
+        stringResource(
+            if (ascending) Res.string.sort_direction_ascending else Res.string.sort_direction_descending,
+        )
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(Res.string.sort_options_title),
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .toggleable(
-                    value = ascending,
-                    role = Role.Switch,
-                    onValueChange = { onIntent(LibraryIntent.OnSortDirectionToggle) },
-                )
-                .semantics { stateDescription = directionLabel }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.SwapVert,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(Res.string.sort_direction_label))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = directionLabel,
-                    modifier = Modifier.clearAndSetSemantics {},
-                )
-                Spacer(Modifier.width(8.dp))
-                Switch(
-                    checked = ascending,
-                    onCheckedChange = null,
-                    modifier = Modifier.minimumInteractiveComponentSize(),
-                )
-            }
-        }
+        SortDirectionRow(ascending, directionLabel, onIntent)
         Spacer(Modifier.height(16.dp))
         Text(
             text = stringResource(Res.string.sort_by_label),
@@ -352,6 +319,50 @@ private fun SortOptionsSection(
                     label = { Text(librarySortLabel(option)) },
                 )
             }
+        }
+    }
+}
+
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
+@Composable
+private fun SortDirectionRow(
+    ascending: Boolean,
+    directionLabel: String,
+    onIntent: (LibraryIntent) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = ascending,
+                    role = Role.Switch,
+                    onValueChange = { onIntent(LibraryIntent.OnSortDirectionToggle) },
+                ).semantics { stateDescription = directionLabel }
+                .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.SwapVert,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(Res.string.sort_direction_label))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = directionLabel,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
+            Spacer(Modifier.width(8.dp))
+            Switch(
+                checked = ascending,
+                onCheckedChange = null,
+                modifier = Modifier.minimumInteractiveComponentSize(),
+            )
         }
     }
 }
@@ -423,10 +434,11 @@ private fun ItemsPerRowSlider(
     Slider(
         value = count.toFloat(),
         onValueChange = { onCountChange(it.roundToInt()) },
-        modifier = Modifier.semantics {
-            contentDescription = label
-            stateDescription = caption
-        },
+        modifier =
+            Modifier.semantics {
+                contentDescription = label
+                stateDescription = caption
+            },
         valueRange = 0f..8f,
         steps = 7,
     )

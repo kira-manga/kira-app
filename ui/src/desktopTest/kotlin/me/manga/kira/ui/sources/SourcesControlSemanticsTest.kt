@@ -12,6 +12,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.LayoutDirection
@@ -40,14 +41,19 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class SourcesControlSemanticsTest {
     @Test
-    fun englishLabelsAssociateWithMasterAndIndividualActions() =
-        sourceControls(Locale.US, LayoutDirection.Ltr)
+    fun englishLabelsAssociateWithMasterAndIndividualActions() = sourceControls(Locale.US, LayoutDirection.Ltr)
 
     @Test
     fun arabicResourcesAndRtlPreserveNamesStatesAndActions() =
-        sourceControls(Locale.forLanguageTag("ar"), LayoutDirection.Rtl)
+        sourceControls(
+            Locale.forLanguageTag("ar"),
+            LayoutDirection.Rtl,
+        )
 
-    private fun sourceControls(locale: Locale, direction: LayoutDirection) = runSharedControlSemanticsTest(locale) {
+    private fun sourceControls(
+        locale: Locale,
+        direction: LayoutDirection,
+    ) = runSharedControlSemanticsTest(locale) {
         val surface = SourcesControlFixture()
         surface.render(this, direction)
         awaitIdle()
@@ -60,11 +66,12 @@ class SourcesControlSemanticsTest {
         onAllNodes(
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch),
             useUnmergedTree = true,
-        ).assertCountEquals(3)
+        ).assertCountEquals(VISIBLE_SWITCH_COUNT)
         assertSourceRows(surface, master = true, first = true, second = false)
         assertSwitchLabelOrder(MASTER_LABEL, direction)
         assertSwitchLabelOrder(FIRST_SOURCE.displayName, direction)
-        assertSingleSwitch(MASTER_LABEL, checked = true, hint = surface.masterHint, minimumHeight = 72.dp)
+        assertSingleSwitch(MASTER_LABEL, checked = true, hint = surface.masterHint)
+            .assertHeightIsAtLeast(72.dp)
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         awaitIdle()
         assertCollapsedGroup(surface)
@@ -100,7 +107,7 @@ class SourcesControlSemanticsTest {
 
     private fun ComposeUiTest.assertCollapsedGroup(surface: SourcesControlFixture) {
         // Existing behavior: all-disabled language groups hide their individual source rows.
-        assertSingleSwitch(MASTER_LABEL, checked = false, hint = surface.masterHint, minimumHeight = 72.dp)
+        assertSingleSwitch(MASTER_LABEL, checked = false, hint = surface.masterHint).assertHeightIsAtLeast(72.dp)
         onNodeWithText(FIRST_SOURCE.displayName).assertDoesNotExist()
         onNodeWithText(SECOND_SOURCE.displayName).assertDoesNotExist()
     }
@@ -111,21 +118,21 @@ class SourcesControlSemanticsTest {
         first: Boolean,
         second: Boolean,
     ) {
-        assertSingleSwitch(MASTER_LABEL, checked = master, hint = surface.masterHint, minimumHeight = 72.dp)
+        assertSingleSwitch(MASTER_LABEL, checked = master, hint = surface.masterHint).assertHeightIsAtLeast(72.dp)
         for ((source, checked) in listOf(FIRST_SOURCE to first, SECOND_SOURCE to second)) {
             // Exact Text contains only the source name: neither avatar initials nor state copy.
             assertSingleSwitch(
                 source.displayName,
                 checked = checked,
                 stateDescription = if (checked) surface.enabled else surface.disabled,
-                minimumHeight = 72.dp,
-            )
+            ).assertHeightIsAtLeast(72.dp)
         }
     }
 }
 
 private const val LANGUAGE = "(ar)"
 private const val MASTER_LABEL = "ar"
+private const val VISIBLE_SWITCH_COUNT = 3
 private val FIRST_SOURCE = Source("app34-birch", LANGUAGE, 0, true, "Birch Source")
 private val SECOND_SOURCE = Source("app34-cedar", LANGUAGE, 1, false, "Cedar Source")
 
@@ -137,7 +144,10 @@ private class SourcesControlFixture {
     var enabled = ""
     var disabled = ""
 
-    fun render(ui: ComposeUiTest, direction: LayoutDirection) {
+    fun render(
+        ui: ComposeUiTest,
+        direction: LayoutDirection,
+    ) {
         ui.setContent {
             CompositionLocalProvider(
                 LocalLayoutDirection provides direction,
@@ -160,18 +170,23 @@ private class SourcesControlFixture {
 
     private fun accept(intent: SourcesIntent) {
         intents += intent
-        state = when (intent) {
-            is SourcesIntent.OnToggleLanguage -> state.copy(
-                items = state.items.map {
-                    if (it.language == intent.language) it.copy(isEnabled = intent.enabled) else it
-                },
-            )
-            is SourcesIntent.OnToggleSource -> state.copy(
-                items = state.items.map {
-                    if (it.api == intent.source.api) it.copy(isEnabled = intent.enabled) else it
-                },
-            )
-            else -> state
-        }
+        state =
+            when (intent) {
+                is SourcesIntent.OnToggleLanguage ->
+                    state.copy(
+                        items =
+                            state.items.map {
+                                if (it.language == intent.language) it.copy(isEnabled = intent.enabled) else it
+                            },
+                    )
+                is SourcesIntent.OnToggleSource ->
+                    state.copy(
+                        items =
+                            state.items.map {
+                                if (it.api == intent.source.api) it.copy(isEnabled = intent.enabled) else it
+                            },
+                    )
+                else -> state
+            }
     }
 }

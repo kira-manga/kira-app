@@ -23,40 +23,41 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class ThemeControlSemanticsTest {
     @Test
-    fun pureBlackHasOneNamedActionAndRemainsAvailableInLightTheme() = runSharedControlSemanticsTest {
-        var state by mutableStateOf(ThemeState(isLoading = false, theme = AppTheme.Light, pureBlack = false))
-        val intents = mutableListOf<ThemeIntent>()
-        var label = ""
-        setContent {
-            KiraTheme(darkTheme = false) {
-                label = stringResource(Res.string.pure_black_mode_title)
-                ThemeScreenContent(
-                    state = state,
-                    onIntent = {
-                        intents += it
-                        if (it is ThemeIntent.OnTogglePureBlack) state = state.copy(pureBlack = it.enabled)
-                    },
-                )
+    fun pureBlackHasOneNamedActionAndRemainsAvailableInLightTheme() =
+        runSharedControlSemanticsTest {
+            var state by mutableStateOf(ThemeState(isLoading = false, theme = AppTheme.Light, pureBlack = false))
+            val intents = mutableListOf<ThemeIntent>()
+            var label = ""
+            setContent {
+                KiraTheme(darkTheme = false) {
+                    label = stringResource(Res.string.pure_black_mode_title)
+                    ThemeScreenContent(
+                        state = state,
+                        onIntent = {
+                            intents += it
+                            if (it is ThemeIntent.OnTogglePureBlack) state = state.copy(pureBlack = it.enabled)
+                        },
+                    )
+                }
             }
+            awaitIdle()
+            assertSingleSwitch(label, checked = false)
+                .performSemanticsAction(SemanticsActions.OnClick) { it() }
+            awaitIdle()
+            assertSingleSwitch(label, checked = true)
+            clickSwitchLabel(label)
+            awaitIdle()
+            assertSingleSwitch(label, checked = false)
+            clickSwitchControl(label)
+            awaitIdle()
+            assertSingleSwitch(label, checked = true)
+            assertEquals<List<ThemeIntent>>(
+                listOf(
+                    ThemeIntent.OnTogglePureBlack(true),
+                    ThemeIntent.OnTogglePureBlack(false),
+                    ThemeIntent.OnTogglePureBlack(true),
+                ),
+                intents,
+            )
         }
-        awaitIdle()
-        assertSingleSwitch(label, checked = false)
-            .performSemanticsAction(SemanticsActions.OnClick) { it() }
-        awaitIdle()
-        assertSingleSwitch(label, checked = true)
-        clickSwitchLabel(label)
-        awaitIdle()
-        assertSingleSwitch(label, checked = false)
-        clickSwitchControl(label)
-        awaitIdle()
-        assertSingleSwitch(label, checked = true)
-        assertEquals<List<ThemeIntent>>(
-            listOf(
-                ThemeIntent.OnTogglePureBlack(true),
-                ThemeIntent.OnTogglePureBlack(false),
-                ThemeIntent.OnTogglePureBlack(true),
-            ),
-            intents,
-        )
-    }
 }

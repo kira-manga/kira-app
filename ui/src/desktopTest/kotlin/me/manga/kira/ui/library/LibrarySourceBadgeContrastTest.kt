@@ -96,7 +96,10 @@ class LibrarySourceBadgeContrastTest {
             }
         }
 
-    private fun ComposeUiTest.showBadge(state: State<BadgeCase>, onLabel: (String) -> Unit) {
+    private fun ComposeUiTest.showBadge(
+        state: State<BadgeCase>,
+        onLabel: (String) -> Unit,
+    ) {
         setContent {
             val case = state.value
             CompositionLocalProvider(
@@ -116,11 +119,17 @@ class LibrarySourceBadgeContrastTest {
         }
     }
 
-    private fun ComposeUiTest.showLibrary(state: State<LibraryState>, onLabel: (String) -> Unit) {
+    private fun ComposeUiTest.showLibrary(
+        state: State<LibraryState>,
+        onLabel: (String) -> Unit,
+    ) {
         setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f)) {
                 KiraTheme(darkTheme = false) {
-                    val manga = state.value.items.single().manga
+                    val manga =
+                        state.value.items
+                            .single()
+                            .manga
                     onLabel(stringResource(Res.string.library_source_badge_format, manga.api, manga.language))
                     Box(Modifier.size(400.dp, 720.dp)) {
                         LibraryScreenContent(
@@ -159,12 +168,16 @@ class LibrarySourceBadgeContrastTest {
         return layout
     }
 
-    private fun assertBrandInterior(image: ImageBitmap, brand: Color, context: String) {
+    private fun assertBrandInterior(
+        image: ImageBitmap,
+        brand: Color,
+        context: String,
+    ) {
         val pixels = image.toPixelMap()
-        assertTrue(pixels.width > 12 && pixels.height > 8, context)
+        assertTrue(pixels.width > MIN_BADGE_WIDTH_PX && pixels.height > MIN_BADGE_HEIGHT_PX, context)
         // Density is 1: this strip lies inside the real 6dp padding, away from rounded corners,
         // shadows and glyphs. Flattened alpha1 alone would also pass a translucent brand@0.8.
-        for (x in 2..4) {
+        for (x in 2..INTERIOR_SAMPLE_MAX_X_PX) {
             for (y in pixels.height / 2 - 1..pixels.height / 2 + 1) {
                 assertEquals(brand.toArgb(), pixels[x, y].toArgb(), "$context interior ($x,$y)")
             }
@@ -205,14 +218,20 @@ class LibrarySourceBadgeContrastTest {
         val enlargedRtl: Boolean = false,
     ) {
         val api: String get() = if (enlargedRtl) "Mangabuddy" else "Azora"
-        val language: String get() = if (enlargedRtl) "العربية ".repeat(8) else "ar"
+        val language: String get() = if (enlargedRtl) "العربية ".repeat(LONG_LABEL_REPETITIONS) else "ar"
         val fontScale: Float get() = if (enlargedRtl) 2f else 1f
-        val brand: Color get() = if (enlargedRtl) Color(0xFF0000A2) else Color(0xFF867C01)
+        val brand: Color get() = if (enlargedRtl) Color(MANGABUDDY_ARGB) else Color(AZORA_ARGB)
         val foreground: Color get() = if (enlargedRtl) Color.White else Color.Black
     }
 
     private companion object {
         const val BADGE_TAG = "library-source-badge-under-test"
+        const val MIN_BADGE_WIDTH_PX = 12
+        const val MIN_BADGE_HEIGHT_PX = 8
+        const val INTERIOR_SAMPLE_MAX_X_PX = 4
+        const val LONG_LABEL_REPETITIONS = 8
+        const val MANGABUDDY_ARGB: Long = 0xFF0000A2
+        const val AZORA_ARGB: Long = 0xFF867C01
 
         val badgeCases =
             listOf(

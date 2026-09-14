@@ -25,7 +25,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import java.util.Locale
@@ -43,7 +42,7 @@ internal fun runSharedControlSemanticsTest(
     val previous = Locale.getDefault()
     try {
         Locale.setDefault(locale)
-        runSkikoComposeUiTest(size = Size(600f, 1_000f), density = Density(1f)) {
+        runSkikoComposeUiTest(size = Size(CONTROL_SURFACE_WIDTH_PX, CONTROL_SURFACE_HEIGHT_PX), density = Density(1f)) {
             block()
         }
     } finally {
@@ -58,21 +57,21 @@ internal fun ComposeUiTest.assertSingleSwitch(
     enabled: Boolean = true,
     hint: String? = null,
     stateDescription: String? = null,
-    minimumHeight: Dp = 48.dp,
 ): SemanticsNodeInteraction {
     val matcher = switchMatcher(label)
     onAllNodes(matcher).assertCountEquals(1)
-    val row = onNode(matcher)
-        .assertIsDisplayed()
-        .assertHasClickAction()
-        .assertHeightIsAtLeast(minimumHeight)
-        .assertTextEquals(*listOfNotNull(label, hint).toTypedArray())
-        .assert(
-            SemanticsMatcher.expectValue(
-                SemanticsProperties.ToggleableState,
-                if (checked) ToggleableState.On else ToggleableState.Off,
-            ),
-        )
+    val row =
+        onNode(matcher)
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+    if (hint == null) row.assertTextEquals(label) else row.assertTextEquals(label, hint)
+    row.assert(
+        SemanticsMatcher.expectValue(
+            SemanticsProperties.ToggleableState,
+            if (checked) ToggleableState.On else ToggleableState.Off,
+        ),
+    )
     if (enabled) row.assertIsEnabled() else row.assertIsNotEnabled()
     if (stateDescription != null) {
         row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, stateDescription))
@@ -94,40 +93,65 @@ internal fun ComposeUiTest.clickSwitchLabel(label: String) {
 }
 
 @OptIn(ExperimentalTestApi::class)
-internal fun ComposeUiTest.clickSwitchControl(label: String, direction: LayoutDirection = LayoutDirection.Ltr) {
+internal fun ComposeUiTest.clickSwitchControl(
+    label: String,
+    direction: LayoutDirection = LayoutDirection.Ltr,
+) {
     // Inside the visual Switch, including the existing 12dp horizontal row padding where present.
     onNode(switchMatcher(label)).performTouchInput {
-        click(Offset(if (direction == LayoutDirection.Ltr) width - 32f else 32f, center.y))
+        click(
+            Offset(
+                if (direction == LayoutDirection.Ltr) width - SWITCH_TRAILING_INSET_PX else SWITCH_TRAILING_INSET_PX,
+                center.y,
+            ),
+        )
     }
 }
 
 @OptIn(ExperimentalTestApi::class)
-internal fun ComposeUiTest.assertSwitchLabelOrder(label: String, direction: LayoutDirection) {
+internal fun ComposeUiTest.assertSwitchLabelOrder(
+    label: String,
+    direction: LayoutDirection,
+) {
     val row = onNode(switchMatcher(label))
     val rowBounds = row.fetchSemanticsNode().boundsInRoot
     val labelBounds = rawLabel(row, label).boundsInRoot
     if (direction == LayoutDirection.Ltr) {
-        assertTrue(labelBounds.right <= rowBounds.right - 32f, "$label precedes the trailing switch in LTR")
+        assertTrue(
+            labelBounds.right <= rowBounds.right - SWITCH_TRAILING_INSET_PX,
+            "$label precedes the trailing switch in LTR",
+        )
     } else {
-        assertTrue(labelBounds.left >= rowBounds.left + 32f, "$label precedes the trailing switch in RTL")
+        assertTrue(
+            labelBounds.left >= rowBounds.left + SWITCH_TRAILING_INSET_PX,
+            "$label precedes the trailing switch in RTL",
+        )
     }
 }
 
 @OptIn(ExperimentalTestApi::class)
 internal fun ComposeUiTest.rawSubtree(node: SemanticsNodeInteraction): List<SemanticsNode> {
     val id = node.fetchSemanticsNode().id
-    val raw = onNode(SemanticsMatcher("same raw node $id") { it.id == id }, useUnmergedTree = true)
-        .fetchSemanticsNode()
+    val raw =
+        onNode(SemanticsMatcher("same raw node $id") { it.id == id }, useUnmergedTree = true)
+            .fetchSemanticsNode()
     return flatten(raw)
 }
 
 private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
 @OptIn(ExperimentalTestApi::class)
-private fun ComposeUiTest.rawLabel(row: SemanticsNodeInteraction, label: String): SemanticsNode =
+private fun ComposeUiTest.rawLabel(
+    row: SemanticsNodeInteraction,
+    label: String,
+): SemanticsNode =
     rawSubtree(row).single { node ->
         node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == label } == true
     }
 
 private fun switchMatcher(label: String): SemanticsMatcher =
     hasText(label) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)
+
+private const val CONTROL_SURFACE_WIDTH_PX = 600f
+private const val CONTROL_SURFACE_HEIGHT_PX = 1_000f
+private const val SWITCH_TRAILING_INSET_PX = 32f

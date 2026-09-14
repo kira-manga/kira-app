@@ -48,22 +48,28 @@ internal class LibraryControlSemanticsFixture {
 
     fun caption(count: Int): String = captions.getValue(count)
 
-    fun render(ui: ComposeUiTest, layoutDirection: LayoutDirection) {
+    fun render(
+        ui: ComposeUiTest,
+        layoutDirection: LayoutDirection,
+    ) {
         ui.setContent {
             CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                 KiraTheme(darkTheme = false) {
                     labels = labelKeys.associateWith { stringResource(it) }
-                    captions = (0..8).associateWith { value ->
-                        if (value == 0) {
-                            stringResource(Res.string.auto_text)
-                        } else {
-                            stringResource(
-                                Res.string.items_count_format,
-                                value,
-                                stringResource(if (value == 1) Res.string.items_singular else Res.string.items_plural),
-                            )
+                    captions =
+                        (0..MAX_ITEMS_PER_ROW).associateWith { value ->
+                            if (value == 0) {
+                                stringResource(Res.string.auto_text)
+                            } else {
+                                stringResource(
+                                    Res.string.items_count_format,
+                                    value,
+                                    stringResource(
+                                        if (value == 1) Res.string.items_singular else Res.string.items_plural,
+                                    ),
+                                )
+                            }
                         }
-                    }
                     LibraryOptionsSheet(
                         filter = LibraryFilter.ALL,
                         sort = LibrarySort.ALPHABETIC,
@@ -81,11 +87,13 @@ internal class LibraryControlSemanticsFixture {
     private fun accept(intent: LibraryIntent) {
         intents += intent
         when (intent) {
-            LibraryIntent.OnSortDirectionToggle -> direction = if (direction == SortDirection.ASCENDING) {
-                SortDirection.DESCENDING
-            } else {
-                SortDirection.ASCENDING
-            }
+            LibraryIntent.OnSortDirectionToggle ->
+                direction =
+                    if (direction == SortDirection.ASCENDING) {
+                        SortDirection.DESCENDING
+                    } else {
+                        SortDirection.ASCENDING
+                    }
             is LibraryIntent.OnItemsPerRowChange -> count = intent.count
             is LibraryIntent.OnToggleShowDetails -> display = display.copy(showDetails = intent.value)
             is LibraryIntent.OnToggleShowSource -> display = display.copy(showSource = intent.value)
@@ -97,19 +105,23 @@ internal class LibraryControlSemanticsFixture {
     }
 }
 
-internal val libraryDisplayToggleCases: List<Pair<StringResource, (Boolean) -> LibraryIntent>> = listOf(
-    Res.string.show_items_details to { value: Boolean -> LibraryIntent.OnToggleShowDetails(value) },
-    Res.string.show_items_source to { value: Boolean -> LibraryIntent.OnToggleShowSource(value) },
-    Res.string.show_items_count to { value: Boolean -> LibraryIntent.OnToggleShowCount(value) },
-    Res.string.show_buttons to { value: Boolean -> LibraryIntent.OnToggleShowButtons(value) },
-    Res.string.show_tabs_all_likes_etc to { value: Boolean -> LibraryIntent.OnToggleShowTabs(value) },
-)
+internal val libraryDisplayToggleCases: List<Pair<StringResource, (Boolean) -> LibraryIntent>> =
+    listOf(
+        Res.string.show_items_details to { value: Boolean -> LibraryIntent.OnToggleShowDetails(value) },
+        Res.string.show_items_source to { value: Boolean -> LibraryIntent.OnToggleShowSource(value) },
+        Res.string.show_items_count to { value: Boolean -> LibraryIntent.OnToggleShowCount(value) },
+        Res.string.show_buttons to { value: Boolean -> LibraryIntent.OnToggleShowButtons(value) },
+        Res.string.show_tabs_all_likes_etc to { value: Boolean -> LibraryIntent.OnToggleShowTabs(value) },
+    )
 
-private val labelKeys = listOf(
-    Res.string.library_bottom_sheet_tab_sort,
-    Res.string.library_bottom_sheet_tab_display,
-    Res.string.sort_direction_label,
-    Res.string.sort_direction_ascending,
-    Res.string.sort_direction_descending,
-    Res.string.items_per_row_label,
-) + libraryDisplayToggleCases.map { it.first }
+private val labelKeys =
+    listOf(
+        Res.string.library_bottom_sheet_tab_sort,
+        Res.string.library_bottom_sheet_tab_display,
+        Res.string.sort_direction_label,
+        Res.string.sort_direction_ascending,
+        Res.string.sort_direction_descending,
+        Res.string.items_per_row_label,
+    ) + libraryDisplayToggleCases.map { it.first }
+
+internal const val MAX_ITEMS_PER_ROW = 8

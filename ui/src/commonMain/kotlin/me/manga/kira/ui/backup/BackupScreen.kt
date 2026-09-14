@@ -323,12 +323,13 @@ private fun IncludeDownloadsToggle(
 ) {
     val spacing = LocalSpacing.current
     Row(
-        modifier = Modifier.toggleable(
-            value = checked,
-            enabled = enabled,
-            role = Role.Switch,
-            onValueChange = { onToggle() },
-        ),
+        modifier =
+            Modifier.toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = { onToggle() },
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {

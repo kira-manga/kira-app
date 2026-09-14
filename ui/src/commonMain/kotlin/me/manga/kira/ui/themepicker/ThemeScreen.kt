@@ -519,9 +519,10 @@ private fun ThemePickerColumn(
             // onPrimary. Enabled-gated on the notification permission state in the onboarding flow.
             Button(
                 onClick = onContinue,
-                enabled = !isNotificationPermissionRequired ||
-                    onRequestNotificationPermission == null ||
-                    hasNotificationPermission,
+                enabled =
+                    !isNotificationPermissionRequired ||
+                        onRequestNotificationPermission == null ||
+                        hasNotificationPermission,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
@@ -555,9 +556,10 @@ private fun PureBlackRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -610,13 +612,14 @@ private fun NotificationPermissionRow(
         )
         // Body — native: bodySmall @ 12sp, onBackground, maxLines 3, bottom padding 8dp.
         Text(
-            text = stringResource(
-                if (isRequired) {
-                    Res.string.notification_permission
-                } else {
-                    Res.string.notification_permission_optional
-                },
-            ),
+            text =
+                stringResource(
+                    if (isRequired) {
+                        Res.string.notification_permission
+                    } else {
+                        Res.string.notification_permission_optional
+                    },
+                ),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 3,

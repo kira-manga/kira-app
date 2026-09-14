@@ -31,7 +31,9 @@ import me.manga.kira.ui.theme.KiraTheme
 import org.jetbrains.compose.resources.stringResource
 
 /** Retained query owner only; this fixture does not duplicate the ViewModel's filtering. */
-internal class LibrarySearchVisibilityFixture(initialQuery: String = "") {
+internal class LibrarySearchVisibilityFixture(
+    initialQuery: String = "",
+) {
     val state =
         mutableStateOf(
             LibraryState(isLoading = false, hasLibraryItems = true, searchQuery = initialQuery),
@@ -108,7 +110,10 @@ internal suspend fun ComposeUiTest.recreateLibrarySearch(fixture: LibrarySearchV
     awaitIdle()
 }
 
-internal fun ComposeUiTest.assertLibrarySearchEditor(fixture: LibrarySearchVisibilityFixture, query: String) {
+internal fun ComposeUiTest.assertLibrarySearchEditor(
+    fixture: LibrarySearchVisibilityFixture,
+    query: String,
+) {
     onNode(hasSetTextAction())
         .assertIsDisplayed()
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(query)))

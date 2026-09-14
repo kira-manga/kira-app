@@ -1405,6 +1405,7 @@ private fun LibraryCardCover(
  * localized "api - language" label (via `library_source_badge_format`) retains the native
  * MangaCard source badge geometry: 8sp Bold text, 6dp/2dp inner padding.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 internal fun LibrarySourceBadge(
     api: String,
