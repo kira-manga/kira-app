@@ -43,7 +43,10 @@ internal suspend fun ComposeUiTest.assertDeleteRoutesToFinalChapter(
     awaitIdle()
     val collapsedFab = resumeFab.requireFullyVisible()
     assertTrue(collapsedFab.boundsInRoot.width < expandedBounds.width, "Scroll must collapse Resume")
-    val screenCenter = onRoot().fetchSemanticsNode().boundsInRoot.center.x
+    val screenCenter =
+        onRoot()
+            .fetchSemanticsNode()
+            .boundsInRoot.center.x
     val fabCenter = collapsedFab.boundsInRoot.center.x
     assertTrue(if (direction == LayoutDirection.Ltr) fabCenter > screenCenter else fabCenter < screenCenter)
     val finalRow = hasText(fixture.finalChapter.number) and hasAnyAncestor(hasScrollToIndexAction())
