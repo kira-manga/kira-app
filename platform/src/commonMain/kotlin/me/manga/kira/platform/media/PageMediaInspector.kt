@@ -47,7 +47,14 @@ sealed interface PageInspection {
 enum class PageInvalidReason { EMPTY, UNSUPPORTED_FORMAT, INCOMPLETE_OR_CORRUPT }
 
 /** Policy/capability rejection is NOT_VALID and not retryable; it is not codec-budget preservation. */
-enum class PageInspectionRejection { ENCODED_BYTES, SOURCE_PIXELS, SOURCE_AXIS, DECODER_UNAVAILABLE }
+enum class PageInspectionRejection {
+    ENCODED_BYTES,
+    SOURCE_PIXELS,
+    SOURCE_AXIS,
+    DECODER_UNAVAILABLE,
+    /** The bounded native API cannot distinguish malformed input from its allocation/scale limit. */
+    BOUNDED_DECODER_REJECTED,
+}
 
 /** Converts a failed inspection to the download/writer's normal failure path without losing its type. */
 fun PageInspection.requireValid(): PageImageMetadata = when (this) {
