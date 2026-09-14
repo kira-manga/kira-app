@@ -19,7 +19,12 @@ class ReaderNavigationBarNavigationTest : NavigationBarTestHost() {
         beginTransition { fixture.openReader(SECOND) }
         assertReaders(fixture, FIRST, SECOND)
         compose.runOnIdle {
-            assertEquals(Lifecycle.State.STARTED, fixture.nav.currentBackStackEntry?.lifecycle?.currentState)
+            assertEquals(
+                Lifecycle.State.STARTED,
+                fixture.nav.currentBackStackEntry
+                    ?.lifecycle
+                    ?.currentState,
+            )
             assertTrue(fixture.disposedReaders.isEmpty())
         }
         finishTransition()
@@ -71,7 +76,10 @@ class ReaderNavigationBarNavigationTest : NavigationBarTestHost() {
         compose.waitForIdle()
     }
 
-    private fun assertReaders(fixture: NavigationBarNavigationFixture, vararg chapters: String) {
+    private fun assertReaders(
+        fixture: NavigationBarNavigationFixture,
+        vararg chapters: String,
+    ) {
         compose.runOnIdle {
             fixture.assertMounted(chapters.toList())
             NavigationBarWindowProbe(activity.window).assertNavigationVisible(chapters.isEmpty())
@@ -82,6 +90,7 @@ class ReaderNavigationBarNavigationTest : NavigationBarTestHost() {
     private companion object {
         const val FIRST = "first"
         const val SECOND = "second"
+
         // Observe the real default transition before it completes; no sleeps or disabled animation.
         const val TRANSITION_PROBE_MILLIS = 64L
     }

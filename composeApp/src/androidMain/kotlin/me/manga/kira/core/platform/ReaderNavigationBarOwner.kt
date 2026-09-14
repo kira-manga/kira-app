@@ -62,7 +62,10 @@ internal class ReaderNavigationBarOwner(
         }
     }
 
-    override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+    override fun onStateChanged(
+        source: LifecycleOwner,
+        event: Lifecycle.Event,
+    ) {
         when (event) {
             Lifecycle.Event.ON_RESUME -> reapply()
             Lifecycle.Event.ON_DESTROY -> release()

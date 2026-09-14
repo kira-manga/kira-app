@@ -95,7 +95,9 @@ abstract class NavigationBarTestHost {
 }
 
 /** SDK35's actual InsetsController request mask, not an assertion about rendered OS pixels. */
-internal class NavigationBarWindowProbe(window: Window) {
+internal class NavigationBarWindowProbe(
+    window: Window,
+) {
     private val controller = assertNotNull(window.insetsController)
 
     init {
@@ -134,7 +136,10 @@ internal class NavigationBarEntryOwner : LifecycleOwner {
     override val lifecycle = LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }
 }
 
-internal class NavigationBarEffectFixture(context: Context, entry: LifecycleOwner) {
+internal class NavigationBarEffectFixture(
+    context: Context,
+    entry: LifecycleOwner,
+) {
     var context by mutableStateOf(context)
     var entry by mutableStateOf(entry)
     var mounted by mutableStateOf(true)
@@ -148,7 +153,10 @@ internal class NavigationBarEffectFixture(context: Context, entry: LifecycleOwne
     }
 }
 
-internal fun assertNavigationBarRegistrations(window: Window, count: Int) {
+internal fun assertNavigationBarRegistrations(
+    window: Window,
+    count: Int,
+) {
     val listeners = Shadows.shadowOf(window.decorView).onAttachStateChangeListeners
     assertEquals(count, listeners.filterIsInstance<ReaderNavigationBarOwner>().size)
 }
