@@ -23,13 +23,17 @@ internal class PageProgressNetworkClient(
     private val delegate: NetworkClient,
     private val clock: TimeSource = TimeSource.Monotonic,
 ) : NetworkClient {
-    override suspend fun <T> executeRequest(request: NetworkRequest, block: suspend (NetworkResponse) -> T): T {
+    override suspend fun <T> executeRequest(
+        request: NetworkRequest,
+        block: suspend (NetworkResponse) -> T,
+    ): T {
         val attempt = request.extras[pageProgressAttemptKey] ?: return delegate.executeRequest(request, block)
         return delegate.executeRequest(request) { response ->
             val body = response.body
-            val wrapped = body?.let {
-                PageProgressResponseBody(it, attempt, response.headers["content-length"]?.toLongOrNull(), clock)
-            }
+            val wrapped =
+                body?.let {
+                    PageProgressResponseBody(it, attempt, response.headers["content-length"]?.toLongOrNull(), clock)
+                }
             block(if (wrapped == null) response else response.copy(body = wrapped))
         }
     }
@@ -43,12 +47,16 @@ private class PageProgressResponseBody(
 ) : NetworkResponseBody {
     override suspend fun writeTo(sink: BufferedSink) {
         val counter = PageProgressByteCounter(attempt, contentLength, clock)
-        val counting = object : ForwardingSink(sink) {
-            override fun write(source: Buffer, byteCount: Long) {
-                super.write(source, byteCount)
-                counter.wrote(byteCount)
-            }
-        }.buffer()
+        val counting =
+            object : ForwardingSink(sink) {
+                override fun write(
+                    source: Buffer,
+                    byteCount: Long,
+                ) {
+                    super.write(source, byteCount)
+                    counter.wrote(byteCount)
+                }
+            }.buffer()
         delegate.writeTo(counting)
         // Drain our buffer without flushing or closing the caller's sink. On failure/cancellation
         // do not flush a partial buffer; native client cancellation and body.close remain in charge.
@@ -56,7 +64,10 @@ private class PageProgressResponseBody(
         attempt.report(PageDownloadProgress.Decoding)
     }
 
-    override suspend fun writeTo(fileSystem: FileSystem, path: Path) {
+    override suspend fun writeTo(
+        fileSystem: FileSystem,
+        path: Path,
+    ) {
         // Coil supplies the destination. Only tagged requests give up Ktor/JVM's FileChannel fast
         // path; using the sink overload counts bytes on both adapters without extra pump coroutines.
         fileSystem.sink(path).buffer().use { writeTo(it) }

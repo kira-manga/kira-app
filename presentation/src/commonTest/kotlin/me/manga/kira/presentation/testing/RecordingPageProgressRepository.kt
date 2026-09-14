@@ -17,7 +17,14 @@ class RecordingPageProgressRepository : PageProgressRepository {
     val cleared = mutableListOf<PageProgressHandle>()
     val cancelled = mutableListOf<String>()
     val activeHandles: Set<PageProgressHandle> get() = streams.keys.toSet()
-    val activeUrls: Set<String> get() = collectors.filterValues { it > 0 }.keys.map { it.url }.toSet()
+    val activeUrls: Set<String>
+        get() =
+            collectors
+                .filterValues { it > 0 }
+                .keys
+                .map { it.url }
+                .toSet()
+
     val collectorCount: Int get() = collectors.values.sum()
 
     override fun observe(url: String): PageProgressObservation {
@@ -25,15 +32,18 @@ class RecordingPageProgressRepository : PageProgressRepository {
         val stream = MutableStateFlow<PageDownloadProgress>(PageDownloadProgress.Idle)
         acquired += handle
         streams[handle] = stream
-        return PageProgressObservation(handle, flow {
-            collectors[handle] = collectors.getOrElse(handle) { 0 } + 1
-            try {
-                emitAll(stream)
-            } finally {
-                collectors[handle] = collectors.getValue(handle) - 1
-                cancelled += url
-            }
-        })
+        return PageProgressObservation(
+            handle,
+            flow {
+                collectors[handle] = collectors.getOrElse(handle) { 0 } + 1
+                try {
+                    emitAll(stream)
+                } finally {
+                    collectors[handle] = collectors.getValue(handle) - 1
+                    cancelled += url
+                }
+            },
+        )
     }
 
     override fun beginAttempt(handle: PageProgressHandle): PageProgressAttempt? {
@@ -43,18 +53,26 @@ class RecordingPageProgressRepository : PageProgressRepository {
         return PageProgressAttempt { status ->
             if (!finished) {
                 report(handle, status)
-                finished = status == PageDownloadProgress.Idle ||
-                    status == PageDownloadProgress.Complete || status == PageDownloadProgress.Failed
+                finished =
+                    status == PageDownloadProgress.Idle ||
+                    status == PageDownloadProgress.Complete ||
+                    status == PageDownloadProgress.Failed
             }
         }
     }
 
-    fun report(handle: PageProgressHandle, status: PageDownloadProgress) {
+    fun report(
+        handle: PageProgressHandle,
+        status: PageDownloadProgress,
+    ) {
         streams[handle]?.value = status
     }
 
     // Convenience only for existing active-chapter tests; not a production URL-reporting API.
-    fun report(url: String, status: PageDownloadProgress) {
+    fun report(
+        url: String,
+        status: PageDownloadProgress,
+    ) {
         streams.filterKeys { it.url == url }.values.forEach { it.value = status }
     }
 

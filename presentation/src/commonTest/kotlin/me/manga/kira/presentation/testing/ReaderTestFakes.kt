@@ -46,10 +46,14 @@ class FakeChapterPagesRepository : ChapterPagesRepository {
     var result: Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
     val fetched = mutableListOf<Pair<Manga, Chapter>>()
 
-    override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> {
+    override fun fetchPages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Flow<AppResult<List<Page>>> {
         fetched += manga to chapter
         return result
     }
+
     val cleared = mutableListOf<Pair<Manga, Chapter>>()
 
     override fun clearExtractedPages(
@@ -202,27 +206,17 @@ class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
     }
 }
 
-/** Bundle exposing the handles a test needs to drive/inspect the reader VM. */
-class ReaderTestEnv(
-    val vm: ReaderViewModel,
-    val pages: FakeChapterPagesRepository,
-    val markRead: RecordingMarkChapterReadRepository,
-    val readProgress: RecordingReadProgressRepository,
-    val bookmark: RecordingChapterBookmarkRepository,
-    val history: RecordingHistoryRepository,
-    val readingSession: RecordingReadingSessionRepository,
-    val pageProgress: RecordingPageProgressRepository,
-)
-
 /**
- * Builds a [ReaderViewModel] over benign fakes. [chapterList] seeds the chapter list the VM lists
+ * Owns a [ReaderViewModel] and the fakes a test drives. [chapterList] seeds the chapter list the VM lists
  * on enter (used by Next/Prev/append tests); the manga details fetch returns those chapters.
  *
  * Resume/bookmark/history use RECORDING fakes (shared per concern) so tests can assert that those
  * actions follow the active visible chapter (#5). A single [RecordingChapterBookmarkRepository] backs
  * both the observe and toggle use cases so observed/toggled URLs line up.
  */
-fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
+class ReaderTestEnv(
+    chapterList: List<Chapter>,
+) {
     val pages = FakeChapterPagesRepository()
     val markRead = RecordingMarkChapterReadRepository()
     val readProgress = RecordingReadProgressRepository()
@@ -231,7 +225,7 @@ fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
     // #7: ONE shared reading-session recorder wired into both use cases (mirrors prod single binding).
     val readingSession = RecordingReadingSessionRepository()
     val pageProgress = RecordingPageProgressRepository()
-    val details =
+    private val details =
         MangaDetails(
             api = "src",
             language = "en",
@@ -263,8 +257,9 @@ fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
             clearExtractedPages = ClearExtractedPagesUseCase(pages),
             clearPageProgress = ClearPageProgressUseCase(pageProgress),
         )
-    return ReaderTestEnv(vm, pages, markRead, readProgress, bookmark, history, readingSession, pageProgress)
 }
+
+fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv = ReaderTestEnv(chapterList)
 
 fun readerChapter(n: String): Chapter =
     Chapter(number = n, name = "Ch $n", url = "ch/$n", date = null, isDownloaded = false, isBookmarked = false)

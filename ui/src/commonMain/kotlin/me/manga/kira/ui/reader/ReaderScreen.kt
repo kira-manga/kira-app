@@ -629,7 +629,7 @@ internal fun ReaderScreenContent(
                         },
                 ) {
                     ReaderPageLayout(
-                        pages = state.pages,
+                        feedState = state,
                         readingMode = state.readingMode,
                     // Live page index threaded into each layout. Two roles:
                     //   1. Initial value for the layout's `remember*State` so a mode-toggle
@@ -663,10 +663,6 @@ internal fun ReaderScreenContent(
                         },
                         // Inline boundary-card tap (continuous modes): append the next chapter below.
                         onAppendNext = { onIntent(ReaderIntent.OnAppendNextChapter) },
-                        pageChapters = state.pageChapters,
-                        skippedChapterUrls = state.skippedChapterUrls,
-                        chapters = state.chapters,
-                        anchorChapter = state.chapter,
                         // Paged modes (#14): the chapter currently in view + the next chapter (null
                         // on the terminal chapter) so the pagers can append a dummy "Next Chapter"
                         // page after the last image — the last image is then dwellable and the
@@ -1254,17 +1250,13 @@ private fun ReaderPageIndicatorHud(text: String) {
  */
 @Composable
 private fun ReaderPageLayout(
-    pages: List<Page>,
+    feedState: ReaderState,
     readingMode: ReadingMode,
     currentPageIndex: Int,
     screenHeightDb: Dp,
     onPageChanged: (Int) -> Unit,
     onReachedEnd: () -> Unit,
     onAppendNext: () -> Unit,
-    pageChapters: List<String>,
-    skippedChapterUrls: Set<String>,
-    chapters: List<Chapter>,
-    anchorChapter: Chapter?,
     activeChapter: Chapter,
     nextChapter: Chapter?,
     onOpenInWebView: () -> Unit,
@@ -1274,7 +1266,7 @@ private fun ReaderPageLayout(
 ) {
     when (readingMode) {
         ReadingMode.RIGHT_TO_LEFT -> ReaderHorizontalPager(
-            pages = pages,
+            pages = feedState.pages,
             reverseLayout = true,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
@@ -1288,7 +1280,7 @@ private fun ReaderPageLayout(
             pageProgressHandles = pageProgressHandles,
         )
         ReadingMode.LEFT_TO_RIGHT -> ReaderHorizontalPager(
-            pages = pages,
+            pages = feedState.pages,
             reverseLayout = false,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
@@ -1308,7 +1300,7 @@ private fun ReaderPageLayout(
         ReadingMode.DEFAULT,
         ReadingMode.VERTICAL,
         -> ReaderVerticalPager(
-            pages = pages,
+            pages = feedState.pages,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
             onPageChanged = onPageChanged,
@@ -1331,11 +1323,7 @@ private fun ReaderPageLayout(
         ReadingMode.WEBTOON,
         ReadingMode.CONTINUOUS_VERTICAL,
         -> ReaderVerticalList(
-            pages = pages,
-            pageChapters = pageChapters,
-            skippedChapterUrls = skippedChapterUrls,
-            chapters = chapters,
-            anchorChapter = anchorChapter,
+            feedState = feedState,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
             contentScale = if (readingMode == ReadingMode.WEBTOON) {
@@ -1356,11 +1344,7 @@ private fun ReaderPageLayout(
 
 @Composable
 private fun ReaderVerticalList(
-    pages: List<Page>,
-    pageChapters: List<String>,
-    skippedChapterUrls: Set<String>,
-    chapters: List<Chapter>,
-    anchorChapter: Chapter?,
+    feedState: ReaderState,
     currentPageIndex: Int,
     screenHeightDb: Dp,
     contentScale: ContentScale,
@@ -1375,11 +1359,14 @@ private fun ReaderVerticalList(
     // #5 continuous reader: render an interleaved feed (pages + inline chapter-boundary cards) instead
     // of the raw page list. `pages`/`currentPageIndex` stay in PAGE-index space (the VM is unchanged);
     // the two maps translate between page-index space and feed-index (LazyColumn) space. Memoized so
-    // the feed + maps rebuild only when the page list / tags / chapter list change.
-    val feed = remember(pages, pageChapters, chapters, anchorChapter, skippedChapterUrls) {
-        buildReaderFeed(pages, pageChapters, chapters, anchorChapter, skippedChapterUrls)
-    }
-    val lastPageIndex = (pages.size - 1).coerceAtLeast(0)
+    // only these five feed fields are memoization keys, not progress/chrome changes in feedState.
+    val feed =
+        with(feedState) {
+            remember(pages, pageChapters, chapters, chapter, skippedChapterUrls) {
+                buildReaderFeed(pages, pageChapters, chapters, chapter, skippedChapterUrls)
+            }
+        }
+    val lastPageIndex = (feedState.pages.size - 1).coerceAtLeast(0)
     // `currentPageIndex` is honoured by `rememberLazyListState` only on the FIRST
     // composition (see KDoc: "the state will only be created once" per composable
     // identity). Mode-toggle creates a fresh `ReaderVerticalList` composition → fresh

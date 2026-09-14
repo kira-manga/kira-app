@@ -57,57 +57,57 @@ internal fun ReaderPageItem(
     // Coil's Compose model equality ignores request Extras. An ownership-only change must still
     // cancel the old painter and execute a fresh request, WITHOUT changing either cache key.
     key(progressHandle) {
-        ReaderPageImage(page, screenHeightDb, onOpenInWebView, progress, progressHandle, modifier, contentScale)
+        val request = rememberReaderPageRequest(page, progressHandle)
+        SubcomposeAsyncImage(
+            model = request,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = contentScale,
+            loading = { ReaderPageLoading(screenHeightDb, progress) },
+            error = {
+                val errorPainter = painter
+                ReaderPageError(screenHeightDb, onRetry = { errorPainter.restart() }, onOpenInWebView = onOpenInWebView)
+            },
+        )
     }
 }
 
 @Composable
-@Suppress("FunctionNaming", "ktlint:standard:function-naming")
-private fun ReaderPageImage(
+private fun rememberReaderPageRequest(
     page: Page,
-    screenHeightDb: Dp,
-    onOpenInWebView: () -> Unit,
-    progress: PageDownloadProgress,
     progressHandle: PageProgressHandle?,
-    modifier: Modifier,
-    contentScale: ContentScale,
-) {
+): ImageRequest {
     val context = LocalPlatformContext.current
     val windowWidthPx = LocalWindowInfo.current.containerSize.width
-    val request = remember(page.url, page.headers, windowWidthPx, progressHandle) {
-        val headers = NetworkHeaders.Builder().apply {
-            page.headers.forEach { (key, value) -> add(key, value) }
-        }.build()
-        ImageRequest.Builder(context)
+    return remember(page.url, page.headers, windowWidthPx, progressHandle) {
+        val headers =
+            NetworkHeaders
+                .Builder()
+                .apply {
+                    page.headers.forEach { (key, value) -> add(key, value) }
+                }.build()
+        // Keep height unrestricted: a two-axis cap collapses tall strips to blurry narrow
+        // bitmaps. Width alone is capped at window width × zoom headroom to bound decode RAM.
+        ImageRequest
+            .Builder(context)
             .data(page.url)
             .httpHeaders(headers)
             .pageProgressHandle(progressHandle)
-            // Keep height unrestricted: a two-axis cap collapses tall strips to blurry narrow
-            // bitmaps. Width alone is capped at window width × zoom headroom to bound decode RAM.
             .maxBitmapSize(
                 readerDecodeMaxWidthPx(windowWidthPx)
                     ?.let { Size(Dimension.Pixels(it), Dimension.Undefined) }
                     ?: Size(Dimension.Undefined, Dimension.Undefined),
-            )
-            .applyReaderDecoderHints()
+            ).applyReaderDecoderHints()
             .build()
     }
-    SubcomposeAsyncImage(
-        model = request,
-        contentDescription = null,
-        modifier = modifier,
-        contentScale = contentScale,
-        loading = { ReaderPageLoading(screenHeightDb, progress) },
-        error = {
-            val errorPainter = painter
-            ReaderPageError(screenHeightDb, onRetry = { errorPainter.restart() }, onOpenInWebView = onOpenInWebView)
-        },
-    )
 }
 
 @Composable
 @Suppress("FunctionNaming", "ktlint:standard:function-naming")
-private fun ReaderPageLoading(screenHeightDb: Dp, progress: PageDownloadProgress) {
+private fun ReaderPageLoading(
+    screenHeightDb: Dp,
+    progress: PageDownloadProgress,
+) {
     val fraction = (progress as? PageDownloadProgress.InProgress)?.fraction
     Box(
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = screenHeightDb),
@@ -123,7 +123,11 @@ private fun ReaderPageLoading(screenHeightDb: Dp, progress: PageDownloadProgress
 
 @Composable
 @Suppress("FunctionNaming", "ktlint:standard:function-naming")
-private fun ReaderPageError(screenHeightDb: Dp, onRetry: () -> Unit, onOpenInWebView: () -> Unit) {
+private fun ReaderPageError(
+    screenHeightDb: Dp,
+    onRetry: () -> Unit,
+    onOpenInWebView: () -> Unit,
+) {
     val spacing = LocalSpacing.current
     Box(
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = screenHeightDb),
@@ -145,15 +149,19 @@ private fun ReaderPageError(screenHeightDb: Dp, onRetry: () -> Unit, onOpenInWeb
 /** Existing native-parity error-button geometry, unchanged by progress ownership. */
 @Composable
 @Suppress("FunctionNaming", "ktlint:standard:function-naming")
-private fun ReaderBorderedPrimaryButton(text: String, onClick: () -> Unit) {
+private fun ReaderBorderedPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+) {
     Button(
         onClick = onClick,
         modifier = Modifier.height(38.dp).defaultMinSize(minHeight = 0.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
         contentPadding = PaddingValues(vertical = 8.dp, horizontal = 28.dp),
     ) {

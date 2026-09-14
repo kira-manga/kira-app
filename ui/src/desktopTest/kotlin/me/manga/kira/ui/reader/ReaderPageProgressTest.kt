@@ -62,7 +62,8 @@ class ReaderPageProgressTest {
                     }
                 }
                 waitUntil(timeoutMillis = 5_000) {
-                    executions.size == 1 && retryLabel.isNotEmpty() &&
+                    executions.size == 1 &&
+                        retryLabel.isNotEmpty() &&
                         onAllNodesWithText(retryLabel).fetchSemanticsNodes().isNotEmpty()
                 }
                 onNodeWithText(retryLabel).performClick()
@@ -96,14 +97,16 @@ class ReaderPageProgressTest {
             runComposeUiTest {
                 setContent {
                     KiraTheme(darkTheme = false) {
-                        if (mounted) ReaderPageItem(
-                            page = Page(OWNED_PAGE_URL, emptyMap()),
-                            screenHeightDb = 200.dp,
-                            onOpenInWebView = {},
-                            progress = PageDownloadProgress.Idle,
-                            progressHandle = owner,
-                            modifier = Modifier.size(400.dp, 600.dp),
-                        )
+                        if (mounted) {
+                            ReaderPageItem(
+                                page = Page(OWNED_PAGE_URL, emptyMap()),
+                                screenHeightDb = 200.dp,
+                                onOpenInWebView = {},
+                                progress = PageDownloadProgress.Idle,
+                                progressHandle = owner,
+                                modifier = Modifier.size(400.dp, 600.dp),
+                            )
+                        }
                     }
                 }
                 waitUntil(timeoutMillis = 5_000) { executions.size == 1 }
@@ -122,13 +125,17 @@ class ReaderPageProgressTest {
 }
 
 @OptIn(DelicateCoilApi::class)
-private class PageProgressImages(execute: suspend (ImageRequest) -> ImageResult) : Closeable {
+private class PageProgressImages(
+    execute: suspend (ImageRequest) -> ImageResult,
+) : Closeable {
     private val previous = SingletonImageLoader.get(PlatformContext.INSTANCE)
-    private val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
-        .memoryCache(null)
-        .diskCache(null)
-        .components { add(Interceptor { execute(it.request) }) }
-        .build()
+    private val loader =
+        ImageLoader
+            .Builder(PlatformContext.INSTANCE)
+            .memoryCache(null)
+            .diskCache(null)
+            .components { add(Interceptor { execute(it.request) }) }
+            .build()
 
     init {
         SingletonImageLoader.setUnsafe(loader)

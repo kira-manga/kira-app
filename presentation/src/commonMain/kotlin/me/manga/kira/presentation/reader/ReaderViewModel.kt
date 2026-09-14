@@ -819,29 +819,35 @@ class ReaderViewModel(
         updateState { current ->
             next.copy(
                 pageProgressHandles = handles,
-                pageProgress = current.pageProgress.filterKeys { url ->
-                    handles[url] != null && handles[url] === current.pageProgressHandles[url]
-                },
+                pageProgress =
+                    current.pageProgress.filterKeys { url ->
+                        handles[url] != null && handles[url] === current.pageProgressHandles[url]
+                    },
             )
         }
         ownedPageProgress.forEach { (url, observation) ->
             if (url !in pageProgressJobs) {
-                pageProgressJobs[url] = launchSafely {
-                    observation.progress.collect { status -> reducePageProgress(observation.handle, status) }
-                }
+                pageProgressJobs[url] =
+                    launchSafely {
+                        observation.progress.collect { status -> reducePageProgress(observation.handle, status) }
+                    }
             }
         }
     }
 
-    private fun reducePageProgress(handle: PageProgressHandle, status: PageDownloadProgress) {
+    private fun reducePageProgress(
+        handle: PageProgressHandle,
+        status: PageDownloadProgress,
+    ) {
         if (ownedPageProgress[handle.url]?.handle !== handle) return
         updateState { current ->
             if (current.pageProgressHandles[handle.url] !== handle) return@updateState current
-            val progress = if (status == PageDownloadProgress.Idle) {
-                current.pageProgress - handle.url
-            } else {
-                current.pageProgress + (handle.url to status)
-            }
+            val progress =
+                if (status == PageDownloadProgress.Idle) {
+                    current.pageProgress - handle.url
+                } else {
+                    current.pageProgress + (handle.url to status)
+                }
             if (progress == current.pageProgress) current else current.copy(pageProgress = progress)
         }
     }
