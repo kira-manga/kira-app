@@ -14,6 +14,7 @@ internal fun fixtureDownloadService(
     dao: DownloadWorkerCancellationDao,
     transport: CancellationPageTransport,
     sender: CompleteSendDispatcher,
+    manager: OptimizedCbzManager = OptimizedCbzManager(storage.context, fixtureDeviceTier),
 ): ChapterDownloadService {
     val files = FileService(storage.fileSystem)
     val library =
@@ -29,7 +30,7 @@ internal fun fixtureDownloadService(
         context = storage.context,
         persistence = ChapterDownloadPersistence(library, dao.notifications, dao, files),
         httpClient = transport.client,
-        optimizedCbzManager = OptimizedCbzManager(storage.context, fixtureDeviceTier),
+        optimizedCbzManager = manager,
         dataStoreHelper = storage.settings,
         downloadDispatcher = sender,
     )

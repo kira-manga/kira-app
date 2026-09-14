@@ -2,491 +2,187 @@ package me.manga.kira.core.cbz
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.BitmapRegionDecoder
 import android.graphics.Rect
-import android.os.Build
-import android.util.Log
-import androidx.core.graphics.createBitmap
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import me.manga.kira.platform.device.DeviceTierProbe
-import org.aomedia.avif.android.AvifDecoder
 import java.io.BufferedOutputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
+import java.io.IOException
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Phase 8.14 port of upstream `me.manga.kira.core.cbz.OptimizedCbzManager`.
+ * One conversion and one decoded chunk at a time on the shipping Koin singleton.
+ * Encodes directly into an owned temporary ZIP, validates, then atomically publishes it.
  *
- * Parallel decode + compress CBZ encoder with AVIF source support. Hilt
- * `@Inject @Singleton` + `@ApplicationContext` annotations stripped (Koin provides
- * `Context` via `androidContext()`). Source code is otherwise byte-identical, including
- * the AVIF native decoder mutex (the `AvifDecoder` JNI is not thread-safe) and the
- * device-tier-driven semaphore sizing.
- *
- * Device-tier detection (PC-1, Platform Cutover): the legacy no-arg `detectDeviceTier()`
- * top-level function (and its `setAndroidDeviceTierContext(...)` opt-in registration) has been
- * deleted. The runtime tier now comes from the injected `:platform` [DeviceTierProbe] —
- * `single<DeviceTierProbe> { AndroidDeviceTierProbe(androidContext()) }` in `PlatformModule.android`.
- * Same `getCbzSettings(tier)` lookup, same per-tier behaviour vs upstream.
+ * Tier quality/sampling/splitting policy is unchanged; parallel throughput is deliberately traded
+ * for bounded item ownership. AVIF still needs its full parent plus at most one crop. Neither this
+ * window nor fixed stream buffers promise a heap/RSS ceiling for one extreme image/native codec.
+ * The historical createCbzParallel name remains for callers; other CBZ writers are independent.
+ * Codec decorators transfer bitmap ownership here; the synchronous encoder must neither retain
+ * that bitmap nor close the supplied ZIP stream. Production callers use the Android defaults.
  */
 class OptimizedCbzManager(
     private val context: Context,
     deviceTierProbe: DeviceTierProbe,
+    private val decoder: CbzImageDecoder = CbzImageDecoder(),
+    private val output: CbzArchiveOutput = CbzArchiveOutput(),
+    private val encode: (Bitmap, Bitmap.CompressFormat, Int, OutputStream) -> Boolean =
+        { bitmap, format, quality, stream -> bitmap.compress(format, quality, stream) },
 ) {
-    private companion object {
-        private const val TAG = "OptimizedCBZ"
-    }
-
-    private val tier = deviceTierProbe.detect()
-    private val settings = getCbzSettings(tier)
-
-    private val decodeSemaphore = Semaphore(settings.maxParallelDecode)
-    private val compressSemaphore = Semaphore(settings.maxParallelCompress)
-
-    private val avifDecoderMutex = Mutex()
-
-    private val webpFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        Bitmap.CompressFormat.WEBP_LOSSY
-    } else {
-        @Suppress("DEPRECATION")
-        Bitmap.CompressFormat.WEBP
-    }
-
-    private fun isAvifFile(file: File): Boolean {
-        return try {
-            file.inputStream().use { stream ->
-                val header = ByteArray(12)
-                val read = stream.read(header)
-
-                if (read < 12) return false
-
-                header[4] == 'f'.code.toByte() &&
-                    header[5] == 't'.code.toByte() &&
-                    header[6] == 'y'.code.toByte() &&
-                    header[7] == 'p'.code.toByte() &&
-                    (
-                        (
-                            header[8] == 'a'.code.toByte() &&
-                                header[9] == 'v'.code.toByte() &&
-                                header[10] == 'i'.code.toByte() &&
-                                header[11] == 'f'.code.toByte()
-                            ) ||
-                            (
-                                header[8] == 'a'.code.toByte() &&
-                                    header[9] == 'v'.code.toByte() &&
-                                    header[10] == 'i'.code.toByte() &&
-                                    header[11] == 's'.code.toByte()
-                                )
-                        )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking AVIF magic bytes", e)
-            false
-        }
-    }
-
-    private suspend fun decodeAvifImage(file: File): Bitmap? = avifDecoderMutex.withLock {
-        try {
-            val bytes = file.readBytes()
-
-            if (bytes.size < 12) {
-                Log.w(TAG, "AVIF file too small: ${file.name}")
-                return@withLock null
-            }
-
-            val buffer = ByteBuffer.allocateDirect(bytes.size)
-            buffer.put(bytes)
-            buffer.rewind()
-
-            val info = AvifDecoder.Info()
-            if (!AvifDecoder.getInfo(buffer, buffer.capacity(), info)) {
-                Log.w(TAG, "Invalid AVIF image: ${file.name}")
-                return@withLock null
-            }
-
-            if (info.width <= 0 || info.height <= 0 || info.width > 8192 || info.height > 8192) {
-                Log.w(TAG, "Invalid AVIF dimensions: ${info.width}x${info.height}")
-                return@withLock null
-            }
-
-            Log.d(TAG, "Decoding AVIF: ${file.name} - ${info.width}x${info.height}, alpha=${info.alphaPresent}")
-
-            val bitmap = createBitmap(
-                info.width,
-                info.height,
-                if (info.alphaPresent) Bitmap.Config.ARGB_8888 else Bitmap.Config.RGB_565,
-            )
-
-            buffer.rewind()
-            val success = AvifDecoder.decode(buffer, buffer.capacity(), bitmap, 0)
-
-            if (!success) {
-                bitmap.recycle()
-                Log.w(TAG, "Failed to decode AVIF: ${file.name}")
-                return@withLock null
-            }
-
-            Log.d(TAG, "Successfully decoded AVIF: ${file.name}")
-            bitmap
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "AVIF native library not available", e)
-            null
-        } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "Out of memory decoding AVIF: ${file.name}", e)
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error decoding AVIF: ${file.name}", e)
-            null
-        } catch (e: Error) {
-            Log.e(TAG, "Fatal error in AVIF decoder: ${file.name}", e)
-            null
-        }
-    }
-
-    private suspend fun decodeAvifWithRegionSplit(file: File, maxChunkHeight: Int): List<Bitmap> {
-        val fullBitmap = decodeAvifImage(file) ?: return emptyList()
-
-        val chunks = mutableListOf<Bitmap>()
-        return try {
-            val height = fullBitmap.height
-            val width = fullBitmap.width
-
-            if (height <= maxChunkHeight) {
-                return listOf(fullBitmap)
-            }
-
-            var y = 0
-
-            while (y < height) {
-                val chunkHeight = minOf(maxChunkHeight, height - y)
-                val chunk = Bitmap.createBitmap(fullBitmap, 0, y, width, chunkHeight)
-                chunks.add(chunk)
-                y += chunkHeight
-            }
-
-            fullBitmap.recycle()
-            chunks
-        } catch (e: Exception) {
-            Log.e(TAG, "Error splitting AVIF bitmap", e)
-            // Recycle any chunks already allocated before the failure — they hold native pixel
-            // memory exactly when memory is tightest.
-            chunks.forEach { it.recycle() }
-            fullBitmap.recycle()
-            emptyList()
-        }
-    }
-
-    @Suppress("unused")
-    private fun decodeAndSplitWithRegionDecoder(
-        file: File,
-        maxChunkHeight: Int,
-        quality: Int,
-    ): List<ByteArray> {
-        val chunks = mutableListOf<ByteArray>()
-
-        val bounds = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
-        BitmapFactory.decodeFile(file.absolutePath, bounds)
-
-        val width = bounds.outWidth
-        val height = bounds.outHeight
-
-        file.inputStream().use { stream ->
-            val decoder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                BitmapRegionDecoder.newInstance(stream)
-            } else {
-                @Suppress("DEPRECATION")
-                BitmapRegionDecoder.newInstance(stream, false)
-            }
-
-            decoder?.let { dec ->
-                var y = 0
-
-                while (y < height) {
-                    val chunkHeight = minOf(maxChunkHeight, height - y)
-                    val region = Rect(0, y, width, y + chunkHeight)
-
-                    val bitmap = dec.decodeRegion(region, BitmapFactory.Options())
-                    if (bitmap != null) {
-                        val bytes = compressBitmap(bitmap, quality)
-                        chunks.add(bytes)
-                        bitmap.recycle()
-                    }
-
-                    y += chunkHeight
-                }
-
-                dec.recycle()
-            }
-        }
-
-        return chunks
-    }
-
-    private fun decodeWithSampling(file: File, maxDimension: Int): Bitmap? {
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, options)
-
-        val sampleSize = calculateInSampleSize(
-            options.outWidth,
-            options.outHeight,
-            maxDimension,
-        )
-
-        options.inSampleSize = sampleSize
-        options.inJustDecodeBounds = false
-        options.inPreferredConfig = Bitmap.Config.RGB_565
-
-        return BitmapFactory.decodeFile(file.absolutePath, options)
-    }
-
-    private fun calculateInSampleSize(width: Int, height: Int, maxDim: Int): Int {
-        var size = 1
-        while (width / size > maxDim || height / size > maxDim) {
-            size *= 2
-        }
-        return size
-    }
-
-    private fun compressBitmap(bitmap: Bitmap, quality: Int): ByteArray {
-        val output = ByteArrayOutputStream()
-        bitmap.compress(webpFormat, quality, output)
-        return output.toByteArray()
-    }
+    private val settings = getCbzSettings(deviceTierProbe.detect())
+    private val conversionMutex = Mutex()
+    private val webpFormat = cbzWebpFormat()
 
     suspend fun createCbzParallel(
         imageFiles: List<String>,
         mangaId: Long,
         chapterId: Long,
         onProgress: ((Int, Int) -> Unit)? = null,
-    ): String = withContext(Dispatchers.Default) {
+    ): String =
+        withContext(Dispatchers.Default) {
+            conversionMutex.withLock {
+                // An uncontended Mutex acquisition does not itself check cancellation.
+                currentCoroutineContext().ensureActive()
+                createArchive(imageFiles, mangaId, chapterId, onProgress)
+            }
+        }
 
-        val chapterDir = File(context.filesDir, "manga/$mangaId/chapter_$chapterId")
-        chapterDir.mkdirs()
-
-        val outputFile = File(chapterDir, "chapter_${chapterId}.cbz")
-
+    private suspend fun createArchive(
+        imageFiles: List<String>,
+        mangaId: Long,
+        chapterId: Long,
+        onProgress: ((Int, Int) -> Unit)?,
+    ): String {
+        require(imageFiles.isNotEmpty()) { "No images to archive" }
+        val directory = File(context.filesDir, "manga/$mangaId/chapter_$chapterId")
+        if (!directory.mkdirs() && !directory.isDirectory) throw IOException("Cannot create chapter directory")
+        val destination = File(directory, "chapter_$chapterId.cbz")
+        val result = destination.absolutePath
+        val temporary = File.createTempFile(".chapter_$chapterId-", ".cbz.tmp", directory)
         try {
-            val processed = coroutineScope {
-                imageFiles.mapIndexed { index, path ->
-                    async {
-                        ensureActive()
-
-                        val decoded = decodeSemaphore.withPermit {
-                            ensureActive()
-                            decodeImageSafely(File(path))
-                        }
-
-                        val compressed = compressSemaphore.withPermit {
-                            ensureActive()
-                            compressChunks(decoded)
-                        }
-
-                        onProgress?.invoke(index + 1, imageFiles.size)
-                        compressed
-                    }
-                }.awaitAll()
-            }
-
-            ensureActive()
-
-            // A page whose decode failed yields an empty chunk list (decodeImageSafely returns
-            // emptyList() on a null BitmapFactory/AvifDecoder result). Zipping anyway would archive
-            // the chapter with pages silently missing and then delete the only copy of the source
-            // bytes below — unrecoverable data loss. Fail loudly instead so the download surfaces as
-            // an error and the originals are left untouched for a retry.
-            if (processed.any { it.isEmpty() }) {
-                throw IllegalStateException(
-                    "CBZ encode failed for chapter $chapterId: ${processed.count { it.isEmpty() }} of " +
-                        "${processed.size} pages could not be decoded",
-                )
-            }
-
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(outputFile), 64 * 1024)).use { zip ->
-                var index = 0
-                processed.forEach { chunkList ->
-                    ensureActive()
-                    chunkList.forEach { bytes ->
-                        zip.putNextEntry(ZipEntry("page_%04d.webp".format(index)))
-                        zip.write(bytes)
-                        zip.closeEntry()
-                        index++
-                    }
-                }
-            }
-
-            ensureActive()
-
-            imageFiles.forEach { File(it).delete() }
-
-            outputFile.absolutePath
-        } catch (e: CancellationException) {
-            Log.w(TAG, "CBZ creation cancelled for chapter $chapterId")
-
-            if (outputFile.exists()) {
-                try {
-                    outputFile.delete()
-                    Log.d(TAG, "Deleted partial CBZ: ${outputFile.absolutePath}")
-                } catch (deleteException: Exception) {
-                    Log.e(TAG, "Failed to delete partial CBZ", deleteException)
-                }
-            }
-
-            throw e
-        } catch (e: Throwable) {
-            // Throwable (not Exception): bitmap-heavy work realistically throws OutOfMemoryError,
-            // which is an Error — it must still clean up the truncated chapter_<id>.cbz before
-            // rethrowing. CancellationException is handled by the branch above.
-            if (outputFile.exists()) {
-                outputFile.delete()
-            }
-
-            Log.e(TAG, "Error creating CBZ: ${e.message}", e)
-            throw e
+            val entries = writeArchive(temporary, imageFiles, onProgress)
+            validateCbzArchive(temporary, entries)
+            currentCoroutineContext().ensureActive()
+            output.publish(temporary, destination)
+        } finally {
+            // After rename this pathname is absent. Never delete destination on failure.
+            temporary.deleteCbzOwnedFileQuietly()
         }
-    }
-
-    private suspend fun decodeImageSafely(file: File): List<Bitmap> {
-        if (isAvifFile(file)) {
-            return decodeAvifImageSafely(file)
-        }
-
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, opts)
-
-        val width = opts.outWidth
-        val height = opts.outHeight
-        val estimatedBytes = width * height * 4L
-
-        Log.d(TAG, "Load ${file.name}: ${width}x${height}, ~${estimatedBytes / 1_000_000}MB")
-
-        return when {
-            height > settings.regionDecodeThreshold ->
-                decodeAndSplitBitmaps(file, settings.regionDecodeThreshold)
-
-            estimatedBytes > settings.samplingThreshold ->
-                listOfNotNull(decodeWithSampling(file, settings.regionDecodeThreshold))
-
-            else ->
-                listOfNotNull(BitmapFactory.decodeFile(file.absolutePath))
-        }
-    }
-
-    private suspend fun decodeAvifImageSafely(file: File): List<Bitmap> {
-        return try {
-            // Probe dimensions via AvifDecoder.getInfo (no full decode) so an over-threshold image
-            // is decoded exactly once. A full decode here just to measure, then recycled and decoded
-            // again, doubled the time spent in the serialized avifDecoderMutex for the largest images.
-            val info = probeAvifInfo(file)
-                ?: run {
-                    Log.w(TAG, "Failed to read AVIF info: ${file.name}")
-                    return emptyList()
-                }
-
-            val width = info.width
-            val height = info.height
-            val estimatedBytes = width * height * 4L
-
-            Log.d(TAG, "AVIF ${file.name}: ${width}x${height}, ~${estimatedBytes / 1_000_000}MB")
-
-            if (height > settings.regionDecodeThreshold) {
-                decodeAvifWithRegionSplit(file, settings.regionDecodeThreshold)
-            } else {
-                listOfNotNull(decodeAvifImage(file))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error decoding AVIF safely: ${file.name}", e)
-            emptyList()
-        }
-    }
-
-    private suspend fun probeAvifInfo(file: File): AvifDecoder.Info? = avifDecoderMutex.withLock {
-        try {
-            val bytes = file.readBytes()
-            if (bytes.size < 12) {
-                Log.w(TAG, "AVIF file too small: ${file.name}")
-                return@withLock null
-            }
-
-            val buffer = ByteBuffer.allocateDirect(bytes.size)
-            buffer.put(bytes)
-            buffer.rewind()
-
-            val info = AvifDecoder.Info()
-            if (!AvifDecoder.getInfo(buffer, buffer.capacity(), info)) {
-                Log.w(TAG, "Invalid AVIF image: ${file.name}")
-                return@withLock null
-            }
-
-            if (info.width <= 0 || info.height <= 0 || info.width > 8192 || info.height > 8192) {
-                Log.w(TAG, "Invalid AVIF dimensions: ${info.width}x${info.height}")
-                return@withLock null
-            }
-
-            info
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading AVIF info: ${file.name}", e)
-            null
-        }
-    }
-
-    private fun decodeAndSplitBitmaps(file: File, maxChunkHeight: Int): List<Bitmap> {
-        val result = mutableListOf<Bitmap>()
-
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, bounds)
-
-        val width = bounds.outWidth
-        val height = bounds.outHeight
-
-        file.inputStream().use { stream ->
-            val decoder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                BitmapRegionDecoder.newInstance(stream)
-            } else {
-                @Suppress("DEPRECATION")
-                BitmapRegionDecoder.newInstance(stream, false)
-            }
-
-            decoder?.let { dec ->
-                var y = 0
-                while (y < height) {
-                    val h = minOf(maxChunkHeight, height - y)
-                    val region = Rect(0, y, width, y + h)
-                    dec.decodeRegion(region, BitmapFactory.Options())?.let {
-                        result.add(it)
-                    }
-                    y += h
-                }
-                dec.recycle()
-            }
-        }
-
+        // File publication, not DB SUCCESS. A cancelled withContext return may still throw
+        // to the caller; only the worker's existing ownership policy may then remove it.
+        deleteCbzSourcesAfterCommit(imageFiles)
         return result
     }
 
-    private fun compressChunks(bitmaps: List<Bitmap>): List<ByteArray> =
-        bitmaps.map { bmp ->
-            val arr = compressBitmap(bmp, settings.webpQuality)
-            bmp.recycle()
-            arr
+    private suspend fun writeArchive(
+        temporary: File,
+        imageFiles: List<String>,
+        onProgress: ((Int, Int) -> Unit)?,
+    ): Int =
+        output.open(temporary).use { raw ->
+            // The outer use also owns raw if buffer/ZIP construction throws (including OOM).
+            ZipOutputStream(BufferedOutputStream(raw, CBZ_BUFFER_SIZE)).use { zip ->
+                var count = 0
+                imageFiles.forEachIndexed { page, path ->
+                    currentCoroutineContext().ensureActive()
+                    streamPage(File(path)) { bitmap ->
+                        currentCoroutineContext().ensureActive()
+                        zip.putNextEntry(ZipEntry(cbzEntryName(count)))
+                        if (!encode(bitmap, webpFormat, settings.webpQuality, zip)) {
+                            throw IOException("CBZ bitmap compression failed")
+                        }
+                        currentCoroutineContext().ensureActive()
+                        zip.closeEntry()
+                        count++
+                    }
+                    currentCoroutineContext().ensureActive()
+                    // All progress is pre-publication: a callback failure can safely abort.
+                    onProgress?.invoke(page + 1, imageFiles.size)
+                }
+                count
+            }
         }
+
+    private suspend fun streamPage(
+        file: File,
+        consume: suspend (Bitmap) -> Unit,
+    ) {
+        if (!file.isFile) throw IOException("Missing CBZ source: ${file.name}")
+        val avif = decoder.isAvif(file)
+        currentCoroutineContext().ensureActive()
+        if (avif) {
+            streamAvif(file, consume)
+            return
+        }
+        val bounds = decoder.bounds(file)
+        currentCoroutineContext().ensureActive()
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        if (width <= 0 || height <= 0) throw IOException("Invalid CBZ source: ${file.name}")
+        val estimatedBytes = width * height * ESTIMATED_BYTES_PER_PIXEL
+        if (height > settings.regionDecodeThreshold) {
+            streamRegions(file, width, height, consume)
+        } else {
+            val sampled = estimatedBytes > settings.samplingThreshold
+            val sampleSize = if (sampled) cbzSampleSize(width, height, settings.regionDecodeThreshold) else 1
+            val config = if (sampled) Bitmap.Config.RGB_565 else null
+            val bitmap = decoder.decode(file, sampleSize, config) ?: throw IOException("CBZ source decode failed")
+            bitmap.useForCbz { consume(it) }
+        }
+    }
+
+    private suspend fun streamRegions(
+        file: File,
+        width: Int,
+        height: Int,
+        consume: suspend (Bitmap) -> Unit,
+    ) {
+        file.inputStream().use { stream ->
+            decoder.openRegions(stream).use { regions ->
+                var y = 0
+                while (y < height) {
+                    currentCoroutineContext().ensureActive()
+                    val bottom = y + minOf(settings.regionDecodeThreshold, height - y)
+                    val bitmap =
+                        regions.decode(Rect(0, y, width, bottom)) ?: throw IOException("CBZ region decode failed")
+                    bitmap.useForCbz { consume(it) }
+                    y = bottom
+                }
+            }
+        }
+    }
+
+    private suspend fun streamAvif(
+        file: File,
+        consume: suspend (Bitmap) -> Unit,
+    ) {
+        decoder.decodeAvif(file).useForCbz { parent ->
+            var y = 0
+            while (y < parent.height) {
+                currentCoroutineContext().ensureActive()
+                val bottom = y + minOf(settings.regionDecodeThreshold, parent.height - y)
+                val crop =
+                    if (y == 0 && bottom == parent.height) {
+                        parent
+                    } else {
+                        decoder.crop(parent, Rect(0, y, parent.width, bottom))
+                    }
+                // Android subset creation may return its source; the parent has one outer owner.
+                if (crop === parent) consume(parent) else crop.useForCbz { consume(it) }
+                y = bottom
+            }
+        }
+    }
 }
+
+private const val ESTIMATED_BYTES_PER_PIXEL = 4L
 
 /* ----------------------------------------------------------------------------
  * §253 AUDIT-TRAIL POSTSCRIPT — cluster257 (2026-05-29)
