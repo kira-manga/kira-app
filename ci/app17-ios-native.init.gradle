@@ -1,0 +1,252 @@
+// App3 successor: observe the normal platform Native3 graph. No source/dependency substitution.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.security.MessageDigest
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def targetPath = ':platform:iosSimulatorArm64Test'
+def linkPath = ':platform:linkDebugTestIosSimulatorArm64'
+def cinteropPath = ':platform:cinteropLibwebpIosSimulatorArm64'
+def compilePaths = [':core:compileKotlinIosSimulatorArm64', ':platform:compileKotlinIosSimulatorArm64',
+                    ':platform:compileTestKotlinIosSimulatorArm64']
+def required = compilePaths + [cinteropPath, linkPath, targetPath]
+def cls = 'me.manga.kira.platform.image.IosSvgDecoderRoutingTest'
+def selectors = ['svgMimeUsesServiceLoadedDecoder', 'untypedSvgUsesServiceLoadedDecoder',
+                 'avifFactoryKeepsFirstClaimWithoutConsumingSource'].collect { cls + '.' + it }
+def run = new File(System.getenv('APP17_RUN')).canonicalFile
+def reports = new File(run, 'reports')
+def sourceSha = System.getenv('APP17_SOURCE_SHA')
+def realHome = new File(System.getenv('APP17_SIMULATOR_HOME')).canonicalFile
+def device = System.getenv('APP17_DEVICE')
+require(run.isDirectory() && reports.isDirectory() && sourceSha ==~ /[0-9a-f]{40}/ && sourceSha != '0' * 40,
+    'Missing owned run/source binding')
+require(System.getenv('HOME') == new File(run, 'home').path && System.getProperty('user.home') == new File(run, 'home').path &&
+    realHome.isDirectory() && !realHome.toPath().startsWith(run.toPath()), 'Gradle and Simulator homes must stay separate')
+require(device ==~ /[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}/, 'Missing exact owned device')
+def arguments = [targetPath] + selectors.collectMany { ['--tests', it] } + ['--device', device]
+require(gradle.startParameter.taskNames in [[targetPath], arguments] && !gradle.startParameter.dryRun &&
+    gradle.startParameter.excludedTaskNames.empty, 'Only the exact Native3 invocation is admitted')
+require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21', 'Wrong Gradle/Java')
+def read = { name ->
+    def file = new File(reports, name)
+    require(file.isFile() && !Files.isSymbolicLink(file.toPath()) && file.length() <= 1048576, 'Missing/oversized receipt: ' + name)
+    new JsonSlurper().parse(file)
+}
+def sourceBinding = read('source.json')
+def simulator = read('simulator.json')
+require(sourceBinding.sha == sourceSha && simulator.udid == device && simulator.runnerHome == realHome.path,
+    'Different source/Simulator binding')
+def save = { name, value ->
+    def data = (JsonOutput.prettyPrint(JsonOutput.toJson(value)) + '\n').getBytes('UTF-8')
+    require(data.length <= 1048576, 'Oversized required receipt: ' + name)
+    def path = new File(reports, name).toPath()
+    require(!Files.isSymbolicLink(path), 'Symlink receipt')
+    def pending = new File(reports, name + '.pending').toPath()
+    Files.write(pending, data, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    Files.move(pending, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+def sha = { File file ->
+    require(file.isFile() && !Files.isSymbolicLink(file.toPath()) && file.length() <= 268435456, 'Invalid/oversized artifact: ' + file)
+    def digest = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { stream ->
+        byte[] buffer = new byte[1048576]
+        int count
+        while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+    }
+    digest.digest().encodeHex().toString()
+}
+def fingerprint = { File file ->
+    require(file.exists() && !Files.isSymbolicLink(file.toPath()), 'Missing/symlink klib: ' + file)
+    file = file.canonicalFile
+    if (file.isFile()) return [file: file.path, bytes: file.length(), sha256: sha(file)]
+    def rows = []
+    long bytes = 0
+    file.eachFileRecurse { item ->
+        require(!Files.isSymbolicLink(item.toPath()), 'Symlink inside klib')
+        if (item.isFile()) {
+            bytes += item.length()
+            require(rows.size() < 1024 && bytes <= 268435456, 'Oversized unpacked klib')
+            rows.add([path: file.toPath().relativize(item.toPath()).toString(), bytes: item.length(), sha256: sha(item)])
+        }
+    }
+    rows.sort { it.path }
+    require(!rows.empty, 'Empty unpacked klib')
+    def tree = rows.collect { it.sha256 + '  ' + it.path + '\n' }.join('').getBytes('UTF-8')
+    [file: file.path, bytes: bytes, files: rows, sha256: MessageDigest.getInstance('SHA-256').digest(tree).encodeHex().toString()]
+}
+def attributes = { a -> a.keySet().sort { it.name }.collectEntries { [(it.name): a.getAttribute(it).toString()] } }
+def identity = { id ->
+    if (id instanceof ProjectComponentIdentifier) return [id: id.displayName, kind: 'project', build: id.build.buildPath, project: id.projectPath]
+    if (id instanceof ModuleComponentIdentifier) return [id: id.displayName, kind: 'module', group: id.group, module: id.module, version: id.version]
+    [id: id.displayName, kind: 'other']
+}
+def compiled = [:]
+def ended = [] as Set
+def states = [:]
+def graphPaths = []
+
+gradle.taskGraph.whenReady { graph ->
+    graphPaths = graph.allTasks*.path
+    def metadataProjects = [':core', ':platform', ':composeApp', ':domain', ':data', ':data:local', ':data:remote', ':data:download',
+                            ':presentation', ':ui', ':sources:contracts', ':sources:engine', ':sources:config', ':sources:legacy']
+    def setup = ['kmpPartiallyResolvedDependenciesChecker', 'checkKotlinGradlePluginConfigurationErrors', 'downloadKotlinNativeDistribution',
+                 'exportCrossCompilationMetadataForIosSimulatorArm64ApiElements', 'iosSimulatorArm64ProcessResources', 'iosSimulatorArm64MainKlibrary']
+    def inert = [':platform:computeLocalPackageDependencyInputFiles', ':platform:convertSyntheticImportProjectIntoDefFileIphonesimulator']
+    def skipOnly = [':platform:generateSyntheticLinkageSwiftPMImportProjectForCinteropsAndLdDump',
+                    ':platform:syncPersistedPackageResolvedToSynthetic', ':platform:fetchSyntheticImportProjectPackages',
+                    ':composeApp:generateUmbrellaPackageIdentifierBasedResolutionForDefault', ':composeApp:fetchUmbrellaPackageIdentifierForDefault']
+    def allowed = required + inert + skipOnly + [':commonizeNativeDistribution'] +
+        metadataProjects.collect { it + ':serializeSwiftPMDependenciesMetadataForLockFiles' } +
+        [':core', ':platform'].collectMany { project -> setup.collect { project + ':' + it } }
+    save('task-graph.json', [requestedTask: targetPath, sourceSha: sourceSha,
+        graph: graph.allTasks.collect { [path: it.path, type: it.class.name] }, skipOnly: skipOnly])
+    require(graphPaths.containsAll(required) && graphPaths.every { it in allowed }, 'Unexpected work outside normal core/platform Native3 + inert SwiftPM metadata')
+    graph.allTasks.each { t ->
+        if (t.path in skipOnly) t.doFirst { throw new GradleException('SwiftPM fetch/build/umbrella action must remain normally skipped: ' + t.path) }
+        if (t.path == ':platform:convertSyntheticImportProjectIntoDefFileIphonesimulator') t.doFirst {
+            // KGP2.4 false branch writes empty .def/ld metadata and returns before xcodebuild.
+            require(t.hasSwiftPMDependencies.get() == false, 'Actual SwiftPM compilation is outside Native3')
+        }
+        if (t.path in compilePaths) {
+            t.doFirst {
+                def sources = t.sources.files.sort { it.path }.collectEntries { file -> [(t.project.rootProject.relativePath(file)): sha(file)] }
+                require(t.target == 'ios_simulator_arm64' && sources == sourceBinding.compilations[t.path], 'Wrong target/missing/extra/pruned compiler sources: ' + t.path)
+                compiled[t.path] = [sourceSha: sourceSha, sources: sources, target: t.target,
+                                   libraries: t.libraries.files*.canonicalPath.sort(), actionsReachedEnd: false]
+                save('compilation-inputs.json', compiled)
+            }
+            t.doLast {
+                compiled[t.path].output = fingerprint(t.klibOutput.get())
+                compiled[t.path].actionsReachedEnd = true
+                ended.add(t.path)
+                save('compilation-inputs.json', compiled)
+            }
+        }
+        if (t.path == cinteropPath) {
+            t.doFirst {
+                def definition = t.project.file('src/nativeInterop/cinterop/libwebp.def').canonicalFile
+                def include = t.project.file('libs/libwebp/include').canonicalFile
+                def archive = t.project.file('libs/libwebp/ios-arm64-simulator/libwebp.a').canonicalFile
+                require(t.definitionFile.get().asFile.canonicalFile == definition && t.allHeadersDirs*.canonicalFile == [include] &&
+                    t.extraOpts == ['-staticLibrary', 'libwebp.a', '-libraryPath', archive.parent], 'Different libwebp cinterop/slice')
+                def inputs = sourceBinding.inputs.findAll { name, hash -> name.startsWith('platform/libs/libwebp/') || name.endsWith('/libwebp.def') }
+                require(inputs.every { name, hash -> sha(t.project.rootProject.file(name)) == hash }, 'Changed libwebp inputs')
+                compiled[t.path] = [sourceSha: sourceSha, inputs: inputs, definition: definition.path, headerDirs: [include.path],
+                    extraOpts: t.extraOpts, compilerOpts: t.compilerOpts, linkerOpts: t.linkerOpts, actionsReachedEnd: false]
+                save('compilation-inputs.json', compiled)
+            }
+            t.doLast {
+                compiled[t.path].output = fingerprint(t.klibOutput.get())
+                compiled[t.path].actionsReachedEnd = true
+                ended.add(t.path)
+                save('compilation-inputs.json', compiled)
+            }
+        }
+        if (t.path == linkPath) {
+            def configurationName = t.binary.compilation.compileDependencyConfigurationName
+            def nativeTarget = t.binary.target.konanTarget.name
+            t.doFirst {
+                def c = t.project.configurations.getByName(configurationName)
+                def files = t.libraries.files.collect { it.canonicalFile }
+                // KGP2.4 passes raw sourceFiles as -Xinclude; public sources is a filtered/expanded file-tree view.
+                def includes = t.'getSourceFiles$kotlin_gradle_plugin_common'().files.collect { it.canonicalFile }
+                def components = c.incoming.resolutionResult.allComponents.collect { component ->
+                    identity(component.id) + [variants: component.variants.collect { [name: it.displayName, attributes: attributes(it.attributes)] }]
+                }.sort { it.id }
+                def artifacts = c.incoming.artifacts.artifacts.collect { a ->
+                    identity(a.id.componentIdentifier) + fingerprint(a.file) + [variant: a.variant.displayName, attributes: attributes(a.variant.attributes),
+                        name: a.file.name, inLinkLibraries: files.contains(a.file.canonicalFile)]
+                }.sort { it.file }
+                def errors = []
+                def check = { ok, message -> if (!ok) errors.add(message.toString()) }
+                def projects = components.findAll { it.kind == 'project' }
+                check(nativeTarget == 'ios_simulator_arm64' && projects*.project.toSet() == ([':core', ':platform'] as Set) &&
+                    projects.every { it.build == ':' }, 'Expected only normal core/platform Native projects')
+                check(artifacts.findAll { it.kind == 'project' }*.project.toSet() == ([':core'] as Set), 'Unexpected project artifacts')
+                def publicGroups = ['org.jetbrains.kotlin', 'org.jetbrains.kotlinx', 'co.touchlab', 'io.ktor',
+                                    'com.squareup.okio', 'com.russhwolf', 'io.coil-kt.coil3', 'org.jetbrains.skiko']
+                def nativeVariant = { row, attrs -> attrs['org.jetbrains.kotlin.platform.type'] == 'native' &&
+                    (attrs['org.jetbrains.kotlin.native.target'] == 'ios_simulator_arm64' ||
+                     (row.group == 'org.jetbrains.kotlin' && row.module in ['kotlin-stdlib', 'kotlin-test'] && !attrs.containsKey('org.jetbrains.kotlin.native.target'))) }
+                components.each { row ->
+                    check(row.kind == 'project' || (row.kind == 'module' && row.group in publicGroups), 'Unknown/private component: ' + row.id)
+                    if (row.kind == 'module') check(!row.variants.empty && row.variants.every {
+                        nativeVariant(row, it.attributes) || (row.module.endsWith('-bom') && it.attributes['org.gradle.category'] in ['platform', 'enforced-platform'])
+                    }, 'Non-Native component variant: ' + row.id)
+                }
+                artifacts.each { row ->
+                    def klib = row.name.endsWith('.klib') || (row.kind == 'project' && row.containsKey('files') &&
+                        row.files.any { it.path == 'manifest' || it.path.endsWith('/manifest') })
+                    check(row.inLinkLibraries && nativeVariant(row, row.attributes) && klib, 'Non-Native/unlinked artifact: ' + row.id)
+                }
+                // Assertions of normal selected public artifacts, never force/substitute/override a coordinate.
+                def critical = [
+                    'coil-core-iosSimulatorArm64Main-3.5.0.klib': ['io.coil-kt.coil3', '3.5.0', 'afac22073b89de026bae087d3753837bac4ba581c034763db5f6b683794c6e2b'],
+                    'coil-svg-iosSimulatorArm64Main-3.5.0.klib': ['io.coil-kt.coil3', '3.5.0', '94259663113560cdd5122af6aeb769e094e8db109cbda6ce579ec4497708d88c'],
+                    'skiko-iosSimulatorArm64Main-0.144.6.klib': ['org.jetbrains.skiko', '0.144.6', 'e7128eb7d0891a679013028475428ee074744da17199227acdd40ab85c24bd18'],
+                    'skiko-iosSimulatorArm64Cinterop-uikitMain-0.144.6.klib': ['org.jetbrains.skiko', '0.144.6', 'c34567a780531e40b14d7e9a2f32304c99b2fd3c2d6604eddab192f3f269f585']]
+                critical.each { name, expected ->
+                    def matches = artifacts.findAll { it.name == name }
+                    check(matches.size() == 1 && matches.every { [it.group, it.version, it.sha256] == expected }, 'Wrong/missing critical Native klib: ' + name)
+                }
+                def stdlib = new File(run, 'konan/kotlin-native-prebuilt-macos-aarch64-2.4.0/klib/common/stdlib').canonicalFile
+                def ownedRoots = ['core/build', 'platform/build'].collect { t.project.rootProject.file(it).canonicalFile.toPath() }
+                def libraries = files.collect { file ->
+                    def row = fingerprint(file)
+                    row.components = artifacts.findAll { it.file == file.path }*.id
+                    row.projectOutput = ownedRoots.any { file.toPath().startsWith(it) }
+                    row.toolchainStdlib = file == stdlib
+                    check(!row.components.empty || row.projectOutput || row.toolchainStdlib, 'Unattributed Native link library: ' + file)
+                    row
+                }.sort { it.file }
+                check(libraries.count { it.toolchainStdlib } == 1 && System.getenv('KONAN_DATA_DIR') == new File(run, 'konan').path,
+                    'Missing owned Kotlin/Native stdlib input')
+                check(ended.containsAll(compilePaths + [cinteropPath]), 'Main/test/cinterop actions did not finish')
+                check(includes*.path == [compiled[':platform:compileTestKotlinIosSimulatorArm64'].output.file], 'Link did not select exactly the actual compiled test klib')
+                save('link-inputs.json', [task: t.path, sourceSha: sourceSha, target: nativeTarget, configuration: c.name,
+                    libraries: libraries, includes: includes.collect { fingerprint(it) }, linkerOpts: t.linkerOpts])
+                save('native-closure.json', [validation: errors.empty ? 'PASS' : 'FAIL', errors: errors, project: ':platform', task: t.path,
+                    sourceSha: sourceSha, target: nativeTarget, configuration: c.name, attributes: attributes(c.attributes), components: components, artifacts: artifacts])
+                require(errors.empty, 'Rejected Native input closure; see native-closure.json')
+            }
+            t.doLast {
+                def binary = fingerprint(t.outputFile.get())
+                save('linked-binary.json', binary + [task: t.path, sourceSha: sourceSha, target: nativeTarget])
+                ended.add(t.path)
+            }
+        }
+        if (t.path == targetPath) {
+            t.standalone.set(false)
+            t.environment('HOME', realHome.path) // This map becomes xcrun/simctl's ProcessBuilder environment, not Gradle's HOME.
+            t.filter.failOnNoMatchingTests = true
+            t.ignoreFailures = false
+            t.ignoreRunFailures = false
+            t.reports.junitXml.required.set(true)
+            t.reports.junitXml.outputLocation.set(new File(reports, 'xml'))
+            t.outputs.upToDateWhen { false }
+            t.doFirst {
+                require(t.includePatterns == (selectors as Set) && t.excludePatterns.empty && t.args.empty && !t.debugMode,
+                    'Missing/broader/hidden Native selectors')
+                require(t.device.get() == device && t.environment['HOME'] == realHome.path && t.targetName == 'iosSimulatorArm64',
+                    'Wrong owned device/home/Native target')
+                def linked = read('linked-binary.json')
+                require(t.executable.canonicalPath == linked.file && sha(t.executable) == linked.sha256, 'Test does not execute the linked binary')
+                save('test-invocation.json', [task: t.path, sourceSha: sourceSha, selectors: selectors.sort(), device: device,
+                    standalone: t.standalone.get(), targetName: t.targetName, simulatorHome: t.environment['HOME'],
+                    executable: t.executable.canonicalPath, sha256: sha(t.executable)])
+            }
+            t.doLast { ended.add(t.path) }
+        }
+    }
+}
+gradle.taskGraph.afterTask { task, state ->
+    states[task.path] = [executed: state.executed, didWork: state.didWork, skipped: state.skipped, upToDate: state.upToDate,
+                        noSource: state.noSource, failure: state.failure?.toString(), actionsReachedEnd: ended.contains(task.path)]
+    save('task-proof.json', [schema: 'app17-ios-native-task-v1', requestedTask: targetPath, sourceSha: sourceSha,
+        gradleVersion: gradle.gradleVersion, javaVersion: System.getProperty('java.runtime.version'), graph: graphPaths, states: states])
+}

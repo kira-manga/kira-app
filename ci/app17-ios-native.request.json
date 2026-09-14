@@ -1,0 +1,22 @@
+{
+  "schema": "app17-ios-native-public-v1",
+  "authorization": "APP17_NATIVE3_ONE_ATTEMPT_AUTHORIZED",
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_ONLY",
+  "sourceRepository": "kira-manga/kira-app",
+  "sourceSha": "092b5d7cf019c2833d614c7af7f627e8800a007c",
+  "sourceTree": "d3b1eed92d9277c6798daeeb9fbe0c2fe486e3d7",
+  "task": ":platform:iosSimulatorArm64Test",
+  "expectedRunAttempt": 1,
+  "planSha256": "70ba3adb7fb37ab27c8ca02d8a7a160fd88c745a2e75b2a08484ceff895a1b2c",
+  "sourcePinsSha256": "d5492c3a28e3a8346e5392015aed7c875879994e1b01e3674fe8d7197cfe8c0b",
+  "selectors": [
+    "me.manga.kira.platform.image.IosSvgDecoderRoutingTest.svgMimeUsesServiceLoadedDecoder",
+    "me.manga.kira.platform.image.IosSvgDecoderRoutingTest.untypedSvgUsesServiceLoadedDecoder",
+    "me.manga.kira.platform.image.IosSvgDecoderRoutingTest.avifFactoryKeepsFirstClaimWithoutConsumingSource"
+  ],
+  "ownerHelperSha256": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf",
+  "developerDir": "/Applications/Xcode_26.4.1.app/Contents/Developer",
+  "controllerSha256": "28efd06811b18b0a85ef60e3be22fa2f47310a6d9bb7e4d4d8b45876a8d345dd",
+  "initSha256": "39015be1a7b74cc7ea2e173373296ba04601f4835b9589141fcd684b85b7861a",
+  "workflowSha256": "09a62f5d097f06a5dfa29744c6cb8d9891f58e94ffb4fe46b74fa57f969a62da"
+}
