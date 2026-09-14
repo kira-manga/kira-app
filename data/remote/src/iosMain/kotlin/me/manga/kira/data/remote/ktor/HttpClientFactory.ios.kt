@@ -3,11 +3,11 @@ package me.manga.kira.data.remote.ktor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.cache.HttpCache
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
+import me.manga.kira.data.remote.ktor.cache.ManagedHttpCache
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.Platform
 
@@ -21,8 +21,9 @@ import kotlin.native.Platform
 @OptIn(ExperimentalNativeApi::class)
 actual val isHttpLoggingEnabled: Boolean = Platform.isDebugBinary
 
-actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
-    HttpClient(Darwin) {
+actual fun createHttpClient(cacheResponses: Boolean): HttpClient {
+    val cache = if (cacheResponses) ManagedHttpCache() else null
+    return HttpClient(Darwin) {
         install(ContentNegotiation) { json(DefaultJson) }
         // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
         // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.
@@ -38,22 +39,11 @@ actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
             connectTimeoutMillis = 30_000
             socketTimeoutMillis = 60_000
         }
-        // Enables cross-request response caching so server-sent `Cache-Control` directives are honored.
-        // Backed by a bounded [BoundedCacheStorage] instead of the default unbounded in-memory
-        // CacheStorage.Unlimited(): Ktor 3.4 ships no disk-backed FileStorage on Kotlin/Native, and an
-        // unbounded store retains every cacheable body (incl. multi-MB chapter images) for the process
-        // lifetime — which lets jetsam kill the app under memory pressure mid-download. The bounded
-        // storage caps retained entries with LRU eviction so the cache footprint stays finite. Note:
-        // the 1-day /dados window is NOT honored here — that Cache-Control is stamped by an OkHttp
-        // network interceptor (forceCacheForDados) that exists only on Android, so /dados responses
-        // stay uncacheable on iOS.
-        if (cacheResponses) {
-            install(HttpCache) {
-                publicStorage(BoundedCacheStorage())
-                privateStorage(BoundedCacheStorage())
-            }
-        }
-    }
+        // iOS uses the same aggregate owner in memory, not a per-URL-count approximation.
+        // No forced /dados policy here; Darwin requests already use reload-ignoring-cache policy.
+        installManagedHttpCache(cache)
+    }.attachResponseCache(cache)
+}
 
 /*
  * Audit-trail postscript (Phase 9.x.cluster240.staleKdocSweep.cascade, Task #696, 2026-05-29)

@@ -147,6 +147,7 @@ val settingsReworkModule: Module = module {
             chapterDownloadDao = get(),
             // Re-walks each converted chapter dir so the ledger row's sizeBytes tracks the new archive.
             appFileSystem = get(),
+            httpCache = get(),
         )
     }
 

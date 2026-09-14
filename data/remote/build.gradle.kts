@@ -9,8 +9,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 // SourceRegistry retirement P6 deleted the endpoint path). Package stays me.manga.kira.data.remote.*
 // so no consumer import changes.
 //
-// Owns createHttpClient() (expect + 3 per-target actuals: OkHttp/Darwin/CIO), the iOS
-// BoundedCacheStorage, ApiClient, and the remoteModule() Koin bindings. No @Serializable models live
+// Owns createHttpClient() (expect + 3 per-target actuals: OkHttp/Darwin/CIO), the aggregate bounded
+// metadata cache, ApiClient, and the remoteModule() Koin bindings. No @Serializable models live
 // here (per-source DTOs stay under sources_repositry) — so, unlike :data:local, NO serialization
 // compiler plugin is applied; only the kotlinx-serialization runtime (pulled via ktor) is used.
 
@@ -67,6 +67,14 @@ kotlin {
 
             // remoteModule() (HttpClient + ApiClient singletons) lives here.
             api(libs.koin.core)
+            // App-owned bounded cache persistence; do not use Ktor's unbounded JVM FileStorage wrapper.
+            implementation(libs.okio)
+        }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
 
         androidMain.dependencies {

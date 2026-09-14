@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.local.dao.ChapterDao
@@ -152,6 +153,7 @@ class SettingsRepositoryImpl(
     // Ledger-size invariant (ChapterDownloadEntity KDoc): after a convert rewrites the chapter dir,
     // the SUCCESS row's sizeBytes must be re-walked or Details keeps showing the loose-pages size.
     private val appFileSystem: AppFileSystem,
+    private val httpCache: HttpCacheClearer,
 ) : SettingsRepository {
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)
 
@@ -238,6 +240,7 @@ class SettingsRepositoryImpl(
     override suspend fun clearLargeCache(): Result<Unit> =
         runCatchingCancellable {
             withContext(dispatchers.io) {
+                httpCache.clear()
                 legacy.clearFilesLargerThan1MB()
             }
             cacheRefresh.tryEmit(Unit)

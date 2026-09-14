@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.ChapterDao
@@ -277,6 +278,7 @@ class CompressExistingDownloadsTest {
             mangaDao = FakeMangaDao,
             chapterDownloadDao = downloadDao,
             appFileSystem = FakeAppFileSystem,
+            httpCache = HttpCacheClearer { },
         )
 
     @Test
