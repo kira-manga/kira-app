@@ -1,0 +1,198 @@
+// Source-bound App13 normal-action observer; no replacement build, compiler, target or supplier.
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.testing.AbstractTestTask
+import org.gradle.api.tasks.testing.Test
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def readBoundJson = { File file, expectedSha ->
+    require(file.isFile() && file.canonicalPath == file.absolutePath && expectedSha, 'Exact nonaliased runtime binding required')
+    def bytes = file.withInputStream { it.readNBytes(65537) }
+    require(bytes.length <= 65536 && MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() == expectedSha,
+        'Exact bounded source/control binding bytes required')
+    new JsonSlurper().parseText(new String(bytes, 'UTF-8'))
+}
+def bindingPath = System.getenv('KIRA_ORIGINAL_ENGINE_BINDING')
+require(bindingPath && System.getenv('KIRA_ORIGINAL_ENGINE_WORKSPACE'), 'No direct/unbound observer invocation')
+def binding = readBoundJson(new File(bindingPath), System.getenv('KIRA_ORIGINAL_ENGINE_BINDING_SHA256'))
+def workspace = new File(System.getenv('KIRA_ORIGINAL_ENGINE_WORKSPACE')).canonicalFile
+def appRoot = new File(workspace, 'app')
+def engineRoot = new File(workspace, 'engine')
+def portfolio = readBoundJson(new File(appRoot, 'scripts/app13-portfolio.json'), binding.portfolio_sha256)
+require(binding.status == 'PRIMARY_BOUND_FOR_REVIEW' && binding.contract == 'app13-public-linux-original-engine' &&
+    binding.contract == portfolio.contract && binding.app.head == portfolio.source.head && binding.app.tree == portfolio.source.tree &&
+    binding.app.head.matches('[0-9a-f]{40}') && binding.app.tree.matches('[0-9a-f]{40}') && binding.app.repo == 'app' &&
+    binding.engine.commit == 'ed184165ebd3ee7f0d1db533cc40ca5a0868fdda' &&
+    binding.engine.tree == '14e46a1ead24b5757d612fd55031e440f5304661' && binding.engine.source_path == 'engine', 'Wrong/UNBOUND sources')
+require(binding.tests == portfolio.tests && binding.tests*.task == [':composeApp:testAndroidHostTest', ':composeApp:desktopTest'] &&
+    binding.tests*.count == [24, 8] && binding.tests.collect { it.cases.size() } == [24, 8] && binding.max_heap == '1g' &&
+    binding.locale_task == ':composeApp:checkLocaleKeyParity' && binding.statics == portfolio.statics && binding.statics.status == 'PASS',
+    'Exact32 Test owners, locale root and primary static carry required')
+require(binding.host_runtime == [stage_task: ':composeApp:prepareApp13AndroidHostSdk',
+    relative_directory: 'app13-android-host-runtime/sdk', sdk_configuration: 'app13HostSdkInput'], 'SDK-only host binding required')
+def modules = [':core', ':domain', ':presentation', ':ui', ':platform', ':data:local', ':data:remote', ':sources:legacy',
+    ':sources:contracts', ':data:download', ':data', ':sources:engine', ':sources:config', ':composeApp']
+def c = [binding: binding, appRoot: appRoot, engineRoot: engineRoot, buildName: 'original-engine-ed184165-app13-linux01',
+    group: 'me.manga.kira.source', engineModules: [':source-contract', ':source-engine'], role: null, logger: logger,
+    mains: [androidJvm: [app: 'compileAndroidMain', engine: 'compileAndroidMain'], jvm: [app: 'compileKotlinDesktop', engine: 'compileKotlinJvm']],
+    testSpecs: binding.tests.collectEntries { [(it.task): it] }]
+gradle.ext.app13Context = c
+apply from: new File(appRoot, 'scripts/app13-observer.gradle'), to: gradle
+def o = gradle.ext.app13Observer
+def appCompilers = modules.collectMany { m -> c.mains.values().collect { m + ':' + it.app } } + binding.tests*.compiler
+def engineCompilers = c.engineModules.collectMany { m -> c.mains.values().collect { m + ':' + it.engine } }
+def rooms = [':data:local:kspAndroidMain', ':data:local:kspKotlinDesktop']
+def resources = [':ui:convertXmlValueResourcesForCommonMain', ':ui:generateResourceAccessorsForCommonMain', ':ui:generateComposeResClass',
+    ':composeApp:convertXmlValueResourcesForCommonMain', ':composeApp:generateResourceAccessorsForCommonMain', ':composeApp:generateComposeResClass',
+    ':composeApp:generateSourceRemoteConfig']
+def observedApp = resources + [binding.host_runtime.stage_task, binding.locale_task] + binding.tests*.task
+def taskArguments = binding.tests.collectMany { t -> [t.task] + t.cases.collectMany { ['--tests', it.selector] } } + [binding.locale_task]
+def outgoing = []
+def completed = [:]
+def platformFor = { task -> task.name in ['compileAndroidMain', 'compileAndroidHostTest', 'kspAndroidMain'] ? 'androidJvm' : 'jvm' }
+
+def checkStartParameters = {
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21' &&
+        !gradle.startParameter.offline && !gradle.startParameter.dryRun && gradle.startParameter.excludedTaskNames.isEmpty() &&
+        gradle.startParameter.maxWorkerCount == 1 && !gradle.startParameter.parallelProjectExecutionEnabled &&
+        !gradle.startParameter.buildCacheEnabled && !gradle.startParameter.configurationCacheRequested,
+        'One-worker/no-cache Gradle9.6.1/JDK21 with ordinary public dependency resolution only')
+}
+gradle.settingsEvaluated { settings ->
+    def root = settings.settingsDir.canonicalFile
+    require(root == appRoot || root == engineRoot, 'Only the exact public App and original Engine builds')
+    c.role = root == appRoot ? 'app' : 'engine'
+    checkStartParameters()
+    if (c.role == 'app') {
+        require(gradle.startParameter.taskNames == taskArguments, 'Only Android24, Desktop8 and changed-owner locale root')
+        settings.includeBuild(engineRoot) {
+            name = c.buildName
+            dependencySubstitution {
+                substitute(module('me.manga.kira.source:source-engine:0.1.0')).using(project(':source-engine'))
+            }
+        }
+    } else {
+        require(settings.rootProject.name == 'kira-source-engine', 'Keep original producer settings identity')
+    }
+    o.emit('SETTINGS', [root: root.path, requested: gradle.startParameter.taskNames, maxWorkers: gradle.startParameter.maxWorkerCount,
+        offline: gradle.startParameter.offline, includedName: c.buildName, sourceTree: binding.engine.tree,
+        declaredKgp: c.role == 'app' ? '2.4.0' : '2.2.21', portfolioSha256: binding.portfolio_sha256])
+}
+gradle.projectsEvaluated {
+    def included = gradle.includedBuilds.collect { [name: it.name, root: it.projectDir.canonicalPath] }
+    require(included == (c.role == 'app' ? [[name: c.buildName, root: engineRoot.path]] : []), 'No other composite/recursive build')
+    if (c.role == 'engine') {
+        require(gradle.rootProject.subprojects*.path.toSet() == [':source-contract', ':source-engine', ':source-testkit'].toSet(),
+            'Keep all three original modules')
+        gradle.rootProject.allprojects.each { p ->
+            require(p.group.toString() == c.group && p.version.toString() == '0.1.0-SNAPSHOT', 'Original group/default version only')
+            if (p.path != ':') {
+                def targets = p.extensions.getByName('kotlin').targets.collect { [name: it.name, type: it.class.name] }
+                require(targets*.name.toSet() == ['metadata', 'android', 'jvm', 'iosArm64', 'iosSimulatorArm64'].toSet(), 'No target pruning')
+                o.emit('PRODUCER_MODEL', [project: p.path, version: p.version.toString(), targets: targets])
+            }
+        }
+    }
+}
+// Ask the actual compilation provider for its normal dependency configurations, not guessed names.
+c.compilationFor = { task, platform ->
+    def name = platform == 'androidJvm' ? 'android' : (c.role == 'app' ? 'desktop' : 'jvm')
+    def target = task.project.extensions.getByName('kotlin').targets.getByName(name)
+    require(target.platformType.toString() == platform, 'Unexpected normal target platform')
+    def models = target.compilations.findAll { it.compileTaskProvider.name == task.name }
+    require(models.size() == 1 && models[0].compileTaskProvider.get() == task, 'Observe the actual normal compilation task')
+    models[0]
+}
+def observeCompiler = { p, task ->
+    require(p.findProperty('kotlin.compiler.execution.strategy') == 'in-process', 'Both builds use in-process Kotlin')
+    def strategy = task.compilerExecutionStrategy.get().toString()
+    require(strategy in ['IN_PROCESS', 'in-process'], 'Actual compiler strategy, not CLI intent')
+    def platform = platformFor(task)
+    def options = task.compilerOptions
+    def jvmTarget = options.jvmTarget.get().target
+    if (platform == 'androidJvm') require(jvmTarget == '11', 'Ordinary Android JVM11 target')
+    if (c.role == 'app' && platform == 'jvm') require(jvmTarget == '17', 'Ordinary App Desktop JVM17 target')
+    // Original Engine jvm() has no explicit JVM target: observe its real resolved default; never set or relabel it.
+    def files = (task.hasProperty('sources') ? task.sources : task.source).files.findAll { it.name.endsWith('.kt') }
+    def sources = files.collect { [path: it.canonicalPath, sha256: o.sha(it)] }.sort { it.path }
+    if (c.role == 'engine') {
+        def wanted = binding.engine.common_main.findAll { it.path.startsWith(p.name + '/src/commonMain/') }
+            .collect { [path: new File(engineRoot, it.path).path, sha256: it.sha256] }.sort { it.path }
+        require(sources == wanted, 'Both original platform mains compile every pinned commonMain source, no subset')
+        require(options.languageVersion.get().version == '2.1' && options.apiVersion.get().version == '2.1', 'Original language/API2.1')
+    }
+    o.emit('COMPILER_INPUT', [task: task.path, platform: platform, type: task.class.name, strategy: strategy, jvmTarget: jvmTarget,
+        language: options.languageVersion.orNull?.version, api: options.apiVersion.orNull?.version,
+        sources: c.role == 'engine' ? sources : null, sourceCount: sources.size(), actions: task.actions.collect { it.class.name }])
+    o.observeResolution(p, task, c.compilationFor(task, platform).compileDependencyConfigurationName, 'java-api', platform)
+    o.observeClasspath(task, task.libraries.files, 'compiler', platform)
+}
+gradle.beforeProject { p ->
+    p.configurations.configureEach { config ->
+        config.resolutionStrategy.dependencySubstitution.all { details -> o.rejectRequest(details.requested) }
+    }
+    p.tasks.configureEach { task ->
+        if (task.path in (c.role == 'app' ? appCompilers : engineCompilers)) task.doFirst { observeCompiler(p, task) }
+    }
+    p.tasks.withType(Test).configureEach { t ->
+        if (c.role == 'app' && c.testSpecs.containsKey(t.path)) {
+            if (c.testSpecs[t.path].platform == 'jvm') {
+                t.maxParallelForks = 1
+                t.forkEvery = 0
+                t.maxHeapSize = '1g'
+                t.jvmArgs('-XX:ActiveProcessorCount=2')
+            }
+            t.filter.failOnNoMatchingTests = true
+            t.systemProperty('junit.jupiter.execution.parallel.enabled', 'false')
+            t.systemProperty('java.awt.headless', 'true')
+            t.systemProperty('java.io.tmpdir', System.getenv('TMPDIR'))
+            t.systemProperty('user.home', System.getenv('HOME'))
+            t.doFirst { o.observeTest(t) }
+        }
+    }
+}
+def validateGraph = { graph ->
+    def tasks = graph.allTasks
+    def compilers = c.role == 'app' ? appCompilers + rooms : engineCompilers
+    o.emit('GRAPH', [root: gradle.rootProject.projectDir.canonicalPath, requested: gradle.startParameter.taskNames,
+        tasks: tasks.collect { [path: it.path, type: it.class.name] }])
+    require(tasks*.path.containsAll(compilers + (c.role == 'app' ? observedApp : [])), 'Keep full normal two-platform compile/Room/resources/host closure')
+    require(tasks.findAll { it.class.name.contains('KotlinCompile') || it.name.startsWith('ksp') }*.path.toSet() == compilers.toSet(),
+        'No omitted/additional Kotlin or Room compiler')
+    require(tasks.every { it.project.path in (c.role == 'app' ? modules : c.engineModules) }, 'No App/launcher/testkit/extra module task')
+    require(tasks.findAll { it instanceof AbstractTestTask }*.path.toSet() == (c.role == 'app' ? binding.tests*.task.toSet() : [] as Set),
+        'Only the exact two Test roots; no producer tests or replay')
+    require(!tasks.any {
+        def n = it.name.toLowerCase(Locale.ROOT)
+        n.contains('ios') || n.contains('cinterop') || n.contains('framework') || n.contains('commoniz') || n.contains('kotlinmetadata') ||
+            n.contains('ktlint') || n.contains('detekt') || n.contains('publish') || n.contains('download') ||
+            (n.contains('cef') && !(it.name == 'generateAndroidMainEmptyResourceFiles' &&
+                it.class.name == 'com.android.build.gradle.internal.res.GenerateEmptyResourceFilesTask_Decorated')) ||
+            n.startsWith('assemble') || n.startsWith('install') || n.startsWith('sign') || n in ['check', 'alltests'] ||
+            (n == 'checklocalekeyparity' && it.path != binding.locale_task)
+    }, 'No Native/static/provisioning/packaging/publishing/other locale root; stop, never prune')
+}
+gradle.taskGraph.whenReady { graph ->
+    validateGraph(graph)
+    if (c.role == 'engine') outgoing = o.collectOutgoing(gradle.rootProject, graph)
+}
+gradle.taskGraph.afterTask { task, state ->
+    def compilers = c.role == 'app' ? appCompilers + rooms : engineCompilers
+    if (task.path in compilers || (c.role == 'app' && task.path in observedApp) || outgoing.any { task.path in it.producers }) {
+        def row = [path: task.path, type: task.class.name, executed: state.executed, didWork: state.didWork,
+            skipped: state.skipped, upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.class?.name]
+        if (task.path in compilers) row.platform = platformFor(task)
+        if (c.role == 'engine' && task.path in engineCompilers && state.failure == null) {
+            row.outputs = task.outputs.files.files.findAll { it.exists() }.collect { o.fileRow(it) }
+        }
+        if (task.path in rooms && state.failure == null) row.roomSources = task.outputs.files.asFileTree.files.findAll {
+            it.name in ['MangaDatabase_Impl.kt', 'MangaDatabase_Impl.java', 'ChapterDownloadDao_Impl.kt', 'ChapterDownloadDao_Impl.java']
+        }.collect { [path: it.canonicalPath, sha256: o.sha(it)] }
+        completed[task.path] = row
+        o.emit(task.path in compilers ? 'COMPILE_COMPLETE' : 'TASK_COMPLETE', row)
+        outgoing.findAll { task.path in it.producers && it.producers.every { p -> completed.containsKey(p) } }.each { artifact ->
+            if (new File(artifact.path).exists()) o.emit('ARTIFACT', artifact + [producer: task.path, file: o.fileRow(new File(artifact.path))])
+        }
+    }
+}
