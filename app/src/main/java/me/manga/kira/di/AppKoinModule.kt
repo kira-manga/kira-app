@@ -1,6 +1,8 @@
 package me.manga.kira.di
 
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
+import me.manga.kira.core.util.notification.NotificationCoverLoader
+import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.work.CbzMigrationWorker
 import me.manga.kira.work.LibraryRefreshWorker
 import org.koin.android.ext.koin.androidContext
@@ -30,7 +32,8 @@ import org.koin.dsl.module
  *    upstream variant would resurrect dead code; intentionally skipped.
  */
 val appKoinModule: Module = module {
-    single { ChapterNotificationHelper(androidContext(), get(), get()) }
+    single<NotificationCovers> { NotificationCoverLoader() }
+    single { ChapterNotificationHelper(androidContext(), get(), get(), get()) }
 
     workerOf(::CbzMigrationWorker)
     workerOf(::LibraryRefreshWorker)

@@ -10,6 +10,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -27,6 +28,7 @@ import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Manga
@@ -122,12 +124,14 @@ class LibraryRefreshWorker(
             try {
                 // On API 31+ setForeground() throws ForegroundServiceStartNotAllowedException (an
                 // IllegalStateException) when the worker starts while the app is backgrounded — e.g. a
-                // CONNECTED-constrained refresh deferred until connectivity returns. The refresh does
-                // not require foreground promotion, so continue as ordinary background work.
+                // CONNECTED-constrained refresh deferred until connectivity returns. Foreground
+                // promotion and its notification service/channel are optional to Updates persistence.
                 try {
                     setForeground(getForegroundInfo())
-                } catch (e: IllegalStateException) {
-                    log.w(e) { "Foreground promotion rejected; continuing refresh in background" }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    log.w { "refresh_foreground_unavailable" }
                 }
 
                 val result =
@@ -145,6 +149,8 @@ class LibraryRefreshWorker(
                 } else {
                     Result.success()
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 updateNotification(
                     context.getString(R.string.notification_refresh_failed, e.message ?: ""),
@@ -182,15 +188,7 @@ class LibraryRefreshWorker(
                 batches.forEachIndexed { batchIndex, batch ->
                     val batchResults =
                         batch.map { manga ->
-                            async {
-                                try {
-                                    withTimeoutOrNull(MANGA_TIMEOUT_SECONDS.seconds) {
-                                        refreshSingleManga(manga)
-                                    } ?: false
-                                } catch (e: Exception) {
-                                    false
-                                }
-                            }
+                            async { refreshManga(manga) }
                         }
 
                     val results = batchResults.awaitAll()
@@ -226,6 +224,8 @@ class LibraryRefreshWorker(
                     context.getString(R.string.notification_refresh_completed, completed, failed),
                     isComplete = true,
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 updateNotification(
                     context.getString(R.string.notification_refresh_failed, e.message ?: ""),
@@ -235,17 +235,39 @@ class LibraryRefreshWorker(
             }
         }
 
+    /** The committed outcome survives optional display expiry; both stages remain worker-owned. */
+    internal suspend fun refreshManga(manga: SavedMangaEntity): Boolean =
+        try {
+            val outcome =
+                withTimeoutOrNull(MANGA_TIMEOUT_SECONDS.seconds) {
+                    refreshSingleManga(manga)
+                } ?: MangaRefresh(false)
+            if (outcome.success) chapterNotificationHelper.displayNotifications(outcome.notifications)
+            outcome.success
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+
+    private data class MangaRefresh(
+        val success: Boolean,
+        val notifications: List<ChapterNotification> = emptyList(),
+    )
+
     @Suppress("ReturnCount") // Early exits keep each unsupported/failed source path explicit.
-    private suspend fun refreshSingleManga(manga: SavedMangaEntity): Boolean {
+    private suspend fun refreshSingleManga(manga: SavedMangaEntity): MangaRefresh {
         return try {
-            if (manga.id == 0L) return false
+            if (manga.id == 0L) return MangaRefresh(false)
             val client = sourceRegistry.get(manga.api) ?: run {
                 log.w { "Skipping refresh for unavailable source api=${manga.api}" }
-                return false
+                return MangaRefresh(false)
             }
             fetchGenericUpdates(manga, client)
-        } catch (e: Exception) {
-            false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            MangaRefresh(false)
         }
     }
 
@@ -264,7 +286,7 @@ class LibraryRefreshWorker(
     private suspend fun fetchGenericUpdates(
         manga: SavedMangaEntity,
         client: MangaSourceClient,
-    ): Boolean {
+    ): MangaRefresh {
         val result =
             withContext(platformIoDispatcher) {
                 withTimeoutOrNull(20.seconds) {
@@ -280,22 +302,25 @@ class LibraryRefreshWorker(
                         ),
                     )
                 }
-            } ?: return false
+            } ?: return MangaRefresh(false)
         return when (result) {
             is AppResult.Success -> {
-                reconcileRemote(
-                    manga = manga,
-                    remoteImageUrl = result.value.coverUrl,
-                    remoteChapters =
-                        result.value.chapters.map {
-                            RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
-                        },
+                MangaRefresh(
+                    success = true,
+                    notifications =
+                        reconcileRemote(
+                            manga = manga,
+                            remoteImageUrl = result.value.coverUrl,
+                            remoteChapters =
+                                result.value.chapters.map {
+                                    RemoteChapter(name = it.name, number = it.number, url = it.url, date = it.date)
+                                },
+                        ),
                 )
-                true
             }
             is AppResult.Failure -> {
                 log.w { "Generic refresh failed for '${manga.title}' (${manga.api}): ${result.error}" }
-                false
+                MangaRefresh(false)
             }
         }
     }
@@ -308,7 +333,7 @@ class LibraryRefreshWorker(
         manga: SavedMangaEntity,
         remoteImageUrl: String,
         remoteChapters: List<RemoteChapter>,
-    ) {
+    ): List<ChapterNotification> {
         // Never reconcile a blank cover over an existing one — a source that fails to parse
         // its details page (or a null-object repo) reports imageUrl="" and must not wipe the
         // stored cover across saved_manga/history/notifications.
@@ -321,7 +346,7 @@ class LibraryRefreshWorker(
                 libraryRepository.getChaptersByMangaId(manga.id).first()
             } ?: run {
                 log.w { "Timeout getting local chapters for ${manga.title}" }
-                return
+                return emptyList()
             }
 
         val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
@@ -344,9 +369,11 @@ class LibraryRefreshWorker(
                 }.reversed()
 
         if (newChapters.isNotEmpty()) {
-            libraryRepository.insertChapterList(newChapters)
-            chapterNotificationHelper.addNewChapterNotification(manga, newChapters)
+            val inserted = libraryRepository.insertChapterList(newChapters)
+            check(inserted.size == newChapters.size) { "chapter_insert_result_count" }
+            return chapterNotificationHelper.persistNewChapterNotifications(manga, newChapters)
         }
+        return emptyList()
     }
 
     private fun updateNotification(
@@ -378,6 +405,8 @@ class LibraryRefreshWorker(
             }
 
             notificationManager.notify(NOTIF_ID, builder.build())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
         }
     }
@@ -385,6 +414,8 @@ class LibraryRefreshWorker(
     private fun cleanupNotification() {
         try {
             notificationManager.cancel(NOTIF_ID)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
         }
     }

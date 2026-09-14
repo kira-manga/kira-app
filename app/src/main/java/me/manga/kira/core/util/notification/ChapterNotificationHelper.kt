@@ -1,171 +1,150 @@
 package me.manga.kira.core.util.notification
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.graphics.BitmapFactory
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import me.manga.kira.R
 import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * Phase 12.x port of upstream `ChapterNotificationHelper.kt` (Hilt → Koin, `android.util.Log` → Kermit).
- *
- * Used by [LibraryRefreshWorker] to fan-out per-chapter notifications when new chapters land
- * during a background library refresh. Kept in the `app/` Android module because it's deeply tied
- * to Android `NotificationManager` + `BitmapFactory` and is only ever exercised from Android-only
- * workers — porting it to commonMain would require expect/actuals for both APIs and there is no
- * iOS/Desktop background refresh consumer yet.
- *
- * Behavior is preserved verbatim from upstream:
- *  - Channel ID `me.manga.kira.new_chapters` (IMPORTANCE_HIGH, lights+vibration enabled).
- *  - Bitmap cover load is best-effort (`runCatching`) — failed cover loads still post the notification
- *    minus the large icon.
- *  - Defensive rawId/realId reconciliation (upstream comment: insertChapterList may return -1L for
- *    pre-existing chapters; we fall back to `getChapterIdByUrl`).
- *  - Only the last 6 chapters are surfaced as system notifications even if more were inserted —
- *    upstream limit, preserved here to avoid notification spam on first-run libraries.
- *
- * Strings localize via Android `R.string.*` resources declared in this `:app` module's `res/values*`
- * (`new_chapters`, `notifications_for_new_manga_chapters`, `chapter_is_available`), mirroring the
- * upstream/native keys verbatim across the shipped locale set (including Arabic/RTL). Compose-MP's
- * runtime string accessors aren't reachable from a worker/Service context, so — exactly as native
- * does — this helper reads Android resources directly via `context.getString(...)`.
+ * Worker-owned Updates persistence followed by optional Android display. No independent scope:
+ * a cancelled worker may leave committed Updates, but cannot schedule later cover work/posts.
+ * Chapter/notification atomicity and cross-worker discovery deduplication are separate concerns.
  */
 class ChapterNotificationHelper(
     private val context: Context,
     private val notificationDao: NotificationDao,
     private val libraryRepository: LibraryRepository,
+    private val covers: NotificationCovers,
 ) {
-    private val log = Logger.withTag(TAG)
-    private val notificationManager = context.getSystemService<NotificationManager>()
-    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    init {
-        createNotificationChannel()
-    }
-
-    private fun createNotificationChannel() {
-        // minSdk = 26 so NotificationChannel is unconditionally available.
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            context.getString(R.string.new_chapters),
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = context.getString(R.string.notifications_for_new_manga_chapters)
-            enableLights(true)
-            enableVibration(true)
-        }
-        notificationManager?.createNotificationChannel(channel)
-    }
-
-    fun addNewChapterNotification(manga: SavedMangaEntity, chapters: List<SavedChapterEntity>) {
-        if (chapters.isEmpty()) {
-            log.w { "addNewChapterNotification called with empty chapters for mangaId=${manga.id}" }
-            return
-        }
-
-        coroutineScope.launch {
-            try {
-                val rawIds = libraryRepository.insertChapterList(chapters)
-
-                val realIds = chapters.mapIndexed { idx, chapter ->
-                    val raw = rawIds.getOrNull(idx)
-                    if (raw == null || raw == -1L) {
-                        libraryRepository.getChapterIdByUrl(manga.id, chapter.url) ?: -1L
-                    } else raw
-                }
-
-                val notifications = chapters.mapIndexedNotNull { idx, chapter ->
-                    val chapterId = realIds.getOrNull(idx) ?: -1L
-                    if (chapterId <= 0L) null
-                    else ChapterNotification(
-                        mangaId = manga.id,
-                        mangaTitle = manga.title,
-                        mangaImageUrl = manga.imageUrl,
-                        chapterId = chapterId,
-                        chapterNumber = chapter.number,
-                        chapterUrl = chapter.url,
-                        mangaUrl = manga.url,
-                        api = manga.api,
-                        language = manga.language,
-                    )
-                }
-
-                if (notifications.isEmpty()) {
-                    log.w { "No notifications to insert for mangaId=${manga.id}" }
-                    return@launch
-                }
-
-                val notifRowIds = notificationDao.insertNotificationsList(notifications)
-                val pairs = notifications.zip(notifRowIds)
-                if (pairs.isEmpty()) {
-                    log.w { "insertNotificationsList returned no IDs for mangaId=${manga.id}" }
-                    return@launch
-                }
-
-                pairs.takeLast(6).asReversed().forEach { (notif, rowId) ->
-                    showChapterNotification(notif.copy(id = rowId))
-                }
-            } catch (t: Throwable) {
-                log.e(t) { "Failed to add chapter notification for mangaId=${manga.id}" }
+    /** Persist all intended rows before making any notification-service or cover decision. */
+    suspend fun persistNewChapterNotifications(
+        manga: SavedMangaEntity,
+        chapters: List<SavedChapterEntity>,
+    ): List<ChapterNotification> {
+        if (chapters.isEmpty()) return emptyList()
+        val rawIds = libraryRepository.insertChapterList(chapters)
+        check(rawIds.size == chapters.size) { "chapter_insert_result_count" }
+        val notifications =
+            chapters.mapIndexed { index, chapter ->
+                val raw = rawIds[index]
+                // Only a real IGNORE result may use the repository's chapter-identity fallback.
+                // Keep this seam at persistence, never repeat identity resolution during display.
+                val realId =
+                    if (raw == -1L) libraryRepository.getChapterIdByUrl(manga.id, chapter.url) else raw
+                check(realId != null && realId > 0L) { "chapter_insert_unresolved_id" }
+                chapter.notification(manga, realId)
             }
+        val rowIds = notificationDao.insertNotificationsList(notifications)
+        check(rowIds.size == notifications.size && rowIds.all { it > 0L }) {
+            "notification_insert_result_ids"
+        }
+        return notifications.mapIndexed { index, row -> row.copy(id = rowIds[index]) }
+    }
+
+    /** Best effort only, joined by the worker outside its per-manga persistence timeout. */
+    suspend fun displayNotifications(notifications: List<ChapterNotification>) {
+        val owner = currentCoroutineContext()
+        owner.ensureActive()
+        if (notifications.isEmpty()) return
+        try {
+            val selected = notifications.takeLast(DISPLAY_LIMIT).asReversed()
+            covers.withCover(selected.first().mangaImageUrl, ::canPost) { bitmap ->
+                selected.forEach { notification ->
+                    owner.ensureActive()
+                    if (canPost()) post(notification, bitmap)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            owner.ensureActive()
+            Logger.withTag(TAG).w { "notification_display_unavailable" }
         }
     }
 
-    private fun showChapterNotification(notification: ChapterNotification) {
-        coroutineScope.launch {
-            try {
-                val bitmap = async(Dispatchers.IO) {
-                    runCatching {
-                        val connection = URL(notification.mangaImageUrl).openConnection().apply {
-                            connectTimeout = COVER_FETCH_TIMEOUT_MILLIS
-                            readTimeout = COVER_FETCH_TIMEOUT_MILLIS
-                        }
-                        try {
-                            connection.getInputStream().use { BitmapFactory.decodeStream(it) }
-                        } finally {
-                            (connection as? HttpURLConnection)?.disconnect()
-                        }
-                    }.getOrNull()
-                }.await()
+    private fun canPost(): Boolean {
+        val manager = context.getSystemService<NotificationManager>() ?: return false
+        return NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+            hasPostPermission() && channelAvailable(manager)
+    }
 
-                val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle(notification.mangaTitle)
-                    .setContentText(
-                        context.getString(R.string.chapter_is_available, notification.chapterNumber),
-                    )
-                    .setAutoCancel(true)
+    private fun hasPostPermission(): Boolean {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
 
-                bitmap?.let { builder.setLargeIcon(it) }
+    private fun channelAvailable(manager: NotificationManager): Boolean {
+        val channel = manager.getNotificationChannel(CHANNEL_ID) ?: createChannel(manager)
+        val groupBlocked =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                channel.group?.let { manager.getNotificationChannelGroup(it)?.isBlocked } == true
+        return channel.importance != NotificationManager.IMPORTANCE_NONE && !groupBlocked
+    }
 
-                notificationManager?.notify(notification.id.toInt(), builder.build())
-            } catch (t: Throwable) {
-                log.e(t) { "Failed to show chapter notification for chapterId=${notification.chapterId}" }
+    private fun createChannel(manager: NotificationManager): NotificationChannel {
+        val channel =
+            NotificationChannel(
+                CHANNEL_ID,
+                context.getString(R.string.new_chapters),
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = context.getString(R.string.notifications_for_new_manga_chapters)
+                enableLights(true)
+                enableVibration(true)
             }
-        }
+        manager.createNotificationChannel(channel)
+        return checkNotNull(manager.getNotificationChannel(CHANNEL_ID))
+    }
+
+    private fun post(notification: ChapterNotification, bitmap: Bitmap?) {
+        val builder =
+            NotificationCompat
+                .Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle(notification.mangaTitle)
+                .setContentText(context.getString(R.string.chapter_is_available, notification.chapterNumber))
+                .setAutoCancel(true)
+        if (bitmap != null) builder.setLargeIcon(bitmap)
+        context.getSystemService<NotificationManager>()?.notify(notification.id.toInt(), builder.build())
     }
 
     private companion object {
         const val CHANNEL_ID = "me.manga.kira.new_chapters"
         const val TAG = "ChapterNotifHelper"
-        const val COVER_FETCH_TIMEOUT_MILLIS = 10_000
+        const val DISPLAY_LIMIT = 6
     }
 }
+
+private fun SavedChapterEntity.notification(manga: SavedMangaEntity, chapterId: Long) =
+    ChapterNotification(
+        mangaId = manga.id,
+        mangaTitle = manga.title,
+        mangaImageUrl = manga.imageUrl,
+        chapterId = chapterId,
+        chapterNumber = number,
+        chapterUrl = url,
+        mangaUrl = manga.url,
+        api = manga.api,
+        language = manga.language,
+    )
 
 /*
  * §253 audit-trail postscript — cluster284 §253 sweep (2026-05-29)
