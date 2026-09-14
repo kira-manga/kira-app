@@ -1,12 +1,45 @@
-# Android AVIF bounded-native preparation
+# Android AVIF bounded-native candidate binding
 
-**SOURCE PREPARATION ONLY. Producer, checks, compilation, native tests, app tests, and device
-qualification: NOT_RUN. No AAR is included or bound, and no workflow is active here.**
+**SOURCE-BOUND CANDIDATE, NOT RUNTIME QUALIFIED.** The genuine producer completed structural
+checks; Android dependency resolution, compilation, native/app tests and final APK/device
+qualification remain **NOT_RUN** for this integration. No workflow is activated here.
 
-This is the source handoff for App15's additive per-request native admission. The application
-dependency remains `org.aomedia.avif.android:avif:1.3.0.841110fd`. The Android call sites authored
-with the new methods are **compile-pending a separately admitted genuine AAR binding**; this
-directory is not a substitute dependency or a completed remediation.
+The three existing Android `libs.avif` declarations in `:app`, `:composeApp` and `:platform` now
+strictly select `org.aomedia.avif.android:avif:1.3.0.841110fd-kira-limits1` from the checked-in
+`maven/` layout. This is a local candidate coordinate, **not an upstream or remotely published
+release**. The same group/module avoids a parallel old/new AVIF dependency; other platforms'
+dependencies are unchanged. No direct-file AAR, fake wrapper, reflective fallback or source
+exclusion substitutes for the genuine Java/JNI implementation.
+
+## Bound candidate and metadata
+
+* AAR: **3,002,110 bytes**, SHA-256
+  `3fb46514a771c9d8efc38192d80e69031021c3b6f7f5f09a154131ca083c5888`.
+* Actual producer: [run34905266420, attempt1](https://github.com/kira-manga/kira-app/actions/runs/34905266420),
+  carrier `5b91c57f3d6976a3d5b0f753370d8aabff0fe085`; recipe source
+  `08d4de62c495254ce5945d70454ce25afb701790`.
+* `candidate/binding.json` pins the AAR/POM, raw public provenance, patched source inputs,
+  all eight notices, Java/native payloads and the three activated fixture copies.
+  `candidate/provenance.json`, `artifact-report.json` and `source-preparation.json` are exact
+  producer artifact bytes, not replacement summaries or runtime results.
+* The actual cached upstream POM is retained as `candidate/upstream-avif-1.3.0.841110fd.pom`
+  (SHA-256 `9909b13b535c17869462ef113b2d8b942c1974b0f5203c68e894ccd13b8dec39`).
+  It declares AAR packaging, **empty dependencies**, no parent/import and no Gradle-metadata
+  redirection. The local POM changes **only its version literal**; no transitive metadata is
+  guessed, dropped or replaced by a dependency on the old AAR.
+* `settings.gradle.kts` checks the fixed AAR and POM sizes/hashes and uses a module-exclusive,
+  POM-only local repository. Missing/changed bytes cannot fall back to an upstream AAR;
+  unrelated repositories and modules are untouched. The settings guard itself is **NOT_RUN**
+  by this source integration; real resolved-artifact/classpath and APK evidence remain required.
+* Exact fixture copies are active in
+  `platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/`. The originals under
+  `qualification/androidDeviceTest/` and their historical comments remain byte-identical.
+  Activation is not execution: their seven native tests and existing Android suite remain pending.
+
+The original `source-manifest.json`, patch, notices and producer implementation are unchanged.
+The manifest's source-preparation/pending fields are intentionally preserved as the original
+recipe and embedded AAR asset; **current actual producer observations live in `candidate/`**.
+Neither a produced candidate nor this dependency binding is App15 completion.
 
 ## Contents
 
@@ -17,10 +50,13 @@ directory is not a substitute dependency or a completed remediation.
 | `notices/` | Native payload's license/patent notices, also staged as AAR assets |
 | `producer/` | Inert hosted recipe, source preparation, and structural/provenance collectors |
 | `producer/README.md` | Primary admission, producer stages, artifacts, limitations, and binding handoff |
-| `qualification/` | Inert **real JNI** device tests and the remaining qualification matrix |
+| `qualification/` | Preserved **real JNI** preparation originals and remaining qualification matrix |
+| `candidate/` | Current binding and exact actual public producer evidence |
+| `maven/` | Exact candidate AAR and version-only-derived POM for Android resolution |
 
-No app build script, dependency declaration, protected reference tree, iOS implementation, or
-active `.github/workflows/` file is changed by this preparation.
+Only the version catalog and settings repository/integrity binding change dependency selection.
+No module build script, protected reference tree, iOS/Desktop implementation or active workflow
+is changed by this integration.
 
 ## Native contract
 
@@ -74,9 +110,9 @@ The authoritative complete pins and hashes are in `source-manifest.json`:
 
 The libavif pin follows the baseline version suffix and its checked-in Android recipe. This
 is **not an attestation that the baseline Maven AAR used these exact build inputs**. The
-candidate label `1.3.0.841110fd-kira-limits1` is a local artifact identifier, not a published
-Maven coordinate. A future produced candidate must carry its own actual SHA-256 and producer
-provenance; there is no claimed byte-identical rebuild or baseline-Maven equivalence.
+candidate label `1.3.0.841110fd-kira-limits1` is bound only in this checked-in local Maven
+repository, not published remotely. Its actual SHA-256 and producer provenance are retained in
+`candidate/`; there is no claimed byte-identical rebuild or baseline-Maven equivalence.
 
 All four original Android ABIs are required: `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`.
 The upstream JNI CMake recipe already specifies 16-KiB ELF LOAD alignment. Candidate-byte
@@ -93,14 +129,15 @@ to the separate NDK NOTICE, not a replacement for it. The recipe stages all eigh
 the source manifest under `assets/kira-avif-notices/` and checks their produced bytes.
 
 The genuine Ninja bundled with Android SDK CMake 3.22.1 is a **host producer tool**, not an
-AAR native payload or a redistributed output here. Its actual version/hash is pending admitted
-acquisition and is required in produced provenance. The primary-approved recipe amendment in
-`producer/README.md` explains this explicit package binding; it does not claim Ninja 1.12.1.
+AAR native payload or a redistributed output here. Actual provenance records Ninja **1.10.2**,
+SHA-256 `6fa84be1efc3ab25d1cf397d0bb35891e5f99316a35d89cd8c04be5898730174`. The
+primary-approved recipe amendment in `producer/README.md` preserves the historical source-only
+record; it does not claim Ninja 1.12.1. Actual tool evidence is in `candidate/provenance.json`.
 
 ## Completion boundary
 
-Only the primary may admit hosted execution, acquire/bind the resulting dependency, promote
-the inert tests, run qualification, or push. See the producer and qualification READMEs.
-Passing a producer's structural checks would establish only a source-bound **candidate**.
-It would not establish app compilation, readability, memory safety for every input, device
+Only the primary may admit execution, run qualification, change this binding or push. See the
+producer and qualification READMEs. The recorded structural checks establish only a source-bound
+**candidate**; binding it and copying fixtures do not add runtime evidence.
+They do not establish app compilation, readability, memory safety for every input, device
 compatibility, runtime behavior, App64 fallback correctness, or App15 completion.

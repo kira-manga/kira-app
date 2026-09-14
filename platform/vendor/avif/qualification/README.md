@@ -1,11 +1,14 @@
 # Genuine native and shipping-target qualification handoff
 
-**All qualification is NOT_RUN.** The Kotlin files under `androidDeviceTest/` are intentionally
-outside every active source set. They must not be activated before the primary binds the genuine
-candidate AAR containing both new Java wrappers and new JNI implementations.
+**All runtime/app qualification is NOT_RUN.** The genuine candidate is now source-bound by
+`../candidate/binding.json`; its producer's structural result is not runtime qualification.
+The original Kotlin files under this `androidDeviceTest/` directory remain outside active source
+sets and byte-identical as preparation history. Exact copies of `AvifNativeLimitTestSupport.kt`,
+`AvifNativeLimitsDeviceTest.kt` and `AvifNativeLimitsFailureDeviceTest.kt` are now active under
+`platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/`. No original was moved,
+rewritten or deleted, and no test was run by activation.
 
-Move/copy these three sources into the admitted `:platform` Android device-test source set only
-in that separate integration step. They use the existing `AvifTestFixtures`, Android Bitmaps,
+The active copies use the existing `AvifTestFixtures`, Android Bitmaps,
 and direct `AvifDecoder` calls. **No reflection, host doubles, mocks of native admission, legacy
 fallback, conditional missing-method skip, fake artifact, or baseline binary substitution** can
 qualify the new native contract. Missing Java/JNI methods or a missing ABI must fail qualification.
@@ -66,7 +69,7 @@ is the evidence; Java-side recovery alone cannot prove an exact native lock/unlo
 The producer does not run any of the following. Admit resource use and select exact narrow task
 names from the current integrated build rather than running a root/aggregate build.
 
-1. **Candidate binding and Android compilation:** all old/new Java and native API compatibility,
+1. **Bound-candidate resolution and Android compilation:** all old/new Java and native API compatibility,
    the shipping `:platform` call sites, and the promoted device tests. Record exact commit/tree,
    dependency SHA-256, toolchain, task, and result. Missing-method compilation is not a skip.
 2. **Real Android native behavior:** execute the above seven tests on admitted real JNI device/

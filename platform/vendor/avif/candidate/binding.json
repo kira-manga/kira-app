@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "state": "SOURCE_BOUND_ANDROID_CANDIDATE_NOT_RUNTIME_QUALIFIED",
+  "coordinate": "org.aomedia.avif.android:avif:1.3.0.841110fd-kira-limits1",
+  "version_policy": "Strict version for the existing libs.avif alias used only by app, composeApp/androidMain and platform/androidMain. Same group/module, not a parallel replacement dependency.",
+  "repository_policy": "Checked-in local Maven layout, module-exclusive org.aomedia.avif.android:avif, POM-only metadata, no external or baseline fallback. All other repository filters are unchanged.",
+  "aar": {
+    "path": "platform/vendor/avif/maven/org/aomedia/avif/android/avif/1.3.0.841110fd-kira-limits1/avif-1.3.0.841110fd-kira-limits1.aar",
+    "bytes": 3002110,
+    "sha256": "3fb46514a771c9d8efc38192d80e69031021c3b6f7f5f09a154131ca083c5888",
+    "treatment": "Exact genuine producer candidate; copied without repacking or class/native substitution."
+  },
+  "pom": {
+    "path": "platform/vendor/avif/maven/org/aomedia/avif/android/avif/1.3.0.841110fd-kira-limits1/avif-1.3.0.841110fd-kira-limits1.pom",
+    "bytes": 1247,
+    "sha256": "b8190c2b737308dd81d1adcf362c64e26179a6d0913e9c9ed0a84a40091b0400",
+    "derived_from": "platform/vendor/avif/candidate/upstream-avif-1.3.0.841110fd.pom",
+    "transformation": "Only the single top-level version literal changes from 1.3.0.841110fd to 1.3.0.841110fd-kira-limits1. All other bytes, including empty dependencies, are retained."
+  },
+  "inspected_upstream_pom": {
+    "path": "platform/vendor/avif/candidate/upstream-avif-1.3.0.841110fd.pom",
+    "bytes": 1234,
+    "sha256": "9909b13b535c17869462ef113b2d8b942c1974b0f5203c68e894ccd13b8dec39",
+    "coordinate": "org.aomedia.avif.android:avif:1.3.0.841110fd",
+    "source": "Existing Gradle cache of the baseline Maven module; inspected offline, no new acquisition.",
+    "canonical_public_url": "https://repo.maven.apache.org/maven2/org/aomedia/avif/android/avif/1.3.0.841110fd/avif-1.3.0.841110fd.pom",
+    "packaging": "aar",
+    "dependencies": [],
+    "parent": null,
+    "dependency_management": null,
+    "gradle_metadata_redirection": false,
+    "baseline_aar_sha256": "d2e3e0ac5ca2512b12527027b3bf815c54afdb3a2261855ed0f1ca8d06ab0c97",
+    "baseline_build_equivalence": "NOT_CLAIMED"
+  },
+  "integrity_guard": {
+    "file": "settings.gradle.kts",
+    "scope": "Two fixed regular-file sizes and SHA-256 values, AAR plus local POM, checked at settings time. This guard and final dependency resolution/compilation are not yet executed by this integration.",
+    "not_a_runtime_or_packaging_witness": true
+  },
+  "producer": {
+    "run_url": "https://github.com/kira-manga/kira-app/actions/runs/34905266420",
+    "attempt": 1,
+    "recipe_source_commit": "08d4de62c495254ce5945d70454ce25afb701790",
+    "recipe_source_tree": "f9b769be0b9c3df1280b8a578e356e55858113ef",
+    "actual_carrier_commit": "5b91c57f3d6976a3d5b0f753370d8aabff0fe085",
+    "actual_carrier_tree": "e384880d360b8ce6d2b9ac18eca5683a0dee61bd",
+    "active_workflow_sha256": "ffbebeb89ea5fb4e31c381f88ca31c533acce4d8fbb66cb9ba385e89ad4c36c9",
+    "artifact_id": 10372706509,
+    "artifact_name": "avif-native15-candidate-34905266420-1",
+    "original_archive_bytes": 3197189,
+    "original_archive_sha256": "10334d5cdd9abe851c69becb3c27b1c78c4e69e19a92cfbd49370562505d7b99",
+    "original_artifact_checksums_sha256": "dbf06d1c6e73d1dc245ef1812317bce5281b4fd491a28e77397064c99ce8a26a",
+    "state": "PRODUCED_CANDIDATE_NOT_RUNTIME_QUALIFIED",
+    "structural_checks": "PASS",
+    "actual_evidence": {
+      "artifact-report.json": {
+        "path": "platform/vendor/avif/candidate/artifact-report.json",
+        "bytes": 14504,
+        "sha256": "ca4117c1ba14b2bd16739b417ed968154221aac0500b957e44a21e4c9cd20903",
+        "treatment": "Exact public producer artifact bytes, unchanged."
+      },
+      "provenance.json": {
+        "path": "platform/vendor/avif/candidate/provenance.json",
+        "bytes": 117500,
+        "sha256": "c45413733041be9bced5245ecef895581c2c1b539417501e5c0ac93ee16ee297",
+        "treatment": "Exact public producer artifact bytes, unchanged."
+      },
+      "source-preparation.json": {
+        "path": "platform/vendor/avif/candidate/source-preparation.json",
+        "bytes": 1285,
+        "sha256": "e065ac072a10c917cd1569376a0d134001e94e5b26fad7d7bf1835070e4c9cb1",
+        "treatment": "Exact public producer artifact bytes, unchanged."
+      }
+    },
+    "boundary": "Produced-source/Java/JNI/four-ABI ELF evidence only; no app, device, runtime, final APK or whole-process memory qualification. This integration does not rerun the producer or checks."
+  },
+  "recipe_inputs_retained": {
+    "source_manifest": {
+      "path": "platform/vendor/avif/source-manifest.json",
+      "sha256": "494ea6ce65ffb8483b98b80616575cd0f50297e3bb9184e0931c54de11469f76",
+      "status_note": "Original preparation manifest retained byte-identically, including original pending status fields; current actual observations are in candidate/provenance.json."
+    },
+    "limits_patch": {
+      "path": "platform/vendor/avif/limits.patch",
+      "sha256": "9ddfc543b54a30f0422cccb98f2f89eb7c27424bbe503ce5eab97f6f43b69abe"
+    },
+    "native_build_init": {
+      "path": "platform/vendor/avif/producer/native-build.init.gradle",
+      "sha256": "aa1b75ffbd75173460385fd3e0e46580c29508a9d68ceeecb56c76fe6c74a6b7"
+    },
+    "source_revisions": [
+      {
+        "id": "libavif",
+        "repository": "https://github.com/AOMediaCodec/libavif.git",
+        "commit": "841110fd8723abd0d5439cbb2cfb8e9cfa11f808"
+      },
+      {
+        "id": "dav1d",
+        "repository": "https://code.videolan.org/videolan/dav1d.git",
+        "commit": "42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa"
+      },
+      {
+        "id": "libyuv",
+        "repository": "https://chromium.googlesource.com/libyuv/libyuv",
+        "commit": "464c51a0353c71f08fe45f683d6a97a638d47833"
+      }
+    ],
+    "ndk_source_basis": {
+      "repository": "https://android.googlesource.com/platform/ndk",
+      "tag": "ndk-r25c",
+      "commit": "e52b1c3b7b38a89aa1643631e8e4fb407f9d8757"
+    }
+  },
+  "notices": [
+    {
+      "path": "platform/vendor/avif/notices/Apache-2.0.txt",
+      "aar_asset": "assets/kira-avif-notices/Apache-2.0.txt",
+      "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a"
+    },
+    {
+      "path": "platform/vendor/avif/notices/dav1d-COPYING.txt",
+      "aar_asset": "assets/kira-avif-notices/dav1d-COPYING.txt",
+      "sha256": "b327887de263238deaa80c34cdd2ff3e0ba1d35db585ce14a37ce3e74ee389e9"
+    },
+    {
+      "path": "platform/vendor/avif/notices/jni-LICENSE.txt",
+      "aar_asset": "assets/kira-avif-notices/jni-LICENSE.txt",
+      "sha256": "05d27d3e3cf78bbc8d1306c9909fbc5e2aaf01f7e83a460ac431cc88012095ff"
+    },
+    {
+      "path": "platform/vendor/avif/notices/libavif-LICENSE.txt",
+      "aar_asset": "assets/kira-avif-notices/libavif-LICENSE.txt",
+      "sha256": "165abf92cc04b39e80d29cadea7a6a7e8fddf59407d4ad2616507a7ebe8216f9"
+    },
+    {
+      "path": "platform/vendor/avif/notices/libyuv-LICENSE.txt",
+      "aar_asset": "assets/kira-avif-notices/libyuv-LICENSE.txt",
+      "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f"
+    },
+    {
+      "path": "platform/vendor/avif/notices/libyuv-PATENTS.txt",
+      "aar_asset": "assets/kira-avif-notices/libyuv-PATENTS.txt",
+      "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495"
+    },
+    {
+      "path": "platform/vendor/avif/notices/ndk-cpufeatures-BSD.txt",
+      "aar_asset": "assets/kira-avif-notices/ndk-cpufeatures-BSD.txt",
+      "sha256": "4102cd5ae35cbdeb0638c350966185e028ea9da863859f70e231c3cb273118d1"
+    },
+    {
+      "path": "platform/vendor/avif/notices/ndk-cpufeatures-NOTICE.txt",
+      "aar_asset": "assets/kira-avif-notices/ndk-cpufeatures-NOTICE.txt",
+      "sha256": "c870d52f42a8f93023b99a85fe68d02637d6b04e5f35bbcd7f98759adb4e4d49"
+    }
+  ],
+  "notice_treatment": "All eight source notices and source manifest are unchanged; the exact candidate carries matching AAR assets. No notice or patent text is removed or regenerated.",
+  "candidate_payload_pins": {
+    "classes.jar": {
+      "bytes": 3546,
+      "sha256": "458db3ee09e5a5899533fc40334d852a8a4e2b4e6fdb6592d085351c45afec88"
+    },
+    "jni/arm64-v8a/libavif_android.so": {
+      "bytes": 1489168,
+      "sha256": "98cecdc49e0662d31fcdb9e7042167ea0a3c154401556bb404dcbe99f595fb91"
+    },
+    "jni/armeabi-v7a/libavif_android.so": {
+      "bytes": 1187364,
+      "sha256": "3b2d3f1dbb8772718fe8f6f19dfa6194e6bc27eae08c9f6b2aa9ac762524264c"
+    },
+    "jni/x86/libavif_android.so": {
+      "bytes": 1948008,
+      "sha256": "08251468e52f7cc78f1b6a08cf0d6790a9b19590863b94b65abd2cb2c5da5d0c"
+    },
+    "jni/x86_64/libavif_android.so": {
+      "bytes": 2693104,
+      "sha256": "f33892512412222124236a580b5776167f033f63ee091e7f0651df836e0bcaab"
+    }
+  },
+  "fixture_activation": [
+    {
+      "original": "platform/vendor/avif/qualification/androidDeviceTest/AvifNativeLimitTestSupport.kt",
+      "active_copy": "platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/AvifNativeLimitTestSupport.kt",
+      "bytes": 3010,
+      "sha256": "53019efbd554e2e4eea3cf432a48495b37d4bdd5256535618a8b9c141155fdd5",
+      "treatment": "Byte-identical copy; original and historical comments retained. No execution."
+    },
+    {
+      "original": "platform/vendor/avif/qualification/androidDeviceTest/AvifNativeLimitsDeviceTest.kt",
+      "active_copy": "platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/AvifNativeLimitsDeviceTest.kt",
+      "bytes": 4252,
+      "sha256": "fa46bf96f0a8a6a2cd5e9c4dfc584c0ff34456e68fab413edf7725b32238cdb5",
+      "treatment": "Byte-identical copy; original and historical comments retained. No execution."
+    },
+    {
+      "original": "platform/vendor/avif/qualification/androidDeviceTest/AvifNativeLimitsFailureDeviceTest.kt",
+      "active_copy": "platform/src/androidDeviceTest/kotlin/me/manga/kira/platform/image/AvifNativeLimitsFailureDeviceTest.kt",
+      "bytes": 4410,
+      "sha256": "5bb9e0958020598f4d2efffa9970e504586af38ac5cb6cf57db1881522f36716",
+      "treatment": "Byte-identical copy; original and historical comments retained. No execution."
+    }
+  ],
+  "active_native_tests": {
+    "me.manga.kira.platform.image.AvifNativeLimitsDeviceTest": [
+      "ordinaryFixtureHonorsPixelAndContainerAxisBoundaries",
+      "smallDeclaredContainerStillNeedsTheActualAv1FramePixelBudget",
+      "containerAxisLimitIsNotMisrepresentedAsAnActualAv1AxisLimit",
+      "existingApisAndBoundedApisBothDecodeTheTallFixture"
+    ],
+    "me.manga.kira.platform.image.AvifNativeLimitsFailureDeviceTest": [
+      "positiveLimitAndSnapshotChecksRejectInvalidArguments",
+      "boundedDecodeChecksLimitsAndDestinationBeforeNativeWork",
+      "postLockScaleFailureAllowsTheSameBitmapToBeReconfiguredAndReused"
+    ]
+  },
+  "remaining_gates": {
+    "dependency_resolution_integrity_and_settings_guard": "NOT_RUN",
+    "ordinary_android_production_host_unit_and_device_compilation": "NOT_RUN",
+    "real_jni_seven_native_tests_and_existing_shared_android_roster": "NOT_RUN",
+    "api26_27_bitmapfactory_and_api28_plus_imagedecoder_paths": "NOT_RUN",
+    "four_abi_runtime_loading": "NOT_RUN",
+    "final_apk_packaging_zip_alignment_and_16kib_device_loading": "NOT_RUN",
+    "physical_device_qualification": "NOT_RUN",
+    "aggregate_native_allocator_or_process_rss_bound": "NOT_CLAIMED",
+    "actual_av1_independent_axis_limit": "NOT_CLAIMED",
+    "byte_identical_rebuild_or_baseline_maven_equivalence": "NOT_CLAIMED",
+    "app15_completion": "NOT_CLAIMED"
+  },
+  "other_platforms": "No iOS/Desktop dependency, source, test selection or native payload change. The fixed settings-time integrity check reads only the committed Android candidate/POM."
+}
