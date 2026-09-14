@@ -1,0 +1,246 @@
+// App13 ordinary Apple compilation observer. It never supplies/replaces a compiler or source.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.testing.AbstractTestTask
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def run = new File(System.getenv('KIRA_APP13_RUN') ?: '/UNBOUND').canonicalFile
+def control = new File(System.getenv('KIRA_APP13_CONTROL') ?: '/UNBOUND').canonicalFile
+def reports = new File(run, 'reports')
+def read = { name ->
+    def f = new File(reports, name)
+    require(f.isFile() && !Files.isSymbolicLink(f.toPath()) && f.length() <= 1048576, 'Bound report required')
+    new JsonSlurper().parse(f)
+}
+def source = read('source.json')
+def request = read('request.json')
+require(request.status == 'PRIMARY_BOUND_FOR_REVIEW' && request.task == ':composeApp:compileKotlinIosSimulatorArm64' &&
+    source.app.sha == '070812dcafdc1c8ecbf25489946d1ff9f88a8996' &&
+    source.engine.sha == 'ed184165ebd3ee7f0d1db533cc40ca5a0868fdda', 'No direct/unbound init invocation')
+def modules = [':core', ':domain', ':presentation', ':ui', ':platform', ':data:local', ':data:remote', ':sources:legacy',
+    ':sources:contracts', ':data:download', ':data', ':sources:engine', ':sources:config', ':composeApp']
+def c = [role: null, source: source, require: require, run: run, control: control, modules: modules,
+    producerName: 'original-engine-ed184165-app13-apple01', observed: [:], states: [:], graph: [], native: null]
+gradle.ext.app13Apple = c
+def hashBytes = { byte[] bytes -> MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() }
+def sha = { File f ->
+    require(f.isFile() && f.canonicalPath == f.absolutePath && f.length() <= 268435456, 'Invalid bounded file')
+    def digest = MessageDigest.getInstance('SHA-256')
+    f.withInputStream { stream ->
+        byte[] bytes = new byte[1048576]
+        for (int n; (n = stream.read(bytes)) != -1;) digest.update(bytes, 0, n)
+    }
+    digest.digest().encodeHex().toString()
+}
+def fingerprint = { File f ->
+    require(f.exists() && f.canonicalPath == f.absolutePath, 'Missing/aliased output')
+    if (f.isFile()) return [file: f.path, kind: 'file', bytes: f.length(), sha256: sha(f)]
+    def rows = []
+    long bytes = 0
+    f.eachFileRecurse { child ->
+        require(!Files.isSymbolicLink(child.toPath()), 'Symlink output entry')
+        if (child.isFile()) {
+            bytes += child.length()
+            require(rows.size() < 4096 && bytes <= 268435456, 'Output tree cap')
+            rows.add([path: f.toPath().relativize(child.toPath()).toString(), sha256: sha(child)])
+        }
+    }
+    rows.sort { it.path }
+    require(!rows.empty, 'Empty output')
+    [file: f.path, kind: 'directory', bytes: bytes, files: rows.size(),
+     sha256: hashBytes(rows.collect { it.sha256 + '  ' + it.path + '\n' }.join('').getBytes('UTF-8'))]
+}
+def save = {
+    def data = JsonOutput.prettyPrint(JsonOutput.toJson([role: c.role, source: source[c.role].sha, graph: c.graph,
+        mainTasks: c.mains.sort(), required: c.required.sort(), native: c.native, observed: c.observed, states: c.states]))
+    def bytes = (data + '\n').getBytes('UTF-8')
+    require(bytes.length <= (c.role == 'app' ? 1048576 : 524288), 'Bounded task evidence exceeded')
+    def f = new File(reports, c.role + '-tasks.json').toPath()
+    def pending = new File(reports, c.role + '-tasks.json.pending').toPath()
+    require(!Files.isSymbolicLink(f), 'Aliased task report')
+    Files.write(pending, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    Files.move(pending, f, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+def nativeHome = { task ->
+    def version = c.role == 'app' ? '2.4.0' : '2.2.21'
+    def home = new File(task.konanHome.get().toString()).canonicalFile
+    require(home == new File(run, 'konan/kotlin-native-prebuilt-macos-aarch64-' + version), 'Nondefault/foreign Native home')
+    home
+}
+def nativeCompiler = { task ->
+    def version = c.role == 'app' ? '2.4.0' : '2.2.21'
+    require(task.kotlinNativeVersion == version, 'Wrong actual Native compiler version')
+    def row = [version: version, home: nativeHome(task).path]
+    require(c.native == null || c.native == row, 'Mixed compiler homes within one build')
+    c.native = row
+}
+def generated = { task ->
+    task.outputs.files.asFileTree.files.findAll { it.name.endsWith('.kt') }.collectEntries { file ->
+        require(file.canonicalPath.startsWith(task.project.buildDir.canonicalPath + '/'), 'Generator output outside owner')
+        [(file.canonicalPath): sha(file)]
+    }
+}
+def compileInputs = { task ->
+    require(task.class.name.contains('KotlinNativeCompile') && task.target == 'ios_simulator_arm64', 'Wrong main compiler/target')
+    nativeCompiler(task)
+    def root = new File(source[c.role].root)
+    def expected = source[c.role].mains[task.project.path]
+    def files = task.sources.files.findAll { it.name.endsWith('.kt') }
+    def original = files.findAll { !it.canonicalPath.startsWith(task.project.buildDir.canonicalPath + '/') }
+        .collectEntries { [(root.toPath().relativize(it.toPath()).toString()): sha(it)] }
+    def made = files.findAll { it.canonicalPath.startsWith(task.project.buildDir.canonicalPath + '/') }
+    require(original == expected && made.every { it.canonicalPath.startsWith(task.project.buildDir.canonicalPath + '/generated/') },
+        'Missing/extra/pruned ordinary compiler sources')
+    def options = task.compilerOptions
+    if (c.role == 'engine') require(options.languageVersion.get().version == '2.1' && options.apiVersion.get().version == '2.1',
+        'Original Engine language/API2.1 required')
+    c.observed[task.path] = [target: task.target, sourcesMatched: true, sourceCount: original.size(),
+        sourceDigest: hashBytes(original.sort().collect { k, v -> v + '  ' + k + '\n' }.join('').getBytes('UTF-8')),
+        generated: made.collectEntries { [(it.canonicalPath): sha(it)] },
+        language: options.languageVersion.orNull?.version, api: options.apiVersion.orNull?.version]
+}
+def attrs = { a -> a.keySet().collectEntries { [(it.name): a.getAttribute(it).toString()] } }
+def neutralInputs = { task ->
+    def compilation = task.project.extensions.getByName('kotlin').targets.getByName('iosSimulatorArm64').compilations.getByName('main')
+    require(compilation.compileTaskProvider.get() == task, 'Observe the normal target compilation')
+    def config = task.project.configurations.getByName(compilation.compileDependencyConfigurationName)
+    require(config.state.toString() == 'RESOLVED', 'Observe only already-consumed normal configuration')
+    require(!config.incoming.resolutionResult.allComponents.any { it.id instanceof ModuleComponentIdentifier &&
+        it.id.group == 'me.manga.kira.source' }, 'No published/foreign neutral binary supplier')
+    def ownBuild = config.incoming.resolutionResult.rootComponent.get().id.build.buildPath
+    def neutral = config.incoming.artifacts.artifacts.findAll { it.id.componentIdentifier instanceof ProjectComponentIdentifier &&
+        it.id.componentIdentifier.projectPath in [':source-contract', ':source-engine'] }.collect { artifact ->
+        def id = artifact.id.componentIdentifier
+        def a = attrs(artifact.variant.attributes)
+        require(id.build.buildPath == (c.role == 'app' ? ':' + c.producerName : ownBuild) &&
+            a['org.jetbrains.kotlin.platform.type'] == 'native' &&
+            a['org.jetbrains.kotlin.native.target'] == 'ios_simulator_arm64' &&
+            task.libraries.files*.canonicalFile.contains(artifact.file.canonicalFile), 'Non-Native/unconsumed Engine variant')
+        def caps = artifact.variant.capabilities
+        require(caps.any { it.group == 'me.manga.kira.source' && it.version == '0.1.0-SNAPSHOT' }, 'Relabelled Engine capability')
+        [project: id.projectPath, build: id.build.buildPath, target: a['org.jetbrains.kotlin.native.target'],
+         version: '0.1.0-SNAPSHOT', attributes: a, output: fingerprint(artifact.file)]
+    }
+    c.observed[task.path].neutral = neutral
+}
+def cinteropInputs = { task ->
+    require(c.role == 'app' && task.project.path == ':platform', 'Only declared platform libwebp interop')
+    def target = task.konanTarget.name
+    require(target in ['ios_simulator_arm64', 'ios_arm64'], 'Unrelated cinterop target')
+    def root = task.project.projectDir
+    def include = new File(root, 'libs/libwebp/include')
+    def slice = target == 'ios_simulator_arm64' ? 'ios-arm64-simulator' : 'ios-arm64'
+    require(task.definitionFile.get().asFile.canonicalFile == new File(root, 'src/nativeInterop/cinterop/libwebp.def') &&
+        task.allHeadersDirs*.canonicalFile == [include] &&
+        task.extraOpts == ['-staticLibrary', 'libwebp.a', '-libraryPath', new File(root, 'libs/libwebp/' + slice).path],
+        'Different libwebp definition/headers/archive slice')
+    def inputs = source.app.inputs.findAll { name, value -> name.startsWith('platform/libs/libwebp/') ||
+        name == 'platform/src/nativeInterop/cinterop/libwebp.def' }
+    require(inputs.every { name, value -> sha(new File(source.app.root, name)) == value }, 'Changed libwebp inputs')
+    c.observed[task.path] = [target: target, nativeHome: nativeHome(task).path, sourceInputsMatched: true,
+        slice: slice, compilerOpts: task.compilerOpts, extraOpts: task.extraOpts]
+}
+def roomInputs = { task ->
+    def config = task.kspConfig
+    require(task.class.name.contains('KspAATask') && config.konanTargetName.get() == 'ios_simulator_arm64' &&
+        new File(config.konanHome.get().toString()).canonicalFile ==
+            new File(run, 'konan/kotlin-native-prebuilt-macos-aarch64-2.4.0'), 'Wrong normal Native Room KSP')
+    def processors = config.processorClasspath.files.collect { [name: it.name, sha256: sha(it)] }
+    require(processors.any { it.name.startsWith('room-compiler-2.8.4') }, 'Real declared Room processor required')
+    c.observed[task.path] = [producer: true, processors: processors, target: config.konanTargetName.get()]
+}
+c.sha = sha
+c.save = save
+c.fingerprint = fingerprint
+
+gradle.settingsEvaluated { settings ->
+    def root = settings.settingsDir.canonicalFile
+    c.role = root.path == source.app.root ? 'app' : (root.path == source.engine.root ? 'engine' : null)
+    require(c.role != null && root == new File(control.parentFile, c.role), 'Only exact App/original Engine checkouts')
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21' &&
+        !gradle.startParameter.offline && !gradle.startParameter.dryRun && gradle.startParameter.excludedTaskNames.empty &&
+        gradle.startParameter.maxWorkerCount == 1 && !gradle.startParameter.parallelProjectExecutionEnabled &&
+        !gradle.startParameter.buildCacheEnabled && !gradle.startParameter.configurationCacheRequested, 'Ordinary one-worker uncached work')
+    require(System.getenv('KONAN_DATA_DIR') == new File(run, 'konan').path &&
+        System.getProperty('user.home') == new File(run, 'home').path, 'Isolated Native/Gradle homes required')
+    if (c.role == 'app') require(gradle.startParameter.taskNames == [request.task], 'Sole App simulator compile root')
+    c.mains = (c.role == 'app' ? modules : [':source-contract', ':source-engine']).collect { it + ':compileKotlinIosSimulatorArm64' }
+    c.required = c.role == 'app' ? [':data:local:kspKotlinIosSimulatorArm64', ':platform:cinteropLibwebpIosSimulatorArm64',
+        ':composeApp:generateSourceRemoteConfig'] + [':ui', ':composeApp'].collectMany { p ->
+            ['convertXmlValueResourcesForCommonMain', 'generateResourceAccessorsForCommonMain', 'generateComposeResClass']
+                .collect { p + ':' + it }
+        } : []
+}
+gradle.projectsEvaluated {
+    gradle.rootProject.allprojects.each { p ->
+        require(['kotlin.native.home', 'kotlin.native.version', 'kotlin.native.distribution.type'].every { p.findProperty(it) == null },
+            'No global Native home/version/distribution override')
+    }
+}
+def inertSwift = ['generateSyntheticLinkageSwiftPMImportProjectForCinteropsAndLdDump',
+    'syncPersistedPackageResolvedToSynthetic', 'fetchSyntheticImportProjectPackages',
+    'generateUmbrellaPackageIdentifierBasedResolutionForDefault', 'fetchUmbrellaPackageIdentifierForDefault']
+def isGenerator = { t -> t.path in c.required || (t.name.startsWith('generate') &&
+    (t.name.contains('Resource') || t.name.contains('ComposeResClass'))) }
+def isCinterop = { t ->
+    for (def type = t.class; type != null; type = type.superclass) {
+        if (type.name == 'org.jetbrains.kotlin.gradle.tasks.CInteropProcess') return true
+    }
+    false
+}
+def validateGraph = { graph ->
+    c.graph = graph.allTasks.collect { [path: it.path, type: it.class.name] }
+    require(graph.allTasks*.path.containsAll(c.mains + c.required), 'Missing ordinary simulator compile/generator closure')
+    graph.allTasks.each { t ->
+        require(!(t instanceof AbstractTestTask) && !t.class.name.contains('KotlinNativeLink') &&
+            !t.class.name.contains('PublishToMaven') && t.project.path in
+            (c.role == 'app' ? modules + [':'] : [':', ':source-contract', ':source-engine', ':source-testkit']),
+            'No Test/link/framework/publication/host project actions')
+        if (t.name.startsWith('compile') && t.name.contains('Kotlin') && !t.name.contains('Metadata')) {
+            require(t.path in c.mains, 'No independent device/test/JVM/other platform compiler')
+        }
+        require(!(t.name in ['downloadKcef', 'setupKcef', 'extractKcef']), 'No CEF provisioning')
+        if (isCinterop(t)) require(t.project.path == ':platform' &&
+            t.name in ['cinteropLibwebpIosSimulatorArm64', 'cinteropLibwebpIosArm64'], 'Only ordinary declared libwebp interop')
+        if (t.name in inertSwift) t.doFirst { throw new GradleException('Actual SwiftPM acquisition/compilation is not admitted') }
+        if (t.name == 'convertSyntheticImportProjectIntoDefFileIphonesimulator') t.doFirst {
+            require(t.hasSwiftPMDependencies.get() == false, 'Only inert SwiftPM bookkeeping')
+        }
+    }
+    // Ordinary metadata/commonization, KLIB/resource packaging and distribution setup stay in the graph.
+    save()
+}
+def observeTask = { t ->
+    if (t.path in c.mains) compileInputs(t)
+    else if (t.path == ':data:local:kspKotlinIosSimulatorArm64') roomInputs(t)
+    else if (isCinterop(t)) cinteropInputs(t)
+    else c.observed[t.path] = [producer: true]
+    if ((c.role == 'app' && t.path == ':sources:engine:compileKotlinIosSimulatorArm64') ||
+        (c.role == 'engine' && t.path == ':source-engine:compileKotlinIosSimulatorArm64')) neutralInputs(t)
+    save()
+}
+gradle.taskGraph.whenReady { graph ->
+    validateGraph(graph)
+    graph.allTasks.findAll { it.path in c.mains || isCinterop(it) || isGenerator(it) }.each { t ->
+        t.doFirst { observeTask(t) }
+        t.doLast {
+            if (t.path in c.mains || isCinterop(t)) c.observed[t.path].output = fingerprint(t.klibOutput.get())
+            else c.observed[t.path].generated = generated(t)
+            c.observed[t.path].ended = true
+            save()
+        }
+    }
+}
+gradle.taskGraph.afterTask { task, state ->
+    c.states[task.path] = [executed: state.executed, didWork: state.didWork, skipped: state.skipped,
+        upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.class?.name,
+        ended: c.observed[task.path]?.ended == true]
+    save()
+}

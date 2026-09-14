@@ -1,0 +1,49 @@
+// One exact public original producer. Keep its KGP2.2.21, all modules/targets and default version.
+import org.gradle.api.GradleException
+import org.gradle.api.artifacts.component.ModuleComponentSelector
+
+def c = gradle.ext.app13Apple
+def require = c.require
+gradle.settingsEvaluated { settings ->
+    if (c.role == 'app') {
+        settings.includeBuild(new File(c.source.engine.root)) {
+            name = c.producerName
+            dependencySubstitution {
+                substitute(module('me.manga.kira.source:source-engine:0.1.0')).using(project(':source-engine'))
+            }
+        }
+    } else {
+        require(settings.rootProject.name == 'kira-source-engine', 'Preserve original producer settings')
+    }
+}
+gradle.beforeProject { p ->
+    p.configurations.configureEach { config ->
+        config.resolutionStrategy.dependencySubstitution.all { details ->
+            def asked = details.requested
+            if (asked instanceof ModuleComponentSelector && asked.group == 'me.manga.kira.source') {
+                require(asked.module == 'source-engine' && asked.version == '0.1.0',
+                    'Only the App root Engine request; contract follows its original project edge')
+            }
+        }
+    }
+}
+gradle.projectsEvaluated {
+    def includes = gradle.includedBuilds.collect { [name: it.name, root: it.projectDir.canonicalPath] }
+    require(includes == (c.role == 'app' ? [[name: c.producerName, root: c.source.engine.root]] : []),
+        'No other composite or nested producer')
+    if (c.role == 'engine') {
+        require(gradle.rootProject.subprojects*.path.toSet() ==
+            [':source-contract', ':source-engine', ':source-testkit'].toSet(), 'Preserve all original producer modules')
+        gradle.rootProject.allprojects.each { p ->
+            require(p.group.toString() == 'me.manga.kira.source' && p.version.toString() == '0.1.0-SNAPSHOT',
+                'No publication, VERSION_NAME override or coordinate relabelling')
+            if (p.path != ':') {
+                def kotlin = p.extensions.getByName('kotlin')
+                require(kotlin.targets*.name.toSet() == ['metadata', 'android', 'jvm', 'iosArm64', 'iosSimulatorArm64'].toSet(),
+                    'No producer target pruning')
+                require(kotlin.compilerOptions.languageVersion.get().version == '2.1' &&
+                    kotlin.compilerOptions.apiVersion.get().version == '2.1', 'Original language/API2.1')
+            }
+        }
+    }
+}
