@@ -40,17 +40,19 @@ class AndroidPageMediaInspector(
         PageInspection.ReadFailure(failure)
     }
 
-    private fun inspectBuffer(encoded: ByteBuffer): PageInspection = synchronized(PAGE_PROBE_LOCK) {
+    private fun inspectBuffer(encoded: ByteBuffer): PageInspection =
         inspectPageInput(policy, encoded.remaining().toLong(), { PageBufferSource(encoded.asReadOnlyBuffer()) }) { format ->
             if (format == PageImageFormat.AVIF) {
+                // AVIF shares the decoder/CBZ owner's fair native permit; no second AVIF lock.
                 inspectAndroidAvifPage(encoded, policy)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                inspectAndroidImageDecoderPage(encoded, format, policy)
-            } else {
-                inspectAndroidBitmapFactoryPage(encoded, format, policy)
+            } else synchronized(PAGE_PROBE_LOCK) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    inspectAndroidImageDecoderPage(encoded, format, policy)
+                } else {
+                    inspectAndroidBitmapFactoryPage(encoded, format, policy)
+                }
             }
         }
-    }
 }
 
 private val PAGE_PROBE_LOCK = Any()

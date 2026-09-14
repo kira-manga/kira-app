@@ -4,6 +4,7 @@ import me.manga.kira.core.cbz.OptimizedCbzManager
 import me.manga.kira.core.util.heap.DeviceTier
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.device.DeviceTierProbe
+import me.manga.kira.platform.media.AndroidPageMediaInspector
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadPersistence
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
@@ -40,6 +41,7 @@ internal fun fixtureDownloadService(
         httpClient = inputs.transport.client,
         optimizedCbzManager = manager,
         dataStoreHelper = inputs.storage.settings,
+        mediaInspector = AndroidPageMediaInspector(),
         downloadDispatcher = inputs.sender,
     )
 }

@@ -40,4 +40,4 @@ data class PageBytePolicy(
 class PageByteLimitExceeded(
     val limit: Long,
     val observedBytes: Long,
-) : IOException("Page exceeds the $limit-byte download limit")
+) : IOException("${PAGE_POLICY_REJECTED_PREFIX}ENCODED_BYTES")
