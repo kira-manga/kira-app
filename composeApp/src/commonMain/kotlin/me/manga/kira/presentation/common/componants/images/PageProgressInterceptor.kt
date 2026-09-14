@@ -17,19 +17,25 @@ internal class PageProgressInterceptor(
     private val repository: PageProgressRepository,
 ) : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-        val handle = chain.request.pageProgressHandle ?: return chain.proceed()
-        val attempt = repository.beginAttempt(handle) ?: return chain.proceed()
-        try {
-            val request = chain.request.newBuilder().apply { extras[pageProgressAttemptKey] = attempt }.build()
+        val attempt =
+            chain.request.pageProgressHandle?.let(repository::beginAttempt) ?: return chain.proceed()
+        var terminal: PageDownloadProgress = PageDownloadProgress.Failed
+        return try {
+            val request =
+                chain.request
+                    .newBuilder()
+                    .apply { extras[pageProgressAttemptKey] = attempt }
+                    .build()
             val result = chain.withRequest(request).proceed()
-            attempt.report(if (result is SuccessResult) PageDownloadProgress.Complete else PageDownloadProgress.Failed)
-            return result
+            terminal = if (result is SuccessResult) PageDownloadProgress.Complete else PageDownloadProgress.Failed
+            result
         } catch (cancelled: CancellationException) {
-            attempt.report(PageDownloadProgress.Idle)
+            terminal = PageDownloadProgress.Idle
             throw cancelled
-        } catch (failure: Throwable) {
-            attempt.report(PageDownloadProgress.Failed)
-            throw failure
+        } finally {
+            // Retire on every exit, including a request-builder/decoder failure, without swallowing
+            // any exception. Cancellation stays Idle and propagates to Coil's request lifecycle.
+            attempt.report(terminal)
         }
     }
 }

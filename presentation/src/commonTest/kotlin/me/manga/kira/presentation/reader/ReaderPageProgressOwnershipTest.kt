@@ -45,94 +45,121 @@ class ReaderPageProgressOwnershipTest {
     }
 
     @Test
-    fun replacementRevokesUnreportedPagesBeforeResumeSuspendsAndStoreClearRevokesTheRest() = runTest(dispatcher) {
-        val (env, store) = fixture()
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("started"), readerPage("unreported"))))
-        enter(env)
-        val old = env.vm.state.value.pageProgressHandles.values.toSet()
-        val request = assertNotNull(env.pageProgress.beginAttempt(old.first()))
-        runCurrent()
-        val gate = CompletableDeferred<Unit>()
-        env.readProgress.loadGate = gate
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("next"))))
-        env.vm.submit(ReaderIntent.OnNextChapter)
-        runCurrent()
-        assertEquals(old, env.pageProgress.cleared.toSet())
-        assertTrue(env.pageProgress.activeHandles.isEmpty())
-        assertTrue(env.vm.state.value.pageProgressHandles.isEmpty())
-        request.report(PageDownloadProgress.Complete)
-        runCurrent()
-        assertTrue(env.vm.state.value.pageProgress.isEmpty())
-        gate.complete(Unit)
-        runCurrent()
-        assertEquals(setOf("next"), env.vm.state.value.pageProgressHandles.keys)
-        store.clear()
-        runCurrent()
-        assertEquals(env.pageProgress.acquired.toSet(), env.pageProgress.cleared.toSet())
-        assertTrue(env.pageProgress.activeHandles.isEmpty())
-        assertEquals(0, env.pageProgress.collectorCount)
-    }
+    fun replacementRevokesUnreportedPagesBeforeResumeSuspendsAndStoreClearRevokesTheRest() =
+        runTest(dispatcher) {
+            val (env, store) = fixture()
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("started"), readerPage("unreported"))))
+            enter(env)
+            val old =
+                env.vm.state.value.pageProgressHandles.values
+                    .toSet()
+            val request = assertNotNull(env.pageProgress.beginAttempt(old.first()))
+            runCurrent()
+            val gate = CompletableDeferred<Unit>()
+            env.readProgress.loadGate = gate
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("next"))))
+            env.vm.submit(ReaderIntent.OnNextChapter)
+            runCurrent()
+            assertEquals(old, env.pageProgress.cleared.toSet())
+            assertTrue(env.pageProgress.activeHandles.isEmpty())
+            assertTrue(
+                env.vm.state.value.pageProgressHandles
+                    .isEmpty(),
+            )
+            request.report(PageDownloadProgress.Complete)
+            runCurrent()
+            assertTrue(
+                env.vm.state.value.pageProgress
+                    .isEmpty(),
+            )
+            gate.complete(Unit)
+            runCurrent()
+            assertEquals(setOf("next"), env.vm.state.value.pageProgressHandles.keys)
+            store.clear()
+            runCurrent()
+            assertEquals(env.pageProgress.acquired.toSet(), env.pageProgress.cleared.toSet())
+            assertTrue(env.pageProgress.activeHandles.isEmpty())
+            assertEquals(0, env.pageProgress.collectorCount)
+        }
 
     @Test
-    fun cumulativeSnapshotsAndAppendKeepDuplicateUrlSurvivorsWithoutObserverGaps() = runTest(dispatcher) {
-        val (env) = fixture()
-        val initial = MutableSharedFlow<AppResult<List<Page>>>(replay = 1)
-        initial.emit(AppResult.Success(listOf(readerPage("same"), readerPage("same"), readerPage("removed"))))
-        env.pages.result = initial
-        enter(env)
-        val same = env.vm.state.value.pageProgressHandles.getValue("same")
-        env.pageProgress.report(same, PageDownloadProgress.InProgress(0.4f))
-        runCurrent()
-        initial.emit(AppResult.Success(listOf(readerPage("same"), readerPage("anchor"))))
-        runCurrent()
-        assertSame(same, env.vm.state.value.pageProgressHandles["same"])
-        assertEquals(listOf("removed"), env.pageProgress.cancelled)
-        val appended = MutableSharedFlow<AppResult<List<Page>>>(replay = 1)
-        appended.emit(AppResult.Success(listOf(readerPage("same"), readerPage("tail"), readerPage("tail"))))
-        env.pages.result = appended
-        env.vm.submit(ReaderIntent.OnAppendNextChapter)
-        runCurrent()
-        val tail = env.vm.state.value.pageProgressHandles.getValue("tail")
-        assertSame(same, env.vm.state.value.pageProgressHandles["same"])
-        assertEquals(3, env.pageProgress.collectorCount)
-        assertEquals(4, env.pageProgress.acquired.size)
-        appended.emit(AppResult.Success(listOf(readerPage("tail"))))
-        runCurrent()
-        assertSame(same, env.vm.state.value.pageProgressHandles["same"])
-        assertSame(tail, env.vm.state.value.pageProgressHandles["tail"])
-        assertEquals(listOf("removed"), env.pageProgress.cancelled)
-        assertEquals(PageDownloadProgress.InProgress(0.4f), env.vm.state.value.pageProgress["same"])
-    }
+    fun cumulativeSnapshotsAndAppendKeepDuplicateUrlSurvivorsWithoutObserverGaps() =
+        runTest(dispatcher) {
+            val (env) = fixture()
+            val initial = MutableSharedFlow<AppResult<List<Page>>>(replay = 1)
+            initial.emit(AppResult.Success(listOf(readerPage("same"), readerPage("same"), readerPage("removed"))))
+            env.pages.result = initial
+            enter(env)
+            val same =
+                env.vm.state.value.pageProgressHandles
+                    .getValue("same")
+            env.pageProgress.report(same, PageDownloadProgress.InProgress(0.4f))
+            runCurrent()
+            initial.emit(AppResult.Success(listOf(readerPage("same"), readerPage("anchor"))))
+            runCurrent()
+            assertSame(same, env.vm.state.value.pageProgressHandles["same"])
+            assertEquals(listOf("removed"), env.pageProgress.cancelled)
+            val appended = MutableSharedFlow<AppResult<List<Page>>>(replay = 1)
+            appended.emit(AppResult.Success(listOf(readerPage("same"), readerPage("tail"), readerPage("tail"))))
+            env.pages.result = appended
+            env.vm.submit(ReaderIntent.OnAppendNextChapter)
+            runCurrent()
+            val tail =
+                env.vm.state.value.pageProgressHandles
+                    .getValue("tail")
+            assertSame(same, env.vm.state.value.pageProgressHandles["same"])
+            assertEquals(3, env.pageProgress.collectorCount)
+            assertEquals(4, env.pageProgress.acquired.size)
+            appended.emit(AppResult.Success(listOf(readerPage("tail"))))
+            runCurrent()
+            assertSame(same, env.vm.state.value.pageProgressHandles["same"])
+            assertSame(tail, env.vm.state.value.pageProgressHandles["tail"])
+            assertEquals(listOf("removed"), env.pageProgress.cancelled)
+            assertEquals(PageDownloadProgress.InProgress(0.4f), env.vm.state.value.pageProgress["same"])
+        }
 
     @Test
-    fun sameUrlAcrossAtoBtoAUsesNewOwnersAndIdleRemovesTheCurrentValue() = runTest(dispatcher) {
-        val (env) = fixture()
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("same"))))
-        enter(env)
-        val a = env.vm.state.value.pageProgressHandles.getValue("same")
-        val oldA = assertNotNull(env.pageProgress.beginAttempt(a))
-        env.vm.submit(ReaderIntent.OnNextChapter)
-        runCurrent()
-        val b = env.vm.state.value.pageProgressHandles.getValue("same")
-        assertNotSame(a, b)
-        val oldB = assertNotNull(env.pageProgress.beginAttempt(b))
-        runCurrent()
-        oldB.report(PageDownloadProgress.Idle)
-        runCurrent()
-        assertTrue(env.vm.state.value.pageProgress.isEmpty())
-        env.vm.submit(ReaderIntent.OnPrevChapter)
-        runCurrent()
-        val returned = env.vm.state.value.pageProgressHandles.getValue("same")
-        assertNotSame(a, returned)
-        assertNotSame(b, returned)
-        oldA.report(PageDownloadProgress.Complete)
-        oldB.report(PageDownloadProgress.Failed)
-        runCurrent()
-        assertTrue(env.vm.state.value.pageProgress.isEmpty())
-        env.pageProgress.report(returned, PageDownloadProgress.InProgress(0.8f))
-        runCurrent()
-        assertEquals(mapOf("same" to PageDownloadProgress.InProgress(0.8f)), env.vm.state.value.pageProgress)
-    }
+    fun sameUrlAcrossAtoBtoAUsesNewOwnersAndIdleRemovesTheCurrentValue() =
+        runTest(dispatcher) {
+            val (env) = fixture()
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("same"))))
+            enter(env)
+            val a =
+                env.vm.state.value.pageProgressHandles
+                    .getValue("same")
+            val oldA = assertNotNull(env.pageProgress.beginAttempt(a))
+            env.vm.submit(ReaderIntent.OnNextChapter)
+            runCurrent()
+            val b =
+                env.vm.state.value.pageProgressHandles
+                    .getValue("same")
+            assertNotSame(a, b)
+            val oldB = assertNotNull(env.pageProgress.beginAttempt(b))
+            runCurrent()
+            oldB.report(PageDownloadProgress.Idle)
+            runCurrent()
+            assertTrue(
+                env.vm.state.value.pageProgress
+                    .isEmpty(),
+            )
+            env.vm.submit(ReaderIntent.OnPrevChapter)
+            runCurrent()
+            val returned =
+                env.vm.state.value.pageProgressHandles
+                    .getValue("same")
+            assertNotSame(a, returned)
+            assertNotSame(b, returned)
+            oldA.report(PageDownloadProgress.Complete)
+            oldB.report(PageDownloadProgress.Failed)
+            runCurrent()
+            assertTrue(
+                env.vm.state.value.pageProgress
+                    .isEmpty(),
+            )
+            env.pageProgress.report(returned, PageDownloadProgress.InProgress(0.8f))
+            runCurrent()
+            assertEquals(mapOf("same" to PageDownloadProgress.InProgress(0.8f)), env.vm.state.value.pageProgress)
+        }
 
     private fun fixture(): Pair<ReaderTestEnv, ViewModelStore> {
         val env = readerTestEnv(chapters)

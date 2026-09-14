@@ -28,8 +28,7 @@ class PageProgressRepositoryImpl : PageProgressRepository {
         return PageProgressObservation(handle, slot.progress)
     }
 
-    override fun beginAttempt(handle: PageProgressHandle): PageProgressAttempt? =
-        slots.value[handle]?.beginAttempt()
+    override fun beginAttempt(handle: PageProgressHandle): PageProgressAttempt? = slots.value[handle]?.beginAttempt()
 
     override fun clear(handle: PageProgressHandle) {
         val slot = slots.value[handle] ?: return
@@ -69,7 +68,10 @@ class PageProgressRepositoryImpl : PageProgressRepository {
             state.update { SlotState(active = false) }
         }
 
-        private fun report(key: AttemptKey, status: PageDownloadProgress) {
+        private fun report(
+            key: AttemptKey,
+            status: PageDownloadProgress,
+        ) {
             state.update { previous ->
                 if (!previous.active || key !in previous.attempts) return@update previous
                 when (status) {

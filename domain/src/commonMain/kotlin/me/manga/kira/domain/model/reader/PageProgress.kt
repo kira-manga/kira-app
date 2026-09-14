@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.Flow
  * a Reader returns to the same URL. Only handles acquired from the progress repository are live.
  * Carries no mutable service into presentation state or an image request.
  */
-class PageProgressHandle(val url: String)
+class PageProgressHandle(
+    val url: String,
+)
 
 /**
  * A newly acquired page slot and its distinct progress stream. The acquirer must release
