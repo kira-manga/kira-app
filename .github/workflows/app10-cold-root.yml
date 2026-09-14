@@ -1,0 +1,80 @@
+name: App10 actual MainActivity cold root (bound validation02)
+
+on:
+  push:
+    branches: [remediation/app-10-cold-root-validation-02]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app10-mainactivity-cold-root
+  cancel-in-progress: false
+
+jobs:
+  one-kvm-cohort:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/remediation/app-10-cold-root-validation-02' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out only the event's controls carrier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: controls
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out the separately bound exact public App source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 3bf84b408828cd370c30b72ecf9014d2763c3f5a
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out the original public Engine source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: One ordinary debug assembly and one fresh KVM real-UI traversal
+        id: cold_root
+        working-directory: controls
+        env:
+          # Primary binds only after independent review of these actual executor controls.
+          APP10_COLD_ROOT_ADMISSION: kira-app10-cold-root-admitted-20260914-02
+        run: exec python3 -B scripts/app10_cold_root.py
+
+      - name: Retain only controller-owned bounded public reports, including failures
+        if: always() && steps.cold_root.outputs.public_reports == 'ready'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app10-cold-root-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/app10-cold-root-reports/result.json
+            ${{ runner.temp }}/app10-cold-root-reports/inputs.json
+            ${{ runner.temp }}/app10-cold-root-reports/commands.json
+            ${{ runner.temp }}/app10-cold-root-reports/cleanup.json
+            ${{ runner.temp }}/app10-cold-root-reports/observations.json
+            ${{ runner.temp }}/app10-cold-root-reports/build.log
+            ${{ runner.temp }}/app10-cold-root-reports/01-welcome.png
+            ${{ runner.temp }}/app10-cold-root-reports/02-theme-optional.png
+            ${{ runner.temp }}/app10-cold-root-reports/03-theme-denial.png
+            ${{ runner.temp }}/app10-cold-root-reports/04-start-reading.png
+            ${{ runner.temp }}/app10-cold-root-reports/05-first-library.png
+            ${{ runner.temp }}/app10-cold-root-reports/06-cold-backfill.png
+            ${{ runner.temp }}/app10-cold-root-reports/07-cold-library.png
