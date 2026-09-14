@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +71,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
@@ -893,7 +896,7 @@ private fun GridDensity.minSize(): Dp = when (this) {
  * for the lifetime of the ViewModel.
  */
 @Composable
-private fun CategoryTabs(
+internal fun CategoryTabs(
     category: LibraryCategory,
     onIntent: (LibraryIntent) -> Unit,
 ) {
@@ -907,6 +910,7 @@ private fun CategoryTabs(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
+            .selectableGroup()
             .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -937,7 +941,7 @@ private fun CategoryPill(
     val shape = RoundedCornerShape(999.dp)
     val baseModifier = Modifier
         .clip(shape)
-        .clickable(onClick = onClick)
+        .selectable(selected = selected, role = Role.Tab, onClick = onClick)
     val pillModifier = if (selected) {
         baseModifier.background(brush = KiraBrand.Gradient, shape = shape)
     } else {
