@@ -2,6 +2,7 @@ package me.manga.kira.data.repository
 
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.Dispatchers
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.domain.service.FileService
@@ -30,6 +31,7 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
         mangaDao = db.mangaDao(),
         chapterDownloadDao = dao,
         appFileSystem = appFileSystem,
+        httpCacheClearer = HttpCacheClearer { },
     )
 
 internal fun DownloadRecoveryFixture.finalizer(

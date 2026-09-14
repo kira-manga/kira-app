@@ -38,7 +38,8 @@ class IosCbzWriter internal constructor(
     private val inspector: PageMediaInspector = IosPageMediaInspector(),
     private val sourceBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : CbzWriter {
-    constructor(fs: AppFileSystem) : this(fs, DefaultIosCbzPageEncoder)
+    constructor(fs: AppFileSystem, inspector: PageMediaInspector = IosPageMediaInspector()) :
+        this(fs, DefaultIosCbzPageEncoder, inspector)
 
     private val conversionMutex = Mutex()
     private val system: FileSystem get() = fs.fileSystem()

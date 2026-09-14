@@ -5,6 +5,7 @@ import me.manga.kira.presentation.features.download.domain.clean.ChapterPageReso
 import me.manga.kira.presentation.features.download.domain.clean.CoroutineDownloadRepositoryImpl
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 // Desktop download engine: the shared non-Android coroutine queue (CoroutineDownloadRepositoryImpl),
@@ -20,18 +21,20 @@ actual fun downloadModule(): Module = module {
             appFileSystem = get(),
             cbzWriter = get(),
             dataStore = get(),
+            mediaInspector = get(),
         )
     }
     single<DownloadRepository> {
         CoroutineDownloadRepositoryImpl(
             dao = get(),
-            httpClient = get(),
+            httpClient = get(named("chapter-download-http")),
             applicationScope = get(),
             appFileSystem = get(),
             downloadNotifier = get(),
             backgroundGuard = get(),
             chapterPageResolver = get(),
             chapterFinalizer = get(),
+            mediaInspector = get(),
         )
     }
 }

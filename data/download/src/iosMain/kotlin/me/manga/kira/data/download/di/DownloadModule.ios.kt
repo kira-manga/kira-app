@@ -9,6 +9,7 @@ import me.manga.kira.presentation.features.download.domain.clean.CoroutineDownlo
 import me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStore
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 // iOS download engine. The M1 collaborators (page-URL/header resolution + terminal CBZ/bookkeeping
@@ -26,6 +27,7 @@ actual fun downloadModule(): Module = module {
             appFileSystem = get(),
             cbzWriter = get(),
             dataStore = get(),
+            mediaInspector = get(),
         )
     }
     single { DownloadManifestStore(get()) }
@@ -48,17 +50,19 @@ actual fun downloadModule(): Module = module {
                 dataStoreHelper = get(),
                 backgroundScheduler = get(),
                 workSignal = get(),
+                mediaInspector = get(),
             )
         } else {
             CoroutineDownloadRepositoryImpl(
                 dao = get(),
-                httpClient = get(),
+                httpClient = get(named("chapter-download-http")),
                 applicationScope = get(),
                 appFileSystem = get(),
                 downloadNotifier = get(),
                 backgroundGuard = get(),
                 chapterPageResolver = get(),
                 chapterFinalizer = get(),
+                mediaInspector = get(),
             )
         }
     }

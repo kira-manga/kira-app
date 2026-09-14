@@ -220,7 +220,7 @@ class AndroidCbzWriter(
 }
 
 /** The encoder may write incrementally; enforce its admitted output allowance before each write. */
-private class BoundedCbzEntryOutput(private val delegate: OutputStream, private val limit: Int) : OutputStream() {
+internal class BoundedCbzEntryOutput(private val delegate: OutputStream, private val limit: Int) : OutputStream() {
     private var written = 0
 
     override fun write(value: Int) {

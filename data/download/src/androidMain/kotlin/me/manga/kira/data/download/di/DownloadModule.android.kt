@@ -6,6 +6,7 @@ import me.manga.kira.presentation.features.download.domain.clean.DownloadReposit
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepositoryImpl
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 // Android download engine: WorkManager-backed DownloadRepositoryImpl driving DownloadWorkerV2, with
@@ -18,9 +19,10 @@ actual fun downloadModule(): Module =
             ChapterDownloadService(
                 context = androidContext(),
                 persistence = get(),
-                httpClient = get(),
+                httpClient = get(named("chapter-download-http")),
                 optimizedCbzManager = get(),
                 dataStoreHelper = get(),
+                mediaInspector = get(),
             )
         }
         single<DownloadRepository> {

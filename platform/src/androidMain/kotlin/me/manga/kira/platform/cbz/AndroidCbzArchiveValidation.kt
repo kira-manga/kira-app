@@ -8,7 +8,7 @@ import java.io.IOException
 import java.util.zip.CRC32
 import java.util.zip.ZipFile
 
-/** Real payload reads, including verbatim entries; the optimized WebP-only validator stays unchanged. */
+/** Both Android writers verify exact entry names/counts and real payload CRCs, including verbatim pages. */
 internal suspend fun validateAndroidCbzArchive(file: File, expectedNames: List<String>) {
     if (expectedNames.isEmpty()) throw IOException("Cannot publish an empty CBZ")
     val buffer = ByteArray(CBZ_BUFFER_SIZE)

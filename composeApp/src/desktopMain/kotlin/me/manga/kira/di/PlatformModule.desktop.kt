@@ -12,6 +12,8 @@ import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.cbz.DefaultCbzReader
 import me.manga.kira.platform.cbz.DesktopCbzWriter
+import me.manga.kira.platform.media.DesktopPageMediaInspector
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.connectivity.ConnectivityObserver
 import me.manga.kira.platform.connectivity.DesktopConnectivityObserver
 import me.manga.kira.platform.crash.CrashReporter
@@ -94,7 +96,8 @@ actual fun platformModule(): Module =
         // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
         single<AppFileSystem> { DesktopAppFileSystem() }
         single<CbzWriter> { DesktopCbzWriter(get()) }
-        single<CbzReader> { DefaultCbzReader(get(), get()) }
+        single<PageMediaInspector> { DesktopPageMediaInspector() }
+        single<CbzReader> { DefaultCbzReader(get(), get(), get()) }
 
         // ---- Background jobs (Phase 8.6) ----
         single<BackgroundJobScheduler> { DesktopBackgroundJobScheduler() }

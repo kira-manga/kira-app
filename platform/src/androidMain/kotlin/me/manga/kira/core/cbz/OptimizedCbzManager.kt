@@ -9,7 +9,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.manga.kira.platform.cbz.BoundedCbzEntryOutput
+import me.manga.kira.platform.cbz.CbzTranscodeAdmission
+import me.manga.kira.platform.cbz.CbzTranscodeBudget
+import me.manga.kira.platform.cbz.validateAndroidCbzArchive
 import me.manga.kira.platform.device.DeviceTierProbe
+import me.manga.kira.platform.media.PageImageFormat
+import me.manga.kira.platform.media.PageImageMetadata
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
@@ -21,9 +27,10 @@ import java.util.zip.ZipOutputStream
  * One conversion and one decoded chunk at a time on the shipping Koin singleton.
  * Encodes directly into an owned temporary ZIP, validates, then atomically publishes it.
  *
- * Tier quality/sampling/splitting policy is unchanged; parallel throughput is deliberately traded
- * for bounded item ownership. AVIF still needs its full parent plus at most one crop. Neither this
- * window nor fixed stream buffers promise a heap/RSS ceiling for one extreme image/native codec.
+ * Tier quality/sampling policy is retained for admitted pages. Every page is inspected from one
+ * bounded, owned snapshot; valid over-budget/known unsupported transcodes preserve those same bytes.
+ * AVIF still needs its full parent plus at most one crop, now under the shared native allowance and
+ * permit. Admission estimates and fixed stream buffers are not a hard native heap/RSS ceiling.
  * The historical createCbzParallel name remains for callers; other CBZ writers are independent.
  * Codec decorators transfer bitmap ownership here; the synchronous encoder must neither retain
  * that bitmap nor close the supplied ZIP stream. Production callers use the Android defaults.
@@ -33,6 +40,7 @@ class OptimizedCbzManager(
     deviceTierProbe: DeviceTierProbe,
     private val decoder: CbzImageDecoder = CbzImageDecoder(),
     private val output: CbzArchiveOutput = CbzArchiveOutput(),
+    private val pagePolicy: CbzPagePolicy = CbzPagePolicy(),
     private val encode: (Bitmap, Bitmap.CompressFormat, Int, OutputStream) -> Boolean =
         { bitmap, format, quality, stream -> bitmap.compress(format, quality, stream) },
 ) {
@@ -68,7 +76,7 @@ class OptimizedCbzManager(
         val temporary = File.createTempFile(".chapter_$chapterId-", ".cbz.tmp", directory)
         try {
             val entries = writeArchive(temporary, imageFiles, onProgress)
-            validateCbzArchive(temporary, entries)
+            validateAndroidCbzArchive(temporary, entries)
             currentCoroutineContext().ensureActive()
             output.publish(temporary, destination)
         } finally {
@@ -85,40 +93,77 @@ class OptimizedCbzManager(
         temporary: File,
         imageFiles: List<String>,
         onProgress: ((Int, Int) -> Unit)?,
-    ): Int =
+    ): List<String> =
         output.open(temporary).use { raw ->
             // The outer use also owns raw if buffer/ZIP construction throws (including OOM).
             ZipOutputStream(BufferedOutputStream(raw, CBZ_BUFFER_SIZE)).use { zip ->
-                var count = 0
+                val entries = mutableListOf<String>()
                 imageFiles.forEachIndexed { page, path ->
                     currentCoroutineContext().ensureActive()
-                    streamPage(File(path)) { bitmap ->
-                        currentCoroutineContext().ensureActive()
-                        zip.putNextEntry(ZipEntry(cbzEntryName(count)))
-                        if (!encode(bitmap, webpFormat, settings.webpQuality, zip)) {
-                            throw IOException("CBZ bitmap compression failed")
-                        }
-                        currentCoroutineContext().ensureActive()
-                        zip.closeEntry()
-                        count++
+                    val firstEntry = entries.size
+                    withValidatedCbzSnapshot(File(path), pagePolicy.bytePolicy, pagePolicy.inspector) { file, metadata, bytes ->
+                        writeValidatedPage(file, metadata, bytes, zip, entries)
                     }
+                    if (entries.size <= firstEntry) throw IOException("CBZ input produced no entries")
                     currentCoroutineContext().ensureActive()
                     // All progress is pre-publication: a callback failure can safely abort.
                     onProgress?.invoke(page + 1, imageFiles.size)
                 }
-                count
+                entries
             }
+        }
+
+    private suspend fun writeValidatedPage(
+        file: File,
+        metadata: PageImageMetadata,
+        encodedBytes: Long,
+        zip: ZipOutputStream,
+        entries: MutableList<String>,
+    ) {
+        val admission = CbzTranscodeBudget.admit(
+            metadata.width, metadata.height, encodedBytes, settings.regionDecodeThreshold, pagePolicy.maxMemoryBytes,
+        )
+        if (admission is CbzTranscodeAdmission.Admitted && canTranscode(metadata, encodedBytes, admission.plan.bandHeight)) {
+            streamPage(file, metadata, admission.plan.bandHeight) { bitmap ->
+                currentCoroutineContext().ensureActive()
+                val name = cbzEntryName(entries.size)
+                zip.putNextEntry(ZipEntry(name))
+                val sink = BoundedCbzEntryOutput(zip, admission.plan.maxEncodedBandBytes)
+                if (!encode(bitmap, webpFormat, settings.webpQuality, sink)) throw IOException("CBZ bitmap compression failed")
+                currentCoroutineContext().ensureActive()
+                zip.closeEntry()
+                entries += name
+            }
+        } else {
+            val name = "${cbzEntryName(entries.size).substringBeforeLast('.')}.${metadata.format.extension}"
+            currentCoroutineContext().ensureActive()
+            zip.putNextEntry(ZipEntry(name))
+            copyCbzPage(file, zip, pagePolicy.bytePolicy)
+            currentCoroutineContext().ensureActive()
+            zip.closeEntry()
+            entries += name
+        }
+    }
+
+    private fun canTranscode(metadata: PageImageMetadata, encodedBytes: Long, bandHeight: Int): Boolean =
+        when (metadata.format) {
+            PageImageFormat.AVIF -> cbzAvifOutputAdmitted(
+                metadata.width, metadata.height, encodedBytes.toInt(), pagePolicy.maxMemoryBytes,
+            )
+            // BitmapRegionDecoder supports JPEG/PNG/WebP, not GIF/BMP. Inspection already passed.
+            PageImageFormat.GIF, PageImageFormat.BMP -> metadata.height <= bandHeight
+            else -> true
         }
 
     private suspend fun streamPage(
         file: File,
+        metadata: PageImageMetadata,
+        bandHeight: Int,
         consume: suspend (Bitmap) -> Unit,
     ) {
-        if (!file.isFile) throw IOException("Missing CBZ source: ${file.name}")
-        val avif = decoder.isAvif(file)
         currentCoroutineContext().ensureActive()
-        if (avif) {
-            streamAvif(file, consume)
+        if (metadata.format == PageImageFormat.AVIF) {
+            streamAvif(file, bandHeight, consume)
             return
         }
         val bounds = decoder.bounds(file)
@@ -126,9 +171,10 @@ class OptimizedCbzManager(
         val width = bounds.outWidth
         val height = bounds.outHeight
         validateCbzSourceBounds(file, width, height)
+        if (width != metadata.width || height != metadata.height) throw IOException("CBZ source metadata changed")
         val estimatedBytes = width * height * ESTIMATED_BYTES_PER_PIXEL
-        if (height > settings.regionDecodeThreshold) {
-            streamRegions(file, width, height, consume)
+        if (height > bandHeight) {
+            streamRegions(file, width, height, bandHeight, consume)
         } else {
             val sampled = estimatedBytes > settings.samplingThreshold
             val sampleSize = if (sampled) cbzSampleSize(width, height, settings.regionDecodeThreshold) else 1
@@ -142,6 +188,7 @@ class OptimizedCbzManager(
         file: File,
         width: Int,
         height: Int,
+        bandHeight: Int,
         consume: suspend (Bitmap) -> Unit,
     ) {
         file.inputStream().use { stream ->
@@ -149,7 +196,7 @@ class OptimizedCbzManager(
                 var y = 0
                 while (y < height) {
                     currentCoroutineContext().ensureActive()
-                    val bottom = y + minOf(settings.regionDecodeThreshold, height - y)
+                    val bottom = y + minOf(bandHeight, height - y)
                     val bitmap =
                         regions.decode(Rect(0, y, width, bottom)) ?: throw IOException("CBZ region decode failed")
                     bitmap.useForCbz { consume(it) }
@@ -161,13 +208,14 @@ class OptimizedCbzManager(
 
     private suspend fun streamAvif(
         file: File,
+        bandHeight: Int,
         consume: suspend (Bitmap) -> Unit,
     ) {
         decoder.decodeAvif(file).useForCbz { parent ->
             var y = 0
             while (y < parent.height) {
                 currentCoroutineContext().ensureActive()
-                val bottom = y + minOf(settings.regionDecodeThreshold, parent.height - y)
+                val bottom = y + minOf(bandHeight, parent.height - y)
                 val crop =
                     if (y == 0 && bottom == parent.height) {
                         parent
