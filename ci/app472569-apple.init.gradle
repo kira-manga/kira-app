@@ -1,0 +1,126 @@
+// App472569: observe the normal data/presentation Native main graph. No pruning, substitution, disabling or extra task.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def roots = [':data:compileKotlinIosSimulatorArm64', ':presentation:compileKotlinIosSimulatorArm64']
+def modules = [':core', ':domain', ':platform', ':data:local', ':data:remote', ':sources:legacy',
+               ':data:download', ':sources:contracts', ':data', ':presentation']
+def mains = modules.collect { it + ':compileKotlinIosSimulatorArm64' }
+def ksp = ':data:local:kspKotlinIosSimulatorArm64'
+def cinterop = ':platform:cinteropLibwebpIosSimulatorArm64'
+def required = mains + [ksp, cinterop]
+require(gradle.startParameter.taskNames == roots && !gradle.startParameter.dryRun &&
+    gradle.startParameter.excludedTaskNames.empty, 'Only the two exact App472569 main roots are admitted')
+require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21', 'Wrong Gradle/Java')
+def run = new File(System.getenv('APP472569_RUN')).canonicalFile
+def reports = new File(run, 'reports')
+def proof = new File(System.getenv('APP472569_PROOF'))
+def sourceSha = System.getenv('APP472569_SOURCE_SHA')
+require(run.isDirectory() && reports.isDirectory() && sourceSha ==~ /[0-9a-f]{40}/ && sourceSha != '0' * 40,
+    'Missing owned run/source binding')
+require(proof.canonicalFile == new File(reports, 'task-proof.json').canonicalFile &&
+    !proof.exists() && !Files.isSymbolicLink(proof.toPath()), 'Unexpected or stale task receipt path')
+def bindingFile = new File(reports, 'source.json')
+require(bindingFile.isFile() && !Files.isSymbolicLink(bindingFile.toPath()) && bindingFile.length() <= 65536,
+    'Missing/oversized source binding')
+def binding = new JsonSlurper().parse(bindingFile)
+require(binding.sha == sourceSha && binding.inputs.size() == 61, 'Different source/input binding')
+def states = [:]
+def work = [:]
+def ended = [] as Set
+def graphRows = []
+def save = {
+    def data = (JsonOutput.prettyPrint(JsonOutput.toJson([
+        schema: 'app472569-apple-task-v1', sourceSha: sourceSha, requestedTasks: roots, requiredTasks: required,
+        gradleVersion: gradle.gradleVersion, javaVersion: System.getProperty('java.runtime.version'),
+        javaVendor: System.getProperty('java.vendor'), graph: graphRows, states: states, work: work,
+    ])) + '\n').getBytes('UTF-8')
+    require(data.length <= 65536 && !Files.isSymbolicLink(proof.toPath()), 'Oversized/unsafe task receipt')
+    def pending = new File(reports, 'task-proof.json.pending').toPath()
+    Files.write(pending, data, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    Files.move(pending, proof.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+
+gradle.taskGraph.whenReady { graph ->
+    graphRows = graph.allTasks.collect { [path: it.path, type: it.class.name] }
+    def paths = graph.allTasks*.path
+    def setup = ['kmpPartiallyResolvedDependenciesChecker', 'checkKotlinGradlePluginConfigurationErrors',
+                 'downloadKotlinNativeDistribution', 'exportCrossCompilationMetadataForIosSimulatorArm64ApiElements',
+                 'iosSimulatorArm64ProcessResources', 'iosSimulatorArm64MainKlibrary']
+    def allowed = required + [':commonizeNativeDistribution', ':data:local:copyRoomSchemas'] +
+        modules.collectMany { project -> setup.collect { project + ':' + it } }
+    save()
+    require(paths.containsAll(required) && paths.every { it in allowed },
+        'Unexpected work outside the normal 10-module simulator-main graph: ' + paths)
+    graph.allTasks.each { t ->
+        if (t.path in mains) {
+            t.doFirst {
+                def sources = t.sources.files.collect { t.project.rootProject.relativePath(it) }.sort()
+                def prefix = t.project.path.substring(1).replace(':', '/') + '/src/'
+                def pinned = binding.inputs.keySet().findAll { name ->
+                    name.startsWith(prefix) && name.substring(prefix.length()).matches(
+                        '(commonMain|nonAndroidMain|nativeMain|appleMain|iosMain|iosSimulatorArm64Main)/.*\\.kt')
+                }.sort()
+                require(t.target == 'ios_simulator_arm64' && !sources.empty && sources.containsAll(pinned),
+                    'Wrong target or missing pinned main sources: ' + t.path)
+                work[t.path] = [kind: 'main', target: t.target, sourceCount: sources.size(), pinnedSources: pinned]
+                if (t.project.path == ':data:local') {
+                    require(ended.contains(ksp) && sources.containsAll(work[ksp].generatedSources),
+                        'Actual Native main sources must include the just-generated Room database/DAO')
+                    work[t.path].generatedRoomSources = work[ksp].generatedSources
+                }
+                save()
+            }
+            t.doLast {
+                work[t.path].outputs = [t.project.rootProject.relativePath(t.klibOutput.get())]
+                ended.add(t.path)
+            }
+        }
+        if (t.path == ksp) {
+            t.doFirst { work[t.path] = [kind: 'room-ksp']; save() }
+            t.doLast {
+                def generated = t.project.file('build/generated/ksp/iosSimulatorArm64')
+                def files = t.project.fileTree(generated).matching {
+                    include '**/MangaDatabase_Impl.kt', '**/ChapterDownloadDao_Impl.kt', '**/ChapterDao_Impl.kt'
+                }.files.sort { it.path }
+                def declared = t.outputs.files.files.collect { it.canonicalFile.toPath() }
+                require(files.size() == 3 && files*.name.toSet() ==
+                    (['MangaDatabase_Impl.kt', 'ChapterDownloadDao_Impl.kt', 'ChapterDao_Impl.kt'] as Set) &&
+                    files.every { file -> declared.any { file.canonicalFile.toPath().startsWith(it) } },
+                    'Missing/ambiguous declared Room generation outputs')
+                work[t.path].outputs = [t.project.rootProject.relativePath(generated)]
+                work[t.path].generatedSources = files.collect { t.project.rootProject.relativePath(it) }
+                ended.add(t.path)
+            }
+        }
+        if (t.path == cinterop) {
+            t.doFirst {
+                def definition = t.project.file('src/nativeInterop/cinterop/libwebp.def').canonicalFile
+                def include = t.project.file('libs/libwebp/include').canonicalFile
+                def archive = t.project.file('libs/libwebp/ios-arm64-simulator/libwebp.a').canonicalFile
+                require(t.definitionFile.get().asFile.canonicalFile == definition && t.allHeadersDirs*.canonicalFile == [include] &&
+                    t.extraOpts == ['-staticLibrary', 'libwebp.a', '-libraryPath', archive.parent],
+                    'Different libwebp definition/headers/simulator archive')
+                work[t.path] = [kind: 'cinterop', definition: t.project.rootProject.relativePath(definition),
+                    headerDirs: [t.project.rootProject.relativePath(include)],
+                    archive: t.project.rootProject.relativePath(archive), extraOpts: t.extraOpts,
+                    compilerOpts: t.compilerOpts, linkerOpts: t.linkerOpts]
+                save()
+            }
+            t.doLast {
+                work[t.path].outputs = [t.project.rootProject.relativePath(t.klibOutput.get())]
+                ended.add(t.path)
+            }
+        }
+    }
+}
+gradle.taskGraph.afterTask { task, state ->
+    states[task.path] = [executed: state.executed, didWork: state.didWork, skipped: state.skipped,
+        upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.toString(),
+        actionsReachedEnd: ended.contains(task.path)]
+    save()
+}

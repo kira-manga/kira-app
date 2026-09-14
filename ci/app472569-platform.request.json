@@ -1,0 +1,32 @@
+{
+  "schema": "app472569-platform-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "authorization": "APP472569_PLATFORM_ONE_ATTEMPT_AUTHORIZED",
+  "sourceRepository": "kira-manga/kira-app",
+  "sourceSha": "91b172a7e2bdb08ac42fcaec1de845a6d70709e5",
+  "sourceTree": "d2b737ac64232fd2bc9d22e89db459ef53af1bc8",
+  "tasks": {
+    "desktop": [
+      ":platform:compileKotlinDesktop",
+      ":presentation:compileKotlinDesktop"
+    ],
+    "ios": [
+      ":data:compileKotlinIosSimulatorArm64",
+      ":presentation:compileKotlinIosSimulatorArm64"
+    ]
+  },
+  "expectedRunAttempt": 1,
+  "sourceInputsSha256": "e350754cbacc71b5d5e9656302a4994b9ca66f14c21685895cc6b4d44e75a16e",
+  "ownerHelperSha256": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf",
+  "developerDir": "/Applications/Xcode_26.4.1.app/Contents/Developer",
+  "coldPublicAcquisitionAuthorized": true,
+  "controls": {
+    ".github/workflows/app472569-platform-compile.yml": "2ce13498354fab57c5e12e78efe78c989819abfe193d12b8d25a4bb41e2f8009",
+    "ci/app472569-platform-source-inputs.json": "e350754cbacc71b5d5e9656302a4994b9ca66f14c21685895cc6b4d44e75a16e",
+    "ci/app472569_apple.py": "555f7adfff8da20b8b4b0abf2cc2a7b1f3a43597de9ec284d66252dd24f08732",
+    "ci/app472569-apple.init.gradle": "35d218a702a197cf95f7e0d1fe5abb5772a9bd5398a942d6f80919c1b5213395",
+    "ci/app472569_linux.py": "442e2cce488de22c1043ab94599979e3ee9b05d8bd96d437f37b3830ae9af318",
+    "ci/app472569-linux.init.gradle": "cfb45c803c37d3a25c7c5061a37bcb7042d305edf95ecb10b99104266ab498ff",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf"
+  }
+}

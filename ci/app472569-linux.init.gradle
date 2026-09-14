@@ -1,0 +1,82 @@
+// Four ordinary Desktop mains only. App75 receipt shape; App13 JVM model/strategy observation.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def roots = [':platform:compileKotlinDesktop', ':presentation:compileKotlinDesktop']
+def modules = [':core', ':domain', ':platform', ':presentation']
+def mains = modules.collect { it + ':compileKotlinDesktop' }
+require(gradle.startParameter.taskNames == roots && !gradle.startParameter.dryRun &&
+    gradle.startParameter.excludedTaskNames.empty, 'Only the two exact Desktop main roots are admitted')
+require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21', 'Wrong Gradle/Java')
+def run = new File(System.getenv('APP472569_RUN')).canonicalFile
+def reports = new File(run, 'reports')
+def proof = new File(System.getenv('APP472569_PROOF'))
+def sourceSha = System.getenv('APP472569_SOURCE_SHA')
+require(run.isDirectory() && reports.isDirectory() && sourceSha == '91b172a7e2bdb08ac42fcaec1de845a6d70709e5',
+    'Missing owned run/exact source binding')
+require(proof.canonicalFile == new File(reports, 'task-proof.json').canonicalFile && !proof.exists() &&
+    !Files.isSymbolicLink(proof.toPath()), 'Unexpected or stale task receipt')
+def bindingFile = new File(reports, 'source.json')
+require(bindingFile.isFile() && !Files.isSymbolicLink(bindingFile.toPath()) && bindingFile.length() <= 65536,
+    'Missing/oversized source binding')
+def binding = new JsonSlurper().parse(bindingFile)
+require(binding.sha == sourceSha && binding.inputs.size() == 61, 'Different source/input binding')
+def states = [:]
+def work = [:]
+def ended = [] as Set
+def graphRows = []
+def save = {
+    def data = (JsonOutput.prettyPrint(JsonOutput.toJson([
+        schema: 'app472569-desktop-task-v1', sourceSha: sourceSha, requestedTasks: roots, requiredTasks: mains,
+        gradleVersion: gradle.gradleVersion, javaVersion: System.getProperty('java.runtime.version'),
+        javaVendor: System.getProperty('java.vendor'), graph: graphRows, states: states, work: work,
+    ])) + '\n').getBytes('UTF-8')
+    require(data.length <= 65536 && !Files.isSymbolicLink(proof.toPath()), 'Oversized/unsafe task receipt')
+    def pending = new File(reports, 'task-proof.json.pending').toPath()
+    Files.write(pending, data, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    Files.move(pending, proof.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+gradle.taskGraph.whenReady { graph ->
+    graphRows = graph.allTasks.collect { [path: it.path, type: it.class.name] }
+    def setup = ['kmpPartiallyResolvedDependenciesChecker', 'checkKotlinGradlePluginConfigurationErrors',
+                 'compileDesktopMainJava', 'desktopProcessResources', 'processDesktopMainResources',
+                 'desktopMainClasses', 'desktopJar']
+    def allowed = mains + modules.collectMany { project -> setup.collect { project + ':' + it } }
+    save()
+    require(graph.allTasks*.path.containsAll(mains) && graph.allTasks.every { it.path in allowed },
+        'Unexpected work outside the ordinary four-main Desktop graph')
+    graph.allTasks.findAll { it.path in mains }.each { t ->
+        t.doFirst {
+            def target = t.project.extensions.getByName('kotlin').targets.getByName('desktop')
+            def models = target.compilations.findAll { it.compileTaskProvider.name == t.name }
+            require(target.platformType.toString() == 'jvm' && models.size() == 1 && models[0].name == 'main' &&
+                models[0].compileTaskProvider.get() == t, 'Not the ordinary Desktop main compiler')
+            def strategy = t.compilerExecutionStrategy.get().toString()
+            def jvmTarget = t.compilerOptions.jvmTarget.get().target
+            require(strategy in ['IN_PROCESS', 'in-process'] && jvmTarget == '17', 'Actual JVM17/in-process strategy required')
+            def sources = (t.hasProperty('sources') ? t.sources : t.source).files.findAll { it.name.endsWith('.kt') }
+                .collect { t.project.rootProject.relativePath(it) }.sort()
+            def prefix = t.project.path.substring(1).replace(':', '/') + '/src/'
+            def pinned = binding.inputs.keySet().findAll { name -> name.startsWith(prefix) &&
+                name.substring(prefix.length()).matches('(commonMain|nonAndroidMain|desktopMain)/.*\\.kt') }.sort()
+            require(!sources.empty && sources.containsAll(pinned), 'Missing ordinary/pinned Desktop sources')
+            work[t.path] = [kind: 'main', target: 'jvm', jvmTarget: jvmTarget, strategy: strategy,
+                            sourceCount: sources.size(), pinnedSources: pinned]
+            save()
+        }
+        t.doLast {
+            work[t.path].outputs = [t.project.rootProject.relativePath(t.destinationDirectory.get().asFile)]
+            ended.add(t.path)
+        }
+    }
+}
+gradle.taskGraph.afterTask { task, state ->
+    states[task.path] = [executed: state.executed, didWork: state.didWork, skipped: state.skipped,
+        upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.toString(),
+        actionsReachedEnd: ended.contains(task.path)]
+    save()
+}

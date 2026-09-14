@@ -1,0 +1,133 @@
+# UNBOUND: branch and request admission require primary binding after independent delta review.
+name: App4-7-25-69 affected platform compilation
+on:
+  push:
+    branches: [remediation/app-4-7-25-69-public-platform-01]
+    paths: [ci/app472569-platform.request.json]
+permissions:
+  contents: read
+concurrency:
+  group: app472569-platform-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  desktop:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-4-7-25-69-public-platform-01' &&
+          github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Exact public control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Require source-bound one-attempt admission
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app472569_linux.py request
+      - name: Exact unchanged reviewed union source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 2
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Four normal Desktop mains, owned stop and cleanup
+        id: compile
+        timeout-minutes: 25
+        env:
+          APP472569_RUN: ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app472569_linux.py compile
+      - name: Short bounded current evidence only
+        if: ${{ always() && steps.compile.outputs.retention_ready == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/request.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/result.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/identity.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/source.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/tools.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/task-proof.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/outputs.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/commands.json
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/compile.log
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/stop-immediate.log
+            ${{ runner.temp }}/app472569-desktop-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/stop-final.log
+  ios:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-4-7-25-69-public-platform-01' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Exact public control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Require source-bound one-attempt admission
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app472569_apple.py request
+      - name: Exact unchanged reviewed union source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 2
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Ten normal simulator mains with Room and libwebp, owned stop and cleanup
+        id: compile
+        timeout-minutes: 25
+        env:
+          APP472569_RUN: ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app472569_apple.py compile
+      - name: Short bounded current evidence only
+        if: ${{ always() && steps.compile.outputs.retention_ready == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/request.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/result.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/identity.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/source.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/tools.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/task-proof.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/outputs.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/native-markers.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/commands.json
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/compile.log
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/stop-immediate.log
+            ${{ runner.temp }}/app472569-apple-${{ github.run_id }}-${{ github.run_attempt }}/reports/public/stop-final.log
