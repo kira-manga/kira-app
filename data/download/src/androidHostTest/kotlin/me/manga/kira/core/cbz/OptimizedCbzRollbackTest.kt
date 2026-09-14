@@ -3,6 +3,7 @@ package me.manga.kira.core.cbz
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Rect
+import me.manga.kira.platform.cbz.CbzWriter
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -128,7 +129,8 @@ private class CbzCropFailureCase(
     private var firstCrop: Bitmap? = null
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File): Bitmap {
+            override suspend fun decodeAvif(file: File, maxWorkingBytes: Long): Bitmap {
+                assertEquals(CbzWriter.DEFAULT_MAX_MEMORY_BYTES, maxWorkingBytes)
                 inspector.assertDecoderSnapshot(file)
                 return Bitmap
                     .createBitmap(

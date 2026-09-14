@@ -30,7 +30,8 @@ internal class CbzModeledAvifCase(
     private val inspector = CbzModeledAvifInspector(source, height)
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File): Bitmap {
+            override suspend fun decodeAvif(file: File, maxWorkingBytes: Long): Bitmap {
+                assertEquals(MODELED_AVIF_MAX_WORKING_BYTES, maxWorkingBytes, "The manager must retain its injected cap")
                 inspector.assertDecoderSnapshot(file)
                 decodes.incrementAndGet()
                 return Bitmap.createBitmap(CBZ_AVIF_PAGE_WIDTH, height, Bitmap.Config.ARGB_8888).also(parent::set)
@@ -71,7 +72,7 @@ internal class CbzModeledAvifCase(
             cbzTier(),
             decoder,
             archive,
-            pagePolicy = CbzPagePolicy(inspector = inspector),
+            pagePolicy = CbzPagePolicy(inspector = inspector, maxMemoryBytes = MODELED_AVIF_MAX_WORKING_BYTES),
         ) { bitmap, format, quality, stream ->
             assertFalse(assertNotNull(parent.get()).isRecycled)
             if (height <= CBZ_LOW_REGION_HEIGHT) assertSame(parent.get(), bitmap)
@@ -96,3 +97,5 @@ internal class CbzModeledAvifCase(
         fixture.assertNoTemporary(chapter)
     }
 }
+
+private const val MODELED_AVIF_MAX_WORKING_BYTES = 20L * 1024 * 1024

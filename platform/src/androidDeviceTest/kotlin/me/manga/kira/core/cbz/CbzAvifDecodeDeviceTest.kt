@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.util.heap.DeviceTier
 import me.manga.kira.platform.device.DeviceTierProbe
 import me.manga.kira.platform.image.AvifDecodeException
+import me.manga.kira.platform.image.AvifNativeLimitFixture
 import me.manga.kira.platform.image.AvifTestFixtures
 import org.junit.Test
 import java.io.File
@@ -46,6 +47,29 @@ class CbzAvifDecodeDeviceTest {
             // A leaked process-wide native permit would prevent the next genuine decode from returning.
             withSource(AvifTestFixtures.tall()) { source ->
                 assertNativeDecode(decoder, source, TALL_WIDTH to TALL_HEIGHT)
+            }
+        }
+
+    @Test
+    fun smallerInjectedBudgetRejectsActualAv1ExpansionDespiteAdmittedContainerDimensions() =
+        runTest {
+            val decoder = CbzImageDecoder()
+            // This exact hash-checked helper is promoted with the genuine-AAR qualification sources.
+            val bytes = AvifNativeLimitFixture.declaredSmall()
+            val edge = AvifNativeLimitFixture.DECLARED_EDGE
+            withSource(bytes) { source ->
+                // Positive control: a malformed-only failure is not evidence for the native cap.
+                assertNativeDecode(decoder, source, edge to edge)
+                assertTrue(cbzAvifOutputAdmitted(edge, edge, bytes.size, SMALL_NATIVE_WORKING_BYTES))
+                val failure = assertFailsWith<AvifDecodeException> {
+                    withTimeout(NATIVE_COMPLETION_TIMEOUT_MILLIS) {
+                        decoder.decodeAvif(source, maxWorkingBytes = SMALL_NATIVE_WORKING_BYTES)
+                    }
+                }
+                // Container parsing/output admission fit. The unchanged 320x640 AV1 frame does not.
+                assertEquals("CBZ AVIF pixels were rejected by the bounded native decoder.", failure.message)
+                // The genuine native decode must recover, including the shared permit/destination owner.
+                assertNativeDecode(decoder, source, edge to edge)
             }
         }
 
@@ -144,3 +168,4 @@ private const val REGULAR_HEIGHT = 640
 private const val TALL_WIDTH = 32
 private const val TALL_HEIGHT = 352
 private const val NATIVE_COMPLETION_TIMEOUT_MILLIS = 15_000L
+private const val SMALL_NATIVE_WORKING_BYTES = 20L * 1024 * 1024

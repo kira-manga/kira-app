@@ -211,7 +211,7 @@ class OptimizedCbzManager(
         bandHeight: Int,
         consume: suspend (Bitmap) -> Unit,
     ) {
-        decoder.decodeAvif(file).useForCbz { parent ->
+        decoder.decodeAvif(file, pagePolicy.maxMemoryBytes).useForCbz { parent ->
             var y = 0
             while (y < parent.height) {
                 currentCoroutineContext().ensureActive()

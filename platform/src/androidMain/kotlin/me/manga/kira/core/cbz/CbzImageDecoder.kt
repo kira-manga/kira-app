@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Rect
 import android.os.Build
+import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.image.withAndroidAvifPermit
 import java.io.File
 import java.io.IOException
@@ -53,10 +54,10 @@ open class CbzImageDecoder {
         region: Rect,
     ): Bitmap = Bitmap.createBitmap(parent, region.left, region.top, region.width(), region.height())
 
-    /** Bounded native probe/decode under the same permit as the reader and page inspector. */
-    open suspend fun decodeAvif(file: File): Bitmap =
+    /** Keep the caller's allowance at both native boundaries under the shared reader/inspector permit. */
+    open suspend fun decodeAvif(file: File, maxWorkingBytes: Long = CbzWriter.DEFAULT_MAX_MEMORY_BYTES): Bitmap =
         withAndroidAvifPermit {
-            decodeCbzAvif(file)
+            decodeCbzAvif(file, maxWorkingBytes)
         }
 }
 

@@ -29,8 +29,8 @@ internal fun cbzAvifOutputAdmitted(width: Int, height: Int, encodedBytes: Int, m
     }
 
 /** Called under the shared Android native permit. No native false/OOM is a preservation signal. */
-internal suspend fun decodeCbzAvif(file: File): Bitmap {
-    val limits = cbzAvifLimits(CbzWriter.DEFAULT_MAX_MEMORY_BYTES)
+internal suspend fun decodeCbzAvif(file: File, maxWorkingBytes: Long): Bitmap {
+    val limits = cbzAvifLimits(maxWorkingBytes)
     val bytes = file.source().buffer().use { readAvifBytes(it, limits.maxEncodedBytes) }
     val parsePixelLimit = androidAvifNativePixelLimit(limits, bytes.size)
     currentCoroutineContext().ensureActive()
