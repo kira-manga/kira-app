@@ -252,7 +252,10 @@ class LibraryRepositoryImpl(
     }
 
     /** Diff/dedup and NEW stamping under the parent id already resolved by the caller. */
-    private suspend fun insertNewChapters(mangaId: Long, fetched: List<Chapter>): List<Chapter> {
+    private suspend fun insertNewChapters(
+        mangaId: Long,
+        fetched: List<Chapter>,
+    ): List<Chapter> {
         val savedUrls = libraryDeo.getSavedChapterUrls(mangaId).toSet()
         val newOnes = fetched.filter { it.url !in savedUrls }
         FlowLog.log("Details", "persistNew", "mangaId=$mangaId fetched=${fetched.size} new=${newOnes.size}")

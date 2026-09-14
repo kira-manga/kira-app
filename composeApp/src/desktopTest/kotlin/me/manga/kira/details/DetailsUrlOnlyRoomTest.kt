@@ -28,6 +28,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private const val SAVED_TWIN_TOTAL_CHAPTERS = 3
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsUrlOnlyRoomTest {
     private val dispatcher = StandardTestDispatcher()
@@ -57,7 +59,7 @@ class DetailsUrlOnlyRoomTest {
 
             val rows = fixture.db.chapterDao().getChaptersByMangaIdR(old.mangaId)
             assertEquals(old, rows.single { it.id == old.id }, "existing read/bookmark/id state is not reset")
-            assertNewRow(rows.single { it.url == second.url }, old.mangaId)
+            assertNewRow(rows.single { it.url == second.url }, old.mangaId, second.url)
             val projected = assertNotNull(fixture.vm.state.value.details).chapters
             assertEquals(setOf(first.url, second.url), projected.map { it.url }.toSet())
             assertTrue(projected.single { it.url == second.url }.isNew, "real Room emission supplies the NEW badge")
@@ -78,8 +80,20 @@ class DetailsUrlOnlyRoomTest {
 
             assertEquals(listOf(0, 0, 0), persistedCounts(fixture))
             assertFalse(fixture.vm.state.value.isInLibrary)
-            assertEquals(0, fixture.db.statisticsDeo().getTotalMangaCount().first())
-            assertEquals(0, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+            assertEquals(
+                0,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalMangaCount()
+                    .first(),
+            )
+            assertEquals(
+                0,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalChaptersCount()
+                    .first(),
+            )
             assertEquals(2, assertNotNull(fixture.vm.state.value.details).chapters.size, "network-only UI still works")
         }
 
@@ -101,7 +115,13 @@ class DetailsUrlOnlyRoomTest {
 
             assertEquals(listOf(1, 0, 0), persistedCounts(fixture))
             assertEquals(expectedRows, fixture.db.chapterDao().getChaptersByMangaIdR(old.mangaId))
-            assertEquals(2, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+            assertEquals(
+                2,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalChaptersCount()
+                    .first(),
+            )
             fixture.clearViewModel()
             runCurrent()
             fixture.reopen()
@@ -135,8 +155,20 @@ class DetailsUrlOnlyRoomTest {
             assertEquals(listOf(other.api to other.url), fixture.library.offeredParents)
             assertEquals(listOf(0), persistedCounts(fixture), "the stale A payload is not even offered")
             assertEquals(listOf(old), fixture.db.chapterDao().getChaptersByMangaIdR(old.mangaId))
-            assertEquals(1, fixture.db.statisticsDeo().getTotalMangaCount().first())
-            assertEquals(1, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+            assertEquals(
+                1,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalMangaCount()
+                    .first(),
+            )
+            assertEquals(
+                1,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalChaptersCount()
+                    .first(),
+            )
         }
 
     @Test
@@ -158,8 +190,20 @@ class DetailsUrlOnlyRoomTest {
             assertEquals(listOf(0, 0), persistedCounts(fixture))
             assertEquals(listOf(savedA), fixture.db.chapterDao().getChaptersByMangaIdR(savedA.mangaId))
             assertNull(fixture.db.mangaDao().getIdByApiAndUrl(other.api, other.url))
-            assertEquals(1, fixture.db.statisticsDeo().getTotalMangaCount().first())
-            assertEquals(1, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+            assertEquals(
+                1,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalMangaCount()
+                    .first(),
+            )
+            assertEquals(
+                1,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalChaptersCount()
+                    .first(),
+            )
         }
 
     @Test
@@ -175,7 +219,11 @@ class DetailsUrlOnlyRoomTest {
             fixture.vm.submit(DetailsIntent.OnEnterByUrl(other.api, other.url))
             advanceUntilIdle()
 
-            assertEquals(other.url, fixture.vm.state.value.manga?.url)
+            assertEquals(
+                other.url,
+                fixture.vm.state.value.manga
+                    ?.url,
+            )
             assertEquals(listOf(other.api to other.url), fixture.library.offeredParents)
             assertEquals(listOf(1), persistedCounts(fixture))
             assertEquals(listOf(savedA), fixture.db.chapterDao().getChaptersByMangaIdR(savedA.mangaId))
@@ -183,29 +231,33 @@ class DetailsUrlOnlyRoomTest {
             assertEquals(2, bRows.size)
             assertEquals(savedB, bRows.single { it.id == savedB.id })
             assertNewRow(bRows.single { it.url == otherNew.url }, savedB.mangaId, otherNew.url)
-            assertEquals(2, fixture.db.statisticsDeo().getTotalMangaCount().first())
-            assertEquals(3, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+            assertEquals(
+                2,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalMangaCount()
+                    .first(),
+            )
+            assertEquals(
+                SAVED_TWIN_TOTAL_CHAPTERS,
+                fixture.db
+                    .statisticsDeo()
+                    .getTotalChaptersCount()
+                    .first(),
+            )
         }
 
-    private fun TestScope.open(fixture: DetailsUrlOnlyRoomFixture, owner: Manga, chapters: List<Chapter>) {
+    private fun TestScope.open(
+        fixture: DetailsUrlOnlyRoomFixture,
+        owner: Manga,
+        chapters: List<Chapter>,
+    ) {
         fixture.source.answers[owner.url] = AppResult.Success(roomDetails(owner, chapters))
         fixture.vm.submit(DetailsIntent.OnEnterByUrl(owner.api, owner.url))
         advanceUntilIdle()
         assertFalse(fixture.vm.state.value.isLoading)
         assertEquals(owner, fixture.vm.state.value.manga)
     }
-
-    private fun assertNewRow(row: SavedChapterEntity, mangaId: Long, expectedUrl: String = second.url) {
-        assertEquals(mangaId, row.mangaId)
-        assertEquals(expectedUrl, row.url)
-        assertTrue(row.isNew)
-        assertTrue(row.fetchedAt > 0L)
-        assertFalse(row.isRead)
-        assertFalse(row.isBookmarked)
-    }
-
-    private fun persistedCounts(fixture: DetailsUrlOnlyRoomFixture): List<Int> =
-        fixture.library.results.map { assertIs<AppResult.Success<Int>>(it).value }
 
     private fun roomTest(block: suspend TestScope.(DetailsUrlOnlyRoomFixture) -> Unit) =
         runTest(dispatcher) {
@@ -219,3 +271,19 @@ class DetailsUrlOnlyRoomTest {
             }
         }
 }
+
+private fun assertNewRow(
+    row: SavedChapterEntity,
+    mangaId: Long,
+    expectedUrl: String,
+) {
+    assertEquals(mangaId, row.mangaId)
+    assertEquals(expectedUrl, row.url)
+    assertTrue(row.isNew)
+    assertTrue(row.fetchedAt > 0L)
+    assertFalse(row.isRead)
+    assertFalse(row.isBookmarked)
+}
+
+private fun persistedCounts(fixture: DetailsUrlOnlyRoomFixture): List<Int> =
+    fixture.library.results.map { assertIs<AppResult.Success<Int>>(it).value }

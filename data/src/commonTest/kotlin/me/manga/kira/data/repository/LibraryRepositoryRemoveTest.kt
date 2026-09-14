@@ -79,7 +79,12 @@ class LibraryRepositoryRemoveTest {
         override suspend fun getApiByMangaId(mangaId: Long): String? = null
         override suspend fun updateLastOpenTimestamp(mangaId: Long, timestamp: Long) {}
         override suspend fun getIdByApiAndTitle(api: String, title: String): Long? = ids[api to title]
-        override suspend fun getIdByApiAndUrl(api: String, mangaUrl: String): Long? = null
+
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
+        ): Long? = null
+
         override suspend fun getMangaById(mangaId: Long): SavedMangaEntity? = SavedMangaEntity(
             id = mangaId, api = "src", language = "en", url = "m/$mangaId", imageUrl = "",
             title = "t$mangaId", description = "", status = "", rating = null, genres = emptyList(),

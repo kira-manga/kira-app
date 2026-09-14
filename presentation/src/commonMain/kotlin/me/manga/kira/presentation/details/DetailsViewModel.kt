@@ -1156,7 +1156,10 @@ class DetailsViewModel(
         }
     }
 
-    private fun retractDeletedChapter(manga: Manga, chapterUrl: String) {
+    private fun retractDeletedChapter(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
         // Resolution, download cleanup and row deletion can each suspend across navigation.
         val active = state.value.manga ?: return
         if (active.api != manga.api || active.url != manga.url) return
