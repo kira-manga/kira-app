@@ -1,0 +1,55 @@
+{
+  "schema": "app5-ios-host-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "authorization": "APP5_IOS_HOST_ONE_ATTEMPT_AUTHORIZED",
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_FIREBASE_SWIFTPM_ONLY",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "4022e09e2f71413fa7f662c1ec67109a3ee0f2fe",
+    "tree": "1380d165a01b2d09d303a74efb2dd05e85e4b12b"
+  },
+  "engine": {
+    "repository": "kira-manga/kira-source-engine",
+    "sha": "ed184165ebd3ee7f0d1db533cc40ca5a0868fdda",
+    "tree": "14e46a1ead24b5757d612fd55031e440f5304661"
+  },
+  "task": ":composeApp:embedAndSignAppleFrameworkForXcode",
+  "expectedRunAttempt": 1,
+  "planSha256": "e0820f4e8147017c01850f9d65327b7871ee312b4c7c2787024f3907f9880e4d",
+  "controls": {
+    "ci/app5-ios-host.py": "5b18f3bcf4d43db8a885a5233d7022be33db5babf1af8dc23dbeb1902ea42aa2",
+    "ci/app5-ios-host-evidence.py": "ec9c9a6b4d5acbe8bebfaf885621a8344fc3ceb7806f9a5b45d23035b1c3acde",
+    "ci/app5-ios-host.init.gradle": "744e09bbbefcc59f9ca0506504c4ca419a8520bc519289a28b29528d14d81d3e",
+    "ci/app5-original-engine.init.gradle": "757a469c45892f46e3ec8a0f6612a49ec42d39ef7f62143512202cba2a573768",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf",
+    "ci/app5-ios-host.source-pins.json": "3efda3ae8842c37c5d155a2cc011f23d2e75931558a2def56f79a039aa1fbb0c",
+    "ci/app5-ios-host-commands.py": "bf8ecc7fb4e0d1a17a2eb67e376c33045a3463f4bd4d5b2ff07fca7d5989f66a",
+    "ci/app5-ios-host-xcodegen.py": "a8db941f5e99061f2a5747d114f4329e50332474e006ae19571c01e26b09d30b",
+    "ci/app5-ios-host-xcode.py": "633bf3a12e27ef541b9118c1ef79df02536896b1ecf5de5d9ecb3a82951ce90f",
+    "ci/app5-ios-host-products.py": "c5d884eb83f409d923169e6c9f8275014bdcb3dbbf6233061fb14f318cec5a28",
+    ".github/workflows/app5-ios-host.yml": "06ee35ce9b55291f0f6b8539fdfdffa9892390615d9afd670f4327fa7a76b042"
+  },
+  "xcodegenIntakeAuthorization": "PINNED_XCODEGEN_2_46_0_ONE_INTAKE_AUTHORIZED",
+  "ref": "remediation/app-5-ios-host-validation-02",
+  "agreementSha256": "0b0f574f7db24f0da7decb9f09ac089c35f30d4313ffdb2834474766f8d58df9",
+  "limits": {
+    "buildSeconds": 2400,
+    "workSeconds": 2700,
+    "controllerSeconds": 2940,
+    "cleanupSeconds": 240,
+    "stopSeconds": 40,
+    "jobMinutes": 55,
+    "xcodeWorkers": 1,
+    "gradleWorkers": 1,
+    "nativeThreads": 1,
+    "jvmHeapGiB": 3,
+    "metaspaceMiB": 768,
+    "diskFloorGiB": 8,
+    "hostCommandLogBytes": 8388608,
+    "otherCommandLogBytes": 1048576,
+    "aggregateCommandLogBytes": 12582912,
+    "otherAggregateCommandLogBytes": 4194304,
+    "cleanupCommandLogBytes": 1048576,
+    "staticFrameworkFingerprintBytes": 1073741824
+  }
+}
