@@ -178,6 +178,9 @@ android {
         viewBinding = true
         compose = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 kotlin {
@@ -257,6 +260,7 @@ dependencies {
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
+    testImplementation(libs.robolectric)
     // Names the externally-provided Ktor engine type for the Koin verify() graph check.
     testImplementation(libs.ktor.client.core)
 }

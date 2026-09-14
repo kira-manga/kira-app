@@ -87,6 +87,7 @@ play-review = "2.0.2"
 
 # Test
 junit = "4.13.2"
+robolectric = "4.16.1"
 turbine = "1.2.1"
 
 [libraries]
@@ -228,6 +229,7 @@ play-review-ktx = { group = "com.google.android.play", name = "review-ktx", vers
 
 # Test
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 
 [plugins]
