@@ -92,8 +92,9 @@ private class AndroidCbzRegions(
     override fun close() = decoder.recycle()
 }
 
-private fun AvifDecoder.Info.validDimensions(): Boolean = width in 1..MAX_AVIF_DIMENSION &&
-    height in 1..MAX_AVIF_DIMENSION
+private fun AvifDecoder.Info.validDimensions(): Boolean =
+    width in 1..MAX_AVIF_DIMENSION &&
+        height in 1..MAX_AVIF_DIMENSION
 
 private fun readAvifBuffer(file: File): ByteBuffer {
     val bytes = file.readBytes()

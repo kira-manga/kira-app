@@ -38,9 +38,10 @@ class OptimizedCbzStreamingTest {
         }
 
     @Test
-    fun modeledRegionsAreRequestedOnlyAfterPreviousChunkIsRecycled() = cbzHostTest { fixture ->
-        verifyModeledRegions(fixture)
-    }
+    fun modeledRegionsAreRequestedOnlyAfterPreviousChunkIsRecycled() =
+        cbzHostTest { fixture ->
+            verifyModeledRegions(fixture)
+        }
 
     @Test
     fun modeledAvifOwnsOneParentAndAtMostOneCropIncludingUnsplitAlias() =

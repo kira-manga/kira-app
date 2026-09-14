@@ -127,11 +127,13 @@ private class CbzCropFailureCase(
     private var firstCrop: Bitmap? = null
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File): Bitmap = Bitmap.createBitmap(
-                CBZ_AVIF_PAGE_WIDTH,
-                CBZ_SPLIT_PAGE_HEIGHT,
-                Bitmap.Config.ARGB_8888,
-            ).also { parent = it }
+            override suspend fun decodeAvif(file: File): Bitmap =
+                Bitmap
+                    .createBitmap(
+                        CBZ_AVIF_PAGE_WIDTH,
+                        CBZ_SPLIT_PAGE_HEIGHT,
+                        Bitmap.Config.ARGB_8888,
+                    ).also { parent = it }
 
             override fun crop(
                 parent: Bitmap,

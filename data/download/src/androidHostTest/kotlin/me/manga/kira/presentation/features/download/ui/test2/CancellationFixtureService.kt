@@ -15,8 +15,7 @@ internal fun fixtureDownloadService(
     dao: DownloadWorkerCancellationDao,
     transport: CancellationPageTransport,
     sender: CompleteSendDispatcher,
-): ChapterDownloadService =
-    fixtureDownloadService(CancellationFixtureServiceInputs(storage, rows, dao, transport, sender))
+): ChapterDownloadService = fixtureDownloadService(CancellationFixtureServiceInputs(storage, rows, dao, transport, sender))
 
 internal fun fixtureDownloadService(
     inputs: CancellationFixtureServiceInputs,
