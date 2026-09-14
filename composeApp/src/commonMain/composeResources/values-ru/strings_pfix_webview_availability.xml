@@ -1,0 +1,7 @@
+<resources>
+    <string name="webview_unavailable_title">WebView недоступен</string>
+    <string name="webview_unavailable_message">Включите или обновите Android System WebView или Chrome, затем повторите попытку. Открытие этой страницы в другом браузере не сохранит сеанс в Kira.</string>
+    <string name="webview_unavailable_retry">Повторить</string>
+    <string name="webview_open_external_browser">Открыть в браузере</string>
+    <string name="webview_external_browser_failed">Не удалось открыть браузер. Убедитесь, что он установлен и разрешён, или повторите попытку с WebView.</string>
+</resources>

@@ -5,6 +5,13 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import kotlinx.coroutines.flow.StateFlow
 
+/** Whether the platform host has finished creating a usable embedded browser. */
+enum class WebViewInitialization {
+    Initializing,
+    Ready,
+    Unavailable,
+}
+
 /**
  * Navigation state for an embedded [WebViewHost]. Surfaced by a [WebViewController] so the host
  * screen can drive Back / Forward / Reload affordances and a progress bar without owning any
@@ -16,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
  * @property progress determinate load progress in `0f..1f`, or `null` when the platform cannot
  *   surface a percentage (e.g. JCEF/Desktop has no progress channel) — callers should fall back to
  *   an indeterminate indicator in that case.
+ * @property initialization Android starts non-ready until its retained creation attempt succeeds.
+ *   The ready default preserves the existing iOS/Desktop controller behavior.
  */
 @Immutable
 data class WebViewNavState(
@@ -23,6 +32,7 @@ data class WebViewNavState(
     val canGoForward: Boolean = false,
     val isLoading: Boolean = false,
     val progress: Float? = null,
+    val initialization: WebViewInitialization = WebViewInitialization.Ready,
 )
 
 /**
