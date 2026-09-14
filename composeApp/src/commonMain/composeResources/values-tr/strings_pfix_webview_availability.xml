@@ -1,0 +1,7 @@
+<resources>
+    <string name="webview_unavailable_title">WebView kullanılamıyor</string>
+    <string name="webview_unavailable_message">Android System WebView veya Chrome’u etkinleştirin ya da güncelleyin, ardından yeniden deneyin. Bu sayfayı başka bir tarayıcıda açmak Kira’da oturum kaydetmez.</string>
+    <string name="webview_unavailable_retry">Yeniden dene</string>
+    <string name="webview_open_external_browser">Tarayıcıda aç</string>
+    <string name="webview_external_browser_failed">Tarayıcı açılamadı. Bir tarayıcının yüklü ve kullanımına izin verilmiş olduğundan emin olun veya WebView’ı yeniden deneyin.</string>
+</resources>

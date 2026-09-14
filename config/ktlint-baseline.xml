@@ -368,7 +368,7 @@
         <error line="104" column="5" source="standard:function-naming" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/WebViewScreenRoute.kt">
-        <error line="58" column="5" source="standard:function-naming" />
+        <error line="60" column="5" source="standard:function-naming" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/WelcomeScreenRoute.kt">
         <error line="130" column="5" source="standard:function-naming" />
