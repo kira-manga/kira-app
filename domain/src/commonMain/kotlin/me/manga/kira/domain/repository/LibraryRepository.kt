@@ -129,9 +129,10 @@ interface LibraryRepository {
     suspend fun addToLibrary(details: MangaDetails): AppResult<Unit>
 
     /**
-     * Persist chapters discovered by a Details/library refresh that are not yet saved for this
-     * (in-library) manga, flagging each as NEW (native parity: `LibraryDetailsViewModel.refreshChapters`
-     * + `LibraryRefreshWorker` insert with `isNew = true`). Diffs [fetched] against the saved chapter
+     * Persist chapters discovered by Details for the exact requested parent ([api], [mangaUrl]),
+     * flagging each as NEW (native parity: `LibraryDetailsViewModel.refreshChapters` inserts with
+     * `isNew = true`). A title/language match is never a substitute for that saved parent URL.
+     * Diffs [fetched] against the saved chapter
      * URLs and inserts only the genuinely-new ones (idempotent: re-running inserts nothing). Returns
      * the count of newly-persisted chapters. No-op (returns 0) when the manga isn't in the library.
      *
@@ -140,8 +141,7 @@ interface LibraryRepository {
      */
     suspend fun persistNewChapters(
         api: String,
-        language: String,
-        title: String,
+        mangaUrl: String,
         fetched: List<Chapter>,
     ): AppResult<Int>
 
@@ -152,6 +152,7 @@ interface LibraryRepository {
      * (incl. the Desktop/iOS inline refresh) — NOT by the Details pull-to-refresh, which must stay
      * notification-free to match native. De-dup is intrinsic: only genuinely-new chapters are notified.
      * Returns the count newly persisted; 0 when the manga isn't in the library.
+     * This existing library-refresh path retains its legacy `(api, title)` parent lookup.
      */
     suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int>
 
