@@ -4,7 +4,6 @@ import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
-import java.io.IOException
 import me.manga.kira.MainActivity
 import me.manga.kira.platform.activity.ActivityHolder
 import org.junit.After
@@ -19,6 +18,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
+import java.io.IOException
 import com.google.android.play.core.appupdate.AppUpdateInfo as PlayAppUpdateInfo
 
 @RunWith(RobolectricTestRunner::class)
@@ -125,7 +125,11 @@ class MainActivityAppUpdateTest {
         assertTrue(manager.listeners.isEmpty())
     }
 
-    private fun assertNoRepeatedConsent(succeeds: Boolean, beforeLaunches: Int, beforeReviews: Int) {
+    private fun assertNoRepeatedConsent(
+        succeeds: Boolean,
+        beforeLaunches: Int,
+        beforeReviews: Int,
+    ) {
         fixture.pauseActivity()
         if (succeeds) manager.fake.userRejectsUpdate()
         val completedQueries = manager.queries.size

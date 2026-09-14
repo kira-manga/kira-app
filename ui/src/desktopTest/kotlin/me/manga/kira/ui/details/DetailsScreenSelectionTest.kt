@@ -1,8 +1,10 @@
 package me.manga.kira.ui.details
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -26,6 +29,7 @@ import me.manga.kira.ui.theme.KiraTheme
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 
 @OptIn(ExperimentalTestApi::class)
 class DetailsScreenSelectionTest {
@@ -85,24 +89,72 @@ class DetailsScreenSelectionTest {
         }
     }
 
+    @Test
+    fun downloadSizesRelocalizeWithoutChangingDetailsState() {
+        val previousLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.US)
+            runComposeUiTest {
+                val loaded =
+                    selectionState().copy(
+                        chapterDownloads =
+                            mapOf(
+                                "c/2" to completedDownload(CHAPTER_SIZE_BYTES),
+                                "c/1" to completedDownload(MEBIBYTE_BYTES),
+                            ),
+                    )
+                val state = mutableStateOf(loaded)
+                val locale = mutableStateOf(Locale.US)
+                showDetails(state, mutableListOf(), locale)
+                assertDownloadSizes("12.00 MB", "13.00 MB • 2 downloaded")
+                runOnIdle {
+                    Locale.setDefault(Locale.FRENCH)
+                    locale.value = Locale.FRENCH
+                }
+                assertDownloadSizes("12,00 Mo", "13,00 Mo • 2 téléchargés")
+                assertSame(loaded, state.value)
+                assertEquals(CHAPTER_SIZE_BYTES, state.value.chapterSizeBytes("c/2"))
+                assertEquals(TOTAL_SIZE_BYTES, state.value.totalDownloadedSizeBytes)
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     private fun ComposeUiTest.showDetails(
         state: State<DetailsState>,
         intents: MutableList<DetailsIntent>,
+        locale: State<Locale>? = null,
     ) {
         setContent {
-            KiraTheme(darkTheme = false) {
-                DetailsScreenContent(
-                    state = state.value,
-                    effects = emptyFlow(),
-                    onIntent = { intents += it },
-                    onNavigateBack = {},
-                    onNavigateToReader = { _, _ -> },
-                    onNavigateToDownloads = {},
-                    onNavigateToBackupExport = { _, _, _ -> },
-                    onOpenInWebView = { _, _ -> },
-                )
+            // Mirror the Desktop root: a static provider invalidates resource reads throughout
+            // the subtree when the JVM locale changes, without replacing the Details state.
+            CompositionLocalProvider(LocalDetailsTestLocale provides (locale?.value ?: Locale.getDefault())) {
+                KiraTheme(darkTheme = false) {
+                    DetailsScreenContent(
+                        state = state.value,
+                        effects = emptyFlow(),
+                        onIntent = { intents += it },
+                        onNavigateBack = {},
+                        onNavigateToReader = { _, _ -> },
+                        onNavigateToDownloads = {},
+                        onNavigateToBackupExport = { _, _, _ -> },
+                        onOpenInWebView = { _, _ -> },
+                    )
+                }
             }
         }
+    }
+
+    private suspend fun ComposeUiTest.assertDownloadSizes(
+        chapterLabel: String,
+        totalLabel: String,
+    ) {
+        awaitIdle()
+        onNode(hasScrollToIndexAction()).performScrollToIndex(FIRST_CHAPTER_ITEM_INDEX - 1)
+        awaitIdle()
+        onNodeWithText(chapterLabel).assertIsDisplayed()
+        onNodeWithText(totalLabel).assertIsDisplayed()
     }
 
     private suspend fun ComposeUiTest.assertCompletedSelection(
@@ -168,6 +220,14 @@ private const val DOWNLOADED_LABEL = "Downloaded"
 private const val DELETE_DOWNLOADED_LABEL = "Delete downloaded chapters"
 private const val CANCEL_DOWNLOAD_LABEL = "Cancel chapter download"
 private const val FIRST_CHAPTER_ITEM_INDEX = 2
+private const val MEBIBYTE_BYTES = 1024L * 1024
+private const val CHAPTER_SIZE_BYTES = 12 * MEBIBYTE_BYTES
+private const val TOTAL_SIZE_BYTES = 13 * MEBIBYTE_BYTES
+
+private val LocalDetailsTestLocale = staticCompositionLocalOf { Locale.getDefault() }
+
+private fun completedDownload(sizeBytes: Long): ChapterDownloadProgress =
+    ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = sizeBytes)
 
 private fun selectionState(): DetailsState {
     val manga =

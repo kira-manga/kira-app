@@ -391,8 +391,8 @@ class DetailsViewModelRegressionTest {
                 assertTrue(requireNotNull(state.details).chapters.first().isDownloaded)
                 assertTrue(state.chapterDownloads.isEmpty())
                 assertEquals(0, state.downloadedChapterCount)
-                assertNull(state.chapterSizeLabel("c/1"))
-                assertNull(state.totalDownloadedSizeLabel)
+                assertNull(state.chapterSizeBytes("c/1"))
+                assertNull(state.totalDownloadedSizeBytes)
                 assertDownloadedDetailsActions(vm, actions)
                 assertFullDeletionMakesChapterPending(vm, saved, actions)
             }
@@ -1568,8 +1568,8 @@ private fun assertDownloadedLedger(state: DetailsState) {
     val done = assertNotNull(state.chapterDownloads["c/1"], "SUCCESS keeps an entry for the immediate completion flip")
     assertTrue(done.isDownloaded)
     assertFalse("c/1" in state.downloadingChapterUrls)
-    assertEquals("12.0 MB", state.chapterSizeLabel("c/1"))
-    assertEquals("12.0 MB", state.totalDownloadedSizeLabel)
+    assertEquals(12L * 1024 * 1024, state.chapterSizeBytes("c/1"))
+    assertEquals(12L * 1024 * 1024, state.totalDownloadedSizeBytes)
     assertEquals(1, state.downloadedChapterCount)
 }
 

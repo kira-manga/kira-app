@@ -326,16 +326,7 @@ class ReaderViewModel(
 
     override suspend fun handle(intent: ReaderIntent) {
         when (intent) {
-            // Initialize-once per VM instance: a fresh entry-scoped VM has `chapter == null` and
-            // runs the full fetch; once a chapter is established, a second intent-level OnEnter can
-            // only be a stale re-composition replaying the ANCHOR nav-args (rotation, pop-back from
-            // the WebView / Cloudflare solver). Honouring it would reset the reader to the chapter
-            // originally opened, discarding any Next/Prev navigation. The internal onEnter() calls
-            // from onNextChapter/onPrevChapter bypass this guard (they don't go through the intent
-            // path), so chapter navigation is unaffected; process-death restore also works (the
-            // restored VM has chapter == null and proceeds). OnRetry forces an explicit re-fetch.
-            is ReaderIntent.OnEnter ->
-                if (state.value.chapter == null) onEnter(intent.manga, intent.chapter)
+            is ReaderIntent.OnEnter -> onEnter(intent.manga, intent.chapter)
             is ReaderIntent.OnPageChanged -> onPageChanged(intent.pageIndex)
             ReaderIntent.OnRetry -> onRetry()
             ReaderIntent.OnBackClick -> emit(ReaderEffect.NavigateBack)
@@ -401,7 +392,18 @@ class ReaderViewModel(
         chapter: Chapter,
     ) {
         val current = state.value
-        if (current.manga?.matches(manga) == true && current.chapter?.url == chapter.url) return
+        // An established same-manga entry can replay stale navigation args after recomposition
+        // or WebView return. Do not rewind an appended feed or an explicit Next/Prev jump.
+        // A fresh VM or genuinely different manga still establishes a new chapter.
+        if (current.chapter != null && current.manga?.matches(manga) == true) return
+        replaceChapter(manga, chapter)
+    }
+
+    private suspend fun replaceChapter(
+        manga: Manga,
+        chapter: Chapter,
+    ) {
+        val current = state.value
         FlowLog.log("Reader", "enter", "chapter=${chapter.url} num=${chapter.number} api=${manga.api}")
         // Leaving a chapter (incl. intra-manga Next/Prev on this reused VM): drop the temp images
         // extracted from the previous downloaded chapter's CBZ so they don't accumulate. In a
@@ -508,7 +510,7 @@ class ReaderViewModel(
         // Mark-read trigger (b) (Reader-convergence R3b): advancing to the next chapter means the
         // user is done with the CURRENT one, so mark the chapter being LEFT as read — matching the
         // legacy reader, which marked-read on next-chapter advance. Fire-and-forget on
-        // viewModelScope BEFORE onEnter swaps `state.chapter` to the next chapter. In-library-only
+        // viewModelScope BEFORE replaceChapter swaps `state.chapter` to the next chapter. In-library-only
         // + idempotent (UPDATE isRead=1) + not incognito-gated; the use case no-ops when the
         // chapter has no saved row. See [MarkChapterReadUseCase]. Uses the ACTIVE (currently-viewed)
         // chapter so a continuous-feed advance marks the appended segment in view, not the anchor.
@@ -516,7 +518,7 @@ class ReaderViewModel(
         if (leavingUrl != null) {
             launchSafely { markChapterRead(manga, leavingUrl) }
         }
-        onEnter(manga, current.chapters[nextIdx])
+        replaceChapter(manga, current.chapters[nextIdx])
     }
 
     private suspend fun onPrevChapter() {
@@ -534,7 +536,7 @@ class ReaderViewModel(
         if (leavingUrl != null) {
             launchSafely { markChapterRead(manga, leavingUrl) }
         }
-        onEnter(manga, current.chapters[prevIdx])
+        replaceChapter(manga, current.chapters[prevIdx])
     }
 
     /**

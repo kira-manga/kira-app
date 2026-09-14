@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.SwapVert
@@ -28,6 +31,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +40,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -126,6 +135,8 @@ internal fun LibraryOptionsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
         ) {
             when (selectedTab) {
@@ -281,43 +292,17 @@ private fun SortOptionsSection(
     onIntent: (LibraryIntent) -> Unit,
 ) {
     val ascending = sortDirection == SortDirection.ASCENDING
+    val directionLabel =
+        stringResource(
+            if (ascending) Res.string.sort_direction_ascending else Res.string.sort_direction_descending,
+        )
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(Res.string.sort_options_title),
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.SwapVert,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(Res.string.sort_direction_label))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (ascending) {
-                        stringResource(Res.string.sort_direction_ascending)
-                    } else {
-                        stringResource(Res.string.sort_direction_descending)
-                    },
-                )
-                Spacer(Modifier.width(8.dp))
-                Switch(
-                    checked = ascending,
-                    onCheckedChange = { onIntent(LibraryIntent.OnSortDirectionToggle) },
-                )
-            }
-        }
+        SortDirectionRow(ascending, directionLabel, onIntent)
         Spacer(Modifier.height(16.dp))
         Text(
             text = stringResource(Res.string.sort_by_label),
@@ -338,6 +323,50 @@ private fun SortOptionsSection(
     }
 }
 
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
+@Composable
+private fun SortDirectionRow(
+    ascending: Boolean,
+    directionLabel: String,
+    onIntent: (LibraryIntent) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = ascending,
+                    role = Role.Switch,
+                    onValueChange = { onIntent(LibraryIntent.OnSortDirectionToggle) },
+                ).semantics { stateDescription = directionLabel }
+                .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.SwapVert,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(Res.string.sort_direction_label))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = directionLabel,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
+            Spacer(Modifier.width(8.dp))
+            Switch(
+                checked = ascending,
+                onCheckedChange = null,
+                modifier = Modifier.minimumInteractiveComponentSize(),
+            )
+        }
+    }
+}
+
 /**
  * One display-toggle row — a leading [HorizontalDivider] (P2 parity: native
  * `DisplayOptionsSection.kt:65` prefixes every SwitchItem with a divider), then a row with the
@@ -354,12 +383,17 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(vertical = spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            modifier = Modifier.minimumInteractiveComponentSize(),
+        )
     }
 }
 
@@ -380,17 +414,7 @@ private fun ItemsPerRowSlider(
     count: Int,
     onCountChange: (Int) -> Unit,
 ) {
-    Text(
-        text = stringResource(Res.string.items_per_row_label),
-        fontWeight = FontWeight.SemiBold,
-    )
-    Spacer(Modifier.height(8.dp))
-    Slider(
-        value = count.toFloat(),
-        onValueChange = { onCountChange(it.roundToInt()) },
-        valueRange = 0f..8f,
-        steps = 7,
-    )
+    val label = stringResource(Res.string.items_per_row_label)
     val caption = if (count == 0) {
         stringResource(Res.string.auto_text)
     } else {
@@ -400,8 +424,27 @@ private fun ItemsPerRowSlider(
             if (count > 1) stringResource(Res.string.items_plural) else stringResource(Res.string.items_singular),
         )
     }
+    // The existing slider owns the accessible name/value; these visible copies must not repeat them.
+    Text(
+        text = label,
+        modifier = Modifier.clearAndSetSemantics {},
+        fontWeight = FontWeight.SemiBold,
+    )
+    Spacer(Modifier.height(8.dp))
+    Slider(
+        value = count.toFloat(),
+        onValueChange = { onCountChange(it.roundToInt()) },
+        modifier =
+            Modifier.semantics {
+                contentDescription = label
+                stateDescription = caption
+            },
+        valueRange = 0f..8f,
+        steps = 7,
+    )
     Text(
         text = caption,
+        modifier = Modifier.clearAndSetSemantics {},
         fontStyle = if (count == 0) FontStyle.Italic else FontStyle.Normal,
     )
 }

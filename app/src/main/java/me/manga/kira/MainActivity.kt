@@ -145,28 +145,29 @@ class MainActivity : ComponentActivity() {
     /** Recover on every resume, then make at most one completed ordinary attempt per Activity. */
     private fun startInAppUpdateFlow() {
         if (updateFlowJob?.isActive == true) return
-        updateFlowJob = launchFlowScope.launch {
-            try {
-                val client = GlobalContext.get().get<AppUpdateClient>()
-                val recovered = client.resumeUpdate()
-                ensureActive()
-                if (recovered) {
-                    initialUpdateAttemptCompleted = true
-                } else if (!initialUpdateAttemptCompleted) {
-                    val update = client.checkForUpdate()
+        updateFlowJob =
+            launchFlowScope.launch {
+                try {
+                    val client = GlobalContext.get().get<AppUpdateClient>()
+                    val recovered = client.resumeUpdate()
                     ensureActive()
-                    if (update != null && !client.startUpdate(update)) {
-                        log.w { "in-app update flow did not start" }
+                    if (recovered) {
+                        initialUpdateAttemptCompleted = true
+                    } else if (!initialUpdateAttemptCompleted) {
+                        val update = client.checkForUpdate()
+                        ensureActive()
+                        if (update != null && !client.startUpdate(update)) {
+                            log.w { "in-app update flow did not start" }
+                        }
+                        ensureActive()
+                        initialUpdateAttemptCompleted = true
                     }
-                    ensureActive()
-                    initialUpdateAttemptCompleted = true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    log.e(t) { "in-app update flow failed" }
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                log.e(t) { "in-app update flow failed" }
             }
-        }
     }
 
     /**
