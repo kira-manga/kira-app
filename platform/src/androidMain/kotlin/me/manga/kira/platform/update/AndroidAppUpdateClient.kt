@@ -10,31 +10,34 @@ import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 import me.manga.kira.platform.activity.ForegroundActivityProvider
+import com.google.android.play.core.appupdate.AppUpdateInfo as PlayAppUpdateInfo
 
 /**
  * Android actual for [AppUpdateClient].
  *
- * Delegates to Play Core's `AppUpdateManager`. `startFlexibleUpdate()` requires a foreground
+ * Delegates to Play Core's `AppUpdateManager`. [startUpdate] requires a foreground
  * `Activity` to host the Play Store consent dialog — the [activityProvider] is a
  * [ForegroundActivityProvider] and follows the same convention as `AndroidInAppReviewClient`.
  *
- * Verbatim semantic port from legacy
- * `:shared/androidMain/.../core/update/AppUpdateClient.android.kt`. Preserves:
+ * Prefers flexible updates, but launches the selected immediate type when flexible is forbidden.
+ * Each launch uses fresh SDK info and resolves its Activity after suspension. Preserves:
  *  - `applicationContext` unwrap (avoids retaining Activity in the manager singleton).
  *  - "Prefer flexible; fall back to immediate" availability logic in [checkForUpdate].
  *  - `REQUEST_CODE = 100` for `startUpdateFlowForResult` (Play Core surfaces the result through
  *    the Activity's `onActivityResult` — host wiring depends on this exact value).
- *  - "Return false on any throw" success semantics across all three methods.
+ *  - Safe failure results, while coroutine cancellation propagates to the host.
  */
 class AndroidAppUpdateClient(
     context: Context,
     private val activityProvider: ForegroundActivityProvider = { null },
+    private val manager: AppUpdateManager = AppUpdateManagerFactory.create(context.applicationContext),
 ) : AppUpdateClient {
 
     private val log = Logger.withTag(TAG)
-    private val manager: AppUpdateManager = AppUpdateManagerFactory.create(context.applicationContext)
 
     @Volatile
     private var installListener: InstallStateUpdatedListener? = null
@@ -42,9 +45,14 @@ class AndroidAppUpdateClient(
     override suspend fun checkForUpdate(): AppUpdateInfo? {
         return try {
             val info = manager.appUpdateInfo.await()
+            currentCoroutineContext().ensureActive()
             if (info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE) return null
-            val isImmediate = !info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) &&
-                info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)
+            val isImmediate =
+                when {
+                    info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) -> false
+                    info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE) -> true
+                    else -> return null
+                }
             AppUpdateInfo(
                 availableVersionCode = info.availableVersionCode(),
                 updatePriority = info.updatePriority(),
@@ -58,26 +66,18 @@ class AndroidAppUpdateClient(
         }
     }
 
-    override suspend fun startFlexibleUpdate(): Boolean {
-        val activity = activityProvider() ?: run {
-            log.w { "startFlexibleUpdate: no foreground Activity available" }
-            return false
-        }
+    override suspend fun startUpdate(update: AppUpdateInfo): Boolean {
         return try {
             val info = manager.appUpdateInfo.await()
+            currentCoroutineContext().ensureActive()
             if (info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE) return false
-            if (!info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)) return false
-            manager.startUpdateFlowForResult(
-                info,
-                activity,
-                AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build(),
-                REQUEST_CODE,
-            )
-            true
+            val type = if (update.isImmediate) AppUpdateType.IMMEDIATE else AppUpdateType.FLEXIBLE
+            if (!info.isUpdateTypeAllowed(type)) return false
+            startUpdateFlow(info, type)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            log.w(e) { "startFlexibleUpdate failed" }
+            log.w(e) { "startUpdate failed" }
             false
         }
     }
@@ -120,21 +120,41 @@ class AndroidAppUpdateClient(
         }
     }
 
-    override suspend fun resumeIfDownloaded(): Boolean {
+    override suspend fun resumeUpdate(): Boolean {
         return try {
             val info = manager.appUpdateInfo.await()
+            currentCoroutineContext().ensureActive()
             if (info.installStatus() == InstallStatus.DOWNLOADED) {
                 manager.completeUpdate().await()
                 true
+            } else if (
+                info.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS &&
+                info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)
+            ) {
+                startUpdateFlow(info, AppUpdateType.IMMEDIATE)
             } else {
                 false
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            log.w(e) { "resumeIfDownloaded failed" }
+            log.w(e) { "resumeUpdate failed" }
             false
         }
+    }
+
+    private fun startUpdateFlow(info: PlayAppUpdateInfo, type: Int): Boolean {
+        val activity = activityProvider()
+        if (activity == null || activity.isFinishing || activity.isDestroyed) {
+            log.w { "startUpdate: no usable foreground Activity available" }
+            return false
+        }
+        return manager.startUpdateFlowForResult(
+            info,
+            activity,
+            AppUpdateOptions.newBuilder(type).build(),
+            REQUEST_CODE,
+        )
     }
 
     private companion object {

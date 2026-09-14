@@ -7,7 +7,7 @@ package me.manga.kira.platform.update
  *  - Android  → delegates to Play Core's `AppUpdateManagerFactory.create(context)` and the
  *               `flexible` update flow (`startUpdateFlowForResult` with `AppUpdateType.FLEXIBLE`,
  *               falling back to `IMMEDIATE` when Play Core forbids flexible for a given release).
- *               Needs a foreground `Activity` for `startFlexibleUpdate()`.
+ *               Needs a foreground `Activity` for [startUpdate] and immediate recovery.
  *  - iOS      → no-op. iOS handles app updates through the App Store outside the app, so the
  *               facade reports "nothing available, nothing started" and lets caller UI fall
  *               through to its hidden state.
@@ -20,11 +20,14 @@ package me.manga.kira.platform.update
  * host's Activity callback wiring, not in this SPI.
  */
 interface AppUpdateClient {
-    /** Returns info about an available update, or `null` if none is available / the API errored. */
+    /** Returns an allowed update type, preferring flexible; null if neither is allowed or on error. */
     suspend fun checkForUpdate(): AppUpdateInfo?
 
-    /** Starts a flexible update flow. Returns `true` iff the flow successfully began. */
-    suspend fun startFlexibleUpdate(): Boolean
+    /**
+     * Starts the type selected by [checkForUpdate], after revalidating fresh platform state.
+     * Returns true only if the SDK started it; a revoked type does not silently change to another.
+     */
+    suspend fun startUpdate(update: AppUpdateInfo): Boolean
 
     /** Completes a downloaded flexible update (restarts the app). Returns `true` on success. */
     suspend fun completeUpdate(): Boolean
@@ -41,12 +44,11 @@ interface AppUpdateClient {
     fun unregisterUpdateListener()
 
     /**
-     * Re-checks for a flexible update that has already finished downloading (e.g. on `onResume`)
-     * and completes it when the install status is `DOWNLOADED`. Returns `true` iff completion was
-     * requested. iOS / Desktop return `false`. Mirrors native `AppUpdateHelper.resumeUpdate` →
-     * `completeUpdate`.
+     * On foreground entry, completes a downloaded flexible update or resumes a pending immediate
+     * flow. Returns true only if completion succeeded or the SDK started recovery. A false result
+     * can mean no pending work or a failed attempt. iOS / Desktop return false.
      */
-    suspend fun resumeIfDownloaded(): Boolean
+    suspend fun resumeUpdate(): Boolean
 }
 
 /**

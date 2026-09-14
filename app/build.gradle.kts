@@ -266,6 +266,7 @@ dependencies {
     testImplementation(libs.androidx.work.testing)
     testImplementation(libs.androidx.concurrent.futures)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockito.core)
     testImplementation(libs.androidx.room.runtime)
     testImplementation(libs.androidx.sqlite.bundled)
     testImplementation(libs.multiplatform.settings.test)
