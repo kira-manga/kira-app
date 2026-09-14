@@ -28,11 +28,14 @@ class AndroidPageMediaInspectorDeviceTest {
                 PageImageFormat.AVIF to AvifTestFixtures.regular(),
             )
         for ((format, bytes) in images) {
-            assertEquals(format, assertIs<PageInspection.Valid>(inspector.inspect(bytes), "$format must decode").metadata.format)
+            assertEquals(
+                format,
+                assertIs<PageInspection.Valid>(inspector.inspect(bytes), "$format must decode").metadata.format,
+            )
         }
         val tall = assertIs<PageInspection.Valid>(inspector.inspect(AvifTestFixtures.tall())).metadata
-        assertEquals(32, tall.width)
-        assertEquals(352, tall.height)
+        assertEquals(TALL_AVIF_WIDTH, tall.width)
+        assertEquals(TALL_AVIF_HEIGHT, tall.height)
     }
 
     @Test
@@ -44,8 +47,8 @@ class AndroidPageMediaInspectorDeviceTest {
                 PageMediaTestImages.png().dropLast(1).toByteArray(),
                 PageMediaTestImages.badPngCrc(),
                 PageMediaTestImages.corruptPngPixels(),
-                encoded(Bitmap.CompressFormat.JPEG).dropLast(8).toByteArray(),
-                AvifTestFixtures.regular().dropLast(32).toByteArray(),
+                encoded(Bitmap.CompressFormat.JPEG).dropLast(JPEG_TRUNCATED_TAIL_BYTES).toByteArray(),
+                AvifTestFixtures.regular().dropLast(AVIF_TRUNCATED_TAIL_BYTES).toByteArray(),
             )
         invalid.forEach { assertFalse(inspector.inspect(it) is PageInspection.Valid) }
     }
@@ -63,7 +66,10 @@ class AndroidPageMediaInspectorDeviceTest {
             assertIs<PageInspection.Rejected>(pixels.inspect(PageMediaTestImages.png())).reason,
         )
         val axes = AndroidPageMediaInspector(PageInspectionPolicy(maxSourceDimension = 8))
-        assertEquals(PageInspectionRejection.SOURCE_AXIS, assertIs<PageInspection.Rejected>(axes.inspect(PageMediaTestImages.png())).reason)
+        assertEquals(
+            PageInspectionRejection.SOURCE_AXIS,
+            assertIs<PageInspection.Rejected>(axes.inspect(PageMediaTestImages.png())).reason,
+        )
     }
 
     @Test
@@ -84,15 +90,25 @@ class AndroidPageMediaInspectorDeviceTest {
 
     @Suppress("DEPRECATION")
     private fun encoded(format: Bitmap.CompressFormat): ByteArray {
-        val bitmap = Bitmap.createBitmap(8, 9, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(ENCODED_WIDTH, ENCODED_HEIGHT, Bitmap.Config.ARGB_8888)
         try {
             bitmap.eraseColor(0xff204060.toInt())
             return ByteArrayOutputStream().use { output ->
-                check(bitmap.compress(format, 90, output))
+                check(bitmap.compress(format, ENCODING_QUALITY, output))
                 output.toByteArray()
             }
         } finally {
             bitmap.recycle()
         }
+    }
+
+    private companion object {
+        const val TALL_AVIF_WIDTH = 32
+        const val TALL_AVIF_HEIGHT = 352
+        const val JPEG_TRUNCATED_TAIL_BYTES = 8
+        const val AVIF_TRUNCATED_TAIL_BYTES = 32
+        const val ENCODED_WIDTH = 8
+        const val ENCODED_HEIGHT = 9
+        const val ENCODING_QUALITY = 90
     }
 }

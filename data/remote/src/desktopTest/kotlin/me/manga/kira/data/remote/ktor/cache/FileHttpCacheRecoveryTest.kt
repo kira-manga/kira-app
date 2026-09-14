@@ -27,9 +27,11 @@ class FileHttpCacheRecoveryTest {
                 fixture.fileSystem.createDirectories(directory)
                 val lengths = listOf(0 to policy.maxBodyBytes + 1, Int.MAX_VALUE to 0, -1 to 0, 0 to Int.MAX_VALUE)
                 lengths.forEachIndexed { index, (metadataSize, bodySize) ->
-                    val path = directory / (index.toString(16).padStart(64, '0') + ".khc")
+                    val recordName =
+                        index.toString(RECORD_ID_RADIX).padStart(RECORD_DIGEST_HEX_LENGTH, '0') + ".khc"
+                    val path = directory / recordName
                     fixture.fileSystem.sink(path).buffer().use { sink ->
-                        sink.writeInt(0x4B484331)
+                        sink.writeInt(CACHE_RECORD_MAGIC)
                         sink.writeInt(metadataSize)
                         sink.writeInt(bodySize)
                         if (index == 0) sink.write(ByteArray(bodySize))
@@ -53,7 +55,7 @@ class FileHttpCacheRecoveryTest {
                 val data = cachedResponse()
                 cache.publicStorage.store(data.url, data)
                 val original = fixture.records().single()
-                val wrong = fixture.root / "public" / ("f".repeat(64) + ".khc")
+                val wrong = fixture.root / "public" / ("f".repeat(RECORD_DIGEST_HEX_LENGTH) + ".khc")
                 fixture.fileSystem.atomicMove(original, wrong)
                 val restarted = cacheOwner(policy, fixture.persistence(policy))
                 assertEquals(0, restarted.snapshot().entries)
@@ -68,7 +70,7 @@ class FileHttpCacheRecoveryTest {
                 val policy = smallCachePolicy()
                 fixture.fileSystem.createDirectories(fixture.root)
                 val staging = fixture.root / ".record.staging"
-                val legacy = fixture.root / "a".repeat(64)
+                val legacy = fixture.root / "a".repeat(RECORD_DIGEST_HEX_LENGTH)
                 val unknown = fixture.root / "unrelated-note.txt"
                 listOf(staging, legacy, unknown).forEach { path ->
                     fixture.fileSystem
@@ -94,8 +96,8 @@ class FileHttpCacheRecoveryTest {
                 val policy = smallCachePolicy()
                 val failing = FailedStagingFileSystem(fixture.fileSystem)
                 val cache = cacheOwner(policy, fixture.persistence(policy, failing))
-                val data = cachedResponse(body = ByteArray(400))
-                repeat(10) { cache.publicStorage.store(data.url, data) }
+                val data = cachedResponse(body = ByteArray(FAILED_WRITE_BODY_BYTES))
+                repeat(FAILED_WRITE_ATTEMPTS) { cache.publicStorage.store(data.url, data) }
                 assertEquals(1, failing.moves)
                 assertEquals(0, fixture.records().size)
                 val staging = fixture.root / ".record.staging"
@@ -136,6 +138,12 @@ class FileHttpCacheRecoveryTest {
             }
         }
 }
+
+private const val RECORD_ID_RADIX = 16
+private const val RECORD_DIGEST_HEX_LENGTH = 64
+private const val CACHE_RECORD_MAGIC = 0x4B484331 // KHC1 fixture, independent of the production encoder.
+private const val FAILED_WRITE_BODY_BYTES = 400
+private const val FAILED_WRITE_ATTEMPTS = 10
 
 private class PrefixOnlyFileSystem(
     delegate: FileSystem,

@@ -33,7 +33,11 @@ internal class CacheDiskFixture(
     fun records(): List<Path> =
         CacheNamespace.entries.flatMap { namespace ->
             val directory = root / namespace.directory
-            if (fileSystem.exists(directory)) fileSystem.list(directory).filter { it.name.endsWith(".khc") } else emptyList()
+            if (fileSystem.exists(directory)) {
+                fileSystem.list(directory).filter { it.name.endsWith(".khc") }
+            } else {
+                emptyList()
+            }
         }
 
     suspend fun assertMatches(

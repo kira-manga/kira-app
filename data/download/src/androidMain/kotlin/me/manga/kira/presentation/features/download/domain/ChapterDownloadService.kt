@@ -19,6 +19,7 @@ import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
+import me.manga.kira.presentation.features.download.domain.clean.PageDownloadRequest
 import me.manga.kira.presentation.features.download.domain.clean.downloadValidatedPage
 import me.manga.kira.presentation.features.download.domain.clean.requireUncachedPageClient
 import java.io.File
@@ -68,11 +69,8 @@ class ChapterDownloadService(
             val directory = File(context.filesDir, "manga/$mangaId/chapter_$chapterId").absolutePath.toPath()
             downloadValidatedPage(
                 httpClient,
-                imageUrl,
-                pageHeaders,
+                PageDownloadRequest(imageUrl, pageHeaders, directory, imageIndex),
                 FileSystem.SYSTEM,
-                directory,
-                imageIndex,
                 mediaInspector,
                 pageBytePolicy,
             ).toString()

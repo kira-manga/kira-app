@@ -21,6 +21,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
+import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
@@ -749,7 +750,9 @@ class BackgroundUrlSessionDownloadRepository(
                             BgDownloadLog.log("prefetch.promotedToResolve", "chapterId" to entity.chapterId)
                             val manifest =
                                 manifestStore.read(entity.mangaId, entity.chapterId)
-                                    ?: buildManifest(entity, resolved).also { if (!persistManifestLocked(it)) return@withLock }
+                                    ?: buildManifest(entity, resolved).also {
+                                        if (!persistManifestLocked(it)) return@withLock
+                                    }
                             reconcileChapterLocked(current, manifest)
                         }
                         else ->
@@ -812,7 +815,11 @@ class BackgroundUrlSessionDownloadRepository(
                 val rejected = manifest.pages.any { it.index == plan.failedPageIndex && it.policyRejected }
                 failChapterLocked(
                     entity,
-                    if (rejected) "__page_policy_rejected__:ENCODED_OR_NATIVE_POLICY" else "Page ${plan.failedPageIndex} failed after $MAX_ATTEMPTS attempts",
+                    if (rejected) {
+                        "__page_policy_rejected__:ENCODED_OR_NATIVE_POLICY"
+                    } else {
+                        "Page ${plan.failedPageIndex} failed after $MAX_ATTEMPTS attempts"
+                    },
                 )
             }
             plan.isComplete ->
@@ -874,16 +881,15 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         message: String?,
     ) {
-        val entity = dao.getDownloadByChapter(chapterId) ?: return
-        if (entity.state != DownloadingState.RUNNING) {
-            BgDownloadLog.log("page.failed.ignored", "chapterId" to chapterId, "state" to entity.state)
-            return
-        }
-        val manifest = cachedManifest(mangaId, chapterId) ?: return
-        if (entity.mangaId != mangaId || manifest.pages.none { it.index == pageIndex }) return
+        val entity = runningFailedPageEntity(mangaId, chapterId, pageIndex) ?: return
         val attempts =
             try {
-                manifestStore.incrementAttempt(mangaId, chapterId, pageIndex, policyRejected = isPagePolicyRejection(message))
+                manifestStore.incrementAttempt(
+                    mangaId,
+                    chapterId,
+                    pageIndex,
+                    policyRejected = isPagePolicyRejection(message),
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -891,8 +897,8 @@ class BackgroundUrlSessionDownloadRepository(
                 // stops the chapter; the existing manifest/originals remain for explicit user recovery.
                 failChapterLocked(entity, message ?: "Download retry state could not be saved")
                 fillWindowLocked()
-                return
-            }
+                null
+            } ?: return
         manifestCache.remove(chapterId)
         BgDownloadLog.log(
             "retry.attemptIncremented",
@@ -924,6 +930,23 @@ class BackgroundUrlSessionDownloadRepository(
             }
             // Bounded exponential backoff retry of just this page (outside the lock, after a delay).
             is TransferRetryRules.Decision.Retry -> scheduleRetry(mangaId, chapterId, pageIndex, attempts, decision.delayMs)
+        }
+    }
+
+    private suspend fun runningFailedPageEntity(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+    ): ChapterDownloadEntity? {
+        val entity = dao.getDownloadByChapter(chapterId) ?: return null
+        return if (entity.state != DownloadingState.RUNNING) {
+            BgDownloadLog.log("page.failed.ignored", "chapterId" to chapterId, "state" to entity.state)
+            null
+        } else {
+            val manifest = cachedManifest(mangaId, chapterId)
+            entity.takeIf {
+                manifest != null && it.mangaId == mangaId && manifest.pages.any { page -> page.index == pageIndex }
+            }
         }
     }
 
@@ -981,7 +1004,6 @@ class BackgroundUrlSessionDownloadRepository(
     }
 
     private suspend fun markDownloadedAndMaybeFinalizeLocked(chapterId: Long) {
-        val entity = dao.getDownloadByChapter(chapterId) ?: return
         // First clause (2026-07 audit, same family as ChapterFinalizer's abandon gate): a cancel
         // that landed before this transfer-complete callback owns the row — flipping it to
         // DOWNLOADED would resurrect the cancelled chapter. Short-circuits BEFORE the once-guard so
@@ -991,35 +1013,54 @@ class BackgroundUrlSessionDownloadRepository(
         // already-readable (CBZ-pending) chapter previously re-walked the dir + rewrote Room every
         // tick (log spam + redundant I/O). A deferred chapter's CBZ is retried by the pump's
         // finalize sweep, not by re-running this.
-        if (entity.state == DownloadingState.FAILED || chapterId in readableMarked) return
+        val entity =
+            dao
+                .getDownloadByChapter(chapterId)
+                ?.takeUnless { it.state == DownloadingState.FAILED || chapterId in readableMarked }
+                ?: return
         // Check a full CURRENT manifest roster before any readable/state write. Never let a
         // filtered subset (or names alone) become a smaller but apparently complete chapter.
         val loosePaths = onDiskPagePaths(entity.mangaId, chapterId)
         if (loosePaths.isEmpty()) {
             failChapterLocked(entity, "Incomplete or invalid downloaded page roster")
-            return
+        } else {
+            val cbzPending =
+                runCatchingCancellable {
+                    chapterFinalizer.markReadable(entity, loosePaths)
+                }.getOrElse { failure ->
+                    failChapterLocked(entity, failure.message ?: "Downloaded pages could not be validated")
+                    return
+                }
+            completeReadableTransitionLocked(chapterId, entity, loosePaths, cbzPending)
         }
-        val cbzPending =
-            try {
-                chapterFinalizer.markReadable(entity, loosePaths)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Throwable) {
-                failChapterLocked(entity, failure.message ?: "Downloaded pages could not be validated")
-                return
-            }
+    }
+
+    private suspend fun completeReadableTransitionLocked(
+        chapterId: Long,
+        entity: ChapterDownloadEntity,
+        loosePaths: List<String>,
+        cbzPending: Boolean,
+    ) {
+        // Validation/bookkeeping can suspend: cancellation or deletion may now own the row.
         val current = dao.getDownloadByChapter(chapterId) ?: return
         if (current.state != DownloadingState.RUNNING && current.state != DownloadingState.DOWNLOADED) return
         readableMarked.add(chapterId)
         val wasRunning = entity.state == DownloadingState.RUNNING
         dao.updateStateChId(chapterId, DownloadingState.DOWNLOADED)
-        if (wasRunning) BgDownloadLog.log("state.transition", "chapterId" to chapterId, "from" to "RUNNING", "to" to "DOWNLOADED")
+        if (wasRunning) {
+            BgDownloadLog.log("state.transition", "chapterId" to chapterId, "from" to "RUNNING", "to" to "DOWNLOADED")
+        }
 
         // All pages are on disk. Make the chapter READABLE from its loose pages RIGHT NOW (cheap DB writes,
         // no CPU window needed — sets isDownloaded + localImagePaths so the reader opens it offline) and
         // RELEASE the queue slot. The queue advances on "pages transferred", never on "CBZ built": a
         // CPU-gated CBZ must never hold the queue hostage when iOS grants no background window.
-        BgDownloadLog.log("downloaded.readable", "chapterId" to chapterId, "pages" to loosePaths.size, "cbzPending" to cbzPending)
+        BgDownloadLog.log(
+            "downloaded.readable",
+            "chapterId" to chapterId,
+            "pages" to loosePaths.size,
+            "cbzPending" to cbzPending,
+        )
 
         // SILENT "finalizing"/"paused" update (readable, still being packaged) — the alerting "complete"
         // fires at finalize.success (see launchFinalize), so "complete" still means the durable CBZ is ready.
@@ -1061,7 +1102,12 @@ class BackgroundUrlSessionDownloadRepository(
             // If the deferral is only the foreground settle window, arm the one-shot settle retry so a
             // chapter finishing seconds after a reopen doesn't stay "Finalizing…" for the whole session.
             else -> {
-                BgDownloadLog.log("finalize.deferred", "chapterId" to chapterId, "reason" to "noExecutionWindow", "readable" to true)
+                BgDownloadLog.log(
+                    "finalize.deferred",
+                    "chapterId" to chapterId,
+                    "reason" to "noExecutionWindow",
+                    "readable" to true,
+                )
                 scheduleSettleRetryLocked()
             }
         }
@@ -1228,7 +1274,12 @@ class BackgroundUrlSessionDownloadRepository(
                     try {
                         onDiskPagePaths(entity.mangaId, chapterId).isNotEmpty() ||
                             existingCbzPath(entity.mangaId, chapterId)?.let { path ->
-                                inspectPageArchive(appFileSystem.fileSystem(), path.toPath(), mediaInspector, pageBytePolicy) > 0
+                                inspectPageArchive(
+                                    appFileSystem.fileSystem(),
+                                    path.toPath(),
+                                    mediaInspector,
+                                    pageBytePolicy,
+                                ) > 0
                             } == true
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -1394,12 +1445,6 @@ class BackgroundUrlSessionDownloadRepository(
         chapterId: Long,
         index: Int,
     ): Boolean = index in pagesOnDiskSet(mangaId, chapterId)
-
-    /** True if the finalized `chapter_<id>.cbz` archive exists (matches [IosCbzWriter]'s naming). */
-    private fun cbzExists(
-        mangaId: Long,
-        chapterId: Long,
-    ): Boolean = appFileSystem.fileSystem().exists(appFileSystem.chapterDir(mangaId, chapterId) / "chapter_$chapterId.cbz")
 
     /** The finalized `.cbz` path as a string if it exists, else null (B2-durable adopt-recovery). */
     private fun existingCbzPath(

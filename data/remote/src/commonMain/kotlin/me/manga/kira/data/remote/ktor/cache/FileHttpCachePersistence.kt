@@ -94,10 +94,13 @@ internal class FileHttpCachePersistence(
     }
 
     private fun readRecord(path: Path): DiskRecord? {
-        val information = fileSystem.metadataOrNull(path) ?: return null
-        if (!information.isRegularFile || information.symlinkTarget != null) return null
-        val size = information.size ?: return null
-        if (size < CACHE_RECORD_PREFIX_BYTES || size > policy.maxTotalBytes) return null
+        val size =
+            fileSystem
+                .metadataOrNull(path)
+                ?.takeIf { it.isRegularFile && it.symlinkTarget == null }
+                ?.size
+                ?.takeIf { it in CACHE_RECORD_PREFIX_BYTES..policy.maxTotalBytes }
+                ?: return null
         return try {
             fileSystem.source(path).buffer().use { source -> readRecord(source, size) }
         } catch (_: EOFException) {
@@ -112,14 +115,18 @@ internal class FileHttpCachePersistence(
         if (source.readInt() != RECORD_MAGIC) return null
         val metadataSize = source.readInt()
         val bodySize = source.readInt()
-        if (metadataSize !in 0..policy.maxMetadataBytes || bodySize !in 0..policy.maxBodyBytes) return null
-        if (recordBytes(metadataSize, bodySize) != size) return null
-        // All declared sizes and the physical file length were checked before either allocation.
-        val metadata = source.readByteArray(metadataSize.toLong())
-        val body = source.readByteArray(bodySize.toLong())
-        if (!source.exhausted()) return null
-        val data = codec.decode(metadata, body) ?: return null
-        return DiskRecord(data, metadata)
+        return if (
+            metadataSize !in 0..policy.maxMetadataBytes ||
+            bodySize !in 0..policy.maxBodyBytes ||
+            recordBytes(metadataSize, bodySize) != size
+        ) {
+            null
+        } else {
+            // All declared sizes and the physical file length were checked before either allocation.
+            val metadata = source.readByteArray(metadataSize.toLong())
+            val body = source.readByteArray(bodySize.toLong())
+            if (source.exhausted()) codec.decode(metadata, body)?.let { DiskRecord(it, metadata) } else null
+        }
     }
 
     private fun removeLegacyAndStaging() {
@@ -130,16 +137,8 @@ internal class FileHttpCachePersistence(
     }
 
     private fun ensureLayout() {
-        ensureDirectory(root)
-        CacheNamespace.entries.forEach { ensureDirectory(directory(it)) }
-    }
-
-    private fun ensureDirectory(path: Path) {
-        val information = fileSystem.metadataOrNull(path)
-        if (information != null && (!information.isDirectory || information.symlinkTarget != null)) {
-            throw IOException("Unsafe HTTP cache directory")
-        }
-        fileSystem.createDirectories(path)
+        fileSystem.ensureDirectory(root)
+        CacheNamespace.entries.forEach { fileSystem.ensureDirectory(directory(it)) }
     }
 
     private fun directory(namespace: CacheNamespace): Path = root / namespace.directory
@@ -163,6 +162,14 @@ private data class DiskRecord(
     val data: CachedResponseData,
     val metadata: ByteArray,
 )
+
+private fun FileSystem.ensureDirectory(path: Path) {
+    val information = metadataOrNull(path)
+    if (information != null && (!information.isDirectory || information.symlinkTarget != null)) {
+        throw IOException("Unsafe HTTP cache directory")
+    }
+    createDirectories(path)
+}
 
 private fun recordBytes(
     metadataSize: Int,

@@ -34,8 +34,14 @@ class PageMediaPolicyTest {
     fun axesAndPixelProductAreIndependentAndLongAspectRatioIsNotARefusal() {
         val policy = PageInspectionPolicy(maxSourcePixels = 1024, maxSourceDimension = 1024)
         assertNull(policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 1, 1024)))
-        assertEquals(PageInspectionRejection.SOURCE_PIXELS, policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 33, 33))?.reason)
-        assertEquals(PageInspectionRejection.SOURCE_AXIS, policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 1025, 1))?.reason)
+        assertEquals(
+            PageInspectionRejection.SOURCE_PIXELS,
+            policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 33, 33))?.reason,
+        )
+        assertEquals(
+            PageInspectionRejection.SOURCE_AXIS,
+            policy.rejectionFor(PageImageMetadata(PageImageFormat.PNG, 1025, 1))?.reason,
+        )
         assertEquals(
             Int.MAX_VALUE.toLong() * Int.MAX_VALUE,
             PageImageMetadata(PageImageFormat.PNG, Int.MAX_VALUE, Int.MAX_VALUE).pixelCount,
@@ -83,7 +89,9 @@ class PageMediaPolicyTest {
                 error("must not decode")
             }
         assertEquals(PageInspectionRejection.ENCODED_BYTES, assertIs<PageInspection.Rejected>(oversized).reason)
-        assertFailsWith<CancellationException> { inspect(PageMediaTestImages.png()) { throw CancellationException("cancel") } }
+        assertFailsWith<CancellationException> {
+            inspect(PageMediaTestImages.png()) { throw CancellationException("cancel") }
+        }
     }
 
     @Test

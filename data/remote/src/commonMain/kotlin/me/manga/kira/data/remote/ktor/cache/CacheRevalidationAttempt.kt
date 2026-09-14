@@ -41,7 +41,8 @@ internal class CacheRevalidationAttempt(
         etag: String?,
         lastModified: String?,
     ) {
-        if (!eligible || overflow || responseReceived || candidateUrl != url || (etag == null && lastModified == null)) return
+        if (!eligible || overflow || responseReceived) return
+        if (candidateUrl != url || (etag == null && lastModified == null)) return
         candidates += CacheValidators(etag?.encodeUtf8()?.sha256(), lastModified?.encodeUtf8()?.sha256())
         if (candidates.size > MAX_VALIDATOR_CANDIDATES) {
             candidates.clear()
@@ -55,14 +56,18 @@ internal class CacheRevalidationAttempt(
         failedResponse = response
         if (!eligible || response.call.request.url != url || response.call.request.method != HttpMethod.Get) return
         val headers = response.call.request.headers
-        if (callerOnlyConditions.any(headers::contains)) return
-        generatedValidators = candidates.firstOrNull { it.matches(headers::getAll) }
+        if (callerOnlyConditions.none(headers::contains)) {
+            generatedValidators = candidates.firstOrNull { it.matches(headers::getAll) }
+        }
     }
 
     fun retryValidators(request: HttpRequestBuilder): CacheValidators? {
         if (!eligible || Url(request.url) != url || !request.isEmptyGet()) return null
-        if (callerOnlyConditions.any(request.headers::contains)) return null
-        return generatedValidators?.takeIf { it.matches(request.headers::getAll) }
+        return if (callerOnlyConditions.any(request.headers::contains)) {
+            null
+        } else {
+            generatedValidators?.takeIf { it.matches(request.headers::getAll) }
+        }
     }
 
     @OptIn(InternalAPI::class)

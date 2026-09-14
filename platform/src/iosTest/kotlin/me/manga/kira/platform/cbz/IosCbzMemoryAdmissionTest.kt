@@ -32,7 +32,10 @@ class IosCbzMemoryAdmissionTest {
             var bands = 0
             val result =
                 IosLibWebpEncoder.encodeValidatedPage(source, metadata, 75, 1, exactBudget, admitted) {
-                    assertEquals(PageImageMetadata(PageImageFormat.WEBP, 8, 1), IosPageMediaInspector().inspect(it).requireValid())
+                    assertEquals(
+                        PageImageMetadata(PageImageFormat.WEBP, 8, 1),
+                        IosPageMediaInspector().inspect(it).requireValid(),
+                    )
                     bands++
                 }
             assertEquals(CbzPageEncoding.Encoded(9), result)
@@ -65,13 +68,27 @@ class IosCbzMemoryAdmissionTest {
                 val inspector = IosPageMediaInspector()
                 val exactNative = IosCbzRecordingCodec()
                 assertIs<CbzPageEncoding.Encoded>(
-                    IosLibWebpEncoder.encodeValidatedPage(exact, inspector.inspect(exact).requireValid(), 75, 1, budget, exactNative) { },
+                    IosLibWebpEncoder.encodeValidatedPage(
+                        exact,
+                        inspector.inspect(exact).requireValid(),
+                        75,
+                        1,
+                        budget,
+                        exactNative,
+                    ) { },
                 )
                 assertEquals(1, exactNative.decodes)
                 exactNative.assertReleased()
                 val denied = IosCbzRecordingCodec()
                 val result =
-                    IosLibWebpEncoder.encodeValidatedPage(larger, inspector.inspect(larger).requireValid(), 75, 1, budget, denied) {
+                    IosLibWebpEncoder.encodeValidatedPage(
+                        larger,
+                        inspector.inspect(larger).requireValid(),
+                        75,
+                        1,
+                        budget,
+                        denied,
+                    ) {
                         error("larger source must be preserved before transcode")
                     }
                 assertEquals(CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET), result)
@@ -125,7 +142,8 @@ class IosCbzMemoryAdmissionTest {
             val paths = fixture.pages(count = 1, bytes = IOS_CBZ_TOO_WIDE_PNG)
             val native = IosCbzRecordingCodec()
 
-            IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native)).createCbz(paths, fixture.mangaId, 1L)
+            IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native))
+                .createCbz(paths, fixture.mangaId, 1L)
 
             val (name, bytes) = fixture.archiveEntries().single()
             assertEquals("page_0000.png", name)
@@ -169,7 +187,10 @@ class IosCbzMemoryAdmissionTest {
                     writer.createCbzWithSplitting(paths, fixture.mangaId, 1L, maxMemoryBytes = 1)
                 }
 
-            assertEquals(PageInspectionRejection.SOURCE_PIXELS, assertIs<PageInspection.Rejected>(failure.inspection).reason)
+            assertEquals(
+                PageInspectionRejection.SOURCE_PIXELS,
+                assertIs<PageInspection.Rejected>(failure.inspection).reason,
+            )
             native.assertNoTranscode()
             fixture.assertRetained(originals, previous)
         }

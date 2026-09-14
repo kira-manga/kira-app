@@ -21,13 +21,13 @@ class FileHttpCachePersistenceTest {
                 val policy = smallCachePolicy().copy(maxTotalBytes = 2_048)
                 val observer = StagingBudgetObserver(fixture.fileSystem, fixture, policy)
                 val cache = cacheOwner(policy, fixture.persistence(policy, observer))
-                repeat(50) { index ->
-                    val data = cachedResponse("https://metadata.test/$index", ByteArray(400))
+                repeat(STAGING_RECORD_COUNT) { index ->
+                    val data = cachedResponse("https://metadata.test/$index", ByteArray(STAGING_BODY_BYTES))
                     val storage = if (index % 2 == 0) cache.publicStorage else cache.privateStorage
                     storage.store(data.url, data)
                     fixture.assertMatches(cache, policy)
                 }
-                assertEquals(50, observer.moves)
+                assertEquals(STAGING_RECORD_COUNT, observer.moves)
             }
         }
 
@@ -44,8 +44,14 @@ class FileHttpCachePersistenceTest {
                 assertEquals(2, fixture.records().size)
                 assertEquals(setOf("public", "private"), fixture.records().map { it.parent?.name }.toSet())
                 val restarted = cacheOwner(policy, fixture.persistence(policy))
-                assertContentEquals(first.body, assertNotNull(restarted.publicStorage.find(first.url, first.varyKeys)).body)
-                assertContentEquals(second.body, assertNotNull(restarted.privateStorage.find(second.url, second.varyKeys)).body)
+                assertContentEquals(
+                    first.body,
+                    assertNotNull(restarted.publicStorage.find(first.url, first.varyKeys)).body,
+                )
+                assertContentEquals(
+                    second.body,
+                    assertNotNull(restarted.privateStorage.find(second.url, second.varyKeys)).body,
+                )
                 restarted.publicStorage.removeAll(first.url)
                 assertEquals(
                     "private",
@@ -64,14 +70,25 @@ class FileHttpCachePersistenceTest {
     fun restartReappliesSmallerAggregateEntryAndVariantLimits() =
         runTest {
             withCacheDirectory { fixture ->
-                val oldPolicy = smallCachePolicy().copy(maxTotalBytes = 20_000, maxEntries = 20, maxVariantsPerUrl = 10)
+                val oldPolicy =
+                    smallCachePolicy().copy(
+                        maxTotalBytes = 20_000,
+                        maxEntries = RESTART_RECORD_COUNT,
+                        maxVariantsPerUrl = 10,
+                    )
                 val cache = cacheOwner(oldPolicy, fixture.persistence(oldPolicy))
-                repeat(20) { index ->
-                    val data = cachedResponse("https://metadata.test/${index % 2}", ByteArray(300), mapOf("V" to "$index"))
-                    val storage = if (index % 3 == 0) cache.privateStorage else cache.publicStorage
+                repeat(RESTART_RECORD_COUNT) { index ->
+                    val data =
+                        cachedResponse(
+                            "https://metadata.test/${index % 2}",
+                            ByteArray(RESTART_BODY_BYTES),
+                            mapOf("V" to "$index"),
+                        )
+                    val storage =
+                        if (index % RESTART_PRIVATE_CADENCE == 0) cache.privateStorage else cache.publicStorage
                     storage.store(data.url, data)
                 }
-                assertEquals(20, fixture.records().size)
+                assertEquals(RESTART_RECORD_COUNT, fixture.records().size)
                 val policy = smallCachePolicy().copy(maxTotalBytes = 2_048, maxEntries = 3, maxVariantsPerUrl = 2)
                 val restarted = cacheOwner(policy, fixture.persistence(policy))
                 fixture.assertMatches(restarted, policy)
@@ -111,12 +128,23 @@ class FileHttpCachePersistenceTest {
                 val sentinel = File(fixture.home, "chapter-page.jpg").apply { writeText("durable download") }
                 val policy = smallCachePolicy()
                 val observer = StagingBudgetObserver(fixture.fileSystem, fixture, policy)
-                val cache = ManagedHttpCache(policy, fixture.persistence(policy, observer), { CACHE_TEST_NOW }, Dispatchers.Default)
+                val cache =
+                    ManagedHttpCache(
+                        policy,
+                        fixture.persistence(policy, observer),
+                        { CACHE_TEST_NOW },
+                        Dispatchers.Default,
+                    )
                 coroutineScope {
-                    repeat(80) { index ->
+                    repeat(CONCURRENT_STORE_COUNT) { index ->
                         launch(Dispatchers.Default) {
-                            if (index % 7 == 0) cache.clear()
-                            val data = cachedResponse("https://metadata.test/${index % 4}", ByteArray(200), mapOf("V" to "$index"))
+                            if (index % CONCURRENT_CLEAR_CADENCE == 0) cache.clear()
+                            val data =
+                                cachedResponse(
+                                    "https://metadata.test/${index % CONCURRENT_URL_COUNT}",
+                                    ByteArray(CONCURRENT_BODY_BYTES),
+                                    mapOf("V" to "$index"),
+                                )
                             val storage = if (index % 2 == 0) cache.publicStorage else cache.privateStorage
                             storage.store(data.url, data)
                             cache.assertWithin(policy)
@@ -131,3 +159,13 @@ class FileHttpCachePersistenceTest {
             }
         }
 }
+
+private const val STAGING_RECORD_COUNT = 50
+private const val STAGING_BODY_BYTES = 400
+private const val RESTART_RECORD_COUNT = 20
+private const val RESTART_BODY_BYTES = 300
+private const val RESTART_PRIVATE_CADENCE = 3
+private const val CONCURRENT_STORE_COUNT = 80
+private const val CONCURRENT_CLEAR_CADENCE = 7
+private const val CONCURRENT_URL_COUNT = 4
+private const val CONCURRENT_BODY_BYTES = 200

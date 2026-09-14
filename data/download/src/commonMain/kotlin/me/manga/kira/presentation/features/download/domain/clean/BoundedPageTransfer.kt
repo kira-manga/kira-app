@@ -24,7 +24,7 @@ internal fun requireUncachedPageClient(client: HttpClient) {
 internal fun pageTemporaryPath(
     directory: Path,
     pageIndex: Int,
-): Path = directory / ".image_$pageIndex-${Random.nextLong().toULong().toString(16)}.partial"
+): Path = directory / ".image_$pageIndex-${Random.nextLong().toULong().toString(TEMPORARY_NAME_RADIX)}.partial"
 
 /** Owns a newly created temporary file; never touches the currently published image. */
 internal suspend fun transferPageBody(
@@ -35,38 +35,34 @@ internal suspend fun transferPageBody(
     policy: PageBytePolicy,
 ): Long {
     var created = false
-    var complete = false
-    var primaryFailure: Throwable? = null
-    try {
-        policy.checkDeclaredLength(declaredLength)
-        val output = system.sink(temporary, mustCreate = true)
-        created = true
-        val count =
-            output.buffer().use { sink ->
-                readBoundedPage(channel, policy) { bytes, size -> sink.write(bytes, 0, size) }
-            }
-        policy.checkFileSize(system.metadata(temporary).size)
-        currentCoroutineContext().ensureActive()
-        complete = true
-        return count
-    } catch (failure: Throwable) {
-        primaryFailure = failure
-        throw failure
-    } finally {
-        val closeFailure = runCatching { channel.cancel() }.exceptionOrNull()
-        val deleteFailure =
-            if (created && (!complete || closeFailure != null)) {
-                runCatching { system.delete(temporary, mustExist = false) }.exceptionOrNull()
-            } else {
-                null
-            }
-        val failure = primaryFailure ?: closeFailure ?: deleteFailure
-        if (failure != null) {
-            if (closeFailure != null && closeFailure !== failure) failure.addSuppressed(closeFailure)
-            if (deleteFailure != null && deleteFailure !== failure) failure.addSuppressed(deleteFailure)
-            if (primaryFailure == null) throw failure
+    // Keep every failure, including cancellation, until channel and owned-file cleanup have run.
+    val transfer =
+        runCatching {
+            policy.checkDeclaredLength(declaredLength)
+            val output = system.sink(temporary, mustCreate = true)
+            created = true
+            val count =
+                output.buffer().use { sink ->
+                    readBoundedPage(channel, policy) { bytes, size -> sink.write(bytes, 0, size) }
+                }
+            policy.checkFileSize(system.metadata(temporary).size)
+            currentCoroutineContext().ensureActive()
+            count
         }
+    val closeFailure = runCatching { channel.cancel() }.exceptionOrNull()
+    val deleteFailure =
+        if (created && (transfer.isFailure || closeFailure != null)) {
+            runCatching { system.delete(temporary, mustExist = false) }.exceptionOrNull()
+        } else {
+            null
+        }
+    val failure = transfer.exceptionOrNull() ?: closeFailure ?: deleteFailure
+    if (failure != null) {
+        if (closeFailure != null && closeFailure !== failure) failure.addSuppressed(closeFailure)
+        if (deleteFailure != null && deleteFailure !== failure) failure.addSuppressed(deleteFailure)
+        throw failure
     }
+    return transfer.getOrThrow()
 }
 
 private suspend fun readBoundedPage(
@@ -92,3 +88,4 @@ private suspend fun readBoundedPage(
 }
 
 private const val PAGE_TRANSFER_CHUNK_BYTES = 8192
+private const val TEMPORARY_NAME_RADIX = 16

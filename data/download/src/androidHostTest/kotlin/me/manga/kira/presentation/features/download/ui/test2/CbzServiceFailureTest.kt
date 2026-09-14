@@ -13,6 +13,7 @@ import me.manga.kira.core.cbz.CbzEncodeGate
 import me.manga.kira.core.cbz.OptimizedCbzManager
 import me.manga.kira.core.cbz.cbzTier
 import me.manga.kira.presentation.features.download.data.DownloadState
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -65,7 +66,7 @@ class CbzServiceFailureTest {
                     ?.localImagePaths
                     .orEmpty(),
             )
-            assertFalse(rows.download().state == me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS)
+            assertFalse(rows.download().state == DownloadingState.SUCCESS)
             assertNoArchiveOrTemporary()
         }
 

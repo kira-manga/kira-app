@@ -23,8 +23,14 @@ class CbzTranscodeBudgetTest {
     @Test
     fun encodedSnapshotAndNativeCopiesAreReservedBeforeTheFirstBand() {
         val budgetWithoutEncodedCopies = 4_326_912L
-        assertEquals(CbzTranscodeAdmission.PreserveBudget, CbzTranscodeBudget.admit(8, 9, 128, 1, budgetWithoutEncodedCopies))
-        assertEquals(CbzTranscodeAdmission.PreserveBudget, CbzTranscodeBudget.admit(8, 9, Long.MAX_VALUE, 1, Long.MAX_VALUE))
+        assertEquals(
+            CbzTranscodeAdmission.PreserveBudget,
+            CbzTranscodeBudget.admit(8, 9, 128, 1, budgetWithoutEncodedCopies),
+        )
+        assertEquals(
+            CbzTranscodeAdmission.PreserveBudget,
+            CbzTranscodeBudget.admit(8, 9, Long.MAX_VALUE, 1, Long.MAX_VALUE),
+        )
         assertEquals(CbzTranscodeAdmission.PreserveBudget, CbzTranscodeBudget.admit(8, 9, 128, 1, 1))
     }
 
@@ -38,7 +44,10 @@ class CbzTranscodeBudgetTest {
     @Test
     fun webpWidthLimitHasItsOwnPreservationReason() {
         assertEquals(CbzTranscodeAdmission.PreserveWebpDimensions, CbzTranscodeBudget.admit(16_384, 1, 128, 1))
-        assertEquals(CbzTranscodeAdmission.PreserveWebpDimensions, CbzTranscodeBudget.admit(Int.MAX_VALUE, Int.MAX_VALUE, 128, 1))
+        assertEquals(
+            CbzTranscodeAdmission.PreserveWebpDimensions,
+            CbzTranscodeBudget.admit(Int.MAX_VALUE, Int.MAX_VALUE, 128, 1),
+        )
     }
 
     @Test

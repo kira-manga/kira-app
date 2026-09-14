@@ -69,7 +69,13 @@ internal class IosCbzFinalizationFixture {
                 ),
             )
         val chapter =
-            SavedChapterEntity(mangaId = mangaId, name = "Chapter", number = "1", url = "https://example.test/chapter/1", date = null)
+            SavedChapterEntity(
+                mangaId = mangaId,
+                name = "Chapter",
+                number = "1",
+                url = "https://example.test/chapter/1",
+                date = null,
+            )
         val chapterId = db.backupDao().insertChapterRow(chapter)
         val directory = appFileSystem.chapterDir(mangaId, chapterId)
         system.createDirectories(directory)

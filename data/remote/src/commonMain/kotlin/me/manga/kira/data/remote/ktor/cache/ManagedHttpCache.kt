@@ -131,17 +131,6 @@ internal class ManagedHttpCache(
         return entry.data
     }
 
-    private fun sweepExpired() {
-        val now = nowMillis()
-        entries.filterValues { it.data.expires.timestamp <= now }.keys.forEach(::removeEntry)
-    }
-
-    private fun loadIfNeeded() {
-        if (loaded) return
-        persistence?.load(::restore)
-        loaded = true
-    }
-
     private fun discardLiveEntries() {
         entries.clear()
         totalBytes = 0
@@ -155,8 +144,12 @@ internal class ManagedHttpCache(
             mutex.withLock {
                 if (disabled) return@withLock miss
                 try {
-                    loadIfNeeded()
-                    sweepExpired()
+                    if (!loaded) {
+                        persistence?.load(::restore)
+                        loaded = true
+                    }
+                    val now = nowMillis()
+                    entries.filterValues { it.data.expires.timestamp <= now }.keys.forEach(::removeEntry)
                     block()
                 } catch (_: IOException) {
                     // The cache is optional. Stop all further I/O/growth until an explicit successful clear.
@@ -175,19 +168,21 @@ internal class ManagedHttpCache(
             url: Url,
             data: CachedResponseData,
         ) {
-            if (attempt()?.bypassStorage != true) this@ManagedHttpCache.store(namespace, url, data)
+            if (this@ManagedHttpCache.attempt()?.bypassStorage != true) {
+                this@ManagedHttpCache.store(namespace, url, data)
+            }
         }
 
         override suspend fun find(
             url: Url,
             varyKeys: Map<String, String>,
         ): CachedResponseData? {
-            if (attempt()?.bypassStorage == true) return null
+            if (this@ManagedHttpCache.attempt()?.bypassStorage == true) return null
             return operation(null) { touch(CacheKey(namespace, url, varyKeys)) }
         }
 
         override suspend fun findAll(url: Url): Set<CachedResponseData> {
-            val attempt = attempt()
+            val attempt = this@ManagedHttpCache.attempt()
             if (attempt?.bypassStorage == true) return emptySet()
             val found =
                 operation(emptySet()) {
@@ -204,19 +199,21 @@ internal class ManagedHttpCache(
             url: Url,
             varyKeys: Map<String, String>,
         ) {
-            if (attempt()?.bypassStorage == true) return
+            if (this@ManagedHttpCache.attempt()?.bypassStorage == true) return
             operation(Unit) { removeEntry(CacheKey(namespace, url, varyKeys)) }
         }
 
         override suspend fun removeAll(url: Url) {
-            if (attempt()?.bypassStorage == true) return
-            operation(Unit) { entries.keys.filter { it.namespace == namespace && it.url == url }.forEach(::removeEntry) }
+            if (this@ManagedHttpCache.attempt()?.bypassStorage == true) return
+            operation(Unit) {
+                entries.keys.filter { it.namespace == namespace && it.url == url }.forEach(::removeEntry)
+            }
         }
     }
-
-    private suspend fun attempt(): CacheRevalidationAttempt? =
-        currentCoroutineContext()[CacheRevalidationAttempt]?.takeIf { it.owner === this }
 }
+
+private suspend fun ManagedHttpCache.attempt(): CacheRevalidationAttempt? =
+    currentCoroutineContext()[CacheRevalidationAttempt]?.takeIf { it.owner === this }
 
 private data class CacheKey(
     val namespace: CacheNamespace,

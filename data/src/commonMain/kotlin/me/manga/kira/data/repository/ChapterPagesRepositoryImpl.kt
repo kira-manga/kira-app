@@ -114,9 +114,12 @@ class ChapterPagesRepositoryImpl(
         manga: Manga,
         chapter: Chapter,
     ): List<Page>? {
-        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return null
-        val entity = chapterDao.getChapterByIdSuspend(chapterId) ?: return null
-        if (!entity.isDownloaded || entity.localImagePaths.isEmpty()) return null
+        val entity =
+            chapterDao
+                .getChapterIdByUrl(manga.url, chapter.url)
+                ?.let { chapterDao.getChapterByIdSuspend(it) }
+                ?.takeIf { it.isDownloaded && it.localImagePaths.isNotEmpty() }
+                ?: return null
         val local =
             cleanupLockFor(entity.id).withLock {
                 val single = entity.localImagePaths.singleOrNull()

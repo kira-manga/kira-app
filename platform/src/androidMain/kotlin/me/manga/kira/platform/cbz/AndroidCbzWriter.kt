@@ -57,7 +57,13 @@ class AndroidCbzWriter(
         mangaId: Long,
         chapterId: Long,
         quality: Int,
-    ): Path = archive(imagePaths, mangaId, chapterId, quality, Int.MAX_VALUE, CbzWriter.DEFAULT_MAX_MEMORY_BYTES)
+    ): Path =
+        archive(
+            imagePaths,
+            mangaId,
+            chapterId,
+            EncodingOptions(quality, Int.MAX_VALUE, CbzWriter.DEFAULT_MAX_MEMORY_BYTES),
+        )
 
     override suspend fun createCbzWithSplitting(
         imagePaths: List<Path>,
@@ -66,20 +72,18 @@ class AndroidCbzWriter(
         quality: Int,
         maxHeight: Int,
         maxMemoryBytes: Long,
-    ): Path = archive(imagePaths, mangaId, chapterId, quality, maxHeight, maxMemoryBytes)
+    ): Path = archive(imagePaths, mangaId, chapterId, EncodingOptions(quality, maxHeight, maxMemoryBytes))
 
     private suspend fun archive(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
     ): Path =
         withContext(Dispatchers.Default) {
             conversionMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                createArchive(imagePaths, mangaId, chapterId, quality, maxHeight, maxMemoryBytes)
+                createArchive(imagePaths, mangaId, chapterId, encoding)
             }
         }
 
@@ -87,17 +91,15 @@ class AndroidCbzWriter(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
     ): Path {
         require(imagePaths.isNotEmpty()) { "No images to archive" }
-        require(maxHeight > 0 && maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
+        require(encoding.maxHeight > 0 && encoding.maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
         val sources = imagePaths.map { it.toString() }
         val destination = ensureCbzDestination(mangaId, chapterId)
         val temporary = File.createTempFile(".chapter_$chapterId-", ".cbz.tmp", destination.toFile().parentFile)
         try {
-            val entries = writeArchive(temporary, sources, quality, maxHeight, maxMemoryBytes)
+            val entries = writeArchive(temporary, sources, encoding)
             validateAndroidCbzArchive(temporary, entries)
             currentCoroutineContext().ensureActive()
             output.publish(temporary, destination.toFile())
@@ -112,9 +114,7 @@ class AndroidCbzWriter(
     private suspend fun writeArchive(
         temporary: File,
         sources: List<String>,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
     ): List<String> =
         output.open(temporary).use { raw ->
             ZipOutputStream(BufferedOutputStream(raw, CBZ_BUFFER_SIZE)).use { zip ->
@@ -124,7 +124,7 @@ class AndroidCbzWriter(
                     currentCoroutineContext().ensureActive()
                     if (index % YIELD_EVERY_N_PAGES == 0) yield()
                     val firstEntry = entries.size
-                    writePage(path, quality, maxHeight, maxMemoryBytes, zip, entries)
+                    writePage(path, encoding, zip, entries)
                     check(entries.size > firstEntry) { "CBZ input produced no entries" }
                     acceptedInputs++
                 }
@@ -135,16 +135,21 @@ class AndroidCbzWriter(
 
     private suspend fun writePage(
         path: String,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
         zip: ZipOutputStream,
         entries: MutableList<String>,
     ) {
         if (!File(path).isFile) throw IOException("Missing CBZ source: ${File(path).name}")
         val source = readPageSnapshot(fs.fileSystem(), path.toPath(), sourceBytePolicy)
         val metadata = inspector.inspect(source).requireValid()
-        val admission = CbzTranscodeBudget.admit(metadata.width, metadata.height, source.size.toLong(), maxHeight, maxMemoryBytes)
+        val admission =
+            CbzTranscodeBudget.admit(
+                metadata.width,
+                metadata.height,
+                source.size.toLong(),
+                encoding.maxHeight,
+                encoding.maxMemoryBytes,
+            )
         val unsupported = metadata.format == PageImageFormat.AVIF && Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         if (admission !is CbzTranscodeAdmission.Admitted || unsupported) {
             val name = "${cbzEntryName(entries.size).substringBeforeLast('.')}.${metadata.format.extension}"
@@ -160,7 +165,7 @@ class AndroidCbzWriter(
             val name = cbzEntryName(entries.size)
             zip.putNextEntry(ZipEntry(name))
             val output = BoundedCbzEntryOutput(zip, admission.plan.maxEncodedBandBytes)
-            if (!encode(bitmap, webpFormat, quality, output)) throw IOException("CBZ page encode failed")
+            if (!encode(bitmap, webpFormat, encoding.quality, output)) throw IOException("CBZ page encode failed")
             currentCoroutineContext().ensureActive()
             zip.closeEntry()
             entries += name
@@ -225,6 +230,12 @@ class AndroidCbzWriter(
         fs.fileSystem().createDirectories(dir)
         return dir / "chapter_$chapterId.cbz"
     }
+
+    private data class EncodingOptions(
+        val quality: Int,
+        val maxHeight: Int,
+        val maxMemoryBytes: Long,
+    )
 
     private companion object {
         const val YIELD_EVERY_N_PAGES = 2

@@ -403,11 +403,8 @@ class CoroutineDownloadRepositoryImpl(
             val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
             downloadValidatedPage(
                 httpClient,
-                imageUrl,
-                pageHeaders,
+                PageDownloadRequest(imageUrl, pageHeaders, dir, imageIndex),
                 appFileSystem.fileSystem(),
-                dir,
-                imageIndex,
                 mediaInspector,
                 pageBytePolicy,
             ).toString()

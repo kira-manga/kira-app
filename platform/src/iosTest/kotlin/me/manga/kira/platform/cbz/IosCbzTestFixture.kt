@@ -47,7 +47,8 @@ internal class IosCbzTestFixture {
             override fun fileSystem(): FileSystem = delegate
         }
 
-    fun directory(chapterId: Long = 1L): Path = fileSystem().chapterDir(mangaId, chapterId).also { system.createDirectories(it) }
+    fun directory(chapterId: Long = 1L): Path =
+        fileSystem().chapterDir(mangaId, chapterId).also { system.createDirectories(it) }
 
     fun destination(chapterId: Long = 1L): Path = directory(chapterId) / "chapter_$chapterId.cbz"
 
@@ -130,6 +131,8 @@ internal class IosCbzTestFixture {
 /** Authored opaque 23x65 RGB PNG (lossless solid color); no bundled/user image data. */
 internal val IOS_CBZ_PNG: ByteArray =
     checkNotNull(
-        "iVBORw0KGgoAAAANSUhEUgAAABcAAABBCAIAAAC1n6gdAAAAMElEQVR4nO3MMQ0AAAgDsElCClLwfyGC8DXp3VTPXSwWi8VisVgsFovFYrFYLK/LAsCOedyN4Wo0AAAAAElFTkSuQmCC"
-            .decodeBase64(),
+        (
+            "iVBORw0KGgoAAAANSUhEUgAAABcAAABBCAIAAAC1n6gdAAAAMElEQVR4nO3MMQ0AAAgDsElCClLwfyGC" +
+                "8DXp3VTPXSwWi8VisVgsFovFYrFYLK/LAsCOedyN4Wo0AAAAAElFTkSuQmCC"
+        ).decodeBase64(),
     ).toByteArray()

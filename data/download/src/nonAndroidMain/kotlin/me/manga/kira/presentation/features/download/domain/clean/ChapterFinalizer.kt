@@ -77,20 +77,24 @@ class ChapterFinalizer(
         // afterward as well as before it. Never resurrect readable bookkeeping over a user cancel.
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable")) return false
         requireReadablePages(loosePaths)
-        if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable.postValidation")) return false
-        val sizeBytes =
-            runCatching {
-                appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-            }.getOrDefault(0L)
-        dao.updateSize(entity.chapterId, sizeBytes)
-        libraryRepository.updateChapterLocalPaths(entity.chapterId, loosePaths)
-        libraryRepository.markChapterAsDownloaded(entity.chapterId)
-        notificationDao.addLocalImagePathByChapterId(entity.chapterId, loosePaths)
-        val compressionPending = dataStore.useCbzFormatFlow.first()
-        log.i {
-            "Chapter ${entity.chapterId} readable from ${loosePaths.size} loose page(s) ($sizeBytes bytes); cbzPending=$compressionPending"
+        return if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable.postValidation")) {
+            false
+        } else {
+            val sizeBytes =
+                runCatching {
+                    appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
+                }.getOrDefault(0L)
+            dao.updateSize(entity.chapterId, sizeBytes)
+            libraryRepository.updateChapterLocalPaths(entity.chapterId, loosePaths)
+            libraryRepository.markChapterAsDownloaded(entity.chapterId)
+            notificationDao.addLocalImagePathByChapterId(entity.chapterId, loosePaths)
+            val compressionPending = dataStore.useCbzFormatFlow.first()
+            log.i {
+                "Chapter ${entity.chapterId} readable from ${loosePaths.size} loose page(s) " +
+                    "($sizeBytes bytes); cbzPending=$compressionPending"
+            }
+            compressionPending
         }
-        return compressionPending
     }
 
     /**

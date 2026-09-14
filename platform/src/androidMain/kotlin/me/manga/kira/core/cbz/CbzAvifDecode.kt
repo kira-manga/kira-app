@@ -96,23 +96,32 @@ private suspend fun decodeCbzAvifBitmap(
         if (bitmap.allocationByteCount.toLong() > limits.maxOutputBytes) {
             throw AvifDecodeException("CBZ AVIF bitmap allocation exceeds its output allowance.")
         }
-        buffer.rewind()
-        val accepted =
-            AvifDecoder.decodeWithLimits(
-                buffer,
-                buffer.capacity(),
-                bitmap,
-                NATIVE_THREADS,
-                pixelLimit,
-                minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
-            )
-        currentCoroutineContext().ensureActive()
-        if (!accepted) throw AvifDecodeException("CBZ AVIF pixels were rejected by the bounded native decoder.")
+        decodeBoundedCbzAvifPixels(buffer, bitmap, limits, pixelLimit)
         return bitmap
     } catch (failure: Throwable) {
         bitmap.recycleAfterFailure(failure)
         throw failure
     }
+}
+
+private suspend fun decodeBoundedCbzAvifPixels(
+    buffer: ByteBuffer,
+    bitmap: Bitmap,
+    limits: AvifDecodeLimits,
+    pixelLimit: Int,
+) {
+    buffer.rewind()
+    val accepted =
+        AvifDecoder.decodeWithLimits(
+            buffer,
+            buffer.capacity(),
+            bitmap,
+            NATIVE_THREADS,
+            pixelLimit,
+            minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
+        )
+    currentCoroutineContext().ensureActive()
+    if (!accepted) throw AvifDecodeException("CBZ AVIF pixels were rejected by the bounded native decoder.")
 }
 
 private const val RGBA_BYTES = 4

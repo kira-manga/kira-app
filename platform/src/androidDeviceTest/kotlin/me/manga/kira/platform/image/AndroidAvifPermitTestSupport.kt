@@ -40,3 +40,4 @@ internal class AvifPermitReturnDispatcher : CoroutineDispatcher() {
 }
 
 internal const val AVIF_PERMIT_WAIT_SECONDS = 10L
+internal const val AVIF_PERMIT_RESULT = 42

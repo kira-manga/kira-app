@@ -46,7 +46,13 @@ class IosCbzCompletenessTest {
                 var emitted = 0
                 val encoder =
                     IosCbzPageEncoder { bytes, metadata, quality, maxHeight, maxMemory, emit ->
-                        DefaultIosCbzPageEncoder.encode(bytes, metadata, quality, maxHeight, maxMemory) { extension, page ->
+                        DefaultIosCbzPageEncoder.encode(
+                            bytes,
+                            metadata,
+                            quality,
+                            maxHeight,
+                            maxMemory,
+                        ) { extension, page ->
                             emit(extension, page)
                             emitted++
                         }
@@ -72,7 +78,13 @@ class IosCbzCompletenessTest {
                 val encoder =
                     IosCbzPageEncoder { bytes, metadata, quality, maxHeight, maxMemory, emit ->
                         if (lateFailure) {
-                            DefaultIosCbzPageEncoder.encode(bytes, metadata, quality, maxHeight, maxMemory) { extension, page ->
+                            DefaultIosCbzPageEncoder.encode(
+                                bytes,
+                                metadata,
+                                quality,
+                                maxHeight,
+                                maxMemory,
+                            ) { extension, page ->
                                 if (emitted == 1) throw IOException("second band failed")
                                 emit(extension, page)
                                 emitted++
@@ -136,7 +148,9 @@ class IosCbzCompletenessTest {
                     }
                 }
 
-            assertFailsWith<IOException> { IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, 1L) }
+            assertFailsWith<IOException> {
+                IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, 1L)
+            }
 
             assertEquals(1, attempts)
             fixture.assertRetained(originals, previous)
@@ -172,7 +186,9 @@ class IosCbzCompletenessTest {
                             }
                     }
 
-                assertFailsWith<IOException> { IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, chapter) }
+                assertFailsWith<IOException> {
+                    IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, chapter)
+                }
 
                 fixture.assertRetained(originals, previous, chapter)
             }
@@ -231,7 +247,9 @@ class IosCbzCompletenessTest {
                         }
                 }
 
-            assertFailsWith<IOException> { IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, 1L) }
+            assertFailsWith<IOException> {
+                IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, 1L)
+            }
 
             fixture.assertRetained(originals, previous)
         }
@@ -241,7 +259,9 @@ class IosCbzCompletenessTest {
         iosCbzTest { fixture ->
             val previous = fixture.previousArchive()
 
-            assertFailsWith<IllegalArgumentException> { IosCbzWriter(fixture.fileSystem()).createCbz(emptyList(), fixture.mangaId, 1L) }
+            assertFailsWith<IllegalArgumentException> {
+                IosCbzWriter(fixture.fileSystem()).createCbz(emptyList(), fixture.mangaId, 1L)
+            }
 
             fixture.assertRetained(emptyMap(), previous)
             assertFalse(fixture.archiveEntries().isEmpty())

@@ -42,7 +42,11 @@ class IosCbzNativeOwnershipTest {
                     native,
                 ) { bytes ->
                     assertEquals(emitted + 1, native.encodes, "the encoder must not precompute a list of all bands")
-                    assertEquals(native.encodes, native.frees, "libwebp's output buffer is gone before the sink callback")
+                    assertEquals(
+                        native.encodes,
+                        native.frees,
+                        "libwebp's output buffer is gone before the sink callback",
+                    )
                     assertEquals(0, native.liveOutputs)
                     assertEquals(1, native.liveImages)
                     assertEquals(1, native.liveContexts)
@@ -90,7 +94,14 @@ class IosCbzNativeOwnershipTest {
                 val metadata = IosPageMediaInspector().inspect(IOS_CBZ_PNG).requireValid()
 
                 assertFailsWith<IOException> {
-                    IosLibWebpEncoder.encodeValidatedPage(IOS_CBZ_PNG, metadata, 75, 24, CbzWriter.DEFAULT_MAX_MEMORY_BYTES, native) {
+                    IosLibWebpEncoder.encodeValidatedPage(
+                        IOS_CBZ_PNG,
+                        metadata,
+                        75,
+                        24,
+                        CbzWriter.DEFAULT_MAX_MEMORY_BYTES,
+                        native,
+                    ) {
                         error("a failed native band cannot be emitted")
                     }
                 }
@@ -112,7 +123,8 @@ class IosCbzNativeOwnershipTest {
                 val originals = fixture.capture(paths)
                 val native =
                     object : IosCbzRecordingCodec() {
-                        override fun decode(source: CGImageSourceRef): CGImageRef? = if (contextFailure) super.decode(source) else null
+                        override fun decode(source: CGImageSourceRef): CGImageRef? =
+                            if (contextFailure) super.decode(source) else null
 
                         override fun createContext(
                             plan: CbzTranscodePlan,
@@ -121,7 +133,8 @@ class IosCbzNativeOwnershipTest {
                     }
 
                 assertFailsWith<IOException> {
-                    IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native)).createCbz(paths, fixture.mangaId, chapter)
+                    IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native))
+                        .createCbz(paths, fixture.mangaId, chapter)
                 }
 
                 assertEquals(if (contextFailure) 1 else 0, native.decodes)
@@ -176,12 +189,14 @@ class IosCbzNativeOwnershipTest {
                     override fun copyEncoded(
                         pointer: CPointer<UByteVar>,
                         size: Int,
-                    ): ByteArray = super.copyEncoded(pointer, size).also { conversionJob.cancel("cancel after native encode") }
+                    ): ByteArray =
+                        super.copyEncoded(pointer, size).also { conversionJob.cancel("cancel after native encode") }
                 }
             val conversion =
                 async {
                     conversionJob = currentCoroutineContext().job
-                    IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native)).createCbz(paths, fixture.mangaId, 1L)
+                    IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native))
+                        .createCbz(paths, fixture.mangaId, 1L)
                 }
             try {
                 assertFailsWith<CancellationException> { conversion.await() }
@@ -211,7 +226,8 @@ class IosCbzNativeOwnershipTest {
                 }
 
             assertFailsWith<IOException> {
-                IosCbzWriter(fixture.fileSystem(), encoder).createCbzWithSplitting(paths, fixture.mangaId, 1L, maxHeight = 24)
+                IosCbzWriter(fixture.fileSystem(), encoder)
+                    .createCbzWithSplitting(paths, fixture.mangaId, 1L, maxHeight = 24)
             }
 
             assertEquals(1, written)

@@ -7,24 +7,24 @@ internal fun inspectWebpFraming(
     source: BufferedSource,
     size: Long,
 ) {
-    requirePageFraming(size >= 20)
-    source.skip(4)
-    requirePageFraming(source.readUnsignedIntLe() == size - 8)
-    source.skip(4)
-    var offset = 12L
+    requirePageFraming(size >= RIFF_HEADER_BYTES + RIFF_CHUNK_HEADER_BYTES)
+    source.skip(FOURCC_BYTES)
+    requirePageFraming(source.readUnsignedIntLe() == size - RIFF_SIZE_PREFIX_BYTES)
+    source.skip(FOURCC_BYTES)
+    var offset = RIFF_HEADER_BYTES
     var sawPixels = false
     while (offset < size) {
-        requirePageFraming(size - offset >= 8)
-        val name = source.readUtf8(4)
+        requirePageFraming(size - offset >= RIFF_CHUNK_HEADER_BYTES)
+        val name = source.readUtf8(FOURCC_BYTES)
         val length = source.readUnsignedIntLe()
         val padded = length + (length and 1L)
-        requirePageFraming(padded <= size - offset - 8)
+        requirePageFraming(padded <= size - offset - RIFF_CHUNK_HEADER_BYTES)
         if (name == "VP8 " || name == "VP8L" || name == "ANMF") {
             requirePageFraming(length > 0)
             sawPixels = true
         }
         source.skip(padded)
-        offset += 8 + padded
+        offset += RIFF_CHUNK_HEADER_BYTES + padded
     }
     requirePageFraming(sawPixels && offset == size)
 }
@@ -38,10 +38,10 @@ internal fun inspectAvifFraming(
     var avifBrand = false
     var hasImageContainer = false
     while (offset < size) {
-        requirePageFraming(size - offset >= 8)
+        requirePageFraming(size - offset >= BOX_HEADER_BYTES)
         val shortLength = source.readUnsignedInt()
-        val name = source.readUtf8(4)
-        val header = if (shortLength == 1L) 16L else 8L
+        val name = source.readUtf8(FOURCC_BYTES)
+        val header = if (shortLength == 1L) EXTENDED_BOX_HEADER_BYTES else BOX_HEADER_BYTES
         requirePageFraming(size - offset >= header)
         val length =
             when (shortLength) {
@@ -52,7 +52,7 @@ internal fun inspectAvifFraming(
         requirePageFraming(length >= header && length <= size - offset)
         val payload = length - header
         if (name == "ftyp") {
-            requirePageFraming(offset == 0L && payload >= 8 && payload % 4 == 0L)
+            requirePageFraming(offset == 0L && payload >= FTYP_HEADER_BYTES && payload % FOURCC_BYTES == 0L)
             avifBrand = readAvifBrands(source, payload)
         } else {
             if (name == "meta" || name == "moov") hasImageContainer = true
@@ -67,14 +67,23 @@ private fun readAvifBrands(
     source: BufferedSource,
     payload: Long,
 ): Boolean {
-    var matched = source.readUtf8(4).isAvifBrand()
-    source.skip(4) // Minor version is not a compatible brand.
-    var remaining = payload - 8
+    var matched = source.readUtf8(FOURCC_BYTES).isAvifBrand()
+    source.skip(FTYP_MINOR_VERSION_BYTES) // Minor version is not a compatible brand.
+    var remaining = payload - FTYP_HEADER_BYTES
     while (remaining > 0) {
-        if (source.readUtf8(4).isAvifBrand()) matched = true
-        remaining -= 4
+        if (source.readUtf8(FOURCC_BYTES).isAvifBrand()) matched = true
+        remaining -= FOURCC_BYTES
     }
     return matched
 }
 
 private fun String.isAvifBrand(): Boolean = this == "avif" || this == "avis"
+
+private const val FOURCC_BYTES: Long = 4
+private const val RIFF_HEADER_BYTES: Long = 12
+private const val RIFF_SIZE_PREFIX_BYTES: Long = 8
+private const val RIFF_CHUNK_HEADER_BYTES: Long = 8
+private const val BOX_HEADER_BYTES: Long = 8
+private const val EXTENDED_BOX_HEADER_BYTES: Long = 16
+private const val FTYP_HEADER_BYTES: Long = 8
+private const val FTYP_MINOR_VERSION_BYTES: Long = 4

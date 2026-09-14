@@ -55,13 +55,36 @@ private fun probeAndroidAvif(
         // A false result can mean malformed input OR the pre-parse native policy refused it.
         return PageInspection.Rejected(PageInspectionRejection.BOUNDED_DECODER_REJECTED)
     }
+    return inspectAvifInfo(direct, length, info, policy, limits)
+}
+
+private fun inspectAvifInfo(
+    direct: ByteBuffer,
+    length: Int,
+    info: AvifDecoder.Info,
+    policy: PageInspectionPolicy,
+    limits: AvifDecodeLimits,
+): PageInspection {
     if (info.width <= 0 || info.height <= 0) return invalidPage()
     val metadata = PageImageMetadata(PageImageFormat.AVIF, info.width, info.height)
-    policy.rejectionFor(metadata)?.let { return it }
+    return policy.rejectionFor(metadata) ?: inspectAvifSample(direct, length, metadata, policy, limits)
+}
+
+private fun inspectAvifSample(
+    direct: ByteBuffer,
+    length: Int,
+    metadata: PageImageMetadata,
+    policy: PageInspectionPolicy,
+    limits: AvifDecodeLimits,
+): PageInspection {
     val (width, height) = pageSampleDimensions(metadata, policy.sampleMaxDimension)
     val pixelLimit = androidAvifNativePixelLimit(limits, length, AvifPixelSize(width, height))
     if (metadata.pixelCount > pixelLimit) {
-        return PageInspection.Rejected(PageInspectionRejection.BOUNDED_DECODER_REJECTED, pixelLimit.toLong(), metadata.pixelCount)
+        return PageInspection.Rejected(
+            PageInspectionRejection.BOUNDED_DECODER_REJECTED,
+            pixelLimit.toLong(),
+            metadata.pixelCount,
+        )
     }
     val sample = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     return try {

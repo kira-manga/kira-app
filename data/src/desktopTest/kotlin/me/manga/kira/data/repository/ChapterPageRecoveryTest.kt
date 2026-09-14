@@ -84,7 +84,11 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
             val good = write(directory / "0.jpg", recoveryTestPng())
             val missing = directory / "1.jpg"
             val reader = DefaultCbzReader(appFs, dispatchers, inspector)
-            writeArchive(reader.cbzPath(saved.mangaId, saved.id), "0.jpg" to recoveryTestPng(), "1.jpg" to recoveryTestPng())
+            writeArchive(
+                reader.cbzPath(saved.mangaId, saved.id),
+                "0.jpg" to recoveryTestPng(),
+                "1.jpg" to recoveryTestPng(),
+            )
             db.chapterDao().updateChapter(saved.copy(isDownloaded = true, localImagePaths = listOf("$good", "$missing")))
             val source = OwnerPagesSource()
             val result = repository(source).fetchPages(mangaA, chapter).first() as AppResult.Success

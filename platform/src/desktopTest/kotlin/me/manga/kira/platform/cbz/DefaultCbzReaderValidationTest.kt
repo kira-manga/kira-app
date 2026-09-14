@@ -48,7 +48,9 @@ class DefaultCbzReaderValidationTest {
             assertEquals(2, first.distinct().size)
             assertTrue(first.all { it.name.endsWith(".png") })
             assertTrue(second.none { it in first }, "existence of a previous cache cannot bypass validation")
-            (first + second).forEach { assertContentEquals(PageMediaTestImages.png(), system.read(it) { readByteArray() }) }
+            (first + second).forEach {
+                assertContentEquals(PageMediaTestImages.png(), system.read(it) { readByteArray() })
+            }
             assertNoPartials()
         }
 
@@ -63,7 +65,10 @@ class DefaultCbzReaderValidationTest {
             repeat(2) { assertTrue(reader.extractImages(archive, 1, 2).isEmpty()) }
             assertContentEquals(source, system.read(archive) { readByteArray() })
             assertContentEquals(PageMediaTestImages.png(), system.read(previous) { readByteArray() })
-            assertEquals(listOf(previous), system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList())
+            assertEquals(
+                listOf(previous),
+                system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList(),
+            )
             assertNoPartials()
         }
 
@@ -83,7 +88,10 @@ class DefaultCbzReaderValidationTest {
             assertTrue(system.exists(previous))
             assertTrue(system.exists(archive))
             assertNoPartials()
-            assertEquals(listOf(previous), system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList())
+            assertEquals(
+                listOf(previous),
+                system.listRecursively(cache).filter { system.metadata(it).isRegularFile }.toList(),
+            )
         }
 
     @Test

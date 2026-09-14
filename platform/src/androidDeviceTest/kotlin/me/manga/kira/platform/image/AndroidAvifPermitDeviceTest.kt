@@ -42,7 +42,7 @@ class AndroidAvifPermitDeviceTest {
                 waiting.cancel()
                 semaphore.release()
             }
-            assertEquals(42, permit.withPermit { 42 })
+            assertEquals(AVIF_PERMIT_RESULT, permit.withPermit { AVIF_PERMIT_RESULT })
             assertEquals(1, semaphore.availablePermits())
         }
 
@@ -64,7 +64,7 @@ class AndroidAvifPermitDeviceTest {
                 assertEquals(0, semaphore.availablePermits())
                 owner.cancelAndJoin()
                 assertEquals(1, semaphore.availablePermits())
-                assertEquals(42, permit.withNativePermit { 42 })
+                assertEquals(AVIF_PERMIT_RESULT, permit.withNativePermit { AVIF_PERMIT_RESULT })
             } finally {
                 owner.cancel()
             }
@@ -79,7 +79,7 @@ class AndroidAvifPermitDeviceTest {
             val actual = assertFailsWith<IllegalStateException> { permit.withPermit { throw expected } }
             assertSame(expected, actual)
             assertEquals(1, semaphore.availablePermits())
-            assertEquals(42, permit.withPermit { 42 })
+            assertEquals(AVIF_PERMIT_RESULT, permit.withPermit { AVIF_PERMIT_RESULT })
             assertEquals(1, semaphore.availablePermits())
         }
 
@@ -106,7 +106,7 @@ class AndroidAvifPermitDeviceTest {
             val resume = checkNotNull(heldTask)
             heldTask = null
             cancelAcquiredReturn(waiting, resume, entered, semaphore)
-            assertEquals(42, permit.withNativePermit { 42 })
+            assertEquals(AVIF_PERMIT_RESULT, permit.withNativePermit { AVIF_PERMIT_RESULT })
         } finally {
             scope.cancel()
             if (initiallyHeld) semaphore.release()

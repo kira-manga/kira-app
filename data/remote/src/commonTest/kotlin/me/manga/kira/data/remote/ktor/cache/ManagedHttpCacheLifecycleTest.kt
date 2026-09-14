@@ -19,8 +19,14 @@ class ManagedHttpCacheLifecycleTest {
             val privateData = cachedResponse(body = byteArrayOf(2), vary = publicData.varyKeys)
             cache.publicStorage.store(publicData.url, publicData)
             cache.privateStorage.store(privateData.url, privateData)
-            assertContentEquals(publicData.body, assertNotNull(cache.publicStorage.find(publicData.url, publicData.varyKeys)).body)
-            assertContentEquals(privateData.body, assertNotNull(cache.privateStorage.find(privateData.url, privateData.varyKeys)).body)
+            assertContentEquals(
+                publicData.body,
+                assertNotNull(cache.publicStorage.find(publicData.url, publicData.varyKeys)).body,
+            )
+            assertContentEquals(
+                privateData.body,
+                assertNotNull(cache.privateStorage.find(privateData.url, privateData.varyKeys)).body,
+            )
             assertEquals(2, disk.records.size)
             cache.publicStorage.removeAll(publicData.url)
             assertNull(cache.publicStorage.find(publicData.url, publicData.varyKeys))
@@ -86,7 +92,10 @@ class ManagedHttpCacheLifecycleTest {
             assertEquals(HttpCacheSnapshot(0, 0, 0), cache.snapshot())
             assertEquals(0, disk.records.size)
             now--
-            assertNull(cache.privateStorage.find(data.url, emptyMap()), "expired entries cannot reappear after clock rollback")
+            assertNull(
+                cache.privateStorage.find(data.url, emptyMap()),
+                "expired entries cannot reappear after clock rollback",
+            )
         }
 
     @Test

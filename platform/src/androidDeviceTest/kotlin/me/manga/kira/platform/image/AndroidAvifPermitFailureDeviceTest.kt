@@ -36,7 +36,7 @@ class AndroidAvifPermitFailureDeviceTest {
             worker.join(TimeUnit.SECONDS.toMillis(AVIF_PERMIT_WAIT_SECONDS))
         }
         assertFalse(worker.isAlive)
-        assertEquals(42, permit.withNativePermit { 42 })
+        assertEquals(AVIF_PERMIT_RESULT, permit.withNativePermit { AVIF_PERMIT_RESULT })
         assertEquals(1, semaphore.availablePermits())
     }
 
@@ -56,7 +56,7 @@ class AndroidAvifPermitFailureDeviceTest {
             assertFalse(returned.get())
             assertInterrupted(outcome)
             assertEquals(1, semaphore.availablePermits())
-            assertEquals(42, permit.withNativePermit { 42 })
+            assertEquals(AVIF_PERMIT_RESULT, permit.withNativePermit { AVIF_PERMIT_RESULT })
         } finally {
             worker.interrupt()
             worker.join(TimeUnit.SECONDS.toMillis(AVIF_PERMIT_WAIT_SECONDS))
@@ -71,7 +71,7 @@ class AndroidAvifPermitFailureDeviceTest {
         val expected = IllegalStateException("probe failed")
         assertSame(expected, assertFailsWith<IllegalStateException> { permit.withNativePermit { throw expected } })
         assertEquals(1, semaphore.availablePermits())
-        assertEquals(42, permit.withNativePermit { 42 })
+        assertEquals(AVIF_PERMIT_RESULT, permit.withNativePermit { AVIF_PERMIT_RESULT })
         assertEquals(1, semaphore.availablePermits())
     }
 

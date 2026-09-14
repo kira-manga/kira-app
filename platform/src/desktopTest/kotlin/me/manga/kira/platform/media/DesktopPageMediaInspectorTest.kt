@@ -38,7 +38,7 @@ class DesktopPageMediaInspectorTest {
                 PageMediaTestImages.png().dropLast(1).toByteArray(),
                 PageMediaTestImages.badPngCrc(),
                 PageMediaTestImages.corruptPngPixels(),
-                encoded(EncodedImageFormat.JPEG).dropLast(8).toByteArray(),
+                encoded(EncodedImageFormat.JPEG).dropLast(JPEG_TRUNCATED_TAIL_BYTES).toByteArray(),
             )
         invalid.forEach { assertFalse(inspector.inspect(it) is PageInspection.Valid) }
     }
@@ -79,6 +79,11 @@ class DesktopPageMediaInspectorTest {
 
     private fun encoded(format: EncodedImageFormat): ByteArray =
         Image.makeFromEncoded(PageMediaTestImages.png()).use { image ->
-            requireNotNull(image.encodeToData(format, 90)).use { it.bytes }
+            requireNotNull(image.encodeToData(format, ENCODING_QUALITY)).use { it.bytes }
         }
+
+    private companion object {
+        const val JPEG_TRUNCATED_TAIL_BYTES = 8
+        const val ENCODING_QUALITY = 90
+    }
 }

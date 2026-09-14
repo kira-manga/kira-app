@@ -23,19 +23,30 @@ internal suspend fun streamValidatedSkiaPage(
     emit: suspend (ByteArray) -> Unit,
 ): CbzPageEncoding {
     currentCoroutineContext().ensureActive()
-    val admission = CbzTranscodeBudget.admit(metadata.width, metadata.height, source.size.toLong(), maxHeight, maxMemoryBytes)
-    val plan =
-        when (admission) {
-            CbzTranscodeAdmission.PreserveBudget -> return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
-            CbzTranscodeAdmission.PreserveWebpDimensions ->
-                return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
-            is CbzTranscodeAdmission.Admitted -> admission.plan
-        }
-    // Skiko's bundled Skia has no AVIF codec. Only the iOS native inspector's prior VALID result
-    // permits this known transcode-capability preservation; an arbitrary Skia failure does not.
-    if (metadata.format == PageImageFormat.AVIF) {
-        return CbzPageEncoding.PreserveOriginal(CbzPreservationReason.UNSUPPORTED_TRANSCODE)
+    val admission =
+        CbzTranscodeBudget.admit(metadata.width, metadata.height, source.size.toLong(), maxHeight, maxMemoryBytes)
+    return when (admission) {
+        CbzTranscodeAdmission.PreserveBudget -> CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
+        CbzTranscodeAdmission.PreserveWebpDimensions ->
+            CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
+        is CbzTranscodeAdmission.Admitted ->
+            // Skiko's bundled Skia has no AVIF codec. Only the iOS native inspector's prior VALID
+            // result permits this preservation; an arbitrary Skia failure does not.
+            if (metadata.format == PageImageFormat.AVIF) {
+                CbzPageEncoding.PreserveOriginal(CbzPreservationReason.UNSUPPORTED_TRANSCODE)
+            } else {
+                streamAdmittedSkiaPage(source, admission.plan, quality, decode, emit)
+            }
     }
+}
+
+private suspend fun streamAdmittedSkiaPage(
+    source: ByteArray,
+    plan: CbzTranscodePlan,
+    quality: Int,
+    decode: (ByteArray) -> Image,
+    emit: suspend (ByteArray) -> Unit,
+): CbzPageEncoding.Encoded {
     val image = decode(source)
     try {
         if (image.width != plan.width || image.height != plan.height) {
@@ -45,11 +56,11 @@ internal suspend fun streamValidatedSkiaPage(
         var count = 0
         while (top < plan.height) {
             currentCoroutineContext().ensureActive()
-            val height = minOf(plan.bandHeight, plan.height - top)
-            emitOneSkiaBand(image, plan, top, height, quality, emit)
+            val band = SkiaBandRegion(top, minOf(plan.bandHeight, plan.height - top))
+            emitOneSkiaBand(image, plan, band, quality, emit)
             currentCoroutineContext().ensureActive()
             count++
-            top += height
+            top += band.height
         }
         return CbzPageEncoding.Encoded(count)
     } finally {
@@ -61,12 +72,11 @@ internal suspend fun streamValidatedSkiaPage(
 private suspend fun emitOneSkiaBand(
     source: Image,
     plan: CbzTranscodePlan,
-    top: Int,
-    height: Int,
+    band: SkiaBandRegion,
     quality: Int,
     emit: suspend (ByteArray) -> Unit,
 ) {
-    val encoded = encodeSkiaBand(source, plan, top, height, quality)
+    val encoded = encodeSkiaBand(source, plan, band, quality)
     currentCoroutineContext().ensureActive()
     emit(encoded)
 }
@@ -75,15 +85,14 @@ private suspend fun emitOneSkiaBand(
 private fun encodeSkiaBand(
     source: Image,
     plan: CbzTranscodePlan,
-    top: Int,
-    height: Int,
+    band: SkiaBandRegion,
     quality: Int,
 ): ByteArray {
     val bitmap = Bitmap()
     try {
-        if (!bitmap.allocN32Pixels(plan.width, height)) throw IOException("CBZ Skia band allocation failed")
+        if (!bitmap.allocN32Pixels(plan.width, band.height)) throw IOException("CBZ Skia band allocation failed")
         if (bitmap.width != plan.width ||
-            bitmap.height != height ||
+            bitmap.height != band.height ||
             bitmap.rowBytes.toLong() > plan.width.toLong() * BAND_BITMAP_BYTES_PER_PIXEL
         ) {
             throw IOException("CBZ Skia band differs from its admitted dimensions or stride")
@@ -91,23 +100,36 @@ private fun encodeSkiaBand(
         Canvas(bitmap).skiaUse { canvas ->
             canvas.drawImageRect(
                 source,
-                Rect.makeXYWH(0f, top.toFloat(), plan.width.toFloat(), height.toFloat()),
-                Rect.makeWH(plan.width.toFloat(), height.toFloat()),
+                Rect.makeXYWH(0f, band.top.toFloat(), plan.width.toFloat(), band.height.toFloat()),
+                Rect.makeWH(plan.width.toFloat(), band.height.toFloat()),
             )
         }
         bitmap.setImmutable()
-        return Image.makeFromBitmap(bitmap).skiaUse { image ->
-            val data = image.encodeToData(EncodedImageFormat.WEBP, quality) ?: throw IOException("CBZ Skia WebP encode failed")
-            data.skiaUse {
-                if (it.size <= 0 || it.size > plan.maxEncodedBandBytes) {
-                    throw IOException("CBZ Skia WebP output exceeds its admitted allowance")
-                }
-                it.bytes
-            }
-        }
+        return encodeBoundedSkiaBitmap(bitmap, quality, plan.maxEncodedBandBytes)
     } finally {
         bitmap.close()
     }
 }
+
+private fun encodeBoundedSkiaBitmap(
+    bitmap: Bitmap,
+    quality: Int,
+    maxEncodedBytes: Int,
+): ByteArray =
+    Image.makeFromBitmap(bitmap).skiaUse { image ->
+        val data =
+            image.encodeToData(EncodedImageFormat.WEBP, quality) ?: throw IOException("CBZ Skia WebP encode failed")
+        data.skiaUse {
+            if (it.size <= 0 || it.size > maxEncodedBytes) {
+                throw IOException("CBZ Skia WebP output exceeds its admitted allowance")
+            }
+            it.bytes
+        }
+    }
+
+private data class SkiaBandRegion(
+    val top: Int,
+    val height: Int,
+)
 
 private const val BAND_BITMAP_BYTES_PER_PIXEL = 8

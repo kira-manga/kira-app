@@ -30,22 +30,37 @@ class DownloadedPageFiles(
     ): List<Path>? {
         if (storedPaths.isEmpty()) return null
         val directory = appFileSystem.chapterDir(mangaId, chapterId)
+        return resolveRoster(directory, storedPaths)
+    }
+
+    private suspend fun resolveRoster(
+        directory: Path,
+        storedPaths: List<String>,
+    ): List<Path>? {
         val resolved = mutableListOf<Path>()
         for (stored in storedPaths) {
             currentCoroutineContext().ensureActive()
-            if (stored.isBlank()) return null
-            val path =
-                try {
-                    stored.toPath()
-                } catch (_: IllegalArgumentException) {
-                    return null
-                }
-            val current = directory / path.name
-            val readable = listOf(current, path).distinct().firstOrNull(::readable) ?: return null
-            if (readable in resolved) return null
-            resolved += readable
+            val page = resolvePage(directory, stored)?.takeUnless { it in resolved } ?: return null
+            resolved += page
         }
         return resolved
+    }
+
+    private fun resolvePage(
+        directory: Path,
+        stored: String,
+    ): Path? {
+        if (stored.isBlank()) return null
+        val path =
+            try {
+                stored.toPath()
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        return path?.let {
+            val current = directory / it.name
+            listOf(current, it).distinct().firstOrNull(::readable)
+        }
     }
 
     private fun readable(path: Path): Boolean =

@@ -25,7 +25,10 @@ class IosPageMediaInspectorTest {
                 PageImageFormat.BMP to PageMediaTestImages.bmp(),
             )
         for ((format, bytes) in images) {
-            assertEquals(format, assertIs<PageInspection.Valid>(inspector.inspect(bytes), "$format must decode").metadata.format)
+            assertEquals(
+                format,
+                assertIs<PageInspection.Valid>(inspector.inspect(bytes), "$format must decode").metadata.format,
+            )
         }
     }
 
@@ -71,7 +74,10 @@ class IosPageMediaInspectorTest {
             assertIs<PageInspection.Rejected>(pixels.inspect(PageMediaTestImages.png())).reason,
         )
         val axes = IosPageMediaInspector(PageInspectionPolicy(maxSourceDimension = 8))
-        assertEquals(PageInspectionRejection.SOURCE_AXIS, assertIs<PageInspection.Rejected>(axes.inspect(PageMediaTestImages.png())).reason)
+        assertEquals(
+            PageInspectionRejection.SOURCE_AXIS,
+            assertIs<PageInspection.Rejected>(axes.inspect(PageMediaTestImages.png())).reason,
+        )
     }
 
     @Test

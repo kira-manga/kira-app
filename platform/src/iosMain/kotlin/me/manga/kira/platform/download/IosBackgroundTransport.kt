@@ -12,6 +12,7 @@ import me.manga.kira.platform.media.PageMediaException
 import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.media.publishPageSnapshot
 import me.manga.kira.platform.media.requireValid
+import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
@@ -101,7 +102,11 @@ class IosBackgroundTransport(
         requests.forEach { req ->
             val url = NSURL.URLWithString(req.url)
             if (url == null) {
-                BgDownloadLog.warn("task.enqueue.invalidUrl", "chapterId" to req.chapterId, "pageIndex" to req.pageIndex)
+                BgDownloadLog.warn(
+                    "task.enqueue.invalidUrl",
+                    "chapterId" to req.chapterId,
+                    "pageIndex" to req.pageIndex,
+                )
                 listener?.onPageFailed(req.mangaId, req.chapterId, req.pageIndex, "Invalid URL: ${req.url}")
                 return@forEach
             }
@@ -147,7 +152,12 @@ class IosBackgroundTransport(
             val d = decodeDesc(task.taskDescription) ?: return@forEach
             if (d.chapterId == chapterId) out += d.pageIndex
         }
-        BgDownloadLog.log("session.getAllTasks", "chapterId" to chapterId, "inFlight" to out.size, "pages" to out.sorted())
+        BgDownloadLog.log(
+            "session.getAllTasks",
+            "chapterId" to chapterId,
+            "inFlight" to out.size,
+            "pages" to out.sorted(),
+        )
         return out
     }
 
@@ -171,7 +181,8 @@ class IosBackgroundTransport(
         if (totalBytesWritten > pageBytePolicy.maxEncodedBytes || totalExpected > pageBytePolicy.maxEncodedBytes) {
             // OS delegate progress is coarse, not a hard bound on URLSession's temporary disk use.
             // Keep this reason even when the terminal NSError is merely NSURLErrorCancelled.
-            outcome.failure = PageByteLimitExceeded(pageBytePolicy.maxEncodedBytes, maxOf(totalBytesWritten, totalExpected)).message
+            outcome.failure =
+                PageByteLimitExceeded(pageBytePolicy.maxEncodedBytes, maxOf(totalBytesWritten, totalExpected)).message
             reportFailureOnce(task, d, requireNotNull(outcome.failure))
             task.cancel()
         } else if (totalBytesWritten == bytesWritten) {
@@ -193,10 +204,21 @@ class IosBackgroundTransport(
         val d = decodeDesc(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         if (outcome.reported) return
-        outcome.failure?.let {
-            reportFailureOnce(task, d, it)
-            return
+        val failure = outcome.failure
+        if (failure == null) {
+            finishUnreportedDownload(task, location, response, d, outcome)
+        } else {
+            reportFailureOnce(task, d, failure)
         }
+    }
+
+    private fun finishUnreportedDownload(
+        task: NSURLSessionDownloadTask,
+        location: NSURL,
+        response: NSHTTPURLResponse?,
+        d: Desc,
+        outcome: PageOutcome,
+    ) {
         val status = response?.statusCode?.toInt()
         BgDownloadLog.log(
             "task.didFinishDownloading",
@@ -206,7 +228,12 @@ class IosBackgroundTransport(
             "httpStatus" to status,
         )
         if (status == null || status !in 200..299) {
-            BgDownloadLog.warn("task.httpError", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "httpStatus" to status)
+            BgDownloadLog.warn(
+                "task.httpError",
+                "chapterId" to d.chapterId,
+                "pageIndex" to d.pageIndex,
+                "httpStatus" to status,
+            )
             reportFailureOnce(task, d, if (status == null) "Missing HTTP response" else "HTTP $status")
             return
         }
@@ -214,22 +241,9 @@ class IosBackgroundTransport(
         val system = appFileSystem.fileSystem()
         try {
             pageBytePolicy.checkDeclaredLength(response?.expectedContentLength)
-            val locationPath = location.path?.toPath() ?: throw IOException("Missing downloaded file")
-            val sourceMetadata = system.metadata(locationPath)
-            if (!sourceMetadata.isRegularFile) throw IOException("Downloaded page is not a regular file")
-            pageBytePolicy.checkFileSize(sourceMetadata.size)
-            val directory = appFileSystem.chapterDir(d.mangaId, d.chapterId)
-            system.createDirectories(directory)
-            val temporary = directory / ".image_${d.pageIndex}-${NSUUID().UUIDString}.partial"
-            // Unlike atomicMove, moveItem does not replace a colliding destination. Ownership is
-            // acquired only after success, before URLSession may remove its callback-local file.
-            if (!NSFileManager.defaultManager.moveItemAtURL(location, NSURL.fileURLWithPath(temporary.toString()), error = null)) {
-                throw IOException("Could not retain downloaded page")
-            }
+            val temporary = retainDownloadedPage(location, d, system)
             ownedTemporary = temporary
-            val retainedMetadata = system.metadata(temporary)
-            if (!retainedMetadata.isRegularFile) throw IOException("Retained page is not a regular file")
-            pageBytePolicy.checkFileSize(retainedMetadata.size)
+            requireRegularPage(system, temporary, "Retained page is not a regular file")
             val metadata = mediaInspector.inspect(temporary).requireValid()
             publishPageSnapshot(system, temporary, d.pageIndex, metadata)
             ownedTemporary = null
@@ -238,14 +252,12 @@ class IosBackgroundTransport(
             listener?.onPageComplete(d.mangaId, d.chapterId, d.pageIndex)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: Exception) {
-            val reason =
-                if (failure is PageByteLimitExceeded || failure is PageMediaException) {
-                    failure.message ?: "Page validation failed"
-                } else {
-                    "Downloaded page could not be saved"
-                }
-            reportFailureOnce(task, d, reason)
+        } catch (failure: PageByteLimitExceeded) {
+            reportFailureOnce(task, d, failure.message ?: "Page validation failed")
+        } catch (failure: PageMediaException) {
+            reportFailureOnce(task, d, failure.message ?: "Page validation failed")
+        } catch (_: Exception) {
+            reportFailureOnce(task, d, "Downloaded page could not be saved")
         } finally {
             ownedTemporary?.let { path ->
                 try {
@@ -255,6 +267,40 @@ class IosBackgroundTransport(
                 }
             }
         }
+    }
+
+    private fun retainDownloadedPage(
+        location: NSURL,
+        d: Desc,
+        system: FileSystem,
+    ): Path {
+        val locationPath = location.path?.toPath() ?: throw IOException("Missing downloaded file")
+        requireRegularPage(system, locationPath, "Downloaded page is not a regular file")
+        val directory = appFileSystem.chapterDir(d.mangaId, d.chapterId)
+        system.createDirectories(directory)
+        val temporary = directory / ".image_${d.pageIndex}-${NSUUID().UUIDString}.partial"
+        // Unlike atomicMove, moveItem does not replace a colliding destination. The caller owns
+        // the file only once this returns, before URLSession removes its callback-local file.
+        val retained =
+            NSFileManager.defaultManager.moveItemAtURL(
+                location,
+                NSURL.fileURLWithPath(temporary.toString()),
+                error = null,
+            )
+        if (!retained) {
+            throw IOException("Could not retain downloaded page")
+        }
+        return temporary
+    }
+
+    private fun requireRegularPage(
+        system: FileSystem,
+        path: Path,
+        message: String,
+    ) {
+        val metadata = system.metadata(path)
+        if (!metadata.isRegularFile) throw IOException(message)
+        pageBytePolicy.checkFileSize(metadata.size)
     }
 
     internal fun handleCompleted(

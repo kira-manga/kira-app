@@ -55,12 +55,17 @@ private suspend fun Send.Sender.recoverCacheState(
         executeCacheAttempt(request, attempt)
     } catch (failure: InvalidCacheStateException) {
         currentCoroutineContext().ensureActive()
-        val validators = attempt.retryValidators(request) ?: throw failure
-        val budget = request.attributes[recoveryBudgetKey]
-        if (!budget.take()) throw failure
-        val retry = request.recoveryCopy(validators) ?: throw failure
+        val retry =
+            attempt
+                .retryValidators(request)
+                ?.takeIf { request.attributes[recoveryBudgetKey].take() }
+                ?.let { request.recoveryCopy(it) }
+                ?: throw failure
         // Scope only the repair GET, including its receive phase. Normal concurrent requests still cache.
-        executeCacheAttempt(retry, CacheRevalidationAttempt(owner, Url(retry.url), eligible = false, bypassStorage = true))
+        executeCacheAttempt(
+            retry,
+            CacheRevalidationAttempt(owner, Url(retry.url), eligible = false, bypassStorage = true),
+        )
     }
 }
 
@@ -70,11 +75,13 @@ private suspend fun Send.Sender.executeCacheAttempt(
 ): HttpClientCall =
     try {
         // Do not use Send.Sender.coroutineContext: that is the client scope, not the requesting coroutine.
-        withContext(attempt) { proceed(request) }
-    } catch (cause: Throwable) {
-        // Ktor's DefaultSender has not assigned currentCall when the receive-cache phase throws.
-        attempt.disposeFailedResponse(cause)
-        throw cause
+        // Capture cancellation as well so the failed receive is disposed before it propagates.
+        runCatching {
+            withContext(attempt) { proceed(request) }
+        }.onFailure { cause ->
+            // Ktor's DefaultSender has not assigned currentCall when the receive-cache phase throws.
+            attempt.disposeFailedResponse(cause)
+        }.getOrThrow()
     } finally {
         attempt.releaseResponse()
     }

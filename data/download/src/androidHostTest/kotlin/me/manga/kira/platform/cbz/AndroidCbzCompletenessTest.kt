@@ -71,7 +71,12 @@ class AndroidCbzCompletenessTest {
 
                 assertFailsWith<IOException> {
                     if (fault == SourceFault.UNREADABLE) {
-                        writer.createCbzWithSplitting(paths.map { it.toPath() }, fixture.mangaId, chapter, maxHeight = 16)
+                        writer.createCbzWithSplitting(
+                            paths.map { it.toPath() },
+                            fixture.mangaId,
+                            chapter,
+                            maxHeight = 16,
+                        )
                     } else {
                         writer.createCbz(paths.map { it.toPath() }, fixture.mangaId, chapter)
                     }
@@ -118,7 +123,7 @@ class AndroidCbzCompletenessTest {
     @Test
     fun oneInputCanProduceSeveralEntriesWithoutEarlySourceDeletion() =
         cbzHostTest { fixture ->
-            val paths = fixture.pages(count = 1, width = 23, height = 65)
+            val paths = fixture.pages(count = 1, width = SPLIT_PAGE_WIDTH, height = SPLIT_PAGE_HEIGHT)
             var published = false
             val output =
                 object : CbzHostArchiveOutput() {
@@ -133,11 +138,23 @@ class AndroidCbzCompletenessTest {
                 }
             val writer = AndroidCbzWriter(AndroidAppFileSystem(fixture.context), output = output)
 
-            val archive = writer.createCbzWithSplitting(paths.map { it.toPath() }, fixture.mangaId, 1L, maxHeight = 24)
+            val archive =
+                writer.createCbzWithSplitting(
+                    paths.map { it.toPath() },
+                    fixture.mangaId,
+                    1L,
+                    maxHeight = SPLIT_BAND_HEIGHT,
+                )
 
             assertTrue(published)
             assertEquals(fixture.destination().absolutePath, archive.toString())
-            fixture.assertArchive(listOf(23 to 24, 23 to 24, 23 to 17))
+            fixture.assertArchive(
+                listOf(
+                    SPLIT_PAGE_WIDTH to SPLIT_BAND_HEIGHT,
+                    SPLIT_PAGE_WIDTH to SPLIT_BAND_HEIGHT,
+                    SPLIT_PAGE_WIDTH to SPLIT_TAIL_HEIGHT,
+                ),
+            )
             assertTrue(paths.none { File(it).exists() })
             fixture.assertNoTemporary()
         }
@@ -294,6 +311,11 @@ class AndroidCbzCompletenessTest {
             assertRetained(fixture, 1L, originals, previous)
         }
 }
+
+private const val SPLIT_PAGE_WIDTH = 23
+private const val SPLIT_PAGE_HEIGHT = 65
+private const val SPLIT_BAND_HEIGHT = 24
+private const val SPLIT_TAIL_HEIGHT = 17
 
 private enum class SourceFault { MISSING, UNREADABLE, CORRUPT }
 

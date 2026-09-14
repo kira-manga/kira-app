@@ -18,9 +18,11 @@ internal fun inspectAndroidImageDecoderPage(
     return try {
         val bitmap =
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(encoded.asReadOnlyBuffer())) { decoder, info, _ ->
-                val actual = androidPageFormat(info.mimeType) ?: throw PageProbeAbort(invalidPage())
-                if (actual != expected || info.size.width <= 0 || info.size.height <= 0) throw PageProbeAbort(invalidPage())
-                val native = PageImageMetadata(actual, info.size.width, info.size.height)
+                val actual = androidPageFormat(info.mimeType)
+                if (actual != expected || info.size.width <= 0 || info.size.height <= 0) {
+                    throw PageProbeAbort(invalidPage())
+                }
+                val native = PageImageMetadata(expected, info.size.width, info.size.height)
                 policy.rejectionFor(native)?.let { throw PageProbeAbort(it) }
                 metadata = native
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
@@ -30,7 +32,11 @@ internal fun inspectAndroidImageDecoderPage(
             }
         try {
             val native = metadata
-            if (native == null || !validSample(bitmap, policy.sampleMaxDimension)) invalidPage() else PageInspection.Valid(native)
+            if (native == null || !validSample(bitmap, policy.sampleMaxDimension)) {
+                invalidPage()
+            } else {
+                PageInspection.Valid(native)
+            }
         } finally {
             bitmap.recycle()
         }
@@ -55,19 +61,26 @@ internal fun inspectAndroidBitmapFactoryPage(
 ): PageInspection {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeStream(PageBufferInputStream(encoded), null, bounds)
-    val format = androidPageFormat(bounds.outMimeType) ?: return invalidPage()
+    val format = androidPageFormat(bounds.outMimeType)
     if (format != expected || bounds.outWidth <= 0 || bounds.outHeight <= 0) return invalidPage()
-    val metadata = PageImageMetadata(format, bounds.outWidth, bounds.outHeight)
-    policy.rejectionFor(metadata)?.let { return it }
+    val metadata = PageImageMetadata(expected, bounds.outWidth, bounds.outHeight)
+    return policy.rejectionFor(metadata) ?: inspectBitmapFactorySample(encoded, metadata, policy.sampleMaxDimension)
+}
+
+private fun inspectBitmapFactorySample(
+    encoded: ByteBuffer,
+    metadata: PageImageMetadata,
+    maxEdge: Int,
+): PageInspection {
     val options =
         BitmapFactory.Options().apply {
-            inSampleSize = pagePowerOfTwoSample(metadata, policy.sampleMaxDimension)
+            inSampleSize = pagePowerOfTwoSample(metadata, maxEdge)
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inScaled = false
         }
     val sample = BitmapFactory.decodeStream(PageBufferInputStream(encoded), null, options) ?: return invalidPage()
     return try {
-        if (validSample(sample, policy.sampleMaxDimension)) PageInspection.Valid(metadata) else invalidPage()
+        if (validSample(sample, maxEdge)) PageInspection.Valid(metadata) else invalidPage()
     } finally {
         sample.recycle()
     }
@@ -117,20 +130,27 @@ private class PageBufferInputStream(
 ) : InputStream() {
     private val cursor = encoded.asReadOnlyBuffer()
 
-    override fun read(): Int = if (cursor.hasRemaining()) cursor.get().toInt() and 0xff else -1
+    override fun read(): Int = if (cursor.hasRemaining()) cursor.get().toInt() and UNSIGNED_BYTE_MASK else -1
 
     override fun read(
         bytes: ByteArray,
         offset: Int,
         length: Int,
     ): Int {
-        if (offset < 0 || length < 0 || offset > bytes.size - length) throw IndexOutOfBoundsException()
-        if (length == 0) return 0
-        if (!cursor.hasRemaining()) return -1
-        val count = minOf(length, cursor.remaining())
-        cursor.get(bytes, offset, count)
-        return count
+        if (offset < 0 || length < 0 || offset > bytes.size - length) {
+            throw IndexOutOfBoundsException("Invalid read range: offset=$offset, length=$length, size=${bytes.size}")
+        }
+        return when {
+            length == 0 -> 0
+            !cursor.hasRemaining() -> -1
+            else -> {
+                val count = minOf(length, cursor.remaining())
+                cursor.get(bytes, offset, count)
+                count
+            }
+        }
     }
 }
 
 private const val MAX_SAMPLE_BYTES: Int = 128 * 1024
+private const val UNSIGNED_BYTE_MASK: Int = 0xff

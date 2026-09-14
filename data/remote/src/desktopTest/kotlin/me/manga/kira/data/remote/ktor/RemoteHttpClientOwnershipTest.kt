@@ -92,7 +92,10 @@ class RemoteHttpClientOwnershipTest {
             app.close()
             withTimeout(CLIENT_CLEANUP_TIMEOUT_MILLIS) { download.coroutineContext.job.join() }
             assertTrue(download.coroutineContext.job.isCompleted)
-            assertTrue(shared.coroutineContext.job.isActive, "download ownership must not change shared client lifetime")
+            assertTrue(
+                shared.coroutineContext.job.isActive,
+                "download ownership must not change shared client lifetime",
+            )
         } finally {
             app.close()
             clients.forEach { closeAndJoin(it) }

@@ -93,27 +93,27 @@ class DownloadManifestStore(
         runCatching {
             system.createDirectories(dir)
             val text = json.encodeToString(DownloadManifest.serializer(), manifest)
-            val temporary = dir / ".manifest-${Random.nextLong().toULong().toString(16)}.tmp"
+            val temporary = dir / ".manifest-${Random.nextLong().toULong().toString(TEMPORARY_NAME_RADIX)}.tmp"
             var owned = false
-            var failure: Throwable? = null
-            try {
-                val sink = system.sink(temporary, mustCreate = true)
-                owned = true
-                sink.buffer().use { it.writeUtf8(text) }
-                system.atomicMove(temporary, dir / MANIFEST_NAME)
-                owned = false
-            } catch (primary: Throwable) {
-                failure = primary
-                throw primary
-            } finally {
-                if (owned) {
-                    try {
-                        system.delete(temporary, mustExist = false)
-                    } catch (cleanup: Throwable) {
-                        if (failure != null) failure.addSuppressed(cleanup) else throw cleanup
-                    }
+            // Cleanup precedes propagation even when writing was cancelled.
+            val writeResult =
+                runCatching {
+                    val sink = system.sink(temporary, mustCreate = true)
+                    owned = true
+                    sink.buffer().use { it.writeUtf8(text) }
+                    system.atomicMove(temporary, dir / MANIFEST_NAME)
+                    owned = false
                 }
+            val cleanupFailure =
+                if (owned) {
+                    runCatching { system.delete(temporary, mustExist = false) }.exceptionOrNull()
+                } else {
+                    null
+                }
+            cleanupFailure?.let { cleanup ->
+                writeResult.exceptionOrNull()?.addSuppressed(cleanup) ?: throw cleanup
             }
+            writeResult.getOrThrow()
             BgDownloadLog.log(
                 "manifest.store.write",
                 "chapterId" to manifest.chapterId,
@@ -167,6 +167,7 @@ class DownloadManifestStore(
 
     private companion object {
         const val MANIFEST_NAME = "manifest.json"
+        const val TEMPORARY_NAME_RADIX = 16
         val json =
             Json {
                 ignoreUnknownKeys = true

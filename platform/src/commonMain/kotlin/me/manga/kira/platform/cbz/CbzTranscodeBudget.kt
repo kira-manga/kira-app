@@ -44,22 +44,27 @@ internal object CbzTranscodeBudget {
         require(width > 0 && height > 0 && encodedBytes > 0) { "Invalid CBZ source dimensions or size" }
         require(maxHeight > 0 && maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
         if (width > WEBP_MAX_DIMENSION) return CbzTranscodeAdmission.PreserveWebpDimensions
+        val plan = planWithinBudget(width, height, encodedBytes, maxHeight, maxMemoryBytes)
+        return if (plan == null) CbzTranscodeAdmission.PreserveBudget else CbzTranscodeAdmission.Admitted(plan)
+    }
+
+    private fun planWithinBudget(
+        width: Int,
+        height: Int,
+        encodedBytes: Long,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): CbzTranscodePlan? {
         val pixels = width.toLong() * height
         val allowance = Allowance(maxMemoryBytes)
-        if (!allowance.reserve(encodedBytes, ENCODED_SOURCE_COPIES) ||
-            !allowance.reserve(pixels, SOURCE_BYTES_PER_PIXEL) ||
-            !allowance.reserve(FIXED_BYTES) ||
-            !allowance.reserve(OUTPUT_CONTAINER_BYTES, OUTPUT_COPIES)
-        ) {
-            return CbzTranscodeAdmission.PreserveBudget
+        if (!allowance.reserveSource(encodedBytes, pixels) || !allowance.reserveContainerOverhead()) {
+            return null
         }
         val bandRows = allowance.remaining / (width.toLong() * BAND_BYTES_PER_PIXEL)
         val bandHeight = minOf(minOf(height, maxHeight, WEBP_MAX_DIMENSION).toLong(), bandRows).toInt()
-        if (bandHeight <= 0) return CbzTranscodeAdmission.PreserveBudget
         val bandPixels = width.toLong() * bandHeight
         val outputBytes = bandPixels * RGBA_BYTES_PER_PIXEL + OUTPUT_CONTAINER_BYTES
-        if (outputBytes > Int.MAX_VALUE) return CbzTranscodeAdmission.PreserveBudget
-        return CbzTranscodeAdmission.Admitted(
+        return if (bandHeight > 0 && outputBytes <= Int.MAX_VALUE) {
             CbzTranscodePlan(
                 width,
                 height,
@@ -68,14 +73,23 @@ internal object CbzTranscodeBudget {
                 pixels * SOURCE_BYTES_PER_PIXEL + FIXED_BYTES,
                 outputBytes.toInt(),
                 maxMemoryBytes - allowance.remaining + bandPixels * BAND_BYTES_PER_PIXEL,
-            ),
-        )
+            )
+        } else {
+            null
+        }
     }
 
     private class Allowance(
         var remaining: Long,
     ) {
-        fun reserve(
+        fun reserveSource(
+            encodedBytes: Long,
+            pixels: Long,
+        ): Boolean = reserve(encodedBytes, ENCODED_SOURCE_COPIES) && reserve(pixels, SOURCE_BYTES_PER_PIXEL)
+
+        fun reserveContainerOverhead(): Boolean = reserve(FIXED_BYTES) && reserve(OUTPUT_CONTAINER_BYTES, OUTPUT_COPIES)
+
+        private fun reserve(
             count: Long,
             copies: Int = 1,
         ): Boolean {

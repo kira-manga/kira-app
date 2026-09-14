@@ -34,7 +34,11 @@ internal class CbzModeledAvifCase(
                 file: File,
                 maxWorkingBytes: Long,
             ): Bitmap {
-                assertEquals(MODELED_AVIF_MAX_WORKING_BYTES, maxWorkingBytes, "The manager must retain its injected cap")
+                assertEquals(
+                    MODELED_AVIF_MAX_WORKING_BYTES,
+                    maxWorkingBytes,
+                    "The manager must retain its injected cap",
+                )
                 inspector.assertDecoderSnapshot(file)
                 decodes.incrementAndGet()
                 return Bitmap.createBitmap(CBZ_AVIF_PAGE_WIDTH, height, Bitmap.Config.ARGB_8888).also(parent::set)

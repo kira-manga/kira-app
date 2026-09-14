@@ -28,7 +28,9 @@ class ChapterFinalizerCompletenessTest {
             val (archive, previous) = installPreviousArchive(original)
             val writer = CbzCallerWriter { _, _ -> throw IOException("second page encode failed") }
 
-            assertFailsWith<IOException> { finalizer(writer).finalize(original.download, original.saved.localImagePaths) }
+            assertFailsWith<IOException> {
+                finalizer(writer).finalize(original.download, original.saved.localImagePaths)
+            }
 
             assertEquals(1, writer.requests.size)
             assertEquals(original.saved, saved(original))
@@ -69,8 +71,12 @@ class ChapterFinalizerCompletenessTest {
                 val writer = CbzCallerWriter { _, _ -> error("loose completion must not encode") }
                 val finalizer = finalizer(writer, dataStore)
 
-                assertFailsWith<IOException> { finalizer.markReadable(original.download, original.saved.localImagePaths) }
-                assertFailsWith<IOException> { finalizer.finalize(original.download, original.saved.localImagePaths) }
+                assertFailsWith<IOException> {
+                    finalizer.markReadable(original.download, original.saved.localImagePaths)
+                }
+                assertFailsWith<IOException> {
+                    finalizer.finalize(original.download, original.saved.localImagePaths)
+                }
 
                 assertTrue(writer.requests.isEmpty())
                 assertEquals(original.saved, saved(original))
@@ -92,7 +98,7 @@ class ChapterFinalizerCompletenessTest {
             coroutineScope {
                 val conversion = async { finalizer(writer).finalize(original.download, original.saved.localImagePaths) }
                 try {
-                    withTimeout(15_000) { entered.await() }
+                    withTimeout(WRITER_ENTRY_TIMEOUT_MILLIS) { entered.await() }
                     conversion.cancel(CancellationException("download cancelled"))
                     assertFailsWith<CancellationException> { conversion.await() }
                 } finally {
@@ -126,10 +132,13 @@ class ChapterFinalizerCompletenessTest {
         downloadRecoveryTest {
             val original = seed(state = DownloadingState.COMPRESSING, sizeBytes = 456L)
             val pages = installValidPages(original)
-            val (archive, previous) = installPreviousArchive(original, listOf(pages.values.first(), "not an image".encodeToByteArray()))
+            val (archive, previous) =
+                installPreviousArchive(original, listOf(pages.values.first(), "not an image".encodeToByteArray()))
             val writer = CbzCallerWriter { _, _ -> error("adoption never encodes") }
 
-            assertFailsWith<IOException> { finalizer(writer).adoptExistingArchive(original.download, archive.toString()) }
+            assertFailsWith<IOException> {
+                finalizer(writer).adoptExistingArchive(original.download, archive.toString())
+            }
 
             assertEquals(original.saved, saved(original))
             assertEquals(original.download, download(original))
@@ -153,3 +162,5 @@ class ChapterFinalizerCompletenessTest {
             assertEquals(DownloadingState.SUCCESS, download(original).state)
         }
 }
+
+private const val WRITER_ENTRY_TIMEOUT_MILLIS = 15_000L

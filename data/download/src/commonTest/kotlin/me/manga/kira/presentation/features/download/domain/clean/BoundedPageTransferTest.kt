@@ -39,7 +39,10 @@ class BoundedPageTransferTest {
             fs.createDirectories(directory)
             for (declared in listOf(4L, null, -1L, 1L)) {
                 val temporary = pageTemporaryPath(directory, 0)
-                assertEquals(4L, transferPageBody(ByteReadChannel(byteArrayOf(1, 2, 3, 4)), declared, fs, temporary, policy))
+                assertEquals(
+                    4L,
+                    transferPageBody(ByteReadChannel(byteArrayOf(1, 2, 3, 4)), declared, fs, temporary, policy),
+                )
                 assertContentEquals(byteArrayOf(1, 2, 3, 4), fs.read(temporary) { readByteArray() })
                 fs.delete(temporary)
             }

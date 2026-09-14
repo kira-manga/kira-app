@@ -9,7 +9,8 @@ import okio.ByteString.Companion.decodeHex
 internal object PageMediaTestImages {
     fun png(): ByteArray =
         requireNotNull(
-            "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAJAQAAAAAnKFCDAAAAC0lEQVR42mNgQAcAABIAAeRVjecAAAAASUVORK5CYII=".decodeBase64(),
+            "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAJAQAAAAAnKFCDAAAAC0lEQVR42mNgQAcAABIAAeRVjecAAAAASUVORK5CYII="
+                .decodeBase64(),
         ).toByteArray()
 
     fun gif(): ByteArray =
@@ -69,14 +70,7 @@ internal object PageMediaTestImages {
             var crc = input.readInt()
             if (type.decodeToString() == name) {
                 change(payload)
-                if (updateCrc) {
-                    crc =
-                        Crc32()
-                            .apply {
-                                update(type)
-                                update(payload)
-                            }.value
-                }
+                if (updateCrc) crc = pngChunkCrc(type, payload)
             }
             output
                 .writeInt(count)
@@ -85,5 +79,15 @@ internal object PageMediaTestImages {
                 .writeInt(crc)
         }
         return output.readByteArray()
+    }
+
+    private fun pngChunkCrc(
+        type: ByteArray,
+        payload: ByteArray,
+    ): Int {
+        val crc = Crc32()
+        crc.update(type)
+        crc.update(payload)
+        return crc.value
     }
 }

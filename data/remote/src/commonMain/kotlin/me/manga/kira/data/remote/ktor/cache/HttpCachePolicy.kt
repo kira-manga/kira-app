@@ -8,12 +8,15 @@ import io.ktor.http.parseHeaderValue
 internal const val CACHE_RECORD_PREFIX_BYTES = 12L
 private const val MEBIBYTE = 1024 * 1024
 private const val KIBIBYTE = 1024
+private const val DEFAULT_MAX_TOTAL_BYTES = 16L * MEBIBYTE
+private const val DEFAULT_MAX_BODY_BYTES = 4 * MEBIBYTE
+private const val DEFAULT_MAX_METADATA_BYTES = 64 * KIBIBYTE
 
 /** Limits cover both namespaces together, not a fresh allowance for every URL or storage view. */
 internal data class HttpCachePolicy(
-    val maxTotalBytes: Long = 16L * MEBIBYTE,
-    val maxBodyBytes: Int = 4 * MEBIBYTE,
-    val maxMetadataBytes: Int = 64 * KIBIBYTE,
+    val maxTotalBytes: Long = DEFAULT_MAX_TOTAL_BYTES,
+    val maxBodyBytes: Int = DEFAULT_MAX_BODY_BYTES,
+    val maxMetadataBytes: Int = DEFAULT_MAX_METADATA_BYTES,
     val maxEntries: Int = 128,
     val maxVariantsPerUrl: Int = 4,
 ) {
@@ -28,34 +31,42 @@ internal data class HttpCachePolicy(
     fun accepts(
         data: CachedResponseData,
         nowMillis: Long,
-    ): Boolean {
-        if (!data.statusCode.isSuccess() || data.body.size > maxBodyBytes || data.expires.timestamp <= nowMillis) return false
-        if (data.varyKeys.keys.any { it == "*" }) return false
-        if (data.headers
+    ): Boolean =
+        when {
+            !data.statusCode.isSuccess() ||
+                data.body.size > maxBodyBytes ||
+                data.expires.timestamp <= nowMillis -> false
+            data.varyKeys.keys.any { it == "*" } -> false
+            data.headers
                 .getAll(HttpHeaders.Vary)
                 .orEmpty()
-                .any { value -> value.split(',').any { it.trim() == "*" } }
-        ) {
-            return false
+                .any { value -> value.split(',').any { it.trim() == "*" } } -> false
+            else -> {
+                val directives = parseHeaderValue(data.headers.getAll(HttpHeaders.CacheControl)?.joinToString(","))
+                if (directives.any { it.value.equals("no-store", ignoreCase = true) }) {
+                    false
+                } else {
+                    val explicitFreshness =
+                        directives.any {
+                            it.value.substringBefore('=').equals("max-age", ignoreCase = true) &&
+                                (it.value.substringAfter('=', "").toLongOrNull() ?: 0) > 0
+                        } ||
+                            data.headers.contains(HttpHeaders.Expires)
+                    explicitFreshness && isMetadata(data.headers[HttpHeaders.ContentType])
+                }
+            }
         }
-        val directives = parseHeaderValue(data.headers.getAll(HttpHeaders.CacheControl)?.joinToString(","))
-        if (directives.any { it.value.equals("no-store", ignoreCase = true) }) return false
-        val explicitFreshness =
-            directives.any {
-                it.value.substringBefore('=').equals("max-age", ignoreCase = true) &&
-                    (it.value.substringAfter('=', "").toLongOrNull() ?: 0) > 0
-            } ||
-                data.headers.contains(HttpHeaders.Expires)
-        return explicitFreshness && isMetadata(data.headers[HttpHeaders.ContentType])
-    }
 
     private fun isMetadata(contentType: String?): Boolean {
         val type = contentType?.substringBefore(';')?.trim()?.lowercase() ?: return false
-        if (type.startsWith("text/")) return type != "text/event-stream"
-        return type == "application/json" ||
-            type == "application/xml" ||
-            type == "application/javascript" ||
-            (type.startsWith("application/") && (type.endsWith("+json") || type.endsWith("+xml")))
+        return if (type.startsWith("text/")) {
+            type != "text/event-stream"
+        } else {
+            type == "application/json" ||
+                type == "application/xml" ||
+                type == "application/javascript" ||
+                (type.startsWith("application/") && (type.endsWith("+json") || type.endsWith("+xml")))
+        }
     }
 }
 

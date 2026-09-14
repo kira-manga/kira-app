@@ -36,7 +36,9 @@ class IosPageMediaInspector(
             encodedPageRejection(encoded.size.toLong(), policy)?.let { return@withPageProbeLock it }
             val data =
                 encoded.usePinned { CFDataCreate(null, it.addressOf(0).reinterpret(), encoded.size.toLong()) }
-                    ?: return@withPageProbeLock PageInspection.ReadFailure(IOException("Could not retain encoded page snapshot"))
+                    ?: return@withPageProbeLock PageInspection.ReadFailure(
+                        IOException("Could not retain encoded page snapshot"),
+                    )
             inspectAndRelease(data)
         }
 
@@ -60,10 +62,12 @@ class IosPageMediaInspector(
         val mapped =
             NSData.create(contentsOfFile = path.toString(), options = NSDataReadingMappedAlways, error = null)
                 ?: return PageInspection.ReadFailure(IOException("Could not map encoded page snapshot"))
-        val data: CFDataRef =
-            CFBridgingRetain(mapped)?.reinterpret()
-                ?: return PageInspection.ReadFailure(IOException("Could not retain mapped page snapshot"))
-        return inspectAndRelease(data)
+        val data: CFDataRef? = CFBridgingRetain(mapped)?.reinterpret()
+        return if (data == null) {
+            PageInspection.ReadFailure(IOException("Could not retain mapped page snapshot"))
+        } else {
+            inspectAndRelease(data)
+        }
     }
 
     private fun inspectAndRelease(data: CFDataRef): PageInspection =
@@ -100,13 +104,17 @@ private class CfPageSource(
         byteCount: Long,
     ): Long {
         require(byteCount >= 0)
-        if (byteCount == 0L) return 0
-        if (position == size) return -1
-        val count = minOf(byteCount, size - position, CF_READ_BYTES).toInt()
-        val pointer = CFDataGetBytePtr(data)?.plus(position) ?: throw IOException("Page snapshot has no bytes")
-        sink.write(pointer.readBytes(count))
-        position += count
-        return count.toLong()
+        return when {
+            byteCount == 0L -> 0L
+            position == size -> -1L
+            else -> {
+                val count = minOf(byteCount, size - position, CF_READ_BYTES).toInt()
+                val pointer = CFDataGetBytePtr(data)?.plus(position) ?: throw IOException("Page snapshot has no bytes")
+                sink.write(pointer.readBytes(count))
+                position += count
+                count.toLong()
+            }
+        }
     }
 
     override fun timeout(): Timeout = Timeout.NONE

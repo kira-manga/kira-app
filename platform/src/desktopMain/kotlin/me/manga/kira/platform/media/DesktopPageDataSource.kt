@@ -16,12 +16,16 @@ internal class DesktopPageDataSource(
         byteCount: Long,
     ): Long {
         require(byteCount >= 0)
-        if (byteCount == 0L) return 0
-        if (position == data.size) return -1
-        val count = minOf(byteCount, (data.size - position).toLong(), PAGE_READ_BYTES.toLong()).toInt()
-        sink.write(data.getBytes(position, count))
-        position += count
-        return count.toLong()
+        return when {
+            byteCount == 0L -> 0L
+            position == data.size -> -1L
+            else -> {
+                val count = minOf(byteCount, (data.size - position).toLong(), PAGE_READ_BYTES.toLong()).toInt()
+                sink.write(data.getBytes(position, count))
+                position += count
+                count.toLong()
+            }
+        }
     }
 
     override fun timeout(): Timeout = Timeout.NONE

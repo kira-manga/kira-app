@@ -60,26 +60,56 @@ internal fun inspectIosPage(
     policy: PageInspectionPolicy,
 ): PageInspection {
     if (!imageIoSupports(expected)) return PageInspection.Rejected(PageInspectionRejection.DECODER_UNAVAILABLE)
-    val options = CFDictionaryCreateMutable(null, 0, null, null) ?: throw IOException("ImageIO options unavailable")
-    val source =
+    val source = createPageImageIoSource(data)
+    return if (source == null) {
+        invalidPage()
+    } else {
         try {
-            CFDictionaryAddValue(options, kCGImageSourceShouldCache, kCFBooleanFalse)
-            CGImageSourceCreateWithData(data, options)
+            inspectPageImageIoSource(source, expected, policy)
         } finally {
-            CFRelease(options)
-        } ?: return invalidPage()
-    return try {
-        if (!imageIoComplete(source)) return invalidPage()
-        val format = imageIoFormat(CGImageSourceGetType(source)) ?: return invalidPage()
-        if (format != expected) return invalidPage()
-        val metadata = imageIoMetadata(source, format)
-        policy.rejectionFor(metadata)?.let { return it }
-        if (!validateImageIoSample(source, policy.sampleMaxDimension) || !imageIoComplete(source)) return invalidPage()
-        PageInspection.Valid(metadata)
-    } finally {
-        CFRelease(source)
+            CFRelease(source)
+        }
     }
 }
+
+@OptIn(ExperimentalForeignApi::class)
+private fun createPageImageIoSource(data: CFDataRef): CGImageSourceRef? {
+    val options = CFDictionaryCreateMutable(null, 0, null, null) ?: throw IOException("ImageIO options unavailable")
+    return try {
+        CFDictionaryAddValue(options, kCGImageSourceShouldCache, kCFBooleanFalse)
+        CGImageSourceCreateWithData(data, options)
+    } finally {
+        CFRelease(options)
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun inspectPageImageIoSource(
+    source: CGImageSourceRef,
+    expected: PageImageFormat,
+    policy: PageInspectionPolicy,
+): PageInspection {
+    if (!imageIoComplete(source)) return invalidPage()
+    val format = imageIoFormat(CGImageSourceGetType(source))
+    return if (format != expected) {
+        invalidPage()
+    } else {
+        val metadata = imageIoMetadata(source, expected)
+        policy.rejectionFor(metadata) ?: inspectPageImageIoSample(source, metadata, policy.sampleMaxDimension)
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun inspectPageImageIoSample(
+    source: CGImageSourceRef,
+    metadata: PageImageMetadata,
+    maxEdge: Int,
+): PageInspection =
+    if (validateImageIoSample(source, maxEdge) && imageIoComplete(source)) {
+        PageInspection.Valid(metadata)
+    } else {
+        invalidPage()
+    }
 
 @OptIn(ExperimentalForeignApi::class)
 private fun imageIoComplete(source: CGImageSourceRef): Boolean =
@@ -128,7 +158,8 @@ private fun validateImageIoSample(
     edge: Int,
 ): Boolean =
     memScoped {
-        val options = CFDictionaryCreateMutable(null, 0, null, null) ?: throw IOException("ImageIO sample options unavailable")
+        val options =
+            CFDictionaryCreateMutable(null, 0, null, null) ?: throw IOException("ImageIO sample options unavailable")
         val size = alloc<IntVar> { value = edge }
         val number = CFNumberCreate(null, kCFNumberIntType, size.ptr)
         try {
@@ -171,7 +202,9 @@ private fun imageIoFormat(type: CFStringRef?): PageImageFormat? =
     memScoped {
         if (type == null) return@memScoped null
         val bytes = allocArray<ByteVar>(MAX_IMAGE_TYPE_BYTES)
-        if (!CFStringGetCString(type, bytes, MAX_IMAGE_TYPE_BYTES.toLong(), kCFStringEncodingUTF8)) return@memScoped null
+        if (!CFStringGetCString(type, bytes, MAX_IMAGE_TYPE_BYTES.toLong(), kCFStringEncodingUTF8)) {
+            return@memScoped null
+        }
         when (bytes.toKString()) {
             "public.jpeg" -> PageImageFormat.JPEG
             "public.png" -> PageImageFormat.PNG

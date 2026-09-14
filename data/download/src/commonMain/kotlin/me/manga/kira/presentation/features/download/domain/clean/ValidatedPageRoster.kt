@@ -38,8 +38,9 @@ internal fun inspectPageRoster(
 ): ValidatedPageRoster {
     require(manifest.hasValidPageRoster()) { "Invalid chapter page roster" }
     val expected = manifest.pages.map { it.index }.sorted()
-    if (manifest.pages.any { it.policyRejected }) return ValidatedPageRoster(expected, emptyMap())
-    if (!system.exists(directory)) return ValidatedPageRoster(expected, emptyMap())
+    if (manifest.pages.any { it.policyRejected } || !system.exists(directory)) {
+        return ValidatedPageRoster(expected, emptyMap())
+    }
     val candidates =
         system
             .list(directory)

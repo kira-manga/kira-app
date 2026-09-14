@@ -35,7 +35,10 @@ class CbzConversionPersistenceTest {
 
             assertTrue(repository.compressExistingDownloads().isSuccess)
 
-            assertEquals(listOf(original.saved.id to original.saved.localImagePaths.map { it.toPath() }), writer.requests)
+            assertEquals(
+                listOf(original.saved.id to original.saved.localImagePaths.map { it.toPath() }),
+                writer.requests,
+            )
             assertEquals(original.saved, saved(original))
             assertEquals(original.download, download(original))
             assertContentEquals(pages.values.first(), fs.read(pages.keys.first()) { readByteArray() })
@@ -52,13 +55,14 @@ class CbzConversionPersistenceTest {
     @Test
     fun readDecodeEncodeAndPublicationErrorsAreNotSuccessfulConversions() =
         downloadRecoveryTest {
-            val originals = List(4) { seed(isDownloaded = true, sizeBytes = 1234L) }
+            val failureMessages = listOf("read denied", "decode failed", "encode failed", "rename failed")
+            val originals = List(failureMessages.size) { seed(isDownloaded = true, sizeBytes = 1234L) }
             val pages = originals.flatMap { installValidPages(it).entries }.associate { it.toPair() }
             val archives = originals.map { installPreviousArchive(it) }
             val failures =
                 originals
                     .mapIndexed { index, original ->
-                        original.saved.id to listOf("read denied", "decode failed", "encode failed", "rename failed")[index]
+                        original.saved.id to failureMessages[index]
                     }.toMap()
             val writer =
                 CbzCallerWriter { paths, chapterId ->
@@ -69,7 +73,7 @@ class CbzConversionPersistenceTest {
 
             assertTrue(repository.compressExistingDownloads().isSuccess)
 
-            assertEquals(4, writer.requests.size)
+            assertEquals(failureMessages.size, writer.requests.size)
             assertEquals(0, repository.observeCbzConversion().first().convertedChapters)
             pages.forEach { (path, bytes) -> assertContentEquals(bytes, fs.read(path) { readByteArray() }) }
             archives.forEach { (path, bytes) -> assertContentEquals(bytes, fs.read(path) { readByteArray() }) }
@@ -95,7 +99,7 @@ class CbzConversionPersistenceTest {
             coroutineScope {
                 val conversion = async { repository.compressExistingDownloads() }
                 try {
-                    withTimeout(15_000) { entered.await() }
+                    withTimeout(WRITER_ENTRY_TIMEOUT_MILLIS) { entered.await() }
                     conversion.cancel(CancellationException("settings closed"))
                     assertFailsWith<CancellationException> { conversion.await() }
                 } finally {
@@ -110,3 +114,5 @@ class CbzConversionPersistenceTest {
             assertEquals(original.download, download(original))
         }
 }
+
+private const val WRITER_ENTRY_TIMEOUT_MILLIS = 15_000L

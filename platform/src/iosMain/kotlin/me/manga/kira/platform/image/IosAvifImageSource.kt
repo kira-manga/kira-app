@@ -185,7 +185,8 @@ private fun checkAvifThumbnail(
     val width = CGImageGetWidth(image)
     val height = CGImageGetHeight(image)
     val rowBytes = CGImageGetBytesPerRow(image)
-    if (width == 0uL || height == 0uL || width > maxEdge.toULong() || height > maxEdge.toULong()) {
+    val admittedAxis = 1uL..maxEdge.toULong()
+    if (width !in admittedAxis || height !in admittedAxis) {
         throw AvifDecodeException("ImageIO returned AVIF dimensions outside the thumbnail limit.")
     }
     if (rowBytes == 0uL || rowBytes > maxBytes.toULong() / height) {

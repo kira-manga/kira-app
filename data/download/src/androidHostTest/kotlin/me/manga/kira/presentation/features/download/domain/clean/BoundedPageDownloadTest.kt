@@ -41,7 +41,8 @@ class BoundedPageDownloadTest {
     private val directory = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "bounded-page-http-${Random.nextLong().toULong()}"
     private val png =
         requireNotNull(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=".decodeBase64(),
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                .decodeBase64(),
         ).toByteArray()
     private val inspector = AndroidPageMediaInspector()
 
@@ -66,14 +67,16 @@ class BoundedPageDownloadTest {
                 val result =
                     downloadValidatedPage(
                         client,
-                        "https://images.example/page.jpg",
-                        mapOf(
-                            "Referer" to "https://source.example/",
-                            "User-Agent" to "fixture-agent",
+                        PageDownloadRequest(
+                            "https://images.example/page.jpg",
+                            mapOf(
+                                "Referer" to "https://source.example/",
+                                "User-Agent" to "fixture-agent",
+                            ),
+                            directory,
+                            0,
                         ),
                         fs,
-                        directory,
-                        0,
                         inspector,
                         PageBytePolicy(png.size.toLong()),
                     )
@@ -91,8 +94,14 @@ class BoundedPageDownloadTest {
     fun htmlTruncationAndBadPngCrcCannotReplaceAGoodPage() =
         runTest {
             val prior = seedPrior()
-            val badCrc = png.copyOf().apply { this[29] = (this[29].toInt() xor 1).toByte() }
-            for (bad in listOf("<html>challenge</html>".encodeToByteArray(), png.copyOf(png.size - 4), badCrc)) {
+            val badCrc = png.copyOf().apply { this[PNG_CRC_OFFSET] = (this[PNG_CRC_OFFSET].toInt() xor 1).toByte() }
+            val invalidPages =
+                listOf(
+                    "<html>challenge</html>".encodeToByteArray(),
+                    png.copyOf(png.size - TRUNCATED_BYTES),
+                    badCrc,
+                )
+            for (bad in invalidPages) {
                 val client = client(bad)
                 try {
                     assertFailsWith<PageMediaException> { download(client) }
@@ -112,7 +121,9 @@ class BoundedPageDownloadTest {
             for (declared in listOf(null, "1")) {
                 val client = client(png, declared)
                 try {
-                    assertFailsWith<PageByteLimitExceeded> { download(client, policy = PageBytePolicy(png.size.toLong() - 1)) }
+                    assertFailsWith<PageByteLimitExceeded> {
+                        download(client, policy = PageBytePolicy(png.size.toLong() - 1))
+                    }
                     assertContentEquals(png, fs.read(prior) { readByteArray() })
                     assertNoPartial()
                 } finally {
@@ -186,7 +197,14 @@ class BoundedPageDownloadTest {
         client: HttpClient,
         files: FileSystem = fs,
         policy: PageBytePolicy = PageBytePolicy(),
-    ): Path = downloadValidatedPage(client, "https://images.example/page.jpg", emptyMap(), files, directory, 0, inspector, policy)
+    ): Path =
+        downloadValidatedPage(
+            client,
+            PageDownloadRequest("https://images.example/page.jpg", emptyMap(), directory, 0),
+            files,
+            inspector,
+            policy,
+        )
 
     private fun seedPrior(): Path {
         fs.createDirectories(directory)
@@ -195,3 +213,6 @@ class BoundedPageDownloadTest {
 
     private fun assertNoPartial() = assertTrue(fs.list(directory).none { it.name.endsWith(".partial") })
 }
+
+private const val PNG_CRC_OFFSET = 29
+private const val TRUNCATED_BYTES = 4

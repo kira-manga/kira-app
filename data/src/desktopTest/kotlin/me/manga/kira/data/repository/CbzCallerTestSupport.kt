@@ -23,7 +23,8 @@ import me.manga.kira.presentation.features.settings.domain.SettingsRepository as
 /** JVM-host proof of the shared mobile callers/real Room writes, not a Desktop writer test. */
 internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): SettingsRepositoryImpl =
     SettingsRepositoryImpl(
-        legacy = LegacySettingsRepository(SharedPrefsHelper(MapSettings()), DataStoreHelper(MapSettings()), appFileSystem),
+        legacy =
+            LegacySettingsRepository(SharedPrefsHelper(MapSettings()), DataStoreHelper(MapSettings()), appFileSystem),
         dispatchers = CbzCallerDispatchers,
         dataStore = DataStoreHelper(MapSettings()),
         chapterDao = db.chapterDao(),
@@ -31,7 +32,7 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
         mangaDao = db.mangaDao(),
         chapterDownloadDao = dao,
         appFileSystem = appFileSystem,
-        httpCacheClearer = HttpCacheClearer { },
+        httpCache = HttpCacheClearer { },
     )
 
 internal fun DownloadRecoveryFixture.finalizer(
@@ -72,7 +73,7 @@ internal fun DownloadRecoveryFixture.installPreviousArchive(
         ByteArrayOutputStream().use { buffer ->
             ZipOutputStream(buffer).use { zip ->
                 pages.forEachIndexed { index, page ->
-                    zip.putNextEntry(ZipEntry("page_${index.toString().padStart(4, '0')}.png"))
+                    zip.putNextEntry(ZipEntry("page_${index.toString().padStart(CBZ_ENTRY_INDEX_DIGITS, '0')}.png"))
                     zip.write(page)
                     zip.closeEntry()
                 }
@@ -116,6 +117,8 @@ private object CbzCallerDispatchers : DispatcherProvider {
     override val io get() = Dispatchers.Unconfined
     override val unconfined get() = Dispatchers.Unconfined
 }
+
+private const val CBZ_ENTRY_INDEX_DIGITS = 4
 
 private val CBZ_CALLER_PNG: ByteArray =
     checkNotNull(

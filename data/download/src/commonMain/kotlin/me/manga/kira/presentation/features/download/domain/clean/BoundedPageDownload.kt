@@ -16,25 +16,30 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 
+/** HTTP request and destination for one page. */
+internal data class PageDownloadRequest(
+    val url: String,
+    val headers: Map<String, String>,
+    val directory: Path,
+    val pageIndex: Int,
+)
+
 /** Scoped Ktor streaming: no saved/full-body response, and no published path before validation. */
 internal suspend fun downloadValidatedPage(
     client: HttpClient,
-    url: String,
-    pageHeaders: Map<String, String>,
+    request: PageDownloadRequest,
     system: FileSystem,
-    directory: Path,
-    pageIndex: Int,
     inspector: PageMediaInspector,
     policy: PageBytePolicy,
 ): Path {
     requireUncachedPageClient(client)
-    require(pageIndex >= 0)
+    require(request.pageIndex >= 0)
     currentCoroutineContext().ensureActive()
-    system.createDirectories(directory)
-    val temporary = pageTemporaryPath(directory, pageIndex)
+    system.createDirectories(request.directory)
+    val temporary = pageTemporaryPath(request.directory, request.pageIndex)
     return client
-        .prepareGet(url) {
-            headers { pageHeaders.forEach { (name, value) -> append(name, value) } }
+        .prepareGet(request.url) {
+            headers { request.headers.forEach { (name, value) -> append(name, value) } }
         }.execute { response ->
             if (!response.status.isSuccess()) throw IOException("Image download HTTP ${response.status.value}")
             // transferPageBody only deletes a file it successfully created; a name collision is not ours.
@@ -45,18 +50,16 @@ internal suspend fun downloadValidatedPage(
                 temporary,
                 policy,
             )
-            try {
+            // Capture cancellation too: the owned temporary must be removed before propagating it.
+            runCatching {
                 currentCoroutineContext().ensureActive()
                 val metadata = inspector.inspect(temporary).requireValid()
                 currentCoroutineContext().ensureActive()
-                publishPageSnapshot(system, temporary, pageIndex, metadata)
-            } catch (failure: Throwable) {
-                try {
-                    system.delete(temporary, mustExist = false)
-                } catch (cleanup: Throwable) {
-                    failure.addSuppressed(cleanup)
-                }
-                throw failure
-            }
+                publishPageSnapshot(system, temporary, request.pageIndex, metadata)
+            }.onFailure { failure ->
+                runCatching { system.delete(temporary, mustExist = false) }
+                    .exceptionOrNull()
+                    ?.let(failure::addSuppressed)
+            }.getOrThrow()
         }
 }

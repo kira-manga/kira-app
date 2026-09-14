@@ -56,34 +56,42 @@ class DesktopPageMediaInspector(
     ): PageInspection =
         try {
             Codec.makeFromData(data).use { codec ->
-                if (codec.encodedImageFormat != expected.skiaFormat() || codec.width <= 0 || codec.height <= 0) return invalidPage()
-                val metadata = PageImageMetadata(expected, codec.width, codec.height)
-                policy.rejectionFor(metadata)?.let { return it }
-                val longest = maxOf(codec.width, codec.height)
-                val edge = minOf(longest, policy.sampleMaxDimension)
-                val width = maxOf(1, (codec.width.toLong() * edge / longest).toInt())
-                val height = maxOf(1, (codec.height.toLong() * edge / longest).toInt())
-                Bitmap().use { sample ->
-                    if (!sample.allocPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.PREMUL))) {
-                        throw IOException("Could not allocate bounded page sample")
-                    }
-                    // Unlike Image.makeFromEncoded + drawing, this requests a small codec destination.
-                    // Skia's readPixels checks native result status, including partial/error input.
-                    try {
-                        codec.readPixels(sample)
-                    } catch (_: IllegalArgumentException) {
-                        // The bridge reports incomplete input and unsupported scaling with the same
-                        // exception type. Neither establishes readable bytes; no full-size retry.
-                        return PageInspection.Rejected(PageInspectionRejection.BOUNDED_DECODER_REJECTED)
-                    }
-                    PageInspection.Valid(metadata)
+                if (codec.encodedImageFormat != expected.skiaFormat() || codec.width <= 0 || codec.height <= 0) {
+                    return invalidPage()
                 }
+                val metadata = PageImageMetadata(expected, codec.width, codec.height)
+                policy.rejectionFor(metadata) ?: inspectCodecSample(codec, metadata)
             }
         } catch (_: IllegalArgumentException) {
             invalidPage()
         } catch (_: UnsupportedOperationException) {
             PageInspection.Rejected(PageInspectionRejection.DECODER_UNAVAILABLE)
         }
+
+    private fun inspectCodecSample(
+        codec: Codec,
+        metadata: PageImageMetadata,
+    ): PageInspection {
+        val longest = maxOf(codec.width, codec.height)
+        val edge = minOf(longest, policy.sampleMaxDimension)
+        val width = maxOf(1, (codec.width.toLong() * edge / longest).toInt())
+        val height = maxOf(1, (codec.height.toLong() * edge / longest).toInt())
+        return Bitmap().use { sample ->
+            if (!sample.allocPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.PREMUL))) {
+                throw IOException("Could not allocate bounded page sample")
+            }
+            // Unlike Image.makeFromEncoded + drawing, this requests a small codec destination.
+            // Skia's readPixels checks native result status, including partial/error input.
+            try {
+                codec.readPixels(sample)
+                PageInspection.Valid(metadata)
+            } catch (_: IllegalArgumentException) {
+                // The bridge reports incomplete input and unsupported scaling with the same
+                // exception type. Neither establishes readable bytes; no full-size retry.
+                PageInspection.Rejected(PageInspectionRejection.BOUNDED_DECODER_REJECTED)
+            }
+        }
+    }
 }
 
 private fun PageImageFormat.skiaFormat(): EncodedImageFormat? =

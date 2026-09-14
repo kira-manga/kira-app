@@ -18,11 +18,12 @@ class AndroidPageMediaInspector(
     private val system: FileSystem = FileSystem.SYSTEM,
 ) : PageMediaInspector {
     init {
-        require(policy.maxSourcePixels <= 268_435_456)
-        require(policy.maxSourceDimension <= 32_768)
+        require(policy.maxSourcePixels <= MAX_NATIVE_SOURCE_PIXELS)
+        require(policy.maxSourceDimension <= MAX_NATIVE_SOURCE_DIMENSION)
     }
 
-    override fun inspect(encoded: ByteArray): PageInspection = inspectBuffer(ByteBuffer.wrap(encoded).asReadOnlyBuffer())
+    override fun inspect(encoded: ByteArray): PageInspection =
+        inspectBuffer(ByteBuffer.wrap(encoded).asReadOnlyBuffer())
 
     override fun inspect(path: Path): PageInspection =
         try {
@@ -32,7 +33,8 @@ class AndroidPageMediaInspector(
             encodedPageRejection(size, policy) ?: RandomAccessFile(path.toFile(), "r").use { file ->
                 // Recheck THIS handle before mapping; the caller keeps its snapshot immutable.
                 val length = file.length()
-                encodedPageRejection(length, policy) ?: inspectBuffer(file.channel.map(FileChannel.MapMode.READ_ONLY, 0, length))
+                encodedPageRejection(length, policy)
+                    ?: inspectBuffer(file.channel.map(FileChannel.MapMode.READ_ONLY, 0, length))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -41,7 +43,11 @@ class AndroidPageMediaInspector(
         }
 
     private fun inspectBuffer(encoded: ByteBuffer): PageInspection =
-        inspectPageInput(policy, encoded.remaining().toLong(), { PageBufferSource(encoded.asReadOnlyBuffer()) }) { format ->
+        inspectPageInput(
+            policy,
+            encoded.remaining().toLong(),
+            { PageBufferSource(encoded.asReadOnlyBuffer()) },
+        ) { format ->
             if (format == PageImageFormat.AVIF) {
                 // AVIF shares the decoder/CBZ owner's fair native permit; no second AVIF lock.
                 inspectAndroidAvifPage(encoded, policy)
@@ -67,15 +73,23 @@ private class PageBufferSource(
         byteCount: Long,
     ): Long {
         require(byteCount >= 0)
-        if (byteCount == 0L) return 0
-        if (!encoded.hasRemaining()) return -1
-        val bytes = ByteArray(minOf(byteCount, encoded.remaining().toLong(), 8192L).toInt())
-        encoded.get(bytes)
-        sink.write(bytes)
-        return bytes.size.toLong()
+        return when {
+            byteCount == 0L -> 0L
+            !encoded.hasRemaining() -> -1L
+            else -> {
+                val bytes = ByteArray(minOf(byteCount, encoded.remaining().toLong(), PAGE_READ_BYTES).toInt())
+                encoded.get(bytes)
+                sink.write(bytes)
+                bytes.size.toLong()
+            }
+        }
     }
 
     override fun timeout(): Timeout = Timeout.NONE
 
     override fun close() = Unit
 }
+
+private const val MAX_NATIVE_SOURCE_PIXELS: Long = 268_435_456
+private const val MAX_NATIVE_SOURCE_DIMENSION: Int = 32_768
+private const val PAGE_READ_BYTES: Long = 8192

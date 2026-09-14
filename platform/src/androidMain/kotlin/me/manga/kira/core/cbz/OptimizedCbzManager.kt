@@ -101,7 +101,11 @@ class OptimizedCbzManager(
                 imageFiles.forEachIndexed { page, path ->
                     currentCoroutineContext().ensureActive()
                     val firstEntry = entries.size
-                    withValidatedCbzSnapshot(File(path), pagePolicy.bytePolicy, pagePolicy.inspector) { file, metadata, bytes ->
+                    withValidatedCbzSnapshot(
+                        File(path),
+                        pagePolicy.bytePolicy,
+                        pagePolicy.inspector,
+                    ) { file, metadata, bytes ->
                         writeValidatedPage(file, metadata, bytes, zip, entries)
                     }
                     if (entries.size <= firstEntry) throw IOException("CBZ input produced no entries")
@@ -128,13 +132,17 @@ class OptimizedCbzManager(
                 settings.regionDecodeThreshold,
                 pagePolicy.maxMemoryBytes,
             )
-        if (admission is CbzTranscodeAdmission.Admitted && canTranscode(metadata, encodedBytes, admission.plan.bandHeight)) {
+        if (admission is CbzTranscodeAdmission.Admitted &&
+            canTranscode(metadata, encodedBytes, admission.plan.bandHeight)
+        ) {
             streamPage(file, metadata, admission.plan.bandHeight) { bitmap ->
                 currentCoroutineContext().ensureActive()
                 val name = cbzEntryName(entries.size)
                 zip.putNextEntry(ZipEntry(name))
                 val sink = BoundedCbzEntryOutput(zip, admission.plan.maxEncodedBandBytes)
-                if (!encode(bitmap, webpFormat, settings.webpQuality, sink)) throw IOException("CBZ bitmap compression failed")
+                if (!encode(bitmap, webpFormat, settings.webpQuality, sink)) {
+                    throw IOException("CBZ bitmap compression failed")
+                }
                 currentCoroutineContext().ensureActive()
                 zip.closeEntry()
                 entries += name

@@ -49,7 +49,13 @@ class IosCbzWriter internal constructor(
         mangaId: Long,
         chapterId: Long,
         quality: Int,
-    ): Path = archive(imagePaths, mangaId, chapterId, quality, Int.MAX_VALUE, CbzWriter.DEFAULT_MAX_MEMORY_BYTES)
+    ): Path =
+        archive(
+            imagePaths,
+            mangaId,
+            chapterId,
+            EncodingOptions(quality, Int.MAX_VALUE, CbzWriter.DEFAULT_MAX_MEMORY_BYTES),
+        )
 
     override suspend fun createCbzWithSplitting(
         imagePaths: List<Path>,
@@ -58,20 +64,18 @@ class IosCbzWriter internal constructor(
         quality: Int,
         maxHeight: Int,
         maxMemoryBytes: Long,
-    ): Path = archive(imagePaths, mangaId, chapterId, quality, maxHeight, maxMemoryBytes)
+    ): Path = archive(imagePaths, mangaId, chapterId, EncodingOptions(quality, maxHeight, maxMemoryBytes))
 
     private suspend fun archive(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
     ): Path =
         withContext(Dispatchers.Default) {
             conversionMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                createArchive(imagePaths, mangaId, chapterId, quality, maxHeight, maxMemoryBytes)
+                createArchive(imagePaths, mangaId, chapterId, encoding)
             }
         }
 
@@ -79,12 +83,10 @@ class IosCbzWriter internal constructor(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
     ): Path {
         require(imagePaths.isNotEmpty()) { "No images to archive" }
-        require(maxHeight > 0 && maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
+        require(encoding.maxHeight > 0 && encoding.maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
         val chapterDir = fs.chapterDir(mangaId, chapterId)
         system.createDirectories(chapterDir)
         val destination = chapterDir / "chapter_$chapterId.cbz"
@@ -97,7 +99,7 @@ class IosCbzWriter internal constructor(
         // not delete a pre-existing file at this path.
         val rawSink = system.sink(temporary, mustCreate = true)
         try {
-            val entries = rawSink.buffer().use { sink -> writeArchive(sink, sources, quality, maxHeight, maxMemoryBytes) }
+            val entries = rawSink.buffer().use { sink -> writeArchive(sink, sources, encoding) }
             validateArchive(temporary, entries)
             currentCoroutineContext().ensureActive()
             // POSIX rename replaces an existing target atomically. A failed move is terminal: never
@@ -133,9 +135,7 @@ class IosCbzWriter internal constructor(
     private suspend fun writeArchive(
         sink: BufferedSink,
         sources: List<Path>,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        encoding: EncodingOptions,
     ): List<ArchivedEntry> {
         val zip = StoreZipWriter(sink)
         val entries = mutableListOf<ArchivedEntry>()
@@ -143,17 +143,21 @@ class IosCbzWriter internal constructor(
         sources.forEachIndexed { index, path ->
             currentCoroutineContext().ensureActive()
             if (index % YIELD_EVERY_N_PAGES == 0) yield()
-            if (system.metadataOrNull(path)?.isRegularFile != true) throw IOException("Missing CBZ source: ${path.name}")
+            if (system.metadataOrNull(path)?.isRegularFile != true) {
+                throw IOException("Missing CBZ source: ${path.name}")
+            }
             val bytes = readPageSnapshot(system, path, sourceBytePolicy)
             val metadata = inspector.inspect(bytes).requireValid()
             val firstEntry = entries.size
-            encoder.encode(bytes, metadata, quality, maxHeight, maxMemoryBytes) { extension, page ->
+            encoder.encode(
+                bytes,
+                metadata,
+                encoding.quality,
+                encoding.maxHeight,
+                encoding.maxMemoryBytes,
+            ) { extension, page ->
                 currentCoroutineContext().ensureActive()
-                if (page.isEmpty()) throw IOException("CBZ encoder produced an empty page")
-                val name = "page_${entries.size.toString().padStart(PAGE_NUMBER_PAD_WIDTH, '0')}.$extension"
-                val checksum = crc32(page)
-                zip.writeEntry(name, page)
-                entries += ArchivedEntry(name, page.size.toLong(), checksum)
+                entries += writeEncodedEntry(zip, entries.size, extension, page)
             }
             currentCoroutineContext().ensureActive()
             if (entries.size == firstEntry) throw IOException("CBZ input produced no entries")
@@ -162,6 +166,19 @@ class IosCbzWriter internal constructor(
         check(acceptedInputs == sources.size) { "CBZ input count mismatch" }
         zip.finish()
         return entries
+    }
+
+    private fun writeEncodedEntry(
+        zip: StoreZipWriter,
+        index: Int,
+        extension: String,
+        page: ByteArray,
+    ): ArchivedEntry {
+        if (page.isEmpty()) throw IOException("CBZ encoder produced an empty page")
+        val name = "page_${index.toString().padStart(PAGE_NUMBER_PAD_WIDTH, '0')}.$extension"
+        val checksum = crc32(page)
+        zip.writeEntry(name, page)
+        return ArchivedEntry(name, page.size.toLong(), checksum)
     }
 
     /** Reopen and read the staged payloads; a readable directory alone cannot prove a complete ZIP. */
@@ -176,22 +193,37 @@ class IosCbzWriter internal constructor(
             val buffer = ByteArray(VALIDATION_BUFFER_SIZE)
             expected.forEach { entry ->
                 currentCoroutineContext().ensureActive()
-                val checksum = Crc32()
-                var size = 0L
-                zip.source(root / entry.name).buffer().use { source ->
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = source.read(buffer)
-                        if (read == -1) break
-                        size += read
-                        if (size > entry.size) throw IOException("CBZ entry size mismatch")
-                        checksum.update(buffer, length = read)
-                    }
-                }
-                if (size != entry.size || checksum.value != entry.checksum) throw IOException("CBZ entry payload mismatch")
+                validateEntry(zip, root / entry.name, entry, buffer)
             }
         }
     }
+
+    private suspend fun validateEntry(
+        zip: FileSystem,
+        path: Path,
+        entry: ArchivedEntry,
+        buffer: ByteArray,
+    ) {
+        val checksum = Crc32()
+        var size = 0L
+        zip.source(path).buffer().use { source ->
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val read = source.read(buffer)
+                if (read == -1) break
+                size += read
+                if (size > entry.size) throw IOException("CBZ entry size mismatch")
+                checksum.update(buffer, length = read)
+            }
+        }
+        if (size != entry.size || checksum.value != entry.checksum) throw IOException("CBZ entry payload mismatch")
+    }
+
+    private data class EncodingOptions(
+        val quality: Int,
+        val maxHeight: Int,
+        val maxMemoryBytes: Long,
+    )
 
     private data class ArchivedEntry(
         val name: String,
@@ -239,7 +271,9 @@ internal class IosCbzPageTranscoder(
                     emit("webp", it)
                 }
             } else {
-                SkiaWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes) { emit("webp", it) }
+                SkiaWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes) {
+                    emit("webp", it)
+                }
             }
         currentCoroutineContext().ensureActive()
         when (result) {

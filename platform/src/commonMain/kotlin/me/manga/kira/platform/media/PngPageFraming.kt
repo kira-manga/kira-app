@@ -16,9 +16,9 @@ internal fun inspectPngFraming(
         requirePageFraming(size - offset >= PNG_CHUNK_OVERHEAD)
         val length = source.readUnsignedInt()
         requirePageFraming(length <= size - offset - PNG_CHUNK_OVERHEAD)
-        val type = source.readByteArray(4)
+        val type = source.readByteArray(PNG_CHUNK_TYPE_BYTES)
         val name = type.decodeToString()
-        requirePageFraming(if (!sawHeader) name == "IHDR" && length == 13L else name != "IHDR")
+        requirePageFraming(if (!sawHeader) name == "IHDR" && length == PNG_IHDR_PAYLOAD_BYTES else name != "IHDR")
         sawHeader = true
         val crc = Crc32().apply { update(type) }
         readPngPayload(source, length, crc)
@@ -49,4 +49,6 @@ private fun readPngPayload(
 }
 
 private const val PNG_CHUNK_OVERHEAD: Long = 12
+private const val PNG_CHUNK_TYPE_BYTES: Long = 4
+private const val PNG_IHDR_PAYLOAD_BYTES: Long = 13
 private const val PNG_READ_BYTES: Int = 8192
