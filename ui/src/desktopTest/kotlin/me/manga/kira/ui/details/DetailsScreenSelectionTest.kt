@@ -95,13 +95,12 @@ class DetailsScreenSelectionTest {
         try {
             Locale.setDefault(Locale.US)
             runComposeUiTest {
-                val mib = 1024L * 1024
                 val loaded =
                     selectionState().copy(
                         chapterDownloads =
                             mapOf(
-                                "c/2" to ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = 12 * mib),
-                                "c/1" to ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = mib),
+                                "c/2" to completedDownload(CHAPTER_SIZE_BYTES),
+                                "c/1" to completedDownload(MEBIBYTE_BYTES),
                             ),
                     )
                 val state = mutableStateOf(loaded)
@@ -114,8 +113,8 @@ class DetailsScreenSelectionTest {
                 }
                 assertDownloadSizes("12,00 Mo", "13,00 Mo • 2 téléchargés")
                 assertSame(loaded, state.value)
-                assertEquals(12 * mib, state.value.chapterSizeBytes("c/2"))
-                assertEquals(13 * mib, state.value.totalDownloadedSizeBytes)
+                assertEquals(CHAPTER_SIZE_BYTES, state.value.chapterSizeBytes("c/2"))
+                assertEquals(TOTAL_SIZE_BYTES, state.value.totalDownloadedSizeBytes)
             }
         } finally {
             Locale.setDefault(previousLocale)
@@ -221,8 +220,14 @@ private const val DOWNLOADED_LABEL = "Downloaded"
 private const val DELETE_DOWNLOADED_LABEL = "Delete downloaded chapters"
 private const val CANCEL_DOWNLOAD_LABEL = "Cancel chapter download"
 private const val FIRST_CHAPTER_ITEM_INDEX = 2
+private const val MEBIBYTE_BYTES = 1024L * 1024
+private const val CHAPTER_SIZE_BYTES = 12 * MEBIBYTE_BYTES
+private const val TOTAL_SIZE_BYTES = 13 * MEBIBYTE_BYTES
 
 private val LocalDetailsTestLocale = staticCompositionLocalOf { Locale.getDefault() }
+
+private fun completedDownload(sizeBytes: Long): ChapterDownloadProgress =
+    ChapterDownloadProgress(DownloadState.SUCCESS, progress = 100, sizeBytes = sizeBytes)
 
 private fun selectionState(): DetailsState {
     val manga =
