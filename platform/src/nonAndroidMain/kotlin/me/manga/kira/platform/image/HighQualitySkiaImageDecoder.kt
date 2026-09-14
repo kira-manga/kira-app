@@ -11,6 +11,7 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.request.maxBitmapSize
 import coil3.size.Precision
+import coil3.svg.isSvg
 import coil3.util.component1
 import coil3.util.component2
 import okio.use
@@ -44,9 +45,9 @@ import org.jetbrains.skia.impl.use as skiaUse
  *
  * **Registration.** [IosImageDecoderRegistry] / [DesktopImageDecoderRegistry] add `Factory()` to
  * the list they return from `registerAll()`. Coil's `ComponentRegistry` tries user-registered
- * decoders before its service-loaded defaults (the stock `SkiaImageDecoder.Factory`), so this one
- * always wins on iOS and Desktop. Android keeps its own `BitmapFactory`-backed path and is
- * unaffected.
+ * decoders before its defaults, so this factory declines SVG inputs for Coil's service-loaded
+ * SVG decoder and replaces the stock `SkiaImageDecoder.Factory` for raster inputs. iOS still
+ * tries its AVIF decoder first. Android keeps its own `BitmapFactory`-backed path and is unaffected.
  */
 @OptIn(ExperimentalCoilApi::class)
 internal class HighQualitySkiaImageDecoder(
@@ -64,7 +65,13 @@ internal class HighQualitySkiaImageDecoder(
             result: SourceFetchResult,
             options: Options,
             imageLoader: ImageLoader,
-        ): Decoder = HighQualitySkiaImageDecoder(result.source, options)
+        ): Decoder? {
+            // Match Coil's SVG factory without consuming or closing the shared buffered source.
+            if (result.mimeType == "image/svg+xml" || DecodeUtils.isSvg(result.source.source())) {
+                return null
+            }
+            return HighQualitySkiaImageDecoder(result.source, options)
+        }
     }
 }
 
