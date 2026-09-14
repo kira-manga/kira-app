@@ -2,6 +2,7 @@ package me.manga.kira.data.repository
 
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 
 /**
@@ -15,9 +16,11 @@ import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 class ChapterNewBadgeRepositoryImpl(
     private val chapterDao: ChapterDao,
 ) : ChapterNewBadgeRepository {
-
-    override suspend fun clearNew(chapterUrl: String) {
-        val chapterId = chapterDao.getChapterIdByUrl(chapterUrl) ?: return
+    override suspend fun clearNew(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: return
         FlowLog.log("Details", "clearNew", "chapter=$chapterUrl id=$chapterId")
         chapterDao.markChapterIsNew(chapterId)
     }

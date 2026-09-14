@@ -1,6 +1,7 @@
 package me.manga.kira.domain.usecase.reader
 
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.MarkChapterReadRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,32 +15,52 @@ import kotlin.test.assertEquals
  * pure-`:domain` delegation test.
  */
 class MarkChapterReadUseCaseTest {
+    private val manga =
+        Manga(
+            api = "src",
+            language = "en",
+            title = "Manga",
+            url = "https://src/manga",
+            coverUrl = "",
+            rating = null,
+            genres = emptyList(),
+        )
 
     private class FakeMarkChapterReadRepository : MarkChapterReadRepository {
-        val markedUrls = mutableListOf<String>()
-        val toggledUrls = mutableListOf<String>()
-        val bulkMarkedUrls = mutableListOf<List<String>>()
+        val marked = mutableListOf<Pair<Manga, String>>()
+        val toggled = mutableListOf<Pair<Manga, String>>()
+        val bulkMarked = mutableListOf<Pair<Manga, List<String>>>()
 
-        override suspend fun markRead(chapterUrl: String) {
-            markedUrls += chapterUrl
+        override suspend fun markRead(
+            manga: Manga,
+            chapterUrl: String,
+        ) {
+            marked += manga to chapterUrl
         }
 
-        override suspend fun toggleRead(chapterUrl: String) {
-            toggledUrls += chapterUrl
+        override suspend fun toggleRead(
+            manga: Manga,
+            chapterUrl: String,
+        ) {
+            toggled += manga to chapterUrl
         }
 
-        override suspend fun markRead(chapterUrls: List<String>) {
-            bulkMarkedUrls += chapterUrls
+        override suspend fun markRead(
+            manga: Manga,
+            chapterUrls: List<String>,
+        ) {
+            bulkMarked += manga to chapterUrls
         }
     }
 
     @Test
-    fun markRead_delegates_to_repository_with_url() = runTest {
-        val repo = FakeMarkChapterReadRepository()
-        val useCase = MarkChapterReadUseCase(repo)
+    fun markRead_delegates_to_repository_with_url() =
+        runTest {
+            val repo = FakeMarkChapterReadRepository()
+            val useCase = MarkChapterReadUseCase(repo)
 
-        useCase("https://src/ch/1")
+            useCase(manga, "https://src/ch/1")
 
-        assertEquals(listOf("https://src/ch/1"), repo.markedUrls)
-    }
+            assertEquals(listOf(manga to "https://src/ch/1"), repo.marked)
+        }
 }
