@@ -67,7 +67,10 @@ class ReaderViewModelActiveNavigationTest {
             assertEquals(listOf(anchor, active, anchor), env.pages.requested.map { it.second })
             assertEquals(listOf(env.manga to active), env.pages.cleared, "retain only the target's extracted pages")
             assertEquals(listOf(env.manga to anchor.url, env.manga to active.url), env.markRead.marked)
-            assertEquals(listOf(env.manga to anchor.url, env.manga to active.url, env.manga to anchor.url), env.bookmark.observed)
+            assertEquals(
+                listOf(env.manga to anchor.url, env.manga to active.url, env.manga to anchor.url),
+                env.bookmark.observed,
+            )
             assertEquals(listOf(anchor.url, active.url, anchor.url), env.history.recorded.map { it.second })
             assertEquals(
                 oldUrls.sorted(),
@@ -183,7 +186,10 @@ class ReaderViewModelActiveNavigationTest {
             env.pages.results[second.url] = flowOf(AppResult.Success(activeActionPages(second)))
             env.dispatch(ReaderIntent.OnPrevChapter)
             assertOnlyChapter(env, second)
-            assertEquals(listOf(env.manga to first.url, env.manga to second.url, env.manga to last.url), env.markRead.marked)
+            assertEquals(
+                listOf(env.manga to first.url, env.manga to second.url, env.manga to last.url),
+                env.markRead.marked,
+            )
         }
 
     @Test
