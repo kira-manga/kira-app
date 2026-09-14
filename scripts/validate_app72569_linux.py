@@ -3,7 +3,7 @@
 import os
 import sys
 
-if os.environ.get("APP72569_ADMISSION") != "primary-reviewed-app72569-linux-03" or len(sys.argv) != 1:
+if os.environ.get("APP72569_ADMISSION") != "primary-reviewed-app72569-linux-04" or len(sys.argv) != 1:
     raise SystemExit("admission UNBOUND or unexpected caller arguments")
 sys.dont_write_bytecode = True
 from pathlib import Path

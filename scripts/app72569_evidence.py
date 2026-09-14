@@ -9,7 +9,8 @@ import xml.etree.ElementTree as ET
 
 SOURCE = "7f9e49067acfd5c7f6eeb1a08550b98562d68c63"
 SOURCE_TREE = "ff103c613e95aae853e929507f540c167edd3df7"
-PREVIOUS_CARRIER = "2a02218c29f90fb6d66904353438739cf7df03b5"
+PREVIOUS_CARRIER = "b575ecc6e79b553597fada22b861da4c4839c399"
+SECOND_CARRIER = "2a02218c29f90fb6d66904353438739cf7df03b5"
 FIRST_CARRIER = "2e1677025b0e4b55aa2a3f50237fc80a00f715d1"
 ENGINE_COMMIT = "ed184165ebd3ee7f0d1db533cc40ca5a0868fdda"
 ENGINE_TREE = "14e46a1ead24b5757d612fd55031e440f5304661"
@@ -71,7 +72,8 @@ def admit():
     require(len(event) <= MIB and json.loads(event)["repository"]["private"] is False, "Public repository required")
     require(git(ROOT, "rev-parse", "HEAD") == os.environ["GITHUB_SHA"] and
             git(ROOT, "rev-parse", "HEAD^@") == PREVIOUS_CARRIER and
-            git(ROOT, "rev-parse", PREVIOUS_CARRIER + "^@") == FIRST_CARRIER and
+            git(ROOT, "rev-parse", PREVIOUS_CARRIER + "^@") == SECOND_CARRIER and
+            git(ROOT, "rev-parse", SECOND_CARRIER + "^@") == FIRST_CARRIER and
             git(ROOT, "rev-parse", FIRST_CARRIER + "^@") == SOURCE and
             git(ROOT, "rev-parse", SOURCE + "^{tree}") == SOURCE_TREE,
             "Carrier must be the event commit and a single child of the pinned failed carrier/source chain")

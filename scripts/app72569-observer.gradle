@@ -1,6 +1,8 @@
 // Engine02 observation helpers, applied only by the source-bound init script.
 // Reads actual consumed inputs; no forced resolution, artifact view, staging or task replacement.
 import groovy.json.JsonOutput
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.security.MessageDigest
 import java.util.zip.ZipFile
 import org.gradle.api.GradleException
@@ -29,7 +31,7 @@ def attrValue = { container, name ->
 def caps = { variant -> variant.capabilities.collect { [group: it.group, name: it.name, version: it.version] } }
 def component = { id ->
     id instanceof ProjectComponentIdentifier ?
-        [kind: 'project', buildPath: id.build.buildPath, currentBuild: id.build.currentBuild,
+        [kind: 'project', buildPath: id.build.buildPath,
          projectPath: id.projectPath, buildTreePath: id.buildTreePath, display: id.displayName] :
         [kind: 'module', display: id.displayName]
 }
@@ -68,9 +70,20 @@ def classHash = { File file, String name ->
     null
 }
 def fileRow = { File f ->
-    require(f.canonicalPath == f.absolutePath && f.exists(), 'Missing or aliased actual input/output')
+    require(f.canonicalPath == f.absolutePath && f.exists(),
+        'Missing or aliased actual input/output: path=' + f.absolutePath + ', canonical=' + f.canonicalPath +
+        ', exists=' + f.exists() + ', symlink=' + Files.isSymbolicLink(f.toPath()))
     [path: f.canonicalPath, kind: f.isDirectory() ? 'directory' : 'file',
      bytes: f.isFile() ? f.length() : null, sha256: f.isFile() ? sha(f) : null, neutralClasses: neutralClasses(f)]
+}
+def compilerClasspathRow = { File f ->
+    if (!Files.notExists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) return fileRow(f)
+    require(f.canonicalPath == f.absolutePath, 'Aliased absent compiler input: ' + f.absolutePath)
+    for (File ancestor = f; ancestor != null; ancestor = ancestor.parentFile) {
+        require(!Files.isSymbolicLink(ancestor.toPath()), 'Symlink in absent compiler input: ' + ancestor.absolutePath)
+    }
+    // Actual FileCollections may contain absent entries; these receive no classes, hashes or lineage credit.
+    [path: f.absolutePath, kind: 'absent', bytes: null, sha256: null, neutralClasses: [:]]
 }
 def rejectRequest = { selector ->
     if (selector instanceof ModuleComponentSelector && selector.group == c.group) {
@@ -78,12 +91,12 @@ def rejectRequest = { selector ->
             'Only the exact Engine root request; contract must use its ordinary project edge')
     }
 }
-def neutralEdge = { edge, usage ->
+def neutralEdge = { edge, usage, rootId ->
     rejectRequest(edge.requested)
     if (!(edge instanceof ResolvedDependencyResult) || edge.selected.moduleVersion?.group != c.group) return null
     def id = edge.selected.id
     require(id instanceof ProjectComponentIdentifier && id.projectPath in c.engineModules &&
-        (c.role == 'app' ? id.build.buildPath == ':' + c.buildName : id.build.currentBuild),
+        (c.role == 'app' ? id.build.buildPath == ':' + c.buildName : id.build.buildPath == rootId.build.buildPath),
         'No neutral binary, foreign project/build, testkit or App-contract substitution')
     def variant = edge.resolvedVariant
     require(attrValue(variant.attributes, 'org.jetbrains.kotlin.platform.type') == 'androidJvm' &&
@@ -101,7 +114,10 @@ def observeResolution = { p, task, configName, usage ->
     def configuration = p.configurations.getByName(configName)
     require(configuration.state.toString() == 'RESOLVED', 'Do not resolve an extra observer configuration')
     def result = configuration.incoming.resolutionResult
-    def edges = result.allDependencies.collect { neutralEdge(it, usage) }.findAll { it != null }
+    def rootId = result.rootComponent.get().id
+    require(rootId instanceof ProjectComponentIdentifier && rootId.projectPath == p.path,
+        'Actual resolved root must be this configuration-owning project')
+    def edges = result.allDependencies.collect { neutralEdge(it, usage, rootId) }.findAll { it != null }
     def libraries = result.allComponents.findAll {
         it.id instanceof ModuleComponentIdentifier &&
             ((it.id.group == 'org.jetbrains.kotlin' && it.id.module.startsWith('kotlin-stdlib')) ||
@@ -110,10 +126,10 @@ def observeResolution = { p, task, configName, usage ->
                  it.id.module.startsWith('kotlinx-datetime'))) || it.id.group == 'com.fleeksoft.ksoup')
     }.collect { [group: it.id.group, module: it.id.module, version: it.id.version] }
     emit('RESOLUTION', [task: task.path, configuration: configName, attributes: attrs(configuration.attributes),
-        neutralEdges: edges, libraries: libraries])
+        rootComponent: component(rootId), neutralEdges: edges, libraries: libraries])
 }
 def observeClasspath = { task, files, kind ->
-    def entries = files.collect { fileRow(it) }
+    def entries = files.collect { kind == 'compiler' ? compilerClasspathRow(it) : fileRow(it) }
     emit('CLASSPATH', [task: task.path, kind: kind, entries: entries])
     def classContainers = [:]
     entries.findAll { !it.neutralClasses.isEmpty() }.each { entry ->
