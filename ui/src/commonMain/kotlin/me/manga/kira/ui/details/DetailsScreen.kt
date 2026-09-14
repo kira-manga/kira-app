@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -52,6 +54,7 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -564,26 +567,47 @@ internal fun DetailsScreenContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        // Resume FAB — native LibraryMangaScreen.kt:225-235. Keep chapter-selection actions unobstructed.
-        // Resumes at the first unread chapter in reading order from the displayed (filtered/sorted) list.
-        floatingActionButton = {
+        // Measured bottom chrome keeps chapter hit targets clear at every scroll position.
+        // Preserve selection's exclusive ownership of this region (including the existing FAB guard).
+        bottomBar = {
             val isResumeAvailable = state.isInLibrary && state.hasDetails && !state.isAdultGateActive
-            if (isResumeAvailable && !state.isInChapterSelectionMode) {
-                ResumeFab(
-                    firstUnread = state.firstUnreadChapter,
-                    expanded = resumeFabExpanded,
-                    onClick = {
-                        state.firstUnreadChapter?.let { onIntent(DetailsIntent.OnChapterClick(it)) }
-                    },
+            if (state.isInChapterSelectionMode) {
+                ChapterSelectionBar(
+                    selectedCount = state.selectedChapterUrls.size,
+                    showMarkDownRead = state.selectedChapterUrls.size == 1,
+                    showDeleteDownloaded = state.isSelectionAllDownloaded,
+                    onDownload = { onIntent(DetailsIntent.OnDownloadSelected) },
+                    onBookmarkAll = { onIntent(DetailsIntent.OnBookmarkSelected) },
+                    onMarkDownRead = { onIntent(DetailsIntent.OnMarkSelectedDownRead) },
+                    onDeleteDownloaded = { onIntent(DetailsIntent.OnDeleteSelectedDownloads) },
+                    onMarkRead = { onIntent(DetailsIntent.OnMarkSelectedRead) },
+                    onClear = { onIntent(DetailsIntent.OnSelectionClear) },
                 )
+            } else if (isResumeAvailable) {
+                val spacing = LocalSpacing.current
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(BottomAppBarDefaults.windowInsets)
+                            .padding(spacing.lg),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    ResumeFab(
+                        firstUnread = state.firstUnreadChapter,
+                        expanded = resumeFabExpanded,
+                        onClick = {
+                            state.firstUnreadChapter?.let { onIntent(DetailsIntent.OnChapterClick(it)) }
+                        },
+                    )
+                }
             }
         },
     ) { padding ->
         // Native parity (DetailsContent.kt:116-123 / LibraryMangaScreen.kt:251-259): the whole
         // screen is a Box; the 250dp blurred parallax backdrop is painted FIRST (behind everything,
-        // including under the transparent top bar so it shows through), then the content is offset
-        // by only the top inset. The Box itself takes NO top padding so the backdrop band starts at
-        // the very top of the screen behind the see-through app bar.
+        // including under the transparent top bar so it shows through). Only the interactive body
+        // consumes Scaffold's measured bars and insets; the backdrop stays full-bleed.
         Box(modifier = Modifier.fillMaxSize()) {
             // Screen-level parallax backdrop band — only drawn once details (and a cover URL) exist
             // and the adult gate isn't active (an adult manga never reveals its cover). Sits behind
@@ -600,7 +624,8 @@ internal fun DetailsScreenContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding()),
+                    .padding(padding)
+                    .consumeWindowInsets(padding),
             ) {
             // Capture nullable state props into locals — public-API smart casts across modules
             // are not allowed by the Kotlin compiler.
@@ -688,24 +713,6 @@ internal fun DetailsScreenContent(
                     onTitleCopied = onTitleCopied,
                 )
                 else -> Unit
-            }
-
-            // Multi-select action bar — overlaid at the bottom while in selection mode. L-4 parity:
-            // download + bookmark-all + mark-down-read (single-selection only) + delete-downloaded
-            // (only when all selected are downloaded) + mark-read + clear, with the selected count.
-            if (state.isInChapterSelectionMode) {
-                ChapterSelectionBar(
-                    selectedCount = state.selectedChapterUrls.size,
-                    showMarkDownRead = state.selectedChapterUrls.size == 1,
-                    showDeleteDownloaded = state.isSelectionAllDownloaded,
-                    onDownload = { onIntent(DetailsIntent.OnDownloadSelected) },
-                    onBookmarkAll = { onIntent(DetailsIntent.OnBookmarkSelected) },
-                    onMarkDownRead = { onIntent(DetailsIntent.OnMarkSelectedDownRead) },
-                    onDeleteDownloaded = { onIntent(DetailsIntent.OnDeleteSelectedDownloads) },
-                    onMarkRead = { onIntent(DetailsIntent.OnMarkSelectedRead) },
-                    onClear = { onIntent(DetailsIntent.OnSelectionClear) },
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
             }
 
             // P0-ADULT hard-block gate dialog chain (native parity). Driven by `state.adultGateStep`
@@ -2089,6 +2096,7 @@ private fun ChapterSelectionBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .windowInsetsPadding(BottomAppBarDefaults.windowInsets)
                 .padding(horizontal = spacing.md, vertical = spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
