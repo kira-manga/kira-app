@@ -18,12 +18,14 @@ import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.data.repository.BackupRepositoryImpl
+import me.manga.kira.data.repository.recoveryTestPng
 import me.manga.kira.domain.model.backup.BackupScope
 import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.platform.backup.BackupZipWriter
 import me.manga.kira.platform.cbz.DefaultCbzReader
 import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.platform.media.DesktopPageMediaInspector
 import okio.FileSystem
 import okio.Path
 import okio.buffer
@@ -113,7 +115,7 @@ class BackupRepositoryEndToEndTest {
             assertTrue(chapter.isDownloaded)
             assertEquals(7, targetProgress.load(chapter.url))
 
-            val targetCbz = DefaultCbzReader(targetFs, TestDispatchers)
+            val targetCbz = DefaultCbzReader(targetFs, TestDispatchers, DesktopPageMediaInspector())
             assertTrue(targetCbz.cbzExists(restored.id, chapter.id))
             assertEquals(1, targetCbz.pageCount(targetCbz.cbzPath(restored.id, chapter.id)))
             val downloadRow = assertNotNull(targetDb.backupDao().getDownloadRowByChapter(chapter.id))
@@ -227,12 +229,12 @@ class BackupRepositoryEndToEndTest {
         mangaId: Long,
         chapterId: Long,
     ) {
-        val reader = DefaultCbzReader(sourceFs, TestDispatchers)
+        val reader = DefaultCbzReader(sourceFs, TestDispatchers, DesktopPageMediaInspector())
         val path = reader.cbzPath(mangaId, chapterId)
         sourceFs.fileSystem().createDirectories(checkNotNull(path.parent))
         sourceFs.fileSystem().sink(path).buffer().use { sink ->
             BackupZipWriter(sink).apply {
-                writeEntryBytes("001.jpg", "image-bytes".encodeToByteArray())
+                writeEntryBytes("001.jpg", recoveryTestPng())
                 finish()
             }
         }
@@ -247,7 +249,7 @@ class BackupRepositoryEndToEndTest {
         readProgress = progress,
         appFileSystem = fs,
         dispatchers = TestDispatchers,
-        cbzReader = DefaultCbzReader(fs, TestDispatchers),
+        cbzReader = DefaultCbzReader(fs, TestDispatchers, DesktopPageMediaInspector()),
         chapterDownloadDao = db.chapterDownloadingDao(),
         notificationDao = db.notificationDao(),
         appVersion = "1.0.0",
