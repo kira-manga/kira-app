@@ -69,12 +69,15 @@ interface StatisticsDeo {
     @Query("SELECT COUNT(*) FROM saved_chapters WHERE isBookmarked = 1")
     fun getBookmarkedChaptersCount(): Flow<Int>
 
-    // 6. Count completed manga (all chapters read)
+    // 6. Count completed manga (at least one chapter, all chapters read)
     @Query(
         """
         SELECT COUNT(*)
           FROM saved_manga m
-         WHERE NOT EXISTS(
+         WHERE EXISTS(
+           SELECT 1 FROM saved_chapters c
+            WHERE c.mangaId = m.id
+         ) AND NOT EXISTS(
            SELECT 1 FROM saved_chapters c
             WHERE c.mangaId = m.id AND c.isRead = 0
          )

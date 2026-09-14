@@ -1,0 +1,7 @@
+<resources>
+    <string name="webview_unavailable_title">WebView tidak tersedia</string>
+    <string name="webview_unavailable_message">Aktifkan atau perbarui Android System WebView atau Chrome, lalu coba lagi. Membuka halaman ini di browser lain tidak akan menyimpan sesi di Kira.</string>
+    <string name="webview_unavailable_retry">Coba lagi</string>
+    <string name="webview_open_external_browser">Buka di browser</string>
+    <string name="webview_external_browser_failed">Browser tidak dapat dibuka. Pastikan browser sudah terpasang dan diizinkan, atau coba WebView lagi.</string>
+</resources>

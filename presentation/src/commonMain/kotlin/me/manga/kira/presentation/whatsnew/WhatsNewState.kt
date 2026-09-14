@@ -1,29 +1,17 @@
 package me.manga.kira.presentation.whatsnew
 
+import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
 import me.manga.kira.presentation.mvi.MviState
 
 /**
  * Immutable view-state for the rework What's New screen.
  *
- * Phase 7.x.whatsnew. Carries the three fields the foundation `:ui` composable renders:
- *
- * - [isLoading] — `true` between [WhatsNewViewModel.init]'s feature-fetch launch and the
- *   first emission. Drives a centered `CircularProgressIndicator` in [WhatsNewScreen] for
- *   the network-load window (the legacy uses the same posture — see `WhatsNewState.IsLoading`
- *   in the legacy `:shared`). On retry the flag flips back to `true` until the re-fetch
- *   resolves; same posture as the Reader's chapter-load placeholder.
- * - [features] — the resolved feature list. Empty list IS a valid terminal state: either
- *   the remote endpoint returned no features for the running version OR the remote fetch
- *   failed and the fallback `getDefaultFeatures()` returned its current empty list (TODO at
- *   the `:shared` level — Phase 10's content-population lift). [WhatsNewScreen] branches:
- *   non-empty → renders the LazyColumn; empty + `!isLoading` → renders the "No features"
- *   placeholder. Same empty-vs-loaded shape as
- *   [me.manga.kira.presentation.statistics.StatisticsState.entries].
- * - [errorMessage] — non-null when the remote fetch failed (legacy parity for the
- *   `WhatsNewState.Error` variant). The foundation `:ui` renders it as a centered Text +
- *   Retry button. The string is the [Throwable.message] forwarded verbatim (legacy parity);
- *   localization is deferred to Phase 10. Null on success OR on the empty-but-no-error path.
+ * [isLoading] spans each load; [features] holds the resolved content. [error] distinguishes failure
+ * from successfully empty content and is translated to localized text only by the UI.
+ * [hasLoadedSuccessfully] is set only by a successful result, including a valid empty document.
+ * Cancellation may clear the spinner without setting either an error or successful-load evidence;
+ * automatic seen marking must therefore use the explicit success flag, not just a cleared spinner.
  *
  * **Why a single state, not a sealed `Loading`/`Loaded`/`Error` ADT (like the legacy
  * `WhatsNewState` does)** — same posture as
@@ -52,7 +40,7 @@ import me.manga.kira.presentation.mvi.MviState
  *
  * **Strict-MVI Contract §17**: pure value type, immutable, no banned features. The
  * [features] `List<WhatsNewFeature>` is a `:domain` value collection — no `:data` /
- * `:shared` leakage. `errorMessage: String?` is the only nullable; the others have
+ * `:shared` leakage. `error: AppError?` is the only nullable; the others have
  * sensible defaults.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster31.staleKdocSweep.cascade,
@@ -98,6 +86,7 @@ import me.manga.kira.presentation.mvi.MviState
 data class WhatsNewState(
     val isLoading: Boolean = true,
     val features: List<WhatsNewFeature> = emptyList(),
-    val errorMessage: String? = null,
+    val error: AppError? = null,
     val currentPage: Int = 0,
+    val hasLoadedSuccessfully: Boolean = false,
 ) : MviState

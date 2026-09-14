@@ -1,0 +1,28 @@
+{
+  "name": "libwebp",
+  "version": "1.5.0",
+  "upstream": {
+    "repository": "https://github.com/webmproject/libwebp",
+    "tag": "v1.5.0",
+    "source_archive_url": "https://github.com/webmproject/libwebp/archive/refs/tags/v1.5.0.tar.gz",
+    "source_archive_sha256": "668c9aba45565e24c27e17f7aaf7060a399f7f31dba6c97a044e1feacb930f37",
+    "notice_urls": {
+      "COPYING": "https://github.com/webmproject/libwebp/blob/v1.5.0/COPYING",
+      "PATENTS": "https://github.com/webmproject/libwebp/blob/v1.5.0/PATENTS"
+    }
+  },
+  "provenance_limit": "Hashes identify the observed vendored bytes. Prior inspection of both listed archives reported WebPGetEncoderVersion=0x010500. The original native build has not been reproduced; this is not a publisher attestation or an exhaustive license audit.",
+  "files_sha256": {
+    "COPYING": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+    "PATENTS": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c",
+    "include/webp/decode.h": "300db34c56d965ee8304f0f0e947ba226403362833ce5d956c6d5f9814a5297f",
+    "include/webp/demux.h": "984983b09785e2af7e8c5cefd2e2f08d2116870c13108445665b11256aa82fec",
+    "include/webp/encode.h": "009eb07d15f117b7e26484d0bc0c2a6a571ba378c7ddac0ea4322596167aeab1",
+    "include/webp/format_constants.h": "6f26d54038b770c5f9ddcd8f8e2da05d43c92168cb30f0e7060240f90df5fd7f",
+    "include/webp/mux.h": "c72cf593f8194c671efcade33f1678294380120d45a337511d612a3acb643f35",
+    "include/webp/mux_types.h": "d3313ad38c26d17abd244ab683e662dedead1489ec0f910bc31eba7ce2f8838c",
+    "include/webp/types.h": "5ec7cd176fa921379ae463cecb2ab1616068031e58ad705f51c1f3bbc7d70aa3",
+    "ios-arm64-simulator/libwebp.a": "ab7bbf5d3baa0f97c1c56093311aafa68a840d5fcf488fa174f12604c0d1bd24",
+    "ios-arm64/libwebp.a": "0bce31ff784afdf403ae1a66a0383234283627415f09b2e207a801672e6ecebd"
+  }
+}

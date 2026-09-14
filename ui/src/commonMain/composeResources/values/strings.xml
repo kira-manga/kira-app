@@ -33,6 +33,7 @@
     <string name="continue_string">Continue</string>
     <string name="enable_notifications">Enable Notifications</string>
     <string name="notification_permission">We need this permission to send you the latest chapters, show download progress, and ensure the app works properly.</string>
+    <string name="notification_permission_optional">Notifications are optional. Enable them to receive new chapter alerts and download updates.</string>
     <string name="grant_permission">Grant Permission</string>
 
     <!-- About + common (reused legacy keys — en + ar shipped). -->

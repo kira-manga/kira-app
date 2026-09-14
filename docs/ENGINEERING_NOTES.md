@@ -191,6 +191,15 @@ stride mismatch = color corruption; ~190 MiB native transient per page → encod
 sequential, release CGImage/context promptly; manual `WebPFree` discipline (leaks grow native
 memory across chapters).
 
+Redistribution notices: `platform/libs/libwebp/{COPYING,PATENTS,provenance.json}` retain the exact
+upstream v1.5.0 texts and observed native-input hashes, not a reproduced-build attestation. The
+host's whole-resource `iosApp/iosApp/Settings.bundle` exposes both original English texts through
+Third-Party Notices, with native localized navigation. Repository preflight checks version,
+digests and parsed resource wiring; the shared release validator checks both archive and IPA
+notice panes, and both local-IPA Fastlane upload lanes check notices before API/upload activity.
+See the [vendoring/update note](../platform/libs/libwebp/README.md) for coordinated notice/version
+updates and limits. Actual Apple packaging and installed Settings readability remain release QA.
+
 ## 5. Image pipeline — load-bearing fixes (DO NOT BREAK)
 
 (From the retired `migration/ARCHITECTURE_BASELINE.md` §7, updated 2026-07-04.)

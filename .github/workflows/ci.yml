@@ -90,7 +90,9 @@ jobs:
       - name: i18n locale-key parity gates (:ui + :composeApp resource sets)
         # :composeApp has its own composeResources tree (route-adapter strings) with its own
         # parity task — both must gate (2026-07 audit: only :ui's ran in CI).
-        run: ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
+        run: |
+          python3 -B scripts/check_current_branding.py
+          ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
       - name: Validate release workflow safety contracts
         run: |
           ruby scripts/release/tests/ios-upload-only-workflow-test.rb

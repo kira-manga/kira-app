@@ -45,3 +45,4 @@ fastlane/report.xml
 .DS_Store
 .audit-scratch/
 .parity_i18n_tmp/
+/.mobile-release/

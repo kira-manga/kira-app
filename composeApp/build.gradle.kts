@@ -58,6 +58,7 @@ val sourceConfigPinnedKeys =
         .orElse("")
 val sourceConfigAppVersion =
     providers.environmentVariable("KIRA_APP_VERSION")
+        .orElse(providers.environmentVariable("MOBILE_RELEASE_VERSION_NAME"))
         .orElse(providers.gradleProperty("kira.appVersion"))
         .orElse("1.0.5")
 val generateSourceRemoteConfig = tasks.register("generateSourceRemoteConfig") {
@@ -139,6 +140,9 @@ kotlin {
         namespace = "me.manga.kira.composeapp"
         compileSdk = 37
         minSdk = 26
+        withHostTestBuilder {}.configure {
+            isIncludeAndroidResources = true
+        }
         // CMP-9547 (same fix verified on :ui): the new plugin doesn't package Compose-MP
         // composeResources (.cvr) into the APK by default → runtime MissingResourceException on
         // stringResource(...). This flag restores the asset copy. (Distinct from androidResources.enable,
@@ -275,6 +279,17 @@ kotlin {
             implementation(libs.ktor.client.mock)
         }
 
+        getByName("desktopTest").dependencies {
+            // Exercise the real NavHost/entry lifecycle without bootstrapping the application.
+            implementation(libs.compose.ui.test.junit4)
+        }
+
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.robolectric.runner)
+            implementation(libs.compose.ui.test.junit4)
+        }
+
         androidMain.dependencies {
             // Android's platform JCA lacks Ed25519 on older supported API levels; BC keeps the
             // pinned source-document verifier available across the full minSdk 26 range.
@@ -324,6 +339,39 @@ kotlin {
 
 tasks.matching { task -> task.name.startsWith("compile") && task.name.contains("Kotlin") }.configureEach {
     dependsOn(generateSourceRemoteConfig)
+}
+
+// SDK-only input: WebView orchestration tests need neither a provider download nor host SQLite JNI.
+val app13HostSdkInput by configurations.creating {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+}
+dependencies {
+    add(app13HostSdkInput.name, libs.robolectric.sdk35)
+}
+val app13HostSdkDirectory = layout.buildDirectory.dir("app13-android-host-runtime/sdk")
+val prepareApp13AndroidHostSdk by tasks.registering(Sync::class) {
+    from(app13HostSdkInput)
+    into(app13HostSdkDirectory)
+}
+tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
+    dependsOn(prepareApp13AndroidHostSdk)
+    maxParallelForks = 1
+    forkEvery = 0
+    maxHeapSize = "1g"
+    jvmArgs("-XX:ActiveProcessorCount=2")
+    // Bind Robolectric before its fork; Gradle --offline alone does not constrain its resolver.
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", app13HostSdkDirectory.get().asFile.absolutePath)
+    doFirst {
+        val forbidden = classpath.files.filter {
+            it.name.startsWith("sqlite-bundled-jvm-") || it.name.startsWith("room-runtime-jvm-")
+        }
+        check(forbidden.isEmpty()) { "Desktop SQLite/Room classes must not enter Android host tests: $forbidden" }
+        val sdk = app13HostSdkDirectory.get().file("android-all-instrumented-15-robolectric-13954326-i7.jar").asFile
+        check(sdk.isFile) { "Pinned offline Robolectric SDK35 input was not staged" }
+    }
 }
 
 compose.resources {

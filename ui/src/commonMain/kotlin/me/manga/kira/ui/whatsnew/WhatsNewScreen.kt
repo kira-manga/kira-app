@@ -77,6 +77,7 @@ import coil3.compose.AsyncImagePainter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.whatsnew.MediaType
 import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
 import me.manga.kira.presentation.whatsnew.WhatsNewEffect
@@ -86,6 +87,10 @@ import me.manga.kira.presentation.whatsnew.WhatsNewViewModel
 import me.manga.kira.ui.components.KiraEmptyState
 import me.manga.kira.ui.components.KiraIcons
 import me.manga.kira.ui.generated.resources.Res
+import me.manga.kira.ui.generated.resources.error_network
+import me.manga.kira.ui.generated.resources.error_network_no_connectivity
+import me.manga.kira.ui.generated.resources.error_network_timeout
+import me.manga.kira.ui.generated.resources.error_occurred
 import me.manga.kira.ui.generated.resources.new_badge
 import me.manga.kira.ui.generated.resources.np_close
 import me.manga.kira.ui.generated.resources.np_get_started
@@ -114,14 +119,12 @@ import org.jetbrains.compose.resources.stringResource
  * Renders [WhatsNewState] as one of four mutually-exclusive surfaces (see [WhatsNewScreenContent]):
  * - **Loading** (`state.isLoading == true`): a centered 48.dp [CircularProgressIndicator] above a
  *   "Loading What's New..." label (native `WhatsNewRoute.kt`'s `LoadingState`).
- * - **Error** (`!isLoading && errorMessage != null`): a centered elevated [Card] with a
- *   "Failed to Load" title, the failure message, and a Close + Retry button row. Retry dispatches
- *   [WhatsNewIntent.OnRetry]. Currently dormant — the `:data` impl swallows remote failures and
- *   returns the empty default list, so the empty path is reached instead.
- * - **Empty** (`!isLoading && features.isEmpty() && errorMessage == null`): a "No Updates
- *   Available" title + body line + Close button. De-facto path today because the legacy
- *   `getDefaultFeatures()` returns `emptyList()` after the KMP migration.
- * - **Loaded** (`!isLoading && features.isNotEmpty()`): a [FeaturePager] (HorizontalPager of
+ * - **Retryable** (typed error, or unloaded/cancelled with no content): a centered elevated [Card]
+ *   with a "Failed to Load" title, safe localized copy, and a Close + Retry button row. Retry
+ *   dispatches [WhatsNewIntent.OnRetry]; cancellation does not manufacture a typed load error.
+ * - **Empty** (successful load, no features or error): a "No Updates Available" title + body line
+ *   + Close button. A cancelled initial load is not successfully empty content.
+ * - **Loaded** (not loading, no error, nonempty features): a [FeaturePager] (HorizontalPager of
  *   feature cards) + a page-indicator dot row + Previous / Next / Get-Started navigation buttons.
  *   Each card renders media (image carousel / single image / video poster / title-initials
  *   placeholder) → centered auto-sized title (+ optional "NEW" chip) → centered auto-sized body.
@@ -171,6 +174,7 @@ import org.jetbrains.compose.resources.stringResource
  * remote fetch (lives in `:data` via `:shared`), no nav decisions (route adapter owns nav), no
  * platform calls (effect handler is host-owned).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 fun WhatsNewScreen(
     viewModel: WhatsNewViewModel,
@@ -188,13 +192,22 @@ fun WhatsNewScreen(
     )
 }
 
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun EffectBridge(effects: Flow<WhatsNewEffect>, onEffect: (WhatsNewEffect) -> Unit) {
+private fun EffectBridge(
+    effects: Flow<WhatsNewEffect>,
+    onEffect: (WhatsNewEffect) -> Unit,
+) {
     LaunchedEffect(effects) {
         effects.collectLatest(onEffect)
     }
 }
 
+@Suppress(
+    "FunctionNaming",
+    "ktlint:standard:function-naming",
+    "LongMethod", // Existing Detekt baseline allowance; naming annotations change its signature.
+)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WhatsNewScreenContent(
@@ -207,16 +220,18 @@ internal fun WhatsNewScreenContent(
         // GAP-WN-08 — full-screen primaryContainer→surface vertical gradient (mirrors native
         // `WhatsNewScreen.kt:53-64`). The Scaffold + header containers are transparent so the
         // gradient shows through.
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                        MaterialTheme.colorScheme.surface,
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors =
+                            listOf(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                MaterialTheme.colorScheme.surface,
+                            ),
                     ),
                 ),
-            ),
         containerColor = Color.Transparent,
     ) { padding ->
         // GAP-WN-07 — tablet-/landscape-aware sizing mirroring native `WhatsNewScreen.kt:36-51`
@@ -226,19 +241,21 @@ internal fun WhatsNewScreenContent(
         // are read from the available width/height via [BoxWithConstraints] (same posture as the
         // other responsive rework screens — Library / Reader).
         BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding),
         ) {
             val isTablet = maxWidth >= 600.dp
             val isLandscape = maxWidth > maxHeight
             val horizontalPadding: Dp = if (isTablet) 32.dp else 16.dp
             // Native `WhatsNewScreen.kt:47-51`: cardPadding 32 (tablet) / 16 (landscape) / 24 (phone).
-            val cardPadding: Dp = when {
-                isTablet -> 32.dp
-                isLandscape -> 16.dp
-                else -> 24.dp
-            }
+            val cardPadding: Dp =
+                when {
+                    isTablet -> 32.dp
+                    isLandscape -> 16.dp
+                    else -> 24.dp
+                }
             Column(modifier = Modifier.fillMaxSize()) {
                 // GAP-WN-07 — header parity: a transparent custom Row (NOT a Material3 TopAppBar)
                 // with a headlineSmall Bold title + a 40.dp circular surfaceVariant@0.5 close (X)
@@ -254,39 +271,41 @@ internal fun WhatsNewScreenContent(
                         onGetStarted()
                     },
                 )
-                val errorMessage = state.errorMessage
+                val error = state.error
                 when {
                     state.isLoading -> LoadingState(Modifier.weight(1f))
-                    errorMessage != null -> ErrorState(
-                        modifier = Modifier.weight(1f),
-                        message = errorMessage,
-                        onRetry = { onIntent(WhatsNewIntent.OnRetry) },
-                        // Close on the error/empty surfaces only dismisses (native pops back); it
-                        // does NOT mark the screen seen — native reserves mark-seen for the loaded
-                        // screen's dismiss/Get-Started.
-                        onClose = onGetStarted,
-                    )
-                    state.features.isEmpty() -> EmptyState(
-                        modifier = Modifier.weight(1f),
-                        onClose = onGetStarted,
-                    )
-                    else -> FeaturePager(
-                        features = state.features,
-                        currentPage = state.currentPage,
-                        isTablet = isTablet,
-                        isLandscape = isLandscape,
-                        horizontalPadding = horizontalPadding,
-                        cardPadding = cardPadding,
-                        onPageChanged = { onIntent(WhatsNewIntent.OnPageChanged(it)) },
-                        onOpenVideo = { onIntent(WhatsNewIntent.OnOpenVideo(it)) },
-                        // GAP-WN-03 / GAP-WN-05 — the Get-Started button on the last page marks the
-                        // screen seen (persists version + timestamp via MarkWhatsNewSeenUseCase) and
-                        // asks the host to dismiss / navigate back.
-                        onGetStarted = {
-                            onIntent(WhatsNewIntent.OnMarkSeen)
-                            onGetStarted()
-                        },
-                    )
+                    // An unloaded/cancelled empty state needs Retry, not successful-empty copy.
+                    error != null || (state.features.isEmpty() && !state.hasLoadedSuccessfully) ->
+                        ErrorState(
+                            modifier = Modifier.weight(1f),
+                            message = whatsNewErrorMessage(error),
+                            onRetry = { onIntent(WhatsNewIntent.OnRetry) },
+                            // Card Close only dismisses; the header X is the explicit mark-and-dismiss action.
+                            onClose = onGetStarted,
+                        )
+                    state.features.isEmpty() && state.hasLoadedSuccessfully ->
+                        EmptyState(
+                            modifier = Modifier.weight(1f),
+                            onClose = onGetStarted,
+                        )
+                    else ->
+                        FeaturePager(
+                            features = state.features,
+                            currentPage = state.currentPage,
+                            isTablet = isTablet,
+                            isLandscape = isLandscape,
+                            horizontalPadding = horizontalPadding,
+                            cardPadding = cardPadding,
+                            onPageChanged = { onIntent(WhatsNewIntent.OnPageChanged(it)) },
+                            onOpenVideo = { onIntent(WhatsNewIntent.OnOpenVideo(it)) },
+                            // GAP-WN-03 / GAP-WN-05 — the Get-Started button on the last page marks the
+                            // screen seen (persists version + timestamp via MarkWhatsNewSeenUseCase) and
+                            // asks the host to dismiss / navigate back.
+                            onGetStarted = {
+                                onIntent(WhatsNewIntent.OnMarkSeen)
+                                onGetStarted()
+                            },
+                        )
                 }
             }
         }
@@ -301,17 +320,22 @@ internal fun WhatsNewScreenContent(
  * `TopAppBar` so the title style (headlineSmall vs titleLarge), the circular tinted close chip,
  * and the gradient-over-transparent header match native.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun WhatsNewHeader(horizontalPadding: Dp, onDismiss: () -> Unit) {
+private fun WhatsNewHeader(
+    horizontalPadding: Dp,
+    onDismiss: () -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.Transparent,
         tonalElevation = 2.dp,
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = horizontalPadding, vertical = 12.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = horizontalPadding, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -325,12 +349,13 @@ private fun WhatsNewHeader(horizontalPadding: Dp, onDismiss: () -> Unit) {
             )
             IconButton(
                 onClick = onDismiss,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        CircleShape,
-                    ),
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            CircleShape,
+                        ),
             ) {
                 Icon(
                     imageVector = KiraIcons.Close,
@@ -348,6 +373,7 @@ private fun WhatsNewHeader(horizontalPadding: Dp, onDismiss: () -> Unit) {
  * showed an unlabeled default-size spinner). Rendered inline rather than via the shared component
  * because that component takes no label and `:ui/components` is out of scope.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun LoadingState(modifier: Modifier = Modifier) {
     Box(
@@ -371,6 +397,15 @@ private fun LoadingState(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+private fun whatsNewErrorMessage(error: AppError?): String =
+    when (error) {
+        is AppError.Network.NoConnectivity -> stringResource(Res.string.error_network_no_connectivity)
+        is AppError.Network.Timeout -> stringResource(Res.string.error_network_timeout)
+        is AppError.Network -> stringResource(Res.string.error_network)
+        else -> stringResource(Res.string.error_occurred)
+    }
+
 /**
  * Error surface — a centered elevated [Card] with a "Failed to Load" (error-colored)
  * headlineSmall, the failure [message], and a Close + Retry button row, mirroring native
@@ -378,6 +413,7 @@ private fun LoadingState(modifier: Modifier = Modifier) {
  * only — no Close, which matters on Desktop/iOS where there is no hardware back). Rendered inline
  * because the shared error component cannot host a plain Close button.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun ErrorState(
     message: String,
@@ -390,9 +426,10 @@ private fun ErrorState(
         contentAlignment = Alignment.Center,
     ) {
         Card(
-            modifier = Modifier
-                .padding(32.dp)
-                .fillMaxWidth(),
+            modifier =
+                Modifier
+                    .padding(32.dp)
+                    .fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         ) {
             Column(
@@ -431,8 +468,12 @@ private fun ErrorState(
  * and a Close [action] button (was a title-only placeholder relying on system back, which is absent
  * on Desktop/iOS).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun EmptyState(onClose: () -> Unit, modifier: Modifier = Modifier) {
+private fun EmptyState(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     KiraEmptyState(
         title = stringResource(Res.string.np_p3_whats_new_empty_title),
         message = stringResource(Res.string.np_p3_whats_new_empty_body),
@@ -458,6 +499,11 @@ private fun EmptyState(onClose: () -> Unit, modifier: Modifier = Modifier) {
  * matches what the pager is already showing (no oscillation; the comparison is value-equal so
  * `snapTo` wouldn't fire even if it ran every frame).
  */
+@Suppress(
+    "FunctionNaming",
+    "ktlint:standard:function-naming",
+    "LongMethod", // Existing Detekt baseline allowance; naming annotations change its signature.
+)
 @Composable
 private fun FeaturePager(
     features: List<WhatsNewFeature>,
@@ -471,10 +517,11 @@ private fun FeaturePager(
     onGetStarted: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(
-        initialPage = currentPage.coerceIn(0, (features.size - 1).coerceAtLeast(0)),
-        pageCount = { features.size },
-    )
+    val pagerState =
+        rememberPagerState(
+            initialPage = currentPage.coerceIn(0, (features.size - 1).coerceAtLeast(0)),
+            pageCount = { features.size },
+        )
     LaunchedEffect(pagerState.currentPage) {
         onPageChanged(pagerState.currentPage)
     }
@@ -488,9 +535,10 @@ private fun FeaturePager(
     ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
             contentPadding = PaddingValues(0.dp),
             // No `key` — matches native (index-based default), which is crash-proof. A content key
             // (e.g. feature title) would risk a duplicate-key crash since feature titles aren't a
@@ -504,10 +552,12 @@ private fun FeaturePager(
             val isActive = page == pagerState.currentPage
             AnimatedVisibility(
                 visible = isActive,
-                enter = slideInHorizontally(animationSpec = tween(250)) { it } +
-                    fadeIn(animationSpec = tween(250)),
-                exit = slideOutHorizontally(animationSpec = tween(250)) { -it } +
-                    fadeOut(animationSpec = tween(250)),
+                enter =
+                    slideInHorizontally(animationSpec = tween(250)) { it } +
+                        fadeIn(animationSpec = tween(250)),
+                exit =
+                    slideOutHorizontally(animationSpec = tween(250)) { -it } +
+                        fadeOut(animationSpec = tween(250)),
             ) {
                 FeatureCard(
                     feature = features[page],
@@ -523,9 +573,10 @@ private fun FeaturePager(
             pageCount = features.size,
             selectedIndex = pagerState.currentPage,
             // GAP-WN-09 — native `PageIndicators` uses a 12.dp vertical padding row.
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
         )
         // GAP-WN-03 — Previous / Next / Get-Started navigation buttons mirroring native
         // `WhatsNewComponents.kt:98-141`. Previous is a Spacer on the first page; the last page
@@ -537,9 +588,10 @@ private fun FeaturePager(
             onPrevious = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
             onNext = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
             onGetStarted = onGetStarted,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = horizontalPadding, vertical = 12.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = horizontalPadding, vertical = 12.dp),
         )
     }
 
@@ -557,6 +609,7 @@ private fun FeaturePager(
  * the screen seen + dismisses. Each button uses native's explicit `contentPadding(horizontal =
  * 20.dp, vertical = 10.dp)` (was Material default content padding).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun NavigationButtons(
     currentPage: Int,
@@ -608,41 +661,45 @@ private fun NavigationButtons(
  * MediaPlayer SPI (deferred — the video poster opens externally instead). When that SPI lands, the
  * video poster's fullscreen routes here.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun FullscreenMediaViewer(url: String, onDismiss: () -> Unit) {
+private fun FullscreenMediaViewer(
+    url: String,
+    onDismiss: () -> Unit,
+) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.95f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.95f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
                 model = url,
                 contentDescription = stringResource(Res.string.whats_new_feature_image),
                 contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
+                modifier = Modifier.fillMaxSize().padding(24.dp),
             )
             IconButton(
                 onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .size(48.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                        CircleShape,
-                    ),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .size(48.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            CircleShape,
+                        ),
             ) {
                 Icon(
                     imageVector = KiraIcons.Close,
@@ -655,14 +712,14 @@ private fun FullscreenMediaViewer(url: String, onDismiss: () -> Unit) {
                 text = stringResource(Res.string.np_tap_outside_to_close),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(20.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                        RoundedCornerShape(12.dp),
-                    )
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(20.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            RoundedCornerShape(12.dp),
+                        ).padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
     }
@@ -676,8 +733,13 @@ private fun FullscreenMediaViewer(url: String, onDismiss: () -> Unit) {
  * `WhatsNewComponents.kt`'s `PageIndicators` exactly (was `onSurfaceVariant@0.3` / a 2.dp
  * spacing.xxs pad).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun PageIndicatorRow(pageCount: Int, selectedIndex: Int, modifier: Modifier = Modifier) {
+private fun PageIndicatorRow(
+    pageCount: Int,
+    selectedIndex: Int,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Center,
@@ -685,17 +747,19 @@ private fun PageIndicatorRow(pageCount: Int, selectedIndex: Int, modifier: Modif
     ) {
         repeat(pageCount) { index ->
             val isSelected = index == selectedIndex
-            val color = if (isSelected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-            }
+            val color =
+                if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                }
             Box(
-                modifier = Modifier
-                    .padding(horizontal = 3.dp)
-                    .height(8.dp)
-                    .width(if (isSelected) 24.dp else 8.dp)
-                    .background(color = color, shape = RoundedCornerShape(4.dp)),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 3.dp)
+                        .height(8.dp)
+                        .width(if (isSelected) 24.dp else 8.dp)
+                        .background(color = color, shape = RoundedCornerShape(4.dp)),
             )
         }
     }
@@ -715,6 +779,7 @@ private fun PageIndicatorRow(pageCount: Int, selectedIndex: Int, modifier: Modif
  * `cardPadding`, and the card height is capped at native's `maxCardHeight` fraction
  * (`FeatureCard.kt:45,65`: 0.85 landscape / 0.75 portrait).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun FeatureCard(
     feature: WhatsNewFeature,
@@ -731,23 +796,26 @@ private fun FeatureCard(
     // FeatureCard surface (was r12 / no elevation).
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(maxCardHeight)
-            // Native `FeatureCard.kt:66` insets the card with horizontal = cardPadding,
-            // vertical = 8.dp.
-            .padding(horizontal = cardPadding, vertical = 8.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(maxCardHeight)
+                // Native `FeatureCard.kt:66` insets the card with horizontal = cardPadding,
+                // vertical = 8.dp.
+                .padding(horizontal = cardPadding, vertical = 8.dp),
     ) {
         Column(
-            modifier = Modifier
-                // Native `FeatureCard.kt:71-72` fills the card and scrolls inside it.
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(cardPadding),
+            modifier =
+                Modifier
+                    // Native `FeatureCard.kt:71-72` fills the card and scrolls inside it.
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(cardPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
             // Native uses a 16.dp inter-element gap inside the card Column.
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -797,6 +865,7 @@ private fun FeatureCard(
  * rendered size. Kept private to the WhatsNew screen (no `:ui/components` edit) since it mirrors a
  * native component that lives in the WhatsNew feature's common-componants package.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun AutoSubtitleText(
     text: String,
@@ -812,18 +881,20 @@ private fun AutoSubtitleText(
     Box(modifier = modifier) {
         BasicText(
             text = text,
-            style = TextStyle(
-                color = color,
-                fontSize = fontSize,
-                textAlign = textAlign,
-                fontWeight = fontWeight,
-            ),
+            style =
+                TextStyle(
+                    color = color,
+                    fontSize = fontSize,
+                    textAlign = textAlign,
+                    fontWeight = fontWeight,
+                ),
             maxLines = maxLines,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = minSize,
-                maxFontSize = maxSize,
-                stepSize = 0.1.sp,
-            ),
+            autoSize =
+                TextAutoSize.StepBased(
+                    minFontSize = minSize,
+                    maxFontSize = maxSize,
+                    stepSize = 0.1.sp,
+                ),
         )
     }
 }
@@ -833,12 +904,16 @@ private fun AutoSubtitleText(
  * `FeatureCard.kt:38-43`: 300.dp (tablet + landscape) / 280.dp (tablet) / 180.dp (landscape) /
  * 220.dp (phone portrait).
  */
-private fun mediaSizeFor(isTablet: Boolean, isLandscape: Boolean): Dp = when {
-    isTablet && isLandscape -> 300.dp
-    isTablet -> 280.dp
-    isLandscape -> 180.dp
-    else -> 220.dp
-}
+private fun mediaSizeFor(
+    isTablet: Boolean,
+    isLandscape: Boolean,
+): Dp =
+    when {
+        isTablet && isLandscape -> 300.dp
+        isTablet -> 280.dp
+        isLandscape -> 180.dp
+        else -> 220.dp
+    }
 
 /**
  * Branches on [WhatsNewFeature.mediaType] to render the feature's media, mirroring the native
@@ -855,6 +930,7 @@ private fun mediaSizeFor(isTablet: Boolean, isLandscape: Boolean): Dp = when {
  *    that emits [onOpenVideo] — DEVIATION(platform) substitute for the native inline `VideoView`.
  *  - **URL**: a single URL image (the native "image with external open" affordance).
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun FeatureMedia(
     feature: WhatsNewFeature,
@@ -918,6 +994,7 @@ private fun FeatureMedia(
  * Single rounded Coil image at [mediaSize], with a calm error glyph on load failure. Tapping
  * opens the fullscreen viewer (GAP-WN-02) via [onClick].
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun FeatureImage(
     url: String,
@@ -927,11 +1004,12 @@ private fun FeatureImage(
 ) {
     var isError by remember(url) { mutableStateOf(false) }
     Box(
-        modifier = Modifier
-            .size(mediaSize)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .size(mediaSize)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         AsyncImage(
@@ -955,6 +1033,7 @@ private fun FeatureImage(
  * Horizontal image carousel mirroring the native `ImageUrlsCarousel`: a large selected image on
  * top + a thumbnail [LazyRow] beneath (shown only when >1). Tapping a thumbnail selects it.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun ImageUrlCarousel(
     imageUrlList: List<String>,
@@ -987,24 +1066,24 @@ private fun ImageUrlCarousel(
                     key = { index, url -> "$index:$url" },
                 ) { index, url ->
                     val isSelected = index == safeIndex
-                    val thumbModifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .then(
-                            if (isSelected) {
-                                Modifier.border(
-                                    width = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(8.dp),
-                                )
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .clickable {
-                            selectedIndex = index
-                            scope.launch { listState.animateScrollToItem(index) }
-                        }
+                    val thumbModifier =
+                        Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        width = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(8.dp),
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ).clickable {
+                                selectedIndex = index
+                                scope.launch { listState.animateScrollToItem(index) }
+                            }
                     AsyncImage(
                         model = url,
                         contentDescription = stringResource(Res.string.whats_new_thumbnail, index + 1),
@@ -1040,15 +1119,20 @@ private fun ImageUrlCarousel(
  * corner glyph echoes native's bottom-end button position. Substitutes — does not replicate — the
  * native inline `VideoView`.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun VideoPoster(mediaSize: Dp, onClick: () -> Unit) {
+private fun VideoPoster(
+    mediaSize: Dp,
+    onClick: () -> Unit,
+) {
     Box(
-        modifier = Modifier
-            .width(mediaSize)
-            .height(mediaSize * 0.75f)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .width(mediaSize)
+                .height(mediaSize * 0.75f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -1091,10 +1175,11 @@ private fun VideoPoster(mediaSize: Dp, onClick: () -> Unit) {
             imageVector = KiraIcons.OpenInWebView,
             contentDescription = stringResource(Res.string.whats_new_video_opens_externally),
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(8.dp)
-                .size(22.dp),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(22.dp),
         )
     }
 }
@@ -1107,13 +1192,18 @@ private fun VideoPoster(mediaSize: Dp, onClick: () -> Unit) {
  * composeResources) or no media at all, so the card is never blank — matching native's fall-back
  * at `FeatureCard.kt:161-163`.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun ImagePlaceholder(title: String, mediaSize: Dp) {
+private fun ImagePlaceholder(
+    title: String,
+    mediaSize: Dp,
+) {
     Box(
-        modifier = Modifier
-            .size(mediaSize)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer),
+        modifier =
+            Modifier
+                .size(mediaSize)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -1130,6 +1220,7 @@ private fun ImagePlaceholder(title: String, mediaSize: Dp) {
  * Uses [MaterialTheme.colorScheme.primary] as the background — same accent posture as the
  * legacy `WhatsNewBadge` composable.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
 private fun NewChip() {
     val spacing = LocalSpacing.current

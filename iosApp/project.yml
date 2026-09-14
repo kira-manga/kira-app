@@ -37,6 +37,11 @@ targets:
           # The committed placeholder must NOT ship in the app bundle — only the real (gitignored)
           # GoogleService-Info.plist is a Copy-Bundle-Resources entry.
           - "GoogleService-Info.plist.example"
+          - "Settings.bundle"
+      # Copy the Settings bundle intact; recursive source discovery must not flatten it.
+      - path: iosApp/Settings.bundle
+        type: file
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira
@@ -54,6 +59,13 @@ targets:
         KIRA_CODE_SIGN_IDENTITY: ""
         KIRA_PROVISIONING_PROFILE_SPECIFIER: ""
         KIRA_OTHER_CODE_SIGN_FLAGS: ""
+        # Mobile Release Kit passes only user-defined variables so signing overrides remain scoped
+        # to this application target and cannot leak into Firebase Swift Package targets. Legacy
+        # KIRA_* xcconfig values remain the defaults for the existing TestFlight workflow.
+        MOBILE_RELEASE_IOS_CODE_SIGN_STYLE: "$(KIRA_CODE_SIGN_STYLE)"
+        MOBILE_RELEASE_IOS_CODE_SIGN_IDENTITY: "$(KIRA_CODE_SIGN_IDENTITY)"
+        MOBILE_RELEASE_IOS_PROVISIONING_PROFILE_SPECIFIER: "$(KIRA_PROVISIONING_PROFILE_SPECIFIER)"
+        MOBILE_RELEASE_IOS_DEVELOPMENT_TEAM: 7CGZ2343AA
         # Compose Multiplatform no longer publishes Apple x86_64 artifacts. Keep generic simulator
         # destinations arm64-only instead of letting Xcode request an unsupported architecture.
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
@@ -61,7 +73,7 @@ targets:
         # the team out of the project — device builds needed DEVELOPMENT_TEAM passed on every
         # xcodebuild invocation before this. The retired Personal-team ID (U8D4Z8P4NA) must not be
         # used anymore.
-        DEVELOPMENT_TEAM: 7CGZ2343AA
+        DEVELOPMENT_TEAM: "$(MOBILE_RELEASE_IOS_DEVELOPMENT_TEAM)"
         INFOPLIST_FILE: iosApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -91,9 +103,9 @@ targets:
           APS_ENVIRONMENT: development
         Release:
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
-          CODE_SIGN_STYLE: "$(KIRA_CODE_SIGN_STYLE)"
-          CODE_SIGN_IDENTITY: "$(KIRA_CODE_SIGN_IDENTITY)"
-          PROVISIONING_PROFILE_SPECIFIER: "$(KIRA_PROVISIONING_PROFILE_SPECIFIER)"
+          CODE_SIGN_STYLE: "$(MOBILE_RELEASE_IOS_CODE_SIGN_STYLE)"
+          CODE_SIGN_IDENTITY: "$(MOBILE_RELEASE_IOS_CODE_SIGN_IDENTITY)"
+          PROVISIONING_PROFILE_SPECIFIER: "$(MOBILE_RELEASE_IOS_PROVISIONING_PROFILE_SPECIFIER)"
           OTHER_CODE_SIGN_FLAGS: "$(inherited) $(KIRA_OTHER_CODE_SIGN_FLAGS)"
           # Full push entitlements for TestFlight/App Store — these builds require a real Apple
           # Developer Program team anyway (Personal teams can't distribute), so the Push
@@ -167,6 +179,9 @@ targets:
         script: |
           if [ "${CONFIGURATION}" != "Release" ]; then
             echo "note: Crashlytics dSYM upload skipped (CONFIGURATION=${CONFIGURATION}; Release/TestFlight only)"; exit 0
+          fi
+          if [ "${MOBILE_RELEASE_DEFER_EXTERNAL_UPLOADS:-0}" = "1" ]; then
+            echo "note: Crashlytics dSYM upload deferred to the explicit Mobile Release Kit symbol stage"; exit 0
           fi
           if [ "${CRASHLYTICS_DSYM_UPLOAD_OPTIONAL:-0}" = "1" ]; then
             echo "warning: Crashlytics dSYM upload skipped (CRASHLYTICS_DSYM_UPLOAD_OPTIONAL=1)"; exit 0

@@ -103,6 +103,7 @@
     <string name="no_results_found">Результаты не найдены</string>
     <string name="not_updated_yet">Еще не обновлено</string>
     <string name="notification_permission">Нам нужно это разрешение, чтобы отправлять последние главы, показывать прогресс загрузки и гарантировать работу приложения.</string>
+    <string name="notification_permission_optional">Уведомления необязательны. Включите их, чтобы получать оповещения о новых главах и обновлениях загрузок.</string>
     <string name="notifications_group_last_week">На прошлой неделе</string>
     <string name="notifications_group_older">Ранее</string>
     <string name="notifications_group_today">Сегодня</string>

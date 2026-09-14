@@ -138,6 +138,7 @@ import me.manga.kira.presentation.details.DetailsIntent
 import me.manga.kira.presentation.details.DetailsState
 import me.manga.kira.presentation.details.DetailsViewModel
 import me.manga.kira.ui.theme.LocalSpacing
+import me.manga.kira.ui.util.formatByteSize
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -563,11 +564,11 @@ internal fun DetailsScreenContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        // Resume FAB — native LibraryMangaScreen.kt:225-235. Shown only for an in-library manga with
-        // loaded chapters and outside the adult gate (the gate suppresses the whole body). Computes
-        // the first-unread chapter from the displayed (filtered/sorted) list and jumps into it.
+        // Resume FAB — native LibraryMangaScreen.kt:225-235. Keep chapter-selection actions unobstructed.
+        // Resumes at the first unread chapter in reading order from the displayed (filtered/sorted) list.
         floatingActionButton = {
-            if (state.isInLibrary && state.hasDetails && !state.isAdultGateActive) {
+            val isResumeAvailable = state.isInLibrary && state.hasDetails && !state.isAdultGateActive
+            if (isResumeAvailable && !state.isInChapterSelectionMode) {
                 ResumeFab(
                     firstUnread = state.firstUnreadChapter,
                     expanded = resumeFabExpanded,
@@ -653,7 +654,7 @@ internal fun DetailsScreenContent(
                     // flips to downloaded the moment Room writes isDownloaded=1 (native parity),
                     // instead of the old boolean "is downloading" membership set.
                     chapterDownloads = state.chapterDownloads,
-                    totalDownloadedSizeLabel = state.totalDownloadedSizeLabel,
+                        totalDownloadedSizeBytes = state.totalDownloadedSizeBytes,
                     downloadedChapterCount = state.downloadedChapterCount,
                     isDownloadingAll = state.isDownloadingAny,
                     onChapterClick = { chapter ->
@@ -998,10 +999,10 @@ private fun DetailsBody(
     sortAscending: Boolean,
     selectedChapterUrls: Set<String>,
     chapterDownloads: Map<String, ChapterDownloadProgress>,
-    // Native size display (TotalSizeDisplay): the formatted total on-disk size of all downloaded
-    // chapters ("150.5 MB") + how many are downloaded, for the per-manga header above the list.
+    // Native size display (TotalSizeDisplay): raw total on-disk bytes + completed ledger count,
+    // localized here for the per-manga header above the list.
     // Null total = nothing downloaded / no sizes known yet (the header line is hidden).
-    totalDownloadedSizeLabel: String?,
+    totalDownloadedSizeBytes: Long?,
     downloadedChapterCount: Int,
     isDownloadingAll: Boolean,
     onChapterClick: (Chapter) -> Unit,
@@ -1102,11 +1103,11 @@ private fun DetailsBody(
                     }
                     // Native TotalSizeDisplay parity: "<total size> • <N> downloaded", shown only
                     // when at least one chapter is downloaded with a known size.
-                    if (totalDownloadedSizeLabel != null) {
+                        if (totalDownloadedSizeBytes != null) {
                         Text(
                             text = stringResource(
                                 Res.string.pfix_dlsize_total_format,
-                                totalDownloadedSizeLabel,
+                                    formatByteSize(totalDownloadedSizeBytes),
                                 downloadedChapterCount,
                             ),
                             style = MaterialTheme.typography.bodySmall,
@@ -1868,11 +1869,10 @@ private fun ChapterRow(
             }
             val date = chapter.date
             // Native size display (LibraryChapterItem.kt:419-..): a downloaded chapter shows its
-            // on-disk size next to the date ("MMM d, yyyy • 12.3 MB"), tinted primary. The size
-            // comes from the SUCCESS download entry's [ChapterDownloadProgress.sizeLabel] (back-filled
-            // for pre-existing downloads by the startup reconcile); null while not downloaded.
-            val sizeLabel = download?.sizeLabel
-            if (date != null || sizeLabel != null) {
+                // localized on-disk size next to the date, tinted primary. Raw bytes come from the
+                // SUCCESS download entry (back-filled by startup reconcile); null without a known size.
+                val sizeBytes = download?.completedSizeBytes
+                if (date != null || sizeBytes != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (date != null) {
                         Text(
@@ -1884,7 +1884,7 @@ private fun ChapterRow(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         )
                     }
-                    if (sizeLabel != null) {
+                        if (sizeBytes != null) {
                         if (date != null) {
                             Text(
                                 text = " • ",
@@ -1893,7 +1893,7 @@ private fun ChapterRow(
                             )
                         }
                         Text(
-                            text = sizeLabel,
+                                text = formatByteSize(sizeBytes),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -1992,7 +1992,7 @@ private fun ChapterRow(
                         }
                     }
                 }
-                download?.isDownloaded == true || chapter.isDownloaded -> {
+                DetailsState.isDownloaded(chapter, download) -> {
                     // Downloaded + done — native `ChapterItem.kt:89-93` / `LibraryChapterItem`
                     // render the DownloadDone glyph (not a bare Check) tinted primary for a
                     // downloaded chapter. P3-LOW parity: use the same DownloadDone glyph here so the
@@ -2046,10 +2046,10 @@ private fun ChapterRow(
             // manga is saved); a downloaded chapter shows the DownloadDone glyph. This restores the
             // per-chapter download entry point the rework dropped (it had only a passive dot).
             KiraIconButton(
-                icon = if (chapter.isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                Icons.Filled.run { if (DetailsState.isDownloaded(chapter, download)) DownloadDone else Download },
                 contentDescription = stringResource(Res.string.details_download_chapter),
                 onClick = onRequestAddBookmark,
-                tint = if (chapter.isDownloaded) {
+                tint = if (DetailsState.isDownloaded(chapter, download)) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)

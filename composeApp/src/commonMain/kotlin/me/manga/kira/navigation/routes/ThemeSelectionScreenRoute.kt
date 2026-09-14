@@ -39,12 +39,10 @@ import org.koin.compose.viewmodel.koinViewModel
  *     then RepoSettings (with `isFirstOpen = true`) flips the `first_launch` flag to false and
  *     clears the back stack down to Library on Finish (see [RepoSettingsScreenRoute]).
  *  2. `hasNotificationPermission` ← `rememberNotificationPermissionRequester().hasPermission` —
- *     reactive Compose state from the platform requester facade. The rework ThemeScreen
- *     gates the Continue button on this value when the permission callback is non-null
- *     (see §137).
- *  3. `onRequestNotificationPermission` → `permissionRequester.request()` — re-launches the
- *     platform permission request when the user taps "Grant Permission". The grant row is
- *     rendered only while permission is denied (see §137).
+ *     reactive Compose state from the platform requester facade.
+ *  3. The requester's explicit onboarding policy decides whether the control is shown, whether
+ *     it auto-requests, and whether Continue requires a grant. Android retains its required,
+ *     automatic flow; iOS is optional and user-initiated; Desktop omits the control.
  *
  * Theme state itself (selected `AppTheme`, `pureBlack` toggle) flows through the rework
  * `ThemeViewModel` → `:domain` `ObserveAppThemeUseCase` / `SetAppThemeUseCase` →
@@ -54,13 +52,10 @@ import org.koin.compose.viewmodel.koinViewModel
  * the swap is transparent to persistence (a user mid-onboarding before the swap, restarted
  * after the swap, sees their theme + pureBlack preference preserved).
  *
- * **Auto-request lifecycle** (preserved verbatim from the legacy `ThemeSelectionScreen.kt:84-90`):
- * a `LaunchedEffect(Unit)` fires the permission request on first composition, gated by an
- * in-composition `autoRequested` `mutableStateOf(false)` flag so re-composes don't re-fire
- * within the same composition. The flag is `remember`, NOT `rememberSaveable` — matches the
- * legacy's posture (a config change re-fires the request, which is harmless since the system
- * surfaces the dialog only when permission is undecided; subsequent calls when already granted/
- * permanently-denied are no-ops at the platform layer).
+ * **Auto-request lifecycle**: a `LaunchedEffect(Unit)` fires the request only for a platform whose
+ * policy enables automatic requests. This preserves Android behavior while ensuring iOS never
+ * shows Apple's system prompt until the user taps "Grant Permission". An in-composition
+ * `autoRequested` flag prevents repeat requests within the same composition.
  *
  * **Toast-on-denial** (native parity, `native-app ThemeSelectionScreen.kt:68-78`): a long toast
  * (via `ToastShower`) is surfaced ONLY when the permission request resolves with an actual user
@@ -150,6 +145,7 @@ fun ThemeSelectionScreenRoute(
     val toastShower: ToastShower = koinInject()
     val permissionRequester = rememberNotificationPermissionRequester()
     val hasPermission by permissionRequester.hasPermission.collectAsState()
+    val onboardingPolicy = permissionRequester.onboardingPolicy
     val autoRequested = remember { mutableStateOf(false) }
 
     val deniedMessage = stringResource(Res.string.you_need_to_enable_notifications)
@@ -158,20 +154,30 @@ fun ThemeSelectionScreenRoute(
     // (false) from "denied" (also false) and would fire the toast the moment the system dialog
     // opens, even for a user who then grants.
     val onPermissionResult: (Boolean) -> Unit = { granted ->
-        if (!granted) toastShower.showLong(deniedMessage)
+        if (!granted && onboardingPolicy.requireGrantToContinue) {
+            toastShower.showLong(deniedMessage)
+        }
     }
 
     LaunchedEffect(Unit) {
-        if (!autoRequested.value && !hasPermission) {
+        if (onboardingPolicy.requestAutomatically && !autoRequested.value && !hasPermission) {
             autoRequested.value = true
             permissionRequester.request(onPermissionResult)
         }
     }
 
+    val requestPermission: (() -> Unit)? =
+        if (onboardingPolicy.showPermissionControl) {
+            { permissionRequester.request(onPermissionResult) }
+        } else {
+            null
+        }
+
     ThemeScreen(
         viewModel = viewModel,
         onContinue = { navController.safeNavigate(Screen.StartReading(onboarding = true)) },
         hasNotificationPermission = hasPermission,
-        onRequestNotificationPermission = { permissionRequester.request(onPermissionResult) },
+        isNotificationPermissionRequired = onboardingPolicy.requireGrantToContinue,
+        onRequestNotificationPermission = requestPermission,
     )
 }

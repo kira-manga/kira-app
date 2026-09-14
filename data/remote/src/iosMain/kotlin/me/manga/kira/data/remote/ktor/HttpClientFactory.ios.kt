@@ -21,36 +21,39 @@ import kotlin.native.Platform
 @OptIn(ExperimentalNativeApi::class)
 actual val isHttpLoggingEnabled: Boolean = Platform.isDebugBinary
 
-actual fun createHttpClient(): HttpClient = HttpClient(Darwin) {
-    install(ContentNegotiation) { json(DefaultJson) }
-    // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
-    // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.
-    if (isHttpLoggingEnabled) {
-        install(Logging) { level = LogLevel.NONE }
+actual fun createHttpClient(cacheResponses: Boolean): HttpClient =
+    HttpClient(Darwin) {
+        install(ContentNegotiation) { json(DefaultJson) }
+        // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
+        // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.
+        if (isHttpLoggingEnabled) {
+            install(Logging) { level = LogLevel.NONE }
+        }
+        install(HttpTimeout) {
+            // Parity with native AppModule.provideOkHttpClient: connectTimeout(30s) + readTimeout(60s)
+            // + writeTimeout(60s), and NO whole-request/callTimeout. socketTimeoutMillis approximates
+            // native's read/write timeout (Ktor has no separate write timeout). requestTimeoutMillis is
+            // intentionally omitted: native imposes no whole-request ceiling, so a slow-but-progressing
+            // large response must not be aborted as long as each read stays under the socket timeout.
+            connectTimeoutMillis = 30_000
+            socketTimeoutMillis = 60_000
+        }
+        // Enables cross-request response caching so server-sent `Cache-Control` directives are honored.
+        // Backed by a bounded [BoundedCacheStorage] instead of the default unbounded in-memory
+        // CacheStorage.Unlimited(): Ktor 3.4 ships no disk-backed FileStorage on Kotlin/Native, and an
+        // unbounded store retains every cacheable body (incl. multi-MB chapter images) for the process
+        // lifetime — which lets jetsam kill the app under memory pressure mid-download. The bounded
+        // storage caps retained entries with LRU eviction so the cache footprint stays finite. Note:
+        // the 1-day /dados window is NOT honored here — that Cache-Control is stamped by an OkHttp
+        // network interceptor (forceCacheForDados) that exists only on Android, so /dados responses
+        // stay uncacheable on iOS.
+        if (cacheResponses) {
+            install(HttpCache) {
+                publicStorage(BoundedCacheStorage())
+                privateStorage(BoundedCacheStorage())
+            }
+        }
     }
-    install(HttpTimeout) {
-        // Parity with native AppModule.provideOkHttpClient: connectTimeout(30s) + readTimeout(60s)
-        // + writeTimeout(60s), and NO whole-request/callTimeout. socketTimeoutMillis approximates
-        // native's read/write timeout (Ktor has no separate write timeout). requestTimeoutMillis is
-        // intentionally omitted: native imposes no whole-request ceiling, so a slow-but-progressing
-        // large response must not be aborted as long as each read stays under the socket timeout.
-        connectTimeoutMillis = 30_000
-        socketTimeoutMillis = 60_000
-    }
-    // Enables cross-request response caching so server-sent `Cache-Control` directives are honored.
-    // Backed by a bounded [BoundedCacheStorage] instead of the default unbounded in-memory
-    // CacheStorage.Unlimited(): Ktor 3.4 ships no disk-backed FileStorage on Kotlin/Native, and an
-    // unbounded store retains every cacheable body (incl. multi-MB chapter images) for the process
-    // lifetime — which lets jetsam kill the app under memory pressure mid-download. The bounded
-    // storage caps retained entries with LRU eviction so the cache footprint stays finite. Note:
-    // the 1-day /dados window is NOT honored here — that Cache-Control is stamped by an OkHttp
-    // network interceptor (forceCacheForDados) that exists only on Android, so /dados responses
-    // stay uncacheable on iOS.
-    install(HttpCache) {
-        publicStorage(BoundedCacheStorage())
-        privateStorage(BoundedCacheStorage())
-    }
-}
 
 /*
  * Audit-trail postscript (Phase 9.x.cluster240.staleKdocSweep.cascade, Task #696, 2026-05-29)
@@ -144,4 +147,3 @@ actual fun createHttpClient(): HttpClient = HttpClient(Darwin) {
  *     ANDROID-DOMINANT-OUTLIER-WITH-iOS-AND-DESKTOP-AT-ZERO-CONTRIBUTION
  *     posture.
  */
-

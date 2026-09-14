@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_pfix_filter_expanded">展開済み</string>
+    <string name="search_pfix_filter_collapsed">折りたたみ済み</string>
+</resources>

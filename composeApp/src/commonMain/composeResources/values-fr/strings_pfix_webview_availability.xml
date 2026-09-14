@@ -1,0 +1,7 @@
+<resources>
+    <string name="webview_unavailable_title">WebView est indisponible</string>
+    <string name="webview_unavailable_message">Activez ou mettez à jour Android System WebView ou Chrome, puis réessayez. Ouvrir cette page dans un autre navigateur n’enregistrera pas de session dans Kira.</string>
+    <string name="webview_unavailable_retry">Réessayer</string>
+    <string name="webview_open_external_browser">Ouvrir dans le navigateur</string>
+    <string name="webview_external_browser_failed">Impossible d’ouvrir un navigateur. Vérifiez qu’un navigateur est installé et autorisé, ou réessayez WebView.</string>
+</resources>

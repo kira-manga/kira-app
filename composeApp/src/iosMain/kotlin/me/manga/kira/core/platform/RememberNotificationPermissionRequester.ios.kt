@@ -1,56 +1,113 @@
 package me.manga.kira.core.platform
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge
 import platform.UserNotifications.UNAuthorizationOptionSound
 import platform.UserNotifications.UNAuthorizationStatusAuthorized
+import platform.UserNotifications.UNAuthorizationStatusDenied
 import platform.UserNotifications.UNAuthorizationStatusProvisional
 import platform.UserNotifications.UNUserNotificationCenter
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * iOS actual for [rememberNotificationPermissionRequester].
  *
  * Drives the real `UNUserNotificationCenter` authorization flow. On construction we read the
  * current authorization status via `getNotificationSettingsWithCompletionHandler` to seed
- * [hasPermission] (it is NOT assumed granted — nothing requests it at launch). `request()`
- * fires `requestAuthorizationWithOptions(alert|sound|badge)` and updates [hasPermission] from
- * the grant result; `openAppSettings()` deep-links to the app's iOS Settings page so the user
- * can flip the toggle after a denial.
+ * [hasPermission] (it is NOT assumed granted — nothing requests it at launch). Onboarding is
+ * optional and user-initiated: `request()` first inspects the current status, shows Apple's prompt
+ * only when authorization is undecided, and opens app settings after a prior denial.
  */
 @Composable
-actual fun rememberNotificationPermissionRequester(): NotificationPermissionRequester = remember {
-    val state = MutableStateFlow(false)
-    object : NotificationPermissionRequester {
-        init {
-            UNUserNotificationCenter.currentNotificationCenter().getNotificationSettingsWithCompletionHandler { settings ->
-                val status = settings?.authorizationStatus
-                state.value = status == UNAuthorizationStatusAuthorized ||
-                    status == UNAuthorizationStatusProvisional
+actual fun rememberNotificationPermissionRequester(): NotificationPermissionRequester {
+    val requester = remember { IosNotificationPermissionRequester() }
+    DisposableEffect(requester) {
+        val center = NSNotificationCenter.defaultCenter
+        val observer = center.addObserverForName(
+            name = UIApplicationDidBecomeActiveNotification,
+            `object` = null,
+            queue = null,
+        ) { requester.refresh() }
+        onDispose { center.removeObserver(observer) }
+    }
+    return requester
+}
+
+private class IosNotificationPermissionRequester : NotificationPermissionRequester {
+    private val center = UNUserNotificationCenter.currentNotificationCenter()
+    private val state = MutableStateFlow(false)
+
+    override val onboardingPolicy: NotificationPermissionOnboardingPolicy =
+        NotificationPermissionOnboardingPolicy.OPTIONAL_USER_INITIATED
+
+    override val hasPermission: StateFlow<Boolean> = state.asStateFlow()
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        center.getNotificationSettingsWithCompletionHandler { settings ->
+            val status = settings?.authorizationStatus
+            val granted = status == UNAuthorizationStatusAuthorized ||
+                status == UNAuthorizationStatusProvisional
+            dispatch_async(dispatch_get_main_queue()) {
+                state.value = granted
             }
         }
+    }
 
-        override val hasPermission: StateFlow<Boolean> = state.asStateFlow()
+    override fun request(onResult: (granted: Boolean) -> Unit) {
+        center.getNotificationSettingsWithCompletionHandler { settings ->
+            when (settings?.authorizationStatus) {
+                UNAuthorizationStatusAuthorized,
+                UNAuthorizationStatusProvisional,
+                -> dispatchResult(granted = true, onResult = onResult)
 
-        override fun request(onResult: (granted: Boolean) -> Unit) {
-            val options = UNAuthorizationOptionAlert or UNAuthorizationOptionSound or UNAuthorizationOptionBadge
-            UNUserNotificationCenter.currentNotificationCenter()
-                .requestAuthorizationWithOptions(options) { granted, _ ->
-                    state.value = granted
-                    onResult(granted)
+                UNAuthorizationStatusDenied -> {
+                    dispatch_async(dispatch_get_main_queue()) {
+                        state.value = false
+                        openAppSettings()
+                        onResult(false)
+                    }
                 }
-        }
 
-        override fun openAppSettings() {
-            val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
-            UIApplication.sharedApplication.openURL(url)
+                else -> {
+                    val options = UNAuthorizationOptionAlert or
+                        UNAuthorizationOptionSound or
+                        UNAuthorizationOptionBadge
+                    center.requestAuthorizationWithOptions(options) { granted, _ ->
+                        dispatchResult(granted = granted, onResult = onResult)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun openAppSettings() {
+        val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
+        UIApplication.sharedApplication.openURL(url)
+    }
+
+    private fun dispatchResult(
+        granted: Boolean,
+        onResult: (Boolean) -> Unit,
+    ) {
+        dispatch_async(dispatch_get_main_queue()) {
+            state.value = granted
+            onResult(granted)
         }
     }
 }

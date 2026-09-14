@@ -288,15 +288,21 @@ data class FilterOptionSpec(
  * append parameters; `path`/`body-json` fill a `{param}` placeholder that must exist in the
  * endpoint's url/jsonBody template (placeholders cannot be omitted, so [omitIfEmpty] applies only
  * to the appending targets).
+ *
+ * Header filters cannot target Cookie, Set-Cookie, Proxy-Authorization, Authorization, X-Api-Key,
+ * Api-Key, X-Auth-Token, or any name containing token/secret/password (case-insensitive). This
+ * applies regardless of type, values, visibility or emptiness. Public placeholders such as
+ * `Bearer null` belong only in backend-approved static headers, never sensitive header filters.
  */
 @Serializable
 data class FilterRequestSpec(
     /** `"query"` | `"path"` | `"form"` | `"header"` | `"body-json"`. */
     val target: String,
     /**
-     * query/form/header: the parameter name (may be `"genre[]"` — percent-encoded on the wire for
-     * query). path/body-json: the template placeholder name (`[a-zA-Z0-9_]+`, must not shadow a
-     * reserved engine var).
+     * query/form: the parameter name (may be `"genre[]"` — percent-encoded on the wire for query).
+     * header: an exact non-empty ASCII HTTP token, without whitespace or repair; brackets are
+     * forbidden. path/body-json: the template placeholder name (`[a-zA-Z0-9_]+`, must not shadow
+     * a reserved engine var).
      */
     val param: String,
     /** `"single"` | `"csv"` | `"repeat"` (query/form) | `"json-array"` (body-json). */

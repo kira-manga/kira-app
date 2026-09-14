@@ -3,11 +3,10 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import kotlinx.coroutines.flow.filter
 import me.manga.kira.core.webview.isEmbeddedWebViewAvailable
 import me.manga.kira.navigation.Screen
@@ -22,9 +21,9 @@ import me.manga.kira.navigation.safeNavigate
  * Cloudflare / anti-bot challenge (which primes the per-source cookie/header store the singleton
  * Coil `ImageLoader` + the source HTML fetch both read). It then arms a one-shot: when the nav
  * back-stack returns to the owning [ownerEntry] (the WebView popped), it fires [onRetry] exactly
- * once so the fetch re-runs with the freshly-minted session cookies. The legacy code delayed ~1s
- * before retrying; the rework relies on the cookies being persisted synchronously by the
- * WebView's cookie store before the pop, so no artificial delay is needed.
+ * once after a healthy browser close. An initialization-failed return consumes the one-shot
+ * without retrying. Header persistence remains asynchronous; this choreography does not guarantee
+ * that a write has committed before retry (the separate persistence-ordering issue remains open).
  *
  * **Capability gate.** When the platform has no working embedded WebView (Desktop-macOS, where
  * KCEF is hard-skipped — see [me.manga.kira.core.webview.isEmbeddedWebViewAvailable]), the
@@ -41,33 +40,41 @@ internal fun rememberCloudflareChallengeSolver(
     navController: NavController,
     ownerEntry: NavBackStackEntry,
     onRetry: () -> Unit,
+    isAvailable: () -> Boolean = ::isEmbeddedWebViewAvailable,
 ): (url: String, api: String) -> Unit {
-    // Pending-retry latch: raised when we navigate away to the WebView, lowered after the retry
-    // fires on return. rememberSaveable (not plain remember) because the owning destination
-    // leaves composition while the WebView is on top — only saveable state survives via the
-    // NavBackStackEntry's SaveableStateHolder, and the latch must still be armed on pop-back.
-    var pendingRetry by rememberSaveable { mutableStateOf(false) }
-
-    // When the back-stack top returns to the owning entry while a retry is pending, the WebView
-    // was popped → re-run the fetch once. Observing currentBackStackEntryFlow avoids depending on
-    // lifecycle-compose APIs that `:ui` doesn't ship; `:composeApp` already has nav-compose.
-    LaunchedEffect(ownerEntry) {
+    val currentRetry by rememberUpdatedState(onRetry)
+    // The entry's SavedStateHandle survives the owner leaving composition while the browser is up.
+    LaunchedEffect(navController, ownerEntry) {
         navController.currentBackStackEntryFlow
-            .filter { it == ownerEntry }
+            .filter { it === ownerEntry && navController.currentBackStackEntry === ownerEntry }
             .collect {
-                if (pendingRetry) {
-                    pendingRetry = false
-                    onRetry()
-                }
+                if (WebViewSolverReturn(ownerEntry).consumeRetry()) currentRetry()
             }
     }
-
     return { url, api ->
-        // No embedded WebView on this platform (Desktop-macOS): don't strand the user on a dead
-        // placeholder screen. The VM already set its error state, so the error pane is shown.
-        if (isEmbeddedWebViewAvailable()) {
-            pendingRetry = true
-            navController.safeNavigate(Screen.WebView(url = url, api = api))
+        openCloudflareSolver(navController, ownerEntry, Screen.WebView(url, api), isAvailable)
+    }
+}
+
+private fun openCloudflareSolver(
+    navController: NavController,
+    owner: NavBackStackEntry,
+    route: Screen.WebView,
+    isAvailable: () -> Boolean,
+) {
+    if (navController.currentBackStackEntry !== owner) return
+    val result = WebViewSolverReturn(owner)
+    result.clear()
+    if (!isAvailable()) return
+    navController.safeNavigate(route)
+    navController.currentBackStackEntry?.let { browser ->
+        // safeNavigate may refuse a transition: only a concrete, newly pushed browser arms the owner.
+        if (
+            browser !== owner &&
+            navController.previousBackStackEntry === owner &&
+            browser.destination.hasRoute<Screen.WebView>()
+        ) {
+            result.arm(browser)
         }
     }
 }

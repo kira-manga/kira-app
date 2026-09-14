@@ -10,8 +10,8 @@ import androidx.compose.runtime.Composable
  * non-Compose layers can still hold a reference.
  *
  * The Android actual hooks into `rememberLauncherForActivityResult(...)` so the launcher is
- * scoped to the surrounding ComponentActivity. iOS/Desktop actuals don't have runtime permission
- * prompts — they return a stub whose `hasPermission` is always `true`.
+ * scoped to the surrounding ComponentActivity. The iOS actual uses `UNUserNotificationCenter`
+ * with an optional, user-initiated onboarding policy. Desktop has no runtime permission prompt.
  */
 @Composable
 expect fun rememberNotificationPermissionRequester(): NotificationPermissionRequester

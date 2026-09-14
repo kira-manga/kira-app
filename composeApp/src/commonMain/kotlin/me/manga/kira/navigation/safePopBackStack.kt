@@ -79,8 +79,8 @@ fun NavController.safeNavigate(
 ) {
     // Drop rapid repeat taps so double-clicking a row/button doesn't push the destination twice —
     // only the first tap (made while the source screen is RESUMED) navigates. See
-    // [isReadyForNavigation]. Auto-navigations (e.g. the What's-New first-launch redirect) fire from
-    // a LaunchedEffect after the host is already RESUMED, so they are unaffected.
+    // [isReadyForNavigation]. Automatic redirects must observe their own entry's lifecycle and
+    // keep a refused attempt pending; a LaunchedEffect can also run while its entry is STARTED.
     if (!isReadyForNavigation()) return
     // GAP-NAV-03 (P3 cleanup): the `[ReaderNav]` invoke/success/failure debug `println`s that landed
     // during reader-nav debugging are removed — they printed on every navigation in production builds.

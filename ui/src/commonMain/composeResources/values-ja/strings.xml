@@ -103,6 +103,7 @@
     <string name="no_results_found">結果が見つかりません</string>
     <string name="not_updated_yet">まだ更新されていません</string>
     <string name="notification_permission">最新のチャプターをお送りし、ダウンロード進捗を表示し、アプリが正常に動作することを確実にするため、この権限が必要です。</string>
+    <string name="notification_permission_optional">通知は任意です。有効にすると、新しいチャプターのお知らせやダウンロードの更新を受け取れます。</string>
     <string name="notifications_group_last_week">先週</string>
     <string name="notifications_group_older">それ以前</string>
     <string name="notifications_group_today">今日</string>

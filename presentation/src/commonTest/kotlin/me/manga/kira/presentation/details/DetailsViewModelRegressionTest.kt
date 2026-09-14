@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.details
 
+import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,6 +17,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
@@ -62,6 +64,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -79,194 +82,20 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsViewModelRegressionTest {
-
     private val dispatcher = UnconfinedTestDispatcher()
 
     @BeforeTest fun setUp() = Dispatchers.setMain(dispatcher)
 
     @AfterTest fun tearDown() = Dispatchers.resetMain()
 
-    // ---- fakes -------------------------------------------------------------------------------
-
-    private class FakeMangaDetailsRepository(
-        var result: AppResult<MangaDetails>,
-    ) : MangaDetailsRepository {
-        var fetchCount = 0
-            private set
-        override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
-            fetchCount++
-            return result
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
         }
-    }
-
-    private class FakeSavedMangaDetailsRepository : SavedMangaDetailsRepository {
-        val saved = MutableStateFlow<MangaDetails?>(null)
-        override fun observeSavedDetails(api: String, title: String): Flow<MangaDetails?> = saved
-    }
-
-    private object NoAdultClassifier : AdultContentClassifier {
-        override fun isAdultContent(api: String, genres: List<String>): Boolean = false
-    }
-
-    private object NullChapterIdResolver : ChapterIdResolver {
-        override suspend fun resolveChapterId(chapterUrl: String): Long? = null
-        override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> = emptyMap()
-    }
-
-    private class FixedChapterIdResolver(private val id: Long) : ChapterIdResolver {
-        override suspend fun resolveChapterId(chapterUrl: String): Long = id
-        override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
-            chapterUrls.associateWith { id }
-    }
-
-    private object NoopDownloadsActionRepository : DownloadsActionRepository {
-        override suspend fun enqueueDownload(chapterId: Long, mangaTitle: String, api: String) = Result.success(Unit)
-        override suspend fun retryDownload(chapterId: Long) = Result.success(Unit)
-        override suspend fun cancelDownload(chapterId: Long) = Result.success(Unit)
-        override suspend fun cancelRunningDownload(chapterId: Long, mangaId: Long) = Result.success(Unit)
-        override suspend fun cancelAllDownloads() = Result.success(Unit)
-        override suspend fun deleteDownload(chapterId: Long) = Result.success(Unit)
-        override suspend fun deleteDownloadedChapter(chapterId: Long) = Result.success(Unit)
-        override suspend fun reconcileInterrupted() = Result.success(Unit)
-    }
-
-    private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
-        override suspend fun markRead(chapterUrl: String) = Unit
-        override suspend fun toggleRead(chapterUrl: String) = Unit
-        override suspend fun markRead(chapterUrls: List<String>) = Unit
-    }
-
-    /** Records every read-marking call so a test can assert opening a chapter does NOT mark it read. */
-    private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
-        val read = mutableListOf<String>()
-        override suspend fun markRead(chapterUrl: String) { read += chapterUrl }
-        override suspend fun toggleRead(chapterUrl: String) { read += chapterUrl }
-        override suspend fun markRead(chapterUrls: List<String>) { read += chapterUrls }
-    }
-
-    private object NoopChapterBookmarkRepository : ChapterBookmarkRepository {
-        override fun observeBookmark(chapterUrl: String): Flow<Boolean> = MutableStateFlow(false)
-        override suspend fun toggleBookmark(chapterUrl: String): Boolean = true
-    }
-
-    /** #4: drives DetailsState.isOnline. Default online so it never blocks the existing tests. */
-    private class FakeConnectivityRepository(online: Boolean = true) : ConnectivityRepository {
-        private val flow = MutableStateFlow(online)
-        override fun observeIsOnline(): Flow<Boolean> = flow
-    }
-
-    private class FakeCompressionDeferralRepository(
-        private val deferred: Flow<Boolean>,
-    ) : CompressionDeferralRepository {
-        override fun observeLowPowerDeferral(): Flow<Boolean> = deferred
-    }
-
-    /** #11: records manga_open events so a test can assert it fires once per identity. */
-    private class RecordingAnalyticsPort : AnalyticsPort {
-        val mangaOpens = mutableListOf<Pair<String, String>>()
-        var appOpens = 0
-            private set
-        override fun logAppOpen() { appOpens++ }
-        override fun logMangaOpen(api: String, title: String, sourceScreen: String) {
-            mangaOpens += api to title
-        }
-    }
-
-    private class RecordingChapterNewBadgeRepository : ChapterNewBadgeRepository {
-        val cleared = mutableListOf<String>()
-        override suspend fun clearNew(chapterUrl: String) { cleared += chapterUrl }
-    }
-
-    private class RecordingChapterDeletionRepository : ChapterDeletionRepository {
-        val deleted = mutableListOf<Long>()
-        override suspend fun deleteChapter(chapterId: Long) { deleted += chapterId }
-    }
-
-    private object EmptyDownloadsRepository : DownloadsRepository {
-        override fun observeAll(): Flow<List<DownloadedChapter>> = MutableStateFlow(emptyList())
-    }
-
-    /**
-     * PFIX-DLPROGRESS: a downloads repo whose emissions a test can push through `rows` to mimic the
-     * reactive Room `chapter_downloads` flow ticking (each `updateProgress` / state transition the
-     * worker writes re-emits here). Used to verify the Details row reflects live state+progress.
-     */
-    private class FakeDownloadsRepository : DownloadsRepository {
-        val rows = MutableStateFlow<List<DownloadedChapter>>(emptyList())
-        override fun observeAll(): Flow<List<DownloadedChapter>> = rows
-    }
-
-    /**
-     * PFIX-DLPROGRESS: resolves a fixed set of chapter `url` → Room `id` mappings (unknown urls →
-     * null), so the VM can join the displayed chapter list onto the active-download rows by id —
-     * the join `NullChapterIdResolver` cannot exercise.
-     */
-    private class MapChapterIdResolver(private val byUrl: Map<String, Long>) : ChapterIdResolver {
-        override suspend fun resolveChapterId(chapterUrl: String): Long? = byUrl[chapterUrl]
-        override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
-            chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
-    }
-
-    private fun downloadedChapter(
-        url: String,
-        state: me.manga.kira.domain.model.downloads.DownloadState,
-        progress: Int,
-        sizeBytes: Long = 0,
-        chapterId: Long = 10L,
-    ) =
-        DownloadedChapter(
-            chapterId = chapterId,
-            mangaId = 1L,
-            number = "1",
-            mangaTitle = "Naruto",
-            state = state,
-            progress = progress,
-            errorMsg = null,
-            url = url,
-            sizeBytes = sizeBytes,
-        )
-
-    private val testDispatchers = object : DispatcherProvider {
-        override val main: CoroutineDispatcher = dispatcher
-        override val mainImmediate: CoroutineDispatcher = dispatcher
-        override val default: CoroutineDispatcher = dispatcher
-        override val io: CoroutineDispatcher = dispatcher
-        override val unconfined: CoroutineDispatcher = dispatcher
-    }
-
-    private fun manga(api: String = "src", title: String = "Naruto") = Manga(
-        api = api,
-        language = "en",
-        title = title,
-        url = "https://x/naruto",
-        coverUrl = "https://x/c.jpg",
-        rating = null,
-        genres = emptyList(),
-    )
-
-    private fun chapter(url: String, isRead: Boolean = false, isDownloaded: Boolean = false) = Chapter(
-        number = url.substringAfterLast('/'),
-        name = "",
-        url = url,
-        date = null,
-        isDownloaded = isDownloaded,
-        isBookmarked = false,
-        isRead = isRead,
-    )
-
-    private fun details(chapters: List<Chapter>) = MangaDetails(
-        api = "src",
-        language = "en",
-        title = "Naruto",
-        url = "https://x/naruto",
-        coverUrl = "https://x/c.jpg",
-        description = "",
-        author = "",
-        rating = "",
-        status = "",
-        genres = emptyList(),
-        chapters = chapters,
-    )
 
     private fun vm(
         fetch: AppResult<MangaDetails>,
@@ -277,571 +106,591 @@ class DetailsViewModelRegressionTest {
     private fun vmWithFetchFake(
         fetch: AppResult<MangaDetails>,
         saved: FakeSavedMangaDetailsRepository,
-        downloadsRepo: DownloadsRepository = EmptyDownloadsRepository,
-        idResolver: ChapterIdResolver = NullChapterIdResolver,
-        libraryRepo: FakeLibraryRepository = FakeLibraryRepository(),
-        badgeRepo: ChapterNewBadgeRepository = RecordingChapterNewBadgeRepository(),
-        deletionRepo: ChapterDeletionRepository = RecordingChapterDeletionRepository(),
-        markReadRepo: MarkChapterReadRepository = NoopMarkChapterReadRepository,
-        connectivity: ConnectivityRepository = FakeConnectivityRepository(online = true),
-        analytics: AnalyticsPort = RecordingAnalyticsPort(),
-        compressionDeferred: Flow<Boolean> = MutableStateFlow(false),
-    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> {
-        val fetchFake = FakeMangaDetailsRepository(fetch)
-        val vm = DetailsViewModel(
-            fetchDetails = FetchMangaDetailsUseCase(fetchFake),
-            isAdultContent = IsAdultContentUseCase(NoAdultClassifier),
-            observeInLibrary = ObserveInLibraryUseCase(libraryRepo),
-            observeSavedDetails = ObserveSavedMangaDetailsUseCase(saved),
-            toggleInLibrary = ToggleInLibraryUseCase(libraryRepo),
-            enqueueAllChaptersDownload = EnqueueAllChaptersDownloadUseCase(
-                chapterIdResolver = NullChapterIdResolver,
-                enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
-                dispatchers = testDispatchers,
-            ),
-            toggleChapterRead = ToggleChapterReadUseCase(markReadRepo),
-            toggleChapterBookmark = ToggleChapterBookmarkUseCase(NoopChapterBookmarkRepository),
-            markChaptersRead = MarkChaptersReadUseCase(markReadRepo),
-            enqueueChapterDownload = EnqueueChapterDownloadUseCase(
-                chapterIdResolver = NullChapterIdResolver,
-                enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
-            ),
-            cancelChapterDownload = CancelChapterDownloadUseCase(
-                chapterIdResolver = NullChapterIdResolver,
-                cancelDownload = CancelDownloadUseCase(NoopDownloadsActionRepository),
-            ),
-            cancelRunningDownload = CancelRunningDownloadUseCase(NoopDownloadsActionRepository),
-            cancelAllDownloads = CancelAllDownloadsUseCase(NoopDownloadsActionRepository),
-            deleteDownloadedChapter = DeleteDownloadedChapterUseCase(NoopDownloadsActionRepository),
-            observeDownloads = ObserveDownloadsUseCase(downloadsRepo),
-            resolveChapterId = ResolveChapterIdUseCase(idResolver),
-            markMangaOpened = MarkMangaOpenedUseCase(libraryRepo),
-            persistNewChapters = PersistNewChaptersUseCase(libraryRepo),
-            clearChapterNew = ClearChapterNewUseCase(badgeRepo),
-            deleteChapter = DeleteChapterUseCase(deletionRepo),
-            observeConnectivity = ObserveConnectivityUseCase(connectivity),
-            logMangaOpen = LogMangaOpenUseCase(analytics),
-            observeCompressionDeferred = ObserveCompressionDeferredUseCase(
-                FakeCompressionDeferralRepository(compressionDeferred),
-            ),
+        options: VmFixtureOptions = VmFixtureOptions(),
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            options,
+            testDispatchers,
         )
-        return vm to fetchFake
-    }
 
     // ---- Bug 1: saved manga opens local, read-state preserved -------------------------------
 
     @Test
-    fun libraryOpen_rendersSavedReadStateImmediately_andMergesOverNetwork() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        // Saved (Room) chapters carry read/downloaded state; the network fetch does NOT.
-        saved.saved.value = details(listOf(chapter("c/1", isRead = true, isDownloaded = true), chapter("c/2")))
-        val networkOk = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"))))
+    fun libraryOpen_rendersSavedReadStateImmediately_andMergesOverNetwork() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            // Saved (Room) chapters carry read/downloaded state; the network fetch does NOT.
+            saved.saved.value = details(listOf(chapter("c/1", isRead = true, isDownloaded = true), chapter("c/2")))
+            val networkOk = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"))))
 
-        val vm = vm(fetch = networkOk, saved = saved)
-        vm.submit(DetailsIntent.OnEnter(manga()))
+            val vm = vm(fetch = networkOk, saved = saved)
+            vm.submit(DetailsIntent.OnEnter(manga()))
 
-        val s = vm.state.value
-        assertNotNull(s.details, "saved details must populate immediately (not look fresh)")
-        assertEquals(false, s.isLoading, "spinner cleared once saved list is shown")
-        val c1 = s.details!!.chapters.first { it.url == "c/1" }
-        // The merge must preserve the Room read/downloaded flags even though the network list lacks them.
-        assertTrue(c1.isRead, "read mark from Room survives the network refresh merge")
-        assertTrue(c1.isDownloaded, "downloaded mark from Room survives the network refresh merge")
-    }
-
-    @Test
-    fun libraryOpen_offline_keepsSavedListVisible_whenFetchFails() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1", isRead = true), chapter("c/2")))
-        // Network fails with a non-challenge error (would otherwise be a "failed to load" dead-end).
-        val vm = vm(fetch = AppResult.Failure(AppError.Network.Timeout()), saved = saved)
-
-        vm.submit(DetailsIntent.OnEnter(manga()))
-
-        val s = vm.state.value
-        assertNotNull(s.details, "saved chapter list stays visible even when the source fetch fails (offline parity)")
-        assertEquals(2, s.details!!.chapters.size)
-        assertTrue(s.details!!.chapters.first { it.url == "c/1" }.isRead)
-    }
+            val s = vm.state.value
+            assertNotNull(s.details, "saved details must populate immediately (not look fresh)")
+            assertEquals(false, s.isLoading, "spinner cleared once saved list is shown")
+            val c1 = s.details!!.chapters.first { it.url == "c/1" }
+            // The merge must preserve the Room read/downloaded flags even though the network list lacks them.
+            assertTrue(c1.isRead, "read mark from Room survives the network refresh merge")
+            assertTrue(c1.isDownloaded, "downloaded mark from Room survives the network refresh merge")
+        }
 
     @Test
-    fun freshOpen_notInLibrary_usesNetworkOnly() = runTest {
-        val saved = FakeSavedMangaDetailsRepository() // stays null → not saved
-        val networkOk = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"), chapter("c/3"))))
-        val vm = vm(fetch = networkOk, saved = saved)
+    fun libraryOpen_offline_keepsSavedListVisible_whenFetchFails() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1", isRead = true), chapter("c/2")))
+            // Network fails with a non-challenge error (would otherwise be a "failed to load" dead-end).
+            val vm = vm(fetch = AppResult.Failure(AppError.Network.Timeout()), saved = saved)
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnEnter(manga()))
 
-        val s = vm.state.value
-        assertNotNull(s.details)
-        assertEquals(3, s.details!!.chapters.size, "non-saved manga still renders the full network list")
-    }
-
-    @Test
-    fun saveFromDetails_forwardsTheCompleteFetchedPayload() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        val libraryRepo = FakeLibraryRepository()
-        val fetched = details(listOf(chapter("c/1"), chapter("c/2"))).copy(
-            description = "Complete description",
-            author = "Complete author",
-            rating = "4.8 / 5",
-            status = "Ongoing",
-            genres = listOf("action", "fantasy"),
-        )
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(fetched),
-            saved = saved,
-            libraryRepo = libraryRepo,
-        )
-
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnToggleInLibrary)
-
-        assertEquals(fetched, libraryRepo.lastAddedDetails)
-    }
+            val s = vm.state.value
+            assertNotNull(
+                s.details,
+                "saved chapter list stays visible even when the source fetch fails (offline parity)",
+            )
+            assertEquals(2, s.details!!.chapters.size)
+            assertTrue(
+                s.details!!
+                    .chapters
+                    .first { it.url == "c/1" }
+                    .isRead,
+            )
+        }
 
     @Test
-    fun compressionDeferral_isProjectedIntoDetailsState() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1")))
-        val deferred = MutableStateFlow(false)
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1")))),
-            saved = saved,
-            compressionDeferred = deferred,
-        )
+    fun freshOpen_notInLibrary_usesNetworkOnly() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository() // stays null → not saved
+            val networkOk = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"), chapter("c/3"))))
+            val vm = vm(fetch = networkOk, saved = saved)
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        assertFalse(vm.state.value.compressionDeferred)
+            vm.submit(DetailsIntent.OnEnter(manga()))
 
-        deferred.value = true
-        assertTrue(vm.state.value.compressionDeferred)
-    }
+            val s = vm.state.value
+            assertNotNull(s.details)
+            assertEquals(3, s.details!!.chapters.size, "non-saved manga still renders the full network list")
+        }
+
+    @Test
+    fun saveFromDetails_forwardsTheCompleteFetchedPayload() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            val libraryRepo = FakeLibraryRepository()
+            val fetched =
+                details(listOf(chapter("c/1"), chapter("c/2"))).copy(
+                    description = "Complete description",
+                    author = "Complete author",
+                    rating = "4.8 / 5",
+                    status = "Ongoing",
+                    genres = listOf("action", "fantasy"),
+                )
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(fetched),
+                    saved = saved,
+                    options = VmFixtureOptions().apply { this.libraryRepo = libraryRepo },
+                )
+
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnToggleInLibrary)
+
+            assertEquals(fetched, libraryRepo.lastAddedDetails)
+        }
+
+    @Test
+    fun compressionDeferral_isProjectedIntoDetailsState() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1")))
+            val deferred = MutableStateFlow(false)
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1")))),
+                    saved = saved,
+                    options = VmFixtureOptions().apply { compressionDeferred = deferred },
+                )
+
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertFalse(vm.state.value.compressionDeferred)
+
+            deferred.value = true
+            assertTrue(vm.state.value.compressionDeferred)
+        }
 
     // ---- LAST_READ last-open bump fires on chapter-open, NOT on Details view (native parity) ----
 
     @Test
-    fun lastOpen_bumpsOnChapterOpen_notOnDetailsOpen() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val libraryRepo = FakeLibraryRepository()
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-            libraryRepo = libraryRepo,
-        )
+    fun lastOpen_bumpsOnChapterOpen_notOnDetailsOpen() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+            val libraryRepo = FakeLibraryRepository()
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                    options = VmFixtureOptions().apply { this.libraryRepo = libraryRepo },
+                )
 
-        // Native (LibraryDetailsViewModel.loadMangaDetails) does NOT bump on Details open.
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        assertEquals(
-            0,
-            libraryRepo.calls.count { it.startsWith("markOpened") },
-            "viewing Details must not bump last-open (native bumps on chapter-open, not Details view)",
-        )
+            // Native (LibraryDetailsViewModel.loadMangaDetails) does NOT bump on Details open.
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertEquals(
+                0,
+                libraryRepo.calls.count { it.startsWith("markOpened") },
+                "viewing Details must not bump last-open (native bumps on chapter-open, not Details view)",
+            )
 
-        // Native (LibraryMangaRoute.onChapterClick → updateLastOpen) bumps when a chapter is opened.
-        vm.submit(DetailsIntent.OnChapterClick(chapter("c/1")))
-        assertEquals(
-            1,
-            libraryRepo.calls.count { it.startsWith("markOpened") },
-            "opening a chapter bumps last-open exactly once",
-        )
-    }
+            // Native (LibraryMangaRoute.onChapterClick → updateLastOpen) bumps when a chapter is opened.
+            vm.submit(DetailsIntent.OnChapterClick(chapter("c/1")))
+            assertEquals(
+                1,
+                libraryRepo.calls.count { it.startsWith("markOpened") },
+                "opening a chapter bumps last-open exactly once",
+            )
+        }
 
     // ---- Cache-first open (native parity, 2026-06-01): no network fetch on open for in-library --
 
     @Test
-    fun libraryOpen_withCachedChapters_doesNotFetchNetworkOnOpen() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        // In library + already has a saved chapter list → must render from cache, no fetch on open.
-        saved.saved.value = details(listOf(chapter("c/1", isRead = true), chapter("c/2")))
-        val (vm, fetchFake) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-        )
+    fun libraryOpen_withCachedChapters_doesNotFetchNetworkOnOpen() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            // In library + already has a saved chapter list → must render from cache, no fetch on open.
+            saved.saved.value = details(listOf(chapter("c/1", isRead = true), chapter("c/2")))
+            val (vm, fetchFake) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnEnter(manga()))
 
-        assertEquals(0, fetchFake.fetchCount, "an in-library manga with cached chapters must NOT hit the network on open")
-        val s = vm.state.value
-        assertNotNull(s.details, "the cached chapter list still renders")
-        assertEquals(2, s.details!!.chapters.size)
-        assertEquals(false, s.isLoading, "spinner cleared from the cached render")
-        assertTrue(s.details!!.chapters.first { it.url == "c/1" }.isRead, "cached read marks are shown")
-    }
-
-    @Test
-    fun libraryOpen_savedButNoCachedChapters_fetchesOnce() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        // In library but the saved chapter list is empty (added before this fix) → fetch once so
-        // the list isn't empty.
-        saved.saved.value = details(emptyList())
-        val (vm, fetchFake) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"), chapter("c/3")))),
-            saved = saved,
-        )
-
-        vm.submit(DetailsIntent.OnEnter(manga()))
-
-        assertEquals(1, fetchFake.fetchCount, "an in-library manga with no cached chapters fetches once on open")
-        assertEquals(3, vm.state.value.details!!.chapters.size, "the fetched list populates the empty cache view")
-    }
+            assertEquals(0, fetchFake.fetchCount, "an in-library manga with cached chapters must NOT hit the network on open")
+            val s = vm.state.value
+            assertNotNull(s.details, "the cached chapter list still renders")
+            assertEquals(2, s.details!!.chapters.size)
+            assertEquals(false, s.isLoading, "spinner cleared from the cached render")
+            assertTrue(
+                s.details!!
+                    .chapters
+                    .first { it.url == "c/1" }
+                    .isRead,
+                "cached read marks are shown",
+            )
+        }
 
     @Test
-    fun onRetry_alwaysFetches_evenWhenCachePresent() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val (vm, fetchFake) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-        )
+    fun libraryOpen_savedButNoCachedChapters_fetchesOnce() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            // In library but the saved chapter list is empty (added before this fix) → fetch once so
+            // the list isn't empty.
+            saved.saved.value = details(emptyList())
+            val (vm, fetchFake) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"), chapter("c/3")))),
+                    saved = saved,
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        assertEquals(0, fetchFake.fetchCount, "open is cache-only")
+            vm.submit(DetailsIntent.OnEnter(manga()))
 
-        vm.submit(DetailsIntent.OnRetry) // explicit refresh = pull-to-refresh parity
-        assertEquals(1, fetchFake.fetchCount, "OnRetry forces a network fetch regardless of cache/membership")
-    }
+            assertEquals(1, fetchFake.fetchCount, "an in-library manga with no cached chapters fetches once on open")
+            assertEquals(
+                3,
+                vm.state.value.details!!
+                    .chapters.size,
+                "the fetched list populates the empty cache view",
+            )
+        }
 
     @Test
-    fun onRetry_emptySuccessfulPayload_keepsLastKnownGoodChaptersVisible() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(
-            listOf(
-                chapter("c/1", isRead = true),
-                chapter("c/2", isDownloaded = true),
-            ),
-        )
-        val (vm, fetchFake) = vmWithFetchFake(
-            // Reproduces Azora's July 2026 API change: HTTP/parsing succeeds, but the details
-            // payload contains an empty post.chapters unless the opt-in query is present.
-            fetch = AppResult.Success(details(emptyList())),
-            saved = saved,
-        )
+    fun onRetry_alwaysFetches_evenWhenCachePresent() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+            val (vm, fetchFake) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        assertEquals(2, vm.state.value.details!!.chapters.size)
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertEquals(0, fetchFake.fetchCount, "open is cache-only")
 
-        vm.submit(DetailsIntent.OnRetry)
+            vm.submit(DetailsIntent.OnRetry) // explicit refresh = pull-to-refresh parity
+            assertEquals(1, fetchFake.fetchCount, "OnRetry forces a network fetch regardless of cache/membership")
+        }
 
-        assertEquals(1, fetchFake.fetchCount)
-        val chapters = vm.state.value.details!!.chapters
-        assertEquals(listOf("c/1", "c/2"), chapters.map { it.url })
-        assertTrue(chapters.first().isRead, "saved read state remains attached to the retained list")
-        assertTrue(chapters.last().isDownloaded, "saved download state remains attached to the retained list")
-    }
+    @Test
+    fun onRetry_emptySuccessfulPayload_keepsLastKnownGoodChaptersVisible() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value =
+                details(
+                    listOf(
+                        chapter("c/1", isRead = true),
+                        chapter("c/2", isDownloaded = true),
+                    ),
+                )
+            val (vm, fetchFake) =
+                vmWithFetchFake(
+                    // Reproduces Azora's July 2026 API change: HTTP/parsing succeeds, but the details
+                    // payload contains an empty post.chapters unless the opt-in query is present.
+                    fetch = AppResult.Success(details(emptyList())),
+                    saved = saved,
+                )
+
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertEquals(
+                2,
+                vm.state.value.details!!
+                    .chapters.size,
+            )
+
+            vm.submit(DetailsIntent.OnRetry)
+
+            assertEquals(1, fetchFake.fetchCount)
+            val chapters =
+                vm.state.value.details!!
+                    .chapters
+            assertEquals(listOf("c/1", "c/2"), chapters.map { it.url })
+            assertTrue(chapters.first().isRead, "saved read state remains attached to the retained list")
+            assertTrue(chapters.last().isDownloaded, "saved download state remains attached to the retained list")
+        }
 
     // ---- PFIX-DLPROGRESS: live per-chapter download state+progress, then flip to downloaded ----
 
     @Test
-    fun chapterRow_reflectsLiveDownloadProgress_thenFlipsToDownloadedOnCompletion() = runTest {
-        // In-library manga with a cached chapter list (renders from the saved flow, no network).
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val downloads = FakeDownloadsRepository()
-        // c/1 resolves to Room id 10; c/2 has no download.
-        val resolver = MapChapterIdResolver(mapOf("c/1" to 10L, "c/2" to 20L))
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-            downloadsRepo = downloads,
-            idResolver = resolver,
-        )
-
-        vm.submit(DetailsIntent.OnEnter(manga()))
-
-        // Symptom 1: while RUNNING the row must carry the live state + progress (matching native's
-        // determinate ring), not just a boolean "is downloading". Joined to the chapter by `url`.
-        downloads.rows.value = listOf(
-            downloadedChapter(url = "c/1", state = me.manga.kira.domain.model.downloads.DownloadState.RUNNING, progress = 42),
-        )
-        run {
-            val s = vm.state.value
-            val entry = s.chapterDownloads["c/1"]
-            assertNotNull(entry, "the running chapter must have a live download entry")
-            assertEquals(me.manga.kira.domain.model.downloads.DownloadState.RUNNING, entry.state)
-            assertEquals(42, entry.progress, "the live RUNNING progress (42) must reach state")
-            assertTrue("c/1" in s.downloadingChapterUrls, "the running chapter is an active download url")
-            assertEquals(null, s.chapterDownloads["c/2"], "a chapter with no download has no entry")
+    fun chapterRow_reflectsLiveDownloadProgress_thenFlipsToDownloadedOnCompletion() =
+        runTest {
+            DetailsDownloadFixture(testDispatchers).verify {
+                assertRunningProgress(vm, downloads, progress = 42)
+                assertRunningProgress(vm, downloads, progress = 88)
+                // SUCCESS arrives before the saved-details flag, without leaving/re-entering Details.
+                downloads.rows.value = listOf(successfulDownload())
+                assertFalse(requireNotNull(vm.state.value.details).chapters.first().isDownloaded)
+                assertDownloadedLedger(vm.state.value)
+                assertDownloadedDetailsActions(vm, actions)
+            }
         }
 
-        // A later tick advances the percent — recomposition must follow (the DAO re-emits).
-        downloads.rows.value = listOf(
-            downloadedChapter(url = "c/1", state = me.manga.kira.domain.model.downloads.DownloadState.RUNNING, progress = 88),
-        )
-        assertEquals(88, vm.state.value.chapterDownloads["c/1"]?.progress, "a progress tick re-emits the new percent")
+    @Test
+    fun downloadHistoryRemoval_keepsSavedDownloadedActions_withoutLedgerSizeOrCount() =
+        runTest {
+            assertDuplicateChapterFallbackUsesFirstEntry()
+            DetailsDownloadFixture(testDispatchers).verify {
+                downloads.rows.value = listOf(successfulDownload())
+                assertDownloadedLedger(vm.state.value)
+                saved.saved.value = details(listOf(chapter("c/1", isDownloaded = true), chapter("c/2")))
+                // Row-only history deletion retains saved flags/files; only the ledger flow changes.
+                downloads.rows.value = emptyList()
+                val state = vm.state.value
+                assertTrue(requireNotNull(state.details).chapters.first().isDownloaded)
+                assertTrue(state.chapterDownloads.isEmpty())
+                assertEquals(0, state.downloadedChapterCount)
+                assertNull(state.chapterSizeBytes("c/1"))
+                assertNull(state.totalDownloadedSizeBytes)
+                assertDownloadedDetailsActions(vm, actions)
+                assertFullDeletionMakesChapterPending(vm, saved, actions)
+            }
+        }
 
-        // Symptom 2 (completion-freeze fix): the SUCCESS row arrives in the downloads flow ALONE —
-        // the saved-details flow has NOT re-emitted isDownloaded yet. The row must STILL read
-        // "downloaded" atomically from the SUCCESS entry (no leave/return, no dependency on the
-        // separately-delivered saved flow), drop out of the active set, and carry the on-disk size.
-        downloads.rows.value = listOf(
-            downloadedChapter(
-                url = "c/1",
-                state = me.manga.kira.domain.model.downloads.DownloadState.SUCCESS,
-                progress = 100,
-                sizeBytes = 12L * 1024 * 1024,
-            ),
-        )
-
-        val s = vm.state.value
-        val done = s.chapterDownloads["c/1"]
-        assertNotNull(done, "a completed (SUCCESS) chapter keeps an entry so the flip is atomic")
-        assertTrue(done.isDownloaded, "the SUCCESS entry reads downloaded WITHOUT the saved flow re-emitting")
-        assertTrue("c/1" !in s.downloadingChapterUrls, "the completed chapter is no longer an active download url")
-        assertEquals("12.0 MB", s.chapterSizeLabel("c/1"), "the chapter size is shown from the SUCCESS entry")
-        assertEquals("12.0 MB", s.totalDownloadedSizeLabel, "the total downloaded size sums the SUCCESS entries")
-    }
+    @Test
+    fun cloudflareDownloadRetry_skipsRecoveredSavedChapter_butEnqueuesGenuineFailure() =
+        runTest {
+            DetailsDownloadFixture(testDispatchers).verify {
+                downloads.rows.value =
+                    listOf("c/1" to 10L, "c/2" to 20L).map { (url, id) ->
+                        downloadedChapter(url, DownloadState.FAILED, progress = 0, chapterId = id)
+                            .copy(errorMsg = DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL)
+                    }
+                // A saved completion precedes the ledger update; the retry set still contains c/1.
+                saved.saved.value = details(listOf(chapter("c/1", isDownloaded = true), chapter("c/2")))
+                vm.submit(DetailsIntent.OnRetry)
+                assertEquals(listOf(Triple(20L, "Naruto", "src")), actions.enqueued)
+            }
+        }
 
     // ---- Bug 2: Cloudflare-family failures route to the WebView solver ------------------------
 
     @Test
     fun fetch403_emitsSolveCloudflareChallenge_notShowError() = challengeTest(AppError.Network.Http(statusCode = 403))
 
-    @Test
     // 503 ("checking your browser") is a Cloudflare interstitial too — broadened trigger.
+    @Test
     fun fetch503_emitsSolveCloudflareChallenge_notShowError() = challengeTest(AppError.Network.Http(statusCode = 503))
 
     @Test
-    fun fetch404_emitsShowError_notChallenge() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        val vm = vm(fetch = AppResult.Failure(AppError.Network.Http(statusCode = 404)), saved = saved)
-        val effects = mutableListOf<DetailsEffect>()
-        val job = launch(dispatcher) { vm.effects.collect { effects += it } }
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        job.cancel()
-        assertTrue(
-            effects.any { it is DetailsEffect.ShowError } && effects.none { it is DetailsEffect.SolveCloudflareChallenge },
-            "a genuine 404 stays a ShowError, not a Cloudflare challenge: $effects",
-        )
-    }
+    fun fetch404_emitsShowError_notChallenge() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            val vm = vm(fetch = AppResult.Failure(AppError.Network.Http(statusCode = 404)), saved = saved)
+            val effects = mutableListOf<DetailsEffect>()
+            val job = launch(dispatcher) { vm.effects.collect { effects += it } }
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            job.cancel()
+            assertTrue(
+                effects.any { it is DetailsEffect.ShowError } && effects.none { it is DetailsEffect.SolveCloudflareChallenge },
+                "a genuine 404 stays a ShowError, not a Cloudflare challenge: $effects",
+            )
+        }
 
-    private fun challengeTest(error: AppError) = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        val vm = vm(fetch = AppResult.Failure(error), saved = saved)
-        val effects = mutableListOf<DetailsEffect>()
-        val job = launch(dispatcher) { vm.effects.collect { effects += it } }
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        job.cancel()
-        assertTrue(
-            effects.any { it is DetailsEffect.SolveCloudflareChallenge },
-            "challenge status $error must route to the WebView solver, got: $effects",
-        )
-    }
+    private fun challengeTest(error: AppError) = runChallengeTest(error, dispatcher, ::vm)
 
     @Test
-    fun cloudflareChallenge_isCappedThenSurfacesError() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        // Every fetch + retry returns the same persistent 403 (unsolvable challenge).
-        val vm = vm(fetch = AppResult.Failure(AppError.Network.Http(statusCode = 403)), saved = saved)
-        val effects = mutableListOf<DetailsEffect>()
-        val job = launch(dispatcher) { vm.effects.collect { effects += it } }
+    fun cloudflareChallenge_isCappedThenSurfacesError() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            // Every fetch + retry returns the same persistent 403 (unsolvable challenge).
+            val vm = vm(fetch = AppResult.Failure(AppError.Network.Http(statusCode = 403)), saved = saved)
+            val effects = mutableListOf<DetailsEffect>()
+            val job = launch(dispatcher) { vm.effects.collect { effects += it } }
 
-        vm.submit(DetailsIntent.OnEnter(manga())) // attempt 1 -> Solve
-        vm.submit(DetailsIntent.OnRetry) // attempt 2 -> Solve
-        vm.submit(DetailsIntent.OnRetry) // budget (MAX=2) exhausted -> ShowError, no further Solve
-        job.cancel()
+            vm.submit(DetailsIntent.OnEnter(manga())) // attempt 1 -> Solve
+            vm.submit(DetailsIntent.OnRetry) // attempt 2 -> Solve
+            vm.submit(DetailsIntent.OnRetry) // budget (MAX=2) exhausted -> ShowError, no further Solve
+            job.cancel()
 
-        val solves = effects.count { it is DetailsEffect.SolveCloudflareChallenge }
-        assertEquals(2, solves, "auto-solve is capped at 2 round-trips, not an infinite loop: $effects")
-        assertTrue(
-            effects.any { it is DetailsEffect.ShowError },
-            "once the solve budget is exhausted the error surfaces instead of re-looping: $effects",
-        )
-    }
+            val solves = effects.count { it is DetailsEffect.SolveCloudflareChallenge }
+            assertEquals(2, solves, "auto-solve is capped at 2 round-trips, not an infinite loop: $effects")
+            assertTrue(
+                effects.any { it is DetailsEffect.ShowError },
+                "once the solve budget is exhausted the error surfaces instead of re-looping: $effects",
+            )
+        }
 
     // ---- #3: persist refresh-discovered chapters + NEW-badge lifecycle ------------------------
 
     @Test
-    fun refresh_persistsFetchedChapters_whenInLibrary() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
-        // Refresh discovers a new chapter c/3 on top of the saved two.
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"), chapter("c/3")))),
-            saved = saved,
-            libraryRepo = libraryRepo,
-        )
+    fun refresh_persistsFetchedChapters_whenInLibrary() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+            val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
+            // Refresh discovers a new chapter c/3 on top of the saved two.
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2"), chapter("c/3")))),
+                    saved = saved,
+                    options = VmFixtureOptions().apply { this.libraryRepo = libraryRepo },
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga())) // cached render, no fetch/persist on open
-        assertEquals(0, libraryRepo.calls.count { it.startsWith("persistNewChapters") })
+            vm.submit(DetailsIntent.OnEnter(manga())) // cached render, no fetch/persist on open
+            assertEquals(0, libraryRepo.calls.count { it.startsWith("persistNewChapters") })
 
-        vm.submit(DetailsIntent.OnRetry) // explicit refresh → fetch → persist (in library)
+            vm.submit(DetailsIntent.OnRetry) // explicit refresh → fetch → persist (in library)
 
-        assertEquals(
-            1,
-            libraryRepo.calls.count { it.startsWith("persistNewChapters") },
-            "an in-library refresh must persist the fetched chapter list so new chapters survive nav-away",
-        )
-        assertEquals(3, libraryRepo.lastPersistedNewChapters.size, "the fetched chapters are handed to the persist use case")
-    }
+            assertEquals(
+                1,
+                libraryRepo.calls.count { it.startsWith("persistNewChapters") },
+                "an in-library refresh must persist the fetched chapter list so new chapters survive nav-away",
+            )
+            assertEquals(3, libraryRepo.lastPersistedNewChapters.size, "the fetched chapters are handed to the persist use case")
+        }
 
     // ---- #11: manga_open analytics fires once per identity ---------------------------------
 
     @Test
-    fun mangaOpen_firesOncePerIdentity_notOnReEnter() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        val analytics = RecordingAnalyticsPort()
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1")))),
-            saved = saved,
-            analytics = analytics,
-        )
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnEnter(manga())) // same identity → onEnter early-returns
-        assertEquals(
-            listOf("src" to "Naruto"),
-            analytics.mangaOpens,
-            "manga_open fires exactly once per opened identity (api/title), not on a same-identity re-enter",
-        )
-    }
+    fun mangaOpen_firesOncePerIdentity_notOnReEnter() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            val analytics = RecordingAnalyticsPort()
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1")))),
+                    saved = saved,
+                    options = VmFixtureOptions().apply { this.analytics = analytics },
+                )
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnEnter(manga())) // same identity → onEnter early-returns
+            assertEquals(
+                listOf("src" to "Naruto"),
+                analytics.mangaOpens,
+                "manga_open fires exactly once per opened identity (api/title), not on a same-identity re-enter",
+            )
+        }
 
     // ---- #4: offline connectivity gate on the download actions -----------------------------
 
     @Test
-    fun downloadChapter_offline_emitsNoConnectivity() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1")))
-        val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1")))),
-            saved = saved,
-            libraryRepo = libraryRepo,
-            connectivity = FakeConnectivityRepository(online = false),
-        )
-        val effects = mutableListOf<DetailsEffect>()
-        val job = launch(dispatcher) { vm.effects.collect { effects += it } }
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1")))
-        job.cancel()
-        assertTrue(
-            effects.any { it is DetailsEffect.ShowError && it.error is AppError.Network.NoConnectivity },
-            "offline single-chapter download emits a NoConnectivity error: $effects",
-        )
-    }
+    fun downloadChapter_offline_emitsNoConnectivity() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1")))
+            val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1")))),
+                    saved = saved,
+                    options =
+                        VmFixtureOptions().apply {
+                            this.libraryRepo = libraryRepo
+                            connectivity = FakeConnectivityRepository(online = false)
+                        },
+                )
+            val effects = mutableListOf<DetailsEffect>()
+            val job = launch(dispatcher) { vm.effects.collect { effects += it } }
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1")))
+            job.cancel()
+            assertTrue(
+                effects.any { it is DetailsEffect.ShowError && it.error is AppError.Network.NoConnectivity },
+                "offline single-chapter download emits a NoConnectivity error: $effects",
+            )
+        }
 
     @Test
-    fun downloadAll_offline_emitsNoConnectivity() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-            libraryRepo = libraryRepo,
-            connectivity = FakeConnectivityRepository(online = false),
-        )
-        val effects = mutableListOf<DetailsEffect>()
-        val job = launch(dispatcher) { vm.effects.collect { effects += it } }
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnDownloadAllClick)
-        job.cancel()
-        assertTrue(
-            effects.any { it is DetailsEffect.ShowError && it.error is AppError.Network.NoConnectivity },
-            "offline download-all emits a NoConnectivity error: $effects",
-        )
-    }
+    fun downloadAll_offline_emitsNoConnectivity() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+            val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                    options =
+                        VmFixtureOptions().apply {
+                            this.libraryRepo = libraryRepo
+                            connectivity = FakeConnectivityRepository(online = false)
+                        },
+                )
+            val effects = mutableListOf<DetailsEffect>()
+            val job = launch(dispatcher) { vm.effects.collect { effects += it } }
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnDownloadAllClick)
+            job.cancel()
+            assertTrue(
+                effects.any { it is DetailsEffect.ShowError && it.error is AppError.Network.NoConnectivity },
+                "offline download-all emits a NoConnectivity error: $effects",
+            )
+        }
 
     @Test
-    fun downloadChapter_online_doesNotEmitNoConnectivity() = runTest {
-        // #4 regression guard: with the default online connectivity the gate must NOT fire.
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1")))
-        val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1")))),
-            saved = saved,
-            libraryRepo = libraryRepo,
-            connectivity = FakeConnectivityRepository(online = true),
-        )
-        val effects = mutableListOf<DetailsEffect>()
-        val job = launch(dispatcher) { vm.effects.collect { effects += it } }
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1")))
-        job.cancel()
-        assertTrue(
-            effects.none { it is DetailsEffect.ShowError && it.error is AppError.Network.NoConnectivity },
-            "online download must not trip the offline gate: $effects",
-        )
-    }
+    fun downloadChapter_online_doesNotEmitNoConnectivity() =
+        runTest {
+            // #4 regression guard: with the default online connectivity the gate must NOT fire.
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1")))
+            val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1")))),
+                    saved = saved,
+                    options =
+                        VmFixtureOptions().apply {
+                            this.libraryRepo = libraryRepo
+                            connectivity = FakeConnectivityRepository(online = true)
+                        },
+                )
+            val effects = mutableListOf<DetailsEffect>()
+            val job = launch(dispatcher) { vm.effects.collect { effects += it } }
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1")))
+            job.cancel()
+            assertTrue(
+                effects.none { it is DetailsEffect.ShowError && it.error is AppError.Network.NoConnectivity },
+                "online download must not trip the offline gate: $effects",
+            )
+        }
 
     @Test
-    fun refresh_doesNotPersist_whenNotInLibrary() = runTest {
-        val saved = FakeSavedMangaDetailsRepository() // null → not saved/in-library
-        val libraryRepo = FakeLibraryRepository() // inLibrary stays false
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-            libraryRepo = libraryRepo,
-        )
+    fun refresh_doesNotPersist_whenNotInLibrary() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository() // null → not saved/in-library
+            val libraryRepo = FakeLibraryRepository() // inLibrary stays false
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                    options = VmFixtureOptions().apply { this.libraryRepo = libraryRepo },
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga())) // fresh network open (not in library)
+            vm.submit(DetailsIntent.OnEnter(manga())) // fresh network open (not in library)
 
-        assertEquals(
-            0,
-            libraryRepo.calls.count { it.startsWith("persistNewChapters") },
-            "a not-in-library Details open must NOT create saved rows",
-        )
-    }
-
-    @Test
-    fun onDeleteChapter_deletesChapterRecord_whenInLibrary() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
-        val deletionRepo = RecordingChapterDeletionRepository()
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-            idResolver = FixedChapterIdResolver(42L),
-            libraryRepo = libraryRepo,
-            deletionRepo = deletionRepo,
-        )
-
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnDeleteChapter(chapter("c/1")))
-
-        assertEquals(listOf(42L), deletionRepo.deleted, "the resolved chapter id is deleted from the DB")
-    }
+            assertEquals(
+                0,
+                libraryRepo.calls.count { it.startsWith("persistNewChapters") },
+                "a not-in-library Details open must NOT create saved rows",
+            )
+        }
 
     @Test
-    fun onDeleteChapter_isNoOp_whenNotInLibrary() = runTest {
-        val saved = FakeSavedMangaDetailsRepository() // not saved → not in library
-        val deletionRepo = RecordingChapterDeletionRepository()
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1")))),
-            saved = saved,
-            idResolver = FixedChapterIdResolver(42L),
-            deletionRepo = deletionRepo,
-        )
+    fun onDeleteChapter_deletesChapterRecord_whenInLibrary() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+            val libraryRepo = FakeLibraryRepository().apply { emitInLibrary(true) }
+            val deletionRepo = RecordingChapterDeletionRepository()
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                    options =
+                        VmFixtureOptions().apply {
+                            idResolver = FixedChapterIdResolver(42L)
+                            this.libraryRepo = libraryRepo
+                            this.deletionRepo = deletionRepo
+                        },
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnDeleteChapter(chapter("c/1")))
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnDeleteChapter(chapter("c/1")))
 
-        assertTrue(deletionRepo.deleted.isEmpty(), "a not-in-library manga has no DB row to delete")
-    }
+            assertEquals(listOf(42L), deletionRepo.deleted, "the resolved chapter id is deleted from the DB")
+        }
 
     @Test
-    fun chapterOpen_clearsNewBadgeWithoutMarkingRead() = runTest {
-        val saved = FakeSavedMangaDetailsRepository()
-        saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-        val badgeRepo = RecordingChapterNewBadgeRepository()
-        val markReadRepo = RecordingMarkChapterReadRepository() // would record reads if we marked read on open
-        val (vm, _) = vmWithFetchFake(
-            fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-            saved = saved,
-            badgeRepo = badgeRepo,
-            markReadRepo = markReadRepo,
-        )
+    fun onDeleteChapter_isNoOp_whenNotInLibrary() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository() // not saved → not in library
+            val deletionRepo = RecordingChapterDeletionRepository()
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1")))),
+                    saved = saved,
+                    options =
+                        VmFixtureOptions().apply {
+                            idResolver = FixedChapterIdResolver(42L)
+                            this.deletionRepo = deletionRepo
+                        },
+                )
 
-        vm.submit(DetailsIntent.OnEnter(manga()))
-        vm.submit(DetailsIntent.OnChapterClick(chapter("c/2")))
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnDeleteChapter(chapter("c/1")))
 
-        assertEquals(listOf("c/2"), badgeRepo.cleared, "opening a chapter clears its NEW badge by url")
-        // markRead is NOT invoked on open — opening != reading; the recording repo stays empty.
-        assertTrue(markReadRepo.read.isEmpty(), "opening a chapter must not mark it read")
-    }
+            assertTrue(deletionRepo.deleted.isEmpty(), "a not-in-library manga has no DB row to delete")
+        }
+
+    @Test
+    fun chapterOpen_clearsNewBadgeWithoutMarkingRead() =
+        runTest {
+            val saved = FakeSavedMangaDetailsRepository()
+            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+            val badgeRepo = RecordingChapterNewBadgeRepository()
+            val markReadRepo = RecordingMarkChapterReadRepository() // would record reads if we marked read on open
+            val (vm, _) =
+                vmWithFetchFake(
+                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
+                    saved = saved,
+                    options =
+                        VmFixtureOptions().apply {
+                            this.badgeRepo = badgeRepo
+                            this.markReadRepo = markReadRepo
+                        },
+                )
+
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            vm.submit(DetailsIntent.OnChapterClick(chapter("c/2")))
+
+            assertEquals(listOf("c/2"), badgeRepo.cleared, "opening a chapter clears its NEW badge by url")
+            // markRead is NOT invoked on open — opening != reading; the recording repo stays empty.
+            assertTrue(markReadRepo.read.isEmpty(), "opening a chapter must not mark it read")
+        }
 
     @Test
     fun expireNewBadges_hidesBadgeAfter4Days_keepsItWithinWindow() {
@@ -857,4 +706,978 @@ class DetailsViewModelRegressionTest {
         assertEquals(false, out.chapters.first { it.url == "c/2" }.isNew, "older than 4 days → badge hidden")
         assertEquals(false, out.chapters.first { it.url == "c/3" }.isNew, "unknown discovery time → no badge")
     }
+
+    // ---- Adult gate: independent saved, URL-only and seed entry paths ------------------------
+
+    @Test
+    fun cacheFirstSavedGenres_armAdultGate_withoutFetching() =
+        runTest {
+            val seed = manga()
+            val cached = details(listOf(chapter("c/1"))).copy(genres = listOf("Yaoi"))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val classifier = RecordingAdultClassifier(seed.api to cached.genres)
+            val options = VmFixtureOptions().apply { adultClassifier = classifier }
+            val (vm, fetch) = vmWithFetchFake(AppResult.Success(details(emptyList())), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(seed))
+                val state = vm.state.value
+                assertEquals(0, fetch.fetchCount)
+                assertEquals(listOf(seed.api to emptyList(), seed.api to cached.genres), classifier.inputs)
+                assertEquals(cached, state.details)
+                assertAdultGate(state)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun urlOnlyFetch_enrichesManga_andArmsAdultGate() =
+        runTest {
+            val requested = manga(api = "url-only-source")
+            val fetched =
+                details(listOf(chapter("c/1"))).copy(api = requested.api, genres = listOf("Smut Romance"))
+            val saved = FakeSavedMangaDetailsRepository()
+            val classifier = RecordingAdultClassifier(requested.api to fetched.genres)
+            val options = VmFixtureOptions().apply { adultClassifier = classifier }
+            val (vm, fetch) = vmWithFetchFake(AppResult.Success(fetched), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnterByUrl(requested.api, requested.url))
+                val state = vm.state.value
+                assertEquals(1, fetch.fetchCount)
+                assertEquals(
+                    listOf(requested.api to emptyList(), requested.api to fetched.genres),
+                    classifier.inputs,
+                )
+                assertEquals(requested.copy(genres = fetched.genres), state.manga)
+                assertEquals(fetched, state.details)
+                assertAdultGate(state)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun seedGenres_keepAdultGate_whenFetchFails() =
+        runTest {
+            val seed = manga().copy(genres = listOf("Yaoi"))
+            val error = AppError.Network.Timeout()
+            val saved = FakeSavedMangaDetailsRepository()
+            val classifier = RecordingAdultClassifier(seed.api to seed.genres)
+            val options = VmFixtureOptions().apply { adultClassifier = classifier }
+            val (vm, fetch) = vmWithFetchFake(AppResult.Failure(error), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(seed))
+                val state = vm.state.value
+                assertEquals(1, fetch.fetchCount)
+                assertEquals(listOf(seed.api to seed.genres), classifier.inputs)
+                assertEquals(seed, state.manga)
+                assertEquals(error, state.error)
+                assertNull(state.details)
+                assertAdultGate(state)
+            } finally {
+                store.clear()
+            }
+        }
+}
+
+/** Read-time sorting through the real MVI surface and the existing file-local VM fixture. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DetailsViewModelLastReadSortTest {
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
+        }
+
+    private fun vmWithFetchFake(
+        fetch: AppResult<MangaDetails>,
+        saved: FakeSavedMangaDetailsRepository,
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            VmFixtureOptions(),
+            testDispatchers,
+        )
+
+    @Test
+    fun lastReadSort_reordersOnSavedTimeReset_afterNetworkRefresh() =
+        runTest {
+            val older = chapter("c/1").copy(lastReadAtEpochMillis = 100L)
+            val recent = chapter("c/2").copy(lastReadAtEpochMillis = 200L)
+            val cached = details(listOf(older, recent))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val networkOnly = chapter("c/3")
+            val network = details(listOf(chapter("c/1"), networkOnly, chapter("c/2")))
+            val (vm, fetch) = vmWithFetchFake(AppResult.Success(network), saved)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnSetChapterSort(ChapterSortType.LAST_READ_DATE))
+                assertEquals(0, fetch.fetchCount)
+                vm.submit(DetailsIntent.OnRetry)
+                assertEquals(1, fetch.fetchCount)
+                val refreshed = vm.state.value.displayChapters
+                assertEquals(listOf("c/2", "c/1", "c/3"), refreshed.map(Chapter::url))
+
+                saved.saved.value = cached.copy(chapters = listOf(older, recent.copy(lastReadAtEpochMillis = 0L)))
+                val reordered = vm.state.value.displayChapters
+                assertEquals(listOf("c/1", "c/3", "c/2"), reordered.map(Chapter::url))
+                assertEquals(0L, reordered.last().lastReadAtEpochMillis)
+                assertEquals(networkOnly, reordered[1])
+                assertEquals(1, fetch.fetchCount)
+            } finally {
+                store.clear()
+            }
+        }
+}
+
+/** Inclusive displayed-suffix selection tests sharing the existing file-local VM fixture. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DetailsViewModelSelectionTest {
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
+        }
+
+    private fun vmWithFetchFake(
+        fetch: AppResult<MangaDetails>,
+        saved: FakeSavedMangaDetailsRepository,
+        options: VmFixtureOptions,
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            options,
+            testDispatchers,
+        )
+
+    @Test
+    fun markThisAndBelow_includesSelectedAndFollowingDescendingRows() =
+        runTest {
+            val selected = chapter("c/3")
+            val cached = details(listOf(chapter("c/5"), selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/5", "c/3", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(listOf("c/3", "c/1")), recorder.bulkReads)
+                assertEquals(listOf("c/3", "c/1"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_followsAscendingDisplayedOrder() =
+        runTest {
+            val selected = chapter("c/3")
+            val cached = details(listOf(chapter("c/5"), selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnToggleSortDirection)
+                assertTrue(vm.state.value.isInLibrary)
+                assertTrue(vm.state.value.sortAscending)
+                assertEquals(
+                    listOf("c/1", "c/3", "c/5"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(listOf("c/3", "c/5")), recorder.bulkReads)
+                assertEquals(listOf("c/3", "c/5"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_usesFilteredNumericOrder() =
+        runTest {
+            val selected = chapter("c/20")
+            val cached =
+                details(
+                    listOf(
+                        chapter("c/30"),
+                        chapter("c/15", isRead = true),
+                        chapter("c/10"),
+                        selected,
+                        chapter("c/25", isRead = true),
+                    ),
+                )
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.UNREAD))
+                vm.submit(DetailsIntent.OnSetChapterSort(ChapterSortType.NUMBER))
+                vm.submit(DetailsIntent.OnToggleSortDirection)
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/10", "c/20", "c/30"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/20"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(listOf("c/20", "c/30")), recorder.bulkReads)
+                assertEquals(listOf("c/20", "c/30"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_marksLastDisplayedChapterIncludingSingleVisibleRow() =
+        runTest {
+            val cases =
+                listOf(
+                    ChapterFilterType.ALL to listOf("c/3", "c/2", "c/1"),
+                    ChapterFilterType.BOOKMARKED to listOf("c/1"),
+                )
+            for ((filter, displayedUrls) in cases) {
+                val selected = chapter("c/1").copy(isBookmarked = true)
+                val cached = details(listOf(chapter("c/3"), chapter("c/2"), selected))
+                val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+                val recorder = RecordingMarkChapterReadRepository()
+                val options =
+                    VmFixtureOptions().apply {
+                        libraryRepo.emitInLibrary(true)
+                        markReadRepo = recorder
+                    }
+                val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+                val store = ViewModelStore().apply { put("details", vm) }
+                try {
+                    vm.submit(DetailsIntent.OnEnter(manga()))
+                    vm.submit(DetailsIntent.OnSetChapterFilter(filter))
+                    assertTrue(vm.state.value.isInLibrary)
+                    assertEquals(
+                        displayedUrls,
+                        vm.state.value.displayChapters
+                            .map(Chapter::url),
+                        "filter=$filter",
+                    )
+                    vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                    assertEquals(setOf("c/1"), vm.state.value.selectedChapterUrls)
+
+                    vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                    assertEquals(listOf(listOf("c/1")), recorder.bulkReads, "filter=$filter")
+                    assertEquals(listOf("c/1"), recorder.read, "filter=$filter")
+                    assertTrue(
+                        vm.state.value.selectedChapterUrls
+                            .isEmpty(),
+                    )
+                } finally {
+                    store.clear()
+                }
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_preservesSelectionWhenGuarded() =
+        runTest {
+            val selected = chapter("c/2", isRead = true)
+            val other = chapter("c/3")
+            val cached = details(listOf(other, selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/3", "c/2", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                options.libraryRepo.emitInLibrary(false)
+                assertFalse(vm.state.value.isInLibrary)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+
+                options.libraryRepo.emitInLibrary(true)
+                assertTrue(vm.state.value.isInLibrary)
+                vm.submit(DetailsIntent.OnChapterLongClick(other))
+                assertEquals(setOf("c/2", "c/3"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2", "c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnSelectionToggle(other))
+                vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.UNREAD))
+                assertEquals(
+                    listOf("c/3", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                assertTrue(recorder.bulkReads.isEmpty())
+                assertTrue(recorder.read.isEmpty())
+            } finally {
+                store.clear()
+            }
+        }
+}
+
+// ---- fakes -------------------------------------------------------------------------------
+
+private class FakeMangaDetailsRepository(
+    var result: AppResult<MangaDetails>,
+) : MangaDetailsRepository {
+    var fetchCount = 0
+        private set
+
+    override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
+        fetchCount++
+        return result
+    }
+}
+
+private class FakeSavedMangaDetailsRepository : SavedMangaDetailsRepository {
+    val saved = MutableStateFlow<MangaDetails?>(null)
+
+    override fun observeSavedDetails(
+        api: String,
+        title: String,
+    ): Flow<MangaDetails?> = saved
+}
+
+private object NoAdultClassifier : AdultContentClassifier {
+    override fun isAdultContent(
+        api: String,
+        genres: List<String>,
+    ): Boolean = false
+}
+
+/** Records VM inputs only; the real matching policy is tested at the composition root. */
+private class RecordingAdultClassifier(
+    private val adultInput: Pair<String, List<String>>,
+) : AdultContentClassifier {
+    val inputs = mutableListOf<Pair<String, List<String>>>()
+
+    override fun isAdultContent(
+        api: String,
+        genres: List<String>,
+    ): Boolean {
+        val input = api to genres.toList()
+        inputs += input
+        return input == adultInput
+    }
+}
+
+private object NullChapterIdResolver : ChapterIdResolver {
+    override suspend fun resolveChapterId(chapterUrl: String): Long? = null
+
+    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> = emptyMap()
+}
+
+private class FixedChapterIdResolver(
+    private val id: Long,
+) : ChapterIdResolver {
+    override suspend fun resolveChapterId(chapterUrl: String): Long = id
+
+    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
+        chapterUrls.associateWith {
+            id
+        }
+}
+
+private object NoopDownloadsActionRepository : DownloadsActionRepository {
+    override suspend fun enqueueDownload(
+        chapterId: Long,
+        mangaTitle: String,
+        api: String,
+    ) = Result.success(Unit)
+
+    override suspend fun retryDownload(chapterId: Long) = Result.success(Unit)
+
+    override suspend fun cancelDownload(chapterId: Long) = Result.success(Unit)
+
+    override suspend fun cancelRunningDownload(
+        chapterId: Long,
+        mangaId: Long,
+    ) = Result.success(Unit)
+
+    override suspend fun cancelAllDownloads() = Result.success(Unit)
+
+    override suspend fun deleteDownload(chapterId: Long) = Result.success(Unit)
+
+    override suspend fun deleteDownloadedChapter(chapterId: Long) = Result.success(Unit)
+
+    override suspend fun reconcileInterrupted() = Result.success(Unit)
+}
+
+/** Records real use-case boundary calls without feeding synthetic completion back into the flows. */
+private class RecordingDownloadsActionRepository : DownloadsActionRepository by NoopDownloadsActionRepository {
+    val enqueued = mutableListOf<Triple<Long, String, String>>()
+    val deletedChapters = mutableListOf<Long>()
+
+    override suspend fun enqueueDownload(
+        chapterId: Long,
+        mangaTitle: String,
+        api: String,
+    ): Result<Unit> {
+        enqueued += Triple(chapterId, mangaTitle, api)
+        return Result.success(Unit)
+    }
+
+    override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> {
+        deletedChapters += chapterId
+        return Result.success(Unit)
+    }
+}
+
+private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
+    override suspend fun markRead(chapterUrl: String) = Unit
+
+    override suspend fun toggleRead(chapterUrl: String) = Unit
+
+    override suspend fun markRead(chapterUrls: List<String>) = Unit
+}
+
+/** Records all read mutations and keeps bulk batches distinct from single/toggle calls. */
+private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
+    val read = mutableListOf<String>()
+    val bulkReads = mutableListOf<List<String>>()
+
+    override suspend fun markRead(chapterUrl: String) {
+        read += chapterUrl
+    }
+
+    override suspend fun toggleRead(chapterUrl: String) {
+        read += chapterUrl
+    }
+
+    override suspend fun markRead(chapterUrls: List<String>) {
+        bulkReads += chapterUrls.toList()
+        read += chapterUrls
+    }
+}
+
+private object NoopChapterBookmarkRepository : ChapterBookmarkRepository {
+    override fun observeBookmark(chapterUrl: String): Flow<Boolean> = MutableStateFlow(false)
+
+    override suspend fun toggleBookmark(chapterUrl: String): Boolean = true
+}
+
+/** #4: drives DetailsState.isOnline. Default online so it never blocks the existing tests. */
+private class FakeConnectivityRepository(
+    online: Boolean = true,
+) : ConnectivityRepository {
+    private val flow = MutableStateFlow(online)
+
+    override fun observeIsOnline(): Flow<Boolean> = flow
+}
+
+private class FakeCompressionDeferralRepository(
+    private val deferred: Flow<Boolean>,
+) : CompressionDeferralRepository {
+    override fun observeLowPowerDeferral(): Flow<Boolean> = deferred
+}
+
+/** #11: records manga_open events so a test can assert it fires once per identity. */
+private class RecordingAnalyticsPort : AnalyticsPort {
+    val mangaOpens = mutableListOf<Pair<String, String>>()
+    var appOpens = 0
+        private set
+
+    override fun logAppOpen() {
+        appOpens++
+    }
+
+    override fun logMangaOpen(
+        api: String,
+        title: String,
+        sourceScreen: String,
+    ) {
+        mangaOpens += api to title
+    }
+}
+
+private class RecordingChapterNewBadgeRepository : ChapterNewBadgeRepository {
+    val cleared = mutableListOf<String>()
+
+    override suspend fun clearNew(chapterUrl: String) {
+        cleared += chapterUrl
+    }
+}
+
+private class RecordingChapterDeletionRepository : ChapterDeletionRepository {
+    val deleted = mutableListOf<Long>()
+
+    override suspend fun deleteChapter(chapterId: Long) {
+        deleted += chapterId
+    }
+}
+
+private object EmptyDownloadsRepository : DownloadsRepository {
+    override fun observeAll(): Flow<List<DownloadedChapter>> = MutableStateFlow(emptyList())
+}
+
+/**
+ * PFIX-DLPROGRESS: a downloads repo whose emissions a test can push through `rows` to mimic the
+ * reactive Room `chapter_downloads` flow ticking (each `updateProgress` / state transition the
+ * worker writes re-emits here). Used to verify the Details row reflects live state+progress.
+ */
+private class FakeDownloadsRepository : DownloadsRepository {
+    val rows = MutableStateFlow<List<DownloadedChapter>>(emptyList())
+
+    override fun observeAll(): Flow<List<DownloadedChapter>> = rows
+}
+
+/**
+ * Resolves a controlled set of chapter `url` → Room `id` mappings (unknown urls → null),
+ * including both the single and batched resolution used by the real enqueue use cases.
+ */
+private class MapChapterIdResolver(
+    private val byUrl: Map<String, Long>,
+) : ChapterIdResolver {
+    override suspend fun resolveChapterId(chapterUrl: String): Long? = byUrl[chapterUrl]
+
+    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
+        chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
+}
+
+private fun downloadedChapter(
+    url: String,
+    state: DownloadState,
+    progress: Int,
+    sizeBytes: Long = 0,
+    chapterId: Long = 10L,
+) = DownloadedChapter(
+    chapterId = chapterId,
+    mangaId = 1L,
+    number = "1",
+    mangaTitle = "Naruto",
+    state = state,
+    progress = progress,
+    errorMsg = null,
+    url = url,
+    sizeBytes = sizeBytes,
+)
+
+private fun manga(
+    api: String = "src",
+    title: String = "Naruto",
+) = Manga(
+    api = api,
+    language = "en",
+    title = title,
+    url = "https://x/naruto",
+    coverUrl = "https://x/c.jpg",
+    rating = null,
+    genres = emptyList(),
+)
+
+private fun chapter(
+    url: String,
+    isRead: Boolean = false,
+    isDownloaded: Boolean = false,
+) = Chapter(
+    number = url.substringAfterLast('/'),
+    name = "",
+    url = url,
+    date = null,
+    isDownloaded = isDownloaded,
+    isBookmarked = false,
+    isRead = isRead,
+)
+
+private fun details(chapters: List<Chapter>) =
+    MangaDetails(
+        api = "src",
+        language = "en",
+        title = "Naruto",
+        url = "https://x/naruto",
+        coverUrl = "https://x/c.jpg",
+        description = "",
+        author = "",
+        rating = "",
+        status = "",
+        genres = emptyList(),
+        chapters = chapters,
+    )
+
+private class VmFixtureOptions {
+    var downloadsRepo: DownloadsRepository = EmptyDownloadsRepository
+    var idResolver: ChapterIdResolver = NullChapterIdResolver
+    var downloadActions: DownloadsActionRepository = NoopDownloadsActionRepository
+    var libraryRepo: FakeLibraryRepository = FakeLibraryRepository()
+    var badgeRepo: ChapterNewBadgeRepository = RecordingChapterNewBadgeRepository()
+    var deletionRepo: ChapterDeletionRepository = RecordingChapterDeletionRepository()
+    var markReadRepo: MarkChapterReadRepository = NoopMarkChapterReadRepository
+    var connectivity: ConnectivityRepository = FakeConnectivityRepository(online = true)
+    var analytics: AnalyticsPort = RecordingAnalyticsPort()
+    var compressionDeferred: Flow<Boolean> = MutableStateFlow(false)
+    var adultClassifier: AdultContentClassifier = NoAdultClassifier
+}
+
+private fun createVmWithFetchFake(
+    fetch: AppResult<MangaDetails>,
+    saved: FakeSavedMangaDetailsRepository,
+    options: VmFixtureOptions,
+    testDispatchers: DispatcherProvider,
+): Pair<DetailsViewModel, FakeMangaDetailsRepository> {
+    val fetchFake = FakeMangaDetailsRepository(fetch)
+    val vm =
+        DetailsViewModel(
+            fetchDetails = FetchMangaDetailsUseCase(fetchFake),
+            isAdultContent = IsAdultContentUseCase(options.adultClassifier),
+            observeInLibrary = ObserveInLibraryUseCase(options.libraryRepo),
+            observeSavedDetails = ObserveSavedMangaDetailsUseCase(saved),
+            toggleInLibrary = ToggleInLibraryUseCase(options.libraryRepo),
+            enqueueAllChaptersDownload =
+                EnqueueAllChaptersDownloadUseCase(
+                    chapterIdResolver = options.idResolver,
+                    enqueueDownload = EnqueueDownloadUseCase(options.downloadActions),
+                    dispatchers = testDispatchers,
+                ),
+            toggleChapterRead = ToggleChapterReadUseCase(options.markReadRepo),
+            toggleChapterBookmark = ToggleChapterBookmarkUseCase(NoopChapterBookmarkRepository),
+            markChaptersRead = MarkChaptersReadUseCase(options.markReadRepo),
+            enqueueChapterDownload =
+                EnqueueChapterDownloadUseCase(
+                    chapterIdResolver = options.idResolver,
+                    enqueueDownload = EnqueueDownloadUseCase(options.downloadActions),
+                ),
+            cancelChapterDownload =
+                CancelChapterDownloadUseCase(
+                    chapterIdResolver = NullChapterIdResolver,
+                    cancelDownload = CancelDownloadUseCase(NoopDownloadsActionRepository),
+                ),
+            cancelRunningDownload = CancelRunningDownloadUseCase(NoopDownloadsActionRepository),
+            cancelAllDownloads = CancelAllDownloadsUseCase(NoopDownloadsActionRepository),
+            deleteDownloadedChapter = DeleteDownloadedChapterUseCase(options.downloadActions),
+            observeDownloads = ObserveDownloadsUseCase(options.downloadsRepo),
+            resolveChapterId = ResolveChapterIdUseCase(options.idResolver),
+            markMangaOpened = MarkMangaOpenedUseCase(options.libraryRepo),
+            persistNewChapters = PersistNewChaptersUseCase(options.libraryRepo),
+            clearChapterNew = ClearChapterNewUseCase(options.badgeRepo),
+            deleteChapter = DeleteChapterUseCase(options.deletionRepo),
+            observeConnectivity = ObserveConnectivityUseCase(options.connectivity),
+            logMangaOpen = LogMangaOpenUseCase(options.analytics),
+            observeCompressionDeferred =
+                ObserveCompressionDeferredUseCase(
+                    FakeCompressionDeferralRepository(options.compressionDeferred),
+                ),
+        )
+    return vm to fetchFake
+}
+
+private class DetailsDownloadFixture(
+    testDispatchers: DispatcherProvider,
+) {
+    val saved =
+        FakeSavedMangaDetailsRepository().apply {
+            this.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+        }
+    val downloads = FakeDownloadsRepository()
+    val actions = RecordingDownloadsActionRepository()
+    val vm =
+        createVmWithFetchFake(
+            fetch = AppResult.Success(requireNotNull(saved.saved.value)),
+            saved = saved,
+            options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    downloadsRepo = downloads
+                    idResolver = MapChapterIdResolver(mapOf("c/1" to FIRST_DOWNLOAD_ID, "c/2" to SECOND_DOWNLOAD_ID))
+                    downloadActions = actions
+                },
+            testDispatchers = testDispatchers,
+        ).first
+
+    fun verify(assertions: DetailsDownloadFixture.() -> Unit) {
+        val store = ViewModelStore().apply { put("details", vm) }
+        try {
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertions()
+        } finally {
+            store.clear()
+        }
+    }
+
+    companion object {
+        private const val FIRST_DOWNLOAD_ID = 10L
+        private const val SECOND_DOWNLOAD_ID = 20L
+    }
+}
+
+private fun successfulDownload() =
+    downloadedChapter(url = "c/1", state = DownloadState.SUCCESS, progress = 100, sizeBytes = 12L * 1024 * 1024)
+
+private fun assertRunningProgress(
+    vm: DetailsViewModel,
+    downloads: FakeDownloadsRepository,
+    progress: Int,
+) {
+    downloads.rows.value = listOf(downloadedChapter(url = "c/1", state = DownloadState.RUNNING, progress = progress))
+    val state = vm.state.value
+    val entry = assertNotNull(state.chapterDownloads["c/1"], "the running chapter must have a live download entry")
+    assertEquals(DownloadState.RUNNING, entry.state)
+    assertEquals(progress, entry.progress, "every progress tick must reach state")
+    assertTrue("c/1" in state.downloadingChapterUrls)
+    assertNull(state.chapterDownloads["c/2"], "a chapter with no download has no entry")
+}
+
+private fun assertDownloadedLedger(state: DetailsState) {
+    val done = assertNotNull(state.chapterDownloads["c/1"], "SUCCESS keeps an entry for the immediate completion flip")
+    assertTrue(done.isDownloaded)
+    assertFalse("c/1" in state.downloadingChapterUrls)
+    assertEquals(12L * 1024 * 1024, state.chapterSizeBytes("c/1"))
+    assertEquals(12L * 1024 * 1024, state.totalDownloadedSizeBytes)
+    assertEquals(1, state.downloadedChapterCount)
+}
+
+private fun assertDownloadedDetailsActions(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    assertTrue(vm.state.value.isInLibrary, "download guards must be exercised, not bypassed")
+    assertUnknownSelectionCannotDelete(vm, actions)
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    assertEquals(
+        listOf("c/1"),
+        vm.state.value.displayChapters
+            .map(Chapter::url),
+    )
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/1")))
+    assertTrue(vm.state.value.isSelectionAllDownloaded, "the completed selection exposes delete")
+    vm.submit(DetailsIntent.OnSelectionToggle(chapter("c/2")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded, "a mixed selection must not expose delete")
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty(), "a stray mixed-selection delete must do nothing")
+    assertEquals(setOf("c/1", "c/2"), vm.state.value.selectedChapterUrls)
+    vm.submit(DetailsIntent.OnSelectionToggle(chapter("c/2")))
+    assertTrue(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertEquals(listOf(10L), actions.deletedChapters)
+    assertTrue(
+        vm.state.value.selectedChapterUrls
+            .isEmpty(),
+    )
+    actions.deletedChapters.clear()
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.ALL))
+    assertOnlyPendingChapterEnqueues(vm, actions)
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.BOOKMARKED))
+    assertTrue(
+        vm.state.value.displayChapters
+            .isEmpty(),
+        "delete-all must not be limited by the visible list",
+    )
+    vm.submit(DetailsIntent.OnDeleteAllDownloads)
+    assertEquals(listOf(10L), actions.deletedChapters, "delete-all must include completion but exclude pending")
+}
+
+private fun assertUnknownSelectionCannotDelete(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty())
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/missing")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty())
+    assertEquals(setOf("c/missing"), vm.state.value.selectedChapterUrls, "an ignored action preserves selection")
+    vm.submit(DetailsIntent.OnSelectionClear)
+}
+
+private fun assertOnlyPendingChapterEnqueues(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    val completed = chapter("c/1") // Deliberately stale isDownloaded=false, even for the saved-fallback case.
+    val pending = chapter("c/2")
+    val expected = listOf(Triple(20L, "Naruto", "src"))
+    vm.submit(DetailsIntent.OnDownloadChapter(completed))
+    assertTrue(actions.enqueued.isEmpty(), "single enqueue must not demote a completed chapter")
+    vm.submit(DetailsIntent.OnDownloadChapter(pending))
+    assertEquals(expected, actions.enqueued, "positive control: single enqueue reaches the real action boundary")
+    actions.enqueued.clear()
+    vm.submit(DetailsIntent.OnChapterLongClick(completed))
+    vm.submit(DetailsIntent.OnSelectionToggle(pending))
+    vm.submit(DetailsIntent.OnDownloadSelected)
+    assertEquals(expected, actions.enqueued, "mixed selection enqueues only the pending chapter")
+    assertTrue(
+        vm.state.value.selectedChapterUrls
+            .isEmpty(),
+        "download-selected still clears selection",
+    )
+    actions.enqueued.clear()
+    // Download-all uses the full details snapshot, not the currently displayed downloaded-only list.
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    vm.submit(DetailsIntent.OnDownloadAllClick)
+    assertEquals(expected, actions.enqueued, "positive control: the bulk use case resolves and enqueues pending")
+}
+
+private fun assertFullDeletionMakesChapterPending(
+    vm: DetailsViewModel,
+    saved: FakeSavedMangaDetailsRepository,
+    actions: RecordingDownloadsActionRepository,
+) {
+    // Publish the saved-flow result of full deletion; unlike history deletion, both signals are gone.
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    assertEquals(
+        listOf("c/1"),
+        vm.state.value.displayChapters
+            .map(Chapter::url),
+    )
+    saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+    assertTrue(
+        vm.state.value.displayChapters
+            .isEmpty(),
+        "full deletion removes the downloaded-filter result",
+    )
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/1")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    actions.deletedChapters.clear()
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    vm.submit(DetailsIntent.OnDeleteAllDownloads)
+    assertTrue(actions.deletedChapters.isEmpty(), "pending content is no longer eligible for download deletion")
+    assertEquals(setOf("c/1"), vm.state.value.selectedChapterUrls)
+    actions.enqueued.clear()
+    vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1", isDownloaded = true)))
+    assertEquals(
+        listOf(Triple(10L, "Naruto", "src")),
+        actions.enqueued,
+        "a stale true-valued click cannot stay blocked",
+    )
+}
+
+private fun assertDuplicateChapterFallbackUsesFirstEntry() {
+    val pending = chapter("c/duplicate")
+    val saved = pending.copy(isDownloaded = true)
+    listOf(listOf(pending, saved), listOf(saved, pending)).forEach { duplicates ->
+        val first = duplicates.first()
+        val state =
+            DetailsState(
+                details = details(duplicates),
+                selectedChapterUrls = setOf(first.url),
+                chapterFilter = ChapterFilterType.DOWNLOADED,
+            )
+        assertEquals(first.isDownloaded, state.isChapterDownloaded(first.url))
+        assertEquals(first.isDownloaded, state.isSelectionAllDownloaded)
+        assertEquals(DetailsState.isDownloaded(first, null), state.isChapterDownloaded(first.url))
+        assertEquals(if (first.isDownloaded) listOf(first) else emptyList(), state.displayChapters)
+    }
+}
+
+private fun assertAdultGate(state: DetailsState) {
+    assertTrue(state.isAdult)
+    assertEquals(AdultGateStep.AdultWarning, state.adultGateStep)
+    assertTrue(state.isAdultGateActive)
+}
+
+private fun runChallengeTest(
+    error: AppError,
+    dispatcher: CoroutineDispatcher,
+    createVm: (AppResult<MangaDetails>, FakeSavedMangaDetailsRepository) -> DetailsViewModel,
+) = runTest {
+    val saved = FakeSavedMangaDetailsRepository()
+    val vm = createVm(AppResult.Failure(error), saved)
+    val effects = mutableListOf<DetailsEffect>()
+    val job = launch(dispatcher) { vm.effects.collect { effects += it } }
+    vm.submit(DetailsIntent.OnEnter(manga()))
+    job.cancel()
+    assertTrue(
+        effects.any { it is DetailsEffect.SolveCloudflareChallenge },
+        "challenge status $error must route to the WebView solver, got: $effects",
+    )
 }
