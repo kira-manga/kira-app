@@ -1,0 +1,127 @@
+{
+  "contract": "app13-public-linux-original-engine",
+  "source": {
+    "head": "fd3f151fdbe59e155f4a3cc1274137639fe8472f",
+    "tree": "63285355a72967dd538b61ef09cc0b21adf32a5d"
+  },
+  "statics": {
+    "status": "PASS",
+    "source": "fd3f151fdbe59e155f4a3cc1274137639fe8472f",
+    "source_tree": "63285355a72967dd538b61ef09cc0b21adf32a5d",
+    "input_map_sha256": "50954666897f70d7da78ef6d16259f6fe8f54c02f7d666bcf9eca63de9841f05",
+    "receipt_sha256": "73541cee1f2e47bf7a0db608d70a9064fc67201050f49a253023d014f09fe51d",
+    "ktlint_baseline_sha256": "117945c386c0e8c904fd1c98c3e54389d6c32731011b02884aa9f3d56d6fca94",
+    "detekt_baseline_sha256": "b9ef09c9c65286732692a2a6639efbd8a892b42c4bebecdb1140cfd13e7503f4"
+  },
+  "affected": {
+    "composeApp/build.gradle.kts": "e4f6c6c4bbaad6756a8d8fb204278053b45eae04be66d85929ccb77685dc5996",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewCapabilityTest.kt": "311bb9f8b6d793b8952590229e2bcea95b253ea45a0668d7f032178b48f176d3",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewComposeTest.kt": "e7d11e5e7b1b10c20c673c90873733311ec25ea12b953f895cbfe6f88eb2bd35",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewExternalBrowserTest.kt": "41385b823a2cb0371a68e25b6daa4ab7e4b112e12b92c885e58250d11661aed4",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewHostFixture.kt": "bc8847ed6d590ec965d2975ec2cb145d31a843301a4ea2a442854da2dcb3c097",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewHostTest.kt": "02566a608440f35185805d2cd071b67875de5eeaf95ae03dd5eca8d31958a5ad",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewInitializationTest.kt": "cb95af5cafc6e944b5a6855a4deb6a4014c3d77f7b77426fcf72418c6770556c",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/AndroidWebViewTestSupport.kt": "a84dac1c620f06b4644f6326143d7f21ca22fd39cec788b2a8552d7468e5cb72",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/core/webview/RecordingWebView.kt": "1f15aeb0839b8e5e77f69304158d511970c2f8a422acfae0659b47e975f4688a",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/navigation/routes/AndroidWebViewNavigationFixture.kt": "fc78a5cde5b0a9309ad3ca07a7981d026239ad771b2543efe1218e394a0ba252",
+    "composeApp/src/androidHostTest/kotlin/me/manga/kira/navigation/routes/AndroidWebViewNavigationTest.kt": "5ec48dc973453db9f32c841e762476007153ad1bfef62595333beaea6b7fa4d6",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewAttempt.kt": "4bc867dae5ddbee990dae8c4e734e878aaa304fafe72290205f47deaa8f6ce08",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewClients.kt": "4c26b2e32387fc64bfc80f444286dc6fe592f8328af8f1d43e20caaa5c32374d",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewController.kt": "3853b818968ecd07ffb087f3de2789e06cd7b0dc8634bb135da5e1244c099956",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewExternalBrowser.kt": "37146bc04b79549aaa445a2270f05467fecc936e7ed901370358a8d179885fba",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewFailures.kt": "fb03f52f6920da700fb320ca199f5423e719055b6c51f8ead14853efff92175b",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewPlatform.kt": "dce689aef5704e3d99f056ddf9a56d88355c53a499bb0c37acd1723a538681ec",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/AndroidWebViewUnavailable.kt": "38649d4f1e8bfa3fe2299c9f46fd4adeb56364e624987a607e4703d66f8b97f7",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/OwnedAndroidWebView.kt": "51ba73c24b90d3a0e0db9e52818eb4902e59b79cceb0f5e3f517fc04e721467b",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/WebViewCapability.android.kt": "5d0682065243f68188a8faa7e6a0e6d0c57a8e642e589810ce0c533caeae5456",
+    "composeApp/src/androidMain/kotlin/me/manga/kira/core/webview/WebViewHost.android.kt": "31f4fd175e0c5dd488fff119454ca041e14b0508c0ee28cb571497550924c983",
+    "composeApp/src/commonMain/composeResources/values-ar/strings_pfix_webview_availability.xml": "cb2a29ac8a3d00e803688a597918a4c1c12e93ecf3e704730c033be98dfe3eaa",
+    "composeApp/src/commonMain/composeResources/values-de/strings_pfix_webview_availability.xml": "05bdf77fc38d2103758313243899ed5ce6c55de48e33099763bc34c954dae26e",
+    "composeApp/src/commonMain/composeResources/values-es/strings_pfix_webview_availability.xml": "5600c4768b392b737d416773e579b0b1383aff246ee42acfd9d42a4e9afb46b0",
+    "composeApp/src/commonMain/composeResources/values-fr/strings_pfix_webview_availability.xml": "9c3abd8eae6573ecec2d6972743a7d922365eeafa7c8f465a57a0baac005bc60",
+    "composeApp/src/commonMain/composeResources/values-id/strings_pfix_webview_availability.xml": "65a3a5ffec72f37dc237a3611272924fb1c0198ebfb72f5b7a55507c38625297",
+    "composeApp/src/commonMain/composeResources/values-in/strings_pfix_webview_availability.xml": "65a3a5ffec72f37dc237a3611272924fb1c0198ebfb72f5b7a55507c38625297",
+    "composeApp/src/commonMain/composeResources/values-it/strings_pfix_webview_availability.xml": "5252f1368799885c7c552d66b0157b293250da37976a414eed531e06d07d5b04",
+    "composeApp/src/commonMain/composeResources/values-ja/strings_pfix_webview_availability.xml": "e470e1659db07bbe1005369422a05c287510495db5ea4f32224ae8551aecfe88",
+    "composeApp/src/commonMain/composeResources/values-pt/strings_pfix_webview_availability.xml": "5fa3187f71f15d60ffe58f7d4a41f9f87841ddded48824c150908be29393e073",
+    "composeApp/src/commonMain/composeResources/values-ru/strings_pfix_webview_availability.xml": "7016c234c1eaca904537a1503d5feeadb2642130a890c260360b4d3ba3179e77",
+    "composeApp/src/commonMain/composeResources/values-tr/strings_pfix_webview_availability.xml": "4d1f2551add2f76d73f23ddf6871caef96a76cedab7f1158c089dbd2144f0475",
+    "composeApp/src/commonMain/composeResources/values/strings_pfix_webview_availability.xml": "06c23239128af21c53f2bd9164ccb1186d70236ddd199d76ade5c8981ad74cbe",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/core/webview/WebViewCapability.kt": "3800b829858652be72dc8da2bc22af2f5bb61f966e3d6b4b1ec263f05bb54841",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/core/webview/WebViewController.kt": "633e08bcbb9cbe9849a3a1968aa8d9017ea397176630d42b7a7557329c328acb",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/CloudflareChallengeSolver.kt": "b2a52e889666e6be60d62da9f0b2763af5e677208fc2eed606d03462466a703a",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/WebViewRouteActions.kt": "467b54c10deca991e183525942f1f3113df89fffc70e50d0fea5611b949ed957",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/WebViewScreenRoute.kt": "10711c537db74a85f68e576e38ffeab3bfcc0207056e7c32fe815a7a8c8ee12c",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/WebViewSolverReturn.kt": "4af09877ea0c49324abead6afd3c0c5f5d06281a1f8f0d886b7c2593b5cf9206",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewComposeScreen.kt": "7443b90988b076b3d64e3454dbe507a7fde9a603e537712c02187f7c08e19db4",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenActions.kt": "7f3a907dd0d78fbf82e995d9aff6bf9c440ff47889c9044ca7d7df0bc523776f",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenBody.kt": "98c73214098ccfaa1df0ce372385c64944a6fd8a715eae2657999ad4cb3f36bb",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenCallbacks.kt": "7c48c1dbbdd79c76d600cebaec3233bc32f989da6130026080a42ea53b6ffb35",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenCapture.kt": "b886cfb430df000e30564fabdfa04ef0ac3a454791f8a9cc8d2801e4419271ea",
+    "composeApp/src/commonMain/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewTopBar.kt": "1ecc3b64435cb818254e0864fd3e83dcdd4b38e1044410b7dbb8ef9ddedfef4c",
+    "composeApp/src/commonTest/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenCaptureTest.kt": "fcd7848ca84c5534f292642f86e1fcc3d66a660da733662f9a338fe85d18150d",
+    "composeApp/src/desktopTest/kotlin/me/manga/kira/navigation/routes/WebViewSolverNavigationFixture.kt": "7b671afd0c846ecac1c033227f69fcc7d79e0af5d378072b302f97fb77a6318a",
+    "composeApp/src/desktopTest/kotlin/me/manga/kira/navigation/routes/WebViewSolverNavigationTest.kt": "4112d21b15511916b1b8a550f218652a1e601ceeee96efd02aab67de02f6fe08",
+    "config/ktlint-baseline.xml": "117945c386c0e8c904fd1c98c3e54389d6c32731011b02884aa9f3d56d6fca94"
+  },
+  "retained_test_sources": {
+    "composeApp/src/commonTest/kotlin/me/manga/kira/core/webview/WebViewUrlSandboxTest.kt": "667ca78306c64eb048379fad68df6b0b1d1c3ae68049820c991caa877561b6bf"
+  },
+  "tests": [
+    {
+      "task": ":composeApp:testAndroidHostTest",
+      "target": "android",
+      "platform": "androidJvm",
+      "compiler": ":composeApp:compileAndroidHostTest",
+      "count": 1,
+      "cases": [
+        {
+          "selector": "me.manga.kira.navigation.routes.AndroidWebViewNavigationTest.refusedFailureCloseThenRealRetryAndHealthyCloseRetainsOneRetry",
+          "source": "composeApp/src/androidHostTest/kotlin/me/manga/kira/navigation/routes/AndroidWebViewNavigationTest.kt"
+        }
+      ]
+    },
+    {
+      "task": ":composeApp:desktopTest",
+      "target": "desktop",
+      "platform": "jvm",
+      "compiler": ":composeApp:compileTestKotlinDesktop",
+      "count": 8,
+      "cases": [
+        {
+          "selector": "me.manga.kira.core.webview.WebViewUrlSandboxTest.mainFrameAllowsOnlyPinnedNetworkHostAndBrowserBlankPage",
+          "source": "composeApp/src/commonTest/kotlin/me/manga/kira/core/webview/WebViewUrlSandboxTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.core.webview.WebViewUrlSandboxTest.subFrameKeepsInlineContentButBlocksExecutableLocalSchemes",
+          "source": "composeApp/src/commonTest/kotlin/me/manga/kira/core/webview/WebViewUrlSandboxTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.navigation.routes.WebViewSolverNavigationTest.consumedFailureDoesNotPoisonLaterHealthyAttempt",
+          "source": "composeApp/src/desktopTest/kotlin/me/manga/kira/navigation/routes/WebViewSolverNavigationTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.navigation.routes.WebViewSolverNavigationTest.exactOwnerAndInterveningManualBrowserCannotStealSolverReturn",
+          "source": "composeApp/src/desktopTest/kotlin/me/manga/kira/navigation/routes/WebViewSolverNavigationTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.navigation.routes.WebViewSolverNavigationTest.healthyCloseConsumesBeforeCallbackAndManualVisitCannotRearm",
+          "source": "composeApp/src/desktopTest/kotlin/me/manga/kira/navigation/routes/WebViewSolverNavigationTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.navigation.routes.WebViewSolverNavigationTest.unavailablePrecheckAndRefusedNavigationDoNotArmRetry",
+          "source": "composeApp/src/desktopTest/kotlin/me/manga/kira/navigation/routes/WebViewSolverNavigationTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.presentation.features.webview.ui.screens.WebViewScreenCaptureTest.cookieFirstCaptureRemainsStableAndEnrichesWithUserAgent",
+          "source": "composeApp/src/commonTest/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenCaptureTest.kt"
+        },
+        {
+          "selector": "me.manga.kira.presentation.features.webview.ui.screens.WebViewScreenCaptureTest.nonReadyBackClosesWithoutSavingWhileHealthyDefaultUsesHistory",
+          "source": "composeApp/src/commonTest/kotlin/me/manga/kira/presentation/features/webview/ui/screens/WebViewScreenCaptureTest.kt"
+        }
+      ]
+    }
+  ],
+  "locale_task": ":composeApp:checkLocaleKeyParity"
+}
