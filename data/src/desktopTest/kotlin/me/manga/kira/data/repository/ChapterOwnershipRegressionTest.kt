@@ -15,6 +15,7 @@ import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.cbz.DefaultCbzReader
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.platform.media.DesktopPageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -210,12 +211,15 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
             val b = seed(mangaB).single()
             val pageA = writeFile(appFs.chapterDir(a.mangaId, a.id) / "page.webp", "A")
             val pageB = writeFile(appFs.chapterDir(b.mangaId, b.id) / "page.webp", "B")
+            fs.write(pageA) { write(recoveryTestPng()) }
+            fs.write(pageB) { write(recoveryTestPng()) }
             db.chapterDao().updateChapter(a.copy(isDownloaded = true, localImagePaths = listOf(pageA.toString())))
             db.chapterDao().updateChapter(b.copy(isDownloaded = true, localImagePaths = listOf(pageB.toString())))
             val cacheA = writeFile(extractedPage(a), "extracted A")
             val cacheB = writeFile(extractedPage(b), "extracted B")
             val cleanup = CompletableDeferred<Pair<Long, Long>>()
-            val realCbz = DefaultCbzReader(appFs, dispatchers)
+            val inspector = DesktopPageMediaInspector()
+            val realCbz = DefaultCbzReader(appFs, dispatchers, inspector)
             val cbz =
                 object : CbzReader by realCbz {
                     override suspend fun cleanupExtractedCache(
@@ -233,7 +237,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
                     db.chapterDao(),
                     cbz,
                     chapterOwnershipRegistry(source),
-                    appFs,
+                    DownloadedPageFiles(appFs, inspector),
                 )
             val chapter = Chapter("1", "shared", CHAPTER_OWNERSHIP_URL, null, false, false)
 

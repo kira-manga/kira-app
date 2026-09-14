@@ -115,7 +115,10 @@ class AzoraDataRoutingTest {
         dao: ChapterDao = FakeChapterDao(),
         cbz: CbzReader = FakeCbzReader(),
         appFs: AppFileSystem = TempDirAppFileSystem(),
-    ) = ChapterPagesRepositoryImpl(testDispatchers, dao, cbz, registry, appFs)
+    ) = ChapterPagesRepositoryImpl(
+        testDispatchers, dao, cbz, registry,
+        DownloadedPageFiles(appFs, RecoveryFixtureInspector(appFs.fileSystem())),
+    )
 
     @Test
     fun pages_azora_routes_through_registry_not_legacy() = runTest {
@@ -331,7 +334,7 @@ class AzoraDataRoutingTest {
     private fun TempDirAppFileSystem.seedChapterFiles(mangaId: Long, chapterId: Long, vararg names: String) {
         val dir = chapterDir(mangaId, chapterId)
         fileSystem().createDirectories(dir)
-        names.forEach { name -> fileSystem().write(dir / name) { writeUtf8("img") } }
+        names.forEach { name -> fileSystem().write(dir / name) { write(recoveryTestPng()) } }
     }
 
     /** Mirror of the production [ChapterPagesRepositoryImpl.toFileUrl] encoder for a clean path. */
