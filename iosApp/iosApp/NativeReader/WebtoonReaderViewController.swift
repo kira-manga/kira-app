@@ -36,6 +36,7 @@ final class WebtoonReaderViewController: UIViewController,
 
     private let onPageChanged: (Int) -> Void
     private let onReachedEnd: () -> Void
+    private let imageLoader: ReaderImageLoading
     var onOpenInWebView: (() -> Void)?
 
     private var rows: [ReaderFeedRowItem] = []
@@ -44,9 +45,8 @@ final class WebtoonReaderViewController: UIViewController,
     /// Decoded aspect ratio (height / width) keyed by FEED position (image rows only). Cell height is
     /// `contentWidth * aspect`, so it rescales with zoom.
     private var aspects: [Int: CGFloat] = [:]
-    /// Per-URL prefetch cancel tokens so cancelPrefetching cancels only the prefetch, never a coalesced
-    /// visible cell (see prefetch / cancelPrefetching).
-    private var prefetchTokens: [String: String] = [:]
+    /// Each row owns its subscriber, including duplicate URLs. Never overwrite/drop an owned token.
+    private var prefetchTokens: [IndexPath: String] = [:]
     /// Bumped on each content change to abandon a stale background aspect-seed pass.
     private var aspectSeedGeneration = 0
     /// The saved page to restore to (set by setResume). The reload-time scroll uses placeholder heights;
@@ -84,12 +84,21 @@ final class WebtoonReaderViewController: UIViewController,
     }()
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
 
-    init(onPageChanged: @escaping (Int) -> Void, onReachedEnd: @escaping () -> Void) {
+    init(onPageChanged: @escaping (Int) -> Void, onReachedEnd: @escaping () -> Void,
+         imageLoader: ReaderImageLoading = ReaderImageLoader.shared) {
         self.onPageChanged = onPageChanged
         self.onReachedEnd = onReachedEnd
+        self.imageLoader = imageLoader
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    deinit { cancelPrefetches() }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        cancelPrefetches()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -135,6 +144,7 @@ final class WebtoonReaderViewController: UIViewController,
     private var defaultAspect: CGFloat { viewportH / baseWidth }
 
     private func applyLayoutSizes() {
+        if lastBaseWidth != view.bounds.width { cancelPrefetches() }
         lastBaseWidth = view.bounds.width
         lastViewportH = view.bounds.height
         hScroll.frame = view.bounds
@@ -154,14 +164,22 @@ final class WebtoonReaderViewController: UIViewController,
             Array(newKeys.prefix(oldKeys.count)) == oldKeys
         if isAppend {
             let firstNew = rows.count
+            // Append identity intentionally ignores headers. A source refresh may append a chapter
+            // AND replace the previous pages' credentials; those subscriptions must not survive.
+            let changed = rows.indices.filter { rows[$0] != newRows[$0] }
+            if !changed.isEmpty { cancelPrefetches() }
+            let visibleChanges = collectionView.indexPathsForVisibleItems.filter { changed.contains($0.item) }
             rows = newRows
             rebuildMaps()
             let added = (firstNew..<newRows.count).map { IndexPath(item: $0, section: 0) }
-            collectionView.performBatchUpdates({ collectionView.insertItems(at: added) })
+            collectionView.performBatchUpdates({
+                collectionView.insertItems(at: added)
+                collectionView.reloadItems(at: visibleChanges)
+            })
         } else if newKeys != oldKeys {
+            cancelPrefetches()
             rows = newRows
             aspects.removeAll()
-            prefetchTokens.removeAll()
             didUserScroll = false
             rebuildMaps()
             collectionView.reloadData()
@@ -179,6 +197,7 @@ final class WebtoonReaderViewController: UIViewController,
             // future dequeue binds the fresh headers, and rebind the visible cells so an errored
             // page retries with them instead of 403-ing on the stale cookie forever. No layout
             // change (equal keys ⇒ equal rows/heights), so position is preserved.
+            cancelPrefetches()
             rows = newRows
             rebuildMaps()
             collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems)
@@ -234,6 +253,7 @@ final class WebtoonReaderViewController: UIViewController,
         case .image(let page, _):
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ReaderPageCell.reuseID, for: indexPath) as! ReaderPageCell
             let pos = indexPath.item
+            cell.imageLoader = imageLoader
             cell.onOpenInWebView = onOpenInWebView
             cell.configure(url: page.url, headers: page.headers, widthPt: contentWidth) { [weak self] aspect in
                 self?.updateAspect(pos, aspect)
@@ -298,10 +318,11 @@ final class WebtoonReaderViewController: UIViewController,
         aspectSeedGeneration += 1
         let generation = aspectSeedGeneration
         let snapshot = rows
+        let imageLoader = imageLoader
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var seeded: [Int: CGFloat] = [:]
             for (pos, row) in snapshot.enumerated() {
-                if case .image(let item, _) = row, let aspect = ReaderImageLoader.shared.localAspect(item.url) {
+                if case .image(let item, _) = row, let aspect = imageLoader.localAspect(item.url) {
                     seeded[pos] = aspect
                 }
             }
@@ -323,23 +344,26 @@ final class WebtoonReaderViewController: UIViewController,
 
     func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
         let target = contentWidth * UIScreen.main.scale
-        for ip in indexPaths where ip.item < rows.count {
+        for ip in indexPaths where ip.item >= 0 && ip.item < rows.count && prefetchTokens[ip] == nil {
             if case .image(let page, _) = rows[ip.item] {
                 // Keep the per-request token so cancelPrefetching cancels only THIS prefetch — never a
                 // visible cell coalesced onto the same URL (dropping its callback left the cell black).
-                let t = ReaderImageLoader.shared.load(url: page.url, headers: page.headers, targetWidthPx: target) { _ in }
-                if !t.isEmpty { prefetchTokens[page.url] = t }
+                let t = imageLoader.load(url: page.url, headers: page.headers, targetWidthPx: target, onProgress: nil) { _ in }
+                if !t.isEmpty { prefetchTokens[ip] = t }
             }
         }
     }
 
     func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
-        for ip in indexPaths where ip.item < rows.count {
-            if case .image(let page, _) = rows[ip.item],
-               let t = prefetchTokens.removeValue(forKey: page.url) {
-                ReaderImageLoader.shared.cancel(token: t)
-            }
+        for ip in indexPaths {
+            if let t = prefetchTokens.removeValue(forKey: ip) { imageLoader.cancel(token: t) }
         }
+    }
+
+    private func cancelPrefetches() {
+        let tokens = prefetchTokens.values
+        prefetchTokens.removeAll()
+        tokens.forEach { imageLoader.cancel(token: $0) }
     }
 
     // MARK: - Zoom (pinch + double-tap)
@@ -364,6 +388,7 @@ final class WebtoonReaderViewController: UIViewController,
     }
 
     private func beginZoomGesture(focal: CGPoint) {
+        cancelPrefetches()
         // Disable both scrollers for the duration of the gesture so the scale never races a scroll
         // (the root cause of the classic webtoon "random scrolling on pinch" bug).
         collectionView.isScrollEnabled = false
