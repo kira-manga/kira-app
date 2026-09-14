@@ -1,6 +1,8 @@
-# Leaf UIKit tests only. UIGlassEffect in the real chrome requires an iOS26-capable Xcode SDK.
+# Hosted UIKit tests. UIGlassEffect in the real chrome requires an iOS26-capable Xcode SDK.
 # A nonshipping UIApplication host enables the real controls' target/action dispatch.
-# Neither target depends on the shipping app, Kotlin, Firebase or signing.
+# Webtoon tests compile the real reader sources, including its shared-string bridge. Reuse the
+# shipping build's ComposeApp.framework and exactly resolved Firebase link closure; do not bootstrap
+# the shipping app/Firebase or trigger a second Gradle build/package acquisition from this project.
 name: ReaderChromeControlsTests
 options:
   deploymentTarget:
@@ -11,6 +13,11 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     CODE_SIGNING_ALLOWED: NO
     SUPPORTED_PLATFORMS: iphonesimulator
+    "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    exactVersion: "12.15.0"
 targets:
   ReaderChromeControlsHost:
     type: application
@@ -32,12 +39,35 @@ targets:
     platform: iOS
     sources:
       - path: ../iosApp/NativeReader/ReaderChromeView.swift
+      - path: ../iosApp/NativeReader/ReaderChildController.swift
+      - path: ../iosApp/NativeReader/WebtoonReaderViewController.swift
+      - path: ../iosApp/NativeReader/ReaderPageCell.swift
+      - path: ../iosApp/NativeReader/ReaderBoundaryCell.swift
+      - path: ../iosApp/NativeReader/ReaderPageOverlays.swift
+      - path: ../iosApp/NativeReader/ReaderImageLoading.swift
+      - path: ../iosApp/NativeReader/ReaderPerfLog.swift
+      - path: ../iosApp/NativeReader/ReaderStrings.swift
       - path: ReaderChromeBarsTests.swift
+      - path: WebtoonReaderBoundaryTests.swift
     dependencies:
       - target: ReaderChromeControlsHost
+      - framework: ComposeApp.framework
+        implicit: true
+        embed: false
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseAnalyticsCore
+      - package: Firebase
+        product: FirebaseCrashlytics
+      - package: Firebase
+        product: FirebaseMessaging
+      - package: Firebase
+        product: FirebaseInAppMessaging-Beta
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira.readercontrols.tests
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
 schemes:
   ReaderChromeControlsTests:
     build:
