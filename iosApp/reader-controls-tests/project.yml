@@ -42,13 +42,26 @@ targets:
       - path: ../iosApp/NativeReader/ReaderChildController.swift
       - path: ../iosApp/NativeReader/WebtoonReaderViewController.swift
       - path: ../iosApp/NativeReader/ReaderPageCell.swift
+      - path: ../iosApp/NativeReader/ReaderPagedCell.swift
       - path: ../iosApp/NativeReader/ReaderBoundaryCell.swift
       - path: ../iosApp/NativeReader/ReaderPageOverlays.swift
       - path: ../iosApp/NativeReader/ReaderImageLoading.swift
+      - path: ../iosApp/NativeReader/ReaderImageRequests.swift
+      - path: ../iosApp/NativeReader/ReaderPageFile.swift
+      - path: ../iosApp/NativeReader/ReaderPageTransport.swift
+      - path: ../iosApp/NativeReader/ReaderImageRequestKey.swift
+      - path: ../iosApp/NativeReader/ReaderImageDecode.swift
       - path: ../iosApp/NativeReader/ReaderPerfLog.swift
       - path: ../iosApp/NativeReader/ReaderStrings.swift
       - path: ReaderChromeBarsTests.swift
       - path: WebtoonReaderBoundaryTests.swift
+      - path: ReaderImageTestSupport.swift
+      - path: ReaderImageDecodeTests.swift
+      - path: ReaderImageLoaderBehaviorTests.swift
+      - path: ReaderImageOwnershipTests.swift
+      - path: ReaderPageCellOwnershipTests.swift
+      - path: ReaderPageTransportTests.swift
+      - path: WebtoonPrefetchOwnershipTests.swift
     dependencies:
       - target: ReaderChromeControlsHost
       - framework: ComposeApp.framework
