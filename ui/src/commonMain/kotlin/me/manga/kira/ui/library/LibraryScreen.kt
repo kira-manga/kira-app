@@ -527,19 +527,16 @@ private fun LibraryTopBar(
     onOpenOptions: () -> Unit,
     onNavigateToDownloads: () -> Unit,
 ) {
-    // Library parity fix (audit p1/library finding 3): search is hidden behind a toggle that
-    // takes over the top bar (native LibraryScreen.kt:94,118-135). Screen-local UI ephemera —
-    // not lifted into LibraryState (same posture as the LibraryOptionsSheet visibility boolean).
-    // The search QUERY still lives in state.searchQuery / OnSearchQueryChange; only the bar's
-    // shown/hidden flag is local here.
-    var showSearchBar by remember { mutableStateOf(false) }
-    // Library parity fix (audit p1/library): system-back closes the search bar instead of leaving
-    // the screen — native LibraryScreen.kt:106-112 `BackHandler(enabled = showSearchBar){ showSearchBar
-    // = false; viewModel.onSearchChanged("") }`. Clearing the query mirrors native's onSearchChanged("").
-    BackHandler(enabled = showSearchBar) {
-        showSearchBar = false
+    // Retained query text must remain visible after recreation. Only opening an empty editor
+    // is local UI state; the ViewModel remains the query owner.
+    var editorOpen by remember { mutableStateOf(false) }
+    val showSearchBar = editorOpen || state.searchQuery.isNotEmpty()
+    // Keep the editor visible until the query owner publishes the requested clear.
+    val closeSearch = {
+        editorOpen = false
         onIntent(LibraryIntent.OnSearchQueryChange(""))
     }
+    BackHandler(enabled = showSearchBar, onBack = closeSearch)
     // System-back clears an active multi-select instead of leaving the screen — mirrors
     // DetailsScreen's chapter-selection BackHandler (DetailsScreen.kt:482).
     BackHandler(enabled = state.isInSelectionMode) {
@@ -570,11 +567,11 @@ private fun LibraryTopBar(
                 // borders/container. Mirrors native SearchAppBar.kt verbatim.
                 LibrarySearchBar(
                     query = state.searchQuery,
-                    onQueryChange = { onIntent(LibraryIntent.OnSearchQueryChange(it)) },
-                    onClose = {
-                        showSearchBar = false
-                        onIntent(LibraryIntent.OnSearchQueryChange(""))
+                    onQueryChange = {
+                        editorOpen = true
+                        onIntent(LibraryIntent.OnSearchQueryChange(it))
                     },
+                    onClose = closeSearch,
                 )
             } else {
                 // Redesign 2026-06: normal-mode top bar replaced with a Home-style header
@@ -607,7 +604,7 @@ private fun LibraryTopBar(
                         LibraryHeaderAction(
                             icon = KiraIcons.Search,
                             contentDescription = stringResource(Res.string.contentDescription_search),
-                            onClick = { showSearchBar = true },
+                            onClick = { editorOpen = true },
                         )
                         // UP-6: single options entry point — opens the tabbed [LibraryOptionsSheet]
                         // (Filter / Sort / Display). Replaces the pre-UP-6 trio of Filter/Sort/Density
@@ -1268,8 +1265,8 @@ private fun LibraryCard(
                     model = coverModel?.invoke(item),
                 )
                 // GAP-LIB-17: source brand badge overlaid top-start on the cover. Mirrors the
-                // native MangaCard — a small rounded-4dp Card tinted with the source brand color
-                // (api.COLORS) at 80% alpha, showing "api - language" in contrast-aware text.
+                // native MangaCard geometry — a small rounded-4dp Card with an opaque source
+                // brand backing, showing "api - language" in contrast-aware text.
                 // Gated on `display.showSource` (the native `showSource` toggle). Placement moved
                 // from a below-cover caption to this on-cover overlay to match native.
                 if (display.showSource && item.manga.api.isNotBlank()) {
@@ -1404,23 +1401,23 @@ private fun LibraryCardCover(
 
 /**
  * Source brand badge (GAP-LIB-17) — a small rounded-4dp [Card] overlaid top-start on the cover,
- * tinted with the source brand color ([libraryBrandColor]) at 80% alpha, showing the
- * "api - language" label (via `library_source_badge_format`) in contrast-aware text
- * (white on dark brand colors, black on light, per [isDarkBrand]). Mirrors the native MangaCard
- * source badge (`MangaCard.kt:172-193`) verbatim: 8sp Bold text, 6dp/2dp inner padding.
+ * using opaque [libraryBrandColor] and its WCAG black/white [libraryBrandContentColor]. The
+ * localized "api - language" label (via `library_source_badge_format`) retains the native
+ * MangaCard source badge geometry: 8sp Bold text, 6dp/2dp inner padding.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun LibrarySourceBadge(
+internal fun LibrarySourceBadge(
     api: String,
     language: String,
     modifier: Modifier = Modifier,
 ) {
     val brand = api.libraryBrandColor
-    val textColor = if (brand.isDarkBrand()) Color.White else Color.Black
+    val textColor = brand.libraryBrandContentColor()
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(4.dp),
-        colors = CardDefaults.cardColors(containerColor = brand.copy(alpha = 0.8f)),
+        colors = CardDefaults.cardColors(containerColor = brand, contentColor = textColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Text(
