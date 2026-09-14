@@ -108,7 +108,7 @@ class ReaderNavigationBarOwnerTest : NavigationBarTestHost() {
 
     @Test
     fun reattachingTheSameWindowReappliesTheOutstandingLease() {
-        compose.runOnUiThread {
+        val owner = compose.runOnUiThread {
             val window = activity.window
             val decor = window.decorView
             val owner = ReaderNavigationBarOwner(window, activity.lifecycle)
@@ -116,7 +116,13 @@ class ReaderNavigationBarOwnerTest : NavigationBarTestHost() {
             activity.windowManager.removeViewImmediate(decor)
             assertFalse(decor.isAttachedToWindow)
             activity.windowManager.addView(decor, window.attributes)
-            assertTrue(decor.isAttachedToWindow)
+            owner
+        }
+        // WindowManager queues the first traversal; attachment is not synchronous with addView.
+        compose.waitForIdle()
+        compose.runOnUiThread {
+            val window = activity.window
+            assertTrue(window.decorView.isAttachedToWindow)
             val reattached = NavigationBarWindowProbe(window)
             reattached.assertNavigationVisible(false)
             assertNavigationBarRegistrations(window, 1)

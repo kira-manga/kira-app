@@ -124,7 +124,7 @@ internal class ActiveActionPages(
                 chapter.url to flowOf<AppResult<List<Page>>>(AppResult.Success(activeActionPages(chapter)))
             }.toMutableMap()
     val requested = mutableListOf<Pair<Manga, Chapter>>()
-    val cleared = mutableListOf<Chapter>()
+    val cleared = mutableListOf<Pair<Manga, Chapter>>()
 
     override fun fetchPages(
         manga: Manga,
@@ -134,8 +134,11 @@ internal class ActiveActionPages(
         return results.getValue(chapter.url)
     }
 
-    override fun clearExtractedPages(chapter: Chapter) {
-        cleared += chapter
+    override fun clearExtractedPages(
+        manga: Manga,
+        chapter: Chapter,
+    ) {
+        cleared += manga to chapter
     }
 }
 

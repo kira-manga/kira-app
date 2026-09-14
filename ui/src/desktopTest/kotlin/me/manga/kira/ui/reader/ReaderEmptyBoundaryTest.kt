@@ -37,7 +37,7 @@ class ReaderEmptyBoundaryTest {
             test.onNodeWithText("Empty chapter", substring = true).assertDoesNotExist()
             test.runOnIdle { intents.clear() }
             test.onNodeWithText("Readable chapter", substring = true).assertIsEnabled().performClick()
-            test.runOnIdle { assertEquals(listOf(ReaderIntent.OnAppendNextChapter), intents) }
+            test.runOnIdle { assertEquals<List<ReaderIntent>>(listOf(ReaderIntent.OnAppendNextChapter), intents) }
             replace(initial.copy(skippedChapterUrls = setOf(second.url, third.url)))
             val terminal = runBlocking { getString(Res.string.np_reader_no_next_chapter) }
             test.onNodeWithText(terminal).assertIsNotEnabled()

@@ -60,7 +60,7 @@ class LibraryCategorySemanticsTest {
         assertEquals(expectedLabels, surface.labels)
         assertTabSelector(surface.labels, selectedIndex = 0, direction)
         assertCategoryActions(surface, direction)
-        assertEquals(
+        assertEquals<List<LibraryIntent>>(
             listOf(LibraryCategory.LIKED, LibraryCategory.WATCHING_NOW, LibraryCategory.NAN, LibraryCategory.NAN)
                 .map { LibraryIntent.OnCategoryChange(it) },
             surface.intents,
