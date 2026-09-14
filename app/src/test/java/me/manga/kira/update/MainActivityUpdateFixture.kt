@@ -7,9 +7,6 @@ import android.os.Bundle
 import android.os.Looper
 import android.widget.FrameLayout
 import com.google.android.play.core.appupdate.testing.FakeAppUpdateManager
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -30,6 +27,9 @@ import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Local lifecycle/Koin fixture; production MainActivity and the Android update client remain real. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -46,7 +46,7 @@ internal class MainActivityUpdateFixture {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         ActivityHolder.current?.let(ActivityHolder::clear)
-        val application = RuntimeEnvironment.getApplication<AppUpdateTestApplication>()
+        val application = RuntimeEnvironment.getApplication()
         shadowOf(application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         manager = RecordingAppUpdateManager(FakeAppUpdateManager(application))
         val client = AndroidAppUpdateClient(application, { ActivityHolder.current }, manager)
@@ -119,17 +119,22 @@ internal class MainActivityUpdateFixture {
         dispatcher.scheduler.runCurrent()
     }
 
-    private fun eligibleReviewStorage(): SecureStorage = object : SecureStorage {
-        override suspend fun get(key: String): String? =
-            if (key == "first_open_time") {
-                (System.currentTimeMillis() - TimeUnit.DAYS.toMillis(21)).toString()
-            } else {
-                null
-            }
+    private fun eligibleReviewStorage(): SecureStorage =
+        object : SecureStorage {
+            override suspend fun get(key: String): String? =
+                if (key == "first_open_time") {
+                    (System.currentTimeMillis() - TimeUnit.DAYS.toMillis(21)).toString()
+                } else {
+                    null
+                }
 
-        override suspend fun put(key: String, value: String) = Unit
-        override suspend fun remove(key: String) = Unit
-    }
+            override suspend fun put(
+                key: String,
+                value: String,
+            ) = Unit
+
+            override suspend fun remove(key: String) = Unit
+        }
 }
 
 internal class ReviewProbe : InAppReviewClient {
@@ -160,12 +165,24 @@ class AppUpdateTestApplication : Application() {
         super.onCreate()
         registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {
-                override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+                override fun onActivityCreated(
+                    activity: Activity,
+                    savedInstanceState: Bundle?,
+                ) = Unit
+
                 override fun onActivityStarted(activity: Activity) = Unit
+
                 override fun onActivityResumed(activity: Activity) = ActivityHolder.set(activity)
+
                 override fun onActivityPaused(activity: Activity) = ActivityHolder.clear(activity)
+
                 override fun onActivityStopped(activity: Activity) = Unit
-                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+                override fun onActivitySaveInstanceState(
+                    activity: Activity,
+                    outState: Bundle,
+                ) = Unit
+
                 override fun onActivityDestroyed(activity: Activity) = ActivityHolder.clear(activity)
             },
         )

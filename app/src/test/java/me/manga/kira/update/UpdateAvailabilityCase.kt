@@ -17,19 +17,20 @@ internal data class UpdateAvailabilityCase(
     val configure: (RecordingAppUpdateManager) -> Unit,
 )
 
-internal fun updateAvailabilityCases(version: Int): List<UpdateAvailabilityCase> = listOf(
-    UpdateAvailabilityCase("immediate only", AppUpdateType.IMMEDIATE) {
-        it.fake.setUpdateAvailable(version, AppUpdateType.IMMEDIATE)
-    },
-    UpdateAvailabilityCase("flexible only", AppUpdateType.FLEXIBLE) {
-        it.fake.setUpdateAvailable(version, AppUpdateType.FLEXIBLE)
-    },
-    UpdateAvailabilityCase("both", AppUpdateType.FLEXIBLE) { it.fake.setUpdateAvailable(version) },
-    UpdateAvailabilityCase("neither", null) {
-        it.queryOverrides[1] = Tasks.forResult(availableUpdateWithNeitherAllowed())
-    },
-    UpdateAvailabilityCase("not available", null) { it.fake.setUpdateNotAvailable() },
-)
+internal fun updateAvailabilityCases(version: Int): List<UpdateAvailabilityCase> =
+    listOf(
+        UpdateAvailabilityCase("immediate only", AppUpdateType.IMMEDIATE) {
+            it.fake.setUpdateAvailable(version, AppUpdateType.IMMEDIATE)
+        },
+        UpdateAvailabilityCase("flexible only", AppUpdateType.FLEXIBLE) {
+            it.fake.setUpdateAvailable(version, AppUpdateType.FLEXIBLE)
+        },
+        UpdateAvailabilityCase("both", AppUpdateType.FLEXIBLE) { it.fake.setUpdateAvailable(version) },
+        UpdateAvailabilityCase("neither", null) {
+            it.queryOverrides[1] = Tasks.forResult(availableUpdateWithNeitherAllowed())
+        },
+        UpdateAvailabilityCase("not available", null) { it.fake.setUpdateNotAvailable() },
+    )
 
 internal suspend fun assertSelectedUpdateLaunch(
     case: UpdateAvailabilityCase,

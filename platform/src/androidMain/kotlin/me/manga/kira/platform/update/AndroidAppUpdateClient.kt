@@ -36,54 +36,61 @@ class AndroidAppUpdateClient(
     private val activityProvider: ForegroundActivityProvider = { null },
     private val manager: AppUpdateManager = AppUpdateManagerFactory.create(context.applicationContext),
 ) : AppUpdateClient {
-
     private val log = Logger.withTag(TAG)
 
     @Volatile
     private var installListener: InstallStateUpdatedListener? = null
 
-    override suspend fun checkForUpdate(): AppUpdateInfo? {
-        return try {
+    override suspend fun checkForUpdate(): AppUpdateInfo? =
+        try {
             val info = manager.appUpdateInfo.await()
             currentCoroutineContext().ensureActive()
-            if (info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE) return null
             val isImmediate =
                 when {
+                    info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE -> null
                     info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) -> false
                     info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE) -> true
-                    else -> return null
+                    else -> null
                 }
-            AppUpdateInfo(
-                availableVersionCode = info.availableVersionCode(),
-                updatePriority = info.updatePriority(),
-                isImmediate = isImmediate,
-            )
+            if (isImmediate == null) {
+                null
+            } else {
+                AppUpdateInfo(
+                    availableVersionCode = info.availableVersionCode(),
+                    updatePriority = info.updatePriority(),
+                    isImmediate = isImmediate,
+                )
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log.w(e) { "checkForUpdate failed" }
             null
         }
-    }
 
-    override suspend fun startUpdate(update: AppUpdateInfo): Boolean {
-        return try {
+    override suspend fun startUpdate(update: AppUpdateInfo): Boolean =
+        try {
             val info = manager.appUpdateInfo.await()
             currentCoroutineContext().ensureActive()
-            if (info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE) return false
-            val type = if (update.isImmediate) AppUpdateType.IMMEDIATE else AppUpdateType.FLEXIBLE
-            if (!info.isUpdateTypeAllowed(type)) return false
-            startUpdateFlow(info, type)
+            if (info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE) {
+                false
+            } else {
+                val type = if (update.isImmediate) AppUpdateType.IMMEDIATE else AppUpdateType.FLEXIBLE
+                if (info.isUpdateTypeAllowed(type)) {
+                    startUpdateFlow(info, type)
+                } else {
+                    false
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log.w(e) { "startUpdate failed" }
             false
         }
-    }
 
-    override suspend fun completeUpdate(): Boolean {
-        return try {
+    override suspend fun completeUpdate(): Boolean =
+        try {
             manager.completeUpdate().await()
             true
         } catch (e: CancellationException) {
@@ -92,16 +99,16 @@ class AndroidAppUpdateClient(
             log.w(e) { "completeUpdate failed" }
             false
         }
-    }
 
     override fun registerUpdateListener(onDownloaded: () -> Unit) {
         // Idempotent: replace any prior listener so repeated registration can't leak one.
         unregisterUpdateListener()
-        val listener = InstallStateUpdatedListener { state ->
-            if (state.installStatus() == InstallStatus.DOWNLOADED) {
-                onDownloaded()
+        val listener =
+            InstallStateUpdatedListener { state ->
+                if (state.installStatus() == InstallStatus.DOWNLOADED) {
+                    onDownloaded()
+                }
             }
-        }
         try {
             manager.registerListener(listener)
             installListener = listener
@@ -120,8 +127,8 @@ class AndroidAppUpdateClient(
         }
     }
 
-    override suspend fun resumeUpdate(): Boolean {
-        return try {
+    override suspend fun resumeUpdate(): Boolean =
+        try {
             val info = manager.appUpdateInfo.await()
             currentCoroutineContext().ensureActive()
             if (info.installStatus() == InstallStatus.DOWNLOADED) {
@@ -141,9 +148,11 @@ class AndroidAppUpdateClient(
             log.w(e) { "resumeUpdate failed" }
             false
         }
-    }
 
-    private fun startUpdateFlow(info: PlayAppUpdateInfo, type: Int): Boolean {
+    private fun startUpdateFlow(
+        info: PlayAppUpdateInfo,
+        type: Int,
+    ): Boolean {
         val activity = activityProvider()
         if (activity == null || activity.isFinishing || activity.isDestroyed) {
             log.w { "startUpdate: no usable foreground Activity available" }
