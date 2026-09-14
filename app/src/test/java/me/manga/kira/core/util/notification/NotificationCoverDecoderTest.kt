@@ -97,7 +97,10 @@ class NotificationCoverDecoderTest {
     }
 }
 
-private fun assertRejectedBitmap(jpeg: ByteArray, returned: Bitmap) {
+private fun assertRejectedBitmap(
+    jpeg: ByteArray,
+    returned: Bitmap,
+) {
     val badResult =
         NotificationCoverDecoder { bytes, offset, size, options ->
             if (options.inJustDecodeBounds) {

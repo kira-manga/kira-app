@@ -80,7 +80,10 @@ class DetailsDeferredDownloadOwnershipTest {
             fixture.downloads.publish(mangaA, listOf(download(101, 1, DownloadState.SUCCESS)))
             val a = fixture.assertLoadedOwner(mangaA)
             assertTrue(a.isChapterDownloaded(CHAPTER_URL))
-            assertFalse(assertNotNull(a.details).chapters.first().isDownloaded, "live SUCCESS precedes saved completion")
+            assertFalse(
+                assertNotNull(a.details).chapters.first().isDownloaded,
+                "live SUCCESS precedes saved completion",
+            )
             val gate = fixture.pauseResolution()
             enqueueAllKinds(fixture)
             fixture.select(listOf(sharedChapter()))
@@ -197,7 +200,8 @@ class DetailsDeferredDownloadOwnershipTest {
     @Test
     fun bulkDefaultPredicateStillSkipsRawDownloadedAndUnresolvedChapters() =
         runTest {
-            val chapters = listOf(sharedChapter().copy(isDownloaded = true), second, sharedChapter().copy(url = "missing"))
+            val chapters =
+                listOf(sharedChapter().copy(isDownloaded = true), second, sharedChapter().copy(url = "missing"))
             val fixture = fixture(chapters)
             assertTrue(fixture.enqueueAll(mangaA, detailsFor(mangaA, chapters)).isSuccess)
             fixture.assertResolution(mangaA, emptyList(), listOf(chapters.map { it.url }))

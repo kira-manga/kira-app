@@ -159,7 +159,11 @@ class NotificationCoverOwnershipTest {
         }
 }
 
-private fun assertCancellationStillOwned(decoding: Job, following: Job, requests: AtomicInteger) {
+private fun assertCancellationStillOwned(
+    decoding: Job,
+    following: Job,
+    requests: AtomicInteger,
+) {
     decoding.cancel()
     assertTrue(decoding.isCancelled)
     assertFalse(decoding.isCompleted)
@@ -167,14 +171,20 @@ private fun assertCancellationStillOwned(decoding: Job, following: Job, requests
     assertEquals(2, requests.get())
 }
 
-private suspend fun loadTextOnly(calls: Call.Factory, posts: AtomicInteger) {
+private suspend fun loadTextOnly(
+    calls: Call.Factory,
+    posts: AtomicInteger,
+) {
     NotificationCoverLoader(calls).withCover("https://example.test/queued", { true }) {
         assertNull(it)
         posts.incrementAndGet()
     }
 }
 
-private suspend fun loadFollowing(calls: Call.Factory, posts: AtomicInteger) {
+private suspend fun loadFollowing(
+    calls: Call.Factory,
+    posts: AtomicInteger,
+) {
     NotificationCoverLoader(calls).withCover("https://example.test/following", { true }) {
         assertNotNull(it)
         posts.incrementAndGet()

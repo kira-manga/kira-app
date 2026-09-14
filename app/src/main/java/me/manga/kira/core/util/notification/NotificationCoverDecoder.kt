@@ -15,9 +15,13 @@ internal object NotificationCoverLimits {
     const val REDIRECTS = 3
     const val RETAINED_COVERS = 2
 
-    fun sampleSize(width: Int, height: Int): Int? {
+    fun sampleSize(
+        width: Int,
+        height: Int,
+    ): Int? {
         if (
-            width !in 1..SOURCE_AXIS || height !in 1..SOURCE_AXIS ||
+            width !in 1..SOURCE_AXIS ||
+            height !in 1..SOURCE_AXIS ||
             width.toLong() * height > SOURCE_PIXELS
         ) {
             return null
@@ -34,7 +38,10 @@ internal object NotificationCoverLimits {
 }
 
 /** A fixed-capacity body; only [size] bytes are passed to BitmapFactory. No trimming copy. */
-internal data class NotificationCoverBytes(val bytes: ByteArray, val size: Int)
+internal data class NotificationCoverBytes(
+    val bytes: ByteArray,
+    val size: Int,
+)
 
 internal class NotificationCoverDecoder(
     private val decode: (ByteArray, Int, Int, BitmapFactory.Options) -> Bitmap? =

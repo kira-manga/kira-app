@@ -24,7 +24,11 @@ import java.util.zip.DeflaterOutputStream
 import kotlin.concurrent.thread
 
 /** Generates compressible raster bytes row-by-row, never a full-size fixture bitmap. */
-internal fun notificationPng(width: Int = 32, height: Int = 16, rows: Int = height): ByteArray {
+internal fun notificationPng(
+    width: Int = 32,
+    height: Int = 16,
+    rows: Int = height,
+): ByteArray {
     val compressed = ByteArrayOutputStream()
     DeflaterOutputStream(compressed).use { deflater ->
         val row = ByteArray(1 + width * 4)
@@ -46,7 +50,10 @@ internal fun notificationPng(width: Int = 32, height: Int = 16, rows: Int = heig
     return png.toByteArray()
 }
 
-private fun DataOutputStream.pngChunk(type: String, bytes: ByteArray) {
+private fun DataOutputStream.pngChunk(
+    type: String,
+    bytes: ByteArray,
+) {
     val tag = type.toByteArray(Charsets.US_ASCII)
     writeInt(bytes.size)
     write(tag)
@@ -144,7 +151,10 @@ internal class NotificationCoverStall : AutoCloseable {
                         reading.countDown()
                     }
 
-                    override fun callFailed(call: Call, ioe: IOException) {
+                    override fun callFailed(
+                        call: Call,
+                        ioe: IOException,
+                    ) {
                         failed.complete(Unit)
                     }
                 },

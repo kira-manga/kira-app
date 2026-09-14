@@ -218,13 +218,18 @@ private fun downgradeCalls(calls: AtomicInteger) =
                 .build()
         }.build()
 
-private class CountingBody(size: Int) : ByteArrayInputStream(ByteArray(size)) {
+private class CountingBody(
+    size: Int,
+) : ByteArrayInputStream(ByteArray(size)) {
     var consumed = 0
 
     override fun read(): Int = super.read().also { if (it != -1) consumed++ }
 
-    override fun read(bytes: ByteArray, offset: Int, length: Int): Int =
-        super.read(bytes, offset, length).also { if (it > 0) consumed += it }
+    override fun read(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int = super.read(bytes, offset, length).also { if (it > 0) consumed += it }
 }
 
 private fun Socket.writeChunkedCover(body: ByteArray) {

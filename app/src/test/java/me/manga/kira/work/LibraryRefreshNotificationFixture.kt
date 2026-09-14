@@ -14,7 +14,6 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import com.google.common.util.concurrent.ListenableFuture
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
@@ -36,6 +35,7 @@ import me.manga.kira.core.util.notification.NotificationCoverLoader
 import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.core.util.notification.NotificationRoomFixture
 import me.manga.kira.core.util.notification.notificationCoverCalls
+import me.manga.kira.core.util.notification.startWorkExecutionJob
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -64,8 +64,7 @@ internal fun notificationRefreshWorker(
     TestListenableWorkerBuilder<LibraryRefreshWorker>(context)
         .setWorkerFactory(
             refreshWorkerFactory(repository, helper, fixtureRegistry(RefreshSource(chapters, beforeDetails))),
-        )
-        .setForegroundUpdater(ImmediateRefreshForeground)
+        ).setForegroundUpdater(ImmediateRefreshForeground)
         .build()
 
 private fun refreshWorkerFactory(
@@ -103,10 +102,16 @@ private class RefreshSource(
 
     override suspend fun featured(page: Int): Nothing = error("Unexpected featured request")
 
-    override suspend fun search(query: String, page: Int, filters: FilterSelections): Nothing =
-        error("Unexpected search request")
+    override suspend fun search(
+        query: String,
+        page: Int,
+        filters: FilterSelections,
+    ): Nothing = error("Unexpected search request")
 
-    override fun pages(manga: Manga, chapter: Chapter): Nothing = error("Unexpected page request")
+    override fun pages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Nothing = error("Unexpected page request")
 
     override suspend fun details(manga: Manga): AppResult<MangaDetails> {
         beforeDetails()
@@ -208,19 +213,6 @@ internal class NotificationWorkerRun {
         }
 }
 
-/**
- * Work2.11.2 supplies a fresh unparented holder Job to launchFuture. The penultimate ancestor is
- * its execution coroutine; the holder may remain active. No implementation-class names are used.
- */
-@OptIn(ExperimentalCoroutinesApi::class)
-private fun startWorkExecutionJob(current: Job): Job {
-    val ancestors = generateSequence(current) { it.parent }.toList()
-    check(ancestors.size >= 3) { "Expected the actual nested startWork execution" }
-    return ancestors[ancestors.lastIndex - 1].also { execution ->
-        check(execution !== current && execution.parent === ancestors.last() && execution.isActive)
-    }
-}
-
 /** A controlled blocking witness around real small BitmapFactory decode, not native preemption. */
 internal class BlockingRefreshCover : NotificationCovers {
     val requests = AtomicInteger()
@@ -231,12 +223,21 @@ internal class BlockingRefreshCover : NotificationCovers {
     private val loader =
         NotificationCoverLoader(notificationCoverCalls(requests = requests), NotificationCoverDecoder(::decode))
 
-    override suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit) {
+    override suspend fun withCover(
+        url: String,
+        canPost: () -> Boolean,
+        post: (Bitmap?) -> Unit,
+    ) {
         itemEntered.complete(currentCoroutineContext().job)
         loader.withCover(url, canPost, post)
     }
 
-    private fun decode(bytes: ByteArray, offset: Int, length: Int, options: BitmapFactory.Options): Bitmap? {
+    private fun decode(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+        options: BitmapFactory.Options,
+    ): Bitmap? {
         if (options.inJustDecodeBounds) return BitmapFactory.decodeByteArray(bytes, offset, length, options)
         decodeEntered.complete(Unit)
         try {
@@ -251,7 +252,9 @@ internal class BlockingRefreshCover : NotificationCovers {
 }
 
 /** Only the worker deadline/outcome boundary: no HTTP, decode or permit evidence comes from this double. */
-internal class RefreshDeadlineWitness(room: NotificationRoomFixture) {
+internal class RefreshDeadlineWitness(
+    room: NotificationRoomFixture,
+) {
     val scheduler = TestCoroutineScheduler()
     val dispatcher = StandardTestDispatcher(scheduler)
     val storageWaiting = CompletableDeferred<Unit>()
@@ -271,7 +274,11 @@ internal class RefreshDeadlineWitness(room: NotificationRoomFixture) {
         }
     val covers =
         object : NotificationCovers {
-            override suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit) {
+            override suspend fun withCover(
+                url: String,
+                canPost: () -> Boolean,
+                post: (Bitmap?) -> Unit,
+            ) {
                 withTimeoutOrNull(NotificationCoverLimits.BUDGET_MILLIS) {
                     coverWaiting.complete(Unit)
                     awaitCancellation()

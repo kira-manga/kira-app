@@ -3,6 +3,7 @@ package me.manga.kira.core.util.notification
 import android.graphics.BitmapFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.joinAll
@@ -18,14 +19,18 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Test-owned synchronous sinks retain real covers until explicitly released and joined. */
-internal class RetainedNotificationCovers(private val calls: Call.Factory) {
+internal class RetainedNotificationCovers(
+    private val calls: Call.Factory,
+) {
     private val entered = LinkedBlockingQueue<Unit>()
     private val release = Semaphore(0)
     val active = AtomicInteger()
     val peak = AtomicInteger()
 
-    fun launchIn(scope: CoroutineScope, count: Int): List<Job> =
-        List(count) { scope.launch(Dispatchers.Default) { load() } }
+    fun launchIn(
+        scope: CoroutineScope,
+        count: Int,
+    ): List<Job> = List(count) { scope.launch(Dispatchers.Default) { load() } }
 
     private suspend fun load() {
         NotificationCoverLoader(calls).withCover("https://example.test/held", { true }) { bitmap ->
@@ -47,7 +52,10 @@ internal class RetainedNotificationCovers(private val calls: Call.Factory) {
 
     fun release(count: Int = 1) = release.release(count)
 
-    suspend fun releaseAndJoin(holders: List<Job>, following: Job? = null) {
+    suspend fun releaseAndJoin(
+        holders: List<Job>,
+        following: Job? = null,
+    ) {
         release(holders.size)
         withContext(NonCancellable) {
             holders.joinAll()
@@ -82,4 +90,17 @@ internal class BlockingNotificationDecode {
         }
 
     fun release() = release.release()
+}
+
+/**
+ * Work2.11.2 supplies a fresh unparented holder Job to launchFuture. The penultimate ancestor is
+ * its execution coroutine; the holder may remain active. No implementation-class names are used.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun startWorkExecutionJob(current: Job): Job {
+    val ancestors = generateSequence(current) { it.parent }.toList()
+    check(ancestors.size >= 3) { "Expected the actual nested startWork execution" }
+    return ancestors[ancestors.lastIndex - 1].also { execution ->
+        check(execution !== current && execution.parent === ancestors.last() && execution.isActive)
+    }
 }

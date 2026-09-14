@@ -607,45 +607,7 @@ class DetailsViewModel(
                 // when there's no saved snapshot or on a re-fetch.
                 val savedSnapshot = state.value.details
                 updateState { current ->
-                    // Enrich the in-state Manga with the authoritative identity fields from the
-                    // fetched details. For full-tuple OnEnter entries this overwrites identical
-                    // fields with the freshly-fetched values (cover/genres may have been refreshed
-                    // server-side since the user last loaded the parent list). For OnEnterByUrl
-                    // entries this fills the sentinel placeholders (`language=""`, `title=""`,
-                    // `coverUrl=""`, `genres=[]`) with the real values for the first time. Skip
-                    // `rating` — Manga.rating is Int? while MangaDetails.rating is String
-                    // (heterogeneous source formats kept opaque per MangaDetails KDoc); the screen
-                    // reads details.rating directly anyway.
-                    val enrichedManga =
-                        current.manga?.copy(
-                            language = details.language,
-                            title = details.title,
-                            coverUrl = details.coverUrl,
-                            genres = details.genres,
-                        )
-                    current.copy(
-                        isLoading = false,
-                        manga = enrichedManga,
-                        details =
-                            (if (savedSnapshot != null) details.overlaidWith(savedSnapshot) else details)
-                                .expireNewBadges(nowMs()),
-                        error = null,
-                        isAdult = refreshedAdult,
-                        // P0-ADULT: arm/keep the hard-block gate from the AUTHORITATIVE fetched
-                        // genres (mirrors native isPlus18(info.genres, api) on the fetched info).
-                        // This is the path that catches URL-only / search-result entries whose
-                        // nav-arg carried no genres. If adult, ensure the gate is active —
-                        // preserve an already-advanced step (e.g. the user is mid-chain when a
-                        // refresh lands) and otherwise arm at AdultWarning; if not adult, clear to
-                        // None. Compliance-critical: a fetch that reveals adult genres can never
-                        // leave the gate at None, so the body stays blocked.
-                        adultGateStep =
-                            when {
-                                !refreshedAdult -> AdultGateStep.None
-                                current.adultGateStep == AdultGateStep.None -> AdultGateStep.AdultWarning
-                                else -> current.adultGateStep
-                            },
-                    )
+                    current.withFetchedDetails(details, savedSnapshot, refreshedAdult)
                 }
                 // Library-membership subscription deferral close-out (URL-only entry path). The
                 // OnEnterByUrl handler can't subscribe up-front because the (api, language, title)
@@ -1244,6 +1206,52 @@ class DetailsViewModel(
                 }
         }
     }
+}
+
+private fun DetailsState.withFetchedDetails(
+    details: MangaDetails,
+    savedSnapshot: MangaDetails?,
+    refreshedAdult: Boolean,
+): DetailsState {
+    // Enrich the in-state Manga with the authoritative identity fields from the
+    // fetched details. For full-tuple OnEnter entries this overwrites identical
+    // fields with the freshly-fetched values (cover/genres may have been refreshed
+    // server-side since the user last loaded the parent list). For OnEnterByUrl
+    // entries this fills the sentinel placeholders (`language=""`, `title=""`,
+    // `coverUrl=""`, `genres=[]`) with the real values for the first time. Skip
+    // `rating` — Manga.rating is Int? while MangaDetails.rating is String
+    // (heterogeneous source formats kept opaque per MangaDetails KDoc); the screen
+    // reads details.rating directly anyway.
+    val enrichedManga =
+        manga?.copy(
+            language = details.language,
+            title = details.title,
+            coverUrl = details.coverUrl,
+            genres = details.genres,
+        )
+    return copy(
+        isLoading = false,
+        manga = enrichedManga,
+        details =
+            (if (savedSnapshot != null) details.overlaidWith(savedSnapshot) else details)
+                .expireNewBadges(nowMs()),
+        error = null,
+        isAdult = refreshedAdult,
+        // P0-ADULT: arm/keep the hard-block gate from the AUTHORITATIVE fetched
+        // genres (mirrors native isPlus18(info.genres, api) on the fetched info).
+        // This is the path that catches URL-only / search-result entries whose
+        // nav-arg carried no genres. If adult, ensure the gate is active —
+        // preserve an already-advanced step (e.g. the user is mid-chain when a
+        // refresh lands) and otherwise arm at AdultWarning; if not adult, clear to
+        // None. Compliance-critical: a fetch that reveals adult genres can never
+        // leave the gate at None, so the body stays blocked.
+        adultGateStep =
+            when {
+                !refreshedAdult -> AdultGateStep.None
+                adultGateStep == AdultGateStep.None -> AdultGateStep.AdultWarning
+                else -> adultGateStep
+            },
+    )
 }
 
 private fun List<DownloadedChapter>.toProgressByUrl(): Map<String, ChapterDownloadProgress> =

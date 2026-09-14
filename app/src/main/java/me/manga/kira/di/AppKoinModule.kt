@@ -31,13 +31,14 @@ import org.koin.dsl.module
  *    `shared/src/androidMain/.../download/ui/test2/DownloadWorkerV2.kt`). Porting the commented-out
  *    upstream variant would resurrect dead code; intentionally skipped.
  */
-val appKoinModule: Module = module {
-    single<NotificationCovers> { NotificationCoverLoader() }
-    single { ChapterNotificationHelper(androidContext(), get(), get(), get()) }
+val appKoinModule: Module =
+    module {
+        single<NotificationCovers> { NotificationCoverLoader() }
+        single { ChapterNotificationHelper(androidContext(), get(), get(), get()) }
 
-    workerOf(::CbzMigrationWorker)
-    workerOf(::LibraryRefreshWorker)
-}
+        workerOf(::CbzMigrationWorker)
+        workerOf(::LibraryRefreshWorker)
+    }
 
 /*
  * §253 audit-trail postscript — cluster283 §253 sweep (2026-05-29)

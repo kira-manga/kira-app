@@ -82,7 +82,8 @@ class ChapterNotificationHelper(
     private fun canPost(): Boolean {
         val manager = context.getSystemService<NotificationManager>() ?: return false
         return NotificationManagerCompat.from(context).areNotificationsEnabled() &&
-            hasPostPermission() && channelAvailable(manager)
+            hasPostPermission() &&
+            channelAvailable(manager)
     }
 
     private fun hasPostPermission(): Boolean {
@@ -114,7 +115,10 @@ class ChapterNotificationHelper(
         return checkNotNull(manager.getNotificationChannel(CHANNEL_ID))
     }
 
-    private fun post(notification: ChapterNotification, bitmap: Bitmap?) {
+    private fun post(
+        notification: ChapterNotification,
+        bitmap: Bitmap?,
+    ) {
         val builder =
             NotificationCompat
                 .Builder(context, CHANNEL_ID)
@@ -133,18 +137,20 @@ class ChapterNotificationHelper(
     }
 }
 
-private fun SavedChapterEntity.notification(manga: SavedMangaEntity, chapterId: Long) =
-    ChapterNotification(
-        mangaId = manga.id,
-        mangaTitle = manga.title,
-        mangaImageUrl = manga.imageUrl,
-        chapterId = chapterId,
-        chapterNumber = number,
-        chapterUrl = url,
-        mangaUrl = manga.url,
-        api = manga.api,
-        language = manga.language,
-    )
+private fun SavedChapterEntity.notification(
+    manga: SavedMangaEntity,
+    chapterId: Long,
+) = ChapterNotification(
+    mangaId = manga.id,
+    mangaTitle = manga.title,
+    mangaImageUrl = manga.imageUrl,
+    chapterId = chapterId,
+    chapterNumber = number,
+    chapterUrl = url,
+    mangaUrl = manga.url,
+    api = manga.api,
+    language = manga.language,
+)
 
 /*
  * §253 audit-trail postscript — cluster284 §253 sweep (2026-05-29)

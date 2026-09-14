@@ -6,19 +6,15 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.database.sqlite.SQLiteException
-import android.graphics.Bitmap
 import kotlinx.coroutines.runBlocking
 import me.manga.kira.R
 import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.di.appKoinModule
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -130,7 +126,13 @@ class ChapterNotificationHelperTest {
             assertTrue(error is IllegalStateException)
             assertEquals("chapter_insert_result_count", error?.message)
             assertEquals(1, attempts.get())
-            assertEquals(1, room.db.chapterDao().getChaptersByMangaIdR(manga.id).size)
+            assertEquals(
+                1,
+                room.db
+                    .chapterDao()
+                    .getChaptersByMangaIdR(manga.id)
+                    .size,
+            )
             assertTrue(room.updates().isEmpty())
             assertEquals(0, covers.calls)
             assertTrue(posting.posted.isEmpty())
@@ -140,14 +142,26 @@ class ChapterNotificationHelperTest {
     fun incompleteChapterInsertResultsFailBeforeNotificationsAndCover() =
         runBlocking {
             val manga = room.manga()
-            val chapters = room.chapterInserts { room.db.chapterDao().insertChaptersSafely(it).dropLast(1) }
+            val chapters =
+                room.chapterInserts {
+                    room.db
+                        .chapterDao()
+                        .insertChaptersSafely(it)
+                        .dropLast(1)
+                }
             val covers = CountingCovers()
             val helper = room.helper(covers, room.repository(chapters))
 
             val error = persistenceFailure(helper, manga, room.chapters(manga, 2))
 
             assertEquals("chapter_insert_result_count", error?.message)
-            assertEquals(2, room.db.chapterDao().getChaptersByMangaIdR(manga.id).size)
+            assertEquals(
+                2,
+                room.db
+                    .chapterDao()
+                    .getChaptersByMangaIdR(manga.id)
+                    .size,
+            )
             assertTrue(room.updates().isEmpty())
             assertEquals(0, covers.calls)
             assertTrue(posting.posted.isEmpty())
@@ -170,7 +184,13 @@ class ChapterNotificationHelperTest {
 
             assertTrue(error is SQLiteException)
             assertEquals(1, attempts.get())
-            assertEquals(2, room.db.chapterDao().getChaptersByMangaIdR(manga.id).size)
+            assertEquals(
+                2,
+                room.db
+                    .chapterDao()
+                    .getChaptersByMangaIdR(manga.id)
+                    .size,
+            )
             assertTrue(room.updates().isEmpty())
             assertEquals(0, covers.calls)
             assertTrue(posting.posted.isEmpty())
@@ -241,14 +261,17 @@ class ChapterNotificationHelperTest {
                 helper.displayNotifications(rows)
                 assertEquals(rows, room.updates())
                 assertEquals(rows.single().id.toInt(), posting.posted.single().first)
-                assertNull(posting.posted.single().second.getLargeIcon())
+                posting.assertTextOnly()
                 assertFalse(context is me.manga.kira.MyApp)
             } finally {
                 app.close()
             }
         }
 
-    private fun assertNotificationContent(notification: Notification, row: ChapterNotification) {
+    private fun assertNotificationContent(
+        notification: Notification,
+        row: ChapterNotification,
+    ) {
         assertEquals(row.mangaTitle, notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
         assertEquals(
             context.getString(R.string.chapter_is_available, row.chapterNumber),
@@ -266,25 +289,6 @@ class ChapterNotificationHelperTest {
                 manager.createNotificationChannel(
                     NotificationChannel(CHAPTER_NOTIFICATION_CHANNEL, "Fixture", NotificationManager.IMPORTANCE_NONE),
                 )
-        }
-    }
-
-    private suspend fun persistenceFailure(
-        helper: ChapterNotificationHelper,
-        manga: SavedMangaEntity,
-        chapters: List<SavedChapterEntity>,
-    ) =
-        runCatching {
-            helper.displayNotifications(helper.persistNewChapterNotifications(manga, chapters))
-        }.exceptionOrNull()
-
-    /** Only detects forbidden entry; does not model transport or capability decisions. */
-    private class CountingCovers : NotificationCovers {
-        var calls = 0
-
-        override suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit) {
-            calls++
-            error("Cover must not start after storage failure")
         }
     }
 }

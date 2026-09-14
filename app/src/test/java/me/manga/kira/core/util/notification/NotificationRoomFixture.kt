@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
@@ -23,6 +24,7 @@ import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import okio.FileSystem
 import okio.Path
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowNotificationManager
@@ -35,13 +37,16 @@ import java.util.concurrent.atomic.AtomicInteger
 internal const val CHAPTER_NOTIFICATION_CHANNEL = "me.manga.kira.new_chapters"
 
 /** Real generated Room DAOs; individual failure tests delegate only the explicitly faulted call. */
-internal class NotificationRoomFixture(private val context: Context) : AutoCloseable {
+internal class NotificationRoomFixture(
+    private val context: Context,
+) : AutoCloseable {
     private val previousNativeProperties = NATIVE_PROPERTIES.associateWith(System::getProperty)
     private val nativeRoot = Files.createTempDirectory(context.cacheDir.toPath(), "notification-room-").toFile()
     val db: MangaDatabase =
         try {
             stageOwnedNative()
-            Room.inMemoryDatabaseBuilder<MangaDatabase>(context)
+            Room
+                .inMemoryDatabaseBuilder<MangaDatabase>(context)
                 .setDriver(BundledSQLiteDriver())
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build()
@@ -67,15 +72,14 @@ internal class NotificationRoomFixture(private val context: Context) : AutoClose
     fun repository(
         chapters: ChapterDao = db.chapterDao(),
         notifications: NotificationDao = db.notificationDao(),
-    ) =
-        LibraryRepository(
-            mangaDao = db.mangaDao(),
-            chapterDao = chapters,
-            libraryDeo = db.libraryDeo(),
-            notificationDao = notifications,
-            historyDao = db.historyDao(),
-            fileService = FileService(UnusedFiles),
-        )
+    ) = LibraryRepository(
+        mangaDao = db.mangaDao(),
+        chapterDao = chapters,
+        libraryDeo = db.libraryDeo(),
+        notificationDao = notifications,
+        historyDao = db.historyDao(),
+        fileService = FileService(UnusedFiles),
+    )
 
     fun helper(
         covers: NotificationCovers,
@@ -91,8 +95,10 @@ internal class NotificationRoomFixture(private val context: Context) : AutoClose
 
     fun notificationInserts(insert: suspend (List<ChapterNotification>) -> List<Long>): NotificationDao =
         object : NotificationDao by db.notificationDao() {
-            override suspend fun insertNotificationsList(notifications: List<ChapterNotification>) =
-                insert(notifications)
+            override suspend fun insertNotificationsList(notifications: List<ChapterNotification>): List<Long> {
+                val ids = insert(notifications)
+                return ids
+            }
         }
 
     suspend fun manga(
@@ -117,18 +123,25 @@ internal class NotificationRoomFixture(private val context: Context) : AutoClose
         return manga.copy(id = db.libraryDeo().insertManga(manga))
     }
 
-    fun chapters(manga: SavedMangaEntity, count: Int) =
-        (1..count).map { number ->
-            SavedChapterEntity(
-                mangaId = manga.id,
-                name = "Chapter $number",
-                number = number.toString(),
-                url = "${manga.url}/chapter-$number",
-                date = LocalDate(2026, 9, 1),
-            )
-        }
+    fun chapters(
+        manga: SavedMangaEntity,
+        count: Int,
+    ) = (1..count).map { number ->
+        SavedChapterEntity(
+            mangaId = manga.id,
+            name = "Chapter $number",
+            number = number.toString(),
+            url = "${manga.url}/chapter-$number",
+            date = LocalDate(2026, 9, 1),
+        )
+    }
 
-    suspend fun updates() = db.notificationDao().getAllNotifications().first().sortedBy { it.id }
+    suspend fun updates() =
+        db
+            .notificationDao()
+            .getAllNotifications()
+            .first()
+            .sortedBy { it.id }
 
     suspend fun assertStoredWithRealChapterIds(rows: List<ChapterNotification>) {
         assertEquals(rows.sortedBy { it.id }, updates())
@@ -195,7 +208,9 @@ internal class NotificationNativeCoverWitness {
     }
 }
 
-internal class MissingNotificationService(context: Context) : ContextWrapper(context) {
+internal class MissingNotificationService(
+    context: Context,
+) : ContextWrapper(context) {
     var lookups = 0
         private set
 
@@ -217,8 +232,20 @@ internal class NotificationPostingShadow : ShadowNotificationManager() {
     @Volatile
     var failingChannel: String? = null
 
+    fun assertTextOnly() {
+        assertNull(
+            posted
+                .single()
+                .second
+                .getLargeIcon(),
+        )
+    }
+
     @Implementation
-    override fun notify(id: Int, notification: Notification) {
+    override fun notify(
+        id: Int,
+        notification: Notification,
+    ) {
         super.notify(id, notification)
         posted.add(id to notification)
     }
@@ -230,5 +257,27 @@ internal class NotificationPostingShadow : ShadowNotificationManager() {
             throw SecurityException("fixture_notification_channel")
         }
         super.createNotificationChannel(channel)
+    }
+}
+
+internal suspend fun persistenceFailure(
+    helper: ChapterNotificationHelper,
+    manga: SavedMangaEntity,
+    chapters: List<SavedChapterEntity>,
+) = runCatching {
+    helper.displayNotifications(helper.persistNewChapterNotifications(manga, chapters))
+}.exceptionOrNull()
+
+/** Only detects forbidden entry; does not model transport or capability decisions. */
+internal class CountingCovers : NotificationCovers {
+    var calls = 0
+
+    override suspend fun withCover(
+        url: String,
+        canPost: () -> Boolean,
+        post: (Bitmap?) -> Unit,
+    ) {
+        calls++
+        error("Cover must not start after storage failure")
     }
 }

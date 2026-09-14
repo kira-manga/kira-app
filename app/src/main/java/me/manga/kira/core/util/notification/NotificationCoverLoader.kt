@@ -30,14 +30,22 @@ import java.util.concurrent.atomic.AtomicReference
  * The caller owns this entire operation; ancestor cancellation is never a text-only success.
  */
 interface NotificationCovers {
-    suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit)
+    suspend fun withCover(
+        url: String,
+        canPost: () -> Boolean,
+        post: (Bitmap?) -> Unit,
+    )
 }
 
 internal class NotificationCoverLoader(
     private val calls: Call.Factory = client,
     private val decoder: NotificationCoverDecoder = NotificationCoverDecoder(),
 ) : NotificationCovers {
-    override suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit) {
+    override suspend fun withCover(
+        url: String,
+        canPost: () -> Boolean,
+        post: (Bitmap?) -> Unit,
+    ) {
         currentCoroutineContext().ensureActive()
         if (!canPost()) return
         var acquired = false
@@ -100,29 +108,42 @@ internal class NotificationCoverLoader(
             }
         }
 
-    private suspend fun fetch(url: String, currentCall: AtomicReference<Call?>): NotificationCoverBytes? {
-        var destination = safeUrl(url) ?: return null
-        repeat(NotificationCoverLimits.REDIRECTS + 1) { hop ->
-            currentCoroutineContext().ensureActive()
-            val call = calls.newCall(Request.Builder().url(destination).build())
-            currentCall.set(call)
-            try {
-                // Covers cancellation before/while the call was published to the watcher.
-                currentCoroutineContext().ensureActive()
-                call.execute().use { response ->
-                    if (response.code in REDIRECT_CODES) {
-                        if (hop == NotificationCoverLimits.REDIRECTS) return null
-                        destination = redirect(destination, response.header("Location")) ?: return null
+    private suspend fun fetch(
+        url: String,
+        currentCall: AtomicReference<Call?>,
+    ): NotificationCoverBytes? {
+        var destination = safeUrl(url)
+        for (hop in 0..NotificationCoverLimits.REDIRECTS) {
+            val previous = destination ?: break
+            destination =
+                withResponse(previous, currentCall) { response ->
+                    if (response.code !in REDIRECT_CODES) return readBody(response)
+                    if (hop == NotificationCoverLimits.REDIRECTS) {
+                        null
                     } else {
-                        return readBody(response)
+                        redirect(previous, response.header("Location"))
                     }
                 }
-            } finally {
-                currentCall.compareAndSet(call, null)
-                call.cancel()
-            }
         }
         return null
+    }
+
+    private suspend inline fun <T> withResponse(
+        destination: HttpUrl,
+        currentCall: AtomicReference<Call?>,
+        readResponse: (Response) -> T,
+    ): T {
+        currentCoroutineContext().ensureActive()
+        val call = calls.newCall(Request.Builder().url(destination).build())
+        currentCall.set(call)
+        try {
+            // Covers cancellation before/while the call was published to the watcher.
+            currentCoroutineContext().ensureActive()
+            return call.execute().use(readResponse)
+        } finally {
+            currentCall.compareAndSet(call, null)
+            call.cancel()
+        }
     }
 
     private suspend fun readBody(response: Response): NotificationCoverBytes? {
@@ -130,17 +151,24 @@ internal class NotificationCoverLoader(
         val encoding = response.header("Content-Encoding")
         val body = response.body
         if (
-            !response.isSuccessful || body.contentLength() > NotificationCoverLimits.BODY_BYTES ||
-            (encoding != null && !encoding.equals("identity", ignoreCase = true))
+            !response.isSuccessful ||
+            body.contentLength() > NotificationCoverLimits.BODY_BYTES ||
+            hasUnsupportedEncoding(encoding)
         ) {
             return null
         }
         return body.byteStream().use { readCoverBytes(it) }
     }
 
+    private fun hasUnsupportedEncoding(encoding: String?): Boolean {
+        if (encoding == null) return false
+        return !encoding.equals("identity", ignoreCase = true)
+    }
+
     private companion object {
         val permits = Semaphore(NotificationCoverLimits.RETAINED_COVERS)
         val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
+
         // Ordinary Android OkHttp transport retains platform TLS and per-host cleartext policy.
         val client =
             OkHttpClient
@@ -156,10 +184,15 @@ internal class NotificationCoverLoader(
     }
 }
 
-internal fun safeUrl(value: String): HttpUrl? =
-    value.toHttpUrlOrNull()?.takeIf { it.username.isEmpty() && it.password.isEmpty() }
+internal fun safeUrl(value: String): HttpUrl? {
+    val url = value.toHttpUrlOrNull() ?: return null
+    return url.takeIf { it.username.isEmpty() && it.password.isEmpty() }
+}
 
-internal fun redirect(previous: HttpUrl, location: String?): HttpUrl? {
+internal fun redirect(
+    previous: HttpUrl,
+    location: String?,
+): HttpUrl? {
     val next = location?.takeIf { it.isNotBlank() }?.let(previous::resolve) ?: return null
     return next.takeIf {
         it.username.isEmpty() && it.password.isEmpty() && (!previous.isHttps || it.isHttps)
@@ -180,7 +213,10 @@ internal suspend fun readCoverBytes(input: InputStream): NotificationCoverBytes?
     return if (input.read() == -1) NotificationCoverBytes(bytes, count) else null
 }
 
-private fun InputStream.readAtLeastOne(bytes: ByteArray, offset: Int): Int {
+private fun InputStream.readAtLeastOne(
+    bytes: ByteArray,
+    offset: Int,
+): Int {
     val count = read(bytes, offset, bytes.size - offset)
     if (count != 0) return count
     // Defensive progress for an InputStream that unexpectedly returns zero for a nonempty request.

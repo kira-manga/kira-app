@@ -10,7 +10,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 
 /** One real-DB cross-parent witness; delegates observe actual INSERT IGNORE and scoped lookup results. */
-internal class NotificationOwnerWitness(private val room: NotificationRoomFixture) {
+internal class NotificationOwnerWitness(
+    private val room: NotificationRoomFixture,
+) {
     private val realChapters = room.db.chapterDao()
     private val inserts = mutableListOf<List<Long>>()
     private val lookups = mutableListOf<Pair<Long, List<String>>>()
@@ -21,12 +23,21 @@ internal class NotificationOwnerWitness(private val room: NotificationRoomFixtur
             override suspend fun insertChaptersSafely(chapters: List<SavedChapterEntity>): List<Long> =
                 realChapters.insertChaptersSafely(chapters).also { inserts.add(it) }
 
-            override suspend fun getChapterIdsByUrlForManga(mangaId: Long, urls: List<String>): Map<String, Long> =
-                realChapters.getChapterIdsByUrlForManga(mangaId, urls).also { lookups.add(mangaId to urls.toList()) }
+            override suspend fun getChapterIdsByUrlForManga(
+                mangaId: Long,
+                urls: List<String>,
+            ): Map<String, Long> {
+                val ids = realChapters.getChapterIdsByUrlForManga(mangaId, urls)
+                return ids.also { lookups.add(mangaId to urls.toList()) }
+            }
         }
     private val observedCovers =
         object : NotificationCovers {
-            override suspend fun withCover(url: String, canPost: () -> Boolean, post: (Bitmap?) -> Unit) {
+            override suspend fun withCover(
+                url: String,
+                canPost: () -> Boolean,
+                post: (Bitmap?) -> Unit,
+            ) {
                 coverUrls.add(url)
                 cover.loader.withCover(url, canPost, post)
             }
@@ -81,7 +92,10 @@ internal class NotificationOwnerWitness(private val room: NotificationRoomFixtur
         return Owner(manga, chapter, chapterId)
     }
 
-    private suspend fun assertStoredOwner(owner: Owner, row: ChapterNotification) {
+    private suspend fun assertStoredOwner(
+        owner: Owner,
+        row: ChapterNotification,
+    ) {
         assertTrue(row.id > 0L)
         assertEquals(owner.manga.id, row.mangaId)
         assertEquals(owner.manga.url, row.mangaUrl)
@@ -96,7 +110,11 @@ internal class NotificationOwnerWitness(private val room: NotificationRoomFixtur
         assertEquals(row, room.updates().single { it.mangaId == owner.manga.id })
     }
 
-    private data class Owner(val manga: SavedMangaEntity, val chapter: SavedChapterEntity, val chapterId: Long)
+    private data class Owner(
+        val manga: SavedMangaEntity,
+        val chapter: SavedChapterEntity,
+        val chapterId: Long,
+    )
 
     private companion object {
         const val SHARED_URL = "https://chapter.example/shared-chapter"

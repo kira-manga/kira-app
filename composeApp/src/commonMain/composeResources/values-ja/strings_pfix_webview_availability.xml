@@ -1,0 +1,7 @@
+<resources>
+    <string name="webview_unavailable_title">WebView を利用できません</string>
+    <string name="webview_unavailable_message">Android System WebView または Chrome を有効にするか更新してから、再試行してください。このページを別のブラウザで開いても、Kira にセッションは保存されません。</string>
+    <string name="webview_unavailable_retry">再試行</string>
+    <string name="webview_open_external_browser">ブラウザで開く</string>
+    <string name="webview_external_browser_failed">ブラウザを開けませんでした。ブラウザがインストールされ、使用が許可されていることを確認するか、WebView を再試行してください。</string>
+</resources>

@@ -4,9 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.toRoute
+import me.manga.kira.core.webview.WebViewController
+import me.manga.kira.core.webview.rememberWebViewController
 import me.manga.kira.navigation.Screen
-import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.presentation.features.webview.ui.screens.WebViewComposeScreen
+import me.manga.kira.presentation.features.webview.ui.screens.WebViewScreenCallbacks
 import me.manga.kira.presentation.features.webview.ui.viewmodel.WebViewViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -59,18 +61,24 @@ fun WebViewScreenRoute(
     navController: NavController,
     backStackEntry: NavBackStackEntry,
 ) {
-    val args = backStackEntry.toRoute<Screen.WebView>()
     val webViewViewModel: WebViewViewModel = koinViewModel()
+    WebViewRouteContent(navController, backStackEntry, rememberWebViewController(), webViewViewModel::saveHeaders)
+}
 
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
+@Composable
+internal fun WebViewRouteContent(
+    navController: NavController,
+    backStackEntry: NavBackStackEntry,
+    controller: WebViewController,
+    onSaveHeaders: (Map<String, String>?, String) -> Unit,
+) {
+    val args = backStackEntry.toRoute<Screen.WebView>()
+    val actions = WebViewRouteActions(navController, backStackEntry, controller, onSaveHeaders)
     WebViewComposeScreen(
         api = args.api,
         initialUrl = args.url,
-        onSaveHeaders = { headers, api ->
-            webViewViewModel.saveHeaders(headers, api)
-        },
-        onClose = { headers, api ->
-            webViewViewModel.saveHeaders(headers, api)
-            navController.safePopBackStack()
-        },
+        controller = controller,
+        callbacks = WebViewScreenCallbacks(onSaveHeaders = actions::save, onClose = actions::close),
     )
 }
