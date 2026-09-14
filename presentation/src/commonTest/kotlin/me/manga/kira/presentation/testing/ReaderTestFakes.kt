@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.testing
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import me.manga.kira.core.result.AppResult
@@ -8,14 +9,12 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.history.HistoryEntry
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.domain.repository.HistoryRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.MarkChapterReadRepository
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.domain.repository.ReadingModeRepository
 import me.manga.kira.domain.repository.ReadingSessionRepository
@@ -102,6 +101,7 @@ class RecordingReadProgressRepository : ReadProgressRepository {
 
     /** Value returned by [load] (the resume seed); a test can set it before OnEnter. */
     var loadValue: Int? = null
+    var loadGate: CompletableDeferred<Unit>? = null
 
     override suspend fun save(
         chapterUrl: String,
@@ -110,20 +110,12 @@ class RecordingReadProgressRepository : ReadProgressRepository {
         saved += chapterUrl to pageIndex
     }
 
-    override suspend fun load(chapterUrl: String): Int? = loadValue
+    override suspend fun load(chapterUrl: String): Int? {
+        loadGate?.await()
+        return loadValue
+    }
 
     override suspend fun clear(chapterUrl: String) = Unit
-}
-
-private class FakePageProgressRepository : PageProgressRepository {
-    override fun observe(url: String): Flow<PageDownloadProgress> = flowOf(PageDownloadProgress.Idle)
-
-    override fun report(
-        url: String,
-        status: PageDownloadProgress,
-    ) = Unit
-
-    override fun clear(url: String) = Unit
 }
 
 class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
@@ -214,6 +206,7 @@ class ReaderTestEnv(
     val bookmark: RecordingChapterBookmarkRepository,
     val history: RecordingHistoryRepository,
     val readingSession: RecordingReadingSessionRepository,
+    val pageProgress: RecordingPageProgressRepository,
 )
 
 /**
@@ -232,6 +225,7 @@ fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
     val history = RecordingHistoryRepository()
     // #7: ONE shared reading-session recorder wired into both use cases (mirrors prod single binding).
     val readingSession = RecordingReadingSessionRepository()
+    val pageProgress = RecordingPageProgressRepository()
     val details =
         MangaDetails(
             api = "src",
@@ -256,15 +250,15 @@ fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
             endReadingSession = EndReadingSessionUseCase(readingSession),
             loadPagePosition = LoadPagePositionUseCase(readProgress),
             savePagePosition = SavePagePositionUseCase(readProgress),
-            observePageProgress = ObservePageProgressUseCase(FakePageProgressRepository()),
+            observePageProgress = ObservePageProgressUseCase(pageProgress),
             observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
             recordHistory = RecordHistoryUseCase(history, FakeSettingsRepository()),
             markChapterRead = MarkChapterReadUseCase(markRead),
             clearExtractedPages = ClearExtractedPagesUseCase(pages),
-            clearPageProgress = ClearPageProgressUseCase(FakePageProgressRepository()),
+            clearPageProgress = ClearPageProgressUseCase(pageProgress),
         )
-    return ReaderTestEnv(vm, pages, markRead, readProgress, bookmark, history, readingSession)
+    return ReaderTestEnv(vm, pages, markRead, readProgress, bookmark, history, readingSession, pageProgress)
 }
 
 fun readerChapter(n: String): Chapter =

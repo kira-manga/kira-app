@@ -6,8 +6,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import me.manga.kira.core.result.AppResult
@@ -15,11 +13,9 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.domain.repository.ReadingModeRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
@@ -42,6 +38,7 @@ import me.manga.kira.presentation.testing.FakeSettingsRepository
 import me.manga.kira.presentation.testing.RecordingChapterBookmarkRepository
 import me.manga.kira.presentation.testing.RecordingHistoryRepository
 import me.manga.kira.presentation.testing.RecordingMarkChapterReadRepository
+import me.manga.kira.presentation.testing.RecordingPageProgressRepository
 import me.manga.kira.presentation.testing.RecordingReadingSessionRepository
 import me.manga.kira.presentation.testing.readerChapter
 import me.manga.kira.presentation.testing.readerManga
@@ -142,37 +139,7 @@ internal class ActiveActionPages(
     }
 }
 
-internal class ActiveActionProgress : PageProgressRepository {
-    private val streams = mutableMapOf<String, MutableStateFlow<PageDownloadProgress>>()
-    private val collectors = mutableMapOf<String, Int>()
-    val cancelled = mutableListOf<String>()
-    val activeUrls: Set<String> get() = collectors.filterValues { it > 0 }.keys
-
-    override fun observe(url: String): Flow<PageDownloadProgress> =
-        flow {
-            collectors[url] = collectors.getOrElse(url) { 0 } + 1
-            try {
-                emitAll(stream(url))
-            } finally {
-                collectors[url] = collectors.getValue(url) - 1
-                cancelled += url
-            }
-        }
-
-    override fun report(
-        url: String,
-        status: PageDownloadProgress,
-    ) {
-        stream(url).value = status
-    }
-
-    override fun clear(url: String) {
-        report(url, PageDownloadProgress.Idle)
-    }
-
-    private fun stream(url: String): MutableStateFlow<PageDownloadProgress> =
-        streams.getOrPut(url) { MutableStateFlow(PageDownloadProgress.Idle) }
-}
+internal typealias ActiveActionProgress = RecordingPageProgressRepository
 
 internal class ActiveActionResume : ReadProgressRepository {
     val positions = mutableMapOf<String, Int>()
