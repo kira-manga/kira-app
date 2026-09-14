@@ -16,6 +16,7 @@ import kotlin.test.assertNull
 /** Observes real native calls/ownership; overrides in tests introduce only the named fault. */
 @OptIn(ExperimentalForeignApi::class)
 internal open class IosCbzRecordingCodec : IosCbzNativeCodec() {
+    private val bands = mutableListOf<RecordedBand>()
     var decodes = 0
         private set
     var contexts = 0
@@ -47,16 +48,14 @@ internal open class IosCbzRecordingCodec : IosCbzNativeCodec() {
     }
 
     override fun encodeBand(
-        rgba: CPointer<UByteVar>,
-        width: Int,
-        height: Int,
-        stride: Int,
+        band: IosRgbaBand,
         quality: Int,
         output: CPointer<CPointerVar<UByteVar>>,
     ): ULong {
         assertNull(output.pointed.value, "native output must be initialized before every encode")
         encodes++
-        return super.encodeBand(rgba, width, height, stride, quality, output).also {
+        bands += RecordedBand(band.width, band.height, band.stride, quality)
+        return super.encodeBand(band, quality, output).also {
             if (output.pointed.value != null) liveOutputs++
         }
     }
@@ -91,6 +90,14 @@ internal open class IosCbzRecordingCodec : IosCbzNativeCodec() {
         assertEquals(0, liveOutputs)
     }
 
+    fun assertBands(
+        width: Int,
+        heights: List<Int>,
+        quality: Int,
+    ) {
+        assertEquals(heights.map { RecordedBand(width, it, width * RGBA_BYTES_PER_PIXEL, quality) }, bands)
+    }
+
     fun assertNoTranscode() {
         assertEquals(0, decodes)
         assertEquals(0, contexts)
@@ -98,5 +105,16 @@ internal open class IosCbzRecordingCodec : IosCbzNativeCodec() {
         assertEquals(0, copies)
         assertEquals(0, frees)
         assertReleased()
+    }
+
+    private data class RecordedBand(
+        val width: Int,
+        val height: Int,
+        val stride: Int,
+        val quality: Int,
+    )
+
+    private companion object {
+        const val RGBA_BYTES_PER_PIXEL = 4
     }
 }

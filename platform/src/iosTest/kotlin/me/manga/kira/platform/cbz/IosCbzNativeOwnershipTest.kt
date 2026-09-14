@@ -34,19 +34,12 @@ class IosCbzNativeOwnershipTest {
             var emitted = 0
             val result =
                 IosLibWebpEncoder.encodeValidatedPage(
-                    IOS_CBZ_PNG,
-                    inspector.inspect(IOS_CBZ_PNG).requireValid(),
-                    75,
-                    24,
-                    CbzWriter.DEFAULT_MAX_MEMORY_BYTES,
+                    ValidatedCbzPage(IOS_CBZ_PNG, inspector.inspect(IOS_CBZ_PNG).requireValid()),
+                    CbzEncodingOptions(75, 24, CbzWriter.DEFAULT_MAX_MEMORY_BYTES),
                     native,
                 ) { bytes ->
                     assertEquals(emitted + 1, native.encodes, "the encoder must not precompute a list of all bands")
-                    assertEquals(
-                        native.encodes,
-                        native.frees,
-                        "libwebp's output buffer is gone before the sink callback",
-                    )
+                    assertEquals(native.encodes, native.frees, "libwebp's output buffer is gone before the sink callback")
                     assertEquals(0, native.liveOutputs)
                     assertEquals(1, native.liveImages)
                     assertEquals(1, native.liveContexts)
@@ -55,6 +48,7 @@ class IosCbzNativeOwnershipTest {
                 }
             assertEquals(CbzPageEncoding.Encoded(3), result)
             assertEquals(3, emitted)
+            native.assertBands(23, listOf(24, 24, 17), 75)
             native.assertReleased()
         }
 
@@ -62,44 +56,13 @@ class IosCbzNativeOwnershipTest {
     fun nativeOutputSizeIsCheckedBeforeCopyAndFreedEvenWhenCopyingFails() =
         runTest {
             NativeOutputFault.entries.forEach { fault ->
-                val native =
-                    object : IosCbzRecordingCodec() {
-                        override fun encodeBand(
-                            rgba: CPointer<UByteVar>,
-                            width: Int,
-                            height: Int,
-                            stride: Int,
-                            quality: Int,
-                            output: CPointer<CPointerVar<UByteVar>>,
-                        ): ULong {
-                            val size = super.encodeBand(rgba, width, height, stride, quality, output)
-                            return when (fault) {
-                                NativeOutputFault.ZERO -> 0uL
-                                NativeOutputFault.OVER_ADMITTED -> 1_000_000uL
-                                NativeOutputFault.OVER_INT -> Int.MAX_VALUE.toULong() + 1uL
-                                NativeOutputFault.OVER_SIGNED -> ULong.MAX_VALUE
-                                NativeOutputFault.COPY -> size
-                            }
-                        }
-
-                        override fun copyEncoded(
-                            pointer: CPointer<UByteVar>,
-                            size: Int,
-                        ): ByteArray {
-                            val bytes = super.copyEncoded(pointer, size)
-                            if (fault == NativeOutputFault.COPY) throw IOException("copy failed")
-                            return bytes
-                        }
-                    }
+                val native = NativeOutputFaultCodec(fault)
                 val metadata = IosPageMediaInspector().inspect(IOS_CBZ_PNG).requireValid()
 
                 assertFailsWith<IOException> {
                     IosLibWebpEncoder.encodeValidatedPage(
-                        IOS_CBZ_PNG,
-                        metadata,
-                        75,
-                        24,
-                        CbzWriter.DEFAULT_MAX_MEMORY_BYTES,
+                        ValidatedCbzPage(IOS_CBZ_PNG, metadata),
+                        CbzEncodingOptions(75, 24, CbzWriter.DEFAULT_MAX_MEMORY_BYTES),
                         native,
                     ) {
                         error("a failed native band cannot be emitted")
@@ -121,16 +84,7 @@ class IosCbzNativeOwnershipTest {
                 val paths = fixture.pages(count = 1, chapterId = chapter)
                 val previous = fixture.previousArchive(chapter)
                 val originals = fixture.capture(paths)
-                val native =
-                    object : IosCbzRecordingCodec() {
-                        override fun decode(source: CGImageSourceRef): CGImageRef? =
-                            if (contextFailure) super.decode(source) else null
-
-                        override fun createContext(
-                            plan: CbzTranscodePlan,
-                            colorSpace: CGColorSpaceRef,
-                        ): CGContextRef? = null
-                    }
+                val native = FullDecodeFaultCodec(contextFailure)
 
                 assertFailsWith<IOException> {
                     IosCbzWriter(fixture.fileSystem(), IosCbzPageTranscoder(native = native))
@@ -153,14 +107,11 @@ class IosCbzNativeOwnershipTest {
             val native =
                 object : IosCbzRecordingCodec() {
                     override fun encodeBand(
-                        rgba: CPointer<UByteVar>,
-                        width: Int,
-                        height: Int,
-                        stride: Int,
+                        band: IosRgbaBand,
                         quality: Int,
                         output: CPointer<CPointerVar<UByteVar>>,
                     ): ULong {
-                        val size = super.encodeBand(rgba, width, height, stride, quality, output)
+                        val size = super.encodeBand(band, quality, output)
                         return if (encodes == 2) 0uL else size
                     }
                 }
@@ -184,14 +135,7 @@ class IosCbzNativeOwnershipTest {
             val previous = fixture.previousArchive()
             val originals = fixture.capture(paths)
             lateinit var conversionJob: Job
-            val native =
-                object : IosCbzRecordingCodec() {
-                    override fun copyEncoded(
-                        pointer: CPointer<UByteVar>,
-                        size: Int,
-                    ): ByteArray =
-                        super.copyEncoded(pointer, size).also { conversionJob.cancel("cancel after native encode") }
-                }
+            val native = cancellingAfterCopyCodec { conversionJob.cancel("cancel after native encode") }
             val conversion =
                 async {
                     conversionJob = currentCoroutineContext().job
@@ -217,8 +161,8 @@ class IosCbzNativeOwnershipTest {
             val originals = fixture.capture(paths)
             var written = 0
             val encoder =
-                IosCbzPageEncoder { source, metadata, quality, maxHeight, maxMemoryBytes, emit ->
-                    SkiaWebpEncoder.encodeValidatedPage(source, metadata, quality, maxHeight, maxMemoryBytes) {
+                IosCbzPageEncoder { page, options, emit ->
+                    SkiaWebpEncoder.encodeValidatedPage(page, options) {
                         if (written == 1) throw IOException("second rollback band write failed")
                         emit("webp", it)
                         written++
@@ -236,3 +180,53 @@ class IosCbzNativeOwnershipTest {
 }
 
 private enum class NativeOutputFault { ZERO, OVER_ADMITTED, OVER_INT, OVER_SIGNED, COPY }
+
+@OptIn(ExperimentalForeignApi::class)
+private class NativeOutputFaultCodec(
+    private val fault: NativeOutputFault,
+) : IosCbzRecordingCodec() {
+    override fun encodeBand(
+        band: IosRgbaBand,
+        quality: Int,
+        output: CPointer<CPointerVar<UByteVar>>,
+    ): ULong {
+        val size = super.encodeBand(band, quality, output)
+        return when (fault) {
+            NativeOutputFault.ZERO -> 0uL
+            NativeOutputFault.OVER_ADMITTED -> 1_000_000uL
+            NativeOutputFault.OVER_INT -> Int.MAX_VALUE.toULong() + 1uL
+            NativeOutputFault.OVER_SIGNED -> ULong.MAX_VALUE
+            NativeOutputFault.COPY -> size
+        }
+    }
+
+    override fun copyEncoded(
+        pointer: CPointer<UByteVar>,
+        size: Int,
+    ): ByteArray {
+        val bytes = super.copyEncoded(pointer, size)
+        if (fault == NativeOutputFault.COPY) throw IOException("copy failed")
+        return bytes
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private class FullDecodeFaultCodec(
+    private val contextFailure: Boolean,
+) : IosCbzRecordingCodec() {
+    override fun decode(source: CGImageSourceRef): CGImageRef? = if (contextFailure) super.decode(source) else null
+
+    override fun createContext(
+        plan: CbzTranscodePlan,
+        colorSpace: CGColorSpaceRef,
+    ): CGContextRef? = null
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun cancellingAfterCopyCodec(cancel: () -> Unit): IosCbzRecordingCodec =
+    object : IosCbzRecordingCodec() {
+        override fun copyEncoded(
+            pointer: CPointer<UByteVar>,
+            size: Int,
+        ): ByteArray = super.copyEncoded(pointer, size).also { cancel() }
+    }

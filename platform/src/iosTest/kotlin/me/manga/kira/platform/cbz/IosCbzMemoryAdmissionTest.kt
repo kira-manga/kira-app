@@ -28,30 +28,9 @@ class IosCbzMemoryAdmissionTest {
             assertEquals(PageImageMetadata(PageImageFormat.PNG, 8, 9), metadata)
             // 3*68 +16*(8*9) +4MiB +2*64KiB +48*8*1 =4,327,116, independently fixed for this fixture.
             val exactBudget = 4_327_116L
-            val admitted = IosCbzRecordingCodec()
-            var bands = 0
-            val result =
-                IosLibWebpEncoder.encodeValidatedPage(source, metadata, 75, 1, exactBudget, admitted) {
-                    assertEquals(
-                        PageImageMetadata(PageImageFormat.WEBP, 8, 1),
-                        IosPageMediaInspector().inspect(it).requireValid(),
-                    )
-                    bands++
-                }
-            assertEquals(CbzPageEncoding.Encoded(9), result)
-            assertEquals(9, bands)
-            assertEquals(1, admitted.decodes)
-            assertEquals(1, admitted.contexts)
-            assertEquals(9, admitted.frees)
-            admitted.assertReleased()
-
-            val denied = IosCbzRecordingCodec()
-            val denial =
-                IosLibWebpEncoder.encodeValidatedPage(source, metadata, 75, 1, exactBudget - 1, denied) {
-                    error("budget denial cannot emit transcoded bytes")
-                }
-            assertEquals(CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET), denial)
-            denied.assertNoTranscode()
+            val page = ValidatedCbzPage(source, metadata)
+            assertSingleRowTranscode(page, exactBudget)
+            assertBudgetDenied(page, exactBudget - 1)
         }
 
     @Test
@@ -66,33 +45,8 @@ class IosCbzMemoryAdmissionTest {
             cases.forEach { (exact, larger, budget) ->
                 assertEquals(exact.size, larger.size)
                 val inspector = IosPageMediaInspector()
-                val exactNative = IosCbzRecordingCodec()
-                assertIs<CbzPageEncoding.Encoded>(
-                    IosLibWebpEncoder.encodeValidatedPage(
-                        exact,
-                        inspector.inspect(exact).requireValid(),
-                        75,
-                        1,
-                        budget,
-                        exactNative,
-                    ) { },
-                )
-                assertEquals(1, exactNative.decodes)
-                exactNative.assertReleased()
-                val denied = IosCbzRecordingCodec()
-                val result =
-                    IosLibWebpEncoder.encodeValidatedPage(
-                        larger,
-                        inspector.inspect(larger).requireValid(),
-                        75,
-                        1,
-                        budget,
-                        denied,
-                    ) {
-                        error("larger source must be preserved before transcode")
-                    }
-                assertEquals(CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET), result)
-                denied.assertNoTranscode()
+                assertSingleRowTranscode(ValidatedCbzPage(exact, inspector.inspect(exact).requireValid()), budget)
+                assertBudgetDenied(ValidatedCbzPage(larger, inspector.inspect(larger).requireValid()), budget)
             }
         }
 
@@ -202,11 +156,8 @@ class IosCbzMemoryAdmissionTest {
             val metadata = IosPageMediaInspector().inspect(source).requireValid()
             val result =
                 SkiaWebpEncoder.encodeValidatedPage(
-                    source,
-                    metadata,
-                    75,
-                    24,
-                    1,
+                    ValidatedCbzPage(source, metadata),
+                    CbzEncodingOptions(75, 24, 1),
                     decode = { error("rollback budget denial must precede native decode") },
                 ) { error("budget denial cannot emit a WebP band") }
             assertEquals(CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET), result)
@@ -219,4 +170,39 @@ class IosCbzMemoryAdmissionTest {
             assertTrue(paths.none { fixture.system.exists(it) })
             fixture.assertNoTemporary()
         }
+
+    private suspend fun assertSingleRowTranscode(
+        page: ValidatedCbzPage,
+        budget: Long,
+    ) {
+        val native = IosCbzRecordingCodec()
+        var bands = 0
+        val result =
+            IosLibWebpEncoder.encodeValidatedPage(page, CbzEncodingOptions(75, 1, budget), native) {
+                assertEquals(
+                    PageImageMetadata(PageImageFormat.WEBP, page.metadata.width, 1),
+                    IosPageMediaInspector().inspect(it).requireValid(),
+                )
+                bands++
+            }
+        assertEquals(CbzPageEncoding.Encoded(page.metadata.height), result)
+        assertEquals(page.metadata.height, bands)
+        assertEquals(1, native.decodes)
+        assertEquals(1, native.contexts)
+        assertEquals(page.metadata.height, native.frees)
+        native.assertReleased()
+    }
+
+    private suspend fun assertBudgetDenied(
+        page: ValidatedCbzPage,
+        budget: Long,
+    ) {
+        val denied = IosCbzRecordingCodec()
+        val result =
+            IosLibWebpEncoder.encodeValidatedPage(page, CbzEncodingOptions(75, 1, budget), denied) {
+                error("budget denial cannot emit transcoded bytes")
+            }
+        assertEquals(CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET), result)
+        denied.assertNoTranscode()
+    }
 }

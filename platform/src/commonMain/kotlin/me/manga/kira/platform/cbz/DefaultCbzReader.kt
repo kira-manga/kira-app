@@ -1,17 +1,18 @@
 package me.manga.kira.platform.cbz
 
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.media.inspectPageArchive
 import me.manga.kira.platform.media.visitValidatedArchivePages
+import okio.Closeable
 import okio.FileSystem
 import okio.IOException
 import okio.Path
@@ -46,13 +47,8 @@ class DefaultCbzReader(
 
     override suspend fun pageCount(cbzPath: Path): Int =
         withContext(dispatchers.io) {
-            try {
+            recoverLegacyFailure(0, "Archive did not contain a complete validated image set") {
                 inspectPageArchive(system, cbzPath, mediaInspector, bytePolicy)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                log.w(failure) { "Archive did not contain a complete validated image set" }
-                0
             }
         }
 
@@ -62,13 +58,8 @@ class DefaultCbzReader(
         chapterId: Long,
     ): List<Path> =
         withContext(dispatchers.io) {
-            try {
+            recoverLegacyFailure(emptyList(), "Archive extraction rejected; no partial page set published") {
                 extractValidated(cbzPath, extractRoot(mangaId, chapterId))
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                log.w(failure) { "Archive extraction rejected; no partial page set published" }
-                emptyList()
             }
         }
 
@@ -81,18 +72,12 @@ class DefaultCbzReader(
         val temporary = root / ".partial-$generation"
         val destination = root / "pages-$generation"
         if (system.exists(destination)) throw IOException("Extraction generation already exists")
-        system.createDirectory(temporary, mustCreate = true)
-        var ownedDirectory = temporary
-        try {
+        return ExtractionGeneration(system, temporary).use { generationOwner ->
             val names = writeValidatedPages(archive, temporary)
             currentCoroutineContext().ensureActive()
-            system.atomicMove(temporary, destination)
-            ownedDirectory = destination
+            generationOwner.publishTo(destination)
             currentCoroutineContext().ensureActive()
-            return names.map { destination / it }
-        } catch (failure: Throwable) {
-            discardOwnedGeneration(ownedDirectory, failure)
-            throw failure
+            names.map { destination / it }.also { generationOwner.accept() }
         }
     }
 
@@ -111,35 +96,19 @@ class DefaultCbzReader(
         return names
     }
 
-    private fun discardOwnedGeneration(
-        path: Path,
-        failure: Throwable,
-    ) {
-        try {
-            system.deleteRecursively(path, mustExist = false)
-        } catch (cleanup: Throwable) {
-            failure.addSuppressed(cleanup)
-        }
-    }
-
     override suspend fun deleteCbz(
         mangaId: Long,
         chapterId: Long,
     ): Boolean =
         withContext(dispatchers.io) {
             val target = cbzPath(mangaId, chapterId)
-            try {
+            recoverLegacyFailure(false, "Could not delete archive") {
                 if (!system.exists(target)) {
                     false
                 } else {
                     system.delete(target)
                     true
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                log.w(failure) { "Could not delete archive" }
-                false
             }
         }
 
@@ -147,19 +116,58 @@ class DefaultCbzReader(
         mangaId: Long,
         chapterId: Long,
     ) = withContext(dispatchers.io) {
-        try {
+        recoverLegacyFailure(Unit, "Could not remove archive extraction cache") {
             system.deleteRecursively(extractRoot(mangaId, chapterId), mustExist = false)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            log.w(failure) { "Could not remove archive extraction cache" }
         }
     }
+
+    /**
+     * Only these four legacy reader APIs convert failures to sentinels. Compatibility includes
+     * every Exception, not merely IOException; cancellation must escape unchanged, as must every
+     * non-Exception Throwable. The core primitive supplies cancellation-aware capture, not a new
+     * public Result API or a general platform fallback policy. Logging failures still propagate.
+     */
+    private inline fun <T> recoverLegacyFailure(
+        fallback: T,
+        message: String,
+        operation: () -> T,
+    ): T =
+        runCatchingCancellable(operation).getOrElse { failure ->
+            if (failure !is Exception) throw failure
+            log.w(failure) { message }
+            fallback
+        }
 
     private fun extractRoot(
         mangaId: Long,
         chapterId: Long,
     ): Path = fs.cacheDir / "cbz_extract" / mangaId.toString() / chapterId.toString()
+
+    /** Exclusive ownership follows the successful move; use preserves primary/suppressed errors. */
+    private class ExtractionGeneration(
+        private val system: FileSystem,
+        temporary: Path,
+    ) : Closeable {
+        private var directory = temporary
+        private var accepted = false
+
+        init {
+            system.createDirectory(temporary, mustCreate = true)
+        }
+
+        fun publishTo(destination: Path) {
+            system.atomicMove(directory, destination)
+            directory = destination
+        }
+
+        fun accept() {
+            accepted = true
+        }
+
+        override fun close() {
+            if (!accepted) system.deleteRecursively(directory, mustExist = false)
+        }
+    }
 
     private companion object {
         const val PAGE_INDEX_WIDTH = 6

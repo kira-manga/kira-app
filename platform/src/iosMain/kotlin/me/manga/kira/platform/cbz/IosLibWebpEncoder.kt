@@ -15,7 +15,6 @@ import kotlinx.cinterop.value
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.platform.download.BgDownloadLog
-import me.manga.kira.platform.media.PageImageMetadata
 import okio.IOException
 import platform.CoreFoundation.CFDataCreate
 import platform.CoreFoundation.CFRelease
@@ -51,24 +50,19 @@ import kotlin.time.TimeSource
 @OptIn(ExperimentalForeignApi::class)
 internal object IosLibWebpEncoder {
     suspend fun encodeValidatedPage(
-        source: ByteArray,
-        metadata: PageImageMetadata,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        page: ValidatedCbzPage,
+        options: CbzEncodingOptions,
         native: IosCbzNativeCodec = IosCbzNativeCodec(),
         emit: suspend (ByteArray) -> Unit,
     ): CbzPageEncoding {
         currentCoroutineContext().ensureActive()
-        val admission =
-            CbzTranscodeBudget.admit(metadata.width, metadata.height, source.size.toLong(), maxHeight, maxMemoryBytes)
-        return when (admission) {
+        return when (val admission = options.admit(page)) {
             CbzTranscodeAdmission.PreserveBudget ->
                 CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
             CbzTranscodeAdmission.PreserveWebpDimensions ->
                 CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
             is CbzTranscodeAdmission.Admitted ->
-                encodeAdmitted(source, admission.plan, BandEncoding(quality, native, emit))
+                encodeAdmitted(page.bytes, admission.plan, BandEncoding(options.quality, native, emit))
         }
     }
 
@@ -142,17 +136,7 @@ internal object IosLibWebpEncoder {
                 val pixels = drawAdmittedImage(context, image, plan)
                 val decodeMs = trace.mark.elapsedNow().inWholeMilliseconds
                 val result = emitBands(pixels, plan, encoding)
-                BgDownloadLog.dlperf(
-                    "webpEncode",
-                    "enc" to "libwebp",
-                    "dims" to "${plan.width}x${plan.height}",
-                    "estimatedPeakBytes" to plan.estimatedPeakBytes,
-                    "bands" to result.bandCount,
-                    "srcKiB" to (trace.sourceSize / 1024),
-                    "decodeMs" to decodeMs,
-                    "totalMs" to trace.mark.elapsedNow().inWholeMilliseconds,
-                    "q" to encoding.quality,
-                )
+                logEncodedPage(plan, trace, result, encoding.quality, decodeMs)
                 return result
             } finally {
                 encoding.native.releaseContext(context)
@@ -160,6 +144,26 @@ internal object IosLibWebpEncoder {
         } finally {
             CGColorSpaceRelease(colorSpace)
         }
+    }
+
+    private fun logEncodedPage(
+        plan: CbzTranscodePlan,
+        trace: PageEncodingTrace,
+        result: CbzPageEncoding.Encoded,
+        quality: Int,
+        decodeMs: Long,
+    ) {
+        BgDownloadLog.dlperf(
+            "webpEncode",
+            "enc" to "libwebp",
+            "dims" to "${plan.width}x${plan.height}",
+            "estimatedPeakBytes" to plan.estimatedPeakBytes,
+            "bands" to result.bandCount,
+            "srcKiB" to (trace.sourceSize / 1024),
+            "decodeMs" to decodeMs,
+            "totalMs" to trace.mark.elapsedNow().inWholeMilliseconds,
+            "q" to quality,
+        )
     }
 
     private suspend fun drawAdmittedImage(
@@ -222,10 +226,7 @@ internal object IosLibWebpEncoder {
             try {
                 val size =
                     encoding.native.encodeBand(
-                        rgba,
-                        plan.width,
-                        height,
-                        plan.rgbaRowBytes,
+                        IosRgbaBand(rgba, plan.width, height, plan.rgbaRowBytes),
                         encoding.quality,
                         output.ptr,
                     )

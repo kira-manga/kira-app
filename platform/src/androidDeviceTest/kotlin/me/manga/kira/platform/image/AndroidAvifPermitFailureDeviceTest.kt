@@ -75,6 +75,39 @@ class AndroidAvifPermitFailureDeviceTest {
         assertEquals(1, semaphore.availablePermits())
     }
 
+    @Test
+    fun workerFailureAndInterruptAreVisibleBeforeCompletionEvenForFatalThrowables() {
+        val expected = AssertionError("fatal worker probe")
+        val outcome = WorkerOutcome()
+        val worker =
+            outcome.start {
+                Thread.currentThread().interrupt()
+                throw expected
+            }
+        try {
+            outcome.await()
+            assertSame(expected, outcome.failure.get())
+            assertTrue(outcome.interrupted.get())
+        } finally {
+            worker.join(TimeUnit.SECONDS.toMillis(AVIF_PERMIT_WAIT_SECONDS))
+        }
+        assertFalse(worker.isAlive)
+    }
+
+    @Test
+    fun normallyReturningWorkerPublishesItsInterruptStateWithoutAFailure() {
+        val outcome = WorkerOutcome()
+        val worker = outcome.start { Thread.currentThread().interrupt() }
+        try {
+            outcome.await()
+            assertEquals(null, outcome.failure.get())
+            assertTrue(outcome.interrupted.get())
+        } finally {
+            worker.join(TimeUnit.SECONDS.toMillis(AVIF_PERMIT_WAIT_SECONDS))
+        }
+        assertFalse(worker.isAlive)
+    }
+
     private fun assertInterrupted(outcome: WorkerOutcome) {
         assertIs<CancellationException>(outcome.failure.get())
         assertIs<InterruptedException>(outcome.failure.get()?.cause)
@@ -88,19 +121,25 @@ class AndroidAvifPermitFailureDeviceTest {
 
         fun start(block: () -> Unit): Thread =
             Thread {
-                try {
-                    block()
-                } catch (error: Throwable) {
-                    failure.set(error)
-                } finally {
-                    interrupted.set(Thread.currentThread().isInterrupted)
-                    finished.countDown()
-                }
+                block()
+                complete(Thread.currentThread())
             }.apply {
                 name = "avif-permit-test"
                 isDaemon = true
+                // This owned thread is an outcome boundary. On failure the handler runs before
+                // termination; no finally may release awaiters before the Throwable is recorded.
+                uncaughtExceptionHandler =
+                    Thread.UncaughtExceptionHandler { thread, error ->
+                        failure.set(error)
+                        complete(thread)
+                    }
                 start()
             }
+
+        private fun complete(thread: Thread) {
+            interrupted.set(thread.isInterrupted)
+            finished.countDown()
+        }
 
         fun await() {
             assertTrue(finished.await(AVIF_PERMIT_WAIT_SECONDS, TimeUnit.SECONDS))

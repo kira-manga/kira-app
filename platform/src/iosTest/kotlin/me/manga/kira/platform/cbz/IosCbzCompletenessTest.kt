@@ -6,13 +6,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import okio.Buffer
 import okio.ForwardingFileSystem
-import okio.ForwardingSink
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
-import okio.Sink
 import okio.Source
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
@@ -44,19 +41,7 @@ class IosCbzCompletenessTest {
                         }
                     }
                 var emitted = 0
-                val encoder =
-                    IosCbzPageEncoder { bytes, metadata, quality, maxHeight, maxMemory, emit ->
-                        DefaultIosCbzPageEncoder.encode(
-                            bytes,
-                            metadata,
-                            quality,
-                            maxHeight,
-                            maxMemory,
-                        ) { extension, page ->
-                            emit(extension, page)
-                            emitted++
-                        }
-                    }
+                val encoder = observingEncoder(afterEmit = { emitted++ })
                 val writer = IosCbzWriter(fixture.fileSystem(system), encoder)
 
                 assertFailsWith<IOException> { writer.createCbz(paths, fixture.mangaId, chapter) }
@@ -76,20 +61,13 @@ class IosCbzCompletenessTest {
                 val originals = fixture.capture(paths)
                 var emitted = 0
                 val encoder =
-                    IosCbzPageEncoder { bytes, metadata, quality, maxHeight, maxMemory, emit ->
-                        if (lateFailure) {
-                            DefaultIosCbzPageEncoder.encode(
-                                bytes,
-                                metadata,
-                                quality,
-                                maxHeight,
-                                maxMemory,
-                            ) { extension, page ->
-                                if (emitted == 1) throw IOException("second band failed")
-                                emit(extension, page)
-                                emitted++
-                            }
-                        }
+                    if (lateFailure) {
+                        observingEncoder(
+                            beforeEmit = { if (emitted == 1) throw IOException("second band failed") },
+                            afterEmit = { emitted++ },
+                        )
+                    } else {
+                        IosCbzPageEncoder { _, _, _ -> }
                     }
                 val writer = IosCbzWriter(fixture.fileSystem(), encoder)
 
@@ -164,27 +142,7 @@ class IosCbzCompletenessTest {
                 val paths = fixture.pages(chapterId = chapter)
                 val previous = fixture.previousArchive(chapter)
                 val originals = fixture.capture(paths)
-                val system =
-                    object : ForwardingFileSystem(fixture.system) {
-                        override fun sink(
-                            file: Path,
-                            mustCreate: Boolean,
-                        ): Sink =
-                            object : ForwardingSink(super.sink(file, mustCreate)) {
-                                override fun write(
-                                    source: Buffer,
-                                    byteCount: Long,
-                                ) {
-                                    if (!onClose) throw IOException("write denied")
-                                    super.write(source, byteCount)
-                                }
-
-                                override fun close() {
-                                    super.close()
-                                    if (onClose) throw IOException("close failed")
-                                }
-                            }
-                    }
+                val system = IosCbzWriteFaultFileSystem(fixture.system, onClose)
 
                 assertFailsWith<IOException> {
                     IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, chapter)
@@ -203,13 +161,12 @@ class IosCbzCompletenessTest {
             val entered = CompletableDeferred<Unit>()
             val released = CompletableDeferred<Unit>()
             val encoder =
-                IosCbzPageEncoder { bytes, metadata, quality, maxHeight, maxMemory, emit ->
-                    DefaultIosCbzPageEncoder.encode(bytes, metadata, quality, maxHeight, maxMemory) { extension, page ->
+                observingEncoder(
+                    beforeEmit = {
                         entered.complete(Unit)
                         withContext(NonCancellable) { withTimeout(15_000) { released.await() } }
-                        emit(extension, page)
-                    }
-                }
+                    },
+                )
             val conversion = async { IosCbzWriter(fixture.fileSystem(), encoder).createCbz(paths, fixture.mangaId, 1L) }
             try {
                 withTimeout(15_000) { entered.await() }
@@ -229,23 +186,7 @@ class IosCbzCompletenessTest {
             val paths = fixture.pages()
             val previous = fixture.previousArchive()
             val originals = fixture.capture(paths)
-            val system =
-                object : ForwardingFileSystem(fixture.system) {
-                    override fun sink(
-                        file: Path,
-                        mustCreate: Boolean,
-                    ): Sink =
-                        object : ForwardingSink(super.sink(file, mustCreate)) {
-                            override fun close() {
-                                super.close()
-                                val damaged = fixture.bytes(file)
-                                // STORE local header + the first generated name; leave the ZIP directory intact.
-                                val payloadStart = 30 + "page_0000.webp".length
-                                damaged[payloadStart] = (damaged[payloadStart].toInt() xor 1).toByte()
-                                fixture.system.write(file) { write(damaged) }
-                            }
-                        }
-                }
+            val system = IosCbzCorruptingZipFileSystem(fixture)
 
             assertFailsWith<IOException> {
                 IosCbzWriter(fixture.fileSystem(system)).createCbz(paths, fixture.mangaId, 1L)
@@ -265,6 +206,18 @@ class IosCbzCompletenessTest {
 
             fixture.assertRetained(emptyMap(), previous)
             assertFalse(fixture.archiveEntries().isEmpty())
+        }
+
+    private fun observingEncoder(
+        beforeEmit: suspend () -> Unit = {},
+        afterEmit: () -> Unit = {},
+    ): IosCbzPageEncoder =
+        IosCbzPageEncoder { page, options, emit ->
+            DefaultIosCbzPageEncoder.encode(page, options) { extension, bytes ->
+                beforeEmit()
+                emit(extension, bytes)
+                afterEmit()
+            }
         }
 }
 

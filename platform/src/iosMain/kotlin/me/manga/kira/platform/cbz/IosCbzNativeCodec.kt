@@ -41,13 +41,10 @@ internal open class IosCbzNativeCodec {
         )
 
     open fun encodeBand(
-        rgba: CPointer<UByteVar>,
-        width: Int,
-        height: Int,
-        stride: Int,
+        band: IosRgbaBand,
         quality: Int,
         output: CPointer<CPointerVar<UByteVar>>,
-    ): ULong = WebPEncodeRGBA(rgba, width, height, stride, quality.toFloat(), output)
+    ): ULong = WebPEncodeRGBA(band.pixels, band.width, band.height, band.stride, quality.toFloat(), output)
 
     open fun copyEncoded(
         pointer: CPointer<UByteVar>,

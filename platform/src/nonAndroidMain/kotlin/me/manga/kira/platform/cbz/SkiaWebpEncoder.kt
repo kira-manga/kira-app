@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.download.BgDownloadLog
-import me.manga.kira.platform.media.PageImageMetadata
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.EncodedImageFormat
@@ -39,18 +38,15 @@ internal object SkiaWebpEncoder {
 
     /**
      * Shipping iOS rollback entrypoint: admission before native decode, sequential emission and no
-     * catch-all verbatim fallback. [metadata] must describe this same already-validated snapshot.
+     * catch-all verbatim fallback. [page] couples the retained snapshot with its validated metadata.
      * The legacy Desktop list-returning entrypoint below deliberately retains its existing behavior.
      */
     suspend fun encodeValidatedPage(
-        source: ByteArray,
-        metadata: PageImageMetadata,
-        quality: Int,
-        maxHeight: Int,
-        maxMemoryBytes: Long,
+        page: ValidatedCbzPage,
+        options: CbzEncodingOptions,
         decode: (ByteArray) -> Image = { Image.makeFromEncoded(it) },
         emit: suspend (ByteArray) -> Unit,
-    ): CbzPageEncoding = streamValidatedSkiaPage(source, metadata, quality, maxHeight, maxMemoryBytes, decode, emit)
+    ): CbzPageEncoding = streamValidatedSkiaPage(page, options, decode, emit)
 
     /**
      * Decode [source] (any format Skia decodes: jpg/png/webp/gif/bmp) and re-encode it to one or more
@@ -83,42 +79,57 @@ internal object SkiaWebpEncoder {
         val image = Image.makeFromEncoded(source) // throws on undecodable input (e.g. AVIF)
         val decodeMs = mark.elapsedNow().inWholeMilliseconds
         try {
-            val width = image.width
-            val height = image.height
-            require(width > 0 && height > 0) { "non-positive image dimensions ${width}x$height" }
-
-            val bandHeight = effectiveBandHeight(width, maxHeight, maxMemoryBytes)
-            val pages =
-                if (height <= bandHeight) {
-                    listOf(encodeWebp(image, quality))
-                } else {
-                    buildList {
-                        var top = 0
-                        while (top < height) {
-                            val h = minOf(bandHeight, height - top)
-                            add(encodeBand(image, width, top, h, quality))
-                            top += h
-                        }
-                    }
-                }
-            // DLPERF: dims + the decoded-bitmap size (peak native alloc if unbanded) + band count + I/O +
-            // decode/total ms — quantifies the per-page CPU + memory pressure of the WebP transcode.
-            BgDownloadLog.dlperf(
-                "webpEncode",
-                "enc" to "skia",
-                "dims" to "${width}x$height",
-                "decodedMiB" to (width.toLong() * height * BYTES_PER_PIXEL / (1024 * 1024)),
-                "bands" to pages.size,
-                "srcKiB" to (source.size / 1024),
-                "outKiB" to (pages.sumOf { it.size } / 1024),
-                "decodeMs" to decodeMs,
-                "totalMs" to mark.elapsedNow().inWholeMilliseconds,
-                "q" to quality,
-            )
+            val pages = encodePages(image, quality, maxHeight, maxMemoryBytes)
+            logEncodedPage(image, pages, quality, PageEncodingTrace(mark, source.size, decodeMs))
             return pages
         } finally {
             image.close()
         }
+    }
+
+    private fun encodePages(
+        image: Image,
+        quality: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): List<ByteArray> {
+        val width = image.width
+        val height = image.height
+        require(width > 0 && height > 0) { "non-positive image dimensions ${width}x$height" }
+        val bandHeight = effectiveBandHeight(width, maxHeight, maxMemoryBytes)
+        return if (height <= bandHeight) {
+            listOf(encodeWebp(image, quality))
+        } else {
+            buildList {
+                var top = 0
+                while (top < height) {
+                    val h = minOf(bandHeight, height - top)
+                    add(encodeBand(image, width, top, h, quality))
+                    top += h
+                }
+            }
+        }
+    }
+
+    private fun logEncodedPage(
+        image: Image,
+        pages: List<ByteArray>,
+        quality: Int,
+        trace: PageEncodingTrace,
+    ) {
+        // DLPERF: dims + decoded-bitmap size + band count + I/O + decode/total ms.
+        BgDownloadLog.dlperf(
+            "webpEncode",
+            "enc" to "skia",
+            "dims" to "${image.width}x${image.height}",
+            "decodedMiB" to (image.width.toLong() * image.height * BYTES_PER_PIXEL / (1024 * 1024)),
+            "bands" to pages.size,
+            "srcKiB" to (trace.sourceSize / 1024),
+            "outKiB" to (pages.sumOf { it.size } / 1024),
+            "decodeMs" to trace.decodeMs,
+            "totalMs" to trace.mark.elapsedNow().inWholeMilliseconds,
+            "q" to quality,
+        )
     }
 
     /** Encode a whole [image] to WebP bytes. Throws if Skia returns no data (→ verbatim fallback). */
@@ -151,14 +162,21 @@ internal object SkiaWebpEncoder {
                 )
             }
             bitmap.setImmutable()
-            val bandImage = Image.makeFromBitmap(bitmap)
-            try {
-                return encodeWebp(bandImage, quality)
-            } finally {
-                bandImage.close()
-            }
+            return encodeBitmap(bitmap, quality)
         } finally {
             bitmap.close()
+        }
+    }
+
+    private fun encodeBitmap(
+        bitmap: Bitmap,
+        quality: Int,
+    ): ByteArray {
+        val bandImage = Image.makeFromBitmap(bitmap)
+        try {
+            return encodeWebp(bandImage, quality)
+        } finally {
+            bandImage.close()
         }
     }
 
@@ -178,6 +196,12 @@ internal object SkiaWebpEncoder {
         val byMemory = (byteBudget / (width.toLong() * BYTES_PER_PIXEL)).toInt().coerceAtLeast(1)
         return minOf(maxHeight, byMemory, WEBP_MAX_DIMENSION).coerceAtLeast(1)
     }
+
+    private data class PageEncodingTrace(
+        val mark: TimeSource.Monotonic.ValueTimeMark,
+        val sourceSize: Int,
+        val decodeMs: Long,
+    )
 
     private const val TAG = "CbzWriter"
     private const val BYTES_PER_PIXEL = 4

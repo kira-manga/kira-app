@@ -3,7 +3,6 @@ package me.manga.kira.platform.cbz
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.platform.media.PageImageFormat
-import me.manga.kira.platform.media.PageImageMetadata
 import okio.IOException
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -14,28 +13,23 @@ import org.jetbrains.skia.impl.use as skiaUse
 
 /** Strict, admitted streaming codec for the compiled iOS rollback path; no Desktop behavior change. */
 internal suspend fun streamValidatedSkiaPage(
-    source: ByteArray,
-    metadata: PageImageMetadata,
-    quality: Int,
-    maxHeight: Int,
-    maxMemoryBytes: Long,
+    page: ValidatedCbzPage,
+    options: CbzEncodingOptions,
     decode: (ByteArray) -> Image,
     emit: suspend (ByteArray) -> Unit,
 ): CbzPageEncoding {
     currentCoroutineContext().ensureActive()
-    val admission =
-        CbzTranscodeBudget.admit(metadata.width, metadata.height, source.size.toLong(), maxHeight, maxMemoryBytes)
-    return when (admission) {
+    return when (val admission = options.admit(page)) {
         CbzTranscodeAdmission.PreserveBudget -> CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
         CbzTranscodeAdmission.PreserveWebpDimensions ->
             CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
         is CbzTranscodeAdmission.Admitted ->
             // Skiko's bundled Skia has no AVIF codec. Only the iOS native inspector's prior VALID
             // result permits this preservation; an arbitrary Skia failure does not.
-            if (metadata.format == PageImageFormat.AVIF) {
+            if (page.metadata.format == PageImageFormat.AVIF) {
                 CbzPageEncoding.PreserveOriginal(CbzPreservationReason.UNSUPPORTED_TRANSCODE)
             } else {
-                streamAdmittedSkiaPage(source, admission.plan, quality, decode, emit)
+                streamAdmittedSkiaPage(page.bytes, admission.plan, options.quality, decode, emit)
             }
     }
 }
@@ -90,13 +84,7 @@ private fun encodeSkiaBand(
 ): ByteArray {
     val bitmap = Bitmap()
     try {
-        if (!bitmap.allocN32Pixels(plan.width, band.height)) throw IOException("CBZ Skia band allocation failed")
-        if (bitmap.width != plan.width ||
-            bitmap.height != band.height ||
-            bitmap.rowBytes.toLong() > plan.width.toLong() * BAND_BITMAP_BYTES_PER_PIXEL
-        ) {
-            throw IOException("CBZ Skia band differs from its admitted dimensions or stride")
-        }
+        allocateAdmittedSkiaBand(bitmap, plan, band)
         Canvas(bitmap).skiaUse { canvas ->
             canvas.drawImageRect(
                 source,
@@ -108,6 +96,20 @@ private fun encodeSkiaBand(
         return encodeBoundedSkiaBitmap(bitmap, quality, plan.maxEncodedBandBytes)
     } finally {
         bitmap.close()
+    }
+}
+
+private fun allocateAdmittedSkiaBand(
+    bitmap: Bitmap,
+    plan: CbzTranscodePlan,
+    band: SkiaBandRegion,
+) {
+    if (!bitmap.allocN32Pixels(plan.width, band.height)) throw IOException("CBZ Skia band allocation failed")
+    if (bitmap.width != plan.width ||
+        bitmap.height != band.height ||
+        bitmap.rowBytes.toLong() > plan.width.toLong() * BAND_BITMAP_BYTES_PER_PIXEL
+    ) {
+        throw IOException("CBZ Skia band differs from its admitted dimensions or stride")
     }
 }
 
