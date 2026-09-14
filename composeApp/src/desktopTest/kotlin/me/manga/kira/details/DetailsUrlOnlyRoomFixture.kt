@@ -31,7 +31,9 @@ import java.nio.file.Files
 import kotlin.test.assertTrue
 
 /** Real file-backed Room and production repositories; only source and membership timing are controlled. */
-internal class DetailsUrlOnlyRoomFixture(private val dispatcher: CoroutineDispatcher) {
+internal class DetailsUrlOnlyRoomFixture(
+    private val dispatcher: CoroutineDispatcher,
+) {
     private val root = Files.createTempDirectory("kira-details-persistence-").toString().toPath()
     private val store = ViewModelStore()
     val fileSystem =
@@ -69,7 +71,10 @@ internal class DetailsUrlOnlyRoomFixture(private val dispatcher: CoroutineDispat
     val source = DetailsRoomSource()
     val vm = createDetailsRoomViewModel(this).also { store.put("details", it) }
 
-    suspend fun seed(manga: Manga, chapter: Chapter): SavedChapterEntity {
+    suspend fun seed(
+        manga: Manga,
+        chapter: Chapter,
+    ): SavedChapterEntity {
         val mangaId = db.backupDao().insertMangaRow(savedManga(manga))
         assertTrue(mangaId > 0)
         val row =
@@ -111,13 +116,19 @@ internal class DetailsUrlOnlyRoomFixture(private val dispatcher: CoroutineDispat
 }
 
 /** Delays ONLY the UI membership observer; every write still executes the production repository. */
-internal class DeferredDetailsMembership(private val real: LibraryRepository) : LibraryRepository by real {
+internal class DeferredDetailsMembership(
+    private val real: LibraryRepository,
+) : LibraryRepository by real {
     val ready = CompletableDeferred<Unit>()
     val observedKeys = mutableListOf<MangaKey>()
     val offeredParents = mutableListOf<Pair<String, String>>()
     val results = mutableListOf<AppResult<Int>>()
 
-    override fun observeIsInLibrary(api: String, language: String, title: String): Flow<Boolean> =
+    override fun observeIsInLibrary(
+        api: String,
+        language: String,
+        title: String,
+    ): Flow<Boolean> =
         flow {
             observedKeys += MangaKey(api, language, title)
             ready.await()
@@ -150,10 +161,15 @@ internal class DetailsRoomSource : MangaDetailsRepository {
 internal fun roomManga(slug: String): Manga =
     Manga("source", "en", "Manga $slug", "https://details.test/$slug", "cover-$slug", null, emptyList())
 
-internal fun roomChapter(manga: Manga, number: String): Chapter =
-    Chapter(number, "Chapter $number", "${manga.url}/$number", null, false, false)
+internal fun roomChapter(
+    manga: Manga,
+    number: String,
+): Chapter = Chapter(number, "Chapter $number", "${manga.url}/$number", null, false, false)
 
-internal fun roomDetails(manga: Manga, chapters: List<Chapter>): MangaDetails =
+internal fun roomDetails(
+    manga: Manga,
+    chapters: List<Chapter>,
+): MangaDetails =
     MangaDetails(
         api = manga.api,
         language = manga.language,

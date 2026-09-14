@@ -48,7 +48,9 @@ import me.manga.kira.presentation.features.download.domain.clean.DownloadReposit
 internal fun createDetailsRoomViewModel(fixture: DetailsUrlOnlyRoomFixture): DetailsViewModel =
     DetailsRoomViewModelFactory(fixture).create()
 
-private class DetailsRoomViewModelFactory(private val fixture: DetailsUrlOnlyRoomFixture) {
+private class DetailsRoomViewModelFactory(
+    private val fixture: DetailsUrlOnlyRoomFixture,
+) {
     private val dao = fixture.db.chapterDao()
     private val library = fixture.library
     private val resolver = ChapterIdResolverImpl(dao)
@@ -101,7 +103,10 @@ private object DetailsRoomDevicePorts :
     ConnectivityRepository,
     CompressionDeferralRepository,
     AnalyticsPort {
-    override fun isAdultContent(api: String, genres: List<String>): Boolean = false
+    override fun isAdultContent(
+        api: String,
+        genres: List<String>,
+    ): Boolean = false
 
     override fun observeIsOnline(): Flow<Boolean> = flowOf(true)
 
@@ -109,21 +114,31 @@ private object DetailsRoomDevicePorts :
 
     override fun logAppOpen() = Unit
 
-    override fun logMangaOpen(api: String, title: String, sourceScreen: String) = Unit
+    override fun logMangaOpen(
+        api: String,
+        title: String,
+        sourceScreen: String,
+    ) = Unit
 }
 
 /** No download engine, filesystem cleanup, worker or network service may start during this witness. */
 internal object UnusedDetailsDownloadEngine : DownloadRepository {
     override fun observeAllDownloads(): Flow<List<ChapterDownloadEntity>> = error("unused")
 
-    override suspend fun enqueueChapterDownload(chapter: SavedChapterEntity, title: String, mangaApi: String): Unit =
-        error("unused")
+    override suspend fun enqueueChapterDownload(
+        chapter: SavedChapterEntity,
+        title: String,
+        mangaApi: String,
+    ): Unit = error("unused")
 
     override suspend fun deleteDownload(chapterId: Long): Unit = error("unused")
 
     override suspend fun onCancel(chapterId: Long): Unit = error("unused")
 
-    override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long): Unit = error("unused")
+    override suspend fun cancelARunningChapter(
+        chapterId: Long,
+        mangaId: Long,
+    ): Unit = error("unused")
 
     override suspend fun cancelAllDownloads(): Unit = error("unused")
 

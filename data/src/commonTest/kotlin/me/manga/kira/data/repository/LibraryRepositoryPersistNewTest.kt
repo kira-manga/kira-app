@@ -84,8 +84,10 @@ class LibraryRepositoryPersistNewTest {
     private class FakeMangaDao(
         private val id: Long?,
     ) : MangaDao {
-        override suspend fun getIdByApiAndUrl(api: String, mangaUrl: String): Long? =
-            if (api == "src" && mangaUrl == "m/naruto") id else null
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
+        ): Long? = if (api == "src" && mangaUrl == "m/naruto") id else null
 
         override suspend fun getIdByApiAndTitle(
             api: String,
