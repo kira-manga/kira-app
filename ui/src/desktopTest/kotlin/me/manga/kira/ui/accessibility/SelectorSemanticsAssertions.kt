@@ -32,7 +32,12 @@ internal fun ComposeUiTest.assertTabSelector(
     onAllNodes(tabRoleMatcher and SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
         .assertCountEquals(labels.size - 1)
     labels.forEachIndexed { index, label -> assertSingleTab(label, index == selectedIndex) }
-    val centers = labels.map { onNode(tabMatcher(it)).fetchSemanticsNode().boundsInRoot.center.x }
+    val centers =
+        labels.map {
+            onNode(tabMatcher(it))
+                .fetchSemanticsNode()
+                .boundsInRoot.center.x
+        }
     assertTrue(
         centers.zipWithNext().all { (first, second) ->
             if (direction == LayoutDirection.Ltr) first < second else first > second

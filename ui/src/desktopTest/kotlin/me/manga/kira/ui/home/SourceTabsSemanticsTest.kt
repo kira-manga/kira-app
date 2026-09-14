@@ -54,8 +54,7 @@ class SourceTabsSemanticsTest {
     fun englishTabsAndEditBadgeExposeSelectionAndOneAction() = sourceControls(Locale.US, LayoutDirection.Ltr)
 
     @Test
-    fun arabicRtlTabsAndEditBadgeExposeSelectionAndOneAction() =
-        sourceControls(Locale.forLanguageTag("ar"), LayoutDirection.Rtl)
+    fun arabicRtlTabsAndEditBadgeExposeSelectionAndOneAction() = sourceControls(Locale.forLanguageTag("ar"), LayoutDirection.Rtl)
 
     private fun sourceControls(
         locale: Locale,
