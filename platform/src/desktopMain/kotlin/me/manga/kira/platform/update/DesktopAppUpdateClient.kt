@@ -20,8 +20,8 @@ class DesktopAppUpdateClient : AppUpdateClient {
         return null
     }
 
-    override suspend fun startFlexibleUpdate(): Boolean {
-        log.d { "startFlexibleUpdate() — no-op on Desktop, returning false" }
+    override suspend fun startUpdate(update: AppUpdateInfo): Boolean {
+        log.d { "startUpdate() — no-op on Desktop, returning false" }
         return false
     }
 
@@ -38,8 +38,8 @@ class DesktopAppUpdateClient : AppUpdateClient {
         log.d { "unregisterUpdateListener() — no-op on Desktop" }
     }
 
-    override suspend fun resumeIfDownloaded(): Boolean {
-        log.d { "resumeIfDownloaded() — no-op on Desktop, returning false" }
+    override suspend fun resumeUpdate(): Boolean {
+        log.d { "resumeUpdate() — no-op on Desktop, returning false" }
         return false
     }
 

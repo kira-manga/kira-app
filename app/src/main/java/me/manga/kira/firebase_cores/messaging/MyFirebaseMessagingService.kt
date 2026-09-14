@@ -54,43 +54,51 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         // branded HIGH channel, #12); ensure it here too, idempotently, for the data-message path.
         MessagingNotificationChannels.ensure(this)
 
+        val notificationId = pushNotificationId(remote)
+
         // Tapping the notification opens the app; the data payload is carried as intent extras so
         // MainActivity can parse a deep link (PushPayloadParser) and route via NotificationRouter.
         // For notification-messages tapped from the tray, FCM already delivers `data` as launch-intent
         // extras; for the data-only messages this service builds, we copy them here so both paths
         // converge on MainActivity's extras reader. Without a contentIntent a tap does nothing and
-        // setAutoCancel(true) is inert. FLAG_IMMUTABLE is mandatory on API 26+ for a PendingIntent we
-        // don't mutate at send time; FLAG_UPDATE_CURRENT refreshes the extras when a newer push reuses
-        // this same (requestCode 0) PendingIntent.
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            remote.data.forEach { (key, value) -> putExtra(key, value) }
-        }
-        val contentIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        // setAutoCancel(true) is inert. Explicit mutability is required for apps targeting API 31+;
+        // this token is immutable to senders. FLAG_UPDATE_CURRENT refreshes a replacement card's
+        // extras. The request code matches the card slot, while the private action isolates push
+        // tokens from other activity launches (including the hash-zero notification slot).
+        val launchIntent =
+            Intent(this, MainActivity::class.java).apply {
+                action = ACTION_OPEN_PUSH_NOTIFICATION
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                remote.data.forEach { (key, value) -> putExtra(key, value) }
+            }
+        val contentIntent =
+            PendingIntent.getActivity(
+                this,
+                notificationId,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
 
-        val notification = NotificationCompat.Builder(this, MessagingNotificationChannels.MESSAGES_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_message)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setContentIntent(contentIntent)
-            .setAutoCancel(true)
-            .build()
+        val notification =
+            NotificationCompat
+                .Builder(this, MessagingNotificationChannels.MESSAGES_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_message)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setContentIntent(contentIntent)
+                .setAutoCancel(true)
+                .build()
 
-        notificationManager.notify(pushNotificationId(remote), notification)
+        notificationManager.notify(notificationId, notification)
     }
 
     /**
-     * Notification id for a push. Push ids live in the NEGATIVE Int space so they can't collide with
+     * Notification id for a push. Push ids live in the NON-POSITIVE Int space so they can't collide with
      * the download engine's positive `100 + chapterId` band (unbounded Room row ids that cross
      * native's fixed 1000) — there a download progress tick would replace the push, and the worker's
-     * `cancel(100 + chapterId)` would dismiss an untapped push (#11). The id varies per FCM message so
-     * stacked campaigns don't overwrite each other, falling back to a fixed negative id when the
-     * message has no id.
+     * `cancel(100 + chapterId)` would dismiss an untapped push (#11). The id is derived from the FCM
+     * message id; equal hashes replace the same card and tap token. Missing ids share one fixed
+     * negative slot, so the latest anonymous message replaces the previous one.
      */
     private fun pushNotificationId(remote: RemoteMessage): Int {
         val raw = remote.messageId?.hashCode() ?: return NOTIF_ID_MESSAGE_FALLBACK
@@ -98,6 +106,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private companion object {
+        const val ACTION_OPEN_PUSH_NOTIFICATION = "me.manga.kira.action.OPEN_PUSH_NOTIFICATION"
         const val NOTIF_ID_MESSAGE_FALLBACK = -1000
     }
 }

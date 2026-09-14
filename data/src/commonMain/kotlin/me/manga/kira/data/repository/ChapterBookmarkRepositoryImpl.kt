@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
 
 /**
@@ -20,17 +21,17 @@ import me.manga.kira.domain.repository.ChapterBookmarkRepository
  *    no extra wiring. Writing through a net-new url-keyed store instead would silently diverge
  *    that badge; that is why the bridge keys on the Room `Long chapterId`.
  *
- * Chapter identity: the rework [me.manga.kira.domain.model.Chapter] is `url`-keyed; the store
- * needs the Room `Long` `saved_chapters.id`. [ChapterDao.getChapterIdByUrl] resolves url → id for
+ * Chapter identity: the rework Chapter carries no Room ID. The exact owning manga URL plus
+ * chapter URL resolve its `saved_chapters.id`. [ChapterDao.getChapterIdByUrl] resolves that pair for
  * the one-shot [toggleBookmark]; a row exists only once the manga is in-library, so a `null` id
  * means "not in-library".
  *
  * Not-in-library behavior (preserves legacy semantics): [observeBookmark] emits `false`,
  * [toggleBookmark] is a no-op — no auto-add-to-library side effect.
  *
- * Bookmark-flow derivation: [observeBookmark] subscribes to the url-keyed
+ * Bookmark-flow derivation: [observeBookmark] subscribes to the owner-and-chapter-URL-keyed
  * [ChapterDao.getChapterByUrl] Room flow and maps `it?.isBookmarked == true` — a deleted/absent
- * row maps to `false`. Keying the flow on `url` (not the `Long` id) keeps the stream membership-
+ * row maps to `false`. Observing both saved parent and chapter tables keeps the stream membership-
  * reactive: if the `saved_chapters` row is created after the Reader attached (manga saved mid-
  * session), Room re-emits and the bookmark state re-binds, instead of the stream completing on a
  * single `false`.
@@ -41,15 +42,30 @@ import me.manga.kira.domain.repository.ChapterBookmarkRepository
 class ChapterBookmarkRepositoryImpl(
     private val chapterDao: ChapterDao,
 ) : ChapterBookmarkRepository {
-
-    override fun observeBookmark(chapterUrl: String): Flow<Boolean> =
-        chapterDao.getChapterByUrl(chapterUrl)
+    override fun observeBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> =
+        chapterDao
+            .getChapterByUrl(manga.url, chapterUrl)
             .map { it?.isBookmarked == true }
             .distinctUntilChanged()
 
-    override suspend fun toggleBookmark(chapterUrl: String): Boolean {
-        val chapterId = chapterDao.getChapterIdByUrl(chapterUrl) ?: return false
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean {
+        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: return false
         chapterDao.toggleChapterBookmark(chapterId)
         return true
+    }
+
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
+        val ids = chapterDao.getChapterIdsByUrls(manga.url, chapterUrls)
+        if (ids.isEmpty()) return
+        chapterDao.toggleChaptersBookmark(ids)
     }
 }

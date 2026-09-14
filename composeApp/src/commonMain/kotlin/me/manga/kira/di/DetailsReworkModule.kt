@@ -241,7 +241,7 @@ val detailsReworkModule: Module = module {
             // here, mirroring the [ToggleInLibraryUseCase] cross-module posture above.
             toggleChapterBookmark = get(),
             markChaptersRead = get(),
-            enqueueChapterDownload = get(),
+            enqueueDownload = get(),
             cancelChapterDownload = get(),
             cancelRunningDownload = get(),
             cancelAllDownloads = get(),
