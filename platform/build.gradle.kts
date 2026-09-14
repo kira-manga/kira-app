@@ -41,6 +41,11 @@ kotlin {
         namespace = "me.manga.kira.platform"
         compileSdk = 37
         minSdk = 26
+        withDeviceTestBuilder {
+            sourceSetTreeName = "test"
+        }.configure {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -133,6 +138,11 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.junit)
+            implementation("androidx.test:runner:1.7.0")
         }
 
         // SkiaWebpEncoderTest exercises real skiko encoding on the Desktop/JVM target; pull the
