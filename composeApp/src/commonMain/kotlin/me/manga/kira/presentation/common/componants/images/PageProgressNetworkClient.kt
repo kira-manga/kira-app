@@ -9,9 +9,10 @@ import me.manga.kira.domain.model.reader.PageProgressAttempt
 import okio.Buffer
 import okio.BufferedSink
 import okio.FileSystem
-import okio.ForwardingSink
 import okio.Path
+import okio.Sink
 import okio.buffer
+import okio.use
 import kotlin.time.TimeSource
 
 /**
@@ -48,12 +49,12 @@ private class PageProgressResponseBody(
     override suspend fun writeTo(sink: BufferedSink) {
         val counter = PageProgressByteCounter(attempt, contentLength, clock)
         val counting =
-            object : ForwardingSink(sink) {
+            object : Sink by sink {
                 override fun write(
                     source: Buffer,
                     byteCount: Long,
                 ) {
-                    super.write(source, byteCount)
+                    sink.write(source, byteCount)
                     counter.wrote(byteCount)
                 }
             }.buffer()
