@@ -2,6 +2,7 @@ package me.manga.kira.di
 
 import me.manga.kira.data.repository.ChapterBookmarkRepositoryImpl
 import me.manga.kira.data.repository.ChapterPagesRepositoryImpl
+import me.manga.kira.data.repository.DownloadedPageFiles
 import me.manga.kira.data.repository.MarkChapterReadRepositoryImpl
 import me.manga.kira.data.repository.PageProgressRepositoryImpl
 import me.manga.kira.data.repository.ReadProgressRepositoryImpl
@@ -86,6 +87,7 @@ import org.koin.dsl.module
  *    survives configuration changes / pop-and-restore navigation. Mirrors `DetailsViewModel`.
  */
 val readerReworkModule: Module = module {
+    single { DownloadedPageFiles(get(), get()) }
     single<ChapterPagesRepository> {
         ChapterPagesRepositoryImpl(
             dispatchers = get(),
@@ -97,9 +99,9 @@ val readerReworkModule: Module = module {
             // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic engine for the network
             // page fetch; the downloaded-chapter offline path and all other sources stay unchanged.
             sourceRegistry = get(),
-            // Re-derives loose downloaded-page paths under the live chapter dir (iOS container-UUID
-            // staleness) and gates the local-read fall-through. The :platform AppFileSystem singleton.
-            appFileSystem = get(),
+            // Re-derive the live container's paths and require the entire loose roster to be valid.
+            // Uses the same platform inspector as downloads, CBZ writing, and archive recovery.
+            pageFiles = get(),
         )
     }
 
