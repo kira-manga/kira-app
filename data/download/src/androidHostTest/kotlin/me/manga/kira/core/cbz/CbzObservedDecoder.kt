@@ -7,10 +7,15 @@ import java.io.File
 import java.io.InputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /** Ordinary pages use the real codec; only region pixels are modeled, never native proof. */
-internal class CbzObservedDecoder : CbzImageDecoder() {
+internal class CbzObservedDecoder(
+    private val originals: List<String> = emptyList(),
+) : CbzImageDecoder() {
     val requested = CopyOnWriteArrayList<File>()
     val bitmaps = CopyOnWriteArrayList<Bitmap>()
     val regions = CopyOnWriteArrayList<Rect>()
@@ -20,6 +25,15 @@ internal class CbzObservedDecoder : CbzImageDecoder() {
 
     override fun bounds(file: File): BitmapFactory.Options {
         assertPreviousRecycled()
+        if (originals.isNotEmpty()) {
+            val original = File(originals[requested.size])
+            assertNotEquals(original, file, "Decode must use the owned snapshot, not reopen the source")
+            assertContentEquals(
+                original.readBytes(),
+                file.readBytes(),
+                "Snapshot requests must retain input byte order",
+            )
+        }
         requested += file
         return super.bounds(file)
     }
@@ -30,6 +44,7 @@ internal class CbzObservedDecoder : CbzImageDecoder() {
         config: Bitmap.Config?,
     ): Bitmap? {
         assertPreviousRecycled()
+        assertEquals(requested.last(), file, "Full decode must use the snapshot whose bounds were observed")
         return super.decode(file, sampleSize, config)?.also { bitmaps += it }
     }
 
