@@ -9,14 +9,16 @@ checker, dependency/tool download, native build, or workflow dispatch was execut
 `avif-native-producer.yml.in` has no trigger at this vendor path. The primary must review and
 explicitly admit the exact recipe, resource envelope, public inputs, and any owner decisions
 before promoting identical bytes to `.github/workflows/avif-native-producer.yml`. The collector
-requires the active workflow to match the template's SHA-256. Promotion is a separate commit;
-use **that resulting full commit SHA**, not the earlier source-preparation commit, for dispatch.
+requires the active workflow to match the template's SHA-256. Promotion is a separate, public-safe
+carrier commit; record and review **that resulting full commit SHA** before its sole push.
+The narrowly branch-scoped push avoids registering an unvalidated workflow on the default branch.
 
 The proposed workflow:
 
-* is `workflow_dispatch` only, refuses `main`/tags and non-public repositories;
-* requires `confirmation = native15-reviewed-source-only` and a 40-character
-  `recipe_commit == GITHUB_SHA == checkout HEAD`;
+* runs only for a push to `remediation/app-native15-producer-20260914-01` in `kira-manga/kira-app`,
+  refusing `main`, tags, other branches/repositories and non-public repositories;
+* binds the primary-admitted carrier's 40-character `GITHUB_SHA == checkout HEAD`, and preserves
+  the `native15-reviewed-source-only` resource-admission guard;
 * uses pinned action revisions, read-only `contents` permission, sparse checkout of only this
   public directory and the producer workflow, and `persist-credentials: false`;
 * has no app build, aggregate tests, release, signing, private configuration, or private secrets;
@@ -113,6 +115,45 @@ They are part of the hosted producer lane and include tool execution. The source
 hermetic-build claim: the hosted OS/JDK patch and resolved Gradle artifacts are observed and
 hashed, not all pre-attested by this preparation. No private dependency cache or environment dump
 is uploaded. Generated build/source paths in public evidence are hosted-temporary paths only.
+
+## Owned cleanup and bounded operational evidence
+
+`owned_resources.py` is lifecycle plumbing, not another validation gate. Setup creates exactly
+`RUNNER_TEMP/avif-native-<run-id>-<attempt>` and a separate
+`RUNNER_TEMP/avif-native-evidence-<run-id>-<attempt>`, each marked with the exact run, attempt,
+recipe commit, and resolved work path. Existing, unmarked, linked, or differently owned roots
+are refused. Both guarded shell stages run with that exact inherited process marker. Wheels and
+the Meson venv now live under the work root alongside sources, native builds, and `gradle-home`;
+the wheel provenance lookup follows that move without changing any package pin.
+
+The single Gradle batch has an EXIT trap, including ordinary failure and handled INT/TERM, that
+immediately stops only its isolated Gradle user home. It invokes the already-installed Gradle
+7.5 launcher with `--offline --stop`, never a wrapper download, with a 10-second timeout and
+3-second kill grace. A missing daemon home is recorded as skipped. An unsuccessful stop does
+not turn a failed batch green and makes an otherwise successful batch fail.
+
+The template's final `always()` cleanup repeats the isolated stop, then signals only same-UID
+processes with the exact inherited run marker. Linux pidfds avoid recycled-PID signalling;
+TERM has a 5-second grace and KILL a 2-second grace. It then copies bounded relevant native-log
+tails and removes only the marked work root. Failed ownership/process inspection, survivors, or
+evidence copy failures retain the work and fail cleanup rather than broadening its scope. A failed
+Gradle stop still fails cleanup even if the marked-process fallback permits safe work removal.
+No global Gradle/Python cache, SDK/NDK/CMake binary, installed OS package, other run, candidate
+result directory, or retained evidence directory is deleted. Privileged/unmarked processes are
+not force-reaped; the existing setup command timeouts are unchanged.
+
+Setup and rebuild output is streamed to the normal job log while retaining only the latest
+1 MiB each. Each of the two stop logs is also capped at 1 MiB. At most 24 allowlisted native
+logs/preparation-report tails are retained at 1 MiB each, with a relative-path index: at most
+28 MiB of log payload plus small index/status files. These are separate from the fresh candidate
+result allowlist. After cleanup, a separate `always()` upload retains only those named logs and
+status files for seven days, including failures. The workflow records cleanup's exit status in
+its step output and job summary even if the checkout/helper is unavailable. Its two-minute
+cleanup step fits inside the unchanged 45-minute job ceiling; it is not extra producer budget.
+
+This cleanup remains **NOT_RUN**. SIGKILL, runner loss, or the overall job deadline can prevent
+traps/final steps from running; `always()` is not a guarantee against those failures. A cleanup
+log or upload is operational evidence only, never native/app qualification or acceptance.
 
 ## Candidate artifact and evidence
 

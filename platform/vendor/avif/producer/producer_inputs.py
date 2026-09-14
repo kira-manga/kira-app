@@ -98,13 +98,13 @@ def tool_evidence(work, ndk, java_home, manifest):
     }
     for name in ("clang", "clang++", "llvm-ar", "ld.lld", "llvm-strip", "llvm-nm"):
         tools["ndk_" + name] = tool(llvm / name, "--version")
-    return {"executables": tools, "packages": package_evidence(sdk, ndk, java_home, manifest),
+    return {"executables": tools, "packages": package_evidence(work, sdk, ndk, java_home, manifest),
             "gradle": gradle_evidence(work), "host_kernel": command("uname", "-srvm")}
 
 
-def package_evidence(sdk, ndk, java_home, manifest):
+def package_evidence(work, sdk, ndk, java_home, manifest):
     wheel = manifest["producer"]["meson_wheel"]
-    wheel_path = Path(os.environ["RUNNER_TEMP"]) / "avif-native-wheels" / wheel["filename"]
+    wheel_path = work / "wheels" / wheel["filename"]
     packages = {
         "meson_wheel_sha256": require_hash(wheel_path, wheel["sha256"]),
         "meson_installed_version": importlib.metadata.version("meson"),

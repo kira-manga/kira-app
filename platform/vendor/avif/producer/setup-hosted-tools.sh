@@ -7,6 +7,13 @@ set -euo pipefail
 [[ "${EXPECTED_RECIPE_COMMIT:-}" =~ ^[0-9a-f]{40}$ && "${GITHUB_SHA:-}" == "$EXPECTED_RECIPE_COMMIT" ]]
 [[ "${GITHUB_REF_TYPE:-}" == branch && "${GITHUB_REF_NAME:-}" != main ]]
 [[ "$(df -Pk "${RUNNER_TEMP:?}" | awk 'NR==2 {print $4}')" -ge 8388608 ]]
+producer="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${1:-}" != --owned-stage ]]; then
+    exec python3 "$producer/owned_resources.py" run setup
+fi
+python3 "$producer/owned_resources.py" check-stage
+work="$RUNNER_TEMP/avif-native-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+
 timeout --kill-after=15s 120s sudo apt-get -o Acquire::Retries=0 update
 timeout --kill-after=15s 120s sudo apt-get -o Acquire::Retries=0 install --yes --no-install-recommends nasm=2.15.05-1
 [[ "$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')" -ge 8388608 ]]
@@ -15,8 +22,8 @@ timeout --kill-after=15s 600s "${ANDROID_HOME:?}/cmdline-tools/latest/bin/sdkman
     --sdk_root="$ANDROID_HOME" 'platforms;android-31' 'build-tools;30.0.3' \
     'ndk;25.2.9519653' 'cmake;3.22.1' </dev/null
 
-wheel_dir="$RUNNER_TEMP/avif-native-wheels"
-venv="$RUNNER_TEMP/avif-native-python"
+wheel_dir="$work/wheels"
+venv="$work/python"
 mkdir "$wheel_dir"
 curl -q --fail --location --max-time 60 --retry 0 \
     'https://files.pythonhosted.org/packages/ab/3b/63fdad828b4cbeb49cef3aad26f3edfbc72f37a0ab54917d445ec0b9d9ff/meson-1.7.0-py3-none-any.whl' \

@@ -12,6 +12,10 @@ recipe="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ "$(git -C "$recipe" rev-parse HEAD)" == "$EXPECTED_RECIPE_COMMIT" ]]
 work="${RUNNER_TEMP:?}/avif-native-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 result="${RUNNER_TEMP}/avif-native-result"
+if [[ "${1:-}" != --owned-stage ]]; then
+    exec python3 "$recipe/producer/owned_resources.py" run rebuild
+fi
+python3 "$recipe/producer/owned_resources.py" check-stage
 ndk="${ANDROID_HOME:?}/ndk/25.2.9519653"
 cmake="${ANDROID_HOME}/cmake/3.22.1/bin/cmake"
 export LC_ALL=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 GIT_TERMINAL_PROMPT=0
@@ -40,7 +44,7 @@ export PATH="${ANDROID_HOME}/cmake/3.22.1/bin:$PATH"
 # Deliberate primary-approved tool rebind: use the real SDK payload AGP itself selects.
 # Its exact version/SHA-256 are pending acquisition and must be recorded, never invented.
 "$KIRA_AVIF_NINJA" --version
-mkdir "$work" "$result"
+mkdir "$result"
 python3 "$recipe/producer/prepare_sources.py" "$recipe" "$work" "$ndk"
 
 abis=(armeabi-v7a arm64-v8a x86 x86_64)
@@ -64,8 +68,21 @@ for index in "${!abis[@]}"; do
     [[ -s "$dav1d/build/$abi/src/libdav1d.a" && -s "$libyuv/build/$abi/libyuv.a" ]]
 done
 
+stop_gradle_after_batch() {
+    local build_status="$?"
+    trap - EXIT
+    if ! python3 "$recipe/producer/owned_resources.py" stop-gradle; then
+        # Preserve the original batch failure; a failed stop must not make a successful batch green.
+        [[ "$build_status" -ne 0 ]] || build_status=1
+    fi
+    exit "$build_status"
+}
+
 check_space
 (
+    trap stop_gradle_after_batch EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     cd "$work/libavif/android_jni"
     ./gradlew :avifandroidjni:assembleRelease --no-daemon --max-workers=1 \
         --init-script "$recipe/producer/native-build.init.gradle" -Pandroid.builder.sdkDownload=false \
