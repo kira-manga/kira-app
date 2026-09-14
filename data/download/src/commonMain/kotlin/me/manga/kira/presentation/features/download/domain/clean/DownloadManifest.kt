@@ -2,11 +2,13 @@ package me.manga.kira.presentation.features.download.domain.clean
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.download.BgDownloadLog
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import okio.buffer
 import okio.use
+import kotlin.random.Random
 
 /**
  * Per-chapter download manifest, persisted as `chapter_<chapterId>/manifest.json` next to the
@@ -33,6 +35,8 @@ data class ManifestPage(
     val headers: Map<String, String>,
     /** Number of failed transfer attempts so far (drives bounded retry; see [BackgroundReconciler]). */
     val attempts: Int = 0,
+    /** Durable refusal: relaunch reconciliation must not restart a policy-rejected transfer. */
+    val policyRejected: Boolean = false,
 )
 
 /**
@@ -59,8 +63,11 @@ class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
         }
         val manifest = runCatching {
             val text = system.source(p).buffer().use { it.readUtf8() }
-            json.decodeFromString(DownloadManifest.serializer(), text)
+            json.decodeFromString(DownloadManifest.serializer(), text).also {
+                require(it.mangaId == mangaId && it.chapterId == chapterId && it.hasValidPageRoster())
+            }
         }.onFailure {
+            if (it is CancellationException) throw it
             BgDownloadLog.warn("manifest.store.read.unreadable", "chapterId" to chapterId, "path" to p.toString())
         }.getOrNull()
         if (manifest != null) {
@@ -69,16 +76,39 @@ class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
         return manifest
     }
 
+    /** Atomic write; callers must handle failure, never treat a merely attempted refusal as durable. */
     fun write(manifest: DownloadManifest) {
+        require(manifest.hasValidPageRoster()) { "Invalid chapter page roster" }
         val dir = appFileSystem.chapterDir(manifest.mangaId, manifest.chapterId)
         runCatching {
             system.createDirectories(dir)
             val text = json.encodeToString(DownloadManifest.serializer(), manifest)
-            system.sink(dir / MANIFEST_NAME).buffer().use { it.writeUtf8(text) }
+            val temporary = dir / ".manifest-${Random.nextLong().toULong().toString(16)}.tmp"
+            var owned = false
+            var failure: Throwable? = null
+            try {
+                val sink = system.sink(temporary, mustCreate = true)
+                owned = true
+                sink.buffer().use { it.writeUtf8(text) }
+                system.atomicMove(temporary, dir / MANIFEST_NAME)
+                owned = false
+            } catch (primary: Throwable) {
+                failure = primary
+                throw primary
+            } finally {
+                if (owned) {
+                    try {
+                        system.delete(temporary, mustExist = false)
+                    } catch (cleanup: Throwable) {
+                        if (failure != null) failure.addSuppressed(cleanup) else throw cleanup
+                    }
+                }
+            }
             BgDownloadLog.log("manifest.store.write", "chapterId" to manifest.chapterId, "pages" to manifest.pages.size, "path" to (dir / MANIFEST_NAME).toString())
         }.onFailure {
+            if (it is CancellationException) throw it
             BgDownloadLog.error(it, "manifest.store.write.failed", "chapterId" to manifest.chapterId)
-        }
+        }.getOrThrow()
     }
 
     fun delete(mangaId: Long, chapterId: Long) {
@@ -92,14 +122,14 @@ class DownloadManifestStore(private val appFileSystem: AppFileSystem) {
     }
 
     /** Increment the attempt count for [pageIndex]; returns the new count (0 when there is no manifest). */
-    fun incrementAttempt(mangaId: Long, chapterId: Long, pageIndex: Int): Int {
+    fun incrementAttempt(mangaId: Long, chapterId: Long, pageIndex: Int, policyRejected: Boolean = false): Int {
         val manifest = read(mangaId, chapterId) ?: return 0
         var newCount = 0
         val updated = manifest.copy(
             pages = manifest.pages.map { page ->
                 if (page.index == pageIndex) {
-                    newCount = page.attempts + 1
-                    page.copy(attempts = newCount)
+                    newCount = if (page.attempts == Int.MAX_VALUE) Int.MAX_VALUE else page.attempts + 1
+                    page.copy(attempts = newCount, policyRejected = page.policyRejected || policyRejected)
                 } else {
                     page
                 }

@@ -1,5 +1,7 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
+import me.manga.kira.platform.media.isPageImageName
+
 /**
  * Pure parser for the on-disk page-file naming convention `image_<n>.<ext>` — the index a name
  * parses to decides page ORDER in the finalized artifact and membership in the reconciler's
@@ -23,7 +25,9 @@ object PageFileNames {
     fun pageIndexFromName(name: String): Int? {
         if (!name.startsWith("image_")) return null
         val dot = name.indexOf('.')
-        if (dot < 0) return null
-        return name.substring("image_".length, dot).toIntOrNull()
+        if (dot < 0 || dot != name.lastIndexOf('.') || !isPageImageName(name)) return null
+        val text = name.substring("image_".length, dot)
+        val index = text.toIntOrNull()?.takeIf { it >= 0 } ?: return null
+        return index.takeIf { text == it.toString() }
     }
 }

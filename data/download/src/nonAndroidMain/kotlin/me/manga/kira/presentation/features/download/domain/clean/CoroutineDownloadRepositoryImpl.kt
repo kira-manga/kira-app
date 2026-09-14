@@ -2,13 +2,6 @@ package me.manga.kira.presentation.features.download.domain.clean
 
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.headers
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.isSuccess
-import io.ktor.utils.io.exhausted
-import io.ktor.utils.io.readBuffer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -25,19 +18,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.io.readByteArray
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.background.BackgroundExecutionGuard
+import me.manga.kira.platform.media.PageBytePolicy
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import okio.buffer
-import okio.use
 
 /**
  * Phase 14.x — shared real implementation of [DownloadRepository] for iOS + Desktop.
@@ -109,7 +101,12 @@ class CoroutineDownloadRepositoryImpl(
     // page transfer. The iOS background-URLSession engine reuses the very same two collaborators.
     private val chapterPageResolver: ChapterPageResolver,
     private val chapterFinalizer: ChapterFinalizer,
+    private val mediaInspector: PageMediaInspector,
+    private val pageBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : DownloadRepository {
+    init {
+        requireUncachedPageClient(httpClient)
+    }
 
     private val log = Logger.withTag(TAG)
 
@@ -397,47 +394,8 @@ class CoroutineDownloadRepositoryImpl(
         imageIndex: Int,
         pageHeaders: Map<String, String>,
     ): String = withContext(Dispatchers.Default) {
-        val response: HttpResponse = httpClient.get(imageUrl) {
-            headers {
-                pageHeaders.forEach { (name, value) -> append(name, value) }
-            }
-        }
-        if (!response.status.isSuccess()) {
-            throw IllegalStateException("Image download HTTP ${response.status.value} for $imageUrl")
-        }
-        val contentType = response.headers["Content-Type"]
-        val extension = detectImageExtension(contentType, imageUrl)
-
         val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
-        appFileSystem.fileSystem().createDirectories(dir)
-        val outPath = dir / "image_$imageIndex.$extension"
-
-        // Stream the page body in bounded chunks instead of materialising the whole (multi-megabyte)
-        // image in heap before the write — avoids per-page peak-memory spikes, which matter on iOS
-        // especially when a download runs concurrently with the reader.
-        val channel = response.bodyAsChannel()
-        appFileSystem.fileSystem().sink(outPath).buffer().use { sink ->
-            while (!channel.exhausted()) {
-                val chunk = channel.readBuffer(STREAM_CHUNK_BYTES).readByteArray()
-                if (chunk.isNotEmpty()) sink.write(chunk)
-            }
-        }
-        outPath.toString()
-    }
-
-    private fun detectImageExtension(contentType: String?, imageUrl: String): String {
-        val urlExt = imageUrl.substringAfterLast('.', "").substringBefore('?').lowercase()
-        if (urlExt in IMAGE_EXTENSIONS) return urlExt
-        val ct = contentType?.lowercase().orEmpty()
-        return when {
-            "avif" in ct -> "avif"
-            "jpeg" in ct || "jpg" in ct -> "jpg"
-            "png" in ct -> "png"
-            "gif" in ct -> "gif"
-            "webp" in ct -> "webp"
-            "bmp" in ct -> "bmp"
-            else -> "jpg"
-        }
+        downloadValidatedPage(httpClient, imageUrl, pageHeaders, appFileSystem.fileSystem(), dir, imageIndex, mediaInspector, pageBytePolicy).toString()
     }
 
     private fun deleteChapterFiles(mangaId: Long, chapterId: Long) {
@@ -461,10 +419,6 @@ class CoroutineDownloadRepositoryImpl(
         // challenge so the Details VM auto-routes to the WebView solver. Kept as a local literal
         // (no :domain dep), in lockstep exactly like CANCELLED_BY_USER.
         const val CLOUDFLARE_CHALLENGE = "__cloudflare_challenge__"
-        // Per-read chunk size for streaming page bodies to disk (kotlin.io.DEFAULT_BUFFER_SIZE is
-        // JVM-only, so it is unavailable on the iOS/native target this nonAndroid source set covers).
-        const val STREAM_CHUNK_BYTES = 8192
-        val IMAGE_EXTENSIONS = setOf("avif", "jpg", "jpeg", "png", "gif", "webp", "bmp")
     }
 }
 

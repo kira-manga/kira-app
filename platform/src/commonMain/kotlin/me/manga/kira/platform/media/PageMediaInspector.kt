@@ -69,5 +69,10 @@ private fun PageInspection.failureCode(): String = when (this) {
     is PageInspection.Valid -> error("A valid page is not a media failure")
     is PageInspection.Invalid -> "Invalid downloaded image: $reason"
     is PageInspection.ReadFailure -> "Downloaded image could not be read"
-    is PageInspection.Rejected -> "__page_policy_rejected__:$reason"
+    is PageInspection.Rejected -> "$PAGE_POLICY_REJECTED_PREFIX$reason"
 }
+
+const val PAGE_POLICY_REJECTED_PREFIX: String = "__page_policy_rejected__:"
+
+/** Stable persisted transfer code; retry rules never depend on localized decoder text. */
+fun isPagePolicyRejection(message: String?): Boolean = message?.startsWith(PAGE_POLICY_REJECTED_PREFIX) == true

@@ -110,11 +110,19 @@ class BackgroundReconcilerTest {
     }
 
     @Test
-    fun emptyManifestIsComplete() {
+    fun emptyManifestCannotAuthorizeComplete() {
         val plan = BackgroundReconciler.plan(manifest(), emptySet(), emptySet(), 3)
-        assertTrue(plan.isComplete)
+        assertFalse(plan.isComplete)
         assertTrue(plan.toEnqueue.isEmpty())
-        assertNull(plan.failedPageIndex)
+        assertEquals(0, plan.failedPageIndex)
+    }
+
+    @Test
+    fun persistedPolicyRejectionDoesNotRetryOrAdoptAnOldPageOnRelaunch() {
+        val plan = BackgroundReconciler.plan(manifest(page(0).copy(policyRejected = true)), setOf(0), setOf(0), 3)
+        assertFalse(plan.isComplete)
+        assertTrue(plan.toEnqueue.isEmpty())
+        assertEquals(0, plan.failedPageIndex)
     }
 
     @Test

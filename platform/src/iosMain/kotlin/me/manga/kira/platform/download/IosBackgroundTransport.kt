@@ -2,9 +2,19 @@ package me.manga.kira.platform.download
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.platform.media.PageByteLimitExceeded
+import me.manga.kira.platform.media.PageBytePolicy
+import me.manga.kira.platform.media.PageMediaException
+import me.manga.kira.platform.media.PageMediaInspector
+import me.manga.kira.platform.media.publishPageSnapshot
+import me.manga.kira.platform.media.requireValid
+import okio.IOException
+import okio.Path
+import okio.Path.Companion.toPath
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHTTPURLResponse
@@ -16,6 +26,7 @@ import platform.Foundation.NSURLSessionConfiguration
 import platform.Foundation.NSURLSessionDownloadDelegateProtocol
 import platform.Foundation.NSURLSessionDownloadTask
 import platform.Foundation.NSURLSessionTask
+import platform.Foundation.NSUUID
 import platform.Foundation.setValue
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
@@ -40,11 +51,15 @@ import kotlin.coroutines.resume
 @OptIn(ExperimentalForeignApi::class)
 class IosBackgroundTransport(
     private val appFileSystem: AppFileSystem,
+    private val mediaInspector: PageMediaInspector,
+    private val pageBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : BackgroundTransport {
 
     private var listener: TransferListener? = null
     private var systemCompletionHandler: (() -> Unit)? = null
     private val delegate = Delegate(this)
+    // The default URLSession delegate queue is serial. Entries live only until didComplete.
+    private val outcomes = mutableMapOf<ULong, PageOutcome>()
 
     // The ONE background session. iOS persists its tasks across suspension/termination; recreating
     // the SAME identifier on relaunch re-attaches us to receive the pending callbacks.
@@ -141,72 +156,94 @@ class IosBackgroundTransport(
     // ---- invoked by the Delegate (on the session's delegate queue) ----
 
     internal fun handleWroteData(task: NSURLSessionTask, bytesWritten: Long, totalBytesWritten: Long, totalExpected: Long) {
-        // First callback only (totalBytesWritten == this chunk) → "the transfer is moving bytes".
-        // Per-byte logging would be far too noisy even for the verbose test build.
-        if (totalBytesWritten != bytesWritten) return
         val d = decodeDesc(task.taskDescription) ?: return
-        BgDownloadLog.log("task.didWriteData.started", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "bytesExpected" to totalExpected)
+        val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
+        if (totalBytesWritten > pageBytePolicy.maxEncodedBytes || totalExpected > pageBytePolicy.maxEncodedBytes) {
+            // OS delegate progress is coarse, not a hard bound on URLSession's temporary disk use.
+            // Keep this reason even when the terminal NSError is merely NSURLErrorCancelled.
+            outcome.failure = PageByteLimitExceeded(pageBytePolicy.maxEncodedBytes, maxOf(totalBytesWritten, totalExpected)).message
+            reportFailureOnce(task, d, requireNotNull(outcome.failure))
+            task.cancel()
+        } else if (totalBytesWritten == bytesWritten) {
+            BgDownloadLog.log("task.didWriteData.started", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "bytesExpected" to totalExpected)
+        }
     }
 
     internal fun handleFinishedDownload(task: NSURLSessionDownloadTask, location: NSURL) {
         val d = decodeDesc(task.taskDescription) ?: return
+        val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
+        if (outcome.reported) return
+        outcome.failure?.let { reportFailureOnce(task, d, it); return }
         val response = task.response as? NSHTTPURLResponse
-        val status = response?.statusCode?.toInt() ?: 200
+        val status = response?.statusCode?.toInt()
         BgDownloadLog.log(
             "task.didFinishDownloading",
             "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "taskId" to task.taskIdentifier,
-            "httpStatus" to status, "tempPath" to location.path,
+            "httpStatus" to status,
         )
-        if (status !in 200..299) {
+        if (status == null || status !in 200..299) {
             BgDownloadLog.warn("task.httpError", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "httpStatus" to status)
-            listener?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, "HTTP $status")
+            reportFailureOnce(task, d, if (status == null) "Missing HTTP response" else "HTTP $status")
             return
         }
-        // Detect the extension from the post-redirect URL (currentRequest) — a 30x to a different
-        // path/ext (e.g. a .php endpoint redirecting to a .webp CDN) would otherwise be labelled from
-        // the pre-redirect originalRequest. Falls back to originalRequest if currentRequest is absent.
-        val ext = detectExtension(
-            task.currentRequest?.URL?.absoluteString ?: task.originalRequest?.URL?.absoluteString,
-            response?.valueForHTTPHeaderField("Content-Type"),
-        )
-        val dirPath = appFileSystem.chapterDir(d.mangaId, d.chapterId).toString()
-        val fm = NSFileManager.defaultManager
-        fm.createDirectoryAtPath(dirPath, withIntermediateDirectories = true, attributes = null, error = null)
-        val destPath = "$dirPath/image_${d.pageIndex}.$ext"
-        // Atomic-ish: remove any prior file for this page index then move the OS temp file into place
-        // (same app-container volume on iOS, so moveItem is effectively a rename). A failed/partial
-        // transfer never reaches here (the OS only calls didFinishDownloading on success), so a final
-        // image_* file is complete. Remove by the `image_<index>.` PREFIX, not just the exact destPath:
-        // a retry that detects a different ext (image_5.jpg now arriving as image_5.webp) would otherwise
-        // leave BOTH on disk, and onDiskPagePaths globs image_<index>.* → the page would encode twice
-        // into the CBZ. The "." after the index keeps image_5. from matching image_50.*.
-        val pagePrefix = "image_${d.pageIndex}."
-        (fm.contentsOfDirectoryAtPath(dirPath, error = null))?.forEach { entry ->
-            val name = entry as? String ?: return@forEach
-            if (name.startsWith(pagePrefix)) fm.removeItemAtPath("$dirPath/$name", error = null)
-        }
-        val moved = fm.moveItemAtURL(location, toURL = NSURL.fileURLWithPath(destPath), error = null)
-        if (moved) {
-            BgDownloadLog.log("file.move.success", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "finalPath" to destPath)
+        var ownedTemporary: Path? = null
+        val system = appFileSystem.fileSystem()
+        try {
+            pageBytePolicy.checkDeclaredLength(response.expectedContentLength)
+            val locationPath = location.path?.toPath() ?: throw IOException("Missing downloaded file")
+            pageBytePolicy.checkFileSize(system.metadata(locationPath).size)
+            val directory = appFileSystem.chapterDir(d.mangaId, d.chapterId)
+            system.createDirectories(directory)
+            val temporary = directory / ".image_${d.pageIndex}-${NSUUID().UUIDString}.partial"
+            // Unlike atomicMove, moveItem does not replace a colliding destination. Ownership is
+            // acquired only after success, before URLSession may remove its callback-local file.
+            if (!NSFileManager.defaultManager.moveItemAtURL(location, NSURL.fileURLWithPath(temporary.toString()), error = null)) {
+                throw IOException("Could not retain downloaded page")
+            }
+            ownedTemporary = temporary
+            pageBytePolicy.checkFileSize(system.metadata(temporary).size)
+            val metadata = mediaInspector.inspect(temporary).requireValid()
+            publishPageSnapshot(system, temporary, d.pageIndex, metadata)
+            ownedTemporary = null
+            outcome.reported = true
+            BgDownloadLog.log("file.move.success", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
             listener?.onPageComplete(d.mangaId, d.chapterId, d.pageIndex)
-        } else {
-            BgDownloadLog.error(null, "file.move.failure", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "destPath" to destPath)
-            listener?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, "move failed -> $destPath")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            val reason = if (failure is PageByteLimitExceeded || failure is PageMediaException) {
+                failure.message ?: "Page validation failed"
+            } else "Downloaded page could not be saved"
+            reportFailureOnce(task, d, reason)
+        } finally {
+            ownedTemporary?.let { path ->
+                try { system.delete(path, mustExist = false) } catch (_: IOException) { /* No published page was removed. */ }
+            }
         }
     }
 
     internal fun handleCompleted(task: NSURLSessionTask, error: NSError?) {
-        if (error == null) return // success path handled in handleFinishedDownload
         val d = decodeDesc(task.taskDescription) ?: return
-        if (error.code == NSURLErrorCancelled) {
-            BgDownloadLog.log("task.didComplete.cancelled", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
-            return // user/engine cancel — not a reportable failure
+        try {
+            val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
+            if (outcome.reported) return
+            outcome.failure?.let { reportFailureOnce(task, d, it); return }
+            if (error?.code == NSURLErrorCancelled) {
+                BgDownloadLog.log("task.didComplete.cancelled", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
+                return // user/engine cancel, not a byte-budget cancellation
+            }
+            reportFailureOnce(task, d, error?.localizedDescription ?: "Download completed without a page")
+        } finally {
+            outcomes.remove(task.taskIdentifier)
         }
-        BgDownloadLog.warn(
-            "task.didCompleteWithError",
-            "chapterId" to d.chapterId, "pageIndex" to d.pageIndex, "errorCode" to error.code, "msg" to error.localizedDescription,
-        )
-        listener?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, error.localizedDescription)
+    }
+
+    private fun reportFailureOnce(task: NSURLSessionTask, d: Desc, reason: String) {
+        val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
+        outcome.failure = reason
+        if (outcome.reported) return
+        outcome.reported = true
+        listener?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, reason)
     }
 
     internal fun handleFinishedEvents() {
@@ -225,21 +262,6 @@ class IosBackgroundTransport(
         }
     }
 
-    private fun detectExtension(urlString: String?, contentType: String?): String {
-        val urlExt = urlString?.substringAfterLast('.', "")?.substringBefore('?')?.lowercase().orEmpty()
-        if (urlExt in IMAGE_EXTENSIONS) return urlExt
-        val ct = contentType?.lowercase().orEmpty()
-        return when {
-            "avif" in ct -> "avif"
-            "jpeg" in ct || "jpg" in ct -> "jpg"
-            "png" in ct -> "png"
-            "gif" in ct -> "gif"
-            "webp" in ct -> "webp"
-            "bmp" in ct -> "bmp"
-            else -> "jpg"
-        }
-    }
-
     private fun encodeDesc(mangaId: Long, chapterId: Long, pageIndex: Int): String = "$mangaId|$chapterId|$pageIndex"
 
     private fun decodeDesc(s: String?): Desc? {
@@ -247,16 +269,16 @@ class IosBackgroundTransport(
         if (parts.size != 3) return null
         val m = parts[0].toLongOrNull() ?: return null
         val c = parts[1].toLongOrNull() ?: return null
-        val p = parts[2].toIntOrNull() ?: return null
+        val p = parts[2].toIntOrNull()?.takeIf { it >= 0 } ?: return null
         return Desc(m, c, p)
     }
 
     private data class Desc(val mangaId: Long, val chapterId: Long, val pageIndex: Int)
+    private data class PageOutcome(var failure: String? = null, var reported: Boolean = false)
 
     private companion object {
         const val SESSION_ID = "me.manga.kira.download.transfers"
         const val MAX_CONNECTIONS_PER_HOST: Long = 4
-        val IMAGE_EXTENSIONS = setOf("avif", "jpg", "jpeg", "png", "gif", "webp", "bmp")
     }
 }
 

@@ -1,5 +1,7 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
+import me.manga.kira.platform.media.isPagePolicyRejection
+
 /**
  * Pure retry policy for a failed page **transfer** in the iOS background engine
  * (`BackgroundUrlSessionDownloadRepository.handlePageFailedLocked`). No I/O — fully unit-tested.
@@ -28,7 +30,9 @@ object TransferRetryRules {
     }
 
     fun decide(attempts: Int, maxAttempts: Int, message: String?): Decision =
-        if (attempts >= maxAttempts) {
+        if (isPagePolicyRejection(message)) {
+            Decision.FailChapter(isChallenge = false)
+        } else if (attempts >= maxAttempts) {
             Decision.FailChapter(isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(message))
         } else {
             Decision.Retry(delayMs = backoffMs(attempts))
