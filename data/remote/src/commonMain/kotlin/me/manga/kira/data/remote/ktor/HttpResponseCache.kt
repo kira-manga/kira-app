@@ -23,10 +23,13 @@ fun HttpClient.responseCacheClearer(): HttpCacheClearer =
     checkNotNull(attributes.getOrNull(responseCacheOwnerKey)) { "This client does not own a response cache" }
 
 internal fun HttpClientConfig<*>.installManagedHttpCache(owner: ManagedHttpCache?) {
-    if (owner == null) return
+    val managed = owner ?: return
     install(HttpCache) {
-        publicStorage(owner.publicStorage)
-        privateStorage(owner.privateStorage)
+        publicStorage(managed.publicStorage)
+        privateStorage(managed.privateStorage)
+    }
+    install(HttpCacheRevalidationRecovery) {
+        this.owner = managed
     }
 }
 
