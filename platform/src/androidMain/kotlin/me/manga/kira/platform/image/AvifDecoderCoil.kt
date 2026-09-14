@@ -1,108 +1,42 @@
 package me.manga.kira.platform.image
 
-import android.graphics.Bitmap
-import androidx.core.graphics.createBitmap
 import co.touchlab.kermit.Logger
-import coil3.asImage
 import coil3.decode.DecodeResult
 import coil3.decode.Decoder
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import okio.BufferedSource
-import java.nio.ByteBuffer
-import org.aomedia.avif.android.AvifDecoder as AomAvifDecoder
+import okio.ByteString.Companion.encodeUtf8
+import okio.use
 
 /**
- * Coil 3 [Decoder] that decodes AVIF-encoded image bytes via the `org.aomedia.avif.android`
- * native library. Ported verbatim from legacy `:shared/androidMain/.../core/image/AvifDecoderCoil.android.kt`
- * (which itself was ported from the upstream native app's `core/avif/HeifDecoder.kt`).
+ * Coil AVIF decoder using the AOM native library, including on Android versions without AVIF.
+ * Target dimensions follow Coil's sizing and independent bitmap caps. Valid tall pages are
+ * admitted by pixel/byte budgets, never by their aspect ratio. Opaque output stays RGB_565 and
+ * alpha output stays ARGB_8888; native decode work remains serialized.
  *
- * **Why this exists.** Many Cloudflare-protected manga CDNs serve chapter pages as AVIF. Without
- * this decoder registered on the singleton `ImageLoader` (via [AndroidImageDecoderRegistry] +
- * the Phase 10 ImageLoader wiring), Coil 3 falls back to the platform default — on Android <31
- * AVIF cannot be decoded at all, and on Android 31+ Android's `ImageDecoder` decodes it but at
- * noticeably lower quality than the AOM library's reference path.
+ * A claimed AVIF is either decoded or fails terminally. Returning null after reading the shared
+ * source would incorrectly invite Coil to retry with a consumed/closed source.
  *
- * **Behaviour parity** with the legacy source: identical decode path, aspect-ratio sanity check,
- * RGB_565 for opaque images / ARGB_8888 for alpha, defensive recycling on every failure mode,
- * and a serialised native call via [decoderMutex] to mirror the upstream's thread-safety claim.
- * Logging switched from `android.util.Log` to Kermit `Logger.withTag(TAG)` to match the
- * `:platform` module's convention; format differs but observability is preserved (Kermit
- * delegates to logcat on Android).
+ * Native source planes are decoded BEFORE bitmap scaling. Both native calls therefore receive
+ * an allowance-derived pixel cap, recalculated after reserving the planned output. The patched
+ * dav1d path bounds actual AV1 frame/tile pixels, not their independent axes or aggregate RSS.
+ * Source and output byte allowances remain conservative estimates, not native allocator limits.
  */
 internal class AvifDecoderCoil(
     private val source: BufferedSource,
     private val options: Options,
+    private val limits: AvifDecodeLimits = AvifDecodeLimits(),
 ) : Decoder {
 
-    override suspend fun decode(): DecodeResult? = decoderMutex.withLock {
-        var bitmap: Bitmap? = null
-        try {
-            val bytes = source.use { it.readByteArray() }
-            if (bytes.size < AVIF_HEADER_MIN_BYTES) {
-                log.w { "File too small to be a valid AVIF image" }
-                return null
+    override suspend fun decode(): DecodeResult =
+        source.use {
+            // Own the source even if cancellation occurs while waiting for the native decoder slot.
+            withAndroidAvifPermit {
+                decodeAndroidAvif(source, options, limits)
             }
-
-            val buffer = ByteBuffer.allocateDirect(bytes.size)
-            buffer.put(bytes)
-            buffer.rewind()
-
-            val info = AomAvifDecoder.Info()
-            if (!AomAvifDecoder.getInfo(buffer, buffer.capacity(), info)) {
-                log.w { "Invalid AVIF image: getInfo failed" }
-                return null
-            }
-
-            val ratio = info.height.toFloat() / info.width.toFloat()
-            if (ratio > MAX_ASPECT_RATIO) {
-                log.w { "Rejected AVIF due to insane aspect ratio: ${info.width}x${info.height}" }
-                return null
-            }
-
-            log.d {
-                "Decoding AVIF: ${info.width}x${info.height}, alpha=${info.alphaPresent}, " +
-                    "depth=${info.depth}"
-            }
-
-            bitmap = createBitmap(
-                info.width,
-                info.height,
-                if (info.alphaPresent) Bitmap.Config.ARGB_8888 else Bitmap.Config.RGB_565,
-            )
-
-            buffer.rewind()
-            val ok = AomAvifDecoder.decode(buffer, buffer.capacity(), bitmap, 0)
-            if (!ok) {
-                bitmap.recycle()
-                log.w { "Failed to decode AVIF: decode returned false" }
-                return null
-            }
-
-            return DecodeResult(
-                image = bitmap.asImage(),
-                isSampled = false,
-            )
-        } catch (e: UnsatisfiedLinkError) {
-            bitmap?.recycle()
-            log.e(e) { "Native library error - AVIF decoder unavailable" }
-            return null
-        } catch (e: OutOfMemoryError) {
-            bitmap?.recycle()
-            log.e(e) { "Out of memory while decoding AVIF" }
-            return null
-        } catch (e: Exception) {
-            bitmap?.recycle()
-            log.e(e) { "Error decoding AVIF image, will try other decoders" }
-            return null
-        } catch (e: Error) {
-            bitmap?.recycle()
-            log.e(e) { "Fatal error in native AVIF decoder" }
-            return null
         }
-    }
 
     /**
      * Coil [Decoder.Factory] that recognises AVIF sources by mime type or magic bytes. Returns
@@ -115,34 +49,13 @@ internal class AvifDecoderCoil(
             imageLoader: coil3.ImageLoader,
         ): Decoder? {
             return try {
-                val mime = result.mimeType?.lowercase()
-                if (mime == MIME_AVIF) {
-                    return AvifDecoderCoil(result.source.source(), options)
-                }
-
-                val peekSource = result.source.source().peek()
-                if (peekSource.request(AVIF_HEADER_MIN_BYTES.toLong())) {
-                    val header = peekSource.readByteArray(AVIF_HEADER_MIN_BYTES.toLong())
-                    val isAvif = header.size >= AVIF_HEADER_MIN_BYTES &&
-                        header[FTYP_OFFSET + 0] == 'f'.code.toByte() &&
-                        header[FTYP_OFFSET + 1] == 't'.code.toByte() &&
-                        header[FTYP_OFFSET + 2] == 'y'.code.toByte() &&
-                        header[FTYP_OFFSET + 3] == 'p'.code.toByte() &&
-                        (
-                            (header[BRAND_OFFSET + 0] == 'a'.code.toByte() &&
-                                header[BRAND_OFFSET + 1] == 'v'.code.toByte() &&
-                                header[BRAND_OFFSET + 2] == 'i'.code.toByte() &&
-                                header[BRAND_OFFSET + 3] == 'f'.code.toByte()) ||
-                                (header[BRAND_OFFSET + 0] == 'a'.code.toByte() &&
-                                    header[BRAND_OFFSET + 1] == 'v'.code.toByte() &&
-                                    header[BRAND_OFFSET + 2] == 'i'.code.toByte() &&
-                                    header[BRAND_OFFSET + 3] == 's'.code.toByte())
-                            )
-
-                    if (isAvif) AvifDecoderCoil(result.source.source(), options) else null
+                if (result.mimeType?.lowercase() == MIME_AVIF || hasAvifHeader(result.source.source())) {
+                    AvifDecoderCoil(result.source.source(), options)
                 } else {
                     null
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 log.e(e) { "Error in decoder factory" }
                 null
@@ -154,11 +67,19 @@ internal class AvifDecoderCoil(
         const val TAG = "AvifDecoderCoil"
         const val MIME_AVIF = "image/avif"
         const val AVIF_HEADER_MIN_BYTES = 12
-        const val FTYP_OFFSET = 4
-        const val BRAND_OFFSET = 8
-        const val MAX_ASPECT_RATIO = 10f
-        val decoderMutex = Mutex()
+        const val FTYP_OFFSET = 4L
+        const val BRAND_OFFSET = 8L
+        val fileType = "ftyp".encodeUtf8()
+        val avifBrand = "avif".encodeUtf8()
+        val avisBrand = "avis".encodeUtf8()
         val log = Logger.withTag(TAG)
+
+        fun hasAvifHeader(source: BufferedSource): Boolean =
+            source.peek().use { peek ->
+                peek.request(AVIF_HEADER_MIN_BYTES.toLong()) &&
+                    peek.rangeEquals(FTYP_OFFSET, fileType) &&
+                    (peek.rangeEquals(BRAND_OFFSET, avifBrand) || peek.rangeEquals(BRAND_OFFSET, avisBrand))
+            }
     }
 }
 
