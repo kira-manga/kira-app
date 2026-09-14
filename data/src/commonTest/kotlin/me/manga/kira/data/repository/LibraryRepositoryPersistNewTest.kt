@@ -84,6 +84,9 @@ class LibraryRepositoryPersistNewTest {
     private class FakeMangaDao(
         private val id: Long?,
     ) : MangaDao {
+        override suspend fun getIdByApiAndUrl(api: String, mangaUrl: String): Long? =
+            if (api == "src" && mangaUrl == "m/naruto") id else null
+
         override suspend fun getIdByApiAndTitle(
             api: String,
             title: String,
@@ -145,7 +148,7 @@ class LibraryRepositoryPersistNewTest {
             val deo = FakeLibraryDeo(seededUrls = listOf("c/1", "c/2"))
             val repo = repo(deo, mangaId = 7L)
             // Source ships newest-first: c/4 and c/3 are new, c/2/c/1 already saved.
-            val result = repo.persistNewChapters("src", "en", "Naruto", listOf(ch("4"), ch("3"), ch("2"), ch("1")))
+            val result = repo.persistNewChapters("src", "m/naruto", listOf(ch("4"), ch("3"), ch("2"), ch("1")))
 
             assertTrue(result.isSuccess)
             assertEquals(2, deo.inserted.size, "only the two not-yet-saved chapters are inserted")
@@ -258,11 +261,11 @@ class LibraryRepositoryPersistNewTest {
         runTest {
             val deo = FakeLibraryDeo(seededUrls = listOf("c/1"))
             val repo = repo(deo, mangaId = 7L)
-            repo.persistNewChapters("src", "en", "Naruto", listOf(ch("2"), ch("1")))
+            repo.persistNewChapters("src", "m/naruto", listOf(ch("2"), ch("1")))
             deo.inserted.clear()
 
             // Second refresh with the same list: c/2 is now saved, nothing new.
-            val result = repo.persistNewChapters("src", "en", "Naruto", listOf(ch("2"), ch("1")))
+            val result = repo.persistNewChapters("src", "m/naruto", listOf(ch("2"), ch("1")))
 
             assertTrue(result.isSuccess)
             assertTrue(deo.inserted.isEmpty(), "a re-refresh inserts nothing (idempotent)")
@@ -272,9 +275,9 @@ class LibraryRepositoryPersistNewTest {
     fun no_op_when_not_in_library() =
         runTest {
             val deo = FakeLibraryDeo(seededUrls = emptyList())
-            val repo = repo(deo, mangaId = null) // getIdByApiAndTitle → null = not in library
+            val repo = repo(deo, mangaId = null) // exact api + URL lookup → null = not in library
 
-            val result = repo.persistNewChapters("src", "en", "Naruto", listOf(ch("1")))
+            val result = repo.persistNewChapters("src", "m/naruto", listOf(ch("1")))
 
             assertEquals(0, (result as me.manga.kira.core.result.AppResult.Success).value)
             assertTrue(deo.inserted.isEmpty())

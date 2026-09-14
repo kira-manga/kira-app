@@ -114,7 +114,7 @@ internal class DetailsUrlOnlyRoomFixture(private val dispatcher: CoroutineDispat
 internal class DeferredDetailsMembership(private val real: LibraryRepository) : LibraryRepository by real {
     val ready = CompletableDeferred<Unit>()
     val observedKeys = mutableListOf<MangaKey>()
-    val offeredKeys = mutableListOf<MangaKey>()
+    val offeredParents = mutableListOf<Pair<String, String>>()
     val results = mutableListOf<AppResult<Int>>()
 
     override fun observeIsInLibrary(api: String, language: String, title: String): Flow<Boolean> =
@@ -126,12 +126,11 @@ internal class DeferredDetailsMembership(private val real: LibraryRepository) : 
 
     override suspend fun persistNewChapters(
         api: String,
-        language: String,
-        title: String,
+        mangaUrl: String,
         fetched: List<Chapter>,
     ): AppResult<Int> {
-        offeredKeys += MangaKey(api, language, title)
-        return real.persistNewChapters(api, language, title, fetched).also { results += it }
+        offeredParents += api to mangaUrl
+        return real.persistNewChapters(api, mangaUrl, fetched).also { results += it }
     }
 }
 

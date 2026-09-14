@@ -108,11 +108,10 @@ class FakeLibraryRepository : LibraryRepository {
 
     override suspend fun persistNewChapters(
         api: String,
-        language: String,
-        title: String,
+        mangaUrl: String,
         fetched: List<Chapter>,
     ): AppResult<Int> {
-        calls += "persistNewChapters($api,$language,$title,fetched=${fetched.size})"
+        calls += "persistNewChapters($api,$mangaUrl,fetched=${fetched.size})"
         return AppResult.Success(persistedCount)
     }
 

@@ -101,6 +101,7 @@ class LibraryRepositoryAddTest {
         override suspend fun getApiByMangaId(mangaId: Long): String? = null
         override suspend fun updateLastOpenTimestamp(mangaId: Long, timestamp: Long) {}
         override suspend fun getIdByApiAndTitle(api: String, title: String): Long? = null
+        override suspend fun getIdByApiAndUrl(api: String, mangaUrl: String): Long? = null
         override suspend fun getMangaById(mangaId: Long): SavedMangaEntity? = null
         override suspend fun getMangaByApi(api: String): List<SavedMangaEntity> = emptyList()
         override suspend fun getMangaIdsByApi(api: String): List<Long> = emptyList()

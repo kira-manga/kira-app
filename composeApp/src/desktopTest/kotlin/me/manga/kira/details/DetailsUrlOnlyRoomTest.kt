@@ -25,6 +25,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -51,7 +52,7 @@ class DetailsUrlOnlyRoomTest {
             assertEquals("", request.title)
             assertEquals("", request.language)
             assertEquals(listOf(MangaKey(manga.api, manga.language, manga.title)), fixture.library.observedKeys)
-            assertEquals(fixture.library.observedKeys, fixture.library.offeredKeys)
+            assertEquals(listOf(manga.api to manga.url), fixture.library.offeredParents)
             assertEquals(listOf(1), persistedCounts(fixture))
 
             val rows = fixture.db.chapterDao().getChaptersByMangaIdR(old.mangaId)
@@ -131,11 +132,59 @@ class DetailsUrlOnlyRoomTest {
             advanceUntilIdle()
 
             assertEquals(before, fixture.vm.state.value)
-            assertEquals(listOf(MangaKey(other.api, other.language, other.title)), fixture.library.offeredKeys)
+            assertEquals(listOf(other.api to other.url), fixture.library.offeredParents)
             assertEquals(listOf(0), persistedCounts(fixture), "the stale A payload is not even offered")
             assertEquals(listOf(old), fixture.db.chapterDao().getChaptersByMangaIdR(old.mangaId))
             assertEquals(1, fixture.db.statisticsDeo().getTotalMangaCount().first())
             assertEquals(1, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+        }
+
+    @Test
+    fun unsavedMetadataTwinCannotAttachItsChaptersToSavedA() =
+        roomTest { fixture ->
+            val savedA = fixture.seed(manga, first)
+            val other = manga.copy(url = "${manga.url}/unsaved-twin")
+            open(fixture, other, listOf(roomChapter(other, "1")))
+            assertEquals(listOf(0), persistedCounts(fixture))
+            assertEquals(listOf(other.api to other.url), fixture.library.offeredParents)
+
+            // Even after the legacy metadata-based observer emits, it cannot authorize this write.
+            fixture.library.ready.complete(Unit)
+            advanceUntilIdle()
+            assertTrue(fixture.vm.state.value.isInLibrary, "legacy metadata match must not authorize the write")
+            fixture.vm.submit(DetailsIntent.OnRetry)
+            advanceUntilIdle()
+
+            assertEquals(listOf(0, 0), persistedCounts(fixture))
+            assertEquals(listOf(savedA), fixture.db.chapterDao().getChaptersByMangaIdR(savedA.mangaId))
+            assertNull(fixture.db.mangaDao().getIdByApiAndUrl(other.api, other.url))
+            assertEquals(1, fixture.db.statisticsDeo().getTotalMangaCount().first())
+            assertEquals(1, fixture.db.statisticsDeo().getTotalChaptersCount().first())
+        }
+
+    @Test
+    fun bothSavedMetadataTwinsPersistOnlyRequestedBEvenWhenPayloadNamesAUrl() =
+        roomTest { fixture ->
+            val savedA = fixture.seed(manga, first)
+            val other = manga.copy(url = "${manga.url}/saved-twin")
+            val otherFirst = roomChapter(other, "1")
+            val otherNew = roomChapter(other, "2")
+            val savedB = fixture.seed(other, otherFirst)
+            // Source payload metadata must not redirect persistence away from the requested parent.
+            fixture.source.answers[other.url] = AppResult.Success(roomDetails(manga, listOf(otherNew, otherFirst)))
+            fixture.vm.submit(DetailsIntent.OnEnterByUrl(other.api, other.url))
+            advanceUntilIdle()
+
+            assertEquals(other.url, fixture.vm.state.value.manga?.url)
+            assertEquals(listOf(other.api to other.url), fixture.library.offeredParents)
+            assertEquals(listOf(1), persistedCounts(fixture))
+            assertEquals(listOf(savedA), fixture.db.chapterDao().getChaptersByMangaIdR(savedA.mangaId))
+            val bRows = fixture.db.chapterDao().getChaptersByMangaIdR(savedB.mangaId)
+            assertEquals(2, bRows.size)
+            assertEquals(savedB, bRows.single { it.id == savedB.id })
+            assertNewRow(bRows.single { it.url == otherNew.url }, savedB.mangaId, otherNew.url)
+            assertEquals(2, fixture.db.statisticsDeo().getTotalMangaCount().first())
+            assertEquals(3, fixture.db.statisticsDeo().getTotalChaptersCount().first())
         }
 
     private fun TestScope.open(fixture: DetailsUrlOnlyRoomFixture, owner: Manga, chapters: List<Chapter>) {
@@ -146,9 +195,9 @@ class DetailsUrlOnlyRoomTest {
         assertEquals(owner, fixture.vm.state.value.manga)
     }
 
-    private fun assertNewRow(row: SavedChapterEntity, mangaId: Long) {
+    private fun assertNewRow(row: SavedChapterEntity, mangaId: Long, expectedUrl: String = second.url) {
         assertEquals(mangaId, row.mangaId)
-        assertEquals(second.url, row.url)
+        assertEquals(expectedUrl, row.url)
         assertTrue(row.isNew)
         assertTrue(row.fetchedAt > 0L)
         assertFalse(row.isRead)

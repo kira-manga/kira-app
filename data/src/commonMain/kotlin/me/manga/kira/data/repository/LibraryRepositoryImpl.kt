@@ -185,15 +185,18 @@ class LibraryRepositoryImpl(
      * flagged `isNew = true` with a `fetchedAt = now` discovery timestamp. Idempotent — the unique
      * `(mangaId, url)` index + `OnConflict.IGNORE` mean a re-refresh inserts nothing and never resets
      * `isNew` on already-saved chapters. `.reversed()` matches the add path so autoincrement `id`
-     * stays oldest→newest. Returns the count inserted; 0 when the manga isn't in the library.
+     * stays oldest→newest. Resolves only the captured request's exact api + parent URL; no title
+     * fallback. Returns the count inserted; 0 when that parent isn't in the library.
      */
     override suspend fun persistNewChapters(
         api: String,
-        language: String,
-        title: String,
+        mangaUrl: String,
         fetched: List<Chapter>,
     ): AppResult<Int> = runCatchingStorage {
-        withContext(dispatchers.io) { insertNewChapters(api, title, fetched).second.size }
+        withContext(dispatchers.io) {
+            val mangaId = mangaDao.getIdByApiAndUrl(api, mangaUrl) ?: return@withContext 0
+            insertNewChapters(mangaId, fetched).size
+        }
     }
 
     /**
@@ -233,10 +236,8 @@ class LibraryRepositoryImpl(
         }
 
     /**
-     * Shared diff+insert for the two persist paths. Resolves the manga id, diffs [fetched] against the
-     * saved chapter urls, and inserts ONLY the genuinely-new ones (isNew=true, fetchedAt=now, reversed
-     * so autoincrement id ascends oldest→newest; IGNORE on the unique (mangaId,url) index makes it
-     * idempotent). Returns (mangaId, newOnes); mangaId is 0 and newOnes empty when not in library.
+     * Preserve the notifying library-refresh path's legacy parent lookup. Details uses the exact
+     * api + URL lookup above instead. Both paths share only the already-resolved id-based insert.
      */
     private suspend fun insertNewChapters(
         api: String,
@@ -247,6 +248,11 @@ class LibraryRepositoryImpl(
             FlowLog.log("Details", "persistNew", "title=$title skipped=not-in-library")
             return 0L to emptyList()
         }
+        return mangaId to insertNewChapters(mangaId, fetched)
+    }
+
+    /** Diff/dedup and NEW stamping under the parent id already resolved by the caller. */
+    private suspend fun insertNewChapters(mangaId: Long, fetched: List<Chapter>): List<Chapter> {
         val savedUrls = libraryDeo.getSavedChapterUrls(mangaId).toSet()
         val newOnes = fetched.filter { it.url !in savedUrls }
         FlowLog.log("Details", "persistNew", "mangaId=$mangaId fetched=${fetched.size} new=${newOnes.size}")
@@ -256,7 +262,7 @@ class LibraryRepositoryImpl(
                 newOnes.reversed().map { it.toNewSavedChapterEntity(mangaId = mangaId, fetchedAt = now) },
             )
         }
-        return mangaId to newOnes
+        return newOnes
     }
 
     /**

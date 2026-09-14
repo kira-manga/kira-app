@@ -92,8 +92,8 @@ import kotlin.time.ExperimentalTime
  * network fetch; a not-in-library manga (or an in-library one with no cached chapters yet) still
  * fetches. [DetailsIntent.OnRetry] always fetches regardless of membership (pull-to-refresh parity).
  * Every successful fetch offers its chapters to [PersistNewChaptersUseCase], including URL-only
- * entries and saved manga without cached chapters. The repository's saved-row lookup, not the
- * timing of the membership observer, decides whether any chapters can be written.
+ * entries and saved manga without cached chapters. The repository's exact request-parent api/URL
+ * lookup, not fetched metadata or membership-observer timing, decides whether chapters can be written.
  *
  * Re-entrance guard on [DetailsIntent.OnRetry]: if a fetch is already in flight
  * (`state.value.isLoading == true`), the intent is dropped. This prevents concurrent fetches
@@ -643,12 +643,12 @@ class DetailsViewModel(
                 }
                 // Network chapter list landed — re-derive per-chapter download status (PFIX-DLPROGRESS).
                 recomputeChapterDownloads()
-                // Offer every successful fetch using its enriched identity. The membership observer
+                // Offer every successful fetch using its captured request parent. The membership observer
                 // can still be awaiting its first emission (especially after OnEnterByUrl); it is a
-                // UI affordance, not persistence authority. The repository resolves the saved row,
-                // inserts only new chapters with NEW/fetchedAt, and writes nothing for unsaved manga.
+                // UI affordance, not persistence authority. The repository resolves that exact api/URL,
+                // never a same-titled row or a parent address supplied by the fetched payload.
                 launchSafely {
-                    persistNewChapters(details.api, details.language, details.title, details.chapters)
+                    persistNewChapters(fetchApi, fetchUrl, details.chapters)
                 }
                 // A successful fetch clears the Cloudflare-solve budget so a later genuine challenge
                 // gets its full allowance again (not starved by earlier attempts this session).

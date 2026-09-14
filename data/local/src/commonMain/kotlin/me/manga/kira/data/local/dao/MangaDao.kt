@@ -104,6 +104,10 @@ interface MangaDao {
     """)
     suspend fun getIdByApiAndTitle(api: String, title: String): Long?
 
+    /** Resolve the exact saved api/URL parent, or null; title metadata is never a fallback. */
+    @Query("SELECT id FROM saved_manga WHERE api = :api AND url = :mangaUrl LIMIT 1")
+    suspend fun getIdByApiAndUrl(api: String, mangaUrl: String): Long?
+
     @Query("SELECT * FROM saved_manga WHERE id = :mangaId LIMIT 1")
     suspend fun getMangaById(mangaId: Long): SavedMangaEntity?
 
