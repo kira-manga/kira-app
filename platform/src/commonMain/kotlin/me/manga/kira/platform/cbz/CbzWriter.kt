@@ -9,21 +9,26 @@ import okio.Path
  * encapsulates the platform-specific bits (image decode, page encode, vertical splitting of tall
  * pages) so callers in `:data` can request "encode these N source paths into a CBZ at the
  * conventional location" without knowing whether the page encoder is Android's
- * `Bitmap.compress(WEBP_LOSSY)` or the skiko-backed `SkiaWebpEncoder` used by Desktop + iOS.
+ * `Bitmap.compress(WEBP_LOSSY)` or iOS's ImageIO/libwebp pipeline (with a Skia rollback encoder).
  *
  * Output archive lives at
  * `filesDir/manga/<mangaId>/chapter_<chapterId>/chapter_<chapterId>.cbz`, with the chapter
  * directory created on demand via `AppFileSystem.chapterDir`.
  *
- * Per-platform notes — all three actuals now transcode pages to real WebP at [quality]:
+ * Shipping mobile implementations validate every requested input before encoding or preservation;
+ * any missing/read/invalid/decode/encode failure aborts without publishing a page-short archive.
+ * Originals are removed only after a complete staged archive has atomically replaced the final.
+ *
+ * Per-platform notes:
  *  - **Android**: `Bitmap.CompressFormat.WEBP_LOSSY` on API ≥ 30, the deprecated `WEBP` on older
  *    releases.
- *  - **Desktop & iOS**: `org.jetbrains.skia.Image.encodeToData(WEBP, quality)` via the shared
- *    `SkiaWebpEncoder` (nonAndroidMain) — skiko's Skia ships a WebP encoder. A page skiko cannot
- *    decode (e.g. AVIF — no libavif) is stored verbatim under its **true** extension (never a
- *    cosmetic `.webp`) and remains readable/counted via `DefaultCbzReader`'s allow-list.
- *  - All three split tall webtoon pages into bands so a single page may yield several output pages.
- *    Transcoded entries are named `page_NNNN.webp`; verbatim fallbacks keep their real extension.
+ *  - **iOS**: native ImageIO/CoreGraphics + libwebp by default; the compiled Skia rollback follows
+ *    the same pre-decode admission and sequential-emission contract.
+ *  - **Android/iOS**: only already-validated pages denied by the transcode memory/dimension policy
+ *    or a known transcode-only capability are preserved under their actual extension. Inspection
+ *    rejection, arbitrary decoder failure and malformed data never authorize preservation.
+ *  - **Desktop**: the legacy Skia list-returning path is unchanged by the mobile admission policy.
+ *  - Transcoded bands are named `page_NNNN.webp`; one input can yield several output entries.
  *
  * Construction: implementations take an `AppFileSystem` so the conventional output location can
  * be resolved without callers passing path roots through every layer.
@@ -97,11 +102,13 @@ interface CbzWriter {
     ): Path
 
     /**
-     * Variant of [createCbz] that splits oversized bitmaps vertically before encoding. Webtoon-
-     * style chapters (single image, ~30,000 px tall) blow up peak memory; splitting bounds it.
+     * Variant of [createCbz] that emits vertical bands. On mobile, metadata-based admission reserves
+     * the full decoded source plus one band's native/encoded overhead before full decode; banding
+     * alone cannot bound the source allocation. Valid over-budget pages are preserved verbatim.
      *
      * @param maxHeight pixels — pages taller than this are split into chunks.
-     * @param maxMemoryBytes hint for peak in-memory bitmap size before forcing a split.
+     * @param maxMemoryBytes conservative per-page transcode admission budget, not a hard native RSS
+     * ceiling. Bounded encoded input/validation has its own policy and precedes this decision.
      */
     suspend fun createCbzWithSplitting(
         imagePaths: List<Path>,
@@ -119,7 +126,7 @@ interface CbzWriter {
         /** Default max-height before vertical splitting kicks in. 10_000 matches legacy. */
         const val DEFAULT_MAX_HEIGHT: Int = 10_000
 
-        /** Default peak in-memory bitmap size (100 MiB) before forcing a split. */
+        /** Default mobile transcode admission budget: 100,000,000 decimal bytes (not 100 MiB). */
         const val DEFAULT_MAX_MEMORY_BYTES: Long = 100_000_000L
     }
 }

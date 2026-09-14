@@ -134,5 +134,11 @@ kotlin {
             implementation(libs.androidx.room.runtime)
             implementation(libs.androidx.sqlite.bundled)
         }
+
+        iosTest.dependencies {
+            // CBZ finalization tests reopen real Room state using the production SQLite driver.
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
+        }
     }
 }

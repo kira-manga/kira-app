@@ -12,10 +12,10 @@ import okio.BufferedSink
  * platform with zero reader changes.
  *
  * STORE (rather than DEFLATE) is the right fit here: the entries handed to [writeEntry] are
- * already-compressed image bytes — WebP transcoded by [SkiaWebpEncoder] for decodable pages, or the
- * original page bytes verbatim under their true extension when a format can't be decoded — so
- * re-deflating them would only burn CPU for no size win. Peak-memory bounding lives in
- * [SkiaWebpEncoder] (it bands tall pages); this writer just streams the finished entry bytes -> sink.
+ * already-compressed image bytes — one WebP band from the admitted iOS codec, or validated original
+ * bytes under their true extension after an explicit transcode-preservation decision — so
+ * re-deflating them would only burn CPU for no size win. Transcode admission lives in
+ * [CbzTranscodeBudget]; this writer streams each finished entry before the next band is encoded.
  *
  * All multi-byte fields are little-endian, per the ZIP (APPNOTE) specification. Filenames are
  * ASCII (`page_NNNN.webp`, or `page_NNNN.<ext>` for verbatim fallbacks), so their UTF-8 encoding

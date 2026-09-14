@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.download.BgDownloadLog
+import me.manga.kira.platform.media.PageImageMetadata
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.EncodedImageFormat
@@ -20,11 +21,11 @@ import org.jetbrains.skia.impl.use as skiaUse
  * and Desktop, not just Android. skiko is already linked into both targets (it backs
  * [me.manga.kira.platform.image.HighQualitySkiaImageDecoder]); Skia's WebP encoder is compiled in.
  *
- * Decode-then-encode necessarily materialises a bitmap, so [encodeToWebpPages]:
- *  - **bounds peak memory** by splitting images taller than the caller's `maxHeight` into vertical
- *    bands, and further capping each band's height to [MAX_BAND_BYTES] worth of N32 pixels regardless
- *    of width (so one band's bitmap never exceeds ~64 MiB) — the non-Android analogue of Android's
- *    `createCbzWithSplitting`. Each band becomes its own output page, exactly as on Android.
+ * The shipping iOS rollback calls [encodeValidatedPage], which admits full-source/native overhead
+ * before decode and streams one band at a time. Its conservative estimates are not native RSS proof.
+ * The legacy Desktop [encodeToWebpPages] API intentionally retains its old behavior:
+ *  - Caps a band's N32 pixels to [MAX_BAND_BYTES]; this does NOT bound full-source decode memory or
+ *    the retained list of encoded bands. Each band becomes its own output page.
  *  - **releases every native handle** (`Image`, `Bitmap`, `Data`, `Canvas`) in `finally`, mirroring
  *    `HighQualitySkiaImageDecoder`'s explicit-close discipline (Kotlin/Native's GC will not reclaim
  *    skiko's native heap on its own).
@@ -36,6 +37,21 @@ import org.jetbrains.skia.impl.use as skiaUse
 internal object SkiaWebpEncoder {
 
     private val log = Logger.withTag(TAG)
+
+    /**
+     * Shipping iOS rollback entrypoint: admission before native decode, sequential emission and no
+     * catch-all verbatim fallback. [metadata] must describe this same already-validated snapshot.
+     * The legacy Desktop list-returning entrypoint below deliberately retains its existing behavior.
+     */
+    suspend fun encodeValidatedPage(
+        source: ByteArray,
+        metadata: PageImageMetadata,
+        quality: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+        decode: (ByteArray) -> Image = { Image.makeFromEncoded(it) },
+        emit: suspend (ByteArray) -> Unit,
+    ): CbzPageEncoding = streamValidatedSkiaPage(source, metadata, quality, maxHeight, maxMemoryBytes, decode, emit)
 
     /**
      * Decode [source] (any format Skia decodes: jpg/png/webp/gif/bmp) and re-encode it to one or more
