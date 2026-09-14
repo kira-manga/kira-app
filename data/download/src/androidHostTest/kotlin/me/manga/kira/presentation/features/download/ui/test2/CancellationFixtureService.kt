@@ -8,6 +8,7 @@ import me.manga.kira.presentation.features.download.domain.ChapterDownloadPersis
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 
+/** Keeps the existing five-argument App75 call and its default Android manager unchanged. */
 internal fun fixtureDownloadService(
     storage: CancellationFixtureStorage,
     rows: DownloadWorkerCancellationRows,
@@ -15,23 +16,31 @@ internal fun fixtureDownloadService(
     transport: CancellationPageTransport,
     sender: CompleteSendDispatcher,
 ): ChapterDownloadService {
-    val files = FileService(storage.fileSystem)
+    val inputs = CancellationFixtureServiceInputs(storage, rows, dao, transport, sender)
+    return fixtureDownloadService(inputs)
+}
+
+internal fun fixtureDownloadService(
+    inputs: CancellationFixtureServiceInputs,
+    manager: OptimizedCbzManager = OptimizedCbzManager(inputs.storage.context, fixtureDeviceTier),
+): ChapterDownloadService {
+    val files = FileService(inputs.storage.fileSystem)
     val library =
         LibraryRepository(
-            rows.db.mangaDao(),
-            rows.db.chapterDao(),
-            rows.db.libraryDeo(),
-            rows.db.notificationDao(),
-            rows.db.historyDao(),
+            inputs.rows.db.mangaDao(),
+            inputs.rows.db.chapterDao(),
+            inputs.rows.db.libraryDeo(),
+            inputs.rows.db.notificationDao(),
+            inputs.rows.db.historyDao(),
             files,
         )
     return ChapterDownloadService(
-        context = storage.context,
-        persistence = ChapterDownloadPersistence(library, dao.notifications, dao, files),
-        httpClient = transport.client,
-        optimizedCbzManager = OptimizedCbzManager(storage.context, fixtureDeviceTier),
-        dataStoreHelper = storage.settings,
-        downloadDispatcher = sender,
+        context = inputs.storage.context,
+        persistence = ChapterDownloadPersistence(library, inputs.dao.notifications, inputs.dao, files),
+        httpClient = inputs.transport.client,
+        optimizedCbzManager = manager,
+        dataStoreHelper = inputs.storage.settings,
+        downloadDispatcher = inputs.sender,
     )
 }
 
