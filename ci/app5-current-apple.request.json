@@ -1,0 +1,28 @@
+{
+  "schema": "app5-current-apple-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "authorization": "APP5_APPLE_COMPILE_ONE_ATTEMPT_AUTHORIZED",
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_ONLY",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "4022e09e2f71413fa7f662c1ec67109a3ee0f2fe",
+    "tree": "1380d165a01b2d09d303a74efb2dd05e85e4b12b"
+  },
+  "engine": {
+    "repository": "kira-manga/kira-source-engine",
+    "sha": "ed184165ebd3ee7f0d1db533cc40ca5a0868fdda",
+    "tree": "14e46a1ead24b5757d612fd55031e440f5304661"
+  },
+  "task": ":composeApp:compileKotlinIosSimulatorArm64",
+  "expectedRunAttempt": 1,
+  "planSha256": "bc1613ab9fb0aeebdd3cd80a8302e7109e2034052eb2fc316259416dadfb010b",
+  "controls": {
+    "ci/app5-current-apple.py": "2de948f721d2e15d45aba2c5fad00e93aae546f1b4071d01a3a048f4621f6e2d",
+    "ci/app5-current-apple-evidence.py": "4f15f574b5f131f3189c338f76baa6bc1369878d952d45d2fdf2d57d8c5e2c87",
+    "ci/app5-current-apple.init.gradle": "dcbb65c46d2b7e06672912947bf9b160892c7fbfbe25c63c12fea5b1fcbf024e",
+    "ci/app5-original-engine.init.gradle": "757a469c45892f46e3ec8a0f6612a49ec42d39ef7f62143512202cba2a573768",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf",
+    "ci/app5-current-apple.source-pins.json": "398320aa9b5449a0bf4283b69164d2f895db6146ae31579038f8a61165060978",
+    ".github/workflows/app5-current-apple.yml": "8c016002ecab1569273c74ec85b1c3ff7f5df69b1ed0411eb38590b6d692db09"
+  }
+}
