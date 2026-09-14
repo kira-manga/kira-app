@@ -16,18 +16,24 @@ internal class ReaderNativeFeedProjection {
     private var value = NativeReaderFeed(emptyList(), emptyList(), 0)
 
     fun project(state: ReaderState): NativeReaderFeed {
-        if (
-            pages === state.pages && pageChapters === state.pageChapters && chapters === state.chapters &&
-            anchor == state.chapter && skipped == state.skippedChapterUrls
-        ) {
+        val sameLists = pages === state.pages && pageChapters === state.pageChapters && chapters === state.chapters
+        if (sameLists && anchor == state.chapter && skipped == state.skippedChapterUrls) {
             return value
         }
-        val feed = buildReaderFeed(state.pages, state.pageChapters, state.chapters, state.chapter, state.skippedChapterUrls)
-        value = NativeReaderFeed(
-            pages = if (pages === state.pages) value.pages else state.pages.map { IosReaderPage(it.url, it.headers) },
-            rows = feed.items.map { it.toNativeRow() },
-            revision = value.revision + 1,
-        )
+        val feed =
+            buildReaderFeed(
+                state.pages,
+                state.pageChapters,
+                state.chapters,
+                state.chapter,
+                state.skippedChapterUrls,
+            )
+        value =
+            NativeReaderFeed(
+                pages = if (pages === state.pages) value.pages else state.pages.map { IosReaderPage(it.url, it.headers) },
+                rows = feed.items.map { it.toNativeRow() },
+                revision = value.revision + 1,
+            )
         pages = state.pages
         pageChapters = state.pageChapters
         chapters = state.chapters
@@ -43,21 +49,24 @@ internal data class NativeReaderFeed(
     val revision: Int,
 )
 
-private fun ReaderFeedItem.toNativeRow(): IosReaderFeedRow = when (this) {
-    is ReaderFeedItem.Image -> IosReaderFeedRow(
-        isBoundary = false,
-        url = page.url,
-        headers = page.headers,
-        pageIndex = pageIndex,
-        finishedLabel = "",
-        nextLabel = null,
-    )
-    is ReaderFeedItem.Boundary -> IosReaderFeedRow(
-        isBoundary = true,
-        url = "",
-        headers = emptyMap(),
-        pageIndex = -1,
-        finishedLabel = finishedChapter?.let { it.name.ifBlank { it.number } }.orEmpty(),
-        nextLabel = nextChapter?.let { it.name.ifBlank { it.number } },
-    )
-}
+private fun ReaderFeedItem.toNativeRow(): IosReaderFeedRow =
+    when (this) {
+        is ReaderFeedItem.Image ->
+            IosReaderFeedRow(
+                isBoundary = false,
+                url = page.url,
+                headers = page.headers,
+                pageIndex = pageIndex,
+                finishedLabel = "",
+                nextLabel = null,
+            )
+        is ReaderFeedItem.Boundary ->
+            IosReaderFeedRow(
+                isBoundary = true,
+                url = "",
+                headers = emptyMap(),
+                pageIndex = -1,
+                finishedLabel = finishedChapter?.let { it.name.ifBlank { it.number } }.orEmpty(),
+                nextLabel = nextChapter?.let { it.name.ifBlank { it.number } },
+            )
+    }

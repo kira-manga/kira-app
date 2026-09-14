@@ -10,13 +10,14 @@ import kotlin.test.assertSame
 
 class ReaderNativeFeedProjectionTest {
     private val chapters = (1..3).map { Chapter("$it", "Chapter $it", "chapter/$it", null, false, false) }
-    private val state = ReaderState(
-        chapter = chapters[0],
-        chapters = chapters,
-        pages = listOf(Page("page/1", emptyMap())),
-        pageChapters = listOf(chapters[0].url),
-        loadedChapterUrls = listOf(chapters[0].url),
-    )
+    private val state =
+        ReaderState(
+            chapter = chapters[0],
+            chapters = chapters,
+            pages = listOf(Page("page/1", emptyMap())),
+            pageChapters = listOf(chapters[0].url),
+            loadedChapterUrls = listOf(chapters[0].url),
+        )
 
     @Test
     fun emptyAppendInvalidatesNativeBoundaryEvenWhenAllPageListsAreIdentical() {
