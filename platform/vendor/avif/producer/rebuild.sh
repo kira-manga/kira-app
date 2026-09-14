@@ -99,7 +99,7 @@ probe cmake-revision "${ANDROID_HOME}/cmake/3.22.1/source.properties" \
     sed -n 's/^Pkg.Revision = //p' "${ANDROID_HOME}/cmake/3.22.1/source.properties"
 [[ "$probe_value" == 3.22.1 ]]
 probe cmake-version "$cmake" "$cmake" --version
-[[ "${probe_value%%$'\n'*}" == 'cmake version 3.22.1' ]]
+[[ "${probe_value%%$'\n'*}" == 'cmake version 3.22.1-g37088a8' ]]
 diagnostic_stage=meson-path
 meson_path="$(command -v meson)"
 probe meson-version "$meson_path" "$meson_path" --version

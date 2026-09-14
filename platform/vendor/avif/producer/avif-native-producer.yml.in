@@ -4,7 +4,7 @@ name: Reviewed AVIF native candidate producer
 
 on:
   push:
-    branches: [remediation/app-native15-producer-20260914-02]
+    branches: [remediation/app-native15-producer-20260914-03]
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   candidate:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-native15-producer-20260914-02' && github.repository == 'kira-manga/kira-app' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-native15-producer-20260914-03' && github.repository == 'kira-manga/kira-app' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
@@ -32,7 +32,7 @@ jobs:
           [[ "$KIRA_AVIF_PRODUCER_ADMITTED" == native15-reviewed-source-only ]]
           [[ "$EXPECTED_RECIPE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$GITHUB_SHA" == "$EXPECTED_RECIPE_COMMIT" ]]
-          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == remediation/app-native15-producer-20260914-02 ]]
+          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == remediation/app-native15-producer-20260914-03 ]]
           [[ "$REPOSITORY_VISIBILITY" == public ]]
           [[ "$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')" -ge 8388608 ]]
       - name: Checkout only the reviewed public producer inputs
