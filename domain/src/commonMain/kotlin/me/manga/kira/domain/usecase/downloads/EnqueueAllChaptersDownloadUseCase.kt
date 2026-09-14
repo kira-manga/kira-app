@@ -3,6 +3,8 @@ package me.manga.kira.domain.usecase.downloads
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.domain.model.Chapter
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.repository.ChapterIdResolver
 
@@ -28,11 +30,10 @@ import me.manga.kira.domain.repository.ChapterIdResolver
  *    chapters, skipping the un-resolvable ones and enqueuing the rest is the legacy "download
  *    all" behaviour (only library-known chapters were enqueued). The `:ui` already gates the
  *    "Download all" button on `state.isInLibrary`, so in practice every chapter resolves.
- *  - Already-downloaded chapters ARE pre-filtered (`filter { !it.isDownloaded }`), mirroring
- *    native's "download all" handler (`LibraryMangaRoute` filters `chapters.filter { !it.isDownloaded }`
- *    before enqueuing). Without the filter, re-enqueuing a SUCCESS chapter would REPLACE its
- *    `downloads` row (the `OnConflictStrategy.REPLACE` insert keyed on `chapterId`) with a fresh
- *    QUEUED row, demoting completed chapters back to Active and re-downloading every page.
+ *  - By default, already-downloaded chapters are skipped, preserving native's "download all"
+ *    outcome. Re-enqueuing a SUCCESS chapter would replace its ledger row with QUEUED and fetch
+ *    its pages again. Callers may supply a live eligibility predicate instead of the captured
+ *    saved flag; it is authoritative and checked after resolution, immediately before each enqueue.
  *
  * **Result semantics**: returns [Result.success] when the enqueue loop completes (per-chapter
  * enqueue failures are absorbed so one source/Room hiccup doesn't abort the whole batch —
@@ -59,21 +60,31 @@ class EnqueueAllChaptersDownloadUseCase(
     private val enqueueDownload: EnqueueDownloadUseCase,
     private val dispatchers: DispatcherProvider,
 ) {
-    suspend operator fun invoke(details: MangaDetails): Result<Unit> = runCatchingCancellable {
-        withContext(dispatchers.io) {
-            val pending = details.chapters.filter { !it.isDownloaded }
-            // Resolve every chapter url -> id in one chunked query instead of N per-chapter Room
-            // round-trips. Urls with no in-library row are absent from the map (skipped), same as
-            // the prior per-chapter `resolveChapterId(...) ?: return@forEach` skip.
-            val idsByUrl = chapterIdResolver.resolveChapterIds(pending.map { it.url })
-            pending.forEach { chapter ->
-                val chapterId = idsByUrl[chapter.url] ?: return@forEach
-                enqueueDownload(
-                    chapterId = chapterId,
-                    mangaTitle = details.title,
-                    api = details.api,
-                )
+    /**
+     * Resolves the full captured roster, then checks [shouldEnqueue] for each resolvable chapter.
+     * The predicate runs synchronously on [DispatcherProvider.io], including after any previous
+     * enqueue suspension; callers supplying live policy must use thread-safe snapshot reads.
+     */
+    suspend operator fun invoke(
+        manga: Manga,
+        details: MangaDetails,
+        shouldEnqueue: (Chapter) -> Boolean = { !it.isDownloaded },
+    ): Result<Unit> =
+        runCatchingCancellable {
+            withContext(dispatchers.io) {
+                // Resolve every chapter url -> id in one chunked query instead of N per-chapter Room
+                // round-trips. Urls with no in-library row are absent from the map (skipped), same as
+                // the prior per-chapter `resolveChapterId(...) ?: return@forEach` skip.
+                val idsByUrl = chapterIdResolver.resolveChapterIds(manga, details.chapters.map { it.url })
+                details.chapters.forEach { chapter ->
+                    val chapterId = idsByUrl[chapter.url] ?: return@forEach
+                    if (!shouldEnqueue(chapter)) return@forEach
+                    enqueueDownload(
+                        chapterId = chapterId,
+                        mangaTitle = details.title,
+                        api = details.api,
+                    )
+                }
             }
         }
-    }
 }

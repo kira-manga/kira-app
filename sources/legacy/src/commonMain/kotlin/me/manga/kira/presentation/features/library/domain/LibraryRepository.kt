@@ -160,33 +160,31 @@ class LibraryRepository(
     // transfer-complete (isDownloaded + localImagePaths), or the chapter stays "Downloaded".
     suspend fun markChapterNotDownloaded(chapterId: Long) = chapterDao.markChaptersNotDownloaded(listOf(chapterId))
 
-    suspend fun getChapterIdByUrl(chapterUrl: String) =
-        chapterDao.getChapterIdByUrl(chapterUrl)
+    suspend fun getChapterIdByUrl(
+        mangaId: Long,
+        chapterUrl: String,
+    ): Long? = chapterDao.getChapterIdsByUrlForManga(mangaId, listOf(chapterUrl))[chapterUrl]
 
+    suspend fun toggleChapterBookmark(chapterId: Long) = chapterDao.toggleChapterBookmark(chapterId)
 
-    suspend fun toggleChapterBookmark(chapterId: Long) =
-        chapterDao.toggleChapterBookmark(chapterId)
+    suspend fun toggleChapterRead(chapterId: Long) = libraryDeo.markChapterAndNotificationRead(chapterId)
 
-    suspend fun toggleChapterRead(chapterId: Long) =
-        libraryDeo.markChapterAndNotificationRead(chapterId)
+    suspend fun toggleChaptersBookmark(chapterIds: List<Long>) = chapterDao.toggleChaptersBookmark(chapterIds)
 
-    suspend fun toggleChaptersBookmark(chapterIds: List<Long>) =
-        chapterDao.toggleChaptersBookmark(chapterIds)
+    suspend fun toggleChaptersRead(chapterIds: List<Long>) = chapterDao.toggleChaptersRead(chapterIds)
 
-    suspend fun toggleChaptersRead(chapterIds: List<Long>) =
-        chapterDao.toggleChaptersRead(chapterIds)
-
-    suspend fun markChaptersRead(chapterIds: List<Long>) =
-        chapterDao.markChaptersRead(chapterIds)
+    suspend fun markChaptersRead(chapterIds: List<Long>) = chapterDao.markChaptersRead(chapterIds)
 
     suspend fun markChapterAsRead(chapterId: Long) {
         chapterDao.markChapterAsRead(chapterId)
     }
 
-    suspend fun markChapterIsNew(chapterId: Long) =
-        chapterDao.markChapterIsNew(chapterId)
+    suspend fun markChapterIsNew(chapterId: Long) = chapterDao.markChapterIsNew(chapterId)
 
-    suspend fun updateMangaImageUrlEverywhere(mangaId: Long, newImageUrl: String) = withContext(platformIoDispatcher) {
+    suspend fun updateMangaImageUrlEverywhere(
+        mangaId: Long,
+        newImageUrl: String,
+    ) = withContext(platformIoDispatcher) {
         // A blank URL is never a valid cover — it means the caller's source fetch produced nothing
         // (dead api → EmptyMangaRepository, or a parse miss). Overwriting would wipe the stored
         // cover across saved_manga/history/notifications (2026-07 source-lifecycle hardening).
@@ -359,4 +357,3 @@ class LibraryRepository(
  *     None of cluster209's 2 leaves add new blocked-task references — both classifications are
  *     STRANGLER-FIG-WRAPPED-LIVE rather than retire-pending.
  */
-

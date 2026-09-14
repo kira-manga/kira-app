@@ -180,5 +180,7 @@ class FakeLibraryRefreshRepository : LibraryRefreshRepository {
 
 class FakeDownloadsRepository : DownloadsRepository {
     private val all = MutableStateFlow<List<DownloadedChapter>>(emptyList())
+    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> = error("unused scoped observation")
+
     override fun observeAll(): Flow<List<DownloadedChapter>> = all.asStateFlow()
 }

@@ -7,9 +7,10 @@ package me.manga.kira.domain.model
  * no Room annotations, no `@Parcelize`. DTOs (network/disk) and UI models live in their own
  * layers and map to/from this type at the boundary.
  *
- * Identity is by [api] + [language] + [title] which mirrors the legacy primary-key composition
- * used in `SavedMangaEntity` — preserves wire-format compatibility for existing user libraries
- * (baseline §8 / contract functionality-preservation gate).
+ * Saved manga have a surrogate ID and a unique exact [url]. Persisted chapter actions use that
+ * parent URL together with the chapter URL. [api], [language] and [title] remain metadata and
+ * feature-specific lookup inputs, not the database primary key. This does not migrate settings
+ * or backup identity contracts.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster135.staleKdocSweep.cascade,
  * Task #591, 2026-05-28): classified as follows after recursive symbol
@@ -29,20 +30,8 @@ package me.manga.kira.domain.model
  *  SavedMangaEntity at the persistence boundary. UI mappers (e.g.
  *  LibraryCardUiModel binding) consume Manga directly as a read-only
  *  domain value.
- *  (b) "Identity-is-by-api-plus-language-plus-title-which-mirrors-the-
- *  legacy-primary-key-composition-used-in-SavedMangaEntity + preserves-
- *  wire-format-compatibility-for-existing-user-libraries-(baseline-§8-
- *  contract-functionality-preservation-gate)" — LIVE-NOT-STALE plus
- *  FULFILLED-PREDICTION. Verified via recursive grep: LibraryRepository-
- *  Impl.kt L197 `Manga.toNewEntity()` builds SavedMangaEntity with `api
- *  = api`, `language = language`, `title = title` filling the legacy 3-
- *  field composite PK; LibraryRepository.observeIsInLibrary plus
- *  ToggleInLibraryUseCase plus GetMangaByIdUseCase plus 25+ consumers
- *  all key on the same (api+language+title) triple. Existing user
- *  preferences survive the strangler-fig transition without resetting.
- *  Two classifications STAND on their own merits. Opens cluster135.
- *  Original Phase 6.2.x-era prose preserved verbatim per the audit-
- *  trail-preservation convention.
+ *  (b) The historical composite-primary-key account is superseded by the current persistence
+ *  contract above: `SavedMangaEntity` has a surrogate ID and `UNIQUE(url)`.
  */
 data class Manga(
     /** Source API identifier (e.g. "MangaPlus", "MangaDex", per-language slug). */
