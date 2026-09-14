@@ -178,6 +178,9 @@ android {
         viewBinding = true
         compose = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 kotlin {
@@ -247,6 +250,8 @@ dependencies {
     implementation(libs.telephoto.zoomable.image.coil3)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    // Public transport API for bounded, worker-owned covers, independent of the UI image loader.
+    implementation(libs.okhttp)
     implementation(libs.avif)
     implementation(libs.google.material)
 
@@ -257,6 +262,17 @@ dependencies {
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
+    testImplementation(libs.robolectric.runner)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.concurrent.futures)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.androidx.room.runtime)
+    testImplementation(libs.androidx.sqlite.bundled)
+    testImplementation(libs.multiplatform.settings.test)
     // Names the externally-provided Ktor engine type for the Koin verify() graph check.
     testImplementation(libs.ktor.client.core)
 }
+
+// App-specific offline Robolectric/SQLite inputs; not part of production runtime.
+apply(from = "notification-host-test-runtime.gradle.kts")

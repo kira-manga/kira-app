@@ -348,6 +348,16 @@ interface ChapterDownloadDao {
     @Query("SELECT * FROM chapter_downloads ORDER BY id DESC")
     fun observeAllDownloads(): Flow<List<ChapterDownloadEntity>>
 
+    // Keep both tables in the reactive query, including when no saved parent currently exists.
+    @Query(
+        """
+        SELECT download.* FROM chapter_downloads AS download
+        INNER JOIN saved_manga AS manga ON manga.id = download.mangaId
+        WHERE manga.url = :mangaUrl ORDER BY download.id DESC
+        """,
+    )
+    fun observeDownloadsForMangaUrl(mangaUrl: String): Flow<List<ChapterDownloadEntity>>
+
     // Cheap slot accounting for the iOS engine's fillWindowLocked: an indexed COUNT instead of
     // materializing the whole (history-inclusive) table on every enqueue. Bulk "Download all" was
     // O(N) full-table scans under the engine mutex; this makes each post-first enqueue an O(1)-ish count.

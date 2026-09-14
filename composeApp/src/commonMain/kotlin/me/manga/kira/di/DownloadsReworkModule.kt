@@ -123,7 +123,7 @@ import org.koin.dsl.module
  * forecast that was subsequently fulfilled across §§295 + 352.
  */
 val downloadsReworkModule: Module = module {
-    single<DownloadsRepository> { DownloadsRepositoryImpl(legacy = get()) }
+    single<DownloadsRepository> { DownloadsRepositoryImpl(legacy = get(), chapterDownloadDao = get()) }
     single<DownloadsActionRepository> {
         DownloadsActionRepositoryImpl(
             legacy = get(),

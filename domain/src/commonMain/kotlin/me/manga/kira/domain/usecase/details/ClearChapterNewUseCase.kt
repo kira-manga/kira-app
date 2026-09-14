@@ -1,5 +1,6 @@
 package me.manga.kira.domain.usecase.details
 
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 
 /**
@@ -9,5 +10,8 @@ import me.manga.kira.domain.repository.ChapterNewBadgeRepository
 class ClearChapterNewUseCase(
     private val repository: ChapterNewBadgeRepository,
 ) {
-    suspend operator fun invoke(chapterUrl: String) = repository.clearNew(chapterUrl)
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ) = repository.clearNew(manga, chapterUrl)
 }
