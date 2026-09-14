@@ -2,11 +2,12 @@ package me.manga.kira.presentation.features.download.domain.clean
 
 import co.touchlab.kermit.Logger
 import kotlin.time.TimeSource
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -18,6 +19,9 @@ import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.filesystem.folderSize
+import me.manga.kira.platform.media.PageMediaInspector
+import me.manga.kira.platform.media.inspectPageArchive
+import me.manga.kira.platform.media.requireValid
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
@@ -43,6 +47,7 @@ class ChapterFinalizer(
     private val appFileSystem: AppFileSystem,
     private val cbzWriter: CbzWriter,
     private val dataStore: DataStoreHelper,
+    private val mediaInspector: PageMediaInspector,
 ) {
 
     private val log = Logger.withTag(TAG)
@@ -66,10 +71,11 @@ class ChapterFinalizer(
      * so the caller can go straight to the terminal `SUCCESS` write).
      */
     suspend fun markReadable(entity: ChapterDownloadEntity, loosePaths: List<String>): Boolean {
-        // Second clause (2026-07 audit): a cancel/delete that landed just before this ran owns the
-        // row — don't resurrect isDownloaded/localImagePaths bookkeeping over it (see [finalize]).
-        // Short-circuit keeps the DAO re-read off the empty-pages path.
-        if (loosePaths.isEmpty() || abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable")) return false
+        // A cancel/delete owns the row; validation adds an off-mutex window, so re-check ownership
+        // afterward as well as before it. Never resurrect readable bookkeeping over a user cancel.
+        if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable")) return false
+        requireReadablePages(loosePaths)
+        if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable.postValidation")) return false
         val sizeBytes = runCatching {
             appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
         }.getOrDefault(0L)
@@ -99,35 +105,35 @@ class ChapterFinalizer(
     }
 
     suspend fun finalize(entity: ChapterDownloadEntity, downloadedPaths: List<String>) {
+        currentCoroutineContext().ensureActive()
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "finalize.entry")) return
+        require(downloadedPaths.isNotEmpty()) { "Cannot finalize an empty chapter" }
         // Optionally archive the downloaded pages into a single CBZ, mirroring native Android's
         // download-then-compress flow. The writer deletes the loose source pages on success and
         // returns the archive path; we then point localImagePaths at that single .cbz instead of
         // the loose page list. Copy the nullable preference into a local before branching.
         val useCbz: Boolean = dataStore.useCbzFormatFlow.first()
-        val finalPaths: List<String> = if (useCbz && downloadedPaths.isNotEmpty()) {
+        val finalPaths: List<String> = if (useCbz) {
             dao.updateStateChId(entity.chapterId, DownloadingState.COMPRESSING)
             // DLPERF (default-off, gated by BgDownloadLog.DLPERF): measure main-thread scheduling stalls
             // WHILE the CBZ encode runs, to quantify COMPRESSING-stage scroll jank and distinguish CPU
             // starvation from GC. Off by default → no Main heartbeat coroutine; flip DLPERF to profile.
             val watchdog = if (BgDownloadLog.DLPERF) startMainThreadStallWatchdog(entity.chapterId) else null
             val archived = try {
-                runCatching {
-                    cbzWriter.createCbzWithSplitting(
-                        imagePaths = downloadedPaths.map { it.toPath() },
-                        mangaId = entity.mangaId,
-                        chapterId = entity.chapterId,
-                    )
-                }.getOrElse { t ->
-                    if (t is CancellationException) throw t
-                    log.e(t) { "CBZ archive failed for chapter ${entity.chapterId}; keeping loose pages" }
-                    null
-                }
+                // A returned path guarantees all requested inputs were represented. Validated
+                // resource-policy preservation belongs inside the writer; arbitrary read/decode/
+                // encode/IO failures must reach the caller, never become loose-page SUCCESS here.
+                cbzWriter.createCbzWithSplitting(
+                    imagePaths = downloadedPaths.map { it.toPath() },
+                    mangaId = entity.mangaId,
+                    chapterId = entity.chapterId,
+                )
             } finally {
                 watchdog?.cancel()
             }
-            if (archived != null) listOf(archived.toString()) else downloadedPaths
+            listOf(archived.toString())
         } else {
+            requireReadablePages(downloadedPaths)
             downloadedPaths
         }
 
@@ -136,6 +142,7 @@ class ChapterFinalizer(
         // chapter's files while this encode runs off-mutex, and the unconditional SUCCESS write
         // below silently undid the cancel, pointed localImagePaths at deleted files, and let the
         // engine's "Download complete" banner fire (its guard reads the row this write clobbered).
+        currentCoroutineContext().ensureActive()
         if (abandonedByCancelOrDelete(entity.chapterId, phase = "finalize.postEncode")) return
 
         // Capture the final on-disk chapter size (the .cbz if archiving ran, else the loose pages)
@@ -156,6 +163,16 @@ class ChapterFinalizer(
         notificationDao.addLocalImagePathByChapterId(entity.chapterId, finalPaths)
         dao.updateStateAndProgress(entity.chapterId, DownloadingState.SUCCESS, 100)
         log.i { "Chapter ${entity.chapterId} complete (${finalPaths.size} path(s), $sizeBytes bytes)" }
+    }
+
+    /** The caller binds the manifest roster; this checks every supplied file, never a filtered subset. */
+    private suspend fun requireReadablePages(paths: List<String>) {
+        require(paths.isNotEmpty()) { "Cannot finalize an empty chapter" }
+        paths.forEach { path ->
+            currentCoroutineContext().ensureActive()
+            mediaInspector.inspect(path.toPath()).requireValid()
+        }
+        currentCoroutineContext().ensureActive()
     }
 
     /**
@@ -182,6 +199,11 @@ class ChapterFinalizer(
      * the terminal SUCCESS, exactly like [finalize]'s tail. Idempotent (re-writes the same rows).
      */
     suspend fun adoptExistingArchive(entity: ChapterDownloadEntity, cbzPath: String) {
+        currentCoroutineContext().ensureActive()
+        if (abandonedByCancelOrDelete(entity.chapterId, phase = "adopt.entry")) return
+        inspectPageArchive(appFileSystem.fileSystem(), cbzPath.toPath(), mediaInspector)
+        currentCoroutineContext().ensureActive()
+        if (abandonedByCancelOrDelete(entity.chapterId, phase = "adopt.postValidation")) return
         val finalPaths = listOf(cbzPath)
         val sizeBytes = runCatching {
             appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
