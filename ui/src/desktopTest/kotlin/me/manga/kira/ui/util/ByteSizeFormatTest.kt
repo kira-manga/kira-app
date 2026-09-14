@@ -19,7 +19,7 @@ class ByteSizeFormatTest {
 
     private fun renderAll(
         locale: Locale,
-        vararg sizes: Long,
+        sizes: LongArray,
     ): List<String> {
         val previous = Locale.getDefault()
         Locale.setDefault(locale)
@@ -44,7 +44,7 @@ class ByteSizeFormatTest {
                 1_536L, // 1.5 KB
                 5_767_168L, // 5.5 MB
                 1_320_702_444L, // ~1.23 GB
-                1_649_267_441_664L, // 1.5 TB
+                ONE_AND_HALF_TEBIBYTES, // 1.5 TB
             )
         listOf(
             Locale.US to listOf("202 B", "1.50 KB", "5.50 MB", "1.23 GB", "1.50 TB"),
@@ -58,7 +58,7 @@ class ByteSizeFormatTest {
                     "١٫٥٠ تيرابايت",
                 ),
         ).forEach { (locale, expected) ->
-            assertEquals(expected, renderAll(locale, *sizes), locale.toLanguageTag())
+            assertEquals(expected, renderAll(locale, sizes), locale.toLanguageTag())
         }
     }
 
@@ -66,14 +66,14 @@ class ByteSizeFormatTest {
     fun unitBoundaries_matchNativeThresholds() {
         val sizes =
             longArrayOf(
-                1_023L, // below 1 KB stays bytes
-                1_024L, // exactly 1 KB
-                1_048_575L, // one byte under 1 MB stays KB (renders as 1024.00 KB, native behavior)
-                1_048_576L, // exactly 1 MB
-                1_073_741_823L, // one byte under 1 GB stays MB
-                1_073_741_824L, // exactly 1 GB
-                1_099_511_627_775L, // one byte under 1 TB stays GB, even when rounding to 1024.00
-                1_099_511_627_776L, // exactly 1 TB
+                KIBIBYTE - 1, // below 1 KB stays bytes
+                KIBIBYTE, // exactly 1 KB
+                MEBIBYTE - 1, // one byte under 1 MB stays KB (renders as 1024.00 KB, native behavior)
+                MEBIBYTE, // exactly 1 MB
+                GIBIBYTE - 1, // one byte under 1 GB stays MB
+                GIBIBYTE, // exactly 1 GB
+                TEBIBYTE - 1, // one byte under 1 TB stays GB, even when rounding to 1024.00
+                TEBIBYTE, // exactly 1 TB
             )
         listOf(
             Locale.US to
@@ -110,7 +110,13 @@ class ByteSizeFormatTest {
                     "١٫٠٠ تيرابايت",
                 ),
         ).forEach { (locale, expected) ->
-            assertEquals(expected, renderAll(locale, *sizes), locale.toLanguageTag())
+            assertEquals(expected, renderAll(locale, sizes), locale.toLanguageTag())
         }
     }
 }
+
+private const val KIBIBYTE = 1024L
+private const val MEBIBYTE = KIBIBYTE * KIBIBYTE
+private const val GIBIBYTE = MEBIBYTE * KIBIBYTE
+private const val TEBIBYTE = GIBIBYTE * KIBIBYTE
+private const val ONE_AND_HALF_TEBIBYTES = 1_649_267_441_664L
