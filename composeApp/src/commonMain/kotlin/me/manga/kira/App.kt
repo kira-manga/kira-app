@@ -52,7 +52,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.image.ImageDecoderRegistry
+import me.manga.kira.presentation.common.componants.images.PageProgressInterceptor
 import me.manga.kira.presentation.common.componants.images.platformNetworkFetcherFactory
+import me.manga.kira.domain.repository.PageProgressRepository
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -422,6 +424,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     val imageDecoderRegistry: ImageDecoderRegistry = koinInject()
     val coilConfigHostTrust: ConfigHostTrust = koinInject()
     val coilHeaderStore: DataStoreHelper = koinInject()
+    val pageProgressRepository: PageProgressRepository = koinInject()
     val coilSourceRegistry: SourceRegistry = koinInject()
     val decoderFactories = remember { imageDecoderRegistry.registerAll() }
     val networkFetcherFactory = remember { platformNetworkFetcherFactory() }
@@ -439,10 +442,11 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
             .components {
                 // Native pipeline order: NetworkFetcher first, then decoders, then interceptors.
                 // On Android we force OkHttp (matches upstream `CoilModule.provideImageLoader`);
-                // on Desktop/iOS the actual returns a ktor3 fetcher whose HttpClient carries the
-                // page-progress observer and the 30s/60s timeouts (no whole-request ceiling).
+                // on Desktop/iOS the actual keeps Ktor's 30s/60s timeouts (no whole-request ceiling).
+                // Only Reader-owned request executions carry a progress token to the network client.
                 networkFetcherFactory?.let { add(it) }
                 decoderFactories.forEach { add(it) }
+                add(PageProgressInterceptor(pageProgressRepository))
                 add(CoilSourceHeaderInterceptor(coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
             }
             .diskCache { DiskCache.Builder().directory(imageCacheDir).build() }

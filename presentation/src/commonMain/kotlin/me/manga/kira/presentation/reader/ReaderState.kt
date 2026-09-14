@@ -5,6 +5,7 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.PageDownloadProgress
+import me.manga.kira.domain.model.reader.PageProgressHandle
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.presentation.mvi.MviState
 
@@ -208,30 +209,12 @@ data class ReaderState(
      */
     val chapters: List<Chapter> = emptyList(),
     /**
-     * Per-page download/decode progress, keyed by [Page.url].
-     *
-     * Populated by per-URL collectors the VM starts in `runFetch`'s Success branch (one collector
-     * per page in the current chapter, subscribed to
-     * [me.manga.kira.domain.repository.PageProgressRepository.observe]). The `:ui` loading slot
-     * reads `pageProgress[page.url] ?: PageDownloadProgress.Idle` to render the right placeholder
-     * variant (indeterminate spinner vs determinate ring with %, vs nothing because Coil has the
-     * decoded bitmap, vs the error slot — see [PageDownloadProgress] KDoc for the state machine).
-     *
-     * Cleared back to `emptyMap()` on each [ReaderIntent.OnEnter] — a fresh chapter starts with a
-     * blank slate (the previous chapter's progress entries linger in the repository's in-memory map
-     * but are no longer referenced by the active state and don't drive UI).
-     *
-     * Memory: bounded by chapter page count (≤200 typically). Each entry is a String key + a small
-     * sealed-interface reference. Negligible.
-     *
-     * Why not derived from the repository's whole-map flow:
-     *  - Per-URL collectors only fire when *their* URL's state changes (the impl's
-     *    `distinctUntilChanged` over the projected per-URL flow filters whole-map churn caused by
-     *    other URLs). A whole-map observation would re-emit for every neighbor's tick.
-     *  - The VM filters [PageDownloadProgress.Idle] emissions (the default value for never-reported
-     *    URLs) so chapter entry doesn't trigger a flurry of spurious `updateState` calls before any
-     *    real progress event arrives.
+     * Opaque ownership of the unique page URLs in this feed. Retained across cumulative snapshots
+     * and duplicate URLs, replaced on explicit chapter replacement. Image requests capture these
+     * identities; a late callback cannot be redirected to a new same-URL page owner.
      */
+    val pageProgressHandles: Map<String, PageProgressHandle> = emptyMap(),
+    /** Current owned-page progress. Idle removes the key; absent values render indeterminately. */
     val pageProgress: Map<String, PageDownloadProgress> = emptyMap(),
     /**
      * Whether the active [chapter] is bookmarked (Phase 6.4.x.bookmark, Reader-convergence R2).

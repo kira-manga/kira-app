@@ -12,7 +12,6 @@ import me.manga.kira.core.platform.HideNavigationBarSideEffect
 import me.manga.kira.core.platform.encodeImageBitmapToPng
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
@@ -65,8 +64,8 @@ import org.koin.compose.viewmodel.koinViewModel
  * history/read-state side effects, which is what made this route-swap safe.
  *
  * Everything else mirrors [ChapterImagesReworkScreenRoute] verbatim: [HideNavigationBarSideEffect]
- * at the top, `koinViewModel()` [ReaderViewModel], `koinInject()` [PageProgressRepository] bridged
- * to `onReportProgress`, `onNavigateBack` → `safePopBackStack`, and `onOpenInWebView` → the legacy
+ * at the top, `koinViewModel()` [ReaderViewModel], `onNavigateBack` → `safePopBackStack`, and
+ * `onOpenInWebView` → the legacy
  * `Screen.WebView` in-app browser. See [ChapterImagesReworkScreenRoute] KDoc for the full
  * three-layer (Koin DI / `:presentation` MVI / `:ui` Compose) rationale.
  *
@@ -94,7 +93,6 @@ fun ChapterImagesByLegacyArgsReworkScreenRoute(
 
     // Per-page download/decode progress reporter bridged to the rework's in-memory progress
     // repository (mirrors [ChapterImagesReworkScreenRoute]).
-    val pageProgressRepo: PageProgressRepository = koinInject()
 
     // Reader parity item #5 (share current page) + #6 (auto-403→WebView recovery). Both mirror
     // [ChapterImagesReworkScreenRoute] verbatim — the existing `:platform` ScreenshotProvider SPI
@@ -160,6 +158,5 @@ fun ChapterImagesByLegacyArgsReworkScreenRoute(
         },
         // Reader parity item #6: AUTO 403→WebView recovery + auto-retry-on-return.
         onSolveCloudflareChallenge = solveCloudflare,
-        onReportProgress = pageProgressRepo::report,
     )
 }
