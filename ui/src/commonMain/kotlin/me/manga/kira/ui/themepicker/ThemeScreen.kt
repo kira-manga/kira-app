@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -30,6 +31,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -516,9 +519,10 @@ private fun ThemePickerColumn(
             // onPrimary. Enabled-gated on the notification permission state in the onboarding flow.
             Button(
                 onClick = onContinue,
-                enabled = !isNotificationPermissionRequired ||
-                    onRequestNotificationPermission == null ||
-                    hasNotificationPermission,
+                enabled =
+                    !isNotificationPermissionRequired ||
+                        onRequestNotificationPermission == null ||
+                        hasNotificationPermission,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
@@ -552,7 +556,10 @@ private fun PureBlackRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -562,7 +569,8 @@ private fun PureBlackRow(
         )
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
+            modifier = Modifier.minimumInteractiveComponentSize(),
         )
     }
 }
@@ -604,13 +612,14 @@ private fun NotificationPermissionRow(
         )
         // Body — native: bodySmall @ 12sp, onBackground, maxLines 3, bottom padding 8dp.
         Text(
-            text = stringResource(
-                if (isRequired) {
-                    Res.string.notification_permission
-                } else {
-                    Res.string.notification_permission_optional
-                },
-            ),
+            text =
+                stringResource(
+                    if (isRequired) {
+                        Res.string.notification_permission
+                    } else {
+                        Res.string.notification_permission_optional
+                    },
+                ),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 3,
