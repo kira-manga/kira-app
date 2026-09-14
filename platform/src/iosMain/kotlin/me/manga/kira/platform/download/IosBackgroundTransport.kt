@@ -169,12 +169,16 @@ class IosBackgroundTransport(
         }
     }
 
-    internal fun handleFinishedDownload(task: NSURLSessionDownloadTask, location: NSURL) {
+    internal fun handleFinishedDownload(
+        task: NSURLSessionDownloadTask,
+        location: NSURL,
+        // Keep the handler testable with suspended native tasks; the delegate uses task.response.
+        response: NSHTTPURLResponse? = task.response as? NSHTTPURLResponse,
+    ) {
         val d = decodeDesc(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         if (outcome.reported) return
         outcome.failure?.let { reportFailureOnce(task, d, it); return }
-        val response = task.response as? NSHTTPURLResponse
         val status = response?.statusCode?.toInt()
         BgDownloadLog.log(
             "task.didFinishDownloading",
@@ -189,9 +193,11 @@ class IosBackgroundTransport(
         var ownedTemporary: Path? = null
         val system = appFileSystem.fileSystem()
         try {
-            pageBytePolicy.checkDeclaredLength(response.expectedContentLength)
+            pageBytePolicy.checkDeclaredLength(response?.expectedContentLength)
             val locationPath = location.path?.toPath() ?: throw IOException("Missing downloaded file")
-            pageBytePolicy.checkFileSize(system.metadata(locationPath).size)
+            val sourceMetadata = system.metadata(locationPath)
+            if (!sourceMetadata.isRegularFile) throw IOException("Downloaded page is not a regular file")
+            pageBytePolicy.checkFileSize(sourceMetadata.size)
             val directory = appFileSystem.chapterDir(d.mangaId, d.chapterId)
             system.createDirectories(directory)
             val temporary = directory / ".image_${d.pageIndex}-${NSUUID().UUIDString}.partial"
@@ -201,7 +207,9 @@ class IosBackgroundTransport(
                 throw IOException("Could not retain downloaded page")
             }
             ownedTemporary = temporary
-            pageBytePolicy.checkFileSize(system.metadata(temporary).size)
+            val retainedMetadata = system.metadata(temporary)
+            if (!retainedMetadata.isRegularFile) throw IOException("Retained page is not a regular file")
+            pageBytePolicy.checkFileSize(retainedMetadata.size)
             val metadata = mediaInspector.inspect(temporary).requireValid()
             publishPageSnapshot(system, temporary, d.pageIndex, metadata)
             ownedTemporary = null
