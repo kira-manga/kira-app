@@ -13,7 +13,7 @@ import okio.BufferedSource
 import java.nio.ByteBuffer
 import org.aomedia.avif.android.AvifDecoder as AomAvifDecoder
 
-/** Called only under [AvifDecoderCoil]'s native decoder mutex. */
+/** Called only under [withAndroidAvifPermit]; native helpers never acquire a nested permit. */
 @OptIn(ExperimentalCoilApi::class)
 internal suspend fun decodeAndroidAvif(
     source: BufferedSource,
@@ -21,44 +21,66 @@ internal suspend fun decodeAndroidAvif(
     limits: AvifDecodeLimits,
 ): DecodeResult {
     val bytes = readAvifBytes(source, limits.maxEncodedBytes)
-    limits.checkEncoded(bytes.size, AvifMemoryModel(bitmapBytesPerPixel = RGBA_BYTES, encodedCopies = ENCODED_COPIES))
+    val parsePixelLimit = androidAvifNativePixelLimit(limits, bytes.size)
     currentCoroutineContext().ensureActive()
     val input =
         ByteBuffer.allocateDirect(bytes.size).apply {
             put(bytes)
             rewind()
         }
+    val info = readNativeAvifInfo(input, limits, parsePixelLimit)
+    val plan = planNativeAvifDecode(info, options, limits, bytes.size)
+    return decodeNativeAvifPixels(input, plan, limits)
+}
+
+private suspend fun readNativeAvifInfo(input: ByteBuffer, limits: AvifDecodeLimits, pixelLimit: Int): AomAvifDecoder.Info {
     val info = AomAvifDecoder.Info()
-    if (!AomAvifDecoder.getInfo(input, input.capacity(), info)) {
-        throw AvifDecodeException("Unable to read AVIF image metadata.")
-    }
+    val accepted =
+        AomAvifDecoder.getInfoWithLimits(
+            input,
+            input.capacity(),
+            info,
+            pixelLimit,
+            minOf(limits.maxSourceDimension, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
+        )
+    currentCoroutineContext().ensureActive()
+    if (!accepted) throw AvifDecodeException("AVIF metadata was rejected by the bounded native decoder.")
+    return info
+}
+
+@OptIn(ExperimentalCoilApi::class)
+private fun planNativeAvifDecode(
+    info: AomAvifDecoder.Info,
+    options: Options,
+    limits: AvifDecodeLimits,
+    encodedBytes: Int,
+): AndroidAvifDecodePlan {
     val sourceSize = AvifPixelSize(info.width, info.height)
     limits.checkSource(sourceSize)
     val output = avifDecodeSize(sourceSize, options.size, options.scale, options.precision, options.maxBitmapSize)
     val bitmapBytes = if (info.alphaPresent) RGBA_BYTES else RGB_565_BYTES
-    val memory = AvifMemoryModel(bitmapBytesPerPixel = bitmapBytes, encodedCopies = ENCODED_COPIES)
-    limits.admit(bytes.size, sourceSize, output, memory)
-    return decodeNativeAvifPixels(input, sourceSize, output, info.alphaPresent, limits)
+    val pixelLimit = androidAvifNativePixelLimit(limits, encodedBytes, output, bitmapBytes)
+    if (sourceSize.pixels > pixelLimit) {
+        throw AvifDecodeException("AVIF source exceeds the output-reserved working-memory estimate.")
+    }
+    return AndroidAvifDecodePlan(sourceSize, output, info.alphaPresent, pixelLimit)
 }
 
 private suspend fun decodeNativeAvifPixels(
     input: ByteBuffer,
-    source: AvifPixelSize,
-    output: AvifPixelSize,
-    hasAlpha: Boolean,
+    plan: AndroidAvifDecodePlan,
     limits: AvifDecodeLimits,
 ): DecodeResult {
     val context = currentCoroutineContext()
     context.ensureActive()
-    val bitmap = createOutputBitmap(output, hasAlpha, limits.maxOutputBytes)
+    val bitmap = createOutputBitmap(plan.output, plan.hasAlpha, limits.maxOutputBytes)
     var handedOff = false
     try {
         input.rewind()
-        if (!AomAvifDecoder.decode(input, input.capacity(), bitmap, NATIVE_THREADS)) {
-            throw AvifDecodeException("Unable to decode AVIF image pixels.")
-        }
+        val accepted = decodeWithNativeLimits(input, bitmap, plan.nativePixelLimit, limits.maxSourceDimension)
         context.ensureActive()
-        val result = DecodeResult(image = bitmap.asImage(), isSampled = output.isSmallerThan(source))
+        if (!accepted) throw AvifDecodeException("AVIF pixels were rejected by the bounded native decoder.")
+        val result = DecodeResult(image = bitmap.asImage(), isSampled = plan.output.isSmallerThan(plan.source))
         handedOff = true
         return result
     } finally {
@@ -66,8 +88,18 @@ private suspend fun decodeNativeAvifPixels(
     }
 }
 
+private fun decodeWithNativeLimits(input: ByteBuffer, bitmap: Bitmap, pixelLimit: Int, dimensionLimit: Int): Boolean =
+    AomAvifDecoder.decodeWithLimits(
+        input,
+        input.capacity(),
+        bitmap,
+        NATIVE_THREADS,
+        pixelLimit,
+        minOf(dimensionLimit, ANDROID_AVIF_NATIVE_MAX_DIMENSION),
+    )
+
 private fun createOutputBitmap(size: AvifPixelSize, hasAlpha: Boolean, maxBytes: Long): Bitmap {
-    if (size.width > NATIVE_MAX_DIMENSION || size.height > NATIVE_MAX_DIMENSION) {
+    if (size.width > ANDROID_AVIF_NATIVE_MAX_DIMENSION || size.height > ANDROID_AVIF_NATIVE_MAX_DIMENSION) {
         throw AvifDecodeException("AVIF target exceeds the native scaling dimension limit.")
     }
     val config = if (hasAlpha) Bitmap.Config.ARGB_8888 else Bitmap.Config.RGB_565
@@ -79,8 +111,13 @@ private fun createOutputBitmap(size: AvifPixelSize, hasAlpha: Boolean, maxBytes:
     return bitmap
 }
 
-private const val ENCODED_COPIES = 3
+private data class AndroidAvifDecodePlan(
+    val source: AvifPixelSize,
+    val output: AvifPixelSize,
+    val hasAlpha: Boolean,
+    val nativePixelLimit: Int,
+)
+
 private const val RGBA_BYTES = 4
 private const val RGB_565_BYTES = 2
-private const val NATIVE_MAX_DIMENSION = 32_768
 private const val NATIVE_THREADS = 1

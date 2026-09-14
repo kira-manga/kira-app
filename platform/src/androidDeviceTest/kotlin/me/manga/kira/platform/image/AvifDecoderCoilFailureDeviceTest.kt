@@ -34,9 +34,9 @@ class AvifDecoderCoilFailureDeviceTest {
             val source = TrackingSource(Buffer().write(AvifTestFixtures.regular()))
             val decoder = AvifDecoderCoil(source, options, AvifDecodeLimits(maxSourcePixels = REGULAR_PIXELS - 1))
             val failure = assertFailsWith<AvifDecodeException> { decoder.decode() }
-            assertTrue(failure.message.orEmpty().contains("source dimensions"))
+            assertTrue(failure.message.orEmpty().contains("bounded native decoder"))
             assertTrue(source.closed)
-            // Declared metadata only, NOT proof against the unresolved JNI actual-AV1 dimension gap.
+            // Declared metadata only; actual-AV1 pixel enforcement needs the native mismatch controls.
         }
 
     @Test

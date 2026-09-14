@@ -6,8 +6,6 @@ import coil3.decode.Decoder
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import okio.BufferedSource
 import okio.ByteString.Companion.encodeUtf8
 import okio.use
@@ -21,10 +19,10 @@ import okio.use
  * A claimed AVIF is either decoded or fails terminally. Returning null after reading the shared
  * source would incorrectly invite Coil to retry with a consumed/closed source.
  *
- * Native limit gap: libavif decodes the source planes BEFORE scaling into this bitmap. The pinned
- * JNI reports cropped header dimensions and exposes no actual AV1 pixel limit. Admission here
- * bounds application buffers and rejects oversized metadata, but cannot bound a malicious native
- * payload or prove a native-memory ceiling. A bounded JNI surface is still required for that.
+ * Native source planes are decoded BEFORE bitmap scaling. Both native calls therefore receive
+ * an allowance-derived pixel cap, recalculated after reserving the planned output. The patched
+ * dav1d path bounds actual AV1 frame/tile pixels, not their independent axes or aggregate RSS.
+ * Source and output byte allowances remain conservative estimates, not native allocator limits.
  */
 internal class AvifDecoderCoil(
     private val source: BufferedSource,
@@ -35,7 +33,7 @@ internal class AvifDecoderCoil(
     override suspend fun decode(): DecodeResult =
         source.use {
             // Own the source even if cancellation occurs while waiting for the native decoder slot.
-            decoderMutex.withLock {
+            withAndroidAvifPermit {
                 decodeAndroidAvif(source, options, limits)
             }
         }
@@ -74,7 +72,6 @@ internal class AvifDecoderCoil(
         val fileType = "ftyp".encodeUtf8()
         val avifBrand = "avif".encodeUtf8()
         val avisBrand = "avis".encodeUtf8()
-        val decoderMutex = Mutex()
         val log = Logger.withTag(TAG)
 
         fun hasAvifHeader(source: BufferedSource): Boolean =

@@ -7,8 +7,9 @@ internal class AvifDecodeException(message: String) : IOException(message)
 /**
  * Per-decode admission, not an assertion about a native codec's allocator or the process RSS.
  * The encoded and output limits are enforced before the corresponding application allocations.
- * Source admission relies on decoder metadata; the pinned Android JNI does not expose libavif's
- * actual AV1 dimension limits, and ImageIO does not expose an allocation-budget API.
+ * Android derives a native frame/tile pixel cap from the same allowance. This is not an aggregate
+ * native byte budget or an independent inner-AV1 axis limit. ImageIO admission remains metadata-
+ * based because it does not expose an allocation-budget API.
  */
 internal data class AvifDecodeLimits(
     val maxEncodedBytes: Int = DEFAULT_ENCODED_BYTES,
@@ -26,13 +27,7 @@ internal data class AvifDecodeLimits(
     }
 
     fun checkEncoded(byteCount: Int, memory: AvifMemoryModel) {
-        if (byteCount <= 0 || byteCount > maxEncodedBytes) {
-            throw AvifDecodeException("AVIF encoded input exceeds the decode limit or is empty.")
-        }
-        WorkingAllowance(maxWorkingBytes).apply {
-            reserve(memory.fixedBytes)
-            reserve(byteCount.toLong(), memory.encodedCopies)
-        }
+        encodedAllowance(byteCount, memory)
     }
 
     fun checkSource(size: AvifPixelSize) {
@@ -47,16 +42,32 @@ internal data class AvifDecodeLimits(
         output: AvifPixelSize,
         memory: AvifMemoryModel,
     ): AvifOutputAllocation {
-        checkEncoded(encodedBytes, memory)
+        val allowance = encodedAllowance(encodedBytes, memory)
         checkSource(source)
         val allocation = outputAllocation(output, memory.bitmapBytesPerPixel)
-        WorkingAllowance(maxWorkingBytes).apply {
-            reserve(memory.fixedBytes)
-            reserve(encodedBytes.toLong(), memory.encodedCopies)
+        allowance.apply {
             reserve(source.pixels, memory.sourceBytesPerPixel)
             reserve(output.pixels, memory.outputBytesPerPixel)
         }
         return allocation
+    }
+
+    /** Reserve real encoded/output costs before allowing any native source pixels. */
+    fun nativePixelLimit(
+        encodedBytes: Int,
+        output: AvifPixelSize?,
+        memory: AvifMemoryModel,
+        nativeMaxPixels: Int,
+    ): Int {
+        require(nativeMaxPixels > 0)
+        val allowance = encodedAllowance(encodedBytes, memory)
+        if (output != null) {
+            outputAllocation(output, memory.bitmapBytesPerPixel)
+            allowance.reserve(output.pixels, memory.outputBytesPerPixel)
+        }
+        val pixels = minOf(maxSourcePixels, nativeMaxPixels.toLong(), allowance.capacity(memory.sourceBytesPerPixel))
+        if (pixels <= 0) throw AvifDecodeException("AVIF working-memory estimate cannot admit a source pixel.")
+        return pixels.toInt()
     }
 
     fun outputAllocation(size: AvifPixelSize, bytesPerPixel: Int): AvifOutputAllocation {
@@ -69,6 +80,16 @@ internal data class AvifDecodeLimits(
             rowBytes = (size.width.toLong() * bytesPerPixel).toInt(),
             byteCount = (size.pixels * bytesPerPixel).toInt(),
         )
+    }
+
+    private fun encodedAllowance(byteCount: Int, memory: AvifMemoryModel): WorkingAllowance {
+        if (byteCount <= 0 || byteCount > maxEncodedBytes) {
+            throw AvifDecodeException("AVIF encoded input exceeds the decode limit or is empty.")
+        }
+        return WorkingAllowance(maxWorkingBytes).apply {
+            reserve(memory.fixedBytes)
+            reserve(byteCount.toLong(), memory.encodedCopies)
+        }
     }
 }
 
@@ -107,6 +128,8 @@ private class WorkingAllowance(private var remaining: Long) {
         }
         remaining -= count * copies
     }
+
+    fun capacity(bytesPerItem: Int): Long = remaining / bytesPerItem
 }
 
 private const val MEBIBYTE = 1024 * 1024
