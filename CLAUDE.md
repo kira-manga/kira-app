@@ -82,7 +82,7 @@ A config-driven replacement for the hand-written per-source scrapers, **live in 
   commit to immutable per-source revisions, checksums, lifecycle, engine, and detached signatures.
   The client sends the manifest ETag, downloads only missing active revisions, re-verifies cached
   bytes after restart, and atomically moves the Room pointer and source projection.
-- The revision-5 bundle contains exactly 12 approved generic sources: Azora, Mangamello,
+- The revision-6 bundle contains exactly 12 approved generic sources: Azora, Mangamello,
   Mangamello Plus, SwatManga, Lekmanga, Team X, DilarV2, 3asq, Demonicscans, Mangabuddy,
   Zazamanga, and Tapas. It contains no legacy metadata.
 - **Fail closed — do not weaken:** `DefaultSourceRegistry` resolves only active generic entries.

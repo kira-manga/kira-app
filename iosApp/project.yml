@@ -37,6 +37,11 @@ targets:
           # The committed placeholder must NOT ship in the app bundle — only the real (gitignored)
           # GoogleService-Info.plist is a Copy-Bundle-Resources entry.
           - "GoogleService-Info.plist.example"
+          - "Settings.bundle"
+      # Copy the Settings bundle intact; recursive source discovery must not flatten it.
+      - path: iosApp/Settings.bundle
+        type: file
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira

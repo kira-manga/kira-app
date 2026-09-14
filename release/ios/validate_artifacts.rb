@@ -3,6 +3,7 @@ require "json"
 require "open3"
 require "tmpdir"
 require_relative "lib/plist_reader"
+require_relative "lib/libwebp_notices"
 
 EXPECTED_APP_STORE_ID = "6792232678"
 EXPECTED_BUNDLE_ID = "me.manga.kira"
@@ -111,6 +112,7 @@ def validate_app(app_path, build_number, expected_profile_uuid, expected_applica
   raise "Artifact export-compliance declaration is incorrect" unless info["ITSAppUsesNonExemptEncryption"] == false
   raise "Privacy manifest is missing from the app bundle" unless File.file?(File.join(app_path, "PrivacyInfo.xcprivacy"))
   validate_firebase(app_path)
+  KiraRelease::LibwebpNotices.validate_app!(app_path)
 
   raise "App code signature verification failed" unless command_success?("codesign", "--verify", "--deep", "--strict", app_path)
   architectures = capture("lipo", "-archs", File.join(app_path, info.fetch("CFBundleExecutable"))).split
@@ -182,6 +184,7 @@ result = {
   advertising_identifiers_absent: true,
   crash_diagnostics_disabled: true,
   dsym_uuid_match: true,
+  libwebp_notices_valid: true,
   crashlytics_dsym_upload_marker: File.file?(ENV.fetch("CRASHLYTICS_DSYM_UPLOAD_MARKER"))
 }
 abort("Crashlytics dSYM upload was not confirmed") unless result[:crashlytics_dsym_upload_marker]

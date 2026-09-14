@@ -37,6 +37,7 @@ final class ReaderChromeBars {
     private let shareButton = button("square.and.arrow.up")
     private let pageLabel = UILabel()
     private let slider = UISlider()
+    private let singlePageSpacer = UIView()
     private var seeking = false
     private(set) var visible = true
 
@@ -80,7 +81,11 @@ final class ReaderChromeBars {
         slider.addTarget(self, action: #selector(sliderUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
         // Tap anywhere on the track to jump there (parity with Android) — UISlider only handles thumb drag.
         slider.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(sliderTapped)))
-        let scrubRow = UIStackView(arrangedSubviews: [prevButton, slider, nextButton])
+        // With no slider, the flexible middle keeps the fixed-width chapter buttons apart.
+        singlePageSpacer.isHidden = true
+        singlePageSpacer.isUserInteractionEnabled = false
+        singlePageSpacer.heightAnchor.constraint(equalToConstant: 0).isActive = true
+        let scrubRow = UIStackView(arrangedSubviews: [prevButton, slider, singlePageSpacer, nextButton])
         scrubRow.axis = .horizontal; scrubRow.spacing = 10; scrubRow.alignment = .center
         let hudRow = UIStackView(arrangedSubviews: [pageLabel, UIView(), shareButton])
         hudRow.axis = .horizontal; hudRow.alignment = .center
@@ -124,8 +129,9 @@ final class ReaderChromeBars {
         nextButton.alpha = canNext ? 1 : 0.3
         let scrubVisible = count > 1
         slider.isHidden = !scrubVisible
-        prevButton.isHidden = !scrubVisible
-        nextButton.isHidden = !scrubVisible
+        prevButton.isHidden = count < 1
+        nextButton.isHidden = count < 1
+        singlePageSpacer.isHidden = count != 1
         if scrubVisible {
             slider.maximumValue = Float(max(count - 1, 1))
             if !seeking { slider.value = Float(max(page - 1, 0)) }

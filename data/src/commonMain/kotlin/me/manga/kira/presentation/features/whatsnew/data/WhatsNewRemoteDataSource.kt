@@ -2,14 +2,21 @@ package me.manga.kira.presentation.features.whatsnew.data
 
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.request.get
-import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.io.IOException
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import me.manga.kira.core.dispatchers.platformIoDispatcher
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 
 /**
  * Ported from upstream `presentation/features/whatsnew/data/WhatsNewRemoteDataSource.kt`.
@@ -46,36 +53,47 @@ class WhatsNewRemoteDataSource(
             coerceInputValues = true
         }
 
-    suspend fun fetchWhatsNewFeatures(): Result<WhatsNewResponse> {
-        return withContext(platformIoDispatcher) {
+    /** Fetches release notes without conflating HTTP/body/transport failures with a valid empty list. */
+    suspend fun fetchWhatsNewFeatures(): AppResult<WhatsNewResponse> =
+        withContext(platformIoDispatcher) {
             try {
-                val response: HttpResponse = httpClient.get(WHATS_NEW_URL)
-
-                if (!response.status.isSuccess()) {
-                    log.e { "Failed to fetch features: HTTP ${response.status.value}" }
-                    return@withContext Result.failure(
-                        Exception("HTTP error: ${response.status.value}"),
-                    )
-                }
-
-                val responseBody = response.bodyAsText()
-                if (responseBody.isEmpty()) {
-                    log.e { "Empty response body" }
-                    return@withContext Result.failure(Exception("Empty response"))
-                }
-
-                val whatsNewResponse = json.decodeFromString<WhatsNewResponse>(responseBody)
-
-                log.d { "Successfully fetched ${whatsNewResponse.features.size} features" }
-                Result.success(whatsNewResponse)
+                fetchResponse()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.e(e) { "Error fetching What's New features" }
-                Result.failure(e)
+                // A Ktor exception can contain the response body or URL; keep those out of logs/UI.
+                log.e { "Error fetching What's New features" }
+                AppResult.Failure(e.toAppError())
             }
         }
+
+    private suspend fun fetchResponse(): AppResult<WhatsNewResponse> {
+        val response = httpClient.get(WHATS_NEW_URL)
+        if (!response.status.isSuccess()) {
+            log.e { "Failed to fetch features: HTTP ${response.status.value}" }
+            return AppResult.Failure(AppError.Network.Http(response.status.value))
+        }
+
+        val responseBody = response.bodyAsText()
+        return if (responseBody.isBlank()) {
+            log.e { "Empty response body" }
+            AppResult.Failure(AppError.Network.Serialization())
+        } else {
+            val whatsNewResponse = json.decodeFromString<WhatsNewResponse>(responseBody)
+            log.d { "Successfully fetched ${whatsNewResponse.features.size} features" }
+            AppResult.Success(whatsNewResponse)
+        }
     }
+
+    private fun Exception.toAppError(): AppError =
+        when (this) {
+            is ResponseException -> AppError.Network.Http(response.status.value, cause = this)
+            is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException ->
+                AppError.Network.Timeout(cause = this)
+            is SerializationException -> AppError.Network.Serialization(cause = this)
+            is IOException -> AppError.Network.NoConnectivity(cause = this)
+            else -> AppError.Unexpected(message = this::class.simpleName.orEmpty(), cause = this)
+        }
 
     fun getLocalizedFeature(
         feature: RemoteWhatsNewFeature,

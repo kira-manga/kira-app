@@ -1,20 +1,26 @@
 package me.manga.kira.data.repository
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.domain.model.whatsnew.MediaType
 import me.manga.kira.domain.model.whatsnew.WhatsNewFeature
 import me.manga.kira.domain.repository.WhatsNewRepository
+import me.manga.kira.presentation.features.whatsnew.data.RemoteWhatsNewFeature
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+import me.manga.kira.core.storage.SharedPrefsHelper as LegacySharedPrefsHelper
 import me.manga.kira.platform.storage.DataStoreHelper as LegacyDataStoreHelper
 import me.manga.kira.platform.version.AppVersionProvider as LegacyAppVersionProvider
-import me.manga.kira.core.storage.SharedPrefsHelper as LegacySharedPrefsHelper
 import me.manga.kira.presentation.features.whatsnew.data.WhatsNewRemoteDataSource as LegacyWhatsNewRemoteDataSource
-import me.manga.kira.presentation.features.whatsnew.data.getDefaultFeatures as legacyGetDefaultFeatures
-import me.manga.kira.presentation.features.whatsnew.model.WhatsNewFeature as LegacyWhatsNewFeature
 
 /**
+ * Reads localized release notes with typed failures and writes the existing seen-version keys.
+ * Successful empty content is distinct from HTTP, decode or projection failure; cancellation propagates.
+ * The historical migration notes below predate this typed load boundary and its removal of defaults.
+ *
  * [WhatsNewRepository] strangler-fig delegate over FOUR `:shared` legacy facades.
  *
  * Phase 7.x.whatsnew (foundation). Highest fan-out into `:shared` of any rework `:data` impl —
@@ -113,51 +119,20 @@ class WhatsNewRepositoryImpl(
     private val appVersionProvider: LegacyAppVersionProvider,
     private val dataStore: LegacyDataStoreHelper,
 ) : WhatsNewRepository {
-
-    override suspend fun getFeatures(): List<WhatsNewFeature> {
-        // Resolve the user's stored language (legacy WhatsNewViewModel.getUserLanguageCode parity):
-        // the route swap made this repo the renderer of the live version-bump popup, so all 10
-        // locales must get localized copy, not English. getLocalizedFeature's en-then-first-available
-        // fallback chain keeps unsupported codes safe.
-        val languageCode = getUserLanguageCode()
-        val result = remoteDataSource.fetchWhatsNewFeatures()
-        return result.fold(
-            onSuccess = { response ->
-                if (response.features.isEmpty()) {
-                    fallbackToDefaults()
-                } else {
-                    response.features.mapNotNull { remoteFeature ->
-                        runCatchingCancellable {
-                            val localized = remoteDataSource.getLocalizedFeature(
-                                remoteFeature,
-                                languageCode,
-                            )
-                            WhatsNewFeature(
-                                title = localized.title,
-                                description = localized.description,
-                                mediaType = parseMediaType(localized.mediaType),
-                                imageResName = localized.imageRes,
-                                // Native parity: the remote wire field `imageResList` (surfaced
-                                // as `localized.imageList`) carries image URL strings, NOT
-                                // compose-resource names. Native's WhatsNewViewModel routes it
-                                // straight into `imageUrlList` (rendered via Coil), and the rework
-                                // :ui carousel reads only `imageUrlList`. So the URL list belongs
-                                // in `imageUrlList`; `imageResNameList` (local-resource names) is
-                                // empty on the remote path, matching native.
-                                imageResNameList = emptyList(),
-                                imageUrl = localized.imageUrl,
-                                imageUrlList = localized.imageList,
-                                videoUrl = localized.videoUrl,
-                                isNew = localized.isNew,
-                                version = localized.version,
-                            )
-                        }.getOrNull()
-                    }.ifEmpty { fallbackToDefaults() }
-                }
-            },
-            onFailure = { fallbackToDefaults() },
-        )
-    }
+    @Suppress("TooGenericExceptionCaught") // Map unexpected projection failures after rethrowing cancellation.
+    override suspend fun getFeatures(): AppResult<List<WhatsNewFeature>> =
+        try {
+            val languageCode = getUserLanguageCode()
+            when (val result = remoteDataSource.fetchWhatsNewFeatures()) {
+                is AppResult.Success -> AppResult.Success(result.value.features.map { it.toRework(languageCode) })
+                is AppResult.Failure -> result
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Include projection in the boundary: AppResult.map alone would not catch a mapper throw.
+            AppResult.Failure(AppError.Unexpected(message = e::class.simpleName.orEmpty(), cause = e))
+        }
 
     override suspend fun markSeen() {
         prefs.putString(KEY_LAST_SHOWN_VERSION_NAME, appVersionProvider.versionName)
@@ -168,25 +143,26 @@ class WhatsNewRepositoryImpl(
         runCatchingCancellable { dataStore.languageFlow.first().ifBlank { LANGUAGE_CODE_DEFAULT } }
             .getOrDefault(LANGUAGE_CODE_DEFAULT)
 
-    private fun fallbackToDefaults(): List<WhatsNewFeature> =
-        legacyGetDefaultFeatures().map { it.toRework() }
-
     private fun parseMediaType(wireValue: String): MediaType =
         runCatching { MediaType.valueOf(wireValue.uppercase()) }
             .getOrDefault(MediaType.IMAGE)
 
-    private fun LegacyWhatsNewFeature.toRework(): WhatsNewFeature = WhatsNewFeature(
-        title = title,
-        description = description,
-        mediaType = MediaType.valueOf(mediaType.name),
-        imageResName = imageResName,
-        imageResNameList = imageResNameList,
-        imageUrl = imageUrl,
-        imageUrlList = imageUrlList,
-        videoUrl = videoUrl,
-        isNew = isNew,
-        version = version,
-    )
+    private fun RemoteWhatsNewFeature.toRework(languageCode: String): WhatsNewFeature {
+        val localized = remoteDataSource.getLocalizedFeature(this, languageCode)
+        return WhatsNewFeature(
+            title = localized.title,
+            description = localized.description,
+            mediaType = parseMediaType(localized.mediaType),
+            imageResName = localized.imageRes,
+            // The remote imageResList contains URLs, not Compose resource names (native parity).
+            imageResNameList = emptyList(),
+            imageUrl = localized.imageUrl,
+            imageUrlList = localized.imageList,
+            videoUrl = localized.videoUrl,
+            isNew = localized.isNew,
+            version = localized.version,
+        )
+    }
 
     private companion object {
         const val LANGUAGE_CODE_DEFAULT = "en"

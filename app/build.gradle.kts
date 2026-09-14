@@ -260,7 +260,7 @@ dependencies {
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
-    testImplementation(libs.robolectric)
+    testImplementation(libs.robolectric.runner)
     // Names the externally-provided Ktor engine type for the Koin verify() graph check.
     testImplementation(libs.ktor.client.core)
 }

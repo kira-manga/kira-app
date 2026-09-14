@@ -154,6 +154,8 @@ kotlin {
             dependencies {
                 implementation(libs.compose.ui.test.junit4)
                 implementation(compose.desktop.currentOs)
+                // Explicit test compile visibility for Compose UI's existing 1.0.1 host input.
+                implementation("androidx.navigationevent:navigationevent:1.0.1")
             }
         }
     }

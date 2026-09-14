@@ -367,6 +367,7 @@ class LibraryViewModel(
                 updateState {
                     it.copy(
                         isLoading = false,
+                        hasLibraryItems = items.isNotEmpty(),
                         items = applyView(items, it.searchQuery, it.sort, it.sortDirection, it.randomSeed, it.filter, it.category, it.downloadedOnly),
                     )
                 }
@@ -440,14 +441,11 @@ class LibraryViewModel(
     }
 
     /**
-     * Pull-to-refresh handler. Native parity: refreshing an empty library is a no-op — it shows a
-     * "no manga yet" message and never enqueues the background refresh worker. Guard on the
-     * DISPLAYED list ([LibraryState.items], post-filter) to match native exactly — native's
-     * `LibraryRoute` checks the rendered `uiState.items`, so an active filter that hides every row
-     * counts as "empty" there too.
+     * Refresh checks the whole saved library, regardless of the current search or filters.
+     * Only an empty unfiltered snapshot shows the "no manga yet" message without starting work.
      */
     private suspend fun onRefresh() {
-        if (state.value.items.isEmpty()) {
+        if (allItems.isEmpty()) {
             emit(LibraryEffect.ShowEmptyLibraryRefresh)
             return
         }

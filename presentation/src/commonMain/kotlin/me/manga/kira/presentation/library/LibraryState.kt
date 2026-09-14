@@ -17,9 +17,9 @@ import me.manga.kira.presentation.mvi.MviState
  * Strict MVI: every property is `val`, every collection is `List` / `Set` (read-only public
  * interface). Mutation happens only via `MviViewModel.updateState { it.copy(...) }`.
  *
- * [items] is the source-of-truth library snapshot (post-search-filter, post-sort). The
- * unfiltered snapshot is held internally by the ViewModel and never leaked to the view —
- * the view only ever renders this list.
+ * [items] is the visible library projection after search, category, filters, and sorting.
+ * The ViewModel retains the unfiltered snapshot; [hasLibraryItems] distinguishes a truly
+ * empty library from saved manga hidden by the current projection.
  *
  * [sort] / [sortDirection] / [randomSeed] together model the user's chosen ordering for the
  * grid. The ViewModel re-applies the pipeline (filter → sort → reverse) on every flow emission
@@ -63,6 +63,8 @@ import me.manga.kira.presentation.mvi.MviState
 data class LibraryState(
     val isLoading: Boolean = true,
     val items: List<LibraryManga> = emptyList(),
+    /** Whether the last observed unfiltered library contains manga; unaffected by view filters. */
+    val hasLibraryItems: Boolean = false,
     val searchQuery: String = "",
     val selection: Set<MangaKey> = emptySet(),
     val isInSelectionMode: Boolean = false,
@@ -197,6 +199,6 @@ data class LibraryState(
     /** Convenience: true when the user has typed a non-blank search term. */
     val isSearching: Boolean get() = searchQuery.isNotBlank()
 
-    /** Convenience: true when the library snapshot is empty and we're not still loading. */
+    /** True when the visible projection is empty and we're not still loading. */
     val isEmpty: Boolean get() = !isLoading && items.isEmpty()
 }

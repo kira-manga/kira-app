@@ -524,29 +524,12 @@ private fun UpdatesRow(
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // confirmValueChange is deprecated, but here it's a deliberate "fire the action at the swipe
-    // threshold, then return false to snap back without settling" idiom that matches native parity
-    // (see the body comment). The documented replacement (LaunchedEffect on currentValue + reset())
-    // makes the row fully settle then bounce back — a different swipe feel — so this is retained.
+    // The veto can run on many moves and again on settle. Claim once per real pointer sequence,
+    // retaining the claim through snapback while keeping callbacks current across same-id updates.
+    val swipeActions = rememberUpdatesSwipeActions(onMarkReadClick, onDeleteClick)
+
     @Suppress("DEPRECATION")
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { target ->
-            when (target) {
-                // Parity fix (updates-refresh #7): native UpdatesScreen.kt:128-130 always calls
-                // markAsRead on swipe-right, and the underlying DAO query is a TOGGLE
-                // (UPDATE notifications SET isRead = NOT isRead) — so swiping a read row un-reads
-                // it. The rework gated this on !isRead, blocking the un-read toggle; drop the
-                // guard to restore native's swipe-to-toggle behavior exactly. (The VM's
-                // OnMarkAsRead handler has no guard, so this is the only gate.)
-                SwipeToDismissBoxValue.StartToEnd -> onMarkReadClick()
-                SwipeToDismissBoxValue.EndToStart -> onDeleteClick()
-                SwipeToDismissBoxValue.Settled -> Unit
-            }
-            // Always reject settling: the row performs the side-effect and snaps back, mirroring
-            // the native confirmValueChange=false semantics.
-            false
-        },
-    )
+    val dismissState = rememberSwipeToDismissBoxState(confirmValueChange = swipeActions::confirm)
 
     // Redesign 2026-06: each row is now a rounded Card (the `.row` mockup look). Clip the whole
     // SwipeToDismissBox to the card's corner radius so the swipe-reveal background stays within the
@@ -558,6 +541,7 @@ private fun UpdatesRow(
         // .animateContentSize() to each row's SwipeToDismissBox (UpdatesScreen.kt:164-167). The
         // animateItem() is supplied by the LazyItemScope caller via `modifier`.
         modifier = modifier
+            .observeUpdatesSwipeSequence(dismissState, swipeActions)
             .fillMaxWidth()
             .clip(cardShape)
             .animateContentSize(),
@@ -567,9 +551,14 @@ private fun UpdatesRow(
             entry = entry,
             downloadStatus = downloadStatus,
             cardShape = cardShape,
-            onChapterClick = onChapterClick,
-            onMangaClick = onMangaClick,
-            onDownloadClick = onDownloadClick,
+            actions =
+                UpdatesRowActions(
+                    onChapterClick = onChapterClick,
+                    onMangaClick = onMangaClick,
+                    onMarkReadClick = onMarkReadClick,
+                    onDownloadClick = onDownloadClick,
+                    onDeleteClick = onDeleteClick,
+                ),
         )
     }
 }
@@ -638,9 +627,7 @@ private fun UpdatesRowContent(
     entry: UpdateEntry,
     downloadStatus: RowDownloadStatus,
     cardShape: Shape,
-    onChapterClick: () -> Unit,
-    onMangaClick: () -> Unit,
-    onDownloadClick: () -> Unit,
+    actions: UpdatesRowActions,
 ) {
     val spacing = LocalSpacing.current
     // Parity fix (updates-refresh #3 / notifications-center #2): native UpdateItem.kt:78-110
@@ -655,7 +642,8 @@ private fun UpdatesRowContent(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface, cardShape)
-            .clickable(onClick = onChapterClick)
+            .clickable(onClick = actions.onChapterClick)
+            .updatesEntryActions(isRead = entry.isRead, actions = actions)
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -672,7 +660,7 @@ private fun UpdatesRowContent(
                     .size(50.dp)
                     .clip(coverShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant, coverShape)
-                    .clickable(onClick = onMangaClick),
+                .clickable(onClick = actions.onMangaClick),
             )
 
             // Parity fix (updates-refresh #14): native UpdateItem.kt:73-76 puts a 16dp gap between
@@ -733,7 +721,8 @@ private fun UpdatesRowContent(
             Spacer(Modifier.width(spacing.sm))
 
             // GAP-UPD-03: per-row download affordance with queued/running spinner states.
-            DownloadAffordance(status = downloadStatus, onDownloadClick = onDownloadClick)
+        DownloadAffordance(status = downloadStatus, onDownloadClick = actions.onDownloadClick)
+        UpdatesRowOverflow(isRead = entry.isRead, actions = actions)
     }
 }
 

@@ -1,3 +1,4 @@
+import org.gradle.api.attributes.Usage
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -40,7 +41,9 @@ kotlin {
         // so enable it to generate me.manga.kira.data.download.R.
         androidResources.enable = true
         // Opt in the Android host (unit) test source set (androidHostTest under the new plugin).
-        withHostTestBuilder {}
+        withHostTestBuilder {}.configure {
+            isIncludeAndroidResources = true
+        }
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -112,7 +115,77 @@ kotlin {
         val androidHostTest = getByName("androidHostTest") {
             dependencies {
                 implementation(libs.junit)
+                implementation(libs.robolectric.runner)
+                implementation(libs.androidx.work.testing)
+                implementation(libs.androidx.concurrent.futures)
+                implementation(libs.androidx.room.runtime)
+                implementation(libs.androidx.sqlite.bundled)
+                implementation(libs.ktor.client.mock)
             }
         }
     }
 }
+
+// Runtime inputs only: no SQLite JVM classes or transitive JVM dependencies enter Android tests.
+val app75HostNativeInput by configurations.creating {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+}
+val app75HostSdkInput by configurations.creating {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+}
+dependencies {
+    add(app75HostNativeInput.name, libs.sqlite.host.jni.input)
+    add(app75HostSdkInput.name, libs.robolectric.sdk35)
+}
+
+val app75HostRuntime = layout.buildDirectory.dir("app75-android-host-runtime")
+val prepareApp75AndroidHostRuntime by tasks.registering(Sync::class) {
+    from({ zipTree(app75HostNativeInput.singleFile) }) {
+        include("natives/linux_x64/libsqliteJni.so")
+        eachFile { path = "native/libsqliteJni.so" }
+        includeEmptyDirs = false
+    }
+    from(app75HostSdkInput) { into("sdk") }
+    into(app75HostRuntime)
+}
+
+tasks
+    .withType<Test>()
+    .matching { it.name == "testAndroidHostTest" }
+    .configureEach {
+        dependsOn(prepareApp75AndroidHostRuntime)
+        maxParallelForks = 1
+        forkEvery = 0
+        maxHeapSize = "1g"
+        jvmArgs("-XX:ActiveProcessorCount=2")
+        // Before the fork resolves the runner/sandbox: Gradle --offline alone does not bind Robolectric.
+        systemProperty("robolectric.offline", "true")
+        systemProperty(
+            "robolectric.dependency.dir",
+            app75HostRuntime.get().dir("sdk").asFile.absolutePath,
+        )
+        systemProperty(
+            "kira.app75.sqlite.native",
+            app75HostRuntime.get().file("native/libsqliteJni.so").asFile.absolutePath,
+        )
+        doFirst {
+            val forbidden =
+                classpath.files.filter {
+                    it.name.startsWith("sqlite-bundled-jvm-") || it.name.startsWith("room-runtime-jvm-")
+                }
+            check(forbidden.isEmpty()) {
+                "Desktop SQLite/Room classes must not enter the Android host classpath: $forbidden"
+            }
+            val sdk =
+                app75HostRuntime
+                    .get()
+                    .file("sdk/android-all-instrumented-15-robolectric-13954326-i7.jar")
+                    .asFile
+            check(sdk.isFile) { "Pinned offline Robolectric SDK35 input was not staged" }
+        }
+    }

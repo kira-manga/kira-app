@@ -1,7 +1,6 @@
 package me.manga.kira.presentation.details
 
 import me.manga.kira.core.error.AppError
-import me.manga.kira.core.util.formatBytes
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
@@ -65,12 +64,11 @@ data class ChapterDownloadProgress(
     val isDownloaded: Boolean get() = state == DownloadState.SUCCESS
 
     /**
-     * Human-readable on-disk size (e.g. `"15.2 MB"`) for the native size display, or `null` until
-     * the download has completed with a known size. Computed here (in `:presentation`, via `:core`
-     * `formatBytes`) so the `:ui` row can render it without depending on `:core`/`:platform`.
+     * On-disk bytes for the size display, or `null` until the download has completed with a
+     * known positive size. The UI formats this value with its current locale.
      */
-    val sizeLabel: String?
-        get() = if (state == DownloadState.SUCCESS && sizeBytes > 0L) formatBytes(sizeBytes) else null
+    val completedSizeBytes: Long?
+        get() = if (state == DownloadState.SUCCESS && sizeBytes > 0L) sizeBytes else null
 }
 
 /**
@@ -264,15 +262,7 @@ data class DetailsState(
      * is empty.
      */
     val isSelectionAllDownloaded: Boolean by lazy {
-        if (selectedChapterUrls.isEmpty()) {
-            false
-        } else {
-            val downloadedUrls = details?.chapters
-                ?.filter { it.isDownloaded }
-                ?.map { it.url }
-                ?.toSet()
-            downloadedUrls != null && selectedChapterUrls.all { it in downloadedUrls }
-        }
+        selectedChapterUrls.isNotEmpty() && selectedChapterUrls.all(::isChapterDownloaded)
     }
 
     /**
@@ -299,25 +289,25 @@ data class DetailsState(
         if (base == null) {
             emptyList()
         } else {
-            val filtered = when (chapterFilter) {
-                ChapterFilterType.ALL -> base
-                ChapterFilterType.DOWNLOADED -> base.filter { it.isDownloaded }
-                ChapterFilterType.UNREAD -> base.filter { !it.isRead }
-                ChapterFilterType.READED -> base.filter { it.isRead }
-                ChapterFilterType.BOOKMARKED -> base.filter { it.isBookmarked }
-            }
-            // The base list arrives newest-first (source order); `ID` and `LAST_READ_DATE` preserve
-            // that source order (native's autoincrement `id` reflects insertion order, and the
-            // domain model carries no per-chapter read timestamp — see ChapterSortType KDoc). The
-            // ascending toggle reverses whatever the chosen key produced (native: `if (asc) sorted
-            // else sorted.reversed()` over an ascending base — here the base is descending source
-            // order, so the directional intent is preserved by reversing for ascending).
-            val sorted = when (chapterSort) {
-                ChapterSortType.ID -> filtered
-                ChapterSortType.LAST_READ_DATE -> filtered
-                ChapterSortType.NUMBER -> filtered.sortedByDescending { it.number.toDoubleOrNull() ?: 0.0 }
-                ChapterSortType.DATE -> filtered.sortedByDescending { it.date }
-            }
+            val filtered =
+                when (chapterFilter) {
+                    ChapterFilterType.ALL -> base
+                    ChapterFilterType.DOWNLOADED -> base.filter { isChapterDownloaded(it.url) }
+                    ChapterFilterType.UNREAD -> base.filter { !it.isRead }
+                    ChapterFilterType.READED -> base.filter { it.isRead }
+                    ChapterFilterType.BOOKMARKED -> base.filter { it.isBookmarked }
+                }
+            // ID preserves the newest-first source order. Other keys produce a descending base;
+            // the ascending toggle reverses the entire result, including ties. For LAST_READ_DATE,
+            // equal times keep filtered source order descending and reverse it ascending. All-zero
+            // history therefore matches ID in either direction, preserving Resume's traversal.
+            val sorted =
+                when (chapterSort) {
+                    ChapterSortType.ID -> filtered
+                    ChapterSortType.LAST_READ_DATE -> filtered.sortedByDescending { it.lastReadAtEpochMillis }
+                    ChapterSortType.NUMBER -> filtered.sortedByDescending { it.number.toDoubleOrNull() ?: 0.0 }
+                    ChapterSortType.DATE -> filtered.sortedByDescending { it.date }
+                }
             if (sortAscending) sorted.reversed() else sorted
         }
     }
@@ -339,19 +329,33 @@ data class DetailsState(
             .firstOrNull { !it.isRead }
     }
 
+    private val downloadedChapterUrls: Set<String> by lazy {
+        // Match displayChapters: the first declaration owns a duplicated URL's saved flags.
+        details
+            ?.chapters
+            .orEmpty()
+            .distinctBy(Chapter::url)
+            .filter { isDownloaded(it, chapterDownloads[it.url]) }
+            .mapTo(mutableSetOf(), Chapter::url)
+    }
+
     /**
-     * Native size-display parity (2026-06-02). The human-readable on-disk size for the chapter at
-     * [url] (e.g. `"15.2 MB"`), or `null` when the chapter isn't downloaded or its size isn't known
-     * yet. Native shows this next to the chapter date in `LibraryChapterItem`, only for downloaded
-     * chapters. Sourced from the SUCCESS [chapterDownloads] entry's [ChapterDownloadProgress.sizeBytes]
-     * (back-filled for pre-existing downloads by the startup reconcile), formatted via `:core`
-     * `formatBytes`.
+     * Current-snapshot completion for Details filtering, actions and row icons; unknown URLs are
+     * false. Live SUCCESS can precede saved details, while the saved flag survives history deletion.
+     * Active progress/cancel controls still take precedence, and size/count remain ledger-only.
      */
-    fun chapterSizeLabel(url: String): String? = chapterDownloads[url]?.sizeLabel
+    fun isChapterDownloaded(chapterUrl: String): Boolean = chapterUrl in downloadedChapterUrls
+
+    /**
+     * On-disk bytes for the chapter at [url], or `null` without a completed ledger entry with a
+     * known positive size. Sourced from [ChapterDownloadProgress.completedSizeBytes] (back-filled
+     * for pre-existing downloads by the startup reconcile); localized next to the date by the UI.
+     */
+    fun chapterSizeBytes(url: String): Long? = chapterDownloads[url]?.completedSizeBytes
 
     /**
      * Number of downloaded chapters for the native total-size header "<size> • <N> downloaded".
-     * Derived from the SAME source as [totalDownloadedSizeLabel] — the completed (SUCCESS)
+     * Derived from the SAME source as [totalDownloadedSizeBytes] — the completed (SUCCESS)
      * [chapterDownloads] entries — so the count and the size never disagree (e.g. they drop together
      * the instant a download row is deleted). Counting `details.chapters{isDownloaded}` instead would
      * desync: the legacy delete path removes the `chapter_downloads` row without clearing
@@ -361,15 +365,24 @@ data class DetailsState(
         get() = chapterDownloads.values.count { it.isDownloaded }
 
     /**
-     * Native `TotalSizeDisplay` parity: the formatted sum of every downloaded chapter's on-disk size
-     * (e.g. `"150.5 MB"`), or `null` when nothing downloaded / no sizes known yet. Summed over the
-     * SUCCESS [chapterDownloads] entries' [ChapterDownloadProgress.sizeBytes].
+     * Sum of the SUCCESS [chapterDownloads] entries' on-disk [ChapterDownloadProgress.sizeBytes],
+     * or `null` when the total is not positive. The UI localizes this total for the size header;
+     * saved-only completion contributes no bytes without a ledger entry.
      */
-    val totalDownloadedSizeLabel: String?
+    val totalDownloadedSizeBytes: Long?
         get() {
-            val total = chapterDownloads.values
-                .filter { it.state == DownloadState.SUCCESS }
-                .sumOf { it.sizeBytes }
-            return if (total > 0L) formatBytes(total) else null
+            val total =
+                chapterDownloads.values
+                    .filter { it.state == DownloadState.SUCCESS }
+                    .sumOf { it.sizeBytes }
+            return if (total > 0L) total else null
         }
+
+    companion object {
+        /** The same saved/live completion rule for known Details chapters and their rows. */
+        fun isDownloaded(
+            chapter: Chapter,
+            progress: ChapterDownloadProgress?,
+        ): Boolean = progress?.isDownloaded == true || chapter.isDownloaded
+    }
 }
