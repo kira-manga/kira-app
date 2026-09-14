@@ -54,6 +54,14 @@ disk quota, and the JVM heap cap is not a process/native RSS cap. No peak-use or
 exists. If the admitted environment cannot satisfy them, stop for review; do not increase them or
 reduce ABIs, change the reviewed native/tool package bindings, or use an unrelated cached binary.
 
+`rebuild.sh` reports a fixed failure-stage name and actual exit status, not a shell trace or
+an environment dump. Its fixed public tool/metadata probes have a 10-second timeout plus a
+2-second kill grace, retain at most 4097 bytes in a private disposable capture, and reject
+output over 4096 bytes or containing NUL. Within that bound the full actual value (including
+newlines), selected executable/target and status are escaped into the existing rebuild log;
+no valid value is silently clipped. Exact expected tool pins and the 8 GiB floor are unchanged.
+These diagnostics consume the existing producer time/log budget, not an extra allowance.
+
 ### Deliberate primary-approved Ninja amendment
 
 An earlier unexecuted proposal tried to bootstrap Ninja 1.12.1 and bind `CMAKE_MAKE_PROGRAM`.
@@ -132,10 +140,22 @@ immediately stops only its isolated Gradle user home. It invokes the already-ins
 3-second kill grace. A missing daemon home is recorded as skipped. An unsuccessful stop does
 not turn a failed batch green and makes an otherwise successful batch fail.
 
+Before launching any marked child, the first setup logger records its own Linux process-start
+ticks, the boot ID and exact run owner in a fresh private `.kira-avif-process-origin` file in the
+evidence root. Its PID/birth survives the owner-tagging exec. Later stages and cleanup require
+that bounded regular, nonlinked, single-link, same-UID, mode-0600 record to match this run and
+boot; an absent/stale/malformed record fails closed, never defaulting to a later-stage cutoff.
+
 The template's final `always()` cleanup repeats the isolated stop, then signals only same-UID
-processes with the exact inherited run marker. Linux pidfds avoid recycled-PID signalling;
-TERM has a 5-second grace and KILL a 2-second grace. It then copies bounded relevant native-log
-tails and removes only the marked work root. Failed ownership/process inspection, survivors, or
+processes with the exact inherited run marker. A readable, positive, rechecked process birth
+strictly older than the first setup logger proves a preexisting process outside this producer's
+marked-child lineage: only those processes bypass environment inspection. Equal-tick/newer
+processes still require readable ownership/birth/marker inspection, and permission errors or
+identity changes fail cleanup. Linux pidfds avoid recycled-PID signalling; TERM keeps its
+5-second grace and KILL its 2-second grace. Two fresh empty run-marked/same-UID censuses separated
+by 0.25 seconds are required within those bounds. This is not a universal process-absence claim.
+It then copies bounded relevant native-log tails and removes only the marked work root.
+Failed ownership/process inspection, survivors, or
 evidence copy failures retain the work and fail cleanup rather than broadening its scope. A failed
 Gradle stop still fails cleanup even if the marked-process fallback permits safe work removal.
 No global Gradle/Python cache, SDK/NDK/CMake binary, installed OS package, other run, candidate
