@@ -1,6 +1,7 @@
 package me.manga.kira.domain.usecase.reader
 
 import kotlinx.coroutines.flow.Flow
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
 
 /**
@@ -19,6 +20,8 @@ import me.manga.kira.domain.repository.ChapterBookmarkRepository
 class ObserveChapterBookmarkUseCase(
     private val repository: ChapterBookmarkRepository,
 ) {
-    operator fun invoke(chapterUrl: String): Flow<Boolean> =
-        repository.observeBookmark(chapterUrl)
+    operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> = repository.observeBookmark(manga, chapterUrl)
 }

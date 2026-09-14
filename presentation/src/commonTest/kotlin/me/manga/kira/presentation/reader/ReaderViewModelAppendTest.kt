@@ -51,7 +51,7 @@ class ReaderViewModelAppendTest {
         )
         assertEquals(listOf("ch/1", "ch/2"), s.loadedChapterUrls)
         assertEquals(listOf("ch/1", "ch/1", "ch/2", "ch/2"), s.pageChapters)
-        assertTrue(env.markRead.marked.contains("ch/1"), "finishing chapter 1 marks it read on append")
+        assertTrue(env.markRead.marked.contains(readerManga() to "ch/1"), "finishing chapter 1 marks it read on append")
     }
 
     @Test
@@ -81,23 +81,26 @@ class ReaderViewModelAppendTest {
         val s = env.vm.state.value
         assertEquals(listOf("c", "d"), s.pages.map { it.url }, "explicit Next REPLACES the feed (clear+jump)")
         assertEquals(listOf("ch/2"), s.loadedChapterUrls)
+        assertEquals(listOf(readerManga() to readerChapter("1")), env.pages.cleared)
+        assertEquals(listOf(readerManga() to "ch/1"), env.markRead.marked)
     }
 
     @Test
-    fun activeChapter_andHud_deriveFromVisiblePage_afterAppend() = runTest {
-        val env = readerTestEnv(chapterList = chapters)
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("a"), readerPage("b"))))
-        env.vm.submit(ReaderIntent.OnEnter(readerManga(), readerChapter("1")))
-        env.pages.result = flowOf(AppResult.Success(listOf(readerPage("c"), readerPage("d"))))
-        env.vm.submit(ReaderIntent.OnAppendNextChapter)
+    fun activeChapter_andHud_deriveFromVisiblePage_afterAppend() =
+        runTest {
+            val env = readerTestEnv(chapterList = chapters)
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("a"), readerPage("b"))))
+            env.vm.submit(ReaderIntent.OnEnter(readerManga(), readerChapter("1")))
+            env.pages.result = flowOf(AppResult.Success(listOf(readerPage("c"), readerPage("d"))))
+            env.vm.submit(ReaderIntent.OnAppendNextChapter)
 
-        // Scroll to the first page of the appended chapter 2 (flat index 2).
-        env.vm.submit(ReaderIntent.OnPageChanged(2))
+            // Scroll to the first page of the appended chapter 2 (flat index 2).
+            env.vm.submit(ReaderIntent.OnPageChanged(2))
 
-        val s = env.vm.state.value
-        assertEquals("ch/2", s.activeChapterUrl, "active chapter follows the visible page across the boundary")
-        assertEquals(1, s.currentChapterIndex, "currentChapterIndex is chapter 2's position")
-        assertEquals(1, s.activeChapterPageNumber, "HUD shows within-chapter page number (1), not flat (3)")
-        assertEquals(2, s.activeChapterPageCount, "HUD total is chapter 2's page count")
-    }
+            val s = env.vm.state.value
+            assertEquals("ch/2", s.activeChapterUrl, "active chapter follows the visible page across the boundary")
+            assertEquals(1, s.currentChapterIndex, "currentChapterIndex is chapter 2's position")
+            assertEquals(1, s.activeChapterPageNumber, "HUD shows within-chapter page number (1), not flat (3)")
+            assertEquals(2, s.activeChapterPageCount, "HUD total is chapter 2's page count")
+        }
 }
