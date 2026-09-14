@@ -46,20 +46,33 @@ class FakeChapterPagesRepository : ChapterPagesRepository {
     /** The flow returned for the next fetch. Default: a single empty Success. */
     var result: Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
     override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = result
-    override fun clearExtractedPages(chapter: Chapter) = Unit
+    val cleared = mutableListOf<Pair<Manga, Chapter>>()
+
+    override fun clearExtractedPages(
+        manga: Manga,
+        chapter: Chapter,
+    ) {
+        cleared += manga to chapter
+    }
 }
 
 private class FakeReadingModeRepository : ReadingModeRepository {
     override fun observe(): Flow<ReadingMode> = flowOf(ReadingMode.WEBTOON)
+
     override suspend fun set(mode: ReadingMode) = Unit
 }
 
-private class FakeReaderMangaDetailsRepository(private val details: MangaDetails) : MangaDetailsRepository {
+private class FakeReaderMangaDetailsRepository(
+    private val details: MangaDetails,
+) : MangaDetailsRepository {
     override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> = AppResult.Success(details)
 }
 
 private class FakeSavedDetailsRepository : SavedMangaDetailsRepository {
-    override fun observeSavedDetails(api: String, title: String): Flow<MangaDetails?> = flowOf(null)
+    override fun observeSavedDetails(
+        api: String,
+        title: String,
+    ): Flow<MangaDetails?> = flowOf(null)
 }
 
 /**
@@ -74,8 +87,13 @@ class RecordingReadingSessionRepository : ReadingSessionRepository {
     var endCount = 0
         private set
 
-    override fun begin() { beginCount++ }
-    override suspend fun end() { endCount++ }
+    override fun begin() {
+        beginCount++
+    }
+
+    override suspend fun end() {
+        endCount++
+    }
 }
 
 class RecordingReadProgressRepository : ReadProgressRepository {
@@ -85,26 +103,35 @@ class RecordingReadProgressRepository : ReadProgressRepository {
     /** Value returned by [load] (the resume seed); a test can set it before OnEnter. */
     var loadValue: Int? = null
 
-    override suspend fun save(chapterUrl: String, pageIndex: Int) {
+    override suspend fun save(
+        chapterUrl: String,
+        pageIndex: Int,
+    ) {
         saved += chapterUrl to pageIndex
     }
 
     override suspend fun load(chapterUrl: String): Int? = loadValue
+
     override suspend fun clear(chapterUrl: String) = Unit
 }
 
 private class FakePageProgressRepository : PageProgressRepository {
     override fun observe(url: String): Flow<PageDownloadProgress> = flowOf(PageDownloadProgress.Idle)
-    override fun report(url: String, status: PageDownloadProgress) = Unit
+
+    override fun report(
+        url: String,
+        status: PageDownloadProgress,
+    ) = Unit
+
     override fun clear(url: String) = Unit
 }
 
 class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
-    /** Chapter URLs the observer subscribed to, in order — `last()` is the active observed chapter. */
-    val observed = mutableListOf<String>()
+    /** Owner and chapter URL subscribed to, in order — `last()` is the active observed chapter. */
+    val observed = mutableListOf<Pair<Manga, String>>()
 
-    /** Chapter URLs toggled, in order — for asserting the toggle targets the active chapter. */
-    val toggled = mutableListOf<String>()
+    /** Owner and chapter URL toggled, in order — for asserting the toggle targets the active chapter. */
+    val toggled = mutableListOf<Pair<Manga, String>>()
 
     /**
      * Whether [toggleBookmark] reports the chapter as in-library (#15). `true` (default) mimics a
@@ -113,14 +140,27 @@ class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
      */
     var inLibrary: Boolean = true
 
-    override fun observeBookmark(chapterUrl: String): Flow<Boolean> {
-        observed += chapterUrl
+    override fun observeBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> {
+        observed += manga to chapterUrl
         return flowOf(false)
     }
 
-    override suspend fun toggleBookmark(chapterUrl: String): Boolean {
-        toggled += chapterUrl
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean {
+        toggled += manga to chapterUrl
         return inLibrary
+    }
+
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
+        toggled += chapterUrls.map { manga to it }
     }
 }
 
@@ -129,18 +169,40 @@ class RecordingHistoryRepository : HistoryRepository {
     val recorded = mutableListOf<Pair<String, String>>()
 
     override fun observeHistory(): Flow<List<HistoryEntry>> = flowOf(emptyList())
+
     override suspend fun deleteEntry(entry: HistoryEntry) = Unit
+
     override suspend fun deleteAll() = Unit
-    override suspend fun record(manga: Manga, chapter: Chapter) {
+
+    override suspend fun record(
+        manga: Manga,
+        chapter: Chapter,
+    ) {
         recorded += manga.title to chapter.url
     }
 }
 
 class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
-    val marked = mutableListOf<String>()
-    override suspend fun markRead(chapterUrl: String) { marked += chapterUrl }
-    override suspend fun toggleRead(chapterUrl: String) = Unit
-    override suspend fun markRead(chapterUrls: List<String>) { marked += chapterUrls }
+    val marked = mutableListOf<Pair<Manga, String>>()
+
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        marked += manga to chapterUrl
+    }
+
+    override suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) = Unit
+
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
+        marked += chapterUrls.map { manga to it }
+    }
 }
 
 /** Bundle exposing the handles a test needs to drive/inspect the reader VM. */
@@ -170,37 +232,53 @@ fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
     val history = RecordingHistoryRepository()
     // #7: ONE shared reading-session recorder wired into both use cases (mirrors prod single binding).
     val readingSession = RecordingReadingSessionRepository()
-    val details = MangaDetails(
-        api = "src", language = "en", title = "Naruto", url = "https://x/naruto",
-        coverUrl = "", description = "", author = "", rating = "", status = "",
-        genres = emptyList(), chapters = chapterList,
-    )
-    val vm = ReaderViewModel(
-        fetchPages = FetchChapterPagesUseCase(pages),
-        observeReadingMode = ObserveReadingModeUseCase(FakeReadingModeRepository()),
-        setReadingMode = SetReadingModeUseCase(FakeReadingModeRepository()),
-        listChapters = ListChaptersUseCase(FakeReaderMangaDetailsRepository(details), FakeSavedDetailsRepository()),
-        startReadingSession = StartReadingSessionUseCase(readingSession),
-        endReadingSession = EndReadingSessionUseCase(readingSession),
-        loadPagePosition = LoadPagePositionUseCase(readProgress),
-        savePagePosition = SavePagePositionUseCase(readProgress),
-        observePageProgress = ObservePageProgressUseCase(FakePageProgressRepository()),
-        observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
-        toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
-        recordHistory = RecordHistoryUseCase(history, FakeSettingsRepository()),
-        markChapterRead = MarkChapterReadUseCase(markRead),
-        clearExtractedPages = ClearExtractedPagesUseCase(pages),
-        clearPageProgress = ClearPageProgressUseCase(FakePageProgressRepository()),
-    )
+    val details =
+        MangaDetails(
+            api = "src",
+            language = "en",
+            title = "Naruto",
+            url = "https://x/naruto",
+            coverUrl = "",
+            description = "",
+            author = "",
+            rating = "",
+            status = "",
+            genres = emptyList(),
+            chapters = chapterList,
+        )
+    val vm =
+        ReaderViewModel(
+            fetchPages = FetchChapterPagesUseCase(pages),
+            observeReadingMode = ObserveReadingModeUseCase(FakeReadingModeRepository()),
+            setReadingMode = SetReadingModeUseCase(FakeReadingModeRepository()),
+            listChapters = ListChaptersUseCase(FakeReaderMangaDetailsRepository(details), FakeSavedDetailsRepository()),
+            startReadingSession = StartReadingSessionUseCase(readingSession),
+            endReadingSession = EndReadingSessionUseCase(readingSession),
+            loadPagePosition = LoadPagePositionUseCase(readProgress),
+            savePagePosition = SavePagePositionUseCase(readProgress),
+            observePageProgress = ObservePageProgressUseCase(FakePageProgressRepository()),
+            observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
+            toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
+            recordHistory = RecordHistoryUseCase(history, FakeSettingsRepository()),
+            markChapterRead = MarkChapterReadUseCase(markRead),
+            clearExtractedPages = ClearExtractedPagesUseCase(pages),
+            clearPageProgress = ClearPageProgressUseCase(FakePageProgressRepository()),
+        )
     return ReaderTestEnv(vm, pages, markRead, readProgress, bookmark, history, readingSession)
 }
 
 fun readerChapter(n: String): Chapter =
     Chapter(number = n, name = "Ch $n", url = "ch/$n", date = null, isDownloaded = false, isBookmarked = false)
 
-fun readerManga(): Manga = Manga(
-    api = "src", language = "en", title = "Naruto", url = "https://x/naruto",
-    coverUrl = "", rating = null, genres = emptyList(),
-)
+fun readerManga(): Manga =
+    Manga(
+        api = "src",
+        language = "en",
+        title = "Naruto",
+        url = "https://x/naruto",
+        coverUrl = "",
+        rating = null,
+        genres = emptyList(),
+    )
 
 fun readerPage(url: String): Page = Page(url = url, headers = emptyMap())

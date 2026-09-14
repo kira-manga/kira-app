@@ -1,13 +1,14 @@
 package me.manga.kira.work
 
 import kotlinx.coroutines.flow.Flow
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.sources.contracts.MangaSourceClient
 
 private const val DEFAULT_TOTAL_TIMEOUT_MS = 15L * 60 * 1_000
 
-/** Adapter to the existing concrete facade; no DAO, identity or App6 persistence changes. */
+/** Adapter to the existing facade/helper; persistence and optional display stay caller-owned. */
 internal interface LibraryRefreshWorkPort {
     fun library(): Flow<List<SavedMangaEntity>>
 
@@ -22,10 +23,12 @@ internal interface LibraryRefreshWorkPort {
 
     suspend fun insert(chapters: List<SavedChapterEntity>): List<Long>
 
-    fun notify(
+    suspend fun persistNotifications(
         manga: SavedMangaEntity,
         chapters: List<SavedChapterEntity>,
-    )
+    ): List<ChapterNotification>
+
+    suspend fun displayNotifications(notifications: List<ChapterNotification>)
 
     suspend fun stampLastSuccess()
 }

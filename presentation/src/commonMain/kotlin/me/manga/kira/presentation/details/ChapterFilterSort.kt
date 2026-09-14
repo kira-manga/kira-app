@@ -25,11 +25,12 @@ enum class ChapterFilterType {
  * with [DetailsState.sortAscending] for direction. Native sorts the saved-chapter list by
  * `id` / `number.toDoubleOrNull()` / `date` / `lastReadDate` (LibraryDetailsViewModel.kt:113-118).
  *
- * The pure-domain [me.manga.kira.domain.model.Chapter] carries no surrogate `id` or
- * `lastReadDate` (those live on the Room `SavedChapterEntity`), so in the rework the reducer
- * approximates native's `ID` sort with the chapters' fetched/source order (the same order native's
- * autoincrement `id` reflects, since rows are inserted in source order) and `LAST_READ_DATE` falls
- * back to that same source order when no read timestamp is available on the domain model.
+ * The pure-domain [me.manga.kira.domain.model.Chapter] has no surrogate `id`, so `ID` uses fetched/
+ * source order. `LAST_READ_DATE` uses the saved `lastReadAtEpochMillis`, independently of the read
+ * flag. `0` means unknown time; ordinary positive timestamps sort as more recent.
+ *
+ * Keys are descending before the shared ascending reversal. Equal read times keep source order
+ * descending and reverse it ascending, so all-zero history matches `ID` in either direction.
  */
 enum class ChapterSortType {
     ID,

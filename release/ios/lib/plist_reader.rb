@@ -41,22 +41,22 @@ module KiraRelease
           value = children[index + 1]
           raise "Malformed plist dictionary" unless key&.name == "key" && value
 
-          result[key.text.to_s] = parse(value)
+          result[scalar_text(key)] = parse(value)
           index += 2
         end
         result
       when "array"
         element.elements.to_a.map { |child| parse(child) }
       when "string", "key"
-        element.text.to_s
+        scalar_text(element)
       when "data"
-        Base64.decode64(element.text.to_s)
+        Base64.decode64(scalar_text(element))
       when "date"
-        Time.xmlschema(element.text.to_s)
+        Time.xmlschema(scalar_text(element))
       when "integer"
-        Integer(element.text.to_s, 10)
+        Integer(scalar_text(element), 10)
       when "real"
-        Float(element.text.to_s)
+        Float(scalar_text(element))
       when "true"
         true
       when "false"
@@ -64,6 +64,20 @@ module KiraRelease
       else
         raise "Unsupported plist value type"
       end
+    end
+
+    def scalar_text(element)
+      element.children.map do |child|
+        case child
+        when REXML::Text
+          # CData is a Text subclass. Element#text alone drops later text/CDATA nodes.
+          child.value
+        when REXML::Comment
+          ""
+        else
+          raise "Malformed plist scalar"
+        end
+      end.join
     end
   end
 end

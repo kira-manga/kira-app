@@ -6,6 +6,8 @@ set -euo pipefail
 # JSON value cannot execute while validation is running.
 
 config_file=${1:-.secrets/android-release.env}
+script_dir=$(cd "$(dirname "$0")" && pwd)
+bootstrap_verifier="$script_dir/verify-source-bootstrap.py"
 if [[ ! -f "$config_file" ]]; then
   printf 'FAIL configuration file is missing: %s\n' "$config_file" >&2
   exit 2
@@ -301,7 +303,12 @@ if [[ -n "$pinned_keys" && "$pinned_keys" != *$'\n'* && "$pinned_keys" != *[[:sp
       pin_ok=0; break
     fi
   done
-  if (( pin_ok == 1 )); then pass "Pinned-key serialization is valid key-id=Base64-X.509"; else fail "Pinned-key serialization is invalid"; fi
+  printf '%s' "$pinned_keys" > "$tmp_dir/pinned-keys.txt"
+  if (( pin_ok == 1 )) && python3 -B "$bootstrap_verifier" pins "$tmp_dir/pinned-keys.txt" >/dev/null 2>&1; then
+    pass "Pinned-key serialization is valid unique key-id=Base64-X.509-Ed25519"
+  else
+    fail "Pinned-key serialization or strict local verifier is invalid"
+  fi
 else
   fail "Pinned-key serialization is empty or contains whitespace"
 fi
@@ -323,10 +330,11 @@ for pair in \
 done
 
 document_file=''
-if document_file=$(file_for SOURCE_CONFIG_DOCUMENT_FILE 2>/dev/null) && [[ -r "$document_file" ]] && jq empty < "$document_file" >/dev/null 2>&1; then
-  pass "Source-config document file is readable and valid JSON"
+if document_file=$(file_for SOURCE_CONFIG_DOCUMENT_FILE 2>/dev/null) && [[ -r "$document_file" ]] &&
+  python3 -B "$bootstrap_verifier" input "$document_file" >/dev/null 2>&1; then
+  pass "Source-config bootstrap input matches the approved full generic reference and 45-source inventory"
 else
-  fail "Source-config document file is missing, unreadable, or invalid JSON"
+  fail "Source-config bootstrap input is unavailable, invalid, or differs from the approved reference (Python 3 required)"
 fi
 
 admin_email=$(value_for SOURCE_CONFIG_ADMIN_EMAIL 2>/dev/null || true)

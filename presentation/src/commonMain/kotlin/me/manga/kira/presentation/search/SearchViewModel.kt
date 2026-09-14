@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.onEach
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.onFailure
 import me.manga.kira.core.result.onSuccess
-import me.manga.kira.domain.model.filters.FilterControlType
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.filters.SourceFilter
 import me.manga.kira.domain.model.home.HomeFeedItem
@@ -20,9 +19,8 @@ import me.manga.kira.presentation.mvi.MviViewModel
 import me.manga.kira.presentation.mvi.UiState
 
 /**
- * Search overlay ViewModel (Epic H3b; filters generalized by the config-driven filters campaign,
- * 2026-07 — one ordered [SourceFilter] pipeline for standard and custom filters, generic and
- * legacy sources alike).
+ * Search overlay ViewModel: one ordered [SourceFilter] pipeline for standard and custom filters,
+ * generic and legacy sources alike. Loads publish only while their generation remains current.
  *
  * Strict MVI; depends only on H1 `:domain` search use cases (DIP); Compose-free.
  *
@@ -49,6 +47,7 @@ class SearchViewModel(
     ) {
     private var singleSearchJob: Job? = null
     private var multiSearchJob: Job? = null
+    private var filterLoadGeneration = 0L
 
     /**
      * Snapshot of the last-executed single-source search parameters, so the error pane's Retry can
@@ -70,6 +69,7 @@ class SearchViewModel(
             SearchIntent.OnRetrySingle -> onRetrySingle()
             is SearchIntent.OnModeTabChange -> onModeTabChange(intent.mode)
             is SearchIntent.OnFilterChange -> onFilterChange(intent.filterId, intent.values)
+            is SearchIntent.OnApplyFilterDrafts -> onApplyFilterDrafts(intent.drafts)
             SearchIntent.OnResetFilters -> onResetFilters()
             is SearchIntent.OnMangaClick ->
                 emit(
@@ -88,63 +88,30 @@ class SearchViewModel(
     }
 
     private suspend fun onLoadFilters() {
+        val generation = ++filterLoadGeneration
+        updateState { it.copy(filters = emptyList()) }
         loadFilters()
             .onSuccess { filters ->
+                if (generation != filterLoadGeneration) return@onSuccess
                 updateState {
                     it.copy(
                         filters = filters,
-                        selections = reconcileSelections(filters, it.selections),
+                        selections = SearchFilterSelections.reconcile(filters, it.selections),
                     )
                 }
+            }.onFailure { error ->
+                if (generation == filterLoadGeneration) emit(SearchEffect.ShowError(error))
             }
-            // Keep the prior filters (the sheet shows whatever was last loaded) and surface the
-            // failure instead of letting the throw die in the generic onUnhandledError log.
-            .onFailure { error -> emit(SearchEffect.ShowError(error)) }
     }
-
-    /**
-     * Reconcile held selections against a freshly loaded filter list (the source may have changed
-     * or its filters may have been re-authored):
-     *  - selections for ids the new list doesn't declare are DROPPED (safe removal of stale state);
-     *  - select/multiselect values not among the filter's declared option values are dropped, and a
-     *    toggle value outside `true`/`false` is dropped (a stale value can never leak);
-     *  - a filter the user never touched (no held entry) is seeded with its declared defaults.
-     * An explicitly cleared selection (held empty list) stays cleared — defaults only seed
-     * untouched filters.
-     */
-    private fun reconcileSelections(
-        filters: List<SourceFilter>,
-        held: Map<String, List<String>>,
-    ): Map<String, List<String>> =
-        buildMap {
-            for (filter in filters) {
-                val heldValues = held[filter.id]
-                val values =
-                    if (heldValues == null) filter.defaultValues else pruneValues(filter, heldValues)
-                if (values.isNotEmpty()) put(filter.id, values)
-            }
-        }
-
-    private fun pruneValues(
-        filter: SourceFilter,
-        values: List<String>,
-    ): List<String> =
-        when (filter.type) {
-            FilterControlType.SELECT, FilterControlType.MULTISELECT -> {
-                val known = filter.options.map { it.value }.toSet()
-                values.filter { it in known }
-            }
-            FilterControlType.TOGGLE -> values.filter { it == "true" || it == "false" }
-            FilterControlType.TEXT, FilterControlType.NUMBER -> values.filter { it.isNotBlank() }
-        }
 
     /**
      * S-6 (native parity): closing the search overlay also wipes the query (native `SearchAppBar`
      * navigation-icon `onClick = { onToggleSearch(); onQueryChange("") }`). Reset the query, both
-     * result surfaces, and the active filter selections so re-opening search starts blank — and
+     * result surfaces, and filter descriptors/selections so re-opening search starts blank — and
      * cancel any in-flight searches so a stale collector can't push results into the cleared state.
      */
     private suspend fun onClose() {
+        filterLoadGeneration++
         singleSearchJob?.cancel()
         multiSearchJob?.cancel()
         updateState {
@@ -152,6 +119,7 @@ class SearchViewModel(
                 query = "",
                 single = UiState.Success(emptyList()),
                 multi = emptyMap(),
+                filters = emptyList(),
                 selections = emptyMap(),
                 hasSearched = false,
             )
@@ -209,29 +177,31 @@ class SearchViewModel(
         values: List<String>,
     ) {
         val filter = state.value.filters.firstOrNull { it.id == filterId } ?: return // unknown id — ignore
-        val pruned = pruneValues(filter, values)
+        val pruned = SearchFilterSelections.prune(filter, values)
         updateState { it.copy(selections = it.selections + (filterId to pruned)) }
-        val hasActiveSelection = state.value.selections.any { (_, v) -> v.isNotEmpty() }
-        when {
-            filterId == "genres" && pruned.isNotEmpty() -> runSingleSearch(query = "")
-            hasActiveSelection -> runSingleSearch(state.value.query)
-            else -> runSearch(state.value.query, SearchModeTab.SINGLE)
+        runFilterSearch(if (filterId == "genres" && pruned.isNotEmpty()) "" else state.value.query)
+    }
+
+    private fun onApplyFilterDrafts(drafts: Map<String, String>) {
+        val held = state.value.selections
+        updateState {
+            it.copy(selections = SearchFilterSelections.mergeDrafts(it.filters, it.selections, drafts))
         }
+        if (state.value.selections != held) runFilterSearch()
     }
 
     /** Deterministic reset: every filter back to its declared defaults, then re-run like a change. */
     private fun onResetFilters() {
-        val defaults =
-            buildMap {
-                for (filter in state.value.filters) {
-                    if (filter.defaultValues.isNotEmpty()) put(filter.id, filter.defaultValues)
-                }
-            }
-        updateState { it.copy(selections = defaults) }
-        if (defaults.values.any { it.isNotEmpty() }) {
-            runSingleSearch(state.value.query)
+        updateState { it.copy(selections = SearchFilterSelections.reconcile(it.filters, emptyMap())) }
+        runFilterSearch()
+    }
+
+    private fun runFilterSearch(query: String = state.value.query) {
+        val selections = state.value.selections
+        if (selections.values.any { it.isNotEmpty() }) {
+            runSingleSearch(query)
         } else {
-            runSearch(state.value.query, SearchModeTab.SINGLE)
+            runSearch(query, SearchModeTab.SINGLE)
         }
     }
 
@@ -263,7 +233,7 @@ class SearchViewModel(
     /**
      * Run a single-source search for [query]. [selectionsOverride] forces a specific selection set
      * (the plain-submit F2 guard passes [FilterSelections.EMPTY]; Retry replays the recorded set);
-     * `null` sends the current sheet selections (non-empty entries only).
+     * `null` sends the current sheet selections, including explicitly cleared entries.
      */
     private fun runSingleSearch(
         query: String,
@@ -278,7 +248,7 @@ class SearchViewModel(
         updateState { it.copy(single = UiState.Loading, hasSearched = true) }
         val selections =
             selectionsOverride
-                ?: FilterSelections(state.value.selections.filterValues { it.isNotEmpty() })
+                ?: FilterSelections(state.value.selections)
         // Record the resolved parameters so the error pane's Retry ([onRetrySingle]) can replay this
         // exact search (incl. the deliberately-blank query of a filter browse).
         lastSingleSearch = SingleSearchParams(query = query, selections = selections)

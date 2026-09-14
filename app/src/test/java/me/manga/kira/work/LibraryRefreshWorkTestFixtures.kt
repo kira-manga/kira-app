@@ -1,9 +1,15 @@
 package me.manga.kira.work
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Chapter
@@ -23,6 +29,8 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     var fetch: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(refreshDetails(it)) }
     var cover: suspend () -> Unit = {}
     var write: suspend (List<SavedChapterEntity>) -> List<Long> = { rows -> rows.indices.map { it + 1L } }
+    var persist: suspend (SavedMangaEntity, List<SavedChapterEntity>) -> List<ChapterNotification> = ::refreshNotifications
+    var display: suspend (List<ChapterNotification>) -> Unit = {}
     var lastSuccess = "old success"
     var stamps = 0
     var stamp: suspend () -> Unit = {
@@ -30,7 +38,9 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
         stamps++
     }
     val inserts = mutableListOf<List<SavedChapterEntity>>()
-    val notifications = mutableListOf<List<SavedChapterEntity>>()
+    val persistenceCalls = mutableListOf<List<SavedChapterEntity>>()
+    val persistedNotifications = mutableListOf<List<ChapterNotification>>()
+    val displayCalls = mutableListOf<List<ChapterNotification>>()
 
     override fun library() = libraryFlow
 
@@ -46,11 +56,17 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
         return write(chapters)
     }
 
-    override fun notify(
+    override suspend fun persistNotifications(
         manga: SavedMangaEntity,
         chapters: List<SavedChapterEntity>,
-    ) {
-        notifications += chapters
+    ): List<ChapterNotification> {
+        persistenceCalls += chapters
+        return persist(manga, chapters).also { persistedNotifications += it }
+    }
+
+    override suspend fun displayNotifications(notifications: List<ChapterNotification>) {
+        displayCalls += notifications
+        display(notifications)
     }
 
     override suspend fun stampLastSuccess() = stamp()
@@ -82,6 +98,25 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
             }
         }
     }
+}
+
+/** Synthetic port payload only, not a Room/IGNORE/identity implementation. */
+private fun refreshNotifications(
+    manga: SavedMangaEntity,
+    chapters: List<SavedChapterEntity>,
+) = chapters.mapIndexed { index, chapter ->
+    ChapterNotification(
+        id = index + 101L,
+        api = manga.api,
+        language = manga.language,
+        mangaId = manga.id,
+        mangaTitle = manga.title,
+        mangaImageUrl = manga.imageUrl,
+        mangaUrl = manga.url,
+        chapterId = index + 201L,
+        chapterNumber = chapter.number,
+        chapterUrl = chapter.url,
+    )
 }
 
 internal fun refreshManga(id: Long) =
@@ -129,5 +164,39 @@ internal fun cancellingRefreshWork(
                 lastSuccess = "committed"
                 pause()
             }
+        3 -> persist = { _, _ -> pause() }
+        4 -> display = { pause() }
     }
 }
+
+internal fun failingUpdatesRefreshWork(
+    expires: Boolean,
+    settled: CompletableDeferred<Unit>,
+) = LibraryRefreshWorkTestFixtures().apply {
+    write = {
+        delay(25_000)
+        listOf(9L)
+    }
+    persist = { _, _ ->
+        try {
+            if (expires) awaitCancellation() else error("fixture_updates_rejected")
+        } finally {
+            settled.complete(Unit)
+        }
+    }
+}
+
+/** A bounded cleanup suspension makes owner settlement observable, without a detached job. */
+internal suspend fun awaitRefreshCancellation(
+    entered: CompletableDeferred<Unit>,
+    settled: CompletableDeferred<Unit>,
+): Nothing =
+    try {
+        entered.complete(Unit)
+        awaitCancellation()
+    } finally {
+        withContext(NonCancellable) {
+            delay(1)
+            settled.complete(Unit)
+        }
+    }

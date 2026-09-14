@@ -177,7 +177,7 @@ class SearchViewModelTest {
             vm.submit(SearchIntent.OnFilterChange("genres", emptyList()))
             assertTrue(vm.state.value.selections["genres"].orEmpty().isEmpty())
             assertTrue(searchRepo.calls.any { it.startsWith("searchSource(naruto,") }, searchRepo.calls.toString())
-            assertEquals(emptyMap(), searchRepo.lastSelections?.byId)
+            assertEquals(mapOf("genres" to emptyList()), searchRepo.lastSelections?.byId)
         }
 
     // F1: picking a sort fires an IMMEDIATE sorted search, preserving the live query — mirrors

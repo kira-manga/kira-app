@@ -16,6 +16,8 @@ import kotlinx.datetime.toLocalDateTime
 import me.manga.kira.R
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
+import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
@@ -61,7 +63,7 @@ class LibraryRefreshWorker(
     private val sourceRegistry: SourceRegistry,
 ) : CoroutineWorker(context, params) {
     private val log = Logger.withTag(TAG)
-
+    internal val refreshWork by lazy { LibraryRefreshWork(WorkPort(), ::showProgress) }
     private val notificationManager by lazy {
         applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
@@ -106,24 +108,26 @@ class LibraryRefreshWorker(
     override suspend fun doWork(): Result =
         supervisorScope {
             try {
-                // Preserve the API 31+ background foreground-service fallback, but never swallow
-                // CancellationException (which is also an IllegalStateException on the JVM).
+                // Foreground promotion and its notification service/channel are optional to
+                // Updates persistence, including API 31+ service restrictions and SecurityException.
                 try {
                     setForeground(getForegroundInfo())
                 } catch (ce: CancellationException) {
                     throw ce
-                } catch (e: IllegalStateException) {
-                    log.w(e) { "Foreground promotion rejected; continuing refresh in background" }
+                } catch (_: Exception) {
+                    log.w { "refresh_foreground_unavailable" }
                 }
-                LibraryRefreshWork(WorkPort(), ::showProgress).run()
+                refreshWork.run()
             } catch (ce: CancellationException) {
                 throw ce
             } catch (e: Exception) {
-                updateNotification(
-                    context.getString(R.string.notification_refresh_failed, e.message ?: ""),
-                    isComplete = true,
-                    isError = true,
-                )
+                runCatchingCancellable {
+                    updateNotification(
+                        context.getString(R.string.notification_refresh_failed, e.message ?: ""),
+                        isComplete = true,
+                        isError = true,
+                    )
+                }
                 Result.failure()
             } finally {
                 cleanupNotification()
@@ -140,19 +144,17 @@ class LibraryRefreshWorker(
         override suspend fun updateCover(
             mangaId: Long,
             coverUrl: String,
-        ) {
-            libraryRepository.updateMangaImageUrlEverywhere(mangaId, coverUrl)
-        }
+        ) = libraryRepository.updateMangaImageUrlEverywhere(mangaId, coverUrl)
 
         override suspend fun insert(chapters: List<SavedChapterEntity>) = libraryRepository.insertChapterList(chapters)
 
-        override fun notify(
+        override suspend fun persistNotifications(
             manga: SavedMangaEntity,
             chapters: List<SavedChapterEntity>,
-        ) {
-            // Intentionally still detached; App5 does not claim awaited Updates persistence.
-            chapterNotificationHelper.addNewChapterNotification(manga, chapters)
-        }
+        ) = chapterNotificationHelper.persistNewChapterNotifications(manga, chapters)
+
+        override suspend fun displayNotifications(notifications: List<ChapterNotification>) =
+            chapterNotificationHelper.displayNotifications(notifications)
 
         override suspend fun stampLastSuccess() {
             val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
@@ -238,6 +240,8 @@ class LibraryRefreshWorker(
     private fun cleanupNotification() {
         try {
             notificationManager.cancel(NOTIF_ID)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (_: Exception) {
         }
     }

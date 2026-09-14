@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -75,7 +74,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -147,10 +145,6 @@ import me.manga.kira.ui.generated.resources.library_density_comfortable
 import me.manga.kira.ui.generated.resources.library_density_compact
 import me.manga.kira.ui.generated.resources.library_density_spacious
 import me.manga.kira.ui.generated.resources.library_downloaded_chapters_desc
-import me.manga.kira.ui.generated.resources.library_empty_desc_format
-import me.manga.kira.ui.generated.resources.library_empty_message_format
-import me.manga.kira.ui.generated.resources.library_tab_likes
-import me.manga.kira.ui.generated.resources.library_tab_watching_now
 import me.manga.kira.ui.generated.resources.library_like
 import me.manga.kira.ui.generated.resources.library_options
 import me.manga.kira.ui.generated.resources.library_open_random_manga
@@ -167,7 +161,6 @@ import me.manga.kira.ui.generated.resources.library_toggle_sort_direction
 import me.manga.kira.ui.generated.resources.library_unlike
 import me.manga.kira.ui.generated.resources.library_watch_now
 import me.manga.kira.ui.generated.resources.minutes_ago
-import me.manga.kira.ui.generated.resources.no_results_found
 import me.manga.kira.ui.generated.resources.not_updated_yet
 import me.manga.kira.ui.generated.resources.searching_placeholder
 import me.manga.kira.ui.generated.resources.sort_alphabetic
@@ -350,11 +343,12 @@ internal fun LibraryScreenContent(
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     state.isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    state.isEmpty -> EmptyLibraryMessage(
-                        isSearching = state.isSearching,
-                        category = state.category,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    state.isEmpty ->
+                        libraryEmptyContent(
+                            hasLibraryItems = state.hasLibraryItems,
+                            isSearching = state.isSearching,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     else -> LibraryGrid(
                         items = state.items,
                         selection = state.selection,
@@ -533,19 +527,16 @@ private fun LibraryTopBar(
     onOpenOptions: () -> Unit,
     onNavigateToDownloads: () -> Unit,
 ) {
-    // Library parity fix (audit p1/library finding 3): search is hidden behind a toggle that
-    // takes over the top bar (native LibraryScreen.kt:94,118-135). Screen-local UI ephemera —
-    // not lifted into LibraryState (same posture as the LibraryOptionsSheet visibility boolean).
-    // The search QUERY still lives in state.searchQuery / OnSearchQueryChange; only the bar's
-    // shown/hidden flag is local here.
-    var showSearchBar by remember { mutableStateOf(false) }
-    // Library parity fix (audit p1/library): system-back closes the search bar instead of leaving
-    // the screen — native LibraryScreen.kt:106-112 `BackHandler(enabled = showSearchBar){ showSearchBar
-    // = false; viewModel.onSearchChanged("") }`. Clearing the query mirrors native's onSearchChanged("").
-    BackHandler(enabled = showSearchBar) {
-        showSearchBar = false
+    // Retained query text must remain visible after recreation. Only opening an empty editor
+    // is local UI state; the ViewModel remains the query owner.
+    var editorOpen by remember { mutableStateOf(false) }
+    val showSearchBar = editorOpen || state.searchQuery.isNotEmpty()
+    // Keep the editor visible until the query owner publishes the requested clear.
+    val closeSearch = {
+        editorOpen = false
         onIntent(LibraryIntent.OnSearchQueryChange(""))
     }
+    BackHandler(enabled = showSearchBar, onBack = closeSearch)
     // System-back clears an active multi-select instead of leaving the screen — mirrors
     // DetailsScreen's chapter-selection BackHandler (DetailsScreen.kt:482).
     BackHandler(enabled = state.isInSelectionMode) {
@@ -576,11 +567,11 @@ private fun LibraryTopBar(
                 // borders/container. Mirrors native SearchAppBar.kt verbatim.
                 LibrarySearchBar(
                     query = state.searchQuery,
-                    onQueryChange = { onIntent(LibraryIntent.OnSearchQueryChange(it)) },
-                    onClose = {
-                        showSearchBar = false
-                        onIntent(LibraryIntent.OnSearchQueryChange(""))
+                    onQueryChange = {
+                        editorOpen = true
+                        onIntent(LibraryIntent.OnSearchQueryChange(it))
                     },
+                    onClose = closeSearch,
                 )
             } else {
                 // Redesign 2026-06: normal-mode top bar replaced with a Home-style header
@@ -613,7 +604,7 @@ private fun LibraryTopBar(
                         LibraryHeaderAction(
                             icon = KiraIcons.Search,
                             contentDescription = stringResource(Res.string.contentDescription_search),
-                            onClick = { showSearchBar = true },
+                            onClick = { editorOpen = true },
                         )
                         // UP-6: single options entry point — opens the tabbed [LibraryOptionsSheet]
                         // (Filter / Sort / Display). Replaces the pre-UP-6 trio of Filter/Sort/Density
@@ -1140,72 +1131,6 @@ private fun formatRelativeTime(past: Instant, now: Instant): String {
     }
 }
 
-/**
- * Empty-library placeholder (P2 parity fix, audit p2/library "Empty library state").
- *
- * Mirrors native `EmptyLibraryPlaceholder.kt:26-50` verbatim: a centered [Column] (fillMaxSize,
- * 32.dp padding) with an [Icons.Outlined.Inbox] icon (72.dp, `onBackground` @0.7f alpha), a 16.dp
- * [Spacer], and a `titleLarge` Bold centered message naming the active category —
- * "Your <Library / Watching Now / Likes> is empty" (native `empty_library_message` = "Your %1$s is
- * empty"). The tab name follows native `LibraryItems.kt:92-96`: NAN → "Library", WATCHING_NOW →
- * "Watching Now", LIKED → "Likes".
- *
- * The search case keeps a distinct, simpler "no results" caption (a rework enhancement the audit
- * explicitly preserves — native has no search-empty distinction).
- */
-@Composable
-private fun EmptyLibraryMessage(
-    isSearching: Boolean,
-    category: LibraryCategory,
-    modifier: Modifier = Modifier,
-) {
-    if (isSearching) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            Text(
-                text = stringResource(Res.string.no_results_found),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
-    }
-    val tabName = libraryTabName(category)
-    Column(
-        modifier = modifier.padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Inbox,
-            contentDescription = stringResource(Res.string.library_empty_desc_format, tabName),
-            modifier = Modifier.size(72.dp),
-            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-        )
-        Spacer(modifier = Modifier.size(16.dp))
-        Text(
-            text = stringResource(Res.string.library_empty_message_format, tabName),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-}
-
-/**
- * Active-category tab display name used by the empty-library placeholder, mirroring native
- * `LibraryItems.kt:92-96` (NAN → "Library", WATCHING_NOW → "Watching Now", LIKED → "Likes"). These
- * are the native FilterTabs *display* names — distinct from the in-tab-row category labels
- * ([libraryCategoryLabel], "All" / "Liked" / "Watching") — to reproduce native's empty-state copy
- * exactly.
- */
-@Composable
-private fun libraryTabName(category: LibraryCategory): String = when (category) {
-    LibraryCategory.NAN -> stringResource(Res.string.title_library)
-    LibraryCategory.WATCHING_NOW -> stringResource(Res.string.library_tab_watching_now)
-    LibraryCategory.LIKED -> stringResource(Res.string.library_tab_likes)
-}
-
 @Composable
 private fun LibraryGrid(
     items: List<LibraryManga>,
@@ -1340,8 +1265,8 @@ private fun LibraryCard(
                     model = coverModel?.invoke(item),
                 )
                 // GAP-LIB-17: source brand badge overlaid top-start on the cover. Mirrors the
-                // native MangaCard — a small rounded-4dp Card tinted with the source brand color
-                // (api.COLORS) at 80% alpha, showing "api - language" in contrast-aware text.
+                // native MangaCard geometry — a small rounded-4dp Card with an opaque source
+                // brand backing, showing "api - language" in contrast-aware text.
                 // Gated on `display.showSource` (the native `showSource` toggle). Placement moved
                 // from a below-cover caption to this on-cover overlay to match native.
                 if (display.showSource && item.manga.api.isNotBlank()) {
@@ -1476,23 +1401,23 @@ private fun LibraryCardCover(
 
 /**
  * Source brand badge (GAP-LIB-17) — a small rounded-4dp [Card] overlaid top-start on the cover,
- * tinted with the source brand color ([libraryBrandColor]) at 80% alpha, showing the
- * "api - language" label (via `library_source_badge_format`) in contrast-aware text
- * (white on dark brand colors, black on light, per [isDarkBrand]). Mirrors the native MangaCard
- * source badge (`MangaCard.kt:172-193`) verbatim: 8sp Bold text, 6dp/2dp inner padding.
+ * using opaque [libraryBrandColor] and its WCAG black/white [libraryBrandContentColor]. The
+ * localized "api - language" label (via `library_source_badge_format`) retains the native
+ * MangaCard source badge geometry: 8sp Bold text, 6dp/2dp inner padding.
  */
+@Suppress("FunctionNaming", "ktlint:standard:function-naming") // Compose UI naming convention.
 @Composable
-private fun LibrarySourceBadge(
+internal fun LibrarySourceBadge(
     api: String,
     language: String,
     modifier: Modifier = Modifier,
 ) {
     val brand = api.libraryBrandColor
-    val textColor = if (brand.isDarkBrand()) Color.White else Color.Black
+    val textColor = brand.libraryBrandContentColor()
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(4.dp),
-        colors = CardDefaults.cardColors(containerColor = brand.copy(alpha = 0.8f)),
+        colors = CardDefaults.cardColors(containerColor = brand, contentColor = textColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Text(

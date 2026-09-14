@@ -20,8 +20,8 @@ class IosAppUpdateClient : AppUpdateClient {
         return null
     }
 
-    override suspend fun startFlexibleUpdate(): Boolean {
-        log.d { "startFlexibleUpdate() — no-op on iOS, returning false" }
+    override suspend fun startUpdate(update: AppUpdateInfo): Boolean {
+        log.d { "startUpdate() — no-op on iOS, returning false" }
         return false
     }
 
@@ -38,8 +38,8 @@ class IosAppUpdateClient : AppUpdateClient {
         log.d { "unregisterUpdateListener() — no-op on iOS" }
     }
 
-    override suspend fun resumeIfDownloaded(): Boolean {
-        log.d { "resumeIfDownloaded() — no-op on iOS, returning false" }
+    override suspend fun resumeUpdate(): Boolean {
+        log.d { "resumeUpdate() — no-op on iOS, returning false" }
         return false
     }
 

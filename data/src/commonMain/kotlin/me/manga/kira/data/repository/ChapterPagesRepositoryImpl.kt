@@ -37,8 +37,8 @@ import okio.Path.Companion.toPath
  *
  * **Downloaded-chapter local-path lookup (native parity).** Before delegating to the source, the
  * impl checks whether the chapter has been downloaded for offline reading: it resolves the saved
- * `chapterId` via `ChapterDao.getChapterIdByUrl(chapter.url)`, reads the `SavedChapterEntity`, and
- * if it is `isDownloaded` with non-empty `localImagePaths`, serves the pages from local files
+ * `chapterId` via `ChapterDao.getChapterIdByUrl(manga.url, chapter.url)` and reads the saved entity.
+ * If it is `isDownloaded` with non-empty `localImagePaths`, it serves the pages from local files
  * instead of the network — mirroring native `ReaderViewModel` (downloaded chapters read
  * `localImagePaths`). A single `chapter_<id>.cbz` path is extracted via [CbzReader.extractImages]
  * (okio-backed, all platforms); loose `image_<n>.<ext>` paths are used in their stored page order.
@@ -86,7 +86,7 @@ class ChapterPagesRepositoryImpl(
         // Downloaded-chapter fast path (native parity): serve local files instead of re-fetching
         // from the source when the chapter has been downloaded for offline reading. Falls through
         // to the network path when the chapter isn't downloaded or no readable local files exist.
-        val localPages = localPagesOrNull(chapter)
+        val localPages = localPagesOrNull(manga, chapter)
         if (localPages != null) {
             FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=downloaded pages=${localPages.size}")
             emit(AppResult.Success(localPages))
@@ -117,8 +117,11 @@ class ChapterPagesRepositoryImpl(
      * Mirrors native `ReaderViewModel`: a single `.cbz` is extracted via [CbzReader]; loose page
      * files are returned in their stored order. Local paths become `file://` URLs for Coil.
      */
-    private suspend fun localPagesOrNull(chapter: Chapter): List<Page>? {
-        val chapterId = chapterDao.getChapterIdByUrl(chapter.url) ?: return null
+    private suspend fun localPagesOrNull(
+        manga: Manga,
+        chapter: Chapter,
+    ): List<Page>? {
+        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return null
         val entity = chapterDao.getChapterByIdSuspend(chapterId) ?: return null
         if (!entity.isDownloaded || entity.localImagePaths.isEmpty()) return null
 
@@ -137,20 +140,12 @@ class ChapterPagesRepositoryImpl(
                 // (the SAME layout the writer's ensureCbzDestination uses: chapterDir/chapter_<id>.cbz),
                 // so it survives a container change. Fall back to the stored path only when the
                 // re-derived one is absent (back-compat with rows whose CBZ lives elsewhere).
-                val canonical = cbzReader.cbzPath(entity.mangaId, entity.id)
-                val cbzPath = if (cbzReader.cbzExists(entity.mangaId, entity.id)) {
-                    if (canonical.toString() != single) {
-                        FlowLog.log("Reader", "cbzRederive", "stored stale; using current path | stored=$single current=$canonical")
-                    }
-                    canonical
-                } else {
-                    FlowLog.log("Reader", "cbzRederive", "no CBZ at current path; trying stored | stored=$single")
-                    single.toPath()
-                }
+                val cbzPath = resolveCbzPath(entity.mangaId, entity.id, single)
                 // Extraction writes into cacheDir/cbz_extract/<mangaId>/<chapterId>; hold the per-chapter
                 // cleanup lock so a concurrent clearExtractedPages delete of the same dir can't race it.
                 cleanupLockFor(entity.id).withLock {
-                    cbzReader.extractImages(cbzPath, entity.mangaId, entity.id)
+                    cbzReader
+                        .extractImages(cbzPath, entity.mangaId, entity.id)
                         .map { it.toString() }
                 }
             } else {
@@ -162,15 +157,16 @@ class ChapterPagesRepositoryImpl(
                 // network fetch instead of handing Coil N broken file:// URLs.
                 val fs = appFileSystem.fileSystem()
                 val chapterDir = appFileSystem.chapterDir(entity.mangaId, entity.id)
-                val resolved = entity.localImagePaths.map { stored ->
-                    val storedPath = stored.toPath()
-                    val current = chapterDir / storedPath.name
-                    when {
-                        fs.exists(current) -> current.toString()
-                        fs.exists(storedPath) -> stored
-                        else -> current.toString()
+                val resolved =
+                    entity.localImagePaths.map { stored ->
+                        val storedPath = stored.toPath()
+                        val current = chapterDir / storedPath.name
+                        when {
+                            fs.exists(current) -> current.toString()
+                            fs.exists(storedPath) -> stored
+                            else -> current.toString()
+                        }
                     }
-                }
                 if (resolved.none { fs.exists(it.toPath()) }) {
                     // B2: the loose pages are gone — but a CBZ may already exist. The background finalize
                     // deletes the loose source pages BEFORE Room is repointed from the loose list to the
@@ -178,14 +174,29 @@ class ChapterPagesRepositoryImpl(
                     // compressor run) Room still lists loose paths while only the .cbz is on disk. Prefer
                     // the durable CBZ over a network re-download of a chapter that IS downloaded.
                     if (cbzReader.cbzExists(entity.mangaId, entity.id)) {
-                        FlowLog.log("Reader", "looseRederive", "loose pages gone; extracting existing CBZ | mangaId=${entity.mangaId} chapterId=${entity.id}")
-                        val extracted = cleanupLockFor(entity.id).withLock {
-                            cbzReader.extractImages(cbzReader.cbzPath(entity.mangaId, entity.id), entity.mangaId, entity.id)
-                                .map { it.toString() }
-                        }
+                        FlowLog.log(
+                            "Reader",
+                            "looseRederive",
+                            "loose pages gone; extracting existing CBZ | " +
+                                "mangaId=${entity.mangaId} chapterId=${entity.id}",
+                        )
+                        val extracted =
+                            cleanupLockFor(entity.id).withLock {
+                                cbzReader
+                                    .extractImages(
+                                        cbzReader.cbzPath(entity.mangaId, entity.id),
+                                        entity.mangaId,
+                                        entity.id,
+                                    ).map { it.toString() }
+                            }
                         if (extracted.isNotEmpty()) return extracted.map { Page(url = toFileUrl(it), headers = emptyMap()) }
                     }
-                    FlowLog.log("Reader", "looseRederive", "no readable local pages; falling back to network | mangaId=${entity.mangaId} chapterId=${entity.id}")
+                    FlowLog.log(
+                        "Reader",
+                        "looseRederive",
+                        "no readable local pages; falling back to network | " +
+                            "mangaId=${entity.mangaId} chapterId=${entity.id}",
+                    )
                     return null
                 }
                 resolved
@@ -194,19 +205,37 @@ class ChapterPagesRepositoryImpl(
         return localPaths.map { Page(url = toFileUrl(it), headers = emptyMap()) }
     }
 
-    /** Local filesystem path → `file://` URL (Coil 3's [FileUriFetcher] resolves it on all targets). */
-    private fun toFileUrl(path: String): String = toFileUrl(path.toPath())
+    private fun resolveCbzPath(
+        mangaId: Long,
+        chapterId: Long,
+        single: String,
+    ): Path {
+        val canonical = cbzReader.cbzPath(mangaId, chapterId)
+        return if (cbzReader.cbzExists(mangaId, chapterId)) {
+            if (canonical.toString() != single) {
+                FlowLog.log(
+                    "Reader",
+                    "cbzRederive",
+                    "stored stale; using current path | stored=$single current=$canonical",
+                )
+            }
+            canonical
+        } else {
+            FlowLog.log("Reader", "cbzRederive", "no CBZ at current path; trying stored | stored=$single")
+            single.toPath()
+        }
+    }
 
     /**
-     * Build an RFC-8089 `file://` URL from an okio [Path]. A bare `"file://$path"` is malformed for
+     * Build an RFC-8089 `file://` URL from a local path. A bare `"file://$path"` is malformed for
      * Windows Desktop (packageMsi): `C:\Users\…\chapter_5.cbz` would yield `file://C:\…` (authority
      * "C:", unescaped backslashes), and spaces / non-ASCII in the user-profile path go through
      * unencoded. okio normalizes separators to `/`; we then prefix `file://`, ensure a leading
      * slash so the authority is empty (Unix `/d/1` → `file:///d/1`, Windows `C:/…` → `file:///C:/…`),
      * and percent-encode each segment.
      */
-    private fun toFileUrl(path: Path): String {
-        val normalized = path.toString().replace('\\', '/')
+    private fun toFileUrl(path: String): String {
+        val normalized = path.toPath().toString().replace('\\', '/')
         val withLeadingSlash = if (normalized.startsWith("/")) normalized else "/$normalized"
         val encoded = withLeadingSlash.split("/").joinToString("/") { encodePathSegment(it) }
         return "file://$encoded"
@@ -219,8 +248,11 @@ class ChapterPagesRepositoryImpl(
         for (byte in segment.encodeToByteArray()) {
             val c = byte.toInt() and 0xFF
             val ch = c.toChar()
-            val safe = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' ||
-                ch in "-._~!$&'()*+,;=:@"
+            val safe =
+                ch in 'A'..'Z' ||
+                    ch in 'a'..'z' ||
+                    ch in '0'..'9' ||
+                    ch in "-._~!$&'()*+,;=:@"
             if (safe) {
                 sb.append(ch)
             } else {
@@ -232,7 +264,10 @@ class ChapterPagesRepositoryImpl(
         return sb.toString()
     }
 
-    override fun clearExtractedPages(chapter: Chapter) {
+    override fun clearExtractedPages(
+        manga: Manga,
+        chapter: Chapter,
+    ) {
         // Fire-and-forget on the app-lifetime scope (safe from onCleared). Resolve the chapter's
         // Room id/manga id the same way the local-read path does; [CbzReader.cleanupExtractedCache]
         // is itself a no-op when no extract dir exists, so chapters that were streamed (not a
@@ -243,7 +278,7 @@ class ChapterPagesRepositoryImpl(
             // reach the platform default handler and crash the process — wrap it (CancellationException
             // is rethrown by runCatchingCancellable, so structured cancellation still unwinds).
             runCatchingCancellable {
-                val chapterId = chapterDao.getChapterIdByUrl(chapter.url) ?: return@runCatchingCancellable
+                val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return@runCatchingCancellable
                 val entity = chapterDao.getChapterByIdSuspend(chapterId) ?: return@runCatchingCancellable
                 // Serialize against a concurrent re-extract of the same chapter (rapid Next->Prev /
                 // exit->reopen): both touch cacheDir/cbz_extract/<mangaId>/<chapterId>, so the recursive
@@ -292,8 +327,7 @@ class ChapterPagesRepositoryImpl(
             "access denied",
         )
 
-    private fun String.containsAny(vararg needles: String): Boolean =
-        needles.any { this.contains(it) }
+    private fun String.containsAny(vararg needles: String): Boolean = needles.any { this.contains(it) }
 
     private companion object {
         private const val HEX = "0123456789ABCDEF"

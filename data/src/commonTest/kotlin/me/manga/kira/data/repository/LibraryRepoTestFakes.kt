@@ -39,12 +39,20 @@ open class FakeChapterDao(
 
     override suspend fun insertAll(chapters: List<SavedChapterEntity>) = Unit
 
-    override suspend fun getChapterIdByUrl(url: String): Long? = idsByUrl[url]
+    override suspend fun getChapterIdByUrl(
+        mangaUrl: String,
+        url: String,
+    ): Long? = idsByUrl[url]
 
-    override suspend fun getChapterIdsByUrlsBatch(urls: List<String>): List<Long> = urls.mapNotNull { idsByUrl[it] }
+    override suspend fun getChapterIdsByUrlsBatch(
+        mangaUrl: String,
+        urls: List<String>,
+    ): List<Long> = urls.mapNotNull { idsByUrl[it] }
 
-    override suspend fun getChapterIdUrlPairsBatch(urls: List<String>): List<ChapterIdUrl> =
-        urls.mapNotNull { url -> idsByUrl[url]?.let { ChapterIdUrl(id = it, url = url) } }
+    override suspend fun getChapterIdUrlPairsBatch(
+        mangaUrl: String,
+        urls: List<String>,
+    ): List<ChapterIdUrl> = urls.mapNotNull { url -> idsByUrl[url]?.let { ChapterIdUrl(id = it, url = url) } }
 
     override suspend fun getChapterIdUrlPairsForMangaBatch(
         mangaId: Long,
@@ -69,7 +77,10 @@ open class FakeChapterDao(
 
     override fun getChapterById(chapterId: Long): Flow<SavedChapterEntity?> = flowOf(null)
 
-    override fun getChapterByUrl(url: String): Flow<SavedChapterEntity?> = flowOf(null)
+    override fun getChapterByUrl(
+        mangaUrl: String,
+        url: String,
+    ): Flow<SavedChapterEntity?> = flowOf(null)
 
     override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = null
 
@@ -207,6 +218,25 @@ open class FakeChapterDownloadDao(
 
     override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? = null
 
+    override suspend fun getSavedChapterForDownload(chapterId: Long): SavedChapterEntity? = null
+
+    override suspend fun writeCompletedDownload(
+        downloadId: Long,
+        chapterId: Long,
+        sizeBytes: Long,
+        successState: DownloadingState,
+    ): Int = 0
+
+    override suspend fun markMatchingChapterDownloaded(
+        chapterId: Long,
+        mangaId: Long,
+        url: String,
+    ): Int = 0
+
+    override suspend fun getCompletedWithoutDownloadedFlag(successState: DownloadingState) = emptyDownloadRows()
+
+    private fun emptyDownloadRows(): List<ChapterDownloadEntity> = emptyList()
+
     override suspend fun deleteByChapterId(chapterId: Long) = Unit
 
     override fun getAllQueuedChapterIds(queuedState: DownloadingState): Flow<List<Long>> = flowOf(emptyList())
@@ -253,6 +283,8 @@ open class FakeChapterDownloadDao(
     ) = Unit
 
     override fun observeAllDownloads(): Flow<List<ChapterDownloadEntity>> = flowOf(emptyList())
+
+    override fun observeDownloadsForMangaUrl(mangaUrl: String): Flow<List<ChapterDownloadEntity>> = flowOf(emptyList())
 
     override suspend fun countByState(state: DownloadingState): Int = 0
 

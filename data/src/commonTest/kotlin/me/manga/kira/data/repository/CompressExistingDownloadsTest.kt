@@ -115,11 +115,20 @@ class CompressExistingDownloadsTest {
 
         override suspend fun insertAll(chapters: List<SavedChapterEntity>) = error("unused")
 
-        override suspend fun getChapterIdByUrl(url: String): Long? = error("unused")
+        override suspend fun getChapterIdByUrl(
+            mangaUrl: String,
+            url: String,
+        ): Long? = error("unused")
 
-        override suspend fun getChapterIdsByUrlsBatch(urls: List<String>): List<Long> = error("unused")
+        override suspend fun getChapterIdsByUrlsBatch(
+            mangaUrl: String,
+            urls: List<String>,
+        ): List<Long> = error("unused")
 
-        override suspend fun getChapterIdUrlPairsBatch(urls: List<String>): List<ChapterIdUrl> = error("unused")
+        override suspend fun getChapterIdUrlPairsBatch(
+            mangaUrl: String,
+            urls: List<String>,
+        ): List<ChapterIdUrl> = error("unused")
 
         override suspend fun getChapterIdUrlPairsForMangaBatch(
             mangaId: Long,
@@ -139,7 +148,10 @@ class CompressExistingDownloadsTest {
 
         override fun getChapterById(chapterId: Long): Flow<SavedChapterEntity?> = flowOf(null)
 
-        override fun getChapterByUrl(url: String): Flow<SavedChapterEntity?> = flowOf(null)
+        override fun getChapterByUrl(
+            mangaUrl: String,
+            url: String,
+        ): Flow<SavedChapterEntity?> = flowOf(null)
 
         override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = error("unused")
 

@@ -18,14 +18,15 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
  * Production observed-refresh runner, Result and stamp tests, not a mapper reimplementation.
- * These do NOT instantiate CoroutineWorker, validate Android DI/foreground services or prove
- * detached Updates persistence. Those still require the genuine Android dependency/platform gate.
+ * Port doubles do not prove Room IDs, CoroutineWorker or Android DI/foreground services.
+ * The separate real Worker/Room regressions retain those assertions and their own platform gate.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryRefreshWorkTest {
@@ -130,7 +131,8 @@ class LibraryRefreshWorkTest {
                 val port = LibraryRefreshWorkTestFixtures().apply { write = { ids } }
                 assertEquals(Result.failure(), work(port).run())
                 assertEquals(1, port.inserts.size)
-                assertTrue(port.notifications.isEmpty())
+                assertTrue(port.persistenceCalls.isEmpty())
+                assertTrue(port.displayCalls.isEmpty())
                 assertEquals("old success", port.lastSuccess)
             }
         }
@@ -150,7 +152,8 @@ class LibraryRefreshWorkTest {
                 assertEquals(ids.count { it > 0 }, progress.last().newChapterCount)
                 assertEquals(1, port.stamps) // Nonempty zero-new also stamps.
                 assertEquals("new success", port.lastSuccess)
-                assertEquals(1, port.notifications.size) // Launch only; not persistence completion proof.
+                assertEquals(1, port.persistedNotifications.size) // Observed fake-port return, not Room proof.
+                assertEquals(1, port.displayCalls.size)
             }
         }
 
@@ -194,5 +197,99 @@ class LibraryRefreshWorkTest {
                 assertNull(result)
                 assertEquals(if (stage == 2) "committed" else "old success", port.lastSuccess)
             }
+        }
+
+    @Test
+    fun updatesPersistenceRejectionOrItemTimeout_preventsCompletionDisplayAndStamp() =
+        runTest {
+            for (expires in listOf(false, true)) {
+                val settled = CompletableDeferred<Unit>()
+                val port = failingUpdatesRefreshWork(expires, settled)
+                val progress = mutableListOf<LibraryRefreshWorkProgress>()
+                val started = testScheduler.currentTime
+                assertEquals(Result.failure(), work(port, progress).run())
+                val terminal = progress.last()
+                assertEquals(LibraryRefreshWorkStop.EXHAUSTED, terminal.stop)
+                assertEquals(0, terminal.succeeded)
+                assertEquals(if (expires) 0 else 1, terminal.failed)
+                assertEquals(if (expires) 1 else 0, terminal.timedOut)
+                assertEquals(0, terminal.newChapterCount)
+                assertEquals(if (expires) 31_000L else 26_000L, testScheduler.currentTime - started)
+                assertEquals(1, port.inserts.size)
+                assertEquals(1, port.persistenceCalls.size)
+                assertTrue(port.persistedNotifications.isEmpty())
+                assertTrue(port.displayCalls.isEmpty())
+                assertTrue(settled.isCompleted)
+                assertEquals("old success", port.lastSuccess)
+            }
+        }
+
+    @Test
+    fun totalTimeoutDuringDisplay_retainsObservedAccountingAndSettlesDisplay() =
+        runTest {
+            val entered = CompletableDeferred<Unit>()
+            val settled = CompletableDeferred<Unit>()
+            val port =
+                LibraryRefreshWorkTestFixtures().apply {
+                    display = { awaitRefreshCancellation(entered, settled) }
+                }
+            val progress = mutableListOf<LibraryRefreshWorkProgress>()
+            assertEquals(Result.failure(), work(port, progress, LibraryRefreshWorkTimeouts(totalMs = 5_000)).run())
+            val terminal = progress.last()
+            assertEquals(LibraryRefreshWorkStop.TOTAL_TIMEOUT, terminal.stop)
+            assertEquals(1, terminal.succeeded)
+            assertEquals(0, terminal.failed)
+            assertEquals(0, terminal.timedOut)
+            assertEquals(0, terminal.notAttempted)
+            assertEquals(1, terminal.newChapterCount)
+            assertFalse(terminal.isComplete)
+            assertTrue(entered.isCompleted && settled.isCompleted)
+            assertEquals(1, port.persistedNotifications.size)
+            assertEquals("old success", port.lastSuccess)
+        }
+
+    @Test
+    fun cancellationDuringUpdatesPersistenceOrDisplay_propagatesAndSettlesOwnedWork() =
+        runTest {
+            for (stage in 3..4) {
+                val entered = CompletableDeferred<Unit>()
+                val settled = CompletableDeferred<Unit>()
+                val port = cancellingRefreshWork(stage) { awaitRefreshCancellation(entered, settled) }
+                var result: Result? = null
+                val job = launch { result = work(port).run() }
+                entered.await()
+                job.cancel()
+                job.join()
+                assertTrue(job.isCancelled && settled.isCompleted)
+                assertNull(result)
+                assertEquals(1, port.inserts.size)
+                assertEquals(1, port.persistenceCalls.size)
+                assertEquals(if (stage == 4) 1 else 0, port.persistedNotifications.size)
+                assertEquals(if (stage == 4) 1 else 0, port.displayCalls.size)
+                assertEquals("old success", port.lastSuccess)
+            }
+        }
+
+    @Test
+    fun displayAndProgressFailures_preserveSuccessAndCapturedPayload() =
+        runTest {
+            val port = LibraryRefreshWorkTestFixtures().apply { display = { error("fixture_display_rejected") } }
+            val progress = mutableListOf<LibraryRefreshWorkProgress>()
+            val runner =
+                LibraryRefreshWork(
+                    port,
+                    {
+                        progress += it
+                        error("fixture_progress_format")
+                    },
+                    StandardTestDispatcher(testScheduler),
+                )
+            assertEquals(Result.success(), runner.run())
+            assertSame(port.persistedNotifications.single(), port.displayCalls.single())
+            assertEquals(2, progress.size)
+            assertTrue(progress.last().isComplete)
+            assertEquals(1, progress.last().newChapterCount)
+            assertEquals(1, port.stamps)
+            assertEquals("new success", port.lastSuccess)
         }
 }

@@ -281,12 +281,10 @@ internal fun SearchScreenContent(
         SearchFilterSheet(
             filters = state.filters,
             selections = state.selections,
-            // F1 (native parity): filter changes fire an IMMEDIATE search and the sheet stays OPEN
-            // so results update live behind it (legacy `SearchBottomSheet` wired the chip/dropdown
-            // straight to `MangaViewModel.onGenreClicked` / `onSortClick`; the generic renderer
-            // generalizes that to every control type). `showFilters` is only flipped off by the
-            // bottom button (= `onDismiss`) or a sheet swipe-down.
+            // Chips/selects/toggles remain immediate. Text/number Done or Apply sends one delta;
+            // the ViewModel uses its committed query, not the top bar's unsubmitted text draft.
             onFilterChange = { id, values -> onIntent(SearchIntent.OnFilterChange(id, values)) },
+            onApplyDrafts = { onIntent(SearchIntent.OnApplyFilterDrafts(it)) },
             onResetFilters = { onIntent(SearchIntent.OnResetFilters) },
             onDismiss = { showFilters = false },
         )

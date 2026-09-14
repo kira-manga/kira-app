@@ -88,6 +88,10 @@ kotlin {
         // and `android.graphics.Bitmap` — neither of which exist on nonAndroidMain.
         val nonAndroidMain = create("nonAndroidMain") {
             dependsOn(commonMain.get())
+            dependencies {
+                // Share Coil's SVG sniffing rule so the raster decoder can decline SVG inputs.
+                implementation(libs.coil.svg)
+            }
         }
         iosMain.get().dependsOn(nonAndroidMain)
         getByName("desktopMain").dependsOn(nonAndroidMain)

@@ -17,6 +17,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
@@ -45,7 +46,6 @@ import me.manga.kira.domain.usecase.downloads.CancelDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.CancelRunningDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.DeleteDownloadedChapterUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueAllChaptersDownloadUseCase
-import me.manga.kira.domain.usecase.downloads.EnqueueChapterDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.EnqueueDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveCompressionDeferredUseCase
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
@@ -366,74 +366,52 @@ class DetailsViewModelRegressionTest {
     @Test
     fun chapterRow_reflectsLiveDownloadProgress_thenFlipsToDownloadedOnCompletion() =
         runTest {
-            // In-library manga with a cached chapter list (renders from the saved flow, no network).
-            val saved = FakeSavedMangaDetailsRepository()
-            saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
-            val downloads = FakeDownloadsRepository()
-            // c/1 resolves to Room id 10; c/2 has no download.
-            val resolver = MapChapterIdResolver(mapOf("c/1" to 10L, "c/2" to 20L))
-            val (vm, _) =
-                vmWithFetchFake(
-                    fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
-                    saved = saved,
-                    options =
-                        VmFixtureOptions().apply {
-                            downloadsRepo = downloads
-                            idResolver = resolver
-                        },
-                )
-
-            vm.submit(DetailsIntent.OnEnter(manga()))
-
-            // Symptom 1: while RUNNING the row must carry the live state + progress (matching native's
-            // determinate ring), not just a boolean "is downloading". Joined to the chapter by `url`.
-            downloads.rows.value =
-                listOf(
-                    downloadedChapter(url = "c/1", state = me.manga.kira.domain.model.downloads.DownloadState.RUNNING, progress = 42),
-                )
-            run {
-                val s = vm.state.value
-                val entry = s.chapterDownloads["c/1"]
-                assertNotNull(entry, "the running chapter must have a live download entry")
-                assertEquals(me.manga.kira.domain.model.downloads.DownloadState.RUNNING, entry.state)
-                assertEquals(42, entry.progress, "the live RUNNING progress (42) must reach state")
-                assertTrue("c/1" in s.downloadingChapterUrls, "the running chapter is an active download url")
-                assertEquals(null, s.chapterDownloads["c/2"], "a chapter with no download has no entry")
+            DetailsDownloadFixture(testDispatchers).verify {
+                assertRunningProgress(vm, downloads, progress = 42)
+                assertRunningProgress(vm, downloads, progress = 88)
+                // SUCCESS arrives before the saved-details flag, without leaving/re-entering Details.
+                downloads.rows.value = listOf(successfulDownload())
+                assertFalse(requireNotNull(vm.state.value.details).chapters.first().isDownloaded)
+                assertDownloadedLedger(vm.state.value)
+                assertDownloadedDetailsActions(vm, actions)
             }
+        }
 
-            // A later tick advances the percent — recomposition must follow (the DAO re-emits).
-            downloads.rows.value =
-                listOf(
-                    downloadedChapter(url = "c/1", state = me.manga.kira.domain.model.downloads.DownloadState.RUNNING, progress = 88),
-                )
-            assertEquals(
-                88,
-                vm.state.value.chapterDownloads["c/1"]
-                    ?.progress,
-                "a progress tick re-emits the new percent",
-            )
+    @Test
+    fun downloadHistoryRemoval_keepsSavedDownloadedActions_withoutLedgerSizeOrCount() =
+        runTest {
+            assertDuplicateChapterFallbackUsesFirstEntry()
+            DetailsDownloadFixture(testDispatchers).verify {
+                downloads.rows.value = listOf(successfulDownload())
+                assertDownloadedLedger(vm.state.value)
+                saved.saved.value = details(listOf(chapter("c/1", isDownloaded = true), chapter("c/2")))
+                // Row-only history deletion retains saved flags/files; only the ledger flow changes.
+                downloads.rows.value = emptyList()
+                val state = vm.state.value
+                assertTrue(requireNotNull(state.details).chapters.first().isDownloaded)
+                assertTrue(state.chapterDownloads.isEmpty())
+                assertEquals(0, state.downloadedChapterCount)
+                assertNull(state.chapterSizeBytes("c/1"))
+                assertNull(state.totalDownloadedSizeBytes)
+                assertDownloadedDetailsActions(vm, actions)
+                assertFullDeletionMakesChapterPending(vm, saved, actions)
+            }
+        }
 
-            // Symptom 2 (completion-freeze fix): the SUCCESS row arrives in the downloads flow ALONE —
-            // the saved-details flow has NOT re-emitted isDownloaded yet. The row must STILL read
-            // "downloaded" atomically from the SUCCESS entry (no leave/return, no dependency on the
-            // separately-delivered saved flow), drop out of the active set, and carry the on-disk size.
-            downloads.rows.value =
-                listOf(
-                    downloadedChapter(
-                        url = "c/1",
-                        state = me.manga.kira.domain.model.downloads.DownloadState.SUCCESS,
-                        progress = 100,
-                        sizeBytes = 12L * 1024 * 1024,
-                    ),
-                )
-
-            val s = vm.state.value
-            val done = s.chapterDownloads["c/1"]
-            assertNotNull(done, "a completed (SUCCESS) chapter keeps an entry so the flip is atomic")
-            assertTrue(done.isDownloaded, "the SUCCESS entry reads downloaded WITHOUT the saved flow re-emitting")
-            assertTrue("c/1" !in s.downloadingChapterUrls, "the completed chapter is no longer an active download url")
-            assertEquals("12.0 MB", s.chapterSizeLabel("c/1"), "the chapter size is shown from the SUCCESS entry")
-            assertEquals("12.0 MB", s.totalDownloadedSizeLabel, "the total downloaded size sums the SUCCESS entries")
+    @Test
+    fun cloudflareDownloadRetry_skipsRecoveredSavedChapter_butEnqueuesGenuineFailure() =
+        runTest {
+            DetailsDownloadFixture(testDispatchers).verify {
+                downloads.rows.value =
+                    listOf("c/1" to 10L, "c/2" to 20L).map { (url, id) ->
+                        downloadedChapter(url, DownloadState.FAILED, progress = 0, chapterId = id)
+                            .copy(errorMsg = DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL)
+                    }
+                // A saved completion precedes the ledger update; the retry set still contains c/1.
+                saved.saved.value = details(listOf(chapter("c/1", isDownloaded = true), chapter("c/2")))
+                vm.submit(DetailsIntent.OnRetry)
+                assertEquals(listOf(Triple(20L, "Naruto", "src")), actions.enqueued)
+            }
         }
 
     // ---- Bug 2: Cloudflare-family failures route to the WebView solver ------------------------
@@ -708,7 +686,7 @@ class DetailsViewModelRegressionTest {
             vm.submit(DetailsIntent.OnEnter(manga()))
             vm.submit(DetailsIntent.OnChapterClick(chapter("c/2")))
 
-            assertEquals(listOf("c/2"), badgeRepo.cleared, "opening a chapter clears its NEW badge by url")
+            assertEquals(listOf(manga() to "c/2"), badgeRepo.cleared, "opening a chapter clears its NEW badge by url")
             // markRead is NOT invoked on open — opening != reading; the recording repo stays empty.
             assertTrue(markReadRepo.read.isEmpty(), "opening a chapter must not mark it read")
         }
@@ -804,6 +782,337 @@ class DetailsViewModelRegressionTest {
         }
 }
 
+/** Read-time sorting through the real MVI surface and the existing file-local VM fixture. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DetailsViewModelLastReadSortTest {
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
+        }
+
+    private fun vmWithFetchFake(
+        fetch: AppResult<MangaDetails>,
+        saved: FakeSavedMangaDetailsRepository,
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            VmFixtureOptions(),
+            testDispatchers,
+        )
+
+    @Test
+    fun lastReadSort_reordersOnSavedTimeReset_afterNetworkRefresh() =
+        runTest {
+            val older = chapter("c/1").copy(lastReadAtEpochMillis = 100L)
+            val recent = chapter("c/2").copy(lastReadAtEpochMillis = 200L)
+            val cached = details(listOf(older, recent))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val networkOnly = chapter("c/3")
+            val network = details(listOf(chapter("c/1"), networkOnly, chapter("c/2")))
+            val (vm, fetch) = vmWithFetchFake(AppResult.Success(network), saved)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnSetChapterSort(ChapterSortType.LAST_READ_DATE))
+                assertEquals(0, fetch.fetchCount)
+                vm.submit(DetailsIntent.OnRetry)
+                assertEquals(1, fetch.fetchCount)
+                val refreshed = vm.state.value.displayChapters
+                assertEquals(listOf("c/2", "c/1", "c/3"), refreshed.map(Chapter::url))
+
+                saved.saved.value = cached.copy(chapters = listOf(older, recent.copy(lastReadAtEpochMillis = 0L)))
+                val reordered = vm.state.value.displayChapters
+                assertEquals(listOf("c/1", "c/3", "c/2"), reordered.map(Chapter::url))
+                assertEquals(0L, reordered.last().lastReadAtEpochMillis)
+                assertEquals(networkOnly, reordered[1])
+                assertEquals(1, fetch.fetchCount)
+            } finally {
+                store.clear()
+            }
+        }
+}
+
+/** Inclusive displayed-suffix selection tests sharing the existing file-local VM fixture. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DetailsViewModelSelectionTest {
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @BeforeTest
+    fun setUp() = Dispatchers.setMain(dispatcher)
+
+    @AfterTest
+    fun tearDown() = Dispatchers.resetMain()
+
+    private val testDispatchers =
+        object : DispatcherProvider {
+            override val main: CoroutineDispatcher = dispatcher
+            override val mainImmediate: CoroutineDispatcher = dispatcher
+            override val default: CoroutineDispatcher = dispatcher
+            override val io: CoroutineDispatcher = dispatcher
+            override val unconfined: CoroutineDispatcher = dispatcher
+        }
+
+    private fun vmWithFetchFake(
+        fetch: AppResult<MangaDetails>,
+        saved: FakeSavedMangaDetailsRepository,
+        options: VmFixtureOptions,
+    ): Pair<DetailsViewModel, FakeMangaDetailsRepository> =
+        createVmWithFetchFake(
+            fetch,
+            saved,
+            options,
+            testDispatchers,
+        )
+
+    @Test
+    fun markThisAndBelow_includesSelectedAndFollowingDescendingRows() =
+        runTest {
+            val selected = chapter("c/3")
+            val cached = details(listOf(chapter("c/5"), selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/5", "c/3", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(manga() to listOf("c/3", "c/1")), recorder.bulkReads)
+                assertEquals(listOf(manga() to "c/3", manga() to "c/1"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_followsAscendingDisplayedOrder() =
+        runTest {
+            val selected = chapter("c/3")
+            val cached = details(listOf(chapter("c/5"), selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnToggleSortDirection)
+                assertTrue(vm.state.value.isInLibrary)
+                assertTrue(vm.state.value.sortAscending)
+                assertEquals(
+                    listOf("c/1", "c/3", "c/5"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(manga() to listOf("c/3", "c/5")), recorder.bulkReads)
+                assertEquals(listOf(manga() to "c/3", manga() to "c/5"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_usesFilteredNumericOrder() =
+        runTest {
+            val selected = chapter("c/20")
+            val cached =
+                details(
+                    listOf(
+                        chapter("c/30"),
+                        chapter("c/15", isRead = true),
+                        chapter("c/10"),
+                        selected,
+                        chapter("c/25", isRead = true),
+                    ),
+                )
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.UNREAD))
+                vm.submit(DetailsIntent.OnSetChapterSort(ChapterSortType.NUMBER))
+                vm.submit(DetailsIntent.OnToggleSortDirection)
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/10", "c/20", "c/30"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                assertEquals(setOf("c/20"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                assertEquals(listOf(manga() to listOf("c/20", "c/30")), recorder.bulkReads)
+                assertEquals(listOf(manga() to "c/20", manga() to "c/30"), recorder.read)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_marksLastDisplayedChapterIncludingSingleVisibleRow() =
+        runTest {
+            val cases =
+                listOf(
+                    ChapterFilterType.ALL to listOf("c/3", "c/2", "c/1"),
+                    ChapterFilterType.BOOKMARKED to listOf("c/1"),
+                )
+            for ((filter, displayedUrls) in cases) {
+                val selected = chapter("c/1").copy(isBookmarked = true)
+                val cached = details(listOf(chapter("c/3"), chapter("c/2"), selected))
+                val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+                val recorder = RecordingMarkChapterReadRepository()
+                val options =
+                    VmFixtureOptions().apply {
+                        libraryRepo.emitInLibrary(true)
+                        markReadRepo = recorder
+                    }
+                val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+                val store = ViewModelStore().apply { put("details", vm) }
+                try {
+                    vm.submit(DetailsIntent.OnEnter(manga()))
+                    vm.submit(DetailsIntent.OnSetChapterFilter(filter))
+                    assertTrue(vm.state.value.isInLibrary)
+                    assertEquals(
+                        displayedUrls,
+                        vm.state.value.displayChapters
+                            .map(Chapter::url),
+                        "filter=$filter",
+                    )
+                    vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                    assertEquals(setOf("c/1"), vm.state.value.selectedChapterUrls)
+
+                    vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+
+                    assertEquals(listOf(manga() to listOf("c/1")), recorder.bulkReads, "filter=$filter")
+                    assertEquals(listOf(manga() to "c/1"), recorder.read, "filter=$filter")
+                    assertTrue(
+                        vm.state.value.selectedChapterUrls
+                            .isEmpty(),
+                    )
+                } finally {
+                    store.clear()
+                }
+            }
+        }
+
+    @Test
+    fun markThisAndBelow_preservesSelectionWhenGuarded() =
+        runTest {
+            val selected = chapter("c/2", isRead = true)
+            val other = chapter("c/3")
+            val cached = details(listOf(other, selected, chapter("c/1")))
+            val saved = FakeSavedMangaDetailsRepository().apply { this.saved.value = cached }
+            val recorder = RecordingMarkChapterReadRepository()
+            val options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    markReadRepo = recorder
+                }
+            val (vm, _) = vmWithFetchFake(AppResult.Success(cached), saved, options)
+            val store = ViewModelStore().apply { put("details", vm) }
+            try {
+                vm.submit(DetailsIntent.OnEnter(manga()))
+                assertTrue(vm.state.value.isInLibrary)
+                assertEquals(
+                    listOf("c/3", "c/2", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertTrue(
+                    vm.state.value.selectedChapterUrls
+                        .isEmpty(),
+                )
+
+                vm.submit(DetailsIntent.OnChapterLongClick(selected))
+                options.libraryRepo.emitInLibrary(false)
+                assertFalse(vm.state.value.isInLibrary)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+
+                options.libraryRepo.emitInLibrary(true)
+                assertTrue(vm.state.value.isInLibrary)
+                vm.submit(DetailsIntent.OnChapterLongClick(other))
+                assertEquals(setOf("c/2", "c/3"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2", "c/3"), vm.state.value.selectedChapterUrls)
+
+                vm.submit(DetailsIntent.OnSelectionToggle(other))
+                vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.UNREAD))
+                assertEquals(
+                    listOf("c/3", "c/1"),
+                    vm.state.value.displayChapters
+                        .map(Chapter::url),
+                )
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                vm.submit(DetailsIntent.OnMarkSelectedDownRead)
+                assertEquals(setOf("c/2"), vm.state.value.selectedChapterUrls)
+                assertTrue(recorder.bulkReads.isEmpty())
+                assertTrue(recorder.read.isEmpty())
+            } finally {
+                store.clear()
+            }
+        }
+}
+
 // ---- fakes -------------------------------------------------------------------------------
 
 private class FakeMangaDetailsRepository(
@@ -851,17 +1160,29 @@ private class RecordingAdultClassifier(
 }
 
 private object NullChapterIdResolver : ChapterIdResolver {
-    override suspend fun resolveChapterId(chapterUrl: String): Long? = null
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? = null
 
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> = emptyMap()
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> = emptyMap()
 }
 
 private class FixedChapterIdResolver(
     private val id: Long,
 ) : ChapterIdResolver {
-    override suspend fun resolveChapterId(chapterUrl: String): Long = id
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long = id
 
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> =
         chapterUrls.associateWith {
             id
         }
@@ -892,35 +1213,86 @@ private object NoopDownloadsActionRepository : DownloadsActionRepository {
     override suspend fun reconcileInterrupted() = Result.success(Unit)
 }
 
-private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
-    override suspend fun markRead(chapterUrl: String) = Unit
+/** Records real use-case boundary calls without feeding synthetic completion back into the flows. */
+private class RecordingDownloadsActionRepository : DownloadsActionRepository by NoopDownloadsActionRepository {
+    val enqueued = mutableListOf<Triple<Long, String, String>>()
+    val deletedChapters = mutableListOf<Long>()
 
-    override suspend fun toggleRead(chapterUrl: String) = Unit
+    override suspend fun enqueueDownload(
+        chapterId: Long,
+        mangaTitle: String,
+        api: String,
+    ): Result<Unit> {
+        enqueued += Triple(chapterId, mangaTitle, api)
+        return Result.success(Unit)
+    }
 
-    override suspend fun markRead(chapterUrls: List<String>) = Unit
+    override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> {
+        deletedChapters += chapterId
+        return Result.success(Unit)
+    }
 }
 
-/** Records every read-marking call so a test can assert opening a chapter does NOT mark it read. */
+private object NoopMarkChapterReadRepository : MarkChapterReadRepository {
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) = Unit
+
+    override suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) = Unit
+
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) = Unit
+}
+
+/** Records all read mutations and keeps bulk batches distinct from single/toggle calls. */
 private class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
-    val read = mutableListOf<String>()
+    val read = mutableListOf<Pair<Manga, String>>()
+    val bulkReads = mutableListOf<Pair<Manga, List<String>>>()
 
-    override suspend fun markRead(chapterUrl: String) {
-        read += chapterUrl
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        read += manga to chapterUrl
     }
 
-    override suspend fun toggleRead(chapterUrl: String) {
-        read += chapterUrl
+    override suspend fun toggleRead(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        read += manga to chapterUrl
     }
 
-    override suspend fun markRead(chapterUrls: List<String>) {
-        read += chapterUrls
+    override suspend fun markRead(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) {
+        bulkReads += manga to chapterUrls.toList()
+        read += chapterUrls.map { manga to it }
     }
 }
 
 private object NoopChapterBookmarkRepository : ChapterBookmarkRepository {
-    override fun observeBookmark(chapterUrl: String): Flow<Boolean> = MutableStateFlow(false)
+    override fun observeBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Flow<Boolean> = MutableStateFlow(false)
 
-    override suspend fun toggleBookmark(chapterUrl: String): Boolean = true
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrl: String,
+    ): Boolean = true
+
+    override suspend fun toggleBookmark(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ) = Unit
 }
 
 /** #4: drives DetailsState.isOnline. Default online so it never blocks the existing tests. */
@@ -958,10 +1330,13 @@ private class RecordingAnalyticsPort : AnalyticsPort {
 }
 
 private class RecordingChapterNewBadgeRepository : ChapterNewBadgeRepository {
-    val cleared = mutableListOf<String>()
+    val cleared = mutableListOf<Pair<Manga, String>>()
 
-    override suspend fun clearNew(chapterUrl: String) {
-        cleared += chapterUrl
+    override suspend fun clearNew(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        cleared += manga to chapterUrl
     }
 }
 
@@ -975,6 +1350,8 @@ private class RecordingChapterDeletionRepository : ChapterDeletionRepository {
 
 private object EmptyDownloadsRepository : DownloadsRepository {
     override fun observeAll(): Flow<List<DownloadedChapter>> = MutableStateFlow(emptyList())
+
+    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> = MutableStateFlow(emptyList())
 }
 
 /**
@@ -986,25 +1363,32 @@ private class FakeDownloadsRepository : DownloadsRepository {
     val rows = MutableStateFlow<List<DownloadedChapter>>(emptyList())
 
     override fun observeAll(): Flow<List<DownloadedChapter>> = rows
+
+    override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> =
+        if (manga.url == "https://x/naruto") rows else MutableStateFlow(emptyList())
 }
 
 /**
- * PFIX-DLPROGRESS: resolves a fixed set of chapter `url` → Room `id` mappings (unknown urls →
- * null), so the VM can join the displayed chapter list onto the active-download rows by id —
- * the join `NullChapterIdResolver` cannot exercise.
+ * Resolves a controlled set of chapter `url` → Room `id` mappings (unknown urls → null),
+ * including both the single and batched resolution used by the real enqueue use cases.
  */
 private class MapChapterIdResolver(
     private val byUrl: Map<String, Long>,
 ) : ChapterIdResolver {
-    override suspend fun resolveChapterId(chapterUrl: String): Long? = byUrl[chapterUrl]
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? = byUrl[chapterUrl]
 
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
-        chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> = chapterUrls.mapNotNull { url -> byUrl[url]?.let { url to it } }.toMap()
 }
 
 private fun downloadedChapter(
     url: String,
-    state: me.manga.kira.domain.model.downloads.DownloadState,
+    state: DownloadState,
     progress: Int,
     sizeBytes: Long = 0,
     chapterId: Long = 10L,
@@ -1065,6 +1449,7 @@ private fun details(chapters: List<Chapter>) =
 private class VmFixtureOptions {
     var downloadsRepo: DownloadsRepository = EmptyDownloadsRepository
     var idResolver: ChapterIdResolver = NullChapterIdResolver
+    var downloadActions: DownloadsActionRepository = NoopDownloadsActionRepository
     var libraryRepo: FakeLibraryRepository = FakeLibraryRepository()
     var badgeRepo: ChapterNewBadgeRepository = RecordingChapterNewBadgeRepository()
     var deletionRepo: ChapterDeletionRepository = RecordingChapterDeletionRepository()
@@ -1091,18 +1476,14 @@ private fun createVmWithFetchFake(
             toggleInLibrary = ToggleInLibraryUseCase(options.libraryRepo),
             enqueueAllChaptersDownload =
                 EnqueueAllChaptersDownloadUseCase(
-                    chapterIdResolver = NullChapterIdResolver,
-                    enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
+                    chapterIdResolver = options.idResolver,
+                    enqueueDownload = EnqueueDownloadUseCase(options.downloadActions),
                     dispatchers = testDispatchers,
                 ),
             toggleChapterRead = ToggleChapterReadUseCase(options.markReadRepo),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(NoopChapterBookmarkRepository),
             markChaptersRead = MarkChaptersReadUseCase(options.markReadRepo),
-            enqueueChapterDownload =
-                EnqueueChapterDownloadUseCase(
-                    chapterIdResolver = NullChapterIdResolver,
-                    enqueueDownload = EnqueueDownloadUseCase(NoopDownloadsActionRepository),
-                ),
+            enqueueDownload = EnqueueDownloadUseCase(options.downloadActions),
             cancelChapterDownload =
                 CancelChapterDownloadUseCase(
                     chapterIdResolver = NullChapterIdResolver,
@@ -1110,7 +1491,7 @@ private fun createVmWithFetchFake(
                 ),
             cancelRunningDownload = CancelRunningDownloadUseCase(NoopDownloadsActionRepository),
             cancelAllDownloads = CancelAllDownloadsUseCase(NoopDownloadsActionRepository),
-            deleteDownloadedChapter = DeleteDownloadedChapterUseCase(NoopDownloadsActionRepository),
+            deleteDownloadedChapter = DeleteDownloadedChapterUseCase(options.downloadActions),
             observeDownloads = ObserveDownloadsUseCase(options.downloadsRepo),
             resolveChapterId = ResolveChapterIdUseCase(options.idResolver),
             markMangaOpened = MarkMangaOpenedUseCase(options.libraryRepo),
@@ -1125,6 +1506,206 @@ private fun createVmWithFetchFake(
                 ),
         )
     return vm to fetchFake
+}
+
+private class DetailsDownloadFixture(
+    testDispatchers: DispatcherProvider,
+) {
+    val saved =
+        FakeSavedMangaDetailsRepository().apply {
+            this.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+        }
+    val downloads = FakeDownloadsRepository()
+    val actions = RecordingDownloadsActionRepository()
+    val vm =
+        createVmWithFetchFake(
+            fetch = AppResult.Success(requireNotNull(saved.saved.value)),
+            saved = saved,
+            options =
+                VmFixtureOptions().apply {
+                    libraryRepo.emitInLibrary(true)
+                    downloadsRepo = downloads
+                    idResolver = MapChapterIdResolver(mapOf("c/1" to FIRST_DOWNLOAD_ID, "c/2" to SECOND_DOWNLOAD_ID))
+                    downloadActions = actions
+                },
+            testDispatchers = testDispatchers,
+        ).first
+
+    fun verify(assertions: DetailsDownloadFixture.() -> Unit) {
+        val store = ViewModelStore().apply { put("details", vm) }
+        try {
+            vm.submit(DetailsIntent.OnEnter(manga()))
+            assertions()
+        } finally {
+            store.clear()
+        }
+    }
+
+    companion object {
+        private const val FIRST_DOWNLOAD_ID = 10L
+        private const val SECOND_DOWNLOAD_ID = 20L
+    }
+}
+
+private fun successfulDownload() =
+    downloadedChapter(url = "c/1", state = DownloadState.SUCCESS, progress = 100, sizeBytes = 12L * 1024 * 1024)
+
+private fun assertRunningProgress(
+    vm: DetailsViewModel,
+    downloads: FakeDownloadsRepository,
+    progress: Int,
+) {
+    downloads.rows.value = listOf(downloadedChapter(url = "c/1", state = DownloadState.RUNNING, progress = progress))
+    val state = vm.state.value
+    val entry = assertNotNull(state.chapterDownloads["c/1"], "the running chapter must have a live download entry")
+    assertEquals(DownloadState.RUNNING, entry.state)
+    assertEquals(progress, entry.progress, "every progress tick must reach state")
+    assertTrue("c/1" in state.downloadingChapterUrls)
+    assertNull(state.chapterDownloads["c/2"], "a chapter with no download has no entry")
+}
+
+private fun assertDownloadedLedger(state: DetailsState) {
+    val done = assertNotNull(state.chapterDownloads["c/1"], "SUCCESS keeps an entry for the immediate completion flip")
+    assertTrue(done.isDownloaded)
+    assertFalse("c/1" in state.downloadingChapterUrls)
+    assertEquals(12L * 1024 * 1024, state.chapterSizeBytes("c/1"))
+    assertEquals(12L * 1024 * 1024, state.totalDownloadedSizeBytes)
+    assertEquals(1, state.downloadedChapterCount)
+}
+
+private fun assertDownloadedDetailsActions(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    assertTrue(vm.state.value.isInLibrary, "download guards must be exercised, not bypassed")
+    assertUnknownSelectionCannotDelete(vm, actions)
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    assertEquals(
+        listOf("c/1"),
+        vm.state.value.displayChapters
+            .map(Chapter::url),
+    )
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/1")))
+    assertTrue(vm.state.value.isSelectionAllDownloaded, "the completed selection exposes delete")
+    vm.submit(DetailsIntent.OnSelectionToggle(chapter("c/2")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded, "a mixed selection must not expose delete")
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty(), "a stray mixed-selection delete must do nothing")
+    assertEquals(setOf("c/1", "c/2"), vm.state.value.selectedChapterUrls)
+    vm.submit(DetailsIntent.OnSelectionToggle(chapter("c/2")))
+    assertTrue(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertEquals(listOf(10L), actions.deletedChapters)
+    assertTrue(
+        vm.state.value.selectedChapterUrls
+            .isEmpty(),
+    )
+    actions.deletedChapters.clear()
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.ALL))
+    assertOnlyPendingChapterEnqueues(vm, actions)
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.BOOKMARKED))
+    assertTrue(
+        vm.state.value.displayChapters
+            .isEmpty(),
+        "delete-all must not be limited by the visible list",
+    )
+    vm.submit(DetailsIntent.OnDeleteAllDownloads)
+    assertEquals(listOf(10L), actions.deletedChapters, "delete-all must include completion but exclude pending")
+}
+
+private fun assertUnknownSelectionCannotDelete(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty())
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/missing")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    assertTrue(actions.deletedChapters.isEmpty())
+    assertEquals(setOf("c/missing"), vm.state.value.selectedChapterUrls, "an ignored action preserves selection")
+    vm.submit(DetailsIntent.OnSelectionClear)
+}
+
+private fun assertOnlyPendingChapterEnqueues(
+    vm: DetailsViewModel,
+    actions: RecordingDownloadsActionRepository,
+) {
+    val completed = chapter("c/1") // Deliberately stale isDownloaded=false, even for the saved-fallback case.
+    val pending = chapter("c/2")
+    val expected = listOf(Triple(20L, "Naruto", "src"))
+    vm.submit(DetailsIntent.OnDownloadChapter(completed))
+    assertTrue(actions.enqueued.isEmpty(), "single enqueue must not demote a completed chapter")
+    vm.submit(DetailsIntent.OnDownloadChapter(pending))
+    assertEquals(expected, actions.enqueued, "positive control: single enqueue reaches the real action boundary")
+    actions.enqueued.clear()
+    vm.submit(DetailsIntent.OnChapterLongClick(completed))
+    vm.submit(DetailsIntent.OnSelectionToggle(pending))
+    vm.submit(DetailsIntent.OnDownloadSelected)
+    assertEquals(expected, actions.enqueued, "mixed selection enqueues only the pending chapter")
+    assertTrue(
+        vm.state.value.selectedChapterUrls
+            .isEmpty(),
+        "download-selected still clears selection",
+    )
+    actions.enqueued.clear()
+    // Download-all uses the full details snapshot, not the currently displayed downloaded-only list.
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    vm.submit(DetailsIntent.OnDownloadAllClick)
+    assertEquals(expected, actions.enqueued, "positive control: the bulk use case resolves and enqueues pending")
+}
+
+private fun assertFullDeletionMakesChapterPending(
+    vm: DetailsViewModel,
+    saved: FakeSavedMangaDetailsRepository,
+    actions: RecordingDownloadsActionRepository,
+) {
+    // Publish the saved-flow result of full deletion; unlike history deletion, both signals are gone.
+    vm.submit(DetailsIntent.OnSetChapterFilter(ChapterFilterType.DOWNLOADED))
+    assertEquals(
+        listOf("c/1"),
+        vm.state.value.displayChapters
+            .map(Chapter::url),
+    )
+    saved.saved.value = details(listOf(chapter("c/1"), chapter("c/2")))
+    assertTrue(
+        vm.state.value.displayChapters
+            .isEmpty(),
+        "full deletion removes the downloaded-filter result",
+    )
+    vm.submit(DetailsIntent.OnChapterLongClick(chapter("c/1")))
+    assertFalse(vm.state.value.isSelectionAllDownloaded)
+    actions.deletedChapters.clear()
+    vm.submit(DetailsIntent.OnDeleteSelectedDownloads)
+    vm.submit(DetailsIntent.OnDeleteAllDownloads)
+    assertTrue(actions.deletedChapters.isEmpty(), "pending content is no longer eligible for download deletion")
+    assertEquals(setOf("c/1"), vm.state.value.selectedChapterUrls)
+    actions.enqueued.clear()
+    vm.submit(DetailsIntent.OnDownloadChapter(chapter("c/1", isDownloaded = true)))
+    assertEquals(
+        listOf(Triple(10L, "Naruto", "src")),
+        actions.enqueued,
+        "a stale true-valued click cannot stay blocked",
+    )
+}
+
+private fun assertDuplicateChapterFallbackUsesFirstEntry() {
+    val pending = chapter("c/duplicate")
+    val saved = pending.copy(isDownloaded = true)
+    listOf(listOf(pending, saved), listOf(saved, pending)).forEach { duplicates ->
+        val first = duplicates.first()
+        val state =
+            DetailsState(
+                details = details(duplicates),
+                selectedChapterUrls = setOf(first.url),
+                chapterFilter = ChapterFilterType.DOWNLOADED,
+            )
+        assertEquals(first.isDownloaded, state.isChapterDownloaded(first.url))
+        assertEquals(first.isDownloaded, state.isSelectionAllDownloaded)
+        assertEquals(DetailsState.isDownloaded(first, null), state.isChapterDownloaded(first.url))
+        assertEquals(if (first.isDownloaded) listOf(first) else emptyList(), state.displayChapters)
+    }
 }
 
 private fun assertAdultGate(state: DetailsState) {

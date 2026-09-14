@@ -17,13 +17,14 @@ import kotlinx.datetime.todayIn
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import kotlin.time.Clock
 
-/** Observed chapter work and the actual WorkManager Result/stamp policy used by the worker. */
+/** Observed mandatory chapter/Updates work and the worker's actual Result/stamp policy. */
 internal class LibraryRefreshWork(
     private val port: LibraryRefreshWorkPort,
     private val onProgress: (LibraryRefreshWorkProgress) -> Unit,
@@ -51,7 +52,7 @@ internal class LibraryRefreshWork(
     private suspend fun finish(report: LibraryRefreshWorkProgress): Result {
         currentCoroutineContext().ensureActive()
         if (!report.isComplete) {
-            onProgress(report)
+            reportProgress(report)
             return Result.failure()
         }
         val stampFailure =
@@ -60,11 +61,11 @@ internal class LibraryRefreshWork(
             }.exceptionOrNull()
         return if (stampFailure != null) {
             log.w(stampFailure) { "Library refresh timestamp failed" }
-            onProgress(report.copy(stop = LibraryRefreshWorkStop.STAMP_FAILED))
+            reportProgress(report.copy(stop = LibraryRefreshWorkStop.STAMP_FAILED))
             Result.failure()
         } else {
             currentCoroutineContext().ensureActive()
-            onProgress(report)
+            reportProgress(report)
             Result.success()
         }
     }
@@ -99,13 +100,26 @@ internal class LibraryRefreshWork(
                     .map { manga ->
                         async {
                             accounting.startItem()
-                            accounting.finishItem(refreshOne(manga))
+                            refreshManga(manga, accounting::finishItem)
                         }
                     }.awaitAll()
             }
-            onProgress(accounting.snapshot())
+            reportProgress(accounting.snapshot())
             delay(INTER_BATCH_DELAY_MS)
         }
+    }
+
+    /** Same operation used by batching: record mandatory work before optional display suspends. */
+    internal suspend fun refreshManga(
+        manga: SavedMangaEntity,
+        onObserved: (ItemOutcome) -> Unit = {},
+    ): Boolean {
+        val outcome = refreshOne(manga)
+        onObserved(outcome)
+        currentCoroutineContext().ensureActive()
+        if (outcome !is ItemOutcome.Completed) return false
+        displayBestEffort(outcome.notifications)
+        return true
     }
 
     private suspend fun refreshOne(manga: SavedMangaEntity): ItemOutcome =
@@ -167,8 +181,9 @@ internal class LibraryRefreshWork(
         // The legacy facade catches write errors and returns emptyList, not a thrown failure.
         // Room IGNORE returns one slot per candidate; -1 is valid, but missing/invalid slots aren't.
         if (ids.size != chapters.size || ids.any { it != -1L && it <= 0L }) return ItemOutcome.Failed
-        notifyBestEffort(manga, chapters)
-        return ItemOutcome.Completed(ids.count { it > 0L })
+        // The helper's checked second INSERT/IGNORE pass is mandatory, not a retry or new count.
+        val notifications = port.persistNotifications(manga, chapters)
+        return ItemOutcome.Completed(ids.count { it > 0L }, notifications)
     }
 
     private suspend fun reconcileCover(
@@ -183,22 +198,29 @@ internal class LibraryRefreshWork(
         }
     }
 
-    private fun notifyBestEffort(
-        manga: SavedMangaEntity,
-        chapters: List<SavedChapterEntity>,
-    ) {
+    private suspend fun displayBestEffort(notifications: List<ChapterNotification>) {
+        if (notifications.isEmpty()) return
         runCatchingCancellable {
-            // App6's helper launches detached work and swallows failures. Returning here is NOT
-            // evidence of completed Updates persistence; chapter insertion above is observed.
-            port.notify(manga, chapters)
+            // Outside the item deadline, but joined within the total budget and caller ownership.
+            port.displayNotifications(notifications)
         }.onFailure { t ->
-            log.w(t) { "Detached chapter notification could not be launched" }
+            log.w(t) { "Optional chapter notification display failed" }
+        }
+        currentCoroutineContext().ensureActive()
+    }
+
+    private fun reportProgress(progress: LibraryRefreshWorkProgress) {
+        runCatchingCancellable {
+            onProgress(progress)
+        }.onFailure { t ->
+            log.w(t) { "Optional refresh progress display failed" }
         }
     }
 
-    private sealed interface ItemOutcome {
+    internal sealed interface ItemOutcome {
         data class Completed(
             val newChapterCount: Int,
+            val notifications: List<ChapterNotification> = emptyList(),
         ) : ItemOutcome
 
         data object Failed : ItemOutcome

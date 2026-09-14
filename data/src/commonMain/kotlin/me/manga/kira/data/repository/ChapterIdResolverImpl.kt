@@ -1,6 +1,7 @@
 package me.manga.kira.data.repository
 
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterIdResolver
 
 /**
@@ -22,10 +23,13 @@ import me.manga.kira.domain.repository.ChapterIdResolver
 class ChapterIdResolverImpl(
     private val chapterDao: ChapterDao,
 ) : ChapterIdResolver {
+    override suspend fun resolveChapterId(
+        manga: Manga,
+        chapterUrl: String,
+    ): Long? = chapterDao.getChapterIdByUrl(manga.url, chapterUrl)
 
-    override suspend fun resolveChapterId(chapterUrl: String): Long? =
-        chapterDao.getChapterIdByUrl(chapterUrl)
-
-    override suspend fun resolveChapterIds(chapterUrls: List<String>): Map<String, Long> =
-        chapterDao.getChapterIdMapByUrls(chapterUrls)
+    override suspend fun resolveChapterIds(
+        manga: Manga,
+        chapterUrls: List<String>,
+    ): Map<String, Long> = chapterDao.getChapterIdMapByUrls(manga.url, chapterUrls)
 }
