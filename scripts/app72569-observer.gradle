@@ -1,0 +1,355 @@
+// Engine02 observation helpers, applied only by the source-bound init script.
+// Reads actual consumed inputs; no forced resolution, artifact view, staging or task replacement.
+import groovy.json.JsonOutput
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+import org.gradle.api.GradleException
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ModuleComponentSelector
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
+
+def c = extensions.extraProperties.get('app72569Context')
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def shaStream = { stream ->
+    def digest = MessageDigest.getInstance('SHA-256')
+    byte[] buffer = new byte[65536]
+    for (int n; (n = stream.read(buffer)) != -1;) digest.update(buffer, 0, n)
+    digest.digest().encodeHex().toString()
+}
+def sha = { File f -> f.withInputStream { shaStream(it) } }
+def emit = { label, row -> c.logger.lifecycle('KIRA_ORIGINAL_ENGINE_' + label + ' ' + JsonOutput.toJson([build: c.role] + row)) }
+def attrs = { container -> container.keySet().sort { it.name }.collectEntries {
+    [(it.name): [type: it.type.name, value: container.getAttribute(it).toString()]]
+} }
+def attrValue = { container, name ->
+    def key = container.keySet().find { it.name == name }
+    key == null ? null : container.getAttribute(key).toString()
+}
+def caps = { variant -> variant.capabilities.collect { [group: it.group, name: it.name, version: it.version] } }
+def component = { id ->
+    id instanceof ProjectComponentIdentifier ?
+        [kind: 'project', buildPath: id.build.buildPath,
+         projectPath: id.projectPath, buildTreePath: id.buildTreePath, display: id.displayName] :
+        [kind: 'module', display: id.displayName]
+}
+def prefix = 'me/manga/kira/source/'
+def neutralClasses = { File file ->
+    def result = [:]
+    if (file.isDirectory()) {
+        def subtree = new File(file, prefix)
+        if (subtree.exists()) subtree.eachFileRecurse { child ->
+            if (child.isFile() && child.name.endsWith('.class')) {
+                require(child.canonicalPath == child.absolutePath, 'Aliased neutral class file')
+                result[file.toPath().relativize(child.toPath()).toString()] = sha(child)
+            }
+        }
+    } else if (file.isFile() && file.name.endsWith('.jar')) {
+        new ZipFile(file).withCloseable { archive ->
+            archive.entries().each { entry ->
+                if (!entry.directory && entry.name.startsWith(prefix) && entry.name.endsWith('.class')) {
+                    require(!result.containsKey(entry.name), 'Duplicate class in one neutral container')
+                    result[entry.name] = archive.getInputStream(entry).withCloseable { shaStream(it) }
+                }
+            }
+        }
+    }
+    result.sort()
+}
+def classHash = { File file, String name ->
+    if (file.isDirectory()) {
+        def entry = new File(file, name)
+        return entry.isFile() ? sha(entry) : null
+    }
+    if (file.isFile() && file.name.endsWith('.jar')) return new ZipFile(file).withCloseable { archive ->
+        def entry = archive.getEntry(name)
+        entry == null ? null : archive.getInputStream(entry).withCloseable { shaStream(it) }
+    }
+    null
+}
+def fileRow = { File f ->
+    require(f.canonicalPath == f.absolutePath && f.exists(),
+        'Missing or aliased actual input/output: path=' + f.absolutePath + ', canonical=' + f.canonicalPath +
+        ', exists=' + f.exists() + ', symlink=' + Files.isSymbolicLink(f.toPath()))
+    [path: f.canonicalPath, kind: f.isDirectory() ? 'directory' : 'file',
+     bytes: f.isFile() ? f.length() : null, sha256: f.isFile() ? sha(f) : null, neutralClasses: neutralClasses(f)]
+}
+def compilerClasspathRow = { File f ->
+    if (!Files.notExists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) return fileRow(f)
+    require(f.canonicalPath == f.absolutePath, 'Aliased absent compiler input: ' + f.absolutePath)
+    for (File ancestor = f; ancestor != null; ancestor = ancestor.parentFile) {
+        require(!Files.isSymbolicLink(ancestor.toPath()), 'Symlink in absent compiler input: ' + ancestor.absolutePath)
+    }
+    // Actual FileCollections may contain absent entries; these receive no classes, hashes or lineage credit.
+    [path: f.absolutePath, kind: 'absent', bytes: null, sha256: null, neutralClasses: [:]]
+}
+// Read only the selected prerequisite graph; do not alter tasks or resolve another configuration.
+def testDependsOn = { task, producer, graph ->
+    def pending = [task]
+    def seen = [] as Set
+    while (!pending.isEmpty()) {
+        def current = pending.remove(0)
+        if (current == producer) return true
+        if (seen.add(current)) pending.addAll(current.taskDependencies.getDependencies(current).findAll { graph.hasTask(it) })
+    }
+    false
+}
+def testClasspathRow = { task, File f ->
+    if (!Files.notExists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) return fileRow(f)
+    require(c.role == 'app' && task.path == ':app:testDebugUnitTest' && c.testPath == task.path &&
+        task.class.name == 'com.android.build.gradle.tasks.factory.AndroidUnitTest_Decorated', 'Only the exact Android Test absent-input exception')
+    require(f.canonicalPath == f.absolutePath, 'Aliased absent Test input: ' + f.absolutePath)
+    for (File ancestor = f; ancestor != null; ancestor = ancestor.parentFile) {
+        require(!Files.isSymbolicLink(ancestor.toPath()), 'Symlink in absent Test input: ' + ancestor.absolutePath)
+    }
+    def graph = task.project.gradle.taskGraph
+    require(f.absolutePath.length() <= 2048, 'Absent Test input path exceeds diagnostic bound')
+    def candidates = [
+        [name: 'processDebugUnitTestJavaRes', type: 'com.android.build.gradle.internal.tasks.ProcessJavaResTask_Decorated',
+         reason: 'successful-no-source-java-resource-output'],
+        [name: 'compileDebugUnitTestJavaWithJavac', type: 'org.gradle.api.tasks.compile.JavaCompile_Decorated',
+         reason: 'successful-no-source-java-compile-output'],
+        [name: 'kspDebugUnitTestKotlin', type: 'com.google.devtools.ksp.gradle.KspAATask_Decorated',
+         reason: 'successful-empty-processor-ksp-resource-output'],
+    ].collect { spec ->
+        def candidate = task.project.tasks.findByName(spec.name)
+        def outputs = candidate == null ? [] : candidate.outputs.files.files.toList()
+        def destination = candidate != null && spec.name == 'compileDebugUnitTestJavaWithJavac' &&
+            candidate.class.name == spec.type ? candidate.destinationDirectory.orNull?.asFile : null
+        def isKsp = candidate != null && spec.name == 'kspDebugUnitTestKotlin' && candidate.class.name == spec.type
+        def resource = isKsp ? candidate.kspConfig.resourceOutputDir.orNull?.asFile : null
+        def processors = isKsp ? task.project.configurations.findByName('kspDebugUnitTestKotlinProcessorClasspath') : null
+        require(outputs.size() <= 8, 'Test prerequisite output count exceeds diagnostic bound: ' + spec.name)
+        require(outputs.every { it.absolutePath.length() <= 2048 && it.canonicalPath.length() <= 2048 },
+            'Test prerequisite output path exceeds diagnostic bound: ' + spec.name)
+        require(destination == null || (destination.absolutePath.length() <= 2048 && destination.canonicalPath.length() <= 2048),
+            'Test Java destination path exceeds diagnostic bound')
+        require(resource == null || (resource.absolutePath.length() <= 2048 && resource.canonicalPath.length() <= 2048),
+            'Test KSP resource path exceeds diagnostic bound')
+        [spec: spec, task: candidate, outputs: outputs, destination: destination, resource: resource, processors: processors]
+    }
+    // Record the actual absent path before a failed equality check can hide it again.
+    c.logger.lifecycle('APP72569_ABSENT_TEST_INPUT ' + JsonOutput.toJson([input: f.absolutePath,
+        candidates: candidates.collect { row ->
+            def candidate = row.task
+            def state = candidate?.state
+            [expected: row.spec.name, path: candidate?.path, type: candidate?.class?.name,
+             inGraph: candidate != null && graph.hasTask(candidate),
+             outputs: row.outputs.collect { [path: it.absolutePath, canonical: it.canonicalPath] },
+             destination: row.destination?.absolutePath,
+             resource: row.resource == null ? null : [path: row.resource.absolutePath, canonical: row.resource.canonicalPath],
+             processorConfiguration: row.processors?.name, processorConfigurationState: row.processors?.state?.toString(),
+             enabled: candidate?.enabled,
+             executed: state?.executed, didWork: state?.didWork, skipped: state?.skipped,
+             upToDate: state?.upToDate, noSource: state?.noSource, failure: state?.failure?.class?.name]
+        }]))
+    def matches = candidates.findAll { row -> row.outputs.any {
+        it.absolutePath == f.absolutePath && it.canonicalPath == f.canonicalPath
+    } }
+    require(matches.size() == 1, 'Absent Test input must equal one exact declared Java resource/compiler or KSP resource output: ' + f.absolutePath)
+    def selected = matches[0]
+    def producer = selected.task
+    require(producer != null && producer.path == ':app:' + selected.spec.name && producer.class.name == selected.spec.type &&
+        graph.hasTask(task) && graph.hasTask(producer) && testDependsOn(task, producer, graph), 'Only the exact normal Test prerequisite')
+    if (selected.spec.name == 'compileDebugUnitTestJavaWithJavac') {
+        require(selected.destination != null && selected.destination.absolutePath == f.absolutePath &&
+            selected.destination.canonicalPath == f.canonicalPath, 'Absent Test input must be the actual Java compile destination')
+    }
+    def state = producer.state
+    def kspProof = [:]
+    if (selected.spec.name == 'kspDebugUnitTestKotlin') {
+        require(selected.resource != null && selected.resource.absolutePath == f.absolutePath &&
+            selected.resource.canonicalPath == f.canonicalPath, 'Absent Test input must be the actual KSP resource output')
+        require(producer.enabled && state.executed && state.skipped && state.failure == null &&
+            !state.didWork && !state.upToDate && !state.noSource, 'Only an enabled completed no-work KSP skip')
+        def processors = selected.processors
+        require(processors != null && processors.state.toString() == 'RESOLVED',
+            'Only the already-resolved exact KSP processor configuration')
+        // KSP2.3.9 registerKspAATask uses this configuration's artifact files for both
+        // onlyIf(!incomingProcessors.isEmpty) and kspConfig.processorClasspath.
+        // Read the existing resolved model; never invoke onlyIf or create/resolve an artifact view.
+        def dependencyCount = processors.allDependencies.size()
+        require(dependencyCount == 0, 'Only an empty declared KSP processor model: dependencyCount=' + dependencyCount)
+        def processorFileCount = producer.kspConfig.processorClasspath.files.size()
+        require(processorFileCount == 0, 'Only an empty actual KSP processor classpath: fileCount=' + processorFileCount)
+        kspProof = [enabled: producer.enabled, resourceOutput: selected.resource.absolutePath,
+            processorConfiguration: processors.name, processorConfigurationState: processors.state.toString(),
+            processorDependencyCount: dependencyCount, processorFileCount: processorFileCount]
+    } else {
+        require(state.executed && state.noSource && state.failure == null && !state.didWork && !state.upToDate,
+            'Only a completed successful NO-SOURCE Java resource/compiler producer: ' + producer.path)
+    }
+    [path: f.absolutePath, kind: 'absent', bytes: null, sha256: null, neutralClasses: [:],
+     reason: selected.spec.reason,
+     producer: [build: c.role, path: producer.path, type: producer.class.name, output: f.absolutePath,
+        executed: state.executed, didWork: state.didWork, skipped: state.skipped, upToDate: state.upToDate,
+        noSource: state.noSource, failure: state.failure?.class?.name] + kspProof]
+}
+def rejectRequest = { selector ->
+    if (selector instanceof ModuleComponentSelector && selector.group == c.group) {
+        require(selector.module == 'source-engine' && selector.version == '0.1.0',
+            'Only the exact Engine root request; contract must use its ordinary project edge')
+    }
+}
+def neutralEdge = { edge, usage, rootId ->
+    rejectRequest(edge.requested)
+    if (!(edge instanceof ResolvedDependencyResult) || edge.selected.moduleVersion?.group != c.group) return null
+    def id = edge.selected.id
+    require(id instanceof ProjectComponentIdentifier && id.projectPath in c.engineModules &&
+        (c.role == 'app' ? id.build.buildPath == ':' + c.buildName : id.build.buildPath == rootId.build.buildPath),
+        'No neutral binary, foreign project/build, testkit or App-contract substitution')
+    def variant = edge.resolvedVariant
+    require(attrValue(variant.attributes, 'org.jetbrains.kotlin.platform.type') == 'androidJvm' &&
+        attrValue(variant.attributes, 'org.gradle.usage') == usage &&
+        attrValue(variant.attributes, 'org.gradle.category') == 'library', 'Normal Android API/runtime library variant required')
+    require(variant.capabilities.any { it.group == c.group && it.version == '0.1.0-SNAPSHOT' &&
+        it.name in [id.projectPath.substring(1), id.projectPath.substring(1) + '-android'] },
+        'Original default-version Android capability required')
+    [from: component(edge.from.id), requested: edge.requested.displayName,
+     selected: component(id), effectiveVersion: edge.selected.moduleVersion.version,
+     variant: variant.displayName, attributes: attrs(variant.attributes), capabilities: caps(variant)]
+}
+// Only called at actual compiler/Test actions, after their normal inputs have resolved.
+def observeResolution = { p, task, configName, usage ->
+    def configuration = p.configurations.getByName(configName)
+    require(configuration.state.toString() == 'RESOLVED', 'Do not resolve an extra observer configuration')
+    def result = configuration.incoming.resolutionResult
+    def rootId = result.rootComponent.get().id
+    require(rootId instanceof ProjectComponentIdentifier && rootId.projectPath == p.path,
+        'Actual resolved root must be this configuration-owning project')
+    def edges = result.allDependencies.collect { neutralEdge(it, usage, rootId) }.findAll { it != null }
+    def libraries = result.allComponents.findAll {
+        it.id instanceof ModuleComponentIdentifier &&
+            ((it.id.group == 'org.jetbrains.kotlin' && it.id.module.startsWith('kotlin-stdlib')) ||
+             (it.id.group == 'org.jetbrains.kotlinx' &&
+                (it.id.module.startsWith('kotlinx-serialization') || it.id.module.startsWith('kotlinx-coroutines') ||
+                 it.id.module.startsWith('kotlinx-datetime'))) || it.id.group == 'com.fleeksoft.ksoup')
+    }.collect { [group: it.id.group, module: it.id.module, version: it.id.version] }
+    emit('RESOLUTION', [task: task.path, configuration: configName, attributes: attrs(configuration.attributes),
+        rootComponent: component(rootId), neutralEdges: edges, libraries: libraries])
+}
+def observeClasspath = { task, files, kind ->
+    def entries = files.collect {
+        kind == 'compiler' ? compilerClasspathRow(it) : (kind == 'test' ? testClasspathRow(task, it) : fileRow(it))
+    }
+    emit('CLASSPATH', [task: task.path, kind: kind, entries: entries])
+    def classContainers = [:]
+    entries.findAll { !it.neutralClasses.isEmpty() }.each { entry ->
+        require(c.engineModules.any { entry.path.startsWith(new File(c.engineRoot, it.substring(1) + '/build/').path + '/') },
+            'Foreign/cached/transformed neutral supplier: stop; no automatic transform waiver')
+        entry.neutralClasses.keySet().each { name ->
+            require(!classContainers.containsKey(name) || classContainers[name] == entry.path,
+                'Duplicate neutral class across distinct actual containers: ' + name)
+            classContainers[name] = entry.path
+        }
+    }
+    def supplied = entries.collectMany { it.neutralClasses.keySet() }.toSet()
+    def expected = (c.role == 'engine' && task.project.path == ':source-engine') ? ['contracts'] :
+        ((c.role == 'app' && task.path in [':sources:engine:compileAndroidMain', c.testPath]) ? ['contracts', 'engine'] : [])
+    expected.each { part -> require(supplied.any { it.startsWith(prefix + part + '/') }, 'Missing fresh neutral supplier') }
+}
+def rejectJvmRuntime = { t ->
+    def runtimeConfiguration = t.project.configurations.getByName('debugUnitTestRuntimeClasspath')
+    require(runtimeConfiguration.state.toString() == 'RESOLVED', 'Observe only the real already-resolved Test runtime')
+    def ids = runtimeConfiguration.incoming.resolutionResult.allComponents*.id
+    require(!ids.any { it instanceof ModuleComponentIdentifier &&
+        (it.group + ':' + it.module) in ['androidx.room:room-runtime-jvm', 'androidx.sqlite:sqlite-bundled-jvm',
+            'androidx.sqlite:sqlite-jvm'] }, 'No JVM Room/SQLite replacement')
+    require(!t.classpath.files.any { it.name.startsWith('room-runtime-jvm-') ||
+        it.name.startsWith('sqlite-bundled-jvm-') || it.name.startsWith('sqlite-jvm-') }, 'No smuggled JVM file supplier')
+}
+def androidOrigins = { t ->
+    rejectJvmRuntime(t)
+    def androidClasses = [
+        'androidx/room/RoomDatabase.class': '2dadc120546ba35124af7925f4d90843a3a509bb7164557af7742ab183b9d9cc',
+        'androidx/sqlite/driver/bundled/BundledSQLiteDriver.class': 'bd3a4c3dbee4e7ed00eb264b96b9018065efc7370126b14c489b69ff12c62524'
+    ]
+    androidClasses.each { name, digest ->
+        def origins = t.classpath.files.collect { f -> [path: f.canonicalPath, sha256: classHash(f, name)] }
+            .findAll { it.sha256 != null }
+        emit('ANDROID_CLASS_ORIGINS', [task: t.path, entry: name, origins: origins])
+        require(origins.size() in [1, 2] && origins.every { it.sha256 == digest },
+            'Only real Android Room/BundledSQLiteDriver bytes across the whole actual Test classpath')
+    }
+}
+def hostRuntime = { t ->
+    def host = c.binding.host_runtime
+    def runtime = new File(t.project.buildDir, host.relative_directory).canonicalFile
+    def sdk = new File(runtime, 'sdk/android-all-instrumented-15-robolectric-13954326-i7.jar')
+    def nativeFile = new File(runtime, 'native/libsqliteJni.so')
+    def sdkInput = t.project.configurations.getByName(host.sdk_configuration)
+    def nativeInput = t.project.configurations.getByName(host.native_configuration)
+    require(sdkInput.state.toString() == 'RESOLVED' && nativeInput.state.toString() == 'RESOLVED' &&
+        !sdkInput.transitive && !nativeInput.transitive && !sdkInput.canBeConsumed && !nativeInput.canBeConsumed,
+        'Product staging must already consume separate data-only SDK/JNI inputs')
+    require(t.systemProperties['robolectric.offline']?.toString() == 'true' &&
+        t.systemProperties['robolectric.dependency.dir'] == sdk.parent &&
+        t.systemProperties[host.native_property] == nativeFile.path &&
+        sha(sdk) == '06c4c8602d6db7486266a982bc55834ed6dfebd62a0b88daca204139ecf142cb' &&
+        sha(sdkInput.singleFile) == sha(sdk) &&
+        sha(nativeInput.singleFile) == 'e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17' &&
+        sha(nativeFile) == '3033fdaed2b94c078a0deacb3aa8d011041f4773ff3a83599ac8a979cc8ed380',
+        'Pinned real SDK35/JNI and Robolectric offline BEFORE fork; no observer runtime staging')
+    require(!t.classpath.files.contains(sdkInput.singleFile) && !t.classpath.files.contains(nativeInput.singleFile),
+        'Data-only SDK/JNI archives must never become Test classes')
+    [task: t.path, sdk: fileRow(sdk), nativeFile: fileRow(nativeFile), sdkInput: fileRow(sdkInput.singleFile),
+     nativeInput: fileRow(nativeInput.singleFile), maxHeapSize: t.maxHeapSize, maxParallelForks: t.maxParallelForks,
+     robolectricOffline: true]
+}
+def observeTest = { t ->
+    require(c.role == 'app' && t.path == c.testPath, 'No producer Test, extra host suite or Desktop replay')
+    require(t.maxParallelForks == 1 && t.forkEvery == 0 && t.maxHeapSize == c.binding.test.max_heap &&
+        t.jvmArgs.contains('-XX:ActiveProcessorCount=2'), 'Keep reviewed product host-fork/heap/CPU controls')
+    def host = hostRuntime(t)
+    androidOrigins(t)
+    observeResolution(t.project, t, 'debugUnitTestRuntimeClasspath', 'java-runtime')
+    observeClasspath(t, t.classpath.files, 'test')
+    emit('HOST_RUNTIME', host)
+}
+def dependenciesOf = { graph, producer ->
+    def pending = [producer]
+    def seen = [] as Set
+    while (!pending.empty) {
+        def current = pending.remove(0)
+        if (seen.add(current.path)) {
+            def dependencies = current.taskDependencies.getDependencies(current)
+            require(dependencies.every { graph.hasTask(it) }, 'Observe only tasks in the actual producer graph')
+            pending.addAll(dependencies)
+        }
+    }
+    seen.sort()
+}
+def collectOutgoing = { rootProject, graph ->
+    def outgoing = []
+    c.engineModules.each { module ->
+        def p = rootProject.project(module)
+        p.configurations.findAll { config -> config.canBeConsumed &&
+            attrValue(config.attributes, 'org.jetbrains.kotlin.platform.type') == 'androidJvm' &&
+            attrValue(config.attributes, 'org.gradle.usage') in ['java-api', 'java-runtime'] }.each { config ->
+            def variants = [[name: config.name, attributes: attrs(config.attributes), artifacts: config.outgoing.artifacts]] +
+                config.outgoing.variants.collect { v -> [name: config.name + '/' + v.name,
+                    attributes: attrs(config.attributes) + attrs(v.attributes), artifacts: v.artifacts] }
+            variants.each { variant -> variant.artifacts.each { artifact ->
+                def producers = artifact.buildDependencies.getDependencies(null)
+                if (producers && producers.every { graph.hasTask(it) }) {
+                    def dependencies = producers.collectMany { dependenciesOf(graph, it) }.toSet().sort()
+                    def candidate = [project: module, variant: variant.name, attributes: variant.attributes,
+                        artifactType: artifact.type, classifier: artifact.classifier, extension: artifact.extension,
+                        path: artifact.file.canonicalPath, producers: producers*.path.sort(), producerDependencyPaths: dependencies]
+                    emit('OUTGOING_CANDIDATE', candidate)
+                    // Auxiliary metadata/resources need not compile classes. They get no lineage credit;
+                    // every actual neutral supplier must still join an eligible, completed artifact below.
+                    if (dependencies.contains(module + ':compileAndroidMain')) outgoing.add(candidate)
+                }
+            } }
+        }
+    }
+    require(c.engineModules.every { module -> outgoing.any { it.project == module } }, 'Ordinary outgoing Android artifacts required')
+    emit('OUTGOING', [artifacts: outgoing])
+    outgoing
+}
+extensions.extraProperties.set('app72569Observer', [require: require, sha: sha, emit: emit, attrs: attrs,
+    attrValue: attrValue, fileRow: fileRow, rejectRequest: rejectRequest,
+    observeResolution: observeResolution, observeClasspath: observeClasspath, observeTest: observeTest, collectOutgoing: collectOutgoing])
