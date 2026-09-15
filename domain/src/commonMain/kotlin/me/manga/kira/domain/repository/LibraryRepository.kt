@@ -157,9 +157,10 @@ interface LibraryRepository {
 
     /**
      * Reconcile the saved cover URL for an in-library manga when a refresh discovers it changed.
-     * No-op (success) when the manga isn't in the library or [newCoverUrl] already matches the saved
-     * row. Mirrors the native `LibraryRefreshWorker`'s `updateMangaImageUrlEverywhere`: rewrites the
-     * cover in `saved_manga`, `history` and `notifications` so a rotated CDN URL doesn't leave a
+     * No-op (success) when the manga isn't in the library or [newCoverUrl] is blank. Atomically
+     * updates only cover fields in `saved_manga`, `history` and `notifications`, matching Android's
+     * `updateMangaImageUrlEverywhere`. An equal saved URL still repairs stale copies after an older
+     * partial fan-out. A rotated CDN URL must not leave a
      * permanently-stale cover on Desktop/iOS (which have no WorkManager worker and run only the
      * cross-platform inline refresh). Manga sites rotate cover/CDN URLs constantly, so without this
      * a cover that rots after add is never repaired on those platforms.
@@ -182,18 +183,11 @@ interface LibraryRepository {
     suspend fun removeAllFromLibrary(keys: List<MangaKey>): AppResult<Int>
 
     /**
-     * Flip the `isLiked` affinity flag for the manga identified by [key]. Idempotent in the
-     * sense that calling twice restores the original value — there is no separate "set" path.
+     * Atomically flip only the `isLiked` affinity flag for the manga identified by [key], leaving
+     * concurrent metadata updates intact. Calling twice restores the original value.
      *
      * No-ops (success) if the manga is not in the library; the action-row only renders for
      * in-library cards so the absent-key case is defensive rather than expected.
-     *
-     * Strangler-fig boundary: the `:data` impl reaches the legacy `MangaDao.updateManga`
-     * (via the existing `:shared` strangler-fig posture) to persist the flipped row,
-     * preserving the exact same wire format the legacy Details-screen heart toggle and
-     * legacy `LibraryViewModel.toggleLiked` already use. Same posture as the existing
-     * `addToLibrary` / `removeFromLibrary` methods on this interface — Phase 9.x retires
-     * the legacy DAO reach, not this slice.
      *
      * §179 (Task #345). Closes the `LibraryManga.isLiked` KDoc's "Mutation is still owned by
      * the legacy Details route until a later slice ports the toggle into `:domain`" comment.
@@ -201,9 +195,8 @@ interface LibraryRepository {
     suspend fun toggleLiked(key: MangaKey): AppResult<Unit>
 
     /**
-     * Flip the `isWatchingNow` affinity flag for the manga identified by [key]. Same shape
-     * and semantics as [toggleLiked] — see that method's KDoc for the strangler-fig boundary
-     * narrative.
+     * Atomically flip only the `isWatchingNow` flag for the manga identified by [key], with the
+     * same absent-parent and double-toggle semantics as [toggleLiked].
      *
      * §179 (Task #345). Closes the `LibraryManga.isWatchingNow` KDoc's "Mutation is still
      * owned by the legacy" comment.

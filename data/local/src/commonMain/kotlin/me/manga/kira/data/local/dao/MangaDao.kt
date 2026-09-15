@@ -3,7 +3,10 @@ package me.manga.kira.data.local.dao
 import androidx.room.Dao
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.presentation.features.library.data.MangaChapterMetrics
@@ -97,6 +100,47 @@ interface MangaDao : MangaIdentityQueries {
 
     @Query("SELECT * FROM saved_manga WHERE id = :mangaId LIMIT 1")
     suspend fun getMangaById(mangaId: Long): SavedMangaEntity?
+
+    /** Atomically flips only the liked column; a removed saved ID is a no-op. */
+    @Query("UPDATE saved_manga SET isLiked = NOT isLiked WHERE id = :mangaId")
+    suspend fun toggleLiked(mangaId: Long)
+
+    /** Atomically flips only the watching-now column; other metadata is never rewritten. */
+    @Query("UPDATE saved_manga SET isWatchingNow = NOT isWatchingNow WHERE id = :mangaId")
+    suspend fun toggleWatchingNow(mangaId: Long)
+
+    /** Field-only saved-cover write, used inside [updateCoverEverywhere]. */
+    @Query("UPDATE saved_manga SET imageUrl = :imageUrl WHERE id = :mangaId")
+    suspend fun updateSavedCover(mangaId: Long, imageUrl: String)
+
+    /** Updates ID-owned history and URL-keyed legacy history without replacing reading state. */
+    @Query(
+        "UPDATE history_items SET mangaImageUrl = :imageUrl WHERE mangaId = :mangaId OR mangaUrl = :mangaUrl",
+    )
+    suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String)
+
+    /** Field-only notification-cover write, used inside [updateCoverEverywhere]. */
+    @Query("UPDATE notifications SET mangaImageUrl = :imageUrl WHERE mangaId = :mangaId")
+    suspend fun updateNotificationCover(mangaId: Long, imageUrl: String)
+
+    /**
+     * Commits all saved cover copies together without replacing affinity or reading state.
+     * Blank covers and absent saved IDs are no-ops. Equal saved URLs still fan out, repairing
+     * partial writes left by older versions. Cancellation and storage failures roll back and
+     * propagate to the caller; no work is detached from its coroutine.
+     */
+    @Transaction
+    suspend fun updateCoverEverywhere(mangaId: Long, imageUrl: String) {
+        currentCoroutineContext().ensureActive()
+        if (imageUrl.isBlank()) return
+        val manga = getMangaById(mangaId) ?: return
+        updateSavedCover(mangaId, imageUrl)
+        currentCoroutineContext().ensureActive()
+        updateHistoryCover(mangaId, manga.url, imageUrl)
+        currentCoroutineContext().ensureActive()
+        updateNotificationCover(mangaId, imageUrl)
+        currentCoroutineContext().ensureActive()
+    }
 
     // B6 (#1): re-added for source-registry URL propagation. On a baseVersion/imageUrlVersion bump
     // the refresh rewrites stored manga url/imageUrl in place (host swap, path preserved). SELECT

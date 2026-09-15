@@ -181,22 +181,12 @@ class LibraryRepository(
 
     suspend fun markChapterIsNew(chapterId: Long) = chapterDao.markChapterIsNew(chapterId)
 
+    /** Shares the atomic, field-only cover fan-out used by cross-platform library refresh. */
     suspend fun updateMangaImageUrlEverywhere(
         mangaId: Long,
         newImageUrl: String,
     ) = withContext(platformIoDispatcher) {
-        // A blank URL is never a valid cover — it means the caller's source fetch produced nothing
-        // (dead api → EmptyMangaRepository, or a parse miss). Overwriting would wipe the stored
-        // cover across saved_manga/history/notifications (2026-07 source-lifecycle hardening).
-        if (newImageUrl.isBlank()) return@withContext
-        mangaDao.getMangaById(mangaId)?.let { manga ->
-            mangaDao.updateManga(manga.copy(imageUrl = newImageUrl))
-            // Belt-and-braces: rework-written history rows carry mangaId = 0, so the mangaId-keyed
-            // history update below misses them — propagate by mangaUrl too so History covers refresh.
-            historyDao.updateMangaImageUrlByUrl(manga.url, newImageUrl)
-        }
-        notificationDao.updateMangaImageUrl(mangaId, newImageUrl)
-        historyDao.updateMangaImageUrl(mangaId, newImageUrl)
+        mangaDao.updateCoverEverywhere(mangaId, newImageUrl)
     }
 }
 

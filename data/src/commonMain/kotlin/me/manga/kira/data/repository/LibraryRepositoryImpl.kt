@@ -233,11 +233,10 @@ class LibraryRepositoryImpl(
 
     /**
      * Native parity (`LibraryRefreshWorker.updateMangaImageUrlEverywhere`): when a refresh fetches a
-     * rotated cover URL, rewrite it across `saved_manga`, `history` (by mangaId AND by mangaUrl — the
-     * rework writes some history rows with mangaId=0, so the url path catches those) and
-     * `notifications`. Resolves the id by `(api, title)` (legacy composite key); no-op when the manga
-     * isn't in the library or the URL already matches. Cross-platform repair for Desktop/iOS, which
-     * run only the inline refresh and have no WorkManager worker doing this.
+     * rotated cover URL, atomically update its saved, history and notification cover copies.
+     * The local transaction also repairs a prior partial fan-out when the saved URL already
+     * matches, and never rewrites affinity/reading state. Resolves the legacy `(api, title)` key;
+     * blank covers and missing saved parents are no-ops, matching the Android cover facade.
      */
     override suspend fun updateCoverIfChanged(
         api: String,
@@ -247,12 +246,7 @@ class LibraryRepositoryImpl(
     ): AppResult<Unit> = runCatchingStorage {
         withContext(dispatchers.io) {
             val id = mangaDao.getIdByApiAndTitle(api, title) ?: return@withContext Unit
-            val entity = mangaDao.getMangaById(id) ?: return@withContext Unit
-            if (entity.imageUrl == newCoverUrl) return@withContext Unit
-            mangaDao.updateManga(entity.copy(imageUrl = newCoverUrl))
-            historyDao.updateMangaImageUrlByUrl(entity.url, newCoverUrl)
-            historyDao.updateMangaImageUrl(id, newCoverUrl)
-            notificationDao.updateMangaImageUrl(id, newCoverUrl)
+            mangaDao.updateCoverEverywhere(id, newCoverUrl)
         }
     }
 
@@ -316,39 +310,24 @@ class LibraryRepositoryImpl(
     }
 
     /**
-     * Strangler-fig impl: look up the legacy entity by `(api, title)`, flip the `isLiked` bit
-     * on the row, persist via `MangaDao.updateManga` (`@Update onConflict = REPLACE`). Mirrors
-     * the legacy `LibraryViewModel.toggleLiked` write path verbatim — same DAO method, same
-     * `entity.copy(isLiked = !isLiked)` semantics — so the disk cell stays bit-for-bit identical
-     * across the rework / legacy boundary while the route-swap is pending. Phase 9.x retires
-     * the legacy DAO reach.
-     *
-     * Membership-absent (manga not in library) returns success silently — same posture as
-     * `removeFromLibrary` / `removeAllFromLibrary` (graceful no-op rather than a failure).
-     * The action-row only renders for in-library cards so the absent-key branch is defensive.
-     *
-     * §179 (Task #345). Closes the `LibraryManga.isLiked` "mutation still owned by legacy" KDoc.
+     * Resolve the existing library key, then flip only the liked column in one SQL statement.
+     * Concurrent watching-now/cover changes cannot be replaced by a stale entity snapshot.
+     * A missing or concurrently removed saved parent remains a successful no-op.
      */
     override suspend fun toggleLiked(key: MangaKey): AppResult<Unit> = runCatchingStorage {
         withContext(dispatchers.io) {
             val id = mangaDao.getIdByApiAndTitle(key.api, key.title) ?: return@withContext Unit
-            val entity = mangaDao.getMangaById(id) ?: return@withContext Unit
-            mangaDao.updateManga(entity.copy(isLiked = !entity.isLiked))
+            mangaDao.toggleLiked(id)
         }
     }
 
     /**
-     * Strangler-fig impl: same shape as [toggleLiked] — see that method's KDoc for the
-     * boundary narrative. Flips `isWatchingNow` on the legacy entity and persists via the
-     * legacy DAO's `@Update` method.
-     *
-     * §179 (Task #345).
+     * Like [toggleLiked], mutate only the owned column atomically; unrelated metadata survives.
      */
     override suspend fun toggleWatchingNow(key: MangaKey): AppResult<Unit> = runCatchingStorage {
         withContext(dispatchers.io) {
             val id = mangaDao.getIdByApiAndTitle(key.api, key.title) ?: return@withContext Unit
-            val entity = mangaDao.getMangaById(id) ?: return@withContext Unit
-            mangaDao.updateManga(entity.copy(isWatchingNow = !entity.isWatchingNow))
+            mangaDao.toggleWatchingNow(id)
         }
     }
 
