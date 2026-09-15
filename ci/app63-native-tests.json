@@ -1,0 +1,75 @@
+{
+  "schema": "app-seven-apple-native-tests-v1",
+  "status": "PREPARATION_NOT_RUN",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "0b794c28ef56b1fa2314ed693749bc774bfa2a89",
+    "tree": "747d23ff91d94fd315ea54d3a8a8b1b09ebc2f06"
+  },
+  "suites": [
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundTransportTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundTransportTest.kt",
+      "sourceSha256": "32e0f144d02c3ce7d88727e18adfc683b064686b7137fc0cdd6950273eeba1a1",
+      "methods": [
+        "callbackRetainsOutsideTheLiveTreeUntilTheOriginalAttemptAcceptsIt",
+        "startupPrunesOnlyGeneratedRegularStagesAndPreservesUnknownAndLiveTreeBytes",
+        "startupNeverTraversesAStagingEntryOrRootSymlink",
+        "failedStartupPruneRetainsBytesWithoutRetryingOverLaterTransfers",
+        "legacyTokenlessCallbackCannotBeAdoptedAsTheCurrentAttempt",
+        "exactUnknownAndUnderstatedLengthsPublishTheSameBytesWithTheirNativeSuffix",
+        "progressRefusalsRemainPerTaskAndKeepTheirPolicyReasonThroughCancellation",
+        "finalFileOverLimitCannotUseAnUnknownOrUnderstatedLengthToReachTheDecoder",
+        "oversizedDeclaredLengthFailsBeforeAdoptionEvenWhenTheFinalFileWouldFit",
+        "missingOrBadHttpResponseCannotAdoptOrDecodeAFile",
+        "emptyMissingAndNonregularSourcesAreNotAdoptedOrRecursivelyDeleted",
+        "htmlTruncationBadCrcAndCrcCorrectCorruptPixelsCannotReplaceAGoodPage",
+        "nativeMediaPolicyRejectionKeepsItsStableNonretryableReason",
+        "failedPublicationRetainsBothThePriorTargetAndAlternateAndDiscardsOnlyItsOwnedFile",
+        "retainedFileSizeIsRecheckedBeforeNativeInspection",
+        "userCancellationIsSilentButCompletionWithoutAFileIsNotSuccess"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundCompletionTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundCompletionTest.kt",
+      "sourceSha256": "ed9aa5d2edce82b1c2edb8b4c843686e27cdeabdf4657eafa97697121b77168e",
+      "methods": [
+        "terminalNetworkErrorKeepsItsReasonWithoutInventingAPage",
+        "throwingTerminalListenerStillReleasesThePerTaskOutcome",
+        "failedPageIsReportedBeforeItsTemporaryIsDiscardedEvenWhenTheListenerThrows",
+        "unmatchedTaskDescriptionsCannotProduceTerminalCallbacks"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundArtifactTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundArtifactTest.kt",
+      "sourceSha256": "a1c716be05474c27594bd451ff82649074f3179c0edbe57b5496ede43c8df33c",
+      "methods": [
+        "receiverPublicationFailureExhaustsOriginalAttemptAndCannotChargeReplacementOrCancellation",
+        "parentReopenRefillsIosWindowWithoutExternalPump"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosCbzFinalizationTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosCbzFinalizationTest.kt",
+      "sourceSha256": "903c9a4f5657762d2f4fbdfc6e99a54a32c11e88c559c5167a72304bd34b56a2",
+      "methods": [
+        "budgetPreservationCompletesTheExpectedRosterAndReopensWithoutReencoding"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.complaint.DebugComplaintServiceIsolationTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/complaint/DebugComplaintServiceIsolationTest.kt",
+      "sourceSha256": "f842c34e40e6b919bf1b90e78d6197b150a4f67ddae8feb449779807370a0820",
+      "methods": [
+        "debugHostResolvesWithoutFirebasePlistOrHttpClient"
+      ]
+    }
+  ]
+}
