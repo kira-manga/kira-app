@@ -33,6 +33,15 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     suspend fun enqueue(expected: SavedChapterEntity, requested: ChapterDownloadEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.id) { token -> dao.enqueue(expected, requested, token) }
 
+    /** Prepare idle retry files before queue visibility; callback must not re-enter this coordinator. */
+    suspend fun retry(expected: ChapterDownloadEntity, prepare: (String) -> Unit = {}): ChapterArtifactClaim? =
+        admission(expected.mangaId, expected.chapterId, pinFiles = true) { token ->
+            if (dao.retryCandidate(expected) == null) null else {
+                prepare(token)
+                dao.retry(expected, token)
+            }
+        }
+
     /** Restores reserve custody before creating even their private generation under chapterDir. */
     suspend fun beginRestore(expected: SavedChapterEntity, sizeBytes: Long): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.id) { token ->
@@ -181,12 +190,13 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
         mangaId: Long,
         chapterId: Long,
         onParentClosed: (Deferred<Unit>) -> Unit = {},
+        pinFiles: Boolean = false,
         action: suspend (String) -> ChapterArtifactClaim?,
     ): ChapterArtifactClaim? {
         ensureReady()
         return gates.parent(mangaId).admit(onClosed = onParentClosed) {
             val gate = gates.chapter(chapterId)
-            gate.transition.withLock {
+            suspend fun transition() = gate.transition.withLock {
                 val token = newToken()
                 withContext(NonCancellable) {
                     try {
@@ -201,6 +211,7 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
                     }
                 }
             }
+            if (pinFiles) gate.files.withLock { transition() } else transition()
         }
     }
 

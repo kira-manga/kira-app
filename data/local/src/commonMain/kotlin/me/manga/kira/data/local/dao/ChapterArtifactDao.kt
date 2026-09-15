@@ -86,6 +86,29 @@ interface ChapterArtifactDao {
         return checkNotNull(reserve(current, token, ChapterArtifactOperation.DOWNLOAD, id, null))
     }
 
+    /** Preflight under coordinator file/transition pins; retry still rechecks in its writer transaction. */
+    @Transaction
+    suspend fun retryCandidate(expected: ChapterDownloadEntity): SavedChapterEntity? {
+        if (expected.state != DownloadingState.FAILED) return null
+        val current = download(expected.chapterId) ?: return null
+        if (!current.sameAttempt(expected) || current.api != expected.api || current.state != DownloadingState.FAILED) return null
+        val chapter = saved(current.chapterId) ?: return null
+        if (!current.matches(chapter) || mangaApi(chapter.mangaId) != current.api) return null
+        val record = get(chapter.id)
+        if (!record.canReserve(chapter.mangaId) || (record != null && record.chapterUrl != chapter.url)) return null
+        return chapter
+    }
+
+    /** Retry is a compare-and-reserve, never fresh enqueue after a stale UI capture. */
+    @Transaction
+    suspend fun retry(expected: ChapterDownloadEntity, token: String): ChapterArtifactClaim? {
+        val chapter = retryCandidate(expected) ?: return null
+        val current = download(expected.chapterId) ?: return null
+        return enqueue(chapter, current.copy(
+            id = 0, state = DownloadingState.QUEUED, progress = 0, errorMsg = null, sizeBytes = 0,
+        ), token)
+    }
+
     /**
      * Bootstrap a pre-upgrade active row only when no artifact record exists. Tokenless native
      * tasks must be fenced by their transport; they cannot be adopted under this new token.

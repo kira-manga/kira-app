@@ -27,6 +27,9 @@ class ChapterDownloadArtifacts(
     suspend fun enqueue(chapter: SavedChapterEntity, requested: ChapterDownloadEntity): ChapterArtifactClaim? =
         ownership.enqueue(chapter, requested)
 
+    suspend fun retry(expected: ChapterDownloadEntity, prepare: (String) -> Unit = {}): ChapterArtifactClaim? =
+        ownership.retry(expected, prepare)
+
     suspend fun claim(entity: ChapterDownloadEntity): ChapterArtifactClaim? = ownership.downloadClaim(entity)
 
     /** Preserve queue order among eligible rows; a closing parent cannot block unrelated manga. */

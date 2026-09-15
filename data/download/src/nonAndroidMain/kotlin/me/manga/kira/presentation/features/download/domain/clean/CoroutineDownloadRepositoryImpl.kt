@@ -163,6 +163,12 @@ class CoroutineDownloadRepositoryImpl(
         }
     }
 
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean {
+        if (artifacts.retry(expected) == null) return false
+        wakeups.trySend(Unit)
+        return true
+    }
+
     override suspend fun deleteDownload(chapterId: Long) {
         val row = dao.getDownloadByChapter(chapterId) ?: return
         if (row.state != DownloadingState.SUCCESS) onCancel(chapterId)

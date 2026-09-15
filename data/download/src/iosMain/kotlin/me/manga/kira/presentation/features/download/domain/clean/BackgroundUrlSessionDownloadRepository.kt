@@ -256,6 +256,31 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = withContext(Dispatchers.Default) {
+        mutex.withLock {
+            val claim = artifacts.retry(expected) { token ->
+                // Atomic file publication precedes QUEUED visibility under the shared file pin.
+                // Failure/rollback leaves idle FAILED history; a committed retry always has its
+                // new-token roster, including durable media-policy refusals, even across restart.
+                if (manifestStore.exists(expected.mangaId, expected.chapterId)) {
+                    val retained = checkNotNull(manifestStore.read(expected.mangaId, expected.chapterId)) {
+                        "Retained download manifest is unreadable"
+                    }
+                    check(retained.api == expected.api) { "Retained download manifest source changed" }
+                    manifestStore.write(retained.copy(
+                        attemptToken = token,
+                        pages = retained.pages.map { if (it.policyRejected) it else it.copy(attempts = 0) },
+                    ))
+                }
+            } ?: return@withLock false
+            attempts[expected.chapterId] = claim
+            clearChapterCaches(expected.chapterId)
+            transport.ensureReady()
+            fillWindowLocked()
+            true
+        }
+    }
+
     override suspend fun deleteDownload(chapterId: Long) {
         val (row, claim) = mutex.withLock {
             val current = dao.getDownloadByChapter(chapterId) ?: return

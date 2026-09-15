@@ -3,7 +3,6 @@ package me.manga.kira.data.repository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.platformIoDispatcher
-import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterArtifactReference
 import me.manga.kira.data.download.artifacts.ChapterArtifacts
@@ -79,10 +78,9 @@ import okio.use
  * Route` substitutes empty string when null (`it.mangaTitle ?: ""`). The rework mirrors
  * this exactly.
  *
- * **Retry uses the `enqueueChapterDownload` path** (single-chapter), not the
- * `enqueueChaptersDownload` (bulk) path — the user re-tries one row at a time. The bulk
- * variant is reserved for the legacy "download all" / batch-enqueue paths, neither of
- * which is part of the rework Downloads screen surface.
+ * Retry uses `retryChapterDownload(capturedRow)`, not the fresh-enqueue path. Each platform
+ * compares the original FAILED generation and reserves file custody in one Room transaction.
+ * A deleted/replaced/busy row reports failure; it never silently inserts new history.
  *
  * **`cancel` / `cancelRunning` / `delete` are direct passthroughs**: legacy
  * `onCancel(chapterId)` / `cancelARunningChapter(chapterId, mangaId)` /
@@ -162,11 +160,7 @@ class DownloadsActionRepositoryImpl(
             val row =
                 chapterDownloadDao.getDownloadByChapter(chapterId)
                     ?: error("download row not found")
-            legacy.enqueueChapterDownload(
-                chapter = row.toChapterEntity(),
-                title = row.mangaTitle ?: "",
-                mangaApi = row.api,
-            )
+            check(legacy.retryChapterDownload(row)) { "download changed or retry is not currently available" }
         }
 
     override suspend fun cancelDownload(chapterId: Long): Result<Unit> =

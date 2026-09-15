@@ -83,6 +83,12 @@ class DownloadRepositoryImpl(
         if (claim != null) enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean {
+        if (artifacts.retry(expected) == null) return false
+        enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
+        return true
+    }
+
     override suspend fun deleteDownload(chapterId: Long) {
         val row = dao.getDownloadByChapter(chapterId) ?: return
         // Removing SUCCESS history remains row-only: its committed artifact has independent custody.
