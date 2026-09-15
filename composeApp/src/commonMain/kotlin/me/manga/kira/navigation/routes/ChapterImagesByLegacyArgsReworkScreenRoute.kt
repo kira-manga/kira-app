@@ -97,7 +97,8 @@ fun ChapterImagesByLegacyArgsReworkScreenRoute(
     val solveCloudflare = rememberCloudflareChallengeSolver(
         navController = navController,
         ownerEntry = backStackEntry,
-        onRetry = { viewModel.submit(ReaderIntent.OnRetry) },
+        onRetry = { viewModel.submit(ReaderIntent.OnCloudflareSolverReturned(it)) },
+        recoveryRequestId = viewModel::cloudflareRecoveryRequestId,
     )
 
     val args = backStackEntry.toRoute<Screen.ChapterImagesFragment>()

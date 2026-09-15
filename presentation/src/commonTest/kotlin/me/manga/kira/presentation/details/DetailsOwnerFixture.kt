@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -71,6 +72,7 @@ internal class DetailsOwnerFixture(
     // Opposite-owner scenarios use the exact-URL fetch map instead of pretending this port can.
     val savedDetails = MutableStateFlow<MangaDetails?>(null)
     var fetchGate: CompletableDeferred<Unit>? = null
+    var fetchFailure: AppError? = null
     val library = FakeLibraryRepository().apply { emitInLibrary(true) }
     private val reads = RecordingMarkChapterReadRepository()
     private val enqueue = EnqueueDownloadUseCase(actions)
@@ -87,6 +89,7 @@ internal class DetailsOwnerFixture(
             override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
                 fetchRequests += manga
                 fetchGate?.await()
+                fetchFailure?.let { return AppResult.Failure(it) }
                 return AppResult.Success(detailsFor(manga, chaptersByMangaUrl[manga.url] ?: chapters))
             }
         }
