@@ -147,6 +147,8 @@ kotlin {
 
         getByName("androidHostTest").dependencies {
             implementation(libs.junit)
+            // Common artifact fixtures reference MangaDatabase and its RoomDatabase base.
+            implementation(libs.androidx.room.runtime)
         }
 
         getByName("desktopTest").dependencies {
