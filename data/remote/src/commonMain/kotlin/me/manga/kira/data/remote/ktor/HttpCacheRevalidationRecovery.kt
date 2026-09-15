@@ -92,6 +92,9 @@ private fun HttpRequestBuilder.recoveryCopy(validators: CacheValidators): HttpRe
     val retry = HttpRequestBuilder().takeFromWithExecutionContext(this)
     if (!validators.matches(retry.headers::getAll)) return null
     validators.removeFrom(retry.headers)
+    // HttpRedirect later copies this failed-hop builder, not the returned repair call's request.
+    // Remove only the proven cache-owned conditions here too, so the next hop cannot inherit them.
+    validators.removeFrom(headers)
     return retry
 }
 

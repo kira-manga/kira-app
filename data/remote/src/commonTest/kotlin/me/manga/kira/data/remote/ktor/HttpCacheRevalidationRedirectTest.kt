@@ -118,14 +118,15 @@ private class RedirectBudgetReplies(
     var targetCalls = 0
     val handler: MockRequestHandler = { request ->
         val origin = request.url == Url(REDIRECT_ORIGIN_URL)
+        val etag = if (origin) METADATA_ETAG else "\"target-version-one\""
         assertEquals(Url(if (origin) REDIRECT_ORIGIN_URL else REDIRECT_TARGET_URL), request.url)
         val calls = if (origin) ++originCalls else ++targetCalls
         when (calls) {
-            1 -> respond(OLD_METADATA_BODY, headers = revalidationHeaders())
+            1 -> respond(OLD_METADATA_BODY, headers = revalidationHeaders(etag = etag))
             2 -> {
-                request.assertCacheConditional()
+                request.assertCacheConditional(etag)
                 cache.publicStorage.removeAll(request.url)
-                respond("", HttpStatusCode.NotModified, revalidationHeaders())
+                respond("", HttpStatusCode.NotModified, revalidationHeaders(etag = etag))
             }
             3 -> {
                 check(origin) { "Redirect incorrectly reset the recovery budget" }

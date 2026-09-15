@@ -5,6 +5,7 @@ import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -55,6 +56,12 @@ internal suspend fun HttpClient.fetchRevalidationMetadata(url: String = REVALIDA
     get(url) {
         revalidationRequestHeaders.forEach { (name, value) -> headers.append(name, value) }
     }.bodyAsText()
+
+/** Open304 disposal witnesses must reach the cache hook before Ktor's non-streaming body saving. */
+internal suspend fun HttpClient.fetchStreamingRevalidationMetadata(): String =
+    prepareGet(REVALIDATION_URL) {
+        revalidationRequestHeaders.forEach { (name, value) -> headers.append(name, value) }
+    }.execute { it.bodyAsText() }
 
 internal fun HttpRequestData.assertOriginalMetadataHeaders() {
     revalidationRequestHeaders.forEach { (name, value) -> assertEquals(listOf(value), headers.getAll(name)) }
@@ -139,7 +146,7 @@ internal suspend fun TestScope.assertLost304Recovers(
     try {
         withHttpCacheClient(fixture.cache, fixture.handler) { client ->
             assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata())
-            val request = async { client.fetchRevalidationMetadata() }
+            val request = async { client.fetchStreamingRevalidationMetadata() }
             fixture.conditionalStarted.await()
             fixture.loseEntry(cause, client)
             fixture.release304.complete(Unit)

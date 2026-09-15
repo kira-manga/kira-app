@@ -34,7 +34,7 @@ class IosAvifDecoderFailureTest {
             for (limit in limits) {
                 val source = IosAvifTestSource(Buffer().write(bytes))
                 val options = iosAvifOptions(Size(64, 128))
-                val imageSource = ImageSource(source, options.fileSystem)
+                val imageSource = ImageSource(source.buffered, options.fileSystem)
                 assertFailsWith<AvifDecodeException> { IosAvifDecoder(imageSource, options, limit).decode() }
                 assertTrue(source.closed)
             }
@@ -51,10 +51,11 @@ class IosAvifDecoderFailureTest {
             val cancellation = CancellationException("fixture cancellation")
             val source =
                 IosAvifTestSource(Buffer().write(AvifTestFixtures.tall())).apply {
-                    afterRead = { throw cancellation }
+                    afterUpstreamRead = { throw cancellation }
                 }
             val options = iosAvifOptions(Size.ORIGINAL)
-            val decoder = IosAvifDecoder(ImageSource(source, options.fileSystem), options)
+            // Bypass factory peeking: inject cancellation while reading the claimed source.
+            val decoder = IosAvifDecoder(ImageSource(source.buffered, options.fileSystem), options)
             assertSame(cancellation, assertFailsWith<CancellationException> { decoder.decode() })
             assertTrue(source.closed)
         }

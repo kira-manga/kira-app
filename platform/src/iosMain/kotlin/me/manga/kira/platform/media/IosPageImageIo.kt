@@ -217,5 +217,5 @@ private fun imageIoFormat(type: CFStringRef?): PageImageFormat? =
     }
 
 // Allows native row alignment/high-bit-depth thumbnail output, never a full-resolution bitmap.
-private const val MAX_NATIVE_SAMPLE_BYTES: ULong = 128uL * 1024uL
+private const val MAX_NATIVE_SAMPLE_BYTES: ULong = 131_072uL
 private const val MAX_IMAGE_TYPE_BYTES: Int = 128

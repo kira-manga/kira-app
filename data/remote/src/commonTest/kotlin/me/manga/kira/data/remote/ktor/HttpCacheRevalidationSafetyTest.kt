@@ -74,7 +74,7 @@ class HttpCacheRevalidationSafetyTest {
             try {
                 withHttpCacheClient(replies.cache, replies.handler) { client ->
                     assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata())
-                    assertFailsWith<InvalidCacheStateException> { client.fetchRevalidationMetadata() }
+                    assertFailsWith<InvalidCacheStateException> { client.fetchStreamingRevalidationMetadata() }
                     assertEquals(3, replies.calls)
                     assertTrue(replies.bodies.all { it.isClosedForRead && it.closedCause != null })
                     assertEquals(0, replies.cache.snapshot().entries)

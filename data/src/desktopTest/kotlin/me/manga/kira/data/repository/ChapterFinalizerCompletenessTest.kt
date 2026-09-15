@@ -2,10 +2,12 @@ package me.manga.kira.data.repository
 
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
@@ -98,7 +100,10 @@ class ChapterFinalizerCompletenessTest {
             coroutineScope {
                 val conversion = async { finalizer(writer).finalize(original.download, original.saved.localImagePaths) }
                 try {
-                    withTimeout(WRITER_ENTRY_TIMEOUT_MILLIS) { entered.await() }
+                    // Room runs on Dispatchers.Default, outside runTest's virtual clock.
+                    withContext(Dispatchers.Default) {
+                        withTimeout(WRITER_ENTRY_TIMEOUT_MILLIS) { entered.await() }
+                    }
                     conversion.cancel(CancellationException("download cancelled"))
                     assertFailsWith<CancellationException> { conversion.await() }
                 } finally {

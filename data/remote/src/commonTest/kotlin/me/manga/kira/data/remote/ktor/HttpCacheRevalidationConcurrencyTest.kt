@@ -111,7 +111,7 @@ private suspend fun TestScope.startHeldRepair(
     client: HttpClient,
 ): Deferred<String> {
     assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata())
-    val request = async { client.fetchRevalidationMetadata() }
+    val request = async { client.fetchStreamingRevalidationMetadata() }
     held.fixture.conditionalStarted.await()
     held.fixture.loseEntry(LostCacheCause.CLEAR, client)
     held.fixture.release304.complete(Unit)

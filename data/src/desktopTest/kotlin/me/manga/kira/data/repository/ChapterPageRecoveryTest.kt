@@ -14,6 +14,7 @@ import okio.buffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** Real local recovery through Room, the production reader and the native JVM codec test host. */
@@ -93,7 +94,12 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
                 saved.copy(isDownloaded = true, localImagePaths = listOf("$good", "$missing")),
             )
             val source = OwnerPagesSource()
-            val result = repository(source).fetchPages(mangaA, chapter).first() as AppResult.Success
+            val fetchResult = repository(source).fetchPages(mangaA, chapter).first()
+            val result =
+                assertIs<AppResult.Success<List<Page>>>(
+                    fetchResult,
+                    "Expected complete canonical-archive recovery, got $fetchResult",
+                )
             assertEquals(2, result.value.size)
             assertTrue(result.value.all { it.url.endsWith(".png") })
             assertTrue(source.requests.isEmpty())
@@ -111,7 +117,12 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
             writeArchive(stored, "0.jpg" to recoveryTestPng())
             db.chapterDao().updateChapter(saved.copy(isDownloaded = true, localImagePaths = listOf(stored.toString())))
             val source = OwnerPagesSource()
-            val result = repository(source).fetchPages(mangaA, chapter).first() as AppResult.Success
+            val fetchResult = repository(source).fetchPages(mangaA, chapter).first()
+            val result =
+                assertIs<AppResult.Success<List<Page>>>(
+                    fetchResult,
+                    "Expected complete stored-archive recovery, got $fetchResult",
+                )
             assertEquals(1, result.value.size)
             assertTrue(source.requests.isEmpty())
             assertTrue(fs.exists(canonical))

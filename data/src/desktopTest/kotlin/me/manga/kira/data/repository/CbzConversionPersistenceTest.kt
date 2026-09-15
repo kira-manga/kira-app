@@ -1,11 +1,13 @@
 package me.manga.kira.data.repository
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okio.IOException
 import okio.Path.Companion.toPath
@@ -99,7 +101,10 @@ class CbzConversionPersistenceTest {
             coroutineScope {
                 val conversion = async { repository.compressExistingDownloads() }
                 try {
-                    withTimeout(WRITER_ENTRY_TIMEOUT_MILLIS) { entered.await() }
+                    // Room runs on Dispatchers.Default, outside runTest's virtual clock.
+                    withContext(Dispatchers.Default) {
+                        withTimeout(WRITER_ENTRY_TIMEOUT_MILLIS) { entered.await() }
+                    }
                     conversion.cancel(CancellationException("settings closed"))
                     assertFailsWith<CancellationException> { conversion.await() }
                 } finally {

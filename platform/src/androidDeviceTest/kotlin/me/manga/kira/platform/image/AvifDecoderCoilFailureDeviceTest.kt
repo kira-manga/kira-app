@@ -14,6 +14,9 @@ import coil3.size.Size
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.BufferedSource
+import okio.ForwardingSource
+import okio.Source
+import okio.buffer
 import org.junit.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -32,7 +35,7 @@ class AvifDecoderCoilFailureDeviceTest {
     fun declaredSourceBudgetRejectsEvenATinyTarget() =
         runTest {
             val source = TrackingSource(Buffer().write(AvifTestFixtures.regular()))
-            val decoder = AvifDecoderCoil(source, options, AvifDecodeLimits(maxSourcePixels = REGULAR_PIXELS - 1))
+            val decoder = AvifDecoderCoil(source.buffered, options, AvifDecodeLimits(maxSourcePixels = REGULAR_PIXELS - 1))
             val failure = assertFailsWith<AvifDecodeException> { decoder.decode() }
             assertTrue(failure.message.orEmpty().contains("bounded native decoder"))
             assertTrue(source.closed)
@@ -51,7 +54,7 @@ class AvifDecoderCoilFailureDeviceTest {
                 )
             for (limits in budgets) {
                 val source = TrackingSource(Buffer().write(bytes))
-                assertFailsWith<AvifDecodeException> { AvifDecoderCoil(source, options, limits).decode() }
+                assertFailsWith<AvifDecodeException> { AvifDecoderCoil(source.buffered, options, limits).decode() }
                 assertTrue(source.closed)
             }
         }
@@ -60,12 +63,13 @@ class AvifDecoderCoilFailureDeviceTest {
     fun nonAvifFactoryDeclineDoesNotConsumeOrCloseTheSharedSource() {
         val bytes = "not an AVIF file; another decoder owns this".encodeToByteArray()
         val source = TrackingSource(Buffer().write(bytes))
-        val fetch = SourceFetchResult(ImageSource(source, options.fileSystem), "image/png", DataSource.MEMORY)
+        val fetch = SourceFetchResult(ImageSource(source.buffered, options.fileSystem), "image/png", DataSource.MEMORY)
         val loader = newImageLoader()
         try {
             assertNull(AvifDecoderCoil.Factory().create(fetch, options, loader))
             assertFalse(source.closed)
-            assertContentEquals(bytes, source.readByteArray())
+            // Keep the same buffered source: factory peeking may have prefetched upstream bytes.
+            assertContentEquals(bytes, source.buffered.readByteArray())
         } finally {
             fetch.source.close()
             loader.shutdown()
@@ -117,13 +121,14 @@ class AvifDecoderCoilFailureDeviceTest {
     }
 
     private class TrackingSource(
-        private val delegate: BufferedSource,
-    ) : BufferedSource by delegate {
+        delegate: Source,
+    ) : ForwardingSource(delegate) {
+        val buffered: BufferedSource = buffer()
         var closed = false
 
         override fun close() {
             closed = true
-            delegate.close()
+            super.close()
         }
     }
 }

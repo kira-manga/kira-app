@@ -89,6 +89,8 @@ play-app-update = "2.1.0"
 play-review = "2.0.2"
 
 # Test
+# Test-only native binaries must match the Skiko JVM API selected by Coil 3.5.0.
+skiko-test = "0.144.6"
 junit = "4.13.2"
 turbine = "1.2.1"
 robolectric = "4.16"

@@ -85,7 +85,7 @@ class HttpCacheRevalidationTest {
             val hook = refillAfterCacheMiss(fixture.cache, replacement, refilled)
             withHttpCacheClient(fixture.cache, fixture.handler, configure = { install(hook) }) { client ->
                 assertEquals(OLD_METADATA_BODY, client.fetchRevalidationMetadata())
-                val request = async { client.fetchRevalidationMetadata() }
+                val request = async { client.fetchStreamingRevalidationMetadata() }
                 fixture.conditionalStarted.await()
                 fixture.loseEntry(LostCacheCause.CLEAR, client)
                 fixture.release304.complete(Unit)

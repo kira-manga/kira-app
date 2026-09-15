@@ -3,6 +3,7 @@ package me.manga.kira.presentation.features.download.domain.clean
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.cancel
+import io.ktor.utils.io.readByte
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -20,8 +21,10 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -60,7 +63,9 @@ class BoundedPageTransferTest {
                 assertFailsWith<PageByteLimitExceeded> { transferPageBody(channel, declared, fs, temporary, policy) }
                 assertFalse(fs.exists(temporary))
                 assertEquals("good", fs.read(prior) { readUtf8() })
-                assertTrue(channel.isClosedForRead)
+                // A cancelled byte-array source can retain unread bytes without permitting reads.
+                assertNotNull(channel.closedCause)
+                assertFails { channel.readByte() }
             }
         }
 

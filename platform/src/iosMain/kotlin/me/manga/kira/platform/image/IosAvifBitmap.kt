@@ -19,8 +19,8 @@ import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGContextSetInterpolationQuality
 import platform.CoreGraphics.CGImageAlphaInfo
 import platform.CoreGraphics.CGImageRef
-import platform.CoreGraphics.CGInterpolationQuality
 import platform.CoreGraphics.CGRectMake
+import platform.CoreGraphics.kCGInterpolationHigh
 import kotlin.coroutines.CoroutineContext
 
 /** The allocation was checked before thumbnail creation; no unchecked Int product reaches a buffer. */
@@ -89,7 +89,7 @@ private fun drawAvifPixels(
                 bitmapInfo = CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value,
             ) ?: throw AvifDecodeException("Unable to create the bounded AVIF output context.")
         try {
-            CGContextSetInterpolationQuality(context, CGInterpolationQuality.kCGInterpolationHigh)
+            CGContextSetInterpolationQuality(context, kCGInterpolationHigh)
             CGContextDrawImage(
                 context,
                 CGRectMake(0.0, 0.0, output.width.toDouble(), output.height.toDouble()),

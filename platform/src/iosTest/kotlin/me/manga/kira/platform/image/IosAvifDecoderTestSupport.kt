@@ -17,6 +17,9 @@ import coil3.size.Scale
 import coil3.size.Size
 import okio.Buffer
 import okio.BufferedSource
+import okio.ForwardingSource
+import okio.Source
+import okio.buffer
 import org.jetbrains.skia.Bitmap
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -59,7 +62,7 @@ internal suspend fun withIosAvifBitmap(
 ) {
     val loader = iosAvifImageLoader()
     val source = IosAvifTestSource(Buffer().write(bytes))
-    val fetch = SourceFetchResult(ImageSource(source, options.fileSystem), "image/avif", DataSource.MEMORY)
+    val fetch = SourceFetchResult(ImageSource(source.buffered, options.fileSystem), "image/avif", DataSource.MEMORY)
     try {
         val decoder = assertNotNull(loader.components.newDecoder(fetch, options, loader)).first
         assertIs<IosAvifDecoder>(decoder)
@@ -80,23 +83,23 @@ internal suspend fun withIosAvifBitmap(
 }
 
 internal class IosAvifTestSource(
-    private val delegate: BufferedSource,
-) : BufferedSource by delegate {
+    delegate: Source,
+) : ForwardingSource(delegate) {
+    val buffered: BufferedSource = buffer()
     var closed = false
-    var afterRead: () -> Unit = {}
+    var afterUpstreamRead: () -> Unit = {}
 
     override fun read(
-        sink: ByteArray,
-        offset: Int,
-        byteCount: Int,
-    ): Int {
-        val count = delegate.read(sink, offset, byteCount)
-        afterRead()
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
+        val count = super.read(sink, byteCount)
+        afterUpstreamRead()
         return count
     }
 
     override fun close() {
         closed = true
-        delegate.close()
+        super.close()
     }
 }

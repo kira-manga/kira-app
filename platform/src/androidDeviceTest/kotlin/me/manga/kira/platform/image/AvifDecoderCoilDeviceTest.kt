@@ -18,6 +18,9 @@ import coil3.size.Size
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.BufferedSource
+import okio.ForwardingSource
+import okio.Source
+import okio.buffer
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -143,7 +146,7 @@ class AvifDecoderCoilDeviceTest {
         check: (Bitmap, DecodeResult) -> Unit,
     ) {
         val source = TrackingSource(Buffer().write(bytes))
-        val result = AvifDecoderCoil(source, options).decode()
+        val result = AvifDecoderCoil(source.buffered, options).decode()
         val bitmap = assertIs<BitmapImage>(result.image).bitmap
         try {
             assertTrue(source.closed)
@@ -177,13 +180,14 @@ class AvifDecoderCoilDeviceTest {
             .build()
 
     private class TrackingSource(
-        private val delegate: BufferedSource,
-    ) : BufferedSource by delegate {
+        delegate: Source,
+    ) : ForwardingSource(delegate) {
+        val buffered: BufferedSource = buffer()
         var closed = false
 
         override fun close() {
             closed = true
-            delegate.close()
+            super.close()
         }
     }
 }
