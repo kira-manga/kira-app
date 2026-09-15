@@ -55,7 +55,7 @@ class SourceCatalogHttpClientLifecycleTest {
         }
 
     @Test
-    fun productionCatalogBindingIsASeparateSingletonClosedByKoin() =
+    fun boundedSourceTransportsUseAnUncachedSingletonClosedByKoin() =
         runTest {
             withIsolatedHome { assertCatalogClientLifecycle() }
         }
@@ -74,7 +74,9 @@ class SourceCatalogHttpClientLifecycleTest {
             assertSame(catalog, app.koin.get<HttpClient>(sourceCatalogHttpClientQualifier))
             assertNotNull(shared.pluginOrNull(HttpCache))
             assertNull(catalog.pluginOrNull(HttpCache))
-            assertIs<KtorHttpExecutor>(app.koin.get<HttpExecutor>())
+            // Construction refuses HttpCache, so resolving against the shared client must fail.
+            val executor = assertIs<KtorHttpExecutor>(app.koin.get<HttpExecutor>())
+            assertSame(executor, app.koin.get<HttpExecutor>())
             assertIs<KtorRemoteSourceCatalog>(app.koin.get<RemoteSourceCatalog>())
             app.close()
             withTimeout(CLIENT_CLEANUP_TIMEOUT_MILLIS) { catalog.coroutineContext.job.join() }
