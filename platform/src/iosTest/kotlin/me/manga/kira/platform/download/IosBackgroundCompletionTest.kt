@@ -2,15 +2,20 @@
 
 package me.manga.kira.platform.download
 
+import kotlinx.coroutines.runBlocking
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageInspectionPolicy
 import me.manga.kira.platform.media.PageMediaTestImages
 import okio.FileSystem
 import platform.Foundation.NSError
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLErrorCancelled
+import platform.Foundation.NSURLErrorDomain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -30,6 +35,8 @@ class IosBackgroundCompletionTest {
     @Test
     fun throwingTerminalListenerStillReleasesThePerTaskOutcome() {
         withHarness { h ->
+            val trace = CompletionTrace()
+            h.transport.setSystemCompletionHandler { trace.record("throwing") }
             val failure = IllegalStateException("terminal listener failed")
             h.transport.setListener(FailureListener { throw failure })
             val task = h.task(0)
@@ -40,8 +47,91 @@ class IosBackgroundCompletionTest {
             h.transport.handleCompleted(task, null)
             assertEquals(listOf<String?>("Download completed without a page"), reasons)
             assertTrue(h.inspector.paths.isEmpty())
+            h.transport.handleFinishedEvents()
+            flushMainQueue()
+            trace.assertNames("throwing")
         }
     }
+
+    @Test
+    fun nativePageHandoffsDrainAfterDisposalWithoutWaitingForTheNextWindow() =
+        withHarness { h ->
+            val trace = CompletionTrace()
+            val receiver = HeldTransferListener()
+            h.transport.setListener(receiver)
+            h.transport.setSystemCompletionHandler { trace.record("first") }
+            h.transport.handleFinishedDownload(h.task(0), h.sourceFile(PageMediaTestImages.png()).url(), h.response())
+            h.transport.handleFinishedEvents()
+            h.transport.setSystemCompletionHandler { trace.record("second") }
+            h.transport.handleFinishedDownload(h.task(1), h.sourceFile(PageMediaTestImages.png()).url(), h.response())
+            flushMainQueue()
+            trace.assertNames()
+            val first = receiver.pages.getValue(0)
+            val second = receiver.pages.getValue(1)
+            assertTrue(h.system.exists(first.page.path))
+            onWorker { first.discardAndAcknowledge() }
+            flushMainQueue()
+            assertFalse(h.system.exists(first.page.path))
+            assertTrue(h.system.exists(second.page.path))
+            trace.assertNames("first")
+            h.transport.handleFinishedEvents()
+            onWorker { second.discardAndAcknowledge() }
+            flushMainQueue()
+            trace.assertNames("first", "second")
+        }
+
+    @Test
+    fun eagerFailureAcknowledgementCannotBeatCallbackTemporaryDisposal() =
+        withHarness { h ->
+            val trace = CompletionTrace()
+            h.transport.setSystemCompletionHandler { trace.record("disposed") }
+            h.transport.setListener(FailureListener(afterAcknowledged = {
+                h.transport.handleFinishedEvents()
+                flushMainQueue() // Deliberately pump main while native finally still owns the file.
+                trace.assertNames()
+                assertTrue(h.system.exists(h.inspector.paths.single()))
+            }) {})
+            h.transport.handleFinishedDownload(h.task(0), h.sourceFile(PageMediaTestImages.html()).url(), h.response())
+            flushMainQueue()
+            assertFalse(h.system.exists(h.inspector.paths.single()))
+            trace.assertNames("disposed")
+        }
+
+    @Test
+    fun absentReceiverAndSilentCancellationReleaseOnlyTheirOwnCallbackCustody() =
+        withHarness(registerListener = false) { h ->
+            val trace = CompletionTrace()
+            h.transport.setSystemCompletionHandler { trace.record("unreceived") }
+            val task = h.task(0)
+            h.transport.handleFinishedDownload(task, h.sourceFile(PageMediaTestImages.png()).url(), h.response())
+            h.transport.handleCompleted(task, null)
+            h.transport.handleCompleted(h.task(1), NSError(NSURLErrorDomain, NSURLErrorCancelled, null))
+            h.transport.handleFinishedEvents()
+            flushMainQueue()
+            assertFalse(h.system.exists(h.inspector.paths.single()))
+            h.assertNoPartial()
+            trace.assertNames("unreceived")
+        }
+
+    @Test
+    fun invalidUrlFailureIsAdmittedUntilItsReceiverAcknowledges() =
+        withHarness { h ->
+            val trace = CompletionTrace()
+            val receiver = HeldTransferListener()
+            val invalidUrl = "https://["
+            assertNull(NSURL.URLWithString(invalidUrl))
+            h.transport.setListener(receiver)
+            h.transport.setSystemCompletionHandler { trace.record("invalid") }
+            runBlocking { h.transport.enqueue(listOf(TransferRequest(1, 2, 0, invalidUrl, emptyMap(), TEST_ATTEMPT_TOKEN))) }
+            h.transport.handleFinishedEvents()
+            flushMainQueue()
+            trace.assertNames()
+            val failure = receiver.failures.single()
+            assertEquals("Invalid download URL", failure.message)
+            onWorker { failure.acknowledge() }
+            flushMainQueue()
+            trace.assertNames("invalid")
+        }
 
     @Test
     fun failedPageIsReportedBeforeItsTemporaryIsDiscardedEvenWhenTheListenerThrows() {
@@ -80,9 +170,9 @@ class IosBackgroundCompletionTest {
         }
     }
 
-    private inline fun withHarness(test: (TransportHarness) -> Unit) {
+    private inline fun withHarness(registerListener: Boolean = true, test: (TransportHarness) -> Unit) {
         val policy = PageBytePolicy()
-        val harness = TransportHarness(policy, FileSystem.SYSTEM, PageInspectionPolicy(bytePolicy = policy))
+        val harness = TransportHarness(policy, FileSystem.SYSTEM, PageInspectionPolicy(bytePolicy = policy), registerListener)
         try {
             test(harness)
         } finally {
@@ -92,6 +182,7 @@ class IosBackgroundCompletionTest {
 }
 
 private class FailureListener(
+    private val afterAcknowledged: () -> Unit = {},
     private val failed: (String?) -> Unit,
 ) : TransferListener {
     override fun onPageComplete(
@@ -100,6 +191,7 @@ private class FailureListener(
         pageIndex: Int,
         attemptToken: String,
         page: StagedDownloadPage,
+        acknowledge: () -> Unit,
     ) = error("completion without a published page")
 
     override fun onPageFailed(
@@ -108,7 +200,10 @@ private class FailureListener(
         pageIndex: Int,
         attemptToken: String,
         message: String?,
+        acknowledge: () -> Unit,
     ) {
         failed(message)
+        acknowledge()
+        afterAcknowledged()
     }
 }

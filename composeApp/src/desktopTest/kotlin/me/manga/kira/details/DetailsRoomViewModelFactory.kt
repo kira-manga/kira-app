@@ -8,6 +8,7 @@ import me.manga.kira.data.repository.ChapterDeletionRepositoryImpl
 import me.manga.kira.data.repository.ChapterIdResolverImpl
 import me.manga.kira.data.repository.ChapterNewBadgeRepositoryImpl
 import me.manga.kira.data.repository.DownloadsActionRepositoryImpl
+import me.manga.kira.data.repository.DownloadsActionStorage
 import me.manga.kira.data.repository.DownloadsRepositoryImpl
 import me.manga.kira.data.repository.MarkChapterReadRepositoryImpl
 import me.manga.kira.data.repository.SavedMangaDetailsRepositoryImpl
@@ -90,10 +91,10 @@ private class DetailsRoomViewModelFactory(
 private fun roomDownloadActions(fixture: DetailsUrlOnlyRoomFixture): DownloadsActionRepositoryImpl =
     DownloadsActionRepositoryImpl(
         legacy = UnusedDetailsDownloadEngine,
-        chapterDownloadDao = fixture.db.chapterDownloadingDao(),
-        chapterDao = fixture.db.chapterDao(),
-        appFileSystem = fixture.fileSystem,
-        artifacts = fixture.artifacts,
+        storage = DownloadsActionStorage(
+            fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.fileSystem,
+            fixture.artifacts, fixture.db.chapterArtifactRepairDao(),
+        ),
     )
 
 private object DetailsRoomDevicePorts :

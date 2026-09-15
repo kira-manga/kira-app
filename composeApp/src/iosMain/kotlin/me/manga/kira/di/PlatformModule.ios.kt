@@ -107,7 +107,8 @@ actual fun platformModule(): Module =
         single<BackgroundExecutionGuard> { IosBackgroundExecutionGuard() }
 
         // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
-        single<AppFileSystem> { IosAppFileSystem() }
+        // Repair the existing manga root's backup policy at launch, even before any download UI opens.
+        single<AppFileSystem>(createdAtStart = true) { IosAppFileSystem() }
         single<PageMediaInspector> { IosPageMediaInspector() }
         single<CbzWriter> { IosCbzWriter(get(), get()) }
         single<CbzReader> { DefaultCbzReader(get(), get(), get()) }

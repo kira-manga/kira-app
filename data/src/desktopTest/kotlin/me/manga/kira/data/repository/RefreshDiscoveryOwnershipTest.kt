@@ -56,7 +56,11 @@ class RefreshDiscoveryOwnershipTest {
             }
         }
         val actions = DownloadsActionRepositoryImpl(
-            downloads, fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.files, fixture.artifactRuntime.ownership,
+            downloads,
+            DownloadsActionStorage(
+                fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.files,
+                fixture.artifactRuntime.ownership, fixture.db.chapterArtifactRepairDao(),
+            ),
         )
         assertTrue(actions.enqueueDownload(b.chapterId, b.mangaTitle, b.api).isSuccess)
         assertEquals(listOf(savedB), requested, "download engine receives B's actual saved row")

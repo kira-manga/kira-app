@@ -71,4 +71,5 @@ data class DownloadsState(
     val failed: List<DownloadedChapter> = emptyList(),
     val completed: List<DownloadedChapter> = emptyList(),
     val selectedTab: Int = 2,
+    val pendingChapterIds: Set<Long> = emptySet(),
 ) : MviState

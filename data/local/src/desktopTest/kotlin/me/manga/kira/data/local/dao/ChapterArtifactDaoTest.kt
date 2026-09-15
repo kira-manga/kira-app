@@ -117,6 +117,68 @@ class ChapterArtifactDaoTest {
         assertEquals(ChapterRestoreOutcome.UNKNOWN, db.chapterArtifactCommitDao().readRestoreOutcome(claim, absolute(), SIZE))
     }
 
+    @Test
+    fun capturedRetryCannotResurrectDeletedOrReplaceNewerHistory() = completionTest {
+        val original = seed(DownloadingState.FAILED, emptyList())
+        val artifacts = db.chapterArtifactDao()
+        dao.deleteHistoryAttempt(original.saved.id, original.download.id)
+        assertNull(artifacts.retry(original.download, FIRST))
+        assertNull(dao.getDownloadByChapter(original.saved.id))
+        val replacementId = dao.insert(original.download.copy(id = 0))
+        assertNull(artifacts.retry(original.download, FIRST))
+        assertEquals(replacementId, dao.getDownloadByChapter(original.saved.id)?.id)
+        assertNull(artifacts.get(original.saved.id))
+    }
+
+    @Test
+    fun admittedRetryGetsFreshIdentityAndSurvivesOldHistoryDelete() = completionTest {
+        val original = seed(DownloadingState.FAILED, listOf("/retained/page_0.png"))
+        val artifacts = db.chapterArtifactDao()
+        val claim = assertNotNull(artifacts.retry(original.download, FIRST))
+        dao.deleteHistoryAttempt(original.saved.id, original.download.id)
+        val current = assertNotNull(dao.getDownloadByChapter(original.saved.id))
+        assertTrue(current.id != original.download.id)
+        assertEquals(claim.downloadId, current.id)
+        assertEquals(original.download.copy(
+            id = current.id, state = DownloadingState.QUEUED, progress = 0, errorMsg = null, sizeBytes = 0,
+        ), current)
+        assertEquals(original.saved, db.chapterDao().getChapterByIdSuspend(original.saved.id))
+        assertNull(artifacts.retry(original.download, SECOND))
+        assertTrue(artifacts.canPublish(claim))
+    }
+
+    @Test
+    fun retryRefusesChangedIdentityStateAndUnsettledCustody() = completionTest {
+        val original = seed(DownloadingState.FAILED, emptyList())
+        val artifacts = db.chapterArtifactDao()
+        for (stale in listOf(
+            original.download.copy(api = "other"), original.download.copy(url = "https://other.test/chapter"),
+            original.download.copy(mangaId = original.saved.mangaId + 100),
+            original.download.copy(state = DownloadingState.SUCCESS),
+        )) assertNull(artifacts.retry(stale, FIRST))
+        dao.updateStateChId(original.saved.id, DownloadingState.SUCCESS)
+        assertNull(artifacts.retry(original.download, FIRST))
+        dao.updateStateChId(original.saved.id, DownloadingState.FAILED)
+        val restore = assertNotNull(artifacts.claimRestore(original.saved, FIRST, pending()))
+        assertNull(artifacts.retry(original.download, SECOND))
+        artifacts.revoke(original.saved.id, FIRST)
+        assertNull(artifacts.retry(original.download, SECOND), "Revocation is not custody release")
+        assertEquals(restore, artifacts.get(original.saved.id)?.claimOrNull())
+        assertUnchanged(original)
+    }
+
+    @Test
+    fun retryReservationFailureRollsBackQueueReplacement() = completionTest {
+        val original = seed(DownloadingState.FAILED, emptyList())
+        executeWhileClosed(
+            "CREATE TRIGGER reject_retry BEFORE INSERT ON chapter_artifacts " +
+                "BEGIN SELECT RAISE(ABORT, 'reject_retry'); END",
+        )
+        assertFailsWith<Exception> { db.chapterArtifactDao().retry(original.download, FIRST) }
+        assertUnchanged(original)
+        assertNull(db.chapterArtifactDao().get(original.saved.id))
+    }
+
     private fun pending(token: String = FIRST) = ChapterArtifactFile("_restored/$token/chapter.cbz", SIZE)
     private fun absolute() = "/sandbox/${pending().relativePath}"
 

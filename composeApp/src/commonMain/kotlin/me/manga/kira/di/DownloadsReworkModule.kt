@@ -1,6 +1,7 @@
 package me.manga.kira.di
 
 import me.manga.kira.data.repository.DownloadsActionRepositoryImpl
+import me.manga.kira.data.repository.DownloadsActionStorage
 import me.manga.kira.data.repository.DownloadsRepositoryImpl
 import me.manga.kira.domain.repository.DownloadsActionRepository
 import me.manga.kira.domain.repository.DownloadsRepository
@@ -127,10 +128,7 @@ val downloadsReworkModule: Module = module {
     single<DownloadsActionRepository> {
         DownloadsActionRepositoryImpl(
             legacy = get(),
-            chapterDownloadDao = get(),
-            chapterDao = get(),
-            appFileSystem = get(),
-            artifacts = get(),
+            storage = DownloadsActionStorage(get(), get(), get(), get(), get()),
         )
     }
     factory { ObserveDownloadsUseCase(get()) }

@@ -62,16 +62,33 @@ class IosCbzWriter internal constructor(
         maxMemoryBytes: Long,
     ): Path = archive(imagePaths, mangaId, chapterId, CbzEncodingOptions(quality, maxHeight, maxMemoryBytes))
 
+    override suspend fun createCbzWithSplittingRetainingSources(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        quality: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): Path =
+        archive(
+            imagePaths,
+            mangaId,
+            chapterId,
+            CbzEncodingOptions(quality, maxHeight, maxMemoryBytes),
+            retainSources = true,
+        )
+
     private suspend fun archive(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
         encoding: CbzEncodingOptions,
+        retainSources: Boolean = false,
     ): Path =
         withContext(Dispatchers.Default) {
             conversionMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                createArchive(imagePaths, mangaId, chapterId, encoding)
+                createArchive(imagePaths, mangaId, chapterId, encoding, retainSources)
             }
         }
 
@@ -80,6 +97,7 @@ class IosCbzWriter internal constructor(
         mangaId: Long,
         chapterId: Long,
         encoding: CbzEncodingOptions,
+        retainSources: Boolean,
     ): Path {
         require(imagePaths.isNotEmpty()) { "No images to archive" }
         require(encoding.maxHeight > 0 && encoding.maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
@@ -92,9 +110,8 @@ class IosCbzWriter internal constructor(
             }
         val temporary = chapterDir / ".chapter_$chapterId-${NSUUID().UUIDString}.cbz.tmp"
         publishArchive(sources, encoding, temporary, destination)
-        // No fallible logging/callback after publication can turn this into an apparent loose-page
-        // fallback. Cleanup is best-effort only after the complete archive is the durable artifact.
-        deleteSourcesAfterCommit(sources)
+        // Manual conversion retains these exact current-container inputs until metadata commits.
+        if (!retainSources) deleteSourcesAfterCommit(sources)
         return destination
     }
 

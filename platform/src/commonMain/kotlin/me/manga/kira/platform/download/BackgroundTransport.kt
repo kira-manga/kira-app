@@ -21,14 +21,32 @@ data class TransferRequest(
  * Callbacks may arrive on an arbitrary thread (the iOS `URLSession` delegate queue) and possibly
  * after an app relaunch the OS performed to deliver background events — so the implementation must
  * marshal to its own scope and treat every callback idempotently (a page may complete more than once
- * across a resume).
+ * across a resume). Returning accepts the handoff; it does not acknowledge asynchronous work.
+ * Invoke [onPageComplete]'s or [onPageFailed]'s acknowledgement after immediate durable processing
+ * and owned-file disposal, including stale/cancelled outcomes. A storage failure retains the existing
+ * recoverable cleanup custody rather than claiming disposal succeeded. Do not wait for retry backoff,
+ * future transfers or a whole archive encode. A throwing callback rejects the handoff to the transport.
  */
 interface TransferListener {
-    /** The page's bytes are now on disk at the platform download path for (chapterId, pageIndex). */
-    fun onPageComplete(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, page: StagedDownloadPage)
+    /** The receiver owns this private staged page; only its original attempt may publish it. */
+    fun onPageComplete(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        attemptToken: String,
+        page: StagedDownloadPage,
+        acknowledge: () -> Unit,
+    )
 
     /** The page transfer failed terminally (after the OS's own transient-error retries). */
-    fun onPageFailed(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, message: String?)
+    fun onPageFailed(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        attemptToken: String,
+        message: String?,
+        acknowledge: () -> Unit,
+    )
 }
 
 /**
@@ -63,7 +81,8 @@ interface BackgroundTransport {
     /**
      * Store the system completion handler forwarded from the host's
      * `application(_:handleEventsForBackgroundURLSession:completionHandler:)`; the transport invokes
-     * it once the session reports it has finished delivering its queued background events.
+     * it on main after the session has finished delivering this window and every admitted receiver
+     * has acknowledged it. Install before session reattachment. Later windows are not joined.
      */
     fun setSystemCompletionHandler(handler: () -> Unit)
 }

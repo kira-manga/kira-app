@@ -1,9 +1,11 @@
 package me.manga.kira.data.download.artifacts
 
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
@@ -11,7 +13,9 @@ import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.isOwnedBy
+import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import okio.IOException
 import okio.Path.Companion.toPath
 
@@ -25,6 +29,9 @@ class ChapterDownloadArtifacts(
 ) {
     suspend fun enqueue(chapter: SavedChapterEntity, requested: ChapterDownloadEntity): ChapterArtifactClaim? =
         ownership.enqueue(chapter, requested)
+
+    suspend fun retry(expected: ChapterDownloadEntity, prepare: (String) -> Unit = {}): ChapterArtifactClaim? =
+        ownership.retry(expected, prepare)
 
     suspend fun claim(entity: ChapterDownloadEntity): ChapterArtifactClaim? = ownership.downloadClaim(entity)
 
@@ -83,6 +90,35 @@ class ChapterDownloadArtifacts(
         return claim
     }
 
+    /**
+     * All engines use one state-aware history deletion. FAILED cleanup owns its captured ledger
+     * until partial files, row removal and token release finish. Stop receives that exact token;
+     * neither a delayed Delete nor its cancellation may target a replacement attempt.
+     */
+    suspend fun deleteAttempt(
+        expected: ChapterDownloadEntity,
+        stop: suspend (ChapterArtifactClaim) -> Unit = {},
+    ): Boolean = try {
+        if (expected.state == DownloadingState.SUCCESS) {
+            ownership.parentRemoval(expected.mangaId) { dao.removeSuccessHistory(expected) }
+        } else {
+            val failed = ownership.beginFailedCleanup(expected)
+            val claim = failed ?: if (expected.state == DownloadingState.FAILED) null else {
+                ownership.cancelCapturedDownload(expected) { captured ->
+                    commits.failDownload(captured, DownloadedChapter.CANCELLED_BY_USER_SENTINEL)
+                }?.let { ownership.beginFailedCleanup(expected) }
+            }
+            if (claim == null) false else {
+                stop(claim)
+                withContext(NonCancellable) { recovery.settleFailedCleanup(ownership, claim) }
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false // Keep the exact cleanup intent/row; never leak filesystem or provider details.
+    }
+
     suspend fun settle(
         claim: ChapterArtifactClaim,
         requeue: Boolean = false,
@@ -92,13 +128,31 @@ class ChapterDownloadArtifacts(
         recovery.settleDownload(ownership, claim, requeue, retainFailedPages, afterIncomplete)
     }
 
-    fun exactSize(paths: List<String>): Long = paths.distinct().fold(0L) { total, path ->
-        val metadata = files.fileSystem().metadata(path.toPath())
-        val size = metadata.size ?: throw IOException("Missing artifact size")
-        if (!metadata.isRegularFile || size < 0 || total > Long.MAX_VALUE - size) {
-            throw IOException("Invalid artifact size")
+    /** A racing worker may have already settled this cancelled token; prove that exact outcome. */
+    suspend fun settleCancelled(claim: ChapterArtifactClaim): Boolean = try {
+        if (settle(claim, retainFailedPages = false)) true else ownership.read(claim.owner.chapterId) { record ->
+            val row = dao.download(claim.owner.chapterId)
+            record != null && record.token == null && record.retiredRelativePath == null &&
+                record.mangaId == claim.owner.mangaId && record.chapterUrl == claim.owner.chapterUrl &&
+                row != null && row.id == claim.downloadId && row.mangaId == claim.owner.mangaId &&
+                row.url == claim.owner.chapterUrl && row.state == DownloadingState.FAILED &&
+                row.errorMsg == DownloadedChapter.CANCELLED_BY_USER_SENTINEL
         }
-        total + size
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
+    suspend fun exactSize(paths: List<String>): Long = withContext(platformIoDispatcher) {
+        paths.distinct().fold(0L) { total, path ->
+            val metadata = files.fileSystem().metadata(path.toPath())
+            val size = metadata.size ?: throw IOException("Missing artifact size")
+            if (!metadata.isRegularFile || size < 0 || total > Long.MAX_VALUE - size) {
+                throw IOException("Invalid artifact size")
+            }
+            total + size
+        }
     }
 }
 

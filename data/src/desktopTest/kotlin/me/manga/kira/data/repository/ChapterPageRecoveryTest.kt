@@ -34,6 +34,30 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
     private val chapter = Chapter("1", "shared", CHAPTER_OWNERSHIP_URL, null, false, false)
 
     @Test
+    fun allStaleLegacyFallbackBecomesDurableWithoutReencodingAndReaderStaysLocal() = runTest {
+        val original = seed(mangaA, bookmarked = true).single()
+        val directory = appFs.chapterDir(original.mangaId, original.id)
+        val stale = original.copy(isDownloaded = true, localImagePaths = listOf("$directory/0.jpg", "$directory/1.jpg"))
+        db.chapterDao().updateChapter(stale)
+        val archive = DefaultCbzReader(appFs, dispatchers, inspector).cbzPath(stale.mangaId, stale.id)
+        writeArchive(archive, "0.png" to recoveryTestPng(), "1.png" to recoveryTestPng())
+        val bytes = fs.read(archive) { readByteArray() }
+        artifactRuntime = ArtifactTestRuntime(db, appFs, inspector)
+        val source = OwnerPagesSource()
+        val reader = repository(source)
+        assertEquals(2, assertIs<AppResult.Success<List<Page>>>(reader.fetchPages(mangaA, chapter).first()).value.size)
+        assertEquals(stale, row(stale.id), "Reader fallback itself remains non-destructive")
+        val writer = CbzCallerWriter { _, _ -> error("all-stale legacy repair must not call writer") }
+        val converter = DownloadedChapterConversion(db.chapterDao(), writer, db.mangaDao(), db.chapterDownloadingDao(),
+            appFs, artifactRuntime.ownership, artifactRuntime.commits)
+        assertTrue(converter.convert(stale))
+        assertEquals(stale.copy(localImagePaths = listOf(archive.toString())), row(stale.id))
+        assertEquals(2, assertIs<AppResult.Success<List<Page>>>(reader.fetchPages(mangaA, chapter).first()).value.size)
+        assertTrue(writer.requests.isEmpty() && source.requests.isEmpty())
+        kotlin.test.assertContentEquals(bytes, fs.read(archive) { readByteArray() })
+    }
+
+    @Test
     fun invalidLoosePageEscapesToSourceRepeatedlyWithoutReturningASubsetOrMutatingRoom() =
         runTest {
             val saved = seed(mangaA).single()

@@ -14,6 +14,7 @@ import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
@@ -69,7 +70,8 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // v12 -> v13: retain the source-supplied author on saved manga for complete offline details.
     // v14: one notification per discovered chapter, with repaired manga-scoped legacy bindings.
     // v14 -> v15: durable artifact custody, independent of deletable download history.
-    version = 15,
+    // v15 -> v16: exact retained-input CONVERT roster for post-commit cleanup/restart.
+    version = 16,
     exportSchema = true,
 )
 @TypeConverters(
@@ -90,6 +92,7 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun chapterDownloadingDao(): ChapterDownloadDao
     abstract fun chapterArtifactDao(): ChapterArtifactDao
     abstract fun chapterArtifactCommitDao(): ChapterArtifactCommitDao
+    abstract fun chapterArtifactRepairDao(): ChapterArtifactRepairDao
     abstract fun sourcesDao(): SourcesDao
     abstract fun sourceConfigCacheDao(): SourceConfigCacheDao
     abstract fun sourceCatalogDao(): SourceCatalogDao

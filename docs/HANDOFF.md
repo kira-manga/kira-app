@@ -154,6 +154,13 @@ history cleanup remains a separate issue, including retained failures released b
 
 ### Backup import hardening — composition required
 
+Terminal/saved-only restored offline metadata has a separate authored absence-only repair
+(`MissingDownloadMetadataRepair` / `ChapterArtifactRepairDao`), with material Room/file tests
+**NOT_RUN**. It preserves user state, active work and unknown bytes, and conditionally clears the
+exact stale committed reference so explicit import can be admitted. It neither changes the active
+restore/re-download policy nor closes physical iPhone backup/restore acceptance; see
+`ENGINEERING_NOTES.md` §2. No database/schema relocation or filesystem cleanup is part of it.
+
 The authored import path admits a bounded, privately owned ZIP/JSON/CBZ plan before any Room or
 resume mutation; every publication consumes those same retained bytes. Android acquisition counts
 the provider stream; iOS uses a coordinated, security-scoped open-in-place copy. Provider/OS hydration
@@ -294,10 +301,13 @@ machines (see `CLAUDE.md`).
    point (incl. cache-first opens) before any store release.
 9. iOS reader loader changes (decode gate + cache tiers, 2026-07-04) are simulator-verified;
    recommend one device pass on fast webtoon fling on a low-RAM iPhone.
-10. iOS ATS uses a scoped `raijinscan.fr` exception rather than global arbitrary loads; confirm the
-    source still requires it and document/remove it when possible.
+10. The obsolete platform HTTP exemptions are removed from source: Android explicitly denies
+    cleartext in its base network policy, and iOS has no ATS override. These policies govern
+    participating transports, not every socket; packaged/signed-build verification remains external.
 11. Android Auto Backup/device transfer excludes all app persistence domains so DB/settings/manga
     files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
+    iOS excludes only chapter media; full restore reconciliation/device evidence remain open
+    ([App26 scope](ENGINEERING_NOTES.md#2-ios-background-downloads)).
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.
 13. The signed source-config client is fail-closed and compiled for Android/iOS, but the production
     backend HTTPS origin and signing ceremony are not configured; set `KIRA_SOURCE_CONFIG_BASE_URL`

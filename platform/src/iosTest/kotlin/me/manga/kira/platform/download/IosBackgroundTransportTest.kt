@@ -35,12 +35,20 @@ class IosBackgroundTransportTest {
             val prior = h.seedPage(0, "png", PageMediaTestImages.gif())
             val abandoned = h.seedStaging(".image_7-$TEST_ATTEMPT_TOKEN.partial")
             var staged: StagedDownloadPage? = null
+            var acknowledgeStage: (() -> Unit)? = null
             h.transport.setListener(object : TransferListener {
-                override fun onPageComplete(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, page: StagedDownloadPage) {
+                override fun onPageComplete(
+                    mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
+                    page: StagedDownloadPage, acknowledge: () -> Unit,
+                ) {
                     assertEquals(TEST_ATTEMPT_TOKEN, attemptToken)
                     staged = page
+                    acknowledgeStage = acknowledge
                 }
-                override fun onPageFailed(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, message: String?) {
+                override fun onPageFailed(
+                    mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
+                    message: String?, acknowledge: () -> Unit,
+                ) {
                     error("Unexpected handoff failure: $message")
                 }
             })
@@ -49,6 +57,7 @@ class IosBackgroundTransportTest {
             h.transport.handleFinishedDownload(task, source.url(), h.response())
             h.transport.handleCompleted(task, error = null)
             val retained = checkNotNull(staged)
+            val acknowledgeRetained = checkNotNull(acknowledgeStage)
             assertFalse(h.system.exists(abandoned), "direct callbacks prepare before their first retain")
             assertTrue(retained.path.toString().contains("/.download-staging/"))
             assertContentEquals(PageMediaTestImages.png(), h.system.read(retained.path) { readByteArray() })
@@ -59,9 +68,11 @@ class IosBackgroundTransportTest {
             h.transport.handleFinishedDownload(nextTask, h.sourceFile(PageMediaTestImages.png()).url(), h.response())
             h.transport.handleCompleted(nextTask, error = null)
             checkNotNull(staged).discard()
+            checkNotNull(acknowledgeStage)()
             assertContentEquals(PageMediaTestImages.png(), h.system.read(retained.path) { readByteArray() })
             // A stale listener rejects/disposes its own staging only, never a current live artifact.
             retained.discard()
+            acknowledgeRetained()
             assertFalse(h.system.exists(retained.path))
             assertTrue(h.system.exists(prior))
         }
