@@ -19,10 +19,14 @@ final class ReaderImageDecodeTests: XCTestCase {
     @MainActor
     func testImageIoRejectsHtmlTruncationAndCrcCorrectInvalidPixelData() throws {
         let files = try ReaderTestFiles()
-        let invalid = [Data("<html>challenge</html>".utf8), Data(ReaderTestFiles.png.dropLast(8)), corruptPngPixels()]
-        for bytes in invalid {
+        let invalid: [(String, Data)] = [
+            ("html", Data("<html>challenge</html>".utf8)),
+            ("truncated-iend", Data(ReaderTestFiles.png.dropLast(8))),
+            ("crc-correct-zero-idat", corruptPngPixels()),
+        ]
+        for (name, bytes) in invalid {
             let file = try files.write(bytes)
-            XCTAssertNil(ReaderImageDecode.downsample(fileURL: file, targetWidthPx: 100))
+            XCTAssertNil(ReaderImageDecode.downsample(fileURL: file, targetWidthPx: 100), name)
         }
         let good = try files.write()
         XCTAssertNil(ReaderImageDecode.downsample(fileURL: good, targetWidthPx: .nan))
@@ -48,7 +52,73 @@ final class ReaderImageDecodeTests: XCTestCase {
         XCTAssertEqual(transport.taskCount, 0)
     }
 
-    // Fixture mutation only: recalculate IDAT CRC so native pixel decoding, not a PNG checksum error,
+    @MainActor
+    func testPngAcceptsSplitStreamPacked16BitAndAdam7Layouts() throws {
+        let files = try ReaderTestFiles()
+        for fixture in ReaderPngTestFixtures.valid {
+            XCTAssertEqual(ReaderPngValidation.validatedDimensions(fixture.data),
+                           ReaderPngValidation.Dimensions(width: fixture.width, height: fixture.height), fixture.name)
+            let file = try files.write(fixture.data)
+            // A source wider than 12k remains admissible; 12k is the OUTPUT ceiling, not a source cap.
+            let target: CGFloat = fixture.name == "above12k-source-edge" ? 20_000 : 100
+            let image = ReaderImageDecode.downsample(fileURL: file, targetWidthPx: target)
+            XCTAssertNotNil(image, fixture.name)
+            if let image = image {
+                XCTAssertLessThanOrEqual(max(image.size.width, image.size.height), ReaderImageDecode.maxPixelDimension,
+                                         fixture.name)
+            }
+        }
+    }
+
+    @MainActor
+    func testPngRejectsCrcFramingAndHeaderOrderFailures() throws {
+        let files = try ReaderTestFiles()
+        for fixture in ReaderPngTestFixtures.framingFailures {
+            XCTAssertNil(ReaderPngValidation.validatedDimensions(fixture.data), fixture.name)
+            let file = try files.write(fixture.data)
+            XCTAssertNil(ReaderImageDecode.downsample(fileURL: file, targetWidthPx: 100), fixture.name)
+        }
+    }
+
+    @MainActor
+    func testPngRejectsInvalidZlibStreamsAndFilteredRows() throws {
+        let files = try ReaderTestFiles()
+        for fixture in ReaderPngTestFixtures.streamFailures {
+            XCTAssertNil(ReaderPngValidation.validatedDimensions(fixture.data), fixture.name)
+            let file = try files.write(fixture.data)
+            XCTAssertNil(ReaderImageDecode.downsample(fileURL: file, targetWidthPx: 100), fixture.name)
+        }
+    }
+
+    @MainActor
+    func testPngChecksFilteredWorkBeforeInflationWithoutAddingASourcePixelCap() throws {
+        // Arithmetic only: never inflate or allocate the one-GiB boundary described by these headers.
+        XCTAssertEqual(ReaderPngValidation.filteredByteCount(width: 1, height: 536_870_912, bitDepth: 1,
+                                                            colorType: 0, interlace: 0), 1_073_741_824)
+        XCTAssertNil(ReaderPngValidation.filteredByteCount(width: 1, height: 536_870_913, bitDepth: 1,
+                                                          colorType: 0, interlace: 0))
+        XCTAssertEqual(ReaderPngValidation.filteredByteCount(width: 4_097, height: 4_097, bitDepth: 1,
+                                                            colorType: 0, interlace: 0), 2_105_858,
+                       "Swift must not acquire Native's 16M source-pixel admission")
+        XCTAssertNil(ReaderPngValidation.filteredByteCount(width: UInt32(Int32.max), height: UInt32(Int32.max),
+                                                          bitDepth: 16, colorType: 6, interlace: 0))
+        XCTAssertNil(ReaderPngValidation.filteredByteCount(width: .max, height: .max, bitDepth: 16,
+                                                          colorType: 6, interlace: 0))
+        XCTAssertNil(ReaderPngValidation.filteredByteCount(width: 0, height: 1, bitDepth: 1,
+                                                          colorType: 0, interlace: 0))
+        XCTAssertNil(ReaderPngValidation.filteredByteCount(width: 1, height: 0, bitDepth: 1,
+                                                          colorType: 0, interlace: 0))
+        let files = try ReaderTestFiles()
+        for fixture in ReaderPngTestFixtures.workFailures {
+            XCTAssertNil(ReaderPngValidation.admittedDimensions(fixture.data), fixture.name)
+            XCTAssertNil(ReaderPngValidation.validatedDimensions(fixture.data), fixture.name)
+            let file = try files.write(fixture.data)
+            XCTAssertNil(ReaderImageDecode.downsample(fileURL: file, targetWidthPx: 100), fixture.name)
+            XCTAssertNil(ReaderImageDecode.localAspect(fileURL: file), fixture.name)
+        }
+    }
+
+    // Fixture mutation only: recalculate IDAT CRC so compressed-stream validation, not a PNG checksum error,
     // has to reject this complete container. This is not a production validation implementation.
     private func corruptPngPixels() -> Data {
         var bytes = [UInt8](ReaderTestFiles.png)

@@ -51,15 +51,15 @@ class IosPageMediaInspectorTest {
     fun htmlTruncationPngCrcAndCrcCorrectBrokenPixelsNeverValidate() {
         val invalid =
             listOf(
-                PageMediaTestImages.html(),
-                byteArrayOf(),
-                PageMediaTestImages.png().dropLast(1).toByteArray(),
-                PageMediaTestImages.badPngCrc(),
-                PageMediaTestImages.corruptPngPixels(),
-                encoded(EncodedImageFormat.JPEG).dropLast(8).toByteArray(),
-                AvifTestFixtures.regular().dropLast(32).toByteArray(),
+                "html" to PageMediaTestImages.html(),
+                "empty" to byteArrayOf(),
+                "truncated_png" to PageMediaTestImages.png().dropLast(1).toByteArray(),
+                "bad_png_crc" to PageMediaTestImages.badPngCrc(),
+                "crc_correct_corrupt_png_pixels" to PageMediaTestImages.corruptPngPixels(),
+                "truncated_jpeg" to encoded(EncodedImageFormat.JPEG).dropLast(8).toByteArray(),
+                "truncated_avif" to AvifTestFixtures.regular().dropLast(32).toByteArray(),
             )
-        invalid.forEach { assertFalse(inspector.inspect(it) is PageInspection.Valid) }
+        invalid.forEach { (name, bytes) -> assertFalse(inspector.inspect(bytes) is PageInspection.Valid, name) }
     }
 
     @Test

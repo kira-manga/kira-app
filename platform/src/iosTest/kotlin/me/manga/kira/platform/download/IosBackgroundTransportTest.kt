@@ -167,12 +167,12 @@ class IosBackgroundTransportTest {
             val png = PageMediaTestImages.png()
             val invalid =
                 listOf(
-                    PageMediaTestImages.html(),
-                    png.copyOf(png.size - 1),
-                    PageMediaTestImages.badPngCrc(),
-                    PageMediaTestImages.corruptPngPixels(),
+                    "html" to PageMediaTestImages.html(),
+                    "truncated_png" to png.copyOf(png.size - 1),
+                    "bad_png_crc" to PageMediaTestImages.badPngCrc(),
+                    "crc_correct_corrupt_png_pixels" to PageMediaTestImages.corruptPngPixels(),
                 )
-            invalid.forEachIndexed { index, bytes ->
+            invalid.forEachIndexed { index, (name, bytes) ->
                 val prior = h.seedPage(index, "png", png)
                 val alternate = h.seedPage(index, "jpg", PageMediaTestImages.gif())
                 val source = h.sourceFile(bytes)
@@ -181,7 +181,7 @@ class IosBackgroundTransportTest {
                 h.transport.handleCompleted(task, error = null)
 
                 assertEquals(index, h.events.last().pageIndex)
-                assertFalse(h.events.last().complete)
+                assertFalse(h.events.last().complete, name)
                 assertTrue(requireNotNull(h.events.last().failure).startsWith("Invalid downloaded image:"))
                 assertFalse(h.system.exists(source), "the invalid file was adopted and then discarded")
                 assertContentEquals(png, h.system.read(prior) { readByteArray() })

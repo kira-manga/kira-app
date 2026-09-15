@@ -51,12 +51,14 @@ targets:
       - path: ../iosApp/NativeReader/ReaderPageTransport.swift
       - path: ../iosApp/NativeReader/ReaderImageRequestKey.swift
       - path: ../iosApp/NativeReader/ReaderImageDecode.swift
+      - path: ../iosApp/NativeReader/ReaderPngValidation.swift
       - path: ../iosApp/NativeReader/ReaderPerfLog.swift
       - path: ../iosApp/NativeReader/ReaderStrings.swift
       - path: ReaderChromeBarsTests.swift
       - path: WebtoonReaderBoundaryTests.swift
       - path: ReaderImageTestSupport.swift
       - path: ReaderImageDecodeTests.swift
+      - path: ReaderPngTestFixtures.swift
       - path: ReaderImageLoaderBehaviorTests.swift
       - path: ReaderImageOwnershipTests.swift
       - path: ReaderPageCellOwnershipTests.swift

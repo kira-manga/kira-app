@@ -65,7 +65,7 @@ internal fun inspectIosPage(
         invalidPage()
     } else {
         try {
-            inspectPageImageIoSource(source, expected, policy)
+            inspectPageImageIoSource(source, data, expected, policy)
         } finally {
             CFRelease(source)
         }
@@ -86,6 +86,7 @@ private fun createPageImageIoSource(data: CFDataRef): CGImageSourceRef? {
 @OptIn(ExperimentalForeignApi::class)
 private fun inspectPageImageIoSource(
     source: CGImageSourceRef,
+    data: CFDataRef,
     expected: PageImageFormat,
     policy: PageInspectionPolicy,
 ): PageInspection {
@@ -95,7 +96,9 @@ private fun inspectPageImageIoSource(
         invalidPage()
     } else {
         val metadata = imageIoMetadata(source, expected)
-        policy.rejectionFor(metadata) ?: inspectPageImageIoSample(source, metadata, policy.sampleMaxDimension)
+        policy.rejectionFor(metadata)
+            ?: (if (expected == PageImageFormat.PNG) validateIosPngIntegrity(data, metadata) else null)
+            ?: inspectPageImageIoSample(source, metadata, policy.sampleMaxDimension)
     }
 }
 

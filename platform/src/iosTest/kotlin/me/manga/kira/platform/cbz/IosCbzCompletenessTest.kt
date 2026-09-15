@@ -1,6 +1,7 @@
 package me.manga.kira.platform.cbz
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -169,7 +170,9 @@ class IosCbzCompletenessTest {
                 )
             val conversion = async { IosCbzWriter(fixture.fileSystem(), encoder).createCbz(paths, fixture.mangaId, 1L) }
             try {
-                withTimeout(15_000) { entered.await() }
+                withContext(Dispatchers.Default.limitedParallelism(1)) {
+                    withTimeout(15_000) { entered.await() }
+                }
                 conversion.cancel(CancellationException("conversion cancelled"))
                 released.complete(Unit)
                 assertFailsWith<CancellationException> { conversion.await() }
