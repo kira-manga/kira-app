@@ -1,6 +1,8 @@
 package me.manga.kira.platform.notification
 
 import platform.UserNotifications.UNMutableNotificationContent
+import platform.UserNotifications.UNNotificationInterruptionLevel.UNNotificationInterruptionLevelActive
+import platform.UserNotifications.UNNotificationInterruptionLevel.UNNotificationInterruptionLevelPassive
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNNotificationSound
 import platform.UserNotifications.UNUserNotificationCenter
@@ -9,11 +11,11 @@ import platform.UserNotifications.UNUserNotificationCenter
  * iOS [DownloadNotifier] backed by `UNUserNotificationCenter`.
  *
  * Per-chapter notifications use a stable identifier (`"dl-$key"`), so each [onProgress] update
- * **replaces** the previous one in place. Progress posts carry **no sound** and the
- * `"DOWNLOAD_PROGRESS"` category, so the app's `UNUserNotificationCenterDelegate`
- * (`iosApp/iosApp/AppDelegate.swift`) presents them silently — Notification Center / list only, no
- * banner. [onComplete] / [onFailed] use the `"DOWNLOAD_DONE"` category + the default sound so the
- * delegate shows a banner and plays a sound.
+ * **replaces** the previous one in place. Progress, finalizing and deferred posts carry a passive
+ * interruption level, **no sound** and the `"DOWNLOAD_PROGRESS"` category: list-only even when the
+ * app is backgrounded. The foreground delegate (`iosApp/iosApp/AppDelegate.swift`) keeps its list-only
+ * policy as defense in depth. [onComplete] / [onFailed] use an active interruption level, the
+ * `"DOWNLOAD_DONE"` category and the default sound. System authorization/settings still govern delivery.
  *
  * Text is English-only here — the `:platform`/`:shared` layers have no compose-resources access
  * (same constraint as the Android download worker's English strings); localization is a follow-up.
@@ -21,7 +23,16 @@ import platform.UserNotifications.UNUserNotificationCenter
  * Authorization is requested during onboarding (`NotificationPermissionRequester`); if it was never
  * granted the OS drops the request silently.
  */
-class IosDownloadNotifier : DownloadNotifier {
+class IosDownloadNotifier internal constructor(
+    private val deliver: (UNNotificationRequest) -> Unit,
+) : DownloadNotifier {
+
+    constructor() : this(
+        deliver = { request ->
+            UNUserNotificationCenter.currentNotificationCenter()
+                .addNotificationRequest(request) { _ -> /* errors swallowed; permission may be absent */ }
+        },
+    )
 
     override suspend fun onProgress(key: Int, title: String, current: Int, total: Int) =
         post(key, title, body = "$current/$total pages", category = CATEGORY_PROGRESS, alerting = false)
@@ -56,15 +67,19 @@ class IosDownloadNotifier : DownloadNotifier {
             setTitle(title)
             setBody(body)
             setCategoryIdentifier(category)
-            if (alerting) setSound(UNNotificationSound.defaultSound)
+            // Omitting sound is not enough: the framework default is active, and willPresent only
+            // controls foreground presentation. iOS 15+ content owns the background policy as well.
+            setInterruptionLevel(
+                if (alerting) UNNotificationInterruptionLevelActive else UNNotificationInterruptionLevelPassive,
+            )
+            setSound(if (alerting) UNNotificationSound.defaultSound else null)
         }
         val request = UNNotificationRequest.requestWithIdentifier(
             identifier = identifier(key),
             content = content,
             trigger = null, // deliver immediately
         )
-        UNUserNotificationCenter.currentNotificationCenter()
-            .addNotificationRequest(request) { _ -> /* errors swallowed; permission may be absent */ }
+        deliver(request)
     }
 
     private fun identifier(key: Int): String = "dl-$key"

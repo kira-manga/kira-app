@@ -32,8 +32,8 @@ import kotlin.test.assertTrue
  *  - search + status filters compose over the unfiltered `all` list,
  *  - the row-click → MENU → action state machine, the action wires (reply/edit/delete reach the
  *    repository with the right payloads), success closes the dialog + reloads + emits
- *    [ComplaintEffect.ShowActionSuccess], failure keeps the dialog + emits
- *    [ComplaintEffect.ShowActionFailure], and the in-flight guard drops double-submits.
+ *    [ComplaintEffect.ShowActionSuccess], failure keeps the dialog with a non-leaking error flag
+ *    and no screen effect, and the in-flight guard drops double-submits.
  */
 class ComplaintViewModelTest {
 
@@ -86,6 +86,13 @@ class ComplaintViewModelTest {
         override suspend fun deleteComplaint(id: String): Result<Unit> =
             record("delete:$id")
     }
+
+    private data class RetryScenario(
+        val mode: ActionDialogMode,
+        val intent: ComplaintIntent,
+        val expectedCall: String,
+        val success: ComplaintAction,
+    )
 
     private fun viewModel(
         list: FakeComplaintListRepository = FakeComplaintListRepository({ Result.success(emptyList()) }),
@@ -162,13 +169,14 @@ class ComplaintViewModelTest {
         assertEquals(ActionDialogMode.NONE, vm.state.value.actionDialogMode, "success closes the dialog")
         assertNull(vm.state.value.activeComplaint)
         assertFalse(vm.state.value.isSubmittingAction)
+        assertFalse(vm.state.value.actionFailed)
         assertEquals(2, list.loads, "success reloads the list (init + post-action)")
         assertEquals(listOf<ComplaintEffect>(ComplaintEffect.ShowActionSuccess(ComplaintAction.REPLY_SENT)), effects)
         collector.cancel()
     }
 
     @Test
-    fun deleteAction_failure_keepsDialog_emitsFailure() = runTest {
+    fun deleteAction_failure_keepsDialog_setsModalErrorWithoutEffect() = runTest {
         val target = complaint(id = "c9")
         val list = FakeComplaintListRepository({ Result.success(listOf(target)) })
         val actions = RecordingComplaintActionRepository(result = Result.failure(RuntimeException("firestore boom")))
@@ -186,9 +194,11 @@ class ComplaintViewModelTest {
             vm.state.value.actionDialogMode,
             "failure keeps the dialog so the user can retry",
         )
+        assertEquals(target, vm.state.value.activeComplaint)
         assertFalse(vm.state.value.isSubmittingAction, "the guard flag resets so retry can run")
+        assertTrue(vm.state.value.actionFailed)
         assertEquals(1, list.loads, "no reload on failure")
-        assertEquals(listOf<ComplaintEffect>(ComplaintEffect.ShowActionFailure), effects)
+        assertTrue(effects.isEmpty(), "failure must not enqueue a snackbar behind the modal")
         collector.cancel()
     }
 
@@ -219,5 +229,112 @@ class ComplaintViewModelTest {
         actions.gate?.complete(Unit)
         assertFalse(vm.state.value.isSubmittingAction, "flag resets once the gated action completes")
         assertEquals(ActionDialogMode.NONE, vm.state.value.actionDialogMode)
+    }
+
+    @Test
+    fun actionFailures_allowOneExplicitRetryWithSamePayload_andClearOnSuccess() = runTest {
+        val scenarios = listOf(
+            RetryScenario(
+                ActionDialogMode.REPLY,
+                ComplaintIntent.OnSubmitReply("reply draft"),
+                "reply:c9:reply draft",
+                ComplaintAction.REPLY_SENT,
+            ),
+            RetryScenario(
+                ActionDialogMode.EDIT,
+                ComplaintIntent.OnSubmitEdit("edited subject", "edited body"),
+                "edit:c9:edited subject:edited body",
+                ComplaintAction.UPDATED,
+            ),
+            RetryScenario(
+                ActionDialogMode.DELETE,
+                ComplaintIntent.OnConfirmDelete,
+                "delete:c9",
+                ComplaintAction.DELETED,
+            ),
+        )
+
+        for (scenario in scenarios) {
+            val target = complaint(id = "c9")
+            val list = FakeComplaintListRepository({ Result.success(listOf(target)) })
+            val actions = RecordingComplaintActionRepository(result = Result.failure(RuntimeException("action failed")))
+            val vm = viewModel(list = list, actions = actions)
+            val effects = mutableListOf<ComplaintEffect>()
+            val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+
+            vm.submit(ComplaintIntent.OnRowClick(target))
+            vm.submit(ComplaintIntent.OnSelectAction(scenario.mode))
+            vm.submit(scenario.intent)
+
+            assertEquals(listOf(scenario.expectedCall), actions.calls)
+            assertEquals(scenario.mode, vm.state.value.actionDialogMode)
+            assertEquals(target, vm.state.value.activeComplaint)
+            assertTrue(vm.state.value.actionFailed)
+            assertFalse(vm.state.value.isSubmittingAction)
+            assertEquals(1, list.loads, "a failed mutation must not reload/reset the form")
+            assertTrue(effects.isEmpty())
+
+            actions.result = Result.success(Unit)
+            actions.gate = CompletableDeferred()
+            // Simulate the retained form sending its unchanged payload through the same control.
+            // Actual rememberSaveable draft/focus retention belongs to the manual UI checklist.
+            vm.submit(scenario.intent)
+            assertTrue(vm.state.value.isSubmittingAction)
+            assertFalse(vm.state.value.actionFailed, "a new attempt clears the old error")
+
+            vm.submit(scenario.intent) // duplicate retry
+            vm.submit(ComplaintIntent.OnDismissActionDialog)
+            vm.submit(ComplaintIntent.OnSelectAction(ActionDialogMode.MENU))
+            vm.submit(ComplaintIntent.OnRowClick(complaint(id = "other")))
+
+            assertEquals(listOf(scenario.expectedCall, scenario.expectedCall), actions.calls)
+            assertEquals(scenario.mode, vm.state.value.actionDialogMode, "retry retains its mode")
+            assertEquals(target, vm.state.value.activeComplaint, "retry retains its target")
+
+            actions.gate?.complete(Unit)
+
+            assertFalse(vm.state.value.isSubmittingAction)
+            assertFalse(vm.state.value.actionFailed)
+            assertEquals(ActionDialogMode.NONE, vm.state.value.actionDialogMode)
+            assertNull(vm.state.value.activeComplaint)
+            assertEquals(2, list.loads, "only success reloads the list")
+            assertEquals(listOf<ComplaintEffect>(ComplaintEffect.ShowActionSuccess(scenario.success)), effects)
+            collector.cancel()
+        }
+    }
+
+    @Test
+    fun actionFailure_clearsOnModeChangeDismissalAndNewTarget() = runTest {
+        val target = complaint(id = "c9")
+        val other = complaint(id = "other")
+        val actions = RecordingComplaintActionRepository(result = Result.failure(RuntimeException("action failed")))
+        val vm = viewModel(actions = actions)
+
+        vm.submit(ComplaintIntent.OnRowClick(target))
+        vm.submit(ComplaintIntent.OnSelectAction(ActionDialogMode.REPLY))
+        vm.submit(ComplaintIntent.OnSubmitReply("reply draft"))
+        assertTrue(vm.state.value.actionFailed)
+
+        vm.submit(ComplaintIntent.OnSelectAction(ActionDialogMode.EDIT))
+        assertFalse(vm.state.value.actionFailed)
+        assertEquals(target, vm.state.value.activeComplaint)
+
+        vm.submit(ComplaintIntent.OnSubmitEdit("edited subject", "edited body"))
+        assertTrue(vm.state.value.actionFailed)
+        vm.submit(ComplaintIntent.OnDismissActionDialog)
+        assertFalse(vm.state.value.actionFailed)
+        assertEquals(ActionDialogMode.NONE, vm.state.value.actionDialogMode)
+        assertNull(vm.state.value.activeComplaint)
+
+        vm.submit(ComplaintIntent.OnRowClick(target))
+        assertFalse(vm.state.value.actionFailed, "reopening has no stale error")
+        vm.submit(ComplaintIntent.OnSelectAction(ActionDialogMode.DELETE))
+        vm.submit(ComplaintIntent.OnConfirmDelete)
+        assertTrue(vm.state.value.actionFailed)
+        vm.submit(ComplaintIntent.OnRowClick(other))
+        assertFalse(vm.state.value.actionFailed)
+        assertEquals(ActionDialogMode.MENU, vm.state.value.actionDialogMode)
+        assertEquals(other, vm.state.value.activeComplaint)
+        assertEquals(3, actions.calls.size, "navigation never retries a failed mutation")
     }
 }

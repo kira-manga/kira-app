@@ -5,33 +5,13 @@ import me.manga.kira.presentation.mvi.MviEffect
 /**
  * One-shot effects emitted by the rework admin Complaint dashboard screen.
  *
- * Phase 7.x.complaint.admin rework: introduced as an empty sealed interface (extensibility hook
- * for follow-on admin-actions slices). The foundation surface has no effects today — read-only
- * load/search/filter is pure state transitions; the inline-error-with-Retry pattern lives in
- * state ([AdminComplaintState.error]), not effects.
+ * [ShowActionSuccess] carries the semantic action for a localized confirmation snackbar.
+ * Successful mutations dismiss the dialog before emitting; body-copy also uses this effect.
  *
- * **OCP (contract §6)**: closed under modification, open under extension. The future admin-
- * actions slice will append variants exactly like the user-side foundation → actions slice did
- * (see [me.manga.kira.presentation.complaint.ComplaintEffect]'s `ShowSuccessMessage` /
- * `ShowErrorMessage`). Anticipated extensions:
- *  - `ShowStatusChangeSuccess(message: String)` — fired after a status-change use case succeeds.
- *    Drives a confirmation snackbar.
- *  - `ShowStatusChangeError(message: String)` — fired on status-change failure.
- *  - `ShowEditSuccess(message: String)` / `ShowEditError(message: String)`.
- *  - `ShowDeleteSuccess(message: String)` / `ShowDeleteError(message: String)`.
- *  - `ShowClosureReasonSuccess(message: String)` / `ShowClosureReasonError(message: String)`.
- *  - `ShowBulkActionResult(successCount: Int, failureCount: Int)`.
- *  - `CopyToClipboard(text: String)` — for the legacy long-press body-copy affordance, if ported.
- *
- * **Why declare an empty sealed interface today rather than `Nothing`?**: same rationale as the
- * user-side foundation slice — extending `MviViewModel<S, I, Nothing>` would force a slightly
- * uglier signature and lose the OCP §6 extension hook. The empty-sealed-interface pattern is
- * the rework convention for "no effects today; reserved for tomorrow".
- *
- * **`data class` modifier rationale**: per the rework MVI contract — when variants are added,
- * they use `data class` (payload) or `data object` (payload-free) so structural equality
- * applies. The empty surface today has no variants, but future additions follow the same
- * convention.
+ * Mutation failure is [AdminComplaintState.actionFailed], not an effect: the error belongs to
+ * the retained dialog's accessibility root, with the existing submit control as the only retry
+ * path. List-load failure remains in [AdminComplaintState.error]. Neither state exposes raw
+ * throwable text. The historical audit below predates the dialog-local failure policy.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster17.staleKdocSweep.cascade,
  * Task #473, 2026-05-28): two categories of fulfilled-prediction citations
@@ -86,10 +66,4 @@ sealed interface AdminComplaintEffect : MviEffect {
      * Per the MVI contract effects never carry i18n text.
      */
     data class ShowActionSuccess(val action: AdminComplaintAction) : AdminComplaintEffect
-
-    /**
-     * Show a generic localized error snackbar after a failed admin mutation. The underlying
-     * throwable is logged in the VM (never surfaced raw to the operator / leaked to a snackbar).
-     */
-    data object ShowActionFailure : AdminComplaintEffect
 }

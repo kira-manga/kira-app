@@ -12,9 +12,10 @@ import me.manga.kira.presentation.mvi.MviEffect
  * (no view-side trigger needed), and there was no Request-Language flow at the time. The
  * empty-sealed-interface design was deliberate (OCP-friendly extensibility hook).
  *
- * **Phase 7.x.language.request** appends two variants. Both fire from
- * [LanguageIntent.OnSubmitRequest]'s coroutine completion in the VM. The `:ui` layer collects
- * [LanguageViewModel.effects] via `LaunchedEffect` and dispatches to a `SnackbarHostState`.
+ * [RequestSubmitted] fires after a successful [LanguageIntent.OnSubmitRequest] and dialog
+ * dismissal. The `:ui` layer collects [LanguageViewModel.effects] and shows a success snackbar.
+ * Failures live in [LanguageState.requestFailed], inside the retained dialog rather than behind
+ * its modal accessibility root. The dialog's existing submit control is the sole retry path.
  *
  * Why **effects** and not state-flag flips? Snackbars are intrinsically one-shot:
  *  - State-flag posture would require an additional "snackbarShown" flag to know whether the
@@ -34,10 +35,12 @@ import me.manga.kira.presentation.mvi.MviEffect
  * carries no payload — it signals the EVENT, not the MESSAGE. A `data object` is the
  * canonical Kotlin idiom for a payload-less singleton signal.
  *
+ * The historical audit below predates removal of the failure snackbar.
+ *
  * **Audit-trail postscript** (Phase 9.x.cluster32.staleKdocSweep.cascade,
  * Task #488, 2026-05-28): one stale citation appears in the
- * [RequestFailed] member KDoc below:
- *  - Line 83 ([RequestFailed] KDoc, "The legacy screen matches this
+ * `RequestFailed` member KDoc:
+ *  - Line 83 (`RequestFailed` KDoc, "The legacy screen matches this
  *    posture (one error snackbar for all failure modes)"). STALE-
  *    SYMBOL-REFERENCE — Phase 9.x.language.retire (§350) DELETED the
  *    legacy `:shared` `LanguageScreen` along with its hosting
@@ -72,15 +75,4 @@ sealed interface LanguageEffect : MviEffect {
      * so the snackbar appears on the underlying picker, not the open dialog.
      */
     data object RequestSubmitted : LanguageEffect
-
-    /**
-     * The user's Request-Language submission failed (validation, network, Firestore, etc.).
-     * The `:ui` layer shows an error snackbar ("Request failed" or its localized equivalent)
-     * with a Retry action label. The dialog stays open with the typed text preserved so the
-     * user can edit and resubmit.
-     *
-     * The failure cause is not surfaced — all failures map to one user-visible message. The
-     * legacy screen matches this posture (one error snackbar for all failure modes).
-     */
-    data object RequestFailed : LanguageEffect
 }

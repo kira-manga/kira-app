@@ -89,19 +89,17 @@ sealed interface LanguageIntent : MviIntent {
 
     /**
      * User tapped the bottom "Request a language" row. VM opens the FeedbackDialog by setting
-     * `requestDialogVisible = true` and clearing `requestText` + `requestSubmitting` to their
+     * `requestDialogVisible = true` and clearing `requestText` + `requestFailed` to their
      * defaults (so a re-open starts fresh — no stale text from a previous attempt).
      *
-     * Idempotent: re-tapping while the dialog is already open is harmless (the state mutation
-     * is a no-op because the flags are already at their target values).
+     * Re-tapping while the dialog is open or submitting is ignored; the draft is not reset.
      */
     data object OnOpenRequestDialog : LanguageIntent
 
     /**
      * User dismissed the FeedbackDialog (Cancel button or scrim tap). VM sets
-     * `requestDialogVisible = false`. Does NOT clear `requestSubmitting` — if an in-flight
-     * submission completes after dismissal, the resulting effect (success/failure snackbar)
-     * still shows on the underlying screen.
+     * `requestDialogVisible = false` and clears the draft/error. Ignored while submitting so
+     * the pending result cannot apply to a replacement dialog.
      *
      * Idempotent: dismissing an already-closed dialog is a no-op state mutation.
      */
@@ -110,23 +108,23 @@ sealed interface LanguageIntent : MviIntent {
     /**
      * User typed in the dialog's TextField. [text] is the new full value (TextField's
      * `onValueChange` callback gives the entire new string, not the delta). VM sets
-     * `requestText = text`.
+     * `requestText = text` only while the dialog is visible and not submitting.
      */
     data class OnRequestTextChange(val text: String) : LanguageIntent
 
     /**
-     * User tapped Send on the FeedbackDialog. VM sets `requestSubmitting = true` and launches
+     * User tapped Send on the FeedbackDialog. VM clears `requestFailed`, sets
+     * `requestSubmitting = true` and launches
      * the [me.manga.kira.domain.usecase.feedback.SendLanguageRequestUseCase] with the
      * current `requestText`. On completion (success OR failure):
      *  - Sets `requestSubmitting = false`.
      *  - On success: also sets `requestDialogVisible = false` + `requestText = ""`, and emits
      *    [LanguageEffect.RequestSubmitted].
      *  - On failure: keeps `requestDialogVisible = true` + preserves `requestText` so the user
-     *    can edit and retry, and emits [LanguageEffect.RequestFailed].
+     *    can edit and resubmit, and sets [LanguageState.requestFailed] inside the dialog.
      *
      * **Re-entrance guard**: if the user taps Send while `requestSubmitting == true`, the VM
-     * branch is a no-op (same posture as the Details slice's `onRetry` re-entrance guard).
-     * This prevents double-submission if the UI doesn't disable the button.
+     * branch is a no-op. Submissions while the dialog is hidden are also ignored.
      */
     data object OnSubmitRequest : LanguageIntent
 }

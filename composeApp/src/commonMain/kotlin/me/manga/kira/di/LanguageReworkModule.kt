@@ -120,7 +120,7 @@ import org.koin.dsl.module
  */
 val languageReworkModule: Module = module {
     single<LanguageRepository> { LanguageRepositoryImpl(legacy = get(), localeSwitcher = get()) }
-    single<FeedbackRepository> { FeedbackRepositoryImpl(get(), get(), get()) }
+    single<FeedbackRepository> { FeedbackRepositoryImpl(get(), get(), get(), get()) }
 
     factory { GetSupportedLanguagesUseCase(get()) }
     factory { ObserveSelectedLanguageUseCase(get()) }
