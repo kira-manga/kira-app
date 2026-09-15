@@ -274,6 +274,7 @@ dependencies {
     implementation(libs.kermit.crashlytics)
 
     // Tests
+    testImplementation(project(":sources:engine"))
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
     testImplementation(libs.robolectric.runner)

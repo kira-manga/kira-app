@@ -2,7 +2,6 @@ package me.manga.kira.sources.engine
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.serialization.json.Json
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
@@ -21,7 +20,6 @@ import me.manga.kira.source.contracts.SourceHttpMethod as SharedHttpMethod
 import me.manga.kira.source.contracts.SourceMangaRef
 import me.manga.kira.source.contracts.SourceRequest as SharedRequest
 import me.manga.kira.source.contracts.SourceResponse as SharedResponse
-import me.manga.kira.source.contracts.model.SourceConfig as SharedSourceConfig
 import me.manga.kira.source.engine.GenericSourceEngine
 import me.manga.kira.sources.contracts.CloudflareChallengeSignal
 import me.manga.kira.sources.contracts.HeaderStore
@@ -177,22 +175,6 @@ class GenericSourceClient(
                     },
             )
         }
-}
-
-private val configBridgeJson =
-    Json {
-        encodeDefaults = true
-        explicitNulls = false
-    }
-
-/**
- * The app and shared engine deliberately use separate contract packages. Their current serialized
- * SourceConfig shape is covered by cross-repository tests, so the boundary conversion uses that
- * shape instead of maintaining a second, error-prone hand-written field map.
- */
-private fun SourceConfig.toSharedConfig(): SharedSourceConfig {
-    val raw = configBridgeJson.encodeToString(SourceConfig.serializer(), this)
-    return configBridgeJson.decodeFromString(SharedSourceConfig.serializer(), raw)
 }
 
 private fun SharedRequest.toAppRequest(): SourceRequest =

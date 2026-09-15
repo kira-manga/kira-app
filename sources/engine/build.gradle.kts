@@ -60,6 +60,7 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+            implementation("me.manga.kira.source:source-testkit:0.1.0")
         }
     }
 }

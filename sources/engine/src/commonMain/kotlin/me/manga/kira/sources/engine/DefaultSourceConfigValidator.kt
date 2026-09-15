@@ -11,16 +11,18 @@ import me.manga.kira.sources.engine.internal.HeaderNamePolicy
 
 /**
  * Schema + referential validator. Runs after signature verification, before any source is trusted.
- * Two jobs: (1) the document is structurally sane (supported schema, non-blank keys, URL-shaped
- * base), and (2) every strategy/transform/date/pagination name a `generic` source references is one
- * this build ships (via [StrategyRegistry]). Archived descriptors remain parseable for migration
- * tooling, but the shipping catalog manager independently rejects every non-generic entry.
+ * Checks structural sanity and compiled strategy names, then the shared engine's declaration
+ * capabilities through the same model bridge used for execution. Archived descriptors remain
+ * parseable for migration tooling, but the shipping catalog manager independently rejects every
+ * non-generic entry.
  *
  * Errors are collected (not fail-fast) and keyed by api so a whole batch can be diagnosed at once.
  */
 class DefaultSourceConfigValidator(
     private val strategies: StrategyRegistry,
 ) : SourceConfigValidator {
+    private val declarationCapabilities = SourceDeclarationBridge(strategies)
+
     override fun validate(document: SourceConfigDocument): ValidationResult {
         val errors = mutableListOf<String>()
 
@@ -156,6 +158,9 @@ class DefaultSourceConfigValidator(
         validateEndpoints(source, tag, errors)
         validateFields(source, tag, errors)
         validateSearchFilters(source, tag, errors)
+        declarationCapabilities.validate(source).forEach { finding ->
+            errors += "$tag ${finding.path}: [${finding.code}] ${finding.message}"
+        }
     }
 
     private fun validateLifecycleMetadata(

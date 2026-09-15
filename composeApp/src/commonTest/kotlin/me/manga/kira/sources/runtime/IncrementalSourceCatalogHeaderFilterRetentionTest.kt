@@ -42,7 +42,12 @@ class IncrementalSourceCatalogHeaderFilterRetentionTest {
             fixture.rejectAdvancingCandidate()
         }
 
-    private class Fixture {
+    internal class Fixture(
+        private val candidateChange: (SourceConfig) -> SourceConfig = { source(it.api, headerName = "Authorization") },
+        private val expectedError: String =
+            "source 'ChangingSource': filters: filter 'custom': request.param: " +
+                "sensitive header names are not supported for filters",
+    ) {
         private val stable = source("StableSource")
         private val changing = source("ChangingSource")
         private val baseline = catalog(2, 1, listOf(stable, changing))
@@ -53,7 +58,7 @@ class IncrementalSourceCatalogHeaderFilterRetentionTest {
                 sources =
                     listOf(
                         stable.copy(displayName = "Valid update that must not partially activate"),
-                        source("ChangingSource", headerName = "Authorization"),
+                        candidateChange(changing),
                     ),
                 previous = baseline.stored.manifest.metadata,
             )
@@ -108,13 +113,7 @@ class IncrementalSourceCatalogHeaderFilterRetentionTest {
             val (document, validation) = validator.calls.single { it.first.revision == 3L }
             assertEquals(candidate.document, document) // Both advancing payloads reached the real validator.
             assertFalse(validation.isValid)
-            assertEquals(
-                listOf(
-                    "source 'ChangingSource': filters: filter 'custom': request.param: " +
-                        "sensitive header names are not supported for filters",
-                ),
-                validation.errors,
-            )
+            assertEquals(listOf(expectedError), validation.errors)
             assertEquals(listOf("catalog validation failed"), rejections)
             assertEquals(listOf(1L, 2L, 2L, 3L), validator.calls.map { it.first.revision })
             assertEquals(listOf(null, checksum(2)), remote.requestedEtags)
