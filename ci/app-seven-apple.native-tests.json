@@ -1,0 +1,20 @@
+{
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "d4a18aac34a32f8332af9aa91d196fb69fd93550",
+    "tree": "261f80d6487a26e50e120302642e56bcef7b9241"
+  },
+  "directCanaryProcesses": 1,
+  "linkTask": ":platform:linkDebugTestIosSimulatorArm64",
+  "newNativeTestTaskRuns": 0,
+  "note": "Full ordinary platform test source closure links without pruning. The one exact direct selector is capture stimulus, not NativeTestTask/XML acceptance. Source binding alone grants no execution.",
+  "ordinaryMainModules": [
+    "core",
+    "platform"
+  ],
+  "schema": "app70-single-default-writer-v1",
+  "selector": "me.manga.kira.platform.download.BgDownloadLogAppleWriterCanaryTest.defaultAppleWriterEmitsCanaryForExternalCapture",
+  "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/BgDownloadLogAppleWriterCanaryTest.kt",
+  "sourceSha256": "dc9b763ee3f9554bea33d6f4bccedae8c8ba32306b8f50bd4ce37b4f597d3405",
+  "status": "SOURCE_BOUND_NOT_AUTHORIZATION"
+}

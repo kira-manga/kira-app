@@ -1,0 +1,86 @@
+# Source-only candidate: request/approval are deliberately UNBOUND until primary review.
+# One platform test-binary link + one default-writer canary; no Store, deployment or credentials.
+name: App70 lean Apple writer capture
+on:
+  push:
+    branches: [remediation/app70-apple-capture-20260915-01]
+    paths: [ci/app5-ios-host.request.json]
+permissions:
+  contents: read
+concurrency:
+  group: app70-apple-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/remediation/app70-apple-capture-20260915-01' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - name: Exact control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Admit primary-bound one-attempt request
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app5-ios-host.py request
+      - name: Exact unmodified App source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Ordinary platform link and one owned default-writer capture
+        id: capture
+        timeout-minutes: 33
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app5-ios-host.py native
+      - name: Bounded evidence after final owned absence
+        if: ${{ always() && steps.capture.outputs.retention_ready == 'true' }}
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app70-apple-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ env.APP5_RUN }}/reports/apple-log-help.log
+            ${{ env.APP5_RUN }}/reports/apple-writer-capture.json
+            ${{ env.APP5_RUN }}/reports/apple-writer.stderr.log
+            ${{ env.APP5_RUN }}/reports/apple-writer.stdout.log
+            ${{ env.APP5_RUN }}/reports/apple-writer.unified.json
+            ${{ env.APP5_RUN }}/reports/apple-writer.unified.stderr.log
+            ${{ env.APP5_RUN }}/reports/commands.json
+            ${{ env.APP5_RUN }}/reports/gradle-stop-cleanup.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-final.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-native.log
+            ${{ env.APP5_RUN }}/reports/identity.json
+            ${{ env.APP5_RUN }}/reports/native-app-tasks.json
+            ${{ env.APP5_RUN }}/reports/native-platform-arch.log
+            ${{ env.APP5_RUN }}/reports/native-platform-platform.log
+            ${{ env.APP5_RUN }}/reports/native-proof.json
+            ${{ env.APP5_RUN }}/reports/native-source.json
+            ${{ env.APP5_RUN }}/reports/native-tests.log
+            ${{ env.APP5_RUN }}/reports/request.json
+            ${{ env.APP5_RUN }}/reports/result.json
+            ${{ env.APP5_RUN }}/reports/simulator.json
+            ${{ env.APP5_RUN }}/reports/source.json
+            ${{ env.APP5_RUN }}/reports/tools.json
