@@ -110,7 +110,15 @@ class LibraryRefreshNotificationTest {
                     ListenableWorker.Result.success(),
                     run.future.get(NOTIFICATION_WAIT_MILLIS, TimeUnit.MILLISECONDS),
                 )
-                assertEquals(1, posting.rejectedChannels.get())
+                assertEquals(
+                    "Starting foreground, batch progress and completion must each recheck the rejected channel",
+                    3,
+                    posting.rejectedChannels.get(),
+                )
+                assertTrue(
+                    "Rejected refresh-channel creation must not post a refresh notification",
+                    posting.posted.none { it.second.channelId == "library_refresh" },
+                )
                 val rows = room.updates()
                 assertEquals(2, rows.size)
                 room.assertStoredWithRealChapterIds(rows)
