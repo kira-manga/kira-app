@@ -1,0 +1,141 @@
+{
+  "schema": "app-seven-apple-uikit-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "5ec7018be422877f0d8b58d46e82a76c0bd7b672",
+    "tree": "0674b9900eeab7f3e9cf29a95e0551ab8b23e168"
+  },
+  "target": "ReaderChromeControlsTests",
+  "caseCount": 38,
+  "suites": [
+    {
+      "class": "ReaderImageOwnershipTests",
+      "methods": [
+        "testFourthQueuedFileIsDeletedImmediatelyWhenItsLastSubscriberCancels",
+        "testCancelledActiveDecodeCannotFinishOrCacheOverItsSuccessor",
+        "testLoaderDeinitDiscardsPendingFileWithoutWaitingForTheDecodeQueue",
+        "testLocalFilesAreBorrowedAndSurviveCancellationAndLoaderDestruction"
+      ]
+    },
+    {
+      "class": "ReaderImageLoaderBehaviorTests",
+      "methods": [
+        "testCoalescedSubscribersKeepIndependentCancellationAndHeadersSeparateRepresentations",
+        "testOffMainCacheDeliveryCanStillBeCancelledAndMainHitStaysSynchronous",
+        "testAQueuedProgressDeliveryIsCancelledPerSubscriber",
+        "testLateTransportFileAfterAllSubscribersCancelIsDiscardedWithoutDecode",
+        "testHeaderHashIsCanonicalDelimitedAndDoesNotExposeHeaders",
+        "testDefaultCacheConfigurationIsRetainedWithoutClaimingDownloadTaskCacheParity"
+      ]
+    },
+    {
+      "class": "ReaderImageDecodeTests",
+      "methods": [
+        "testImageIoReadsMislabeledPngFromAFileAtTheRequestedBound",
+        "testImageIoRejectsHtmlTruncationAndCrcCorrectInvalidPixelData",
+        "testLoaderChecksBorrowedLocalFileBudgetBeforeDecoderEntry"
+      ]
+    },
+    {
+      "class": "ReaderPageTransportTests",
+      "methods": [
+        "testExactUnknownAndUnderstatedLengthsAreCheckedAgainstTheActualCompletedFile",
+        "testOverLimitActualOrDeclaredLengthCannotBeAdopted",
+        "testNonHttpFailedStatusEmptyAndNonRegularFilesFailClosed",
+        "testProgressPolicyReasonSurvivesCancellationAndDoesNotPoisonAnotherTask",
+        "testProgressDeclaredLengthAlsoCancelsBeforeACompletedFileIsDelivered",
+        "testInvalidationBetweenFileAndCompletionDiscardsExactlyItsOwnedFile",
+        "testMoveSetupFailureNeverDeletesTheOsInputOrAnExistingDestination"
+      ]
+    },
+    {
+      "class": "ReaderPageCellOwnershipTests",
+      "methods": [
+        "testBothCellKindsCancelReplacedUrlsAndHeadersAndIgnoreLateCompletions",
+        "testSameImageZoomReloadKeepsTheDisplayedImageUntilReplacement",
+        "testLoaderReplacementCancelsOnTheOldOwnerForBothCellKinds",
+        "testSynchronousCompletionCannotOverwriteAReentrantSuccessorToken",
+        "testReentrantLoaderSwapReturnsTheObsoleteTokenToItsCorrectOwner",
+        "testDeinitCancelsPendingTokensWithoutCallbacksRetainingCells"
+      ]
+    },
+    {
+      "class": "WebtoonPrefetchOwnershipTests",
+      "methods": [
+        "testDuplicateUrlsKeepOneTokenPerRowAndRepeatedPrefetchDoesNotOverwriteIt",
+        "testHeaderReplacementCancelsOldPrefetchAndNewRequestsUseFreshHeaders",
+        "testOrdinaryAppendRetainsTokensButAppendWithChangedExistingHeadersCancelsThem",
+        "testWidthChangeAndDisappearanceCancelOwnedPrefetches",
+        "testRealDoubleTapZoomActionCancelsPrefetchBeforeResharpening",
+        "testDeinitCancelsOutstandingPrefetchWithoutImageCallbacksRetainingTheController"
+      ]
+    },
+    {
+      "class": "WebtoonReaderBoundaryTests",
+      "methods": [
+        "testSkippedBoundaryPreservesLaterPageViewportAndReaderState",
+        "testRecoveredBoundaryPreservesLaterPageViewportAndReaderState",
+        "testTerminalBoundaryPreservesLaterPageViewportAndReaderState",
+        "testAppendReconfiguresChangedPrefixBoundaryWithoutResettingViewport",
+        "testFreshHeadersRebindVisiblePageWithoutResettingViewport",
+        "testChapterReplacementStillSeedsNewImagesAndHonorsNewResume"
+      ]
+    }
+  ],
+  "testSwiftInputs": [
+    "iosApp/iosApp/NativeReader/ReaderImageLoading.swift",
+    "iosApp/iosApp/NativeReader/ReaderImageRequests.swift",
+    "iosApp/iosApp/NativeReader/ReaderPageFile.swift",
+    "iosApp/iosApp/NativeReader/ReaderPageTransport.swift",
+    "iosApp/iosApp/NativeReader/ReaderImageRequestKey.swift",
+    "iosApp/iosApp/NativeReader/ReaderImageDecode.swift",
+    "iosApp/iosApp/NativeReader/ReaderPageCell.swift",
+    "iosApp/iosApp/NativeReader/ReaderPagedCell.swift",
+    "iosApp/iosApp/NativeReader/ReaderPageOverlays.swift",
+    "iosApp/iosApp/NativeReader/ReaderPerfLog.swift",
+    "iosApp/iosApp/NativeReader/ReaderBoundaryCell.swift",
+    "iosApp/iosApp/NativeReader/WebtoonReaderViewController.swift",
+    "iosApp/iosApp/NativeReader/ReaderChromeView.swift",
+    "iosApp/iosApp/NativeReader/ReaderChildController.swift",
+    "iosApp/iosApp/NativeReader/ReaderStrings.swift",
+    "iosApp/reader-controls-tests/ReaderImageDecodeTests.swift",
+    "iosApp/reader-controls-tests/ReaderImageLoaderBehaviorTests.swift",
+    "iosApp/reader-controls-tests/ReaderImageOwnershipTests.swift",
+    "iosApp/reader-controls-tests/ReaderPageCellOwnershipTests.swift",
+    "iosApp/reader-controls-tests/ReaderPageTransportTests.swift",
+    "iosApp/reader-controls-tests/WebtoonPrefetchOwnershipTests.swift",
+    "iosApp/reader-controls-tests/WebtoonReaderBoundaryTests.swift",
+    "iosApp/reader-controls-tests/ReaderChromeBarsTests.swift",
+    "iosApp/reader-controls-tests/ReaderImageTestSupport.swift"
+  ],
+  "inputs": {
+    "iosApp/iosApp/NativeReader/ReaderImageLoading.swift": "1d7d84f4f9a0694266f8dc3b8517906ada256735647f8c25fbb06f58fddd8f8b",
+    "iosApp/iosApp/NativeReader/ReaderImageRequests.swift": "a085804d48066a59b3d9d6111f1bf509d373d818af887665cf19939f5c444e52",
+    "iosApp/iosApp/NativeReader/ReaderPageFile.swift": "a8628cf4c4d2e48f15e253ee676c7c8a984b9e6c91f1e5b1debf24878801f84f",
+    "iosApp/iosApp/NativeReader/ReaderPageTransport.swift": "fafbe9bb70356788c306b658b70868845c12ea306ff7b65f9bbfe7b1909c9b09",
+    "iosApp/iosApp/NativeReader/ReaderImageRequestKey.swift": "88f3384656e1b8013731705ca3250e5651f4c446c34604c9c2e2540b4928af5d",
+    "iosApp/iosApp/NativeReader/ReaderImageDecode.swift": "fc8fc512dd1caab73eee2115b2487b0ee7a74bc5274a70c994ef4a96d4669e44",
+    "iosApp/iosApp/NativeReader/ReaderPageCell.swift": "88e93e44be71882d0ce2176a160b0af0e9685babdd9ef751c1970a9da0455845",
+    "iosApp/iosApp/NativeReader/ReaderPagedCell.swift": "393556711c35a9f6c532a50e384f89bc792a777c98cd9e65ec06a513d133a4e9",
+    "iosApp/iosApp/NativeReader/ReaderPageOverlays.swift": "e5ce553c15c052068c2a438dca5d7489c0d7a90c3fbfe9ae3adfdd376274c75d",
+    "iosApp/iosApp/NativeReader/ReaderPerfLog.swift": "cb213d78f31c32e2fffb58ba8d3ef5ade3408529f4007ccfb10e64173cee0917",
+    "iosApp/iosApp/NativeReader/ReaderBoundaryCell.swift": "032f5321ea6265624aa8b0d28e213f96eac3b9ee3565921c84bc68494dcfa496",
+    "iosApp/iosApp/NativeReader/WebtoonReaderViewController.swift": "57fd073826165080ffe727daf47ffa0efc4e4c22d2ca4ddf9cecbf0ab03d9e1b",
+    "iosApp/iosApp/NativeReader/ReaderChromeView.swift": "bf9bad6dcc21a5c284fd448be270012df9f3feffaca7b58d44859172b697c6ae",
+    "iosApp/iosApp/NativeReader/ReaderChildController.swift": "41ed285c92fe1d12fea9b5abed610b47db11620673a39de707e774128dedd31a",
+    "iosApp/iosApp/NativeReader/ReaderStrings.swift": "05bbc1a7915cc6885dd39bf713009c25e2de677479531d2e859f9ec67737b7f2",
+    "iosApp/reader-controls-tests/ReaderImageDecodeTests.swift": "573cdb3a776f0a213c9f3968d499b32e356fd46b8615f375a5fff40dce2d7682",
+    "iosApp/reader-controls-tests/ReaderImageLoaderBehaviorTests.swift": "e70d279ddc06c3a3dcafc2627fa73970a32fab0ea735222bfe68bcb02d6df99e",
+    "iosApp/reader-controls-tests/ReaderImageOwnershipTests.swift": "a271a71787da2eb543fc51c23779324b95fe38db28e01797fed26cb2852ad4a5",
+    "iosApp/reader-controls-tests/ReaderPageCellOwnershipTests.swift": "0c4f7928738c0e90861c4c331319cd570011f3f2f596cdc181ef5a95ebff6ac8",
+    "iosApp/reader-controls-tests/ReaderPageTransportTests.swift": "5d22f65c9f89b5c64cdb90d7e8d3ced2d0af2b509f66f3fe43860aa1692adf4d",
+    "iosApp/reader-controls-tests/WebtoonPrefetchOwnershipTests.swift": "b071b5f041318497045b5e65d364910d734ca923f374c2024c172c9e388cc4e1",
+    "iosApp/reader-controls-tests/WebtoonReaderBoundaryTests.swift": "6003700655e23f7cfa9f56942ebf1476c5961fbb1adcc3f011ba554e9c2b2e36",
+    "iosApp/reader-controls-tests/ReaderChromeBarsTests.swift": "00521a691a65c1a419df289fabef2f727f877f751ac3075369c549d5b4eb67ae",
+    "iosApp/reader-controls-tests/ReaderImageTestSupport.swift": "80e22fd3d5ea843f9104eabb67066a9bcb48c302b54ce8686ad1c9acc47da956",
+    "iosApp/reader-controls-tests/Host/AppDelegate.swift": "88d9956b5fce2426e30de5eac0b2092c1f2010e954b4e965716d2bd7efc476d0",
+    "iosApp/reader-controls-tests/project.yml": "fccd8417ac811170db8f940542cf2fbd44d611554f0843d538c6b926a99965b7",
+    "iosApp/reader-controls-tests/.gitignore": "71560d61d40d33d0b45905f47b600fac842947f43310422b5c61b0012fe7de4e"
+  }
+}
