@@ -26,8 +26,9 @@ import org.koin.dsl.module
 // BackgroundWorkSignal facades stay in platformModule().ios and resolve via get().
 actual fun downloadModule(): Module =
     module {
+        includes(chapterArtifactModule())
         single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
-        factory { ChapterCompletionRecords(get(), get(), get()) }
+        factory { ChapterCompletionRecords(get(), get(), get(), get()) }
         single {
             ChapterFinalizer(
                 records = get(),
@@ -60,6 +61,7 @@ actual fun downloadModule(): Module =
                 BackgroundUrlSessionDownloadRepository(
                     storage = get(),
                     stages = get(),
+                    artifacts = get(),
                     pageTransfer = get(),
                     host = get(),
                     dataStoreHelper = get(),
@@ -71,6 +73,7 @@ actual fun downloadModule(): Module =
                     pageTransfer = get(),
                     host = get(),
                     stages = get(),
+                    artifacts = get(),
                 )
             }
         }

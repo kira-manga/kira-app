@@ -17,12 +17,17 @@ import me.manga.kira.core.error.TransportErrorMessages
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.data.download.artifacts.ChapterArtifactReference
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.data.local.entity.ChapterArtifactOperation
+import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.platform.cbz.CbzReader
+import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.sources.contracts.SourceRegistry
 import okio.Path
 import okio.Path.Companion.toPath
@@ -61,6 +66,8 @@ class ChapterPagesRepositoryImpl(
     private val cbzReader: CbzReader,
     private val sourceRegistry: SourceRegistry,
     private val pageFiles: DownloadedPageFiles,
+    private val artifacts: ChapterArtifacts,
+    private val appFileSystem: AppFileSystem,
 ) : ChapterPagesRepository {
     // App-lifetime scope for fire-and-forget CBZ-extract cleanup. The repository is a Koin single,
     // so this scope outlives any reader ViewModel — letting cleanup be triggered from `onCleared()`
@@ -117,20 +124,32 @@ class ChapterPagesRepositoryImpl(
         manga: Manga,
         chapter: Chapter,
     ): List<Page>? {
-        val entity =
-            chapterDao
-                .getChapterIdByUrl(manga.url, chapter.url)
-                ?.let { chapterDao.getChapterByIdSuspend(it) }
-                ?.takeIf { it.isDownloaded && it.localImagePaths.isNotEmpty() }
-                ?: return null
+        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return null
         val local =
-            cleanupLockFor(entity.id).withLock {
-                val single = entity.localImagePaths.singleOrNull()
-                if (single != null && single.endsWith(".cbz", ignoreCase = true)) {
-                    extractLocalArchive(entity.mangaId, entity.id, single)
-                } else {
-                    pageFiles.resolve(entity.mangaId, entity.id, entity.localImagePaths)
-                        ?: extractLocalArchive(entity.mangaId, entity.id, stored = null)
+            cleanupLockFor(chapterId).withLock {
+                artifacts.read(chapterId) { record ->
+                    // Read the current paths only after taking the pin that covers actual
+                    // inspection/extraction. A snapshot from before restore/delete is not authority.
+                    val entity = chapterDao.getChapterByIdSuspend(chapterId)
+                        ?.takeIf { it.isDownloaded && it.localImagePaths.isNotEmpty() && it.url == chapter.url }
+                        ?: return@read emptyList()
+                    if (record != null && (record.mangaId != entity.mangaId || record.chapterUrl != entity.url ||
+                            record.operation == ChapterArtifactOperation.DELETE)
+                    ) return@read emptyList()
+                    val relative = record?.committedRelativePath
+                    if (relative != null) {
+                        // Explicit generations survive a sandbox move; missing/corrupt referenced
+                        // bytes must NEVER silently select an older canonical archive instead.
+                        extractArchive(ChapterArtifactReference.resolve(appFileSystem, ChapterArtifactOwner.of(entity), relative), entity.mangaId, entity.id)
+                    } else {
+                        val single = entity.localImagePaths.singleOrNull()
+                        if (single != null && single.endsWith(".cbz", ignoreCase = true)) {
+                            extractLocalArchive(entity.mangaId, entity.id, single)
+                        } else {
+                            pageFiles.resolve(entity.mangaId, entity.id, entity.localImagePaths)
+                                ?: extractLocalArchive(entity.mangaId, entity.id, stored = null)
+                        }
+                    }
                 }
             }
         return local.takeIf { it.isNotEmpty() }?.map { Page(url = toFileUrl(it.toString()), headers = emptyMap()) }
@@ -150,18 +169,20 @@ class ChapterPagesRepositoryImpl(
                 if (stored != null) add(stored.toPath())
             }.distinct()
         for (candidate in candidates) {
-            val extracted =
-                try {
-                    cbzReader.extractImages(candidate, mangaId, chapterId)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    emptyList()
-                }
+            val extracted = extractArchive(candidate, mangaId, chapterId)
             if (extracted.isNotEmpty()) return extracted
         }
         return emptyList()
     }
+
+    private suspend fun extractArchive(path: Path, mangaId: Long, chapterId: Long): List<Path> =
+        try {
+            cbzReader.extractImages(path, mangaId, chapterId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
 
     /**
      * Build an RFC-8089 `file://` URL from a local path. A bare `"file://$path"` is malformed for

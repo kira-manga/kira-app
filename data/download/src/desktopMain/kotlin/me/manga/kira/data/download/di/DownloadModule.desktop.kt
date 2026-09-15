@@ -17,8 +17,9 @@ import org.koin.dsl.module
 // Koin-injected Ktor HttpClient (CIO engine) into AppFileSystem.chapterDir.
 actual fun downloadModule(): Module =
     module {
+        includes(chapterArtifactModule())
         single { ChapterPageResolver(mangaDao = get(), chapterPageProvider = get()) }
-        factory { ChapterCompletionRecords(get(), get(), get()) }
+        factory { ChapterCompletionRecords(get(), get(), get(), get()) }
         single {
             ChapterFinalizer(
                 records = get(),
@@ -38,6 +39,7 @@ actual fun downloadModule(): Module =
                 pageTransfer = get(),
                 host = get(),
                 stages = get(),
+                artifacts = get(),
             )
         }
     }

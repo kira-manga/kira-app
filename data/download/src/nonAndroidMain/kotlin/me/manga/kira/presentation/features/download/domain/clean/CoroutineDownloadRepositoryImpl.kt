@@ -3,8 +3,8 @@ package me.manga.kira.presentation.features.download.domain.clean
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -26,6 +26,9 @@ import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.local.entity.ChapterArtifactClaim
+import me.manga.kira.platform.media.publishPageSnapshot
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
@@ -92,6 +95,7 @@ class CoroutineDownloadRepositoryImpl(
     pageTransfer: PageDownloadTransfer,
     host: CoroutineDownloadHost,
     stages: ChapterDownloadStages,
+    private val artifacts: ChapterDownloadArtifacts,
 ) : DownloadRepository {
     private val httpClient: HttpClient = pageTransfer.httpClient
     private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
@@ -119,6 +123,7 @@ class CoroutineDownloadRepositoryImpl(
     private val activeJobMutex = Mutex()
     private var activeJob: Job? = null
     private var activeChapterId: Long? = null
+    private var activeClaim: ChapterArtifactClaim? = null
 
     init {
         // Start the single worker loop. processJob() catches every non-cancellation throwable and
@@ -153,71 +158,37 @@ class CoroutineDownloadRepositoryImpl(
         title: String,
         mangaApi: String,
     ) {
-        // Dedup against an already-active row. The DAO inserts with OnConflictStrategy.REPLACE on
-        // the unique chapterId index, so an unconditional insert of a chapter that is currently
-        // QUEUED / RUNNING / COMPRESSING rewrites its row to QUEUED/progress=0, which the worker's
-        // cooperative state check treats as a mid-chapter cancel and restarts from page 0. No-op in
-        // that case; only (re-)enqueue for absent rows or terminal SUCCESS / FAILED retries.
-        val existing = dao.getDownloadByChapter(chapter.id)?.state
-        if (DownloadRecovery.isActiveDownloadState(existing)) {
-            return
+        if (artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title)) != null) {
+            wakeups.trySend(Unit)
         }
-        val id = dao.insert(chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
-        if (id >= 0L) wakeups.trySend(Unit)
     }
 
     override suspend fun deleteDownload(chapterId: Long) {
-        dao.deleteByChapterId(chapterId)
+        val row = dao.getDownloadByChapter(chapterId) ?: return
+        if (row.state != DownloadingState.SUCCESS) onCancel(chapterId)
+        dao.deleteHistoryAttempt(chapterId, row.id)
     }
 
     override suspend fun onCancel(chapterId: Long) {
-        dao.updateFailure(chapterId, CANCELLED_BY_USER)
-    }
-
-    override suspend fun cancelARunningChapter(
-        chapterId: Long,
-        mangaId: Long,
-    ) {
-        val toCancel: Job?
-        activeJobMutex.withLock {
-            toCancel = if (activeChapterId == chapterId) activeJob else null
-            if (activeChapterId == chapterId) {
-                activeJob = null
-                activeChapterId = null
-            }
+        val claim = artifacts.cancel(chapterId, CANCELLED_BY_USER) ?: return
+        val job = activeJobMutex.withLock {
+            activeJob.takeIf { activeClaim?.token == claim.token }
         }
-        toCancel?.cancelAndJoin()
-        deleteChapterFiles(mangaId, chapterId)
-        onCancel(chapterId)
-        // Kick the queue so the next queued chapter (if any) picks up.
+        job?.cancelAndJoin()
+        artifacts.settle(claim)
         wakeups.trySend(Unit)
     }
 
-    // Re-added (DOWNLOAD "cancel-all marks rows failed" backlog item, 2026-06-01). The
-    // coroutine-queue equivalent of native's WorkManager-backed cancelAllDownloads(): cancel
-    // any in-flight job under the mutex, then flip every RUNNING / QUEUED / COMPRESSING row to
-    // FAILED via the DAO (same DB "mark failed" half the Android impl performs). There is no
-    // WorkManager job to cancel on iOS/Desktop — the in-process worker parks on `wakeups` and
-    // re-queries the DAO, so once the rows are FAILED there is nothing left to drain.
+    override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
+        onCancel(chapterId)
+    }
+
     override suspend fun cancelAllDownloads() {
-        val toCancel: Job?
-        val cancelledChapterId: Long?
-        activeJobMutex.withLock {
-            toCancel = activeJob
-            cancelledChapterId = activeChapterId
-            activeJob = null
-            activeChapterId = null
-        }
-        toCancel?.cancelAndJoin()
-        // Delete the partial pages of the chapter that was mid-download, mirroring
-        // cancelARunningChapter (and the Android worker's cancellation cleanup). The bulk
-        // markAllRunningOrQueuedAsFailed below leaves no row that would later overwrite or purge
-        // them, so without this they orphan in chapterDir until the whole manga is purged.
-        if (cancelledChapterId != null) {
-            val mangaId = dao.getDownloadByChapter(cancelledChapterId)?.mangaId
-            if (mangaId != null) deleteChapterFiles(mangaId, cancelledChapterId)
-        }
-        dao.markAllRunningOrQueuedAsFailed()
+        val active = dao.observeAllDownloads().first().filter { DownloadRecovery.isActiveDownloadState(it.state) }
+        val claims = active.mapNotNull { artifacts.cancel(it.chapterId, CANCELLED_BY_USER) }
+        val job = activeJobMutex.withLock { activeJob.takeIf { activeClaim?.token in claims.map { it.token } } }
+        job?.cancelAndJoin()
+        claims.forEach { artifacts.settle(it) }
     }
 
     // Restart-freeze fix (2026-06-02). Reset rows orphaned in RUNNING / COMPRESSING by a previous
@@ -254,29 +225,34 @@ class CoroutineDownloadRepositoryImpl(
             while (currentCoroutineContext().isActive) {
                 try {
                     val next = dao.getNextQueuedChapter() ?: break
-                    val done = CompletableDeferred<Unit>()
+                    val claim = artifacts.claim(next) ?: break
                     val job =
-                        applicationScope.launch(Dispatchers.Default) {
+                        applicationScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
                             try {
                                 // Hold an iOS background-task assertion for the chapter so it can keep
                                 // going briefly if the app is backgrounded (no-op on Desktop).
-                                backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next) }
+                                artifacts.ownership.producing(claim) {
+                                    backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next, claim) }
+                                }
                             } catch (ce: CancellationException) {
                                 log.w { "Job for chapter ${next.chapterId} cancelled" }
-                                runCatching { dao.updateFailure(next.chapterId, CANCELLED_BY_USER) }
+                                runCatching { artifacts.fail(claim, CANCELLED_BY_USER) }
                                 throw ce
                             } catch (t: Throwable) {
                                 log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
-                                runCatching { dao.updateFailure(next.chapterId, t.message) }
-                            } finally {
-                                done.complete(Unit)
+                                runCatching { artifacts.fail(claim, t.message) }
                             }
                         }
                     activeJobMutex.withLock {
                         activeJob = job
                         activeChapterId = next.chapterId
+                        activeClaim = claim
                     }
-                    done.await()
+                    job.start()
+                    job.join()
+                    // Includes a lazy job cancelled before its body could run. Its registration
+                    // preceded start, so cancellation never misses a real network/file producer.
+                    artifacts.settle(claim)
                     // Download-progress notification (iOS): alert on the terminal outcome. The
                     // silent per-page progress is posted inside processJob; here we fire the
                     // banner+sound completion/failure notice, or clear it on a user cancel.
@@ -294,6 +270,7 @@ class CoroutineDownloadRepositoryImpl(
                         if (activeChapterId == next.chapterId) {
                             activeJob = null
                             activeChapterId = null
+                            activeClaim = null
                         }
                     }
                 } catch (ce: CancellationException) {
@@ -306,12 +283,12 @@ class CoroutineDownloadRepositoryImpl(
         }
     }
 
-    private suspend fun processJob(entity: ChapterDownloadEntity) {
+    private suspend fun processJob(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
         log.i { "Processing chapter ${entity.chapterId} (manga ${entity.mangaId})" }
         // Conditional QUEUED -> RUNNING: claim the row only while it is still QUEUED. A cancel that
         // raced in between getNextQueuedChapter() and here (flipping the row to FAILED) updates 0 rows,
         // so we abort instead of unconditionally overwriting the cancel and downloading to completion.
-        if (dao.claimQueuedAsRunning(entity.chapterId) == 0) {
+        if (artifacts.ownership.publish(claim) { dao.claimQueuedAsRunning(entity.chapterId) } != 1) {
             log.w { "Chapter ${entity.chapterId} no longer QUEUED; skipping (likely cancelled)" }
             return
         }
@@ -331,25 +308,25 @@ class CoroutineDownloadRepositoryImpl(
             } catch (t: Throwable) {
                 val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
                 log.e(t) { "Resolve failed for chapter ${entity.chapterId} (challenge=$isChallenge): ${t.message}" }
-                dao.updateFailure(entity.chapterId, if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed"))
+                artifacts.fail(claim, if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed"))
                 return
             }
         val imageUrls = resolved.imageUrls
         if (imageUrls.isEmpty()) {
-            dao.updateFailure(entity.chapterId, "No images for chapter")
+            artifacts.fail(claim, "No images for chapter")
             return
         }
 
         val savedChapter = entity.toChapterEntity()
         val outDir = appFileSystem.chapterDir(entity.mangaId, entity.chapterId)
-        appFileSystem.fileSystem().createDirectories(outDir)
+        artifacts.ownership.files(claim) { appFileSystem.fileSystem().createDirectories(outDir) }
 
         val downloadedPaths = mutableListOf<String>()
         for ((index, page) in resolved.pages.withIndex()) {
             val url = page.url
             currentCoroutineContext().ensureActive()
             // Cooperative cancel: if an outside caller flipped this chapter to FAILED, stop.
-            val state = dao.getDownloadByChapter(entity.chapterId)?.state
+            val state = dao.getDownloadByChapter(entity.chapterId)?.takeIf { it.id == claim.downloadId }?.state
             if (state != DownloadingState.RUNNING) {
                 log.w { "Chapter ${entity.chapterId} no longer RUNNING (state=$state); aborting" }
                 // Partial pages stay on disk; the caller-driven cleanup path (`onCancel` ->
@@ -359,7 +336,7 @@ class CoroutineDownloadRepositoryImpl(
             }
 
             try {
-                val path = downloadOnePage(url, savedChapter, index, page.headers)
+                val path = downloadOnePage(url, savedChapter, index, page.headers, claim)
                 downloadedPaths += path
             } catch (ce: CancellationException) {
                 throw ce
@@ -367,12 +344,12 @@ class CoroutineDownloadRepositoryImpl(
                 log.e(t) { "Failed page $index of chapter ${entity.chapterId}: ${t.message}" }
                 // Mark failed and bail. We keep the partially-downloaded pages on disk — the next
                 // retry will overwrite them and the cleanup path runs via deleteChapterFiles().
-                dao.updateFailure(entity.chapterId, t.message ?: "Page $index failed")
+                artifacts.fail(claim, t.message ?: "Page $index failed")
                 return
             }
 
             val percent = (((index + 1).toFloat() / imageUrls.size.toFloat()) * 100).toInt()
-            dao.updateProgress(entity.chapterId, percent)
+            dao.updateProgressForArtifact(entity.chapterId, entity.id, claim.token, percent)
             // Silent per-page progress notification (iOS only; Desktop binds a no-op).
             runCatching {
                 downloadNotifier.onProgress(entity.chapterId.toInt(), notifTitle(entity), index + 1, imageUrls.size)
@@ -382,7 +359,7 @@ class CoroutineDownloadRepositoryImpl(
         // M1 (clean seam): CBZ archiving + size capture + library/notification bookkeeping + the
         // terminal SUCCESS write now live in ChapterFinalizer (idempotent + reusable by the iOS
         // background engine, which finalizes once the background URLSession reports all pages done).
-        chapterFinalizer.finalize(entity, downloadedPaths)
+        chapterFinalizer.finalize(entity, downloadedPaths, claim)
     }
 
     /** iOS download-notification title for a chapter ("<manga> - Ch <n>"). */
@@ -396,6 +373,7 @@ class CoroutineDownloadRepositoryImpl(
         chapter: SavedChapterEntity,
         imageIndex: Int,
         pageHeaders: Map<String, String>,
+        claim: ChapterArtifactClaim,
     ): String =
         withContext(Dispatchers.Default) {
             val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
@@ -405,20 +383,13 @@ class CoroutineDownloadRepositoryImpl(
                 appFileSystem.fileSystem(),
                 mediaInspector,
                 pageBytePolicy,
+                publish = { temporary, metadata ->
+                    artifacts.ownership.files(claim) {
+                        publishPageSnapshot(appFileSystem.fileSystem(), temporary, imageIndex, metadata)
+                    } ?: throw CancellationException("Download attempt retired")
+                },
             ).toString()
         }
-
-    private fun deleteChapterFiles(
-        mangaId: Long,
-        chapterId: Long,
-    ) {
-        val dir = appFileSystem.chapterDir(mangaId, chapterId)
-        runCatching {
-            if (appFileSystem.fileSystem().exists(dir)) {
-                appFileSystem.fileSystem().deleteRecursively(dir)
-            }
-        }.onFailure { log.w(it) { "Failed to delete chapter files at $dir" } }
-    }
 
     private companion object {
         const val TAG = "CoroutineDownloadRepository"

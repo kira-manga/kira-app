@@ -14,6 +14,7 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.HistoryDao
@@ -95,6 +96,7 @@ class LibraryRepositoryImpl(
     // Clears per-chapter resume positions (stored in settings, keyed by chapter url) on removal.
     private val readProgress: ReadProgressRepository,
     private val dispatchers: DispatcherProvider,
+    private val artifacts: ChapterArtifacts,
 ) : LibraryRepository {
 
     override fun observeLibrary(): Flow<List<LibraryManga>> =
@@ -290,18 +292,19 @@ class LibraryRepositoryImpl(
     private suspend fun purgeManga(id: Long) {
         val mangaUrl = mangaDao.getMangaById(id)?.url
         val chapterUrls = libraryDeo.getSavedChapterUrls(id)
-        // Cancel any in-flight download of this manga BEFORE deleting its rows + on-disk dir. Otherwise
-        // the engine keeps downloading the running chapter, recreates manga/$id/ via mkdirs(), and
-        // writes an orphan CBZ that nothing references (the rows are gone and a re-add gets a new id).
-        // cancelARunningChapter cancels the worker/active job AND deletes that chapter's partial files.
-        // Best-effort: a cancel failure must not abort the removal (the files are deleted below anyway).
-        runCatchingCancellable {
+        artifacts.parentRemoval(id) {
+            // Close all same-parent admission before stopping work; callbacks may unwind without
+            // blocking on the parent gate. Include no-FK custody even if earlier rows were removed.
+            val owners = artifacts.ownersForManga(id)
             chapterDownloadDao.getActiveDownloadChapterIdsForManga(id).forEach { chapterId ->
-                downloadRepository.cancelARunningChapter(chapterId, id)
+                runCatchingCancellable { downloadRepository.cancelARunningChapter(chapterId, id) }
             }
+            owners.forEach { owner ->
+                check(artifacts.removeChapterUnderParent(owner)) { "Manga artifact removal could not be settled" }
+            }
+            libraryDeo.removeMangaWithChapters(id)
+            fileService.deleteMangaFiles(id)
         }
-        libraryDeo.removeMangaWithChapters(id)
-        fileService.deleteMangaFiles(id)
         mangaUrl?.let {
             libraryDeo.removeHistoryByUrl(it)
             libraryDeo.removeNotificationsByUrl(it)

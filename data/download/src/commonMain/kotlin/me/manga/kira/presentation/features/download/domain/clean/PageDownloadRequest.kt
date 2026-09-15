@@ -10,6 +10,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
+import me.manga.kira.platform.media.PageImageMetadata
 import me.manga.kira.platform.media.publishPageSnapshot
 import me.manga.kira.platform.media.requireValid
 import okio.FileSystem
@@ -31,6 +32,9 @@ internal suspend fun downloadValidatedPage(
     system: FileSystem,
     inspector: PageMediaInspector,
     policy: PageBytePolicy,
+    publish: suspend (Path, PageImageMetadata) -> Path = { temporary, metadata ->
+        publishPageSnapshot(system, temporary, request.pageIndex, metadata)
+    },
 ): Path {
     requireUncachedPageClient(client)
     require(request.pageIndex >= 0)
@@ -55,7 +59,7 @@ internal suspend fun downloadValidatedPage(
                 currentCoroutineContext().ensureActive()
                 val metadata = inspector.inspect(temporary).requireValid()
                 currentCoroutineContext().ensureActive()
-                publishPageSnapshot(system, temporary, request.pageIndex, metadata)
+                publish(temporary, metadata)
             }.onFailure { failure ->
                 runCatching { system.delete(temporary, mustExist = false) }
                     .exceptionOrNull()

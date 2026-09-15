@@ -186,7 +186,7 @@ private class CbzServiceCase(
         return fixtureDownloadService(
             CancellationFixtureServiceInputs(storage, rows, dao, transport, sender),
             manager,
-        ).downloadChapterC(rows.original.saved, pages)
+        ).downloadChapterC(rows.original.saved, pages, assertNotNull(rows.artifacts.claim(rows.download())))
     }
 
     fun assertNoArchiveOrTemporary() {

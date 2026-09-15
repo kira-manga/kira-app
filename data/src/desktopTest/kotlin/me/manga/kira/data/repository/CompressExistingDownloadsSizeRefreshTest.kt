@@ -125,11 +125,13 @@ class CompressExistingDownloadsSizeRefreshTest {
     }
 
     private class DownloadedServingChapterDao(
-        private val rows: List<SavedChapterEntity>,
+        val rows: List<SavedChapterEntity>,
     ) : FakeChapterDao() {
         val pathRewrites = mutableListOf<Pair<Long, List<String>>>()
 
         override suspend fun getAllDownloadedChapters(): List<SavedChapterEntity> = rows
+
+        override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = rows.firstOrNull { it.id == chapterId }
 
         override suspend fun updateChapterLocalPaths(
             chapterId: Long,
@@ -140,7 +142,15 @@ class CompressExistingDownloadsSizeRefreshTest {
     }
 
     private class SizeRecordingDownloadDao : FakeChapterDownloadDao() {
+        var chapters: List<SavedChapterEntity> = emptyList()
         val sizeWrites = mutableListOf<Pair<Long, Long>>()
+
+        override suspend fun getDownloadByChapter(chapterId: Long) = chapters.firstOrNull { it.id == chapterId }?.let {
+            me.manga.kira.data.local.entity.ChapterDownloadEntity(
+                id = it.id, chapterId = it.id, mangaId = it.mangaId, url = it.url, number = it.number, api = "src",
+                state = me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS, progress = 100,
+            )
+        }
 
         override suspend fun updateSize(
             id: Long,
@@ -185,8 +195,10 @@ class CompressExistingDownloadsSizeRefreshTest {
         chapterDao: DownloadedServingChapterDao,
         writer: CbzWriter,
         downloadDao: SizeRecordingDownloadDao,
-    ): SettingsRepositoryImpl =
-        SettingsRepositoryImpl(
+    ): SettingsRepositoryImpl {
+        downloadDao.chapters = chapterDao.rows
+        val artifacts = fakeArtifactRuntime(appFs, chapterDao, downloadDao)
+        return SettingsRepositoryImpl(
             legacy =
                 LegacySettingsRepository(
                     prefsHelper = SharedPrefsHelper(MapSettings()),
@@ -202,9 +214,12 @@ class CompressExistingDownloadsSizeRefreshTest {
                     manga = InertMangaDao,
                     downloads = downloadDao,
                     files = appFs,
+                    artifacts = artifacts.ownership,
+                    commits = artifacts.commits,
                 ),
             httpCache = HttpCacheClearer { },
         )
+    }
 
     @Test
     fun conversion_refreshes_the_stale_ledger_size_to_the_new_archive_size() =

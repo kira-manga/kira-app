@@ -12,6 +12,7 @@ data class TransferRequest(
     val pageIndex: Int,
     val url: String,
     val headers: Map<String, String>,
+    val attemptToken: String,
 )
 
 /**
@@ -24,10 +25,10 @@ data class TransferRequest(
  */
 interface TransferListener {
     /** The page's bytes are now on disk at the platform download path for (chapterId, pageIndex). */
-    fun onPageComplete(mangaId: Long, chapterId: Long, pageIndex: Int)
+    fun onPageComplete(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, page: StagedDownloadPage)
 
     /** The page transfer failed terminally (after the OS's own transient-error retries). */
-    fun onPageFailed(mangaId: Long, chapterId: Long, pageIndex: Int, message: String?)
+    fun onPageFailed(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, message: String?)
 }
 
 /**
@@ -48,13 +49,13 @@ interface BackgroundTransport {
     suspend fun enqueue(requests: List<TransferRequest>)
 
     /** Cancel every in-flight transfer for [chapterId] (e.g. the user cancelled the chapter). */
-    suspend fun cancelChapter(chapterId: Long)
+    suspend fun cancelChapter(chapterId: Long, attemptToken: String)
 
     /** Cancel every in-flight transfer across all chapters. */
     suspend fun cancelAll()
 
     /** Page indices currently enqueued/running for [chapterId], recovered from the live session. */
-    suspend fun inFlightPages(chapterId: Long): Set<Int>
+    suspend fun inFlightPages(chapterId: Long, attemptToken: String): Set<Int>
 
     /** Re-attach to a background session the OS may have relaunched; recovers pending tasks. Idempotent. */
     suspend fun ensureReady()

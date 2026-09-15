@@ -53,12 +53,14 @@ internal class DownloadWorkerCancellationDao(
         return rows.realDao.getNextQueuedChapter(queuedState)
     }
 
-    override suspend fun updateProgress(
-        id: Long,
+    override suspend fun updateProgressForArtifact(
+        chapterId: Long,
+        downloadId: Long,
+        token: String,
         progress: Int,
     ) {
-        rows.realDao.updateProgress(id, progress)
-        assertEquals(rows.original.saved.id, id)
+        rows.realDao.updateProgressForArtifact(chapterId, downloadId, token, progress)
+        assertEquals(rows.original.saved.id, chapterId)
         val count = progressCalls.incrementAndGet()
         if (count == 1) {
             firstProgressReturned.complete(Unit)

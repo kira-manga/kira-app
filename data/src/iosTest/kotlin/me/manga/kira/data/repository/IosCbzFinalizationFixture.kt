@@ -1,5 +1,5 @@
 package me.manga.kira.data.repository
-
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.russhwolf.settings.MapSettings
@@ -51,6 +51,7 @@ internal class IosCbzFinalizationFixture {
     var db: MangaDatabase = openDatabase()
         private set
     val dao: ChapterDownloadDao get() = db.chapterDownloadingDao()
+    private var artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
 
     suspend fun seed(): IosCbzChapter {
         val mangaId =
@@ -103,6 +104,10 @@ internal class IosCbzFinalizationFixture {
         return IosCbzChapter(saved, download.copy(id = dao.insert(download)), pages)
     }
 
+    private fun chapterArtifactsForTest(): ChapterDownloadArtifacts {
+        return artifactRuntime.downloads
+    }
+
     fun finalizer(writer: CbzWriter): ChapterFinalizer =
         ChapterFinalizer(
             records =
@@ -118,6 +123,7 @@ internal class IosCbzFinalizationFixture {
                             fileService = FileService(appFileSystem),
                         ),
                     notifications = db.notificationDao(),
+                    artifacts = chapterArtifactsForTest(),
                 ),
             appFileSystem = appFileSystem,
             cbzWriter = writer,
@@ -157,6 +163,7 @@ internal class IosCbzFinalizationFixture {
     fun reopen() {
         db.close()
         db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
     }
 
     fun close() {
