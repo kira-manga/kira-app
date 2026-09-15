@@ -25,9 +25,9 @@ private func bgLog(_ message: String) {
 /// otherwise. All meaningful steps are logged under the `KiraBgDownload` prefix for the test build.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
 
-    private let processingTaskId = "me.manga.kira.download.processing"
-    private let continuedTaskId = "me.manga.kira.download.continued"
-    private let libraryRefreshTaskId = "me.manga.kira.library.refresh"
+    private let processingTaskId = "\(Bundle.main.bundleIdentifier ?? "me.manga.kira.debug").download.processing"
+    private let continuedTaskId = "\(Bundle.main.bundleIdentifier ?? "me.manga.kira.debug").download.continued"
+    private let libraryRefreshTaskId = "\(Bundle.main.bundleIdentifier ?? "me.manga.kira.debug").library.refresh"
 
     /// True from the moment a BGContinuedProcessingTask is *submitted* until it completes/expires
     /// (main-thread only) — i.e. "one is in flight". Submitted, not just running, because the engine can
@@ -51,16 +51,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Initialize Firebase before any other startup work — it reads GoogleService-Info.plist from
-        // the app bundle and must run before any Firebase API is touched. FirebaseAnalytics starts here.
+        // Debug has no Firebase configuration or production registration. Do not even construct
+        // Crashlytics to disable it: Firebase API access requires a configured default app.
+        #if !DEBUG
         FirebaseApp.configure()
-
-        // Crashlytics is RELEASE / TestFlight only. During development (DEBUG) we don't want local
-        // crashes cluttering Crashlytics, and the dSYM-upload build phase is skipped for Debug too.
-        #if DEBUG
-        // Debugging: keep Crashlytics collection OFF (crashes here are expected noise). No Kotlin hook.
-        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(false)
-        #else
         // Release / TestFlight: collect crashes, and install the Kotlin/Native unhandled-exception hook
         // (CrashKiOS) so uncaught Kotlin fatals reach Crashlytics WITH the symbolicated Kotlin stack
         // (see composeApp .../crash/CrashSetup.kt). Both MUST run after FirebaseApp.configure().
@@ -84,6 +78,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
 
         // ---- Firebase Cloud Messaging (push) + In-App Messaging ----
+        #if !DEBUG
         // FCM: receive the registration token via MessagingDelegate below, and bridge it to Kotlin
         // (PushTokenProvider) through IosPushBridge.
         Messaging.messaging().delegate = self
@@ -98,6 +93,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // the Firebase console + the App ID's Push capability (owner steps); on the simulator this is
         // a no-op path.
         application.registerForRemoteNotifications()
+        #endif
 
         // BG-task launch handlers MUST be registered before launch completes (for BGProcessingTask).
         BGTaskScheduler.shared.register(forTaskWithIdentifier: processingTaskId, using: nil) { [weak self] task in
@@ -524,10 +520,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
+        #if !DEBUG
         // Hand the APNs device token to FirebaseMessaging, which exchanges it for an FCM token
         // (delivered via messaging(_:didReceiveRegistrationToken:) below).
         bgLog("push.apns.registered tokenBytes=\(deviceToken.count)")
         Messaging.messaging().apnsToken = deviceToken
+        #endif
     }
 
     func application(
@@ -541,9 +539,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     // MARK: - MessagingDelegate
 
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        #if !DEBUG
         // Bridge the FCM registration token into Kotlin's PushTokenBroadcaster (feeds
         // PushTokenProvider). Fires on first registration and on every rotation.
         bgLog("push.fcm.token \(fcmToken != nil ? "received" : "nil")")
         IosPushBridgeKt.onPushToken(token: fcmToken)
+        #endif
     }
 }

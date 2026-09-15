@@ -17,6 +17,7 @@ import me.manga.kira.di.appKoinModule
 import me.manga.kira.di.initKoin
 import me.manga.kira.firebase_cores.messaging.MessagingNotificationChannels
 import me.manga.kira.platform.activity.ActivityHolder
+import me.manga.kira.platform.firebase.firebaseServicesAvailable
 import me.manga.kira.platform.notification.NotificationPresenter
 import me.manga.kira.platform.update.AppUpdateClient
 import me.manga.kira.work.LibraryRefreshScheduling
@@ -157,32 +158,21 @@ class MyApp :
             log.e(t) { "FCM message channel pre-create failed" }
         }
 
-        // 5) Best-effort 3rd-party SDK bootstraps.
-        try {
-            FirebaseApp.initializeApp(this)
-        } catch (t: Throwable) {
-            log.e(t) { "FirebaseApp.initializeApp failed" }
-        }
-
-        // 5b) Route Kermit log output into Crashlytics as breadcrumbs so the diagnostic context
-        //     leading up to a crash (Info+ logs) and any logged throwables (Warn+) enrich the
-        //     Crashlytics report. The CrashlyticsLogWriter is added alongside the default platform
-        //     writer (Logcat) AFTER FirebaseApp.initializeApp because the writer's init wires into
-        //     the Firebase Crashlytics backend. Wrapped in try/catch so a misconfigured device
-        //     (missing google-services.json / Crashlytics unavailable) doesn't kill launch.
-        // 5b-i) SECURITY: in release builds, drop Info/Debug/Verbose logs globally BEFORE wiring
-        //       any writer. The legacy source scrapers emit Info-level diagnostics that can include
-        //       request URLs, header maps (Cookie/cf_clearance/User-Agent values), and full HTML
-        //       bodies; raising the floor to Warn means none of that reaches Logcat OR the
-        //       Crashlytics breadcrumb trail in a shipped build (the lambda isn't even evaluated).
-        //       Debug builds keep verbose logs for development.
-        if (!BuildConfig.DEBUG) {
+        // 5) Store-only Firebase and breadcrumbs. Debug removes the startup provider before
+        // Application runs and must not recreate the default app here or through lazy DI facades.
+        if (firebaseServicesAvailable(this)) {
+            try {
+                FirebaseApp.initializeApp(this)
+            } catch (t: Throwable) {
+                log.e(t) { "FirebaseApp.initializeApp failed" }
+            }
+            // Preserve the release log floor before installing the production breadcrumb writer.
             Logger.setMinSeverity(Severity.Warn)
-        }
-        try {
-            Logger.setLogWriters(platformLogWriter(), CrashlyticsLogWriter())
-        } catch (t: Throwable) {
-            log.e(t) { "CrashlyticsLogWriter install failed" }
+            try {
+                Logger.setLogWriters(platformLogWriter(), CrashlyticsLogWriter())
+            } catch (t: Throwable) {
+                log.e(t) { "CrashlyticsLogWriter install failed" }
+            }
         }
 
         // The unused AdMob/UMP stack was removed for the first release. No advertising SDK is

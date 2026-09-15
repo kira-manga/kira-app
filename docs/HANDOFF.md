@@ -18,6 +18,10 @@ as the parity spec) and since rebranded:
 
 - Display name: **Kira Manga** · package root `me.manga.kira.*` · Android `applicationId` and iOS
   bundle id `me.manga.kira` · version **1.0.5**.
+- Ordinary Debug is isolated as **Kira Manga Debug** / `me.manga.kira.debug`, with no production
+  Firebase, APNs or activation-link registration. Reading/downloads/local notifications remain
+  available; complaints fail explicitly while services are disabled. Release identities/services
+  are unchanged. Physical side-by-side install/service checks remain necessary.
 - Feature set: multi-source manga browsing (Home tabs per source), search, details, a
   webtoon/paged reader, library with categories, chapter downloads (CBZ), reading history,
   updates feed, statistics, complaints (Firestore-backed; internal-test/public-release blocker), what's-new, theming (incl. AMOLED),

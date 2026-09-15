@@ -34,9 +34,12 @@ targets:
     sources:
       - path: iosApp
         excludes:
-          # The committed placeholder must NOT ship in the app bundle — only the real (gitignored)
-          # GoogleService-Info.plist is a Copy-Bundle-Resources entry.
+          # The Store Firebase plist is copied explicitly for Release only, never discovered as
+          # an unconditional resource. Debug requires no Firebase registration or local secret.
           - "GoogleService-Info.plist.example"
+          - "GoogleService-Info.plist"
+          - "Info.plist"
+          - "Info-Debug.plist"
           - "Settings.bundle"
       # Copy the Settings bundle intact; recursive source discovery must not flatten it.
       - path: iosApp/Settings.bundle
@@ -69,11 +72,6 @@ targets:
         # Compose Multiplatform no longer publishes Apple x86_64 artifacts. Keep generic simulator
         # destinations arm64-only instead of letting Xcode request an unsupported architecture.
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
-        # Apple Developer Program team (2026-07-09). Set here so `xcodegen generate` no longer wipes
-        # the team out of the project — device builds needed DEVELOPMENT_TEAM passed on every
-        # xcodebuild invocation before this. The retired Personal-team ID (U8D4Z8P4NA) must not be
-        # used anymore.
-        DEVELOPMENT_TEAM: "$(MOBILE_RELEASE_IOS_DEVELOPMENT_TEAM)"
         INFOPLIST_FILE: iosApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -88,20 +86,16 @@ targets:
       # / TestFlight use `dwarf-with-dsym` so crashes symbolicate and the dSYM can be uploaded.
       configs:
         Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira.debug
+          INFOPLIST_FILE: iosApp/Info-Debug.plist
+          # No production team or capability is selected for an ordinary local run. Choose your
+          # own local team for a physical device; simulator builds need no signing credentials.
+          DEVELOPMENT_TEAM: ""
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp-nopush.entitlements
           DEBUG_INFORMATION_FORMAT: dwarf
-          # SIGNING MODES (updated 2026-07-09): Debug now signs with the FULL push entitlements —
-          # the team above is a real Developer Program team, so the App ID carries the Push
-          # Notifications capability and Debug device builds get sandbox APNs (APS_ENVIRONMENT
-          # below expands aps-environment to `development`). The previous no-push default existed
-          # only for the retired Personal (free) team, which could not carry the capability.
-          # Contributors on a Personal team: point this one line back at
-          # iosApp/iosApp-nopush.entitlements (kept in the repo) and re-run `xcodegen generate`.
-          # Simulator builds don't validate entitlements either way.
-          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
-          # Sandbox APNs for dev builds — only consumed when Debug points at the full entitlements
-          # file above (the default no-push file has no aps-environment key to expand it into).
-          APS_ENVIRONMENT: development
         Release:
+          DEVELOPMENT_TEAM: "$(MOBILE_RELEASE_IOS_DEVELOPMENT_TEAM)"
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
           CODE_SIGN_STYLE: "$(MOBILE_RELEASE_IOS_CODE_SIGN_STYLE)"
           CODE_SIGN_IDENTITY: "$(MOBILE_RELEASE_IOS_CODE_SIGN_IDENTITY)"
@@ -158,6 +152,21 @@ targets:
           - $(BUILT_PRODUCTS_DIR)/ComposeApp.framework/ComposeApp
         basedOnDependencyAnalysis: false
     postBuildScripts:
+      - name: "Copy Store Firebase configuration (Release only)"
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          DESTINATION="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+          if [ "${CONFIGURATION}" != "Release" ]; then
+            rm -f "$DESTINATION"
+            echo "note: Debug Firebase services are disabled; no Firebase plist is bundled"
+            exit 0
+          fi
+          SOURCE="${SRCROOT}/iosApp/GoogleService-Info.plist"
+          [ -f "$SOURCE" ] || { echo "error: Release requires the Store GoogleService-Info.plist"; exit 1; }
+          mkdir -p "$(dirname "$DESTINATION")"
+          cp "$SOURCE" "$DESTINATION"
+          chmod 0644 "$DESTINATION"
       # Firebase Crashlytics dSYM upload — HARD GATE. Uploads the build's dSYM to Crashlytics via the
       # upload-symbols tool from the firebase-ios-sdk SPM checkout, and FAILS THE BUILD unless the
       # upload confirms success. The protected CI workflow defers this phase until the archive exists,

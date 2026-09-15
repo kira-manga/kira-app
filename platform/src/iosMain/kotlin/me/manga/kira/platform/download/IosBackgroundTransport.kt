@@ -5,6 +5,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
+import platform.Foundation.NSBundle
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSMutableURLRequest
@@ -201,7 +202,7 @@ class IosBackgroundTransport(
     }
 
     private companion object {
-        const val SESSION_ID = "me.manga.kira.download.transfers"
+        val SESSION_ID = "${NSBundle.mainBundle.bundleIdentifier ?: "me.manga.kira.debug"}.download.transfers"
         const val MAX_CONNECTIONS_PER_HOST: Long = 4
     }
 }

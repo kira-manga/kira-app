@@ -336,6 +336,12 @@ platform :android do
     build_number = protected_env("KIRA_BUILD_NUMBER")
     UI.user_error!("Android version code must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
 
+    # Inspect the exact selected binary AAB before any uploader/network call. This task uses AGP's
+    # existing protobuf decoder and does not rebuild when an explicit artifact path is supplied.
+    root = File.expand_path("..", __dir__)
+    sh(File.join(root, "gradlew"), "--project-dir", root, ":app:verifyReleaseBundleIdentity",
+       "-Pkira.releaseBundleToVerify=#{File.expand_path(aab_path)}")
+
     upload_to_play_store(
       package_name: APP_IDENTIFIER,
       aab: aab_path,

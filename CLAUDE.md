@@ -17,6 +17,21 @@ Package root is `me.manga.kira.*` everywhere (renamed 2026-06 from `me.manga.yam
 
 ## Where things stand (source of truth, 2026-07)
 
+### Ordinary Debug isolation (2026-09-15; supersedes older Debug Firebase/signing notes below)
+
+- Android/iOS Debug installs as `me.manga.kira.debug`, named **Kira Manga Debug**. Release, Play
+  testing, TestFlight and App Store keep `me.manga.kira` / **Kira Manga** and existing signing.
+- Debug is deliberately unprovisioned: Firebase/Crashlytics/Analytics/FIAM/FCM/APNs and production
+  activation links are disabled. Android selects a committed inert Debug client and removes the
+  Firebase startup provider; iOS copies no Firebase plist, uses empty entitlements and has no default
+  signing team. A local device build may select the developer's own team, not Store capabilities.
+- Lazy platform/complaint services are disabled before SDK/REST construction. Complaint operations
+  return typed failures through the existing Result adapters, never fake successful submissions.
+  Reading, downloads, library refresh and local notifications remain enabled.
+- Do not copy Store Firebase configuration or entitlements into Debug to enable a service. No Debug
+  enable switch or development service registration is supplied. Side-by-side physical-device QA is
+  still required; source/host checks are not device-service proof.
+
 - **AGP-10 new-DSL migration: DONE** (commit `3aba7cba`). Every KMP module is on `com.android.kotlin.multiplatform.library`, `:app` is on AGP built-in Kotlin, and the transitional `android.newDsl`/`android.builtInKotlin` flags are removed — full detail under "Build / test / run". Bumping AGP 9.2.1 → 10 itself (when AGP 10 releases) is the only remaining step there and has **not** been done.
 - **Firebase / Crashlytics: DONE** — Analytics + Crashlytics on Android + iOS. iOS crash reporting is **Release/TestFlight-only** (Debug turns collection off, installs no crash hook, and skips the dSYM upload); iOS Kotlin/Native fatals report via CrashKiOS behind a custom unhandled-exception hook; the iOS dSYM upload is a build-time hard gate. Android uses the Crashlytics SDK default (inert under the placeholder config in local dev). See "Firebase / Crashlytics".
 - **App version** is `1.0.5` (Android values come from `release/version.properties`; iOS `MARKETING_VERSION` is in `iosApp/project.yml`, with store build numbers selected by the release workflows).

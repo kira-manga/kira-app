@@ -154,7 +154,9 @@ android {
     }
 
     buildTypes {
-        debug { }
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             if (releaseSigningReady) {
                 signingConfig = signingConfigs.getByName("release")
@@ -276,3 +278,4 @@ dependencies {
 
 // App-specific offline Robolectric/SQLite inputs; not part of production runtime.
 apply(from = "notification-host-test-runtime.gradle.kts")
+apply(from = "release-bundle-identity.gradle.kts")

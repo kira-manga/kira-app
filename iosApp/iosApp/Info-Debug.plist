@@ -23,18 +23,17 @@
     <key>KiraCrashDiagnosticsEnabled</key>
     <string>$(KIRA_CRASH_DIAGNOSTICS_ENABLED)</string>
     <key>KiraFirebaseServicesEnabled</key>
+    <false/>
+    <key>FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED</key>
     <true/>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>me.manga.kira.source-activation</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>kiramanga</string>
-            </array>
-        </dict>
-    </array>
+    <key>FirebaseCrashlyticsCollectionEnabled</key>
+    <false/>
+    <key>FirebaseMessagingAutoInitEnabled</key>
+    <false/>
+    <key>FirebaseInAppMessagingAutomaticDataCollectionEnabled</key>
+    <false/>
+    <key>FirebaseAppDelegateProxyEnabled</key>
+    <false/>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIApplicationSceneManifest</key>
@@ -84,17 +83,16 @@
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Kira saves manga page screenshots to your Photos library when you choose to export a page.</string>
     <key>CFBundleDisplayName</key>
-    <string>Kira Manga</string>
+    <string>Kira Manga Debug</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
-    <!-- Background-downloads: BGTaskScheduler CPU windows for download orchestration; the durable file transfers use a background URLSession (which needs no background mode). Fixed task identifiers (no wildcard); no Background GPU Access (CBZ is CPU/foreground). `remote-notification` is declared for FCM background delivery, but the app implements NO application(_:didReceiveRemoteNotification:) handler, so data-ONLY (silent) pushes are not processed — iOS deep-link campaigns must include a notification/alert block (the tap is routed via UNUserNotificationCenter didReceive → IosPushBridge). Data-only messages are Android-only. -->
+    <!-- Local download/refresh work remains enabled; no remote-push background capability. -->
     <key>UIBackgroundModes</key>
     <array>
         <string>fetch</string>
         <string>processing</string>
-        <string>remote-notification</string>
     </array>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>

@@ -19,7 +19,7 @@ A **Kotlin Multiplatform** manga reader (Android + iOS + Desktop/JVM, single Com
 Host is macOS. Full gate cadence and gotchas: `CLAUDE.md` § "Build / test / run".
 
 ```bash
-./gradlew :app:assembleDebug        # Android debug APK (needs app/google-services.json — copy the .example)
+./gradlew :app:assembleDebug        # Isolated Android Debug APK; no BYO Firebase configuration required
 ./gradlew :desktopApp:run           # Desktop app (JDK 17+, non-JBR)
 
 # iOS (macOS + Xcode): the .xcodeproj is generated, never committed
