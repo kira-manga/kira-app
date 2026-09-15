@@ -9,6 +9,7 @@ import kotlinx.coroutines.ensureActive
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -37,14 +38,26 @@ interface ChapterDiscoveryQueries {
      * [expectedMangaId] prevents an Android snapshot from targeting a removed-and-readded parent.
      * Cancellation and all storage failures propagate; nothing is launched outside the caller.
      */
-    @OptIn(ExperimentalTime::class)
-    @Transaction
     suspend fun persistChapterDiscoveries(
         api: String,
         mangaUrl: String,
         chapters: List<SavedChapterEntity>,
         expectedMangaId: Long? = null,
+    ): List<ChapterNotification> = persistChapterDiscoveriesInTransaction(
+        api, mangaUrl, chapters, expectedMangaId, currentCoroutineContext(),
+    )
+
+    /** Room changes coroutine context; retain the entry caller for rollback checks. */
+    @OptIn(ExperimentalTime::class)
+    @Transaction
+    suspend fun persistChapterDiscoveriesInTransaction(
+        api: String,
+        mangaUrl: String,
+        chapters: List<SavedChapterEntity>,
+        expectedMangaId: Long?,
+        callerContext: CoroutineContext,
     ): List<ChapterNotification> {
+        callerContext.ensureActive()
         currentCoroutineContext().ensureActive()
         if (chapters.isEmpty()) return emptyList()
         val manga = getDiscoveryManga(api, mangaUrl) ?: return emptyList()
@@ -54,14 +67,15 @@ interface ChapterDiscoveryQueries {
         val candidates = chapters.distinctBy { it.url }
             .filterNot { it.url in known }
             .map { it.asDiscovery(manga.id, now) }
-        return insertDiscoveryOutcome(manga, candidates)
+        return insertDiscoveryOutcome(manga, candidates, callerContext)
     }
 }
 
-/** Runs only inside the generated Room wrapper for persistChapterDiscoveries. */
+/** Runs only inside the generated Room wrapper for persistChapterDiscoveriesInTransaction. */
 private suspend fun ChapterDiscoveryQueries.insertDiscoveryOutcome(
     manga: SavedMangaEntity,
     candidates: List<SavedChapterEntity>,
+    callerContext: CoroutineContext,
 ): List<ChapterNotification> {
     if (candidates.isEmpty()) return emptyList()
     val chapterIds = insertChapters(candidates)
@@ -71,10 +85,12 @@ private suspend fun ChapterDiscoveryQueries.insertDiscoveryOutcome(
     val notifications = candidates.zip(chapterIds).mapNotNull { (chapter, id) ->
         if (id > 0L) chapter.notification(manga, id) else null
     }
+    callerContext.ensureActive()
     currentCoroutineContext().ensureActive()
     if (notifications.isEmpty()) return emptyList()
     val ids = insertDiscoveryNotifications(notifications)
     check(ids.size == notifications.size && ids.all { it > 0L }) { "notification_insert_result_ids" }
+    callerContext.ensureActive()
     currentCoroutineContext().ensureActive()
     return notifications.zip(ids) { notification, id -> notification.copy(id = id) }
 }
