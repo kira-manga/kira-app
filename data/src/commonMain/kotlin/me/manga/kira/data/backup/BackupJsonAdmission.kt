@@ -4,6 +4,7 @@ import me.manga.kira.platform.backup.BackupByteBudget
 import me.manga.kira.platform.backup.BackupImportLimitExceeded
 import me.manga.kira.platform.backup.BackupImportPolicy
 import me.manga.kira.platform.backup.InvalidBackupArchive
+import kotlin.text.CharacterCodingException
 
 /** Checks ignored JSON as well as schema fields BEFORE kotlinx.serialization allocates DTO lists. */
 internal fun admitBackupJson(
@@ -15,7 +16,7 @@ internal fun admitBackupJson(
     val text =
         try {
             bytes.decodeToString(throwOnInvalidSequence = true)
-        } catch (failure: IllegalArgumentException) {
+        } catch (failure: CharacterCodingException) {
             throw InvalidBackupArchive(failure)
         }
     BackupJsonAdmission(text, policy, checkpoint).validate()

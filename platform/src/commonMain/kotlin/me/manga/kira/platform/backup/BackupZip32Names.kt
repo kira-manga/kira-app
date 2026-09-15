@@ -1,5 +1,7 @@
 package me.manga.kira.platform.backup
 
+import kotlin.text.CharacterCodingException
+
 /** Bounds the index INCLUDING implicit parents, before handing names to Okio's index builder. */
 internal class Zip32Names(
     private val limits: BackupZipLimits,
@@ -49,7 +51,7 @@ internal class Zip32Names(
 internal fun decodeZipName(bytes: ByteArray): String =
     try {
         bytes.decodeToString(throwOnInvalidSequence = true)
-    } catch (failure: IllegalArgumentException) {
+    } catch (failure: CharacterCodingException) {
         throw InvalidBackupArchive(failure)
     }
 
