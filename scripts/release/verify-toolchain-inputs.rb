@@ -13,6 +13,13 @@ class ToolchainInputVerifier
   COMMAND = "/usr/bin/ruby scripts/release/verify-toolchain-inputs.rb".freeze
   INSTALL_COMMAND = "bash scripts/release/install-xcodegen.sh".freeze
   CLEANUP_COMMAND = "bash scripts/release/cleanup-xcodegen.sh".freeze
+  RUNTIME_INSTALLER = "scripts/release/install-toolchain-inputs.py".freeze
+  RUNTIME_COMMAND = "/usr/bin/python3 -I -B #{RUNTIME_INSTALLER}".freeze
+  RUNTIME_ENV = %w[
+    PATH JAVA_HOME JAVA_OPTS JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS
+    RUBYOPT RUBYLIB GEM_HOME GEM_PATH RUNNER_TOOL_CACHE
+    KONAN_DATA_DIR KONAN_USE_INTERNAL_SERVER
+  ].freeze
   SWIFTPM_LOCK = "iosApp/Package.resolved".freeze
   GENERATED_SWIFTPM_LOCK = "iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved".freeze
   SWIFTPM_PREFLIGHT_COMMAND = <<~'SH'.strip.freeze
@@ -126,9 +133,7 @@ class ToolchainInputVerifier
     ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false "$@"
   SH
 
-  # Exact selections are not a claim that hosted-image/runtime archive bytes are authenticated.
-  # setup-java matches Temurin's provider SemVer, not its distinct raw runtime version.
-  JAVA_SETUP_VERSIONS = { "21.0.12.1+1" => "21.0.12+101.0.LTS" }.freeze
+  # The hosted OS and selected Xcode remain bootstrap trust roots, not archive-byte claims.
   XCODE_IDENTITY_COMMAND = <<~'SH'.strip.freeze
     [[ "$(/usr/bin/xcodebuild -version)" == $'Xcode 26.4.1\nBuild version 17E202' ]] || {
       echo 'Selected Xcode version/build does not match the reviewed runtime' >&2
@@ -169,6 +174,7 @@ class ToolchainInputVerifier
     end
     verify_gradle!
     verify_runtime_selections!
+    verify_runtime_archives!
     verify_gradle_graph!
     verify_xcodegen_pin!
     verify_swiftpm_pin!
@@ -370,10 +376,8 @@ class ToolchainInputVerifier
   def verify_runtime_selections!
     runtime = @pins.fetch("runtime_selections")
     java, ruby, xcode = runtime.values_at("java", "ruby", "xcode")
-    setup_java_version = JAVA_SETUP_VERSIONS[java.fetch("version")]
-    check!(java.fetch("distribution") == "temurin" && setup_java_version &&
-      java.fetch("setup_java_version") == setup_java_version &&
-      ruby.fetch("version").match?(/\A3\.3\.\d+\z/) &&
+    check!(java == { "distribution" => "temurin", "version" => "21.0.12.1+1" } &&
+      ruby.fetch("version") == "3.3.12" &&
       xcode.fetch("developer_dir") == "/Applications/Xcode_#{xcode.fetch('version')}.app/Contents/Developer" &&
       XCODE_IDENTITY_COMMAND.include?("Xcode #{xcode.fetch('version')}\\nBuild version #{xcode.fetch('build')}"),
       "runtime selections require exact supported Java, Ruby, and Xcode identities")
@@ -387,21 +391,99 @@ class ToolchainInputVerifier
       "Ruby selection must use the already-reviewed locked Bundler version")
   end
 
+  def verify_runtime_archives!
+    pins = @pins.fetch("runtime_archives")
+    check!(pins.keys.sort == %w[installer_sha256 java native ruby], "runtime archive role set changed")
+    checked_gradle_file(RUNTIME_INSTALLER, pins.fetch("installer_sha256"))
+    java_base = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/"
+    ruby_base = "https://github.com/ruby/ruby-builder/releases/download/ruby-3.3.12/"
+    layouts = {
+      "java" => {
+        "linux-x64" => [{ "url" => "#{java_base}OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz" }],
+        "macos-arm64" => [{ "url" => "#{java_base}OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz" }]
+      },
+      "ruby" => {
+        "linux-x64" => [{ "url" => "#{ruby_base}ruby-3.3.12-ubuntu-24.04-x64.tar.gz", "directory" => "x64" }],
+        "macos-arm64" => [{ "url" => "#{ruby_base}ruby-3.3.12-darwin-arm64.tar.gz", "directory" => "arm64" }]
+      },
+      "native" => {
+        "macos-arm64" => [
+          { "url" => "https://github.com/JetBrains/kotlin/releases/download/v2.4.0/kotlin-native-prebuilt-macos-aarch64-2.4.0.tar.gz",
+            "directory" => "kotlin-native-prebuilt-macos-aarch64-2.4.0" },
+          { "url" => "https://download.jetbrains.com/kotlin/native/resources/llvm/21-aarch64-macos/llvm-21-aarch64-macos-essentials-97.tar.gz",
+            "directory" => "llvm-21-aarch64-macos-essentials-97" },
+          { "url" => "https://download.jetbrains.com/kotlin/native/libffi-3.3-1-macos-arm64.tar.gz",
+            "directory" => "libffi-3.3-1-macos-arm64" }
+        ]
+      }
+    }
+    layouts.each do |role, hosts|
+      check!(pins.fetch(role).keys.sort == hosts.keys.sort, "runtime archive host set changed")
+      hosts.each do |host, expected|
+        selected = pins.fetch(role).fetch(host)
+        selected = [selected] unless role == "native"
+        check!(selected.is_a?(Array) && selected.length == expected.length, "runtime archive set changed")
+        selected.zip(expected).each_with_index do |(pin, layout), index|
+          required_size = role != "native" || index.zero?
+          check!(pin.is_a?(Hash) && pin.reject { |key, _| %w[sha256 size].include?(key) } == layout &&
+            sha256?(pin["sha256"]) && (!required_size || pin.key?("size")) &&
+            (!pin.key?("size") || (pin["size"].is_a?(Integer) && pin["size"].between?(1, 1024**3))),
+            "runtime archives require exact provider URLs, layouts, and SHA-256 pins")
+        end
+      end
+    end
+  end
+
+  def verify_runtime_environment!(node)
+    keys = node.fetch("env", {}).keys
+    check!(keys.none? { |key|
+      RUNTIME_ENV.include?(key) || key.start_with?("KIRA_VERIFIED_", "ORG_GRADLE_PROJECT_", "JAVA_HOME_")
+    }, "workflow environment cannot override verified runtime inputs")
+  end
+
   def verify_runtime_workflow!(filename, job_name, job)
     runtime = @pins.fetch("runtime_selections")
     steps = job.fetch("steps")
+    steps.each { |step| verify_runtime_environment!(step) }
     apple = filename == "testflight.yml" || [filename, job_name] == ["ci.yml", "ios"]
-    java = steps.select { |step| step["uses"].to_s.start_with?("actions/setup-java@") }
-    expected_java = { "distribution" => runtime.fetch("java").fetch("distribution"),
-      "java-version" => runtime.fetch("java").fetch("setup_java_version"), "check-latest" => false }
+    shipping = %w[android-internal-testing.yml testflight.yml].include?(filename)
     check!(job["runs-on"] == runtime.fetch("runners").fetch(apple ? "macos" : "linux") &&
-      java.length == 1 && (java.first.keys - %w[name uses with]).empty? && java.first["with"] == expected_java,
-      "runtime selection must match the reviewed runner and exact setup-java selector")
-    if %w[android-internal-testing.yml testflight.yml].include?(filename)
+      steps.none? { |step| step["uses"].to_s.start_with?("actions/setup-java@") },
+      "runtime selection must match the reviewed runner and verified Java installer")
+    roles = ["java"] + (apple ? ["native"] : []) + (shipping ? ["ruby"] : [])
+    installers = roles.to_h do |role|
+      indices = steps.each_index.select { |index| steps[index]["run"].to_s.strip == "#{RUNTIME_COMMAND} #{role}" }
+      check!(indices.length == 1 && indices.first > 1 && steps[indices.first].keys.sort == %w[name run],
+        "runtime selection must match the reviewed mandatory #{role} archive installer")
+      [role, indices.first]
+    end
+    check!(steps.count { |step| step["run"].to_s.include?(RUNTIME_INSTALLER) } == roles.length + 1 &&
+      steps.last.keys.sort == %w[if name run] && steps.last["if"] == "${{ always() }}" &&
+      steps.last["run"].strip == "#{RUNTIME_COMMAND} cleanup",
+      "verified runtime cleanup must always be the final step")
+    steps.each_with_index do |step, index|
+      if secrets_in?(step)
+        check!(installers.values.all? { |installer| index > installer }, "protected input precedes verified runtime installation")
+      end
+      gradle_setup = step["uses"].to_s.start_with?("gradle/actions/setup-gradle@")
+      if gradle_setup || step["run"].to_s.include?("./gradlew")
+        check!(index > installers.fetch("java") && (!apple || index > installers.fetch("native")),
+          "Gradle consumption precedes verified runtime installation")
+      end
+      next unless gradle_setup
+
+      # The pinned Action's write-enabled post hook executes Gradle after all job steps.
+      # Read-only caching keeps restore behavior but never executes a deleted JAVA_HOME in post.
+      check!((step.keys - %w[name uses with]).empty? && step["with"] == { "cache-read-only" => true },
+        "Gradle setup must retain read-only caches before runtime cleanup")
+    end
+    if shipping
       ruby = steps.select { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }
       check!(ruby.length == 1 && (ruby.first.keys - %w[name uses with]).empty? && ruby.first["with"] == {
-        "ruby-version" => runtime.fetch("ruby").fetch("version"), "bundler" => runtime.fetch("ruby").fetch("bundler"), "bundler-cache" => true
-      }, "runtime selection must match the reviewed Ruby and locked Bundler")
+        "ruby-version" => runtime.fetch("ruby").fetch("version"), "bundler" => runtime.fetch("ruby").fetch("bundler"),
+        "bundler-cache" => true, "self-hosted" => true
+      } && steps.index(ruby.first) == installers.fetch("ruby") + 1,
+        "runtime selection must match the reviewed verified Ruby and locked Bundler without download fallback")
     end
     return unless apple
 
@@ -477,9 +559,11 @@ class ToolchainInputVerifier
 
   def verify_workflow!(file)
     workflow = YAML.safe_load(File.read(file), aliases: false)
+    verify_runtime_environment!(workflow)
     check!(!secrets_in?(workflow.reject { |key, _| key == "jobs" }), "workflow-wide secrets precede bootstrap verification")
     check!(!workflow.dig("defaults", "run", "working-directory"), "bootstrap must run from the checkout root")
     workflow.fetch("jobs").each do |name, job|
+      verify_runtime_environment!(job)
       inline_request = File.basename(file) == "internal-testing-release.yml" && name == "validate-request"
       check!(job == INLINE_RELEASE_REQUEST_JOB, "unsupported inline release request guard") if inline_request
       if job.key?("uses")

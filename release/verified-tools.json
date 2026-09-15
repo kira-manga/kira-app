@@ -95,8 +95,7 @@
   "runtime_selections": {
     "java": {
       "distribution": "temurin",
-      "version": "21.0.12.1+1",
-      "setup_java_version": "21.0.12+101.0.LTS"
+      "version": "21.0.12.1+1"
     },
     "ruby": {
       "version": "3.3.12",
@@ -114,6 +113,55 @@
     "runners": {
       "linux": "ubuntu-24.04",
       "macos": "macos-26"
+    }
+  },
+  "runtime_archives": {
+    "installer_sha256": "8f2bc35a3a159ba0f9d2db7693529032fbed0d3c91f7b9cf7e423d65cc02b173",
+    "java": {
+      "linux-x64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+        "sha256": "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94",
+        "size": 207473347
+      },
+      "macos-arm64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+        "sha256": "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998",
+        "size": 200073404
+      }
+    },
+    "ruby": {
+      "linux-x64": {
+        "url": "https://github.com/ruby/ruby-builder/releases/download/ruby-3.3.12/ruby-3.3.12-ubuntu-24.04-x64.tar.gz",
+        "sha256": "3fa2d6242e105a65f694fae86e9f68d9617c827fc14d1fcf611035b9ae2cbdb8",
+        "size": 37863942,
+        "directory": "x64"
+      },
+      "macos-arm64": {
+        "url": "https://github.com/ruby/ruby-builder/releases/download/ruby-3.3.12/ruby-3.3.12-darwin-arm64.tar.gz",
+        "sha256": "eeb42dcc4be20d119c3d3613ad7d778a6d65f36714e38c232a8d02841c5b7626",
+        "size": 11288432,
+        "directory": "arm64"
+      }
+    },
+    "native": {
+      "macos-arm64": [
+        {
+          "url": "https://github.com/JetBrains/kotlin/releases/download/v2.4.0/kotlin-native-prebuilt-macos-aarch64-2.4.0.tar.gz",
+          "sha256": "9ef8c0f9fd90f4082d6e62f14655d23d81651d89d49205e5c49177ff34f552b8",
+          "size": 259007716,
+          "directory": "kotlin-native-prebuilt-macos-aarch64-2.4.0"
+        },
+        {
+          "url": "https://download.jetbrains.com/kotlin/native/resources/llvm/21-aarch64-macos/llvm-21-aarch64-macos-essentials-97.tar.gz",
+          "sha256": "62fd78f090353aa7b2c6601ad6f95bd7a0b0558b18f86978043cc878321b408a",
+          "directory": "llvm-21-aarch64-macos-essentials-97"
+        },
+        {
+          "url": "https://download.jetbrains.com/kotlin/native/libffi-3.3-1-macos-arm64.tar.gz",
+          "sha256": "6c97f0a4755b83282b037800ac4c0591ebb8e7a3517bb53924bcb61684243d45",
+          "directory": "libffi-3.3-1-macos-arm64"
+        }
+      ]
     }
   }
 }

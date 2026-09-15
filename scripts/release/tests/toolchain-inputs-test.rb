@@ -13,7 +13,7 @@ class ToolchainInputsTest < Minitest::Test
     release/verified-tools.json gradlew gradlew.bat Gemfile Gemfile.lock
     gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
     scripts/release/verify-toolchain-inputs.rb scripts/release/install-xcodegen.sh
-    scripts/release/cleanup-xcodegen.sh
+    scripts/release/cleanup-xcodegen.sh scripts/release/install-toolchain-inputs.py
     .github/workflows/ci.yml .github/workflows/android-internal-testing.yml
     .github/workflows/testflight.yml .github/workflows/internal-testing-release.yml
     iosApp/Package.resolved iosApp/project.yml app/google-services.json.example
@@ -57,7 +57,9 @@ class ToolchainInputsTest < Minitest::Test
     ["v4", "ea165f8"].each do |reference|
       with_checkout do |root|
         mutate_workflow(root, "ci.yml") do |workflow|
-          workflow.fetch("jobs").fetch("jvm-android").fetch("steps").last["uses"] = "actions/upload-artifact@#{reference}"
+          workflow.fetch("jobs").fetch("jvm-android").fetch("steps").find { |step|
+            step["uses"].to_s.start_with?("actions/upload-artifact@")
+          }["uses"] = "actions/upload-artifact@#{reference}"
         end
         assert_rejected(verify(root), "unreviewed or floating Action reference")
       end
@@ -544,51 +546,115 @@ class ToolchainInputsTest < Minitest::Test
     with_checkout do |root|
       java = JSON.parse(File.read(File.join(root, "release/verified-tools.json"))).fetch("runtime_selections").fetch("java")
       assert_equal "21.0.12.1+1", java.fetch("version")
-      assert_equal "21.0.12+101.0.LTS", java.fetch("setup_java_version")
+      refute java.key?("setup_java_version"), "Java comes from the authenticated archive, not an Action selector"
       _, stderr, status = verify(root)
       assert status.success?, stderr
     end
-    %i[java_major java_raw_runtime java_broad_selector java_wrong_patch ruby_minor bundler_latest runner_latest xcode_path skipped_xcode_probe skipped_java skipped_ruby ignored_java_failure].each do |mutation|
+    %i[java_fallback ruby_minor bundler_latest ruby_download_fallback runner_latest xcode_path skipped_xcode_probe skipped_java skipped_native skipped_ruby ignored_java_failure].each do |mutation|
       with_checkout do |root|
         mutate_workflow(root, "testflight.yml") do |workflow|
           job = workflow.fetch("jobs").fetch("build-and-upload")
           steps = job.fetch("steps")
           case mutation
-          when :java_major then steps.find { |step| step["uses"].to_s.start_with?("actions/setup-java@") }.fetch("with")["java-version"] = "21"
-          when :java_raw_runtime then steps.find { |step| step["uses"].to_s.start_with?("actions/setup-java@") }.fetch("with")["java-version"] = "21.0.12.1+1"
-          when :java_broad_selector then steps.find { |step| step["uses"].to_s.start_with?("actions/setup-java@") }.fetch("with")["java-version"] = "21.0.12"
-          when :java_wrong_patch then steps.find { |step| step["uses"].to_s.start_with?("actions/setup-java@") }.fetch("with")["java-version"] = "21.0.12+8.0.LTS"
+          when :java_fallback
+            steps.insert(3, { "uses" => "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3",
+              "with" => { "distribution" => "temurin", "java-version" => "21" } })
           when :ruby_minor then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["ruby-version"] = "3.3"
           when :bundler_latest then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["bundler"] = "latest"
+          when :ruby_download_fallback then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with").delete("self-hosted")
           when :runner_latest then job["runs-on"] = "macos-latest"
           when :xcode_path then job.fetch("env")["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
           when :skipped_xcode_probe then steps.fetch(2)["if"] = "${{ false }}"
-          when :skipped_java then steps.find { |step| step["uses"].to_s.start_with?("actions/setup-java@") }["if"] = "${{ false }}"
+          when :skipped_java then steps.find { |step| step["name"] == "Install verified Java 21" }["if"] = "${{ false }}"
+          when :skipped_native then steps.find { |step| step["name"] == "Install verified Apple Native toolchain" }["if"] = "${{ false }}"
           when :skipped_ruby then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }["if"] = "${{ false }}"
-          when :ignored_java_failure then steps.find { |step| step["uses"].to_s.start_with?("actions/setup-java@") }["continue-on-error"] = true
+          when :ignored_java_failure then steps.find { |step| step["name"] == "Install verified Java 21" }["continue-on-error"] = true
           end
         end
         assert_rejected(verify(root), "runtime selection must match the reviewed")
       end
     end
-    # Matching workflow and manifest selectors cannot admit an unreviewed runtime/selector pair.
-    [["21.0.12+8", "21.0.12+101.0.LTS"], ["21.0.12+8", "21.0.12+8.0.LTS"]].each do |version, selector|
+    %w[21 21.0.12+8].each do |version|
       with_checkout do |root|
         mutate_pins(root) do |pins|
-          pins.fetch("runtime_selections").fetch("java").merge!("version" => version, "setup_java_version" => selector)
-        end
-        %w[ci.yml android-internal-testing.yml testflight.yml].each do |filename|
-          mutate_workflow(root, filename) do |workflow|
-            workflow.fetch("jobs").each_value do |job|
-              job.fetch("steps", []).each do |step|
-                next unless step["uses"].to_s.start_with?("actions/setup-java@")
-
-                step.fetch("with")["java-version"] = selector
-              end
-            end
-          end
+          pins.fetch("runtime_selections").fetch("java")["version"] = version
         end
         assert_rejected(verify(root), "runtime selections require exact supported Java, Ruby, and Xcode identities")
+      end
+    end
+  end
+
+  def test_runtime_archive_registry_and_installer_are_bound
+    %i[missing_digest malformed_digest mutable_url wrong_layout extra_host missing_native installer_changed].each do |mutation|
+      with_checkout do |root|
+        if mutation == :installer_changed
+          File.open(File.join(root, "scripts/release/install-toolchain-inputs.py"), "a") { |file| file.puts("# changed") }
+          message = "Gradle input digest mismatch: scripts/release/install-toolchain-inputs.py"
+        else
+          mutate_pins(root) do |pins|
+            archives = pins.fetch("runtime_archives")
+            case mutation
+            when :missing_digest then archives.fetch("java").fetch("linux-x64").delete("sha256")
+            when :malformed_digest then archives.fetch("ruby").fetch("macos-arm64")["sha256"] = "latest"
+            when :mutable_url then archives.fetch("java").fetch("macos-arm64")["url"] = "https://example.com/latest.tar.gz"
+            when :wrong_layout then archives.fetch("ruby").fetch("linux-x64")["directory"] = "unreviewed"
+            when :extra_host then archives.fetch("java")["linux-arm64"] = archives.fetch("java").fetch("linux-x64")
+            when :missing_native then archives.fetch("native").fetch("macos-arm64").pop
+            end
+          end
+          message = case mutation
+          when :extra_host then "runtime archive host set changed"
+          when :missing_native then "runtime archive set changed"
+          else "runtime archives require exact provider URLs, layouts, and SHA-256 pins"
+          end
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_runtime_installation_cannot_move_after_consumers_or_lose_cleanup
+    %i[late_java late_native late_ruby skipped_cleanup ignored_cleanup late_cleanup writable_gradle_cache].each do |mutation|
+      with_checkout do |root|
+        mutate_workflow(root, "testflight.yml") do |workflow|
+          steps = workflow.fetch("jobs").fetch("build-and-upload").fetch("steps")
+          case mutation
+          when :late_java, :late_native, :late_ruby
+            role = mutation.to_s.delete_prefix("late_")
+            index = steps.index { |step| step["run"].to_s.strip.end_with?("install-toolchain-inputs.py #{role}") }
+            installer = steps.delete_at(index)
+            consumer = role == "ruby" ? steps.index { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") } :
+              steps.index { |step| step["uses"].to_s.start_with?("gradle/actions/setup-gradle@") }
+            steps.insert(consumer + 1, installer)
+          when :skipped_cleanup then steps.last.delete("if")
+          when :ignored_cleanup then steps.last["continue-on-error"] = true
+          when :late_cleanup then steps << { "run" => "echo after cleanup" }
+          when :writable_gradle_cache
+            steps.find { |step| step["uses"].to_s.start_with?("gradle/actions/setup-gradle@") }.fetch("with")["cache-read-only"] = false
+          end
+        end
+        message = case mutation
+        when :late_java, :late_native then "Gradle consumption precedes verified runtime installation"
+        when :late_ruby then "runtime selection must match the reviewed verified Ruby"
+        when :writable_gradle_cache then "Gradle setup must retain read-only caches"
+        else "verified runtime cleanup must always be the final step"
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_workflow_environment_cannot_replace_verified_runtime_paths
+    %w[JAVA_HOME KONAN_DATA_DIR ORG_GRADLE_PROJECT_kotlin.native.home RUBYOPT RUNNER_TOOL_CACHE KIRA_VERIFIED_NATIVE_AREA].each do |variable|
+      %i[workflow job step].each do |scope|
+        with_checkout do |root|
+          mutate_workflow(root, "testflight.yml") do |workflow|
+            job = workflow.fetch("jobs").fetch("build-and-upload")
+            node = scope == :workflow ? workflow : (scope == :job ? job : job.fetch("steps").last)
+            (node["env"] ||= {})[variable] = "/unverified"
+          end
+          assert_rejected(verify(root), "workflow environment cannot override verified runtime inputs")
+        end
       end
     end
   end
