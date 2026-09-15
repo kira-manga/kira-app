@@ -314,7 +314,7 @@
         <error line="98" column="5" source="standard:function-naming" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/HistoryScreenRoute.kt">
-        <error line="166" column="5" source="standard:function-naming" />
+        <error line="167" column="5" source="standard:function-naming" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/HomeReworkScreenRoute.kt">
         <error line="87" column="5" source="standard:function-naming" />
@@ -365,7 +365,7 @@
         <error line="145" column="5" source="standard:function-naming" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/UpdatesScreenRoute.kt">
-        <error line="104" column="5" source="standard:function-naming" />
+        <error line="105" column="5" source="standard:function-naming" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/navigation/routes/WebViewScreenRoute.kt">
         <error line="58" column="5" source="standard:function-naming" />
