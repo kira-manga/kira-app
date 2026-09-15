@@ -1,6 +1,5 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
-import android.app.Application
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
@@ -16,7 +15,7 @@ import kotlin.test.assertTrue
 
 /** Real Android worker/service + generated Room transactions; not scheduler or device qualification. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [ANDROID_TEST_SDK], application = Application::class)
+@Config(sdk = [ANDROID_TEST_SDK], application = DownloadLocaleTestApplication::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DownloadWorkerCancellationTest {

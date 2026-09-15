@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.LayoutDirection
 import me.manga.kira.IosHostLayoutDirection
 import platform.Foundation.NSLocale
 import platform.Foundation.NSUserDefaults
@@ -83,6 +84,9 @@ actual object LocalAppLocale {
 
     actual val current: String
         @Composable get() = LocalAppLocale.current
+
+    @Composable
+    actual fun layoutDirection(value: String?): LayoutDirection = selectedLanguageLayoutDirection(value)
 
     @Composable
     actual infix fun provides(value: String?): ProvidedValue<*> {

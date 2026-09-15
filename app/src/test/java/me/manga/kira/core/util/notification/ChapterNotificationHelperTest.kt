@@ -11,6 +11,7 @@ import me.manga.kira.R
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.di.appKoinModule
+import me.manga.kira.locale.LocaleOnlyTestApplication
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,7 +31,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadow.api.Shadow
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class, shadows = [NotificationPostingShadow::class])
+@Config(sdk = [35], application = LocaleOnlyTestApplication::class, shadows = [NotificationPostingShadow::class])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ChapterNotificationHelperTest {
     private lateinit var context: Application

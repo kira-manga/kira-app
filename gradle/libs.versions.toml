@@ -93,7 +93,7 @@ play-review = "2.0.2"
 skiko-test = "0.144.6"
 junit = "4.13.2"
 turbine = "1.2.1"
-robolectric = "4.16"
+robolectric = "4.16.1"
 android35-instrumented = "15-robolectric-13954326-i7"
 mockito = "5.18.0"
 # Public foreground-test adapter; Work 2.11.2 already requires concurrent-futures-ktx 1.1.0 at runtime.

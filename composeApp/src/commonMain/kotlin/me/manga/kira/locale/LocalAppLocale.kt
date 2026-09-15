@@ -2,26 +2,28 @@ package me.manga.kira.locale
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidedValue
+import androidx.compose.ui.unit.LayoutDirection
 
 /**
  * Cross-platform app-language override for compose-resources.
  *
- * `stringResource` resolves against the *platform* locale. The per-platform `LocaleSwitcher` only
- * changes that on Android (activity recreate); on iOS/Desktop it is a no-op, so selecting a language
- * in Settings persisted the choice but never changed the UI language. Providing this at the app root
- * re-resolves strings in the chosen language without disposing remembered app state:
- *  - **Android** — overrides `LocalConfiguration`'s locale (which compose-resources reads).
+ * `stringResource` resolves against the *platform* locale. Providing the saved choice at the app
+ * root re-resolves strings without disposing remembered app state:
+ *  - **Android** — uses the host's resource-locale resolver for `LocalConfiguration` and RTL.
  *  - **Desktop (JVM)** — `Locale.setDefault(...)`; provider recomposition re-reads it.
  *  - **iOS** — sets `NSUserDefaults["AppleLanguages"]`; `NSLocale.preferredLanguages` (what
  *    compose-resources string resolution reads, uncached) reflects the write within the running
  *    process, so provider recomposition switches live (PI2 — pinned by
  *    `AppleLanguagesLiveSwitchContractTest`). Swift-side `NSBundle` strings catch up on relaunch.
  *
- * `provides(null)` (or a blank code) restores the original system default.
+ * `provides(null)` (or a blank code) restores the system default (current system order on Android).
  */
 expect object LocalAppLocale {
     val current: String @Composable get
     @Composable infix fun provides(value: String?): ProvidedValue<*>
+
+    /** Resolves direction alongside the platform locale, preserving each target's blank behavior. */
+    @Composable fun layoutDirection(value: String?): LayoutDirection
 
     /**
      * Whether an in-app language change re-resolves `stringResource` text *within the running

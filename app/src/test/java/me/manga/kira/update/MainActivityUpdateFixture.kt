@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.MainActivity
+import me.manga.kira.locale.LocaleOnlyTestApplication
 import me.manga.kira.platform.activity.ActivityHolder
 import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.platform.storage.SecureStorage
@@ -160,7 +161,7 @@ internal class ReviewProbe : InAppReviewClient {
  * Real lifecycle dispatch forwards to the real holder. This deliberately does NOT run MyApp;
  * production MyApp callback registration/order remains unchanged and source-confirmed, not tested.
  */
-class AppUpdateTestApplication : Application() {
+class AppUpdateTestApplication : LocaleOnlyTestApplication() {
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(

@@ -106,8 +106,8 @@ sealed interface ReaderEffect : MviEffect {
      * load image" with a manual "Open in WebView" button. This effect restores the AUTO trigger:
      * the VM emits it (instead of the generic [ShowError] snackbar) when a page-fetch failure is a
      * 403. The `:composeApp` adapter maps it to `Screen.WebView(url, api)`; once the user returns,
-     * the adapter auto-re-dispatches [ReaderIntent.OnRetry] so the chapter re-fetches with the
-     * freshly-minted cookies. Mirrors the proven Details
+     * the adapter returns the captured [ReaderIntent.OnCloudflareSolverReturned] request so only
+     * the challenged anchor or append re-fetches. Mirrors the proven Details
      * [me.manga.kira.presentation.details.DetailsEffect.SolveCloudflareChallenge] pattern.
      *
      * Carries the chapter source [url] (the rework `Chapter.url`) and the source [api] (the rework
