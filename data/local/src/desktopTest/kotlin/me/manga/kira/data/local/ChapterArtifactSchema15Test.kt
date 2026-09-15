@@ -80,7 +80,8 @@ class ChapterArtifactSchema15Test {
         assertEquals(before.keys + "chapter_artifacts", after.keys)
         before.forEach { (table, entity) -> assertEquals(entity, after[table], "Unrelated v14 entity changed: $table") }
         val artifact = assertNotNull(after["chapter_artifacts"])
-        assertTrue(artifact.getValue("foreignKeys").jsonArray.isEmpty())
+        // Room exports omit empty foreign-key arrays; a present nonempty array must still fail.
+        assertTrue(artifact["foreignKeys"]?.jsonArray.orEmpty().isEmpty())
         assertEquals(1, artifact.getValue("indices").jsonArray.size)
     }
 
@@ -91,7 +92,8 @@ class ChapterArtifactSchema15Test {
                 val entity = element.jsonObject
                 val table = entity.getValue("tableName").jsonPrimitive.content
                 connection.execSQL(entity.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table))
-                entity.getValue("indices").jsonArray.forEach { index ->
+                // The historical export omits this key for tables without indices.
+                entity["indices"]?.jsonArray?.forEach { index ->
                     connection.execSQL(index.jsonObject.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table))
                 }
             }
