@@ -1,0 +1,62 @@
+{
+  "app": {
+    "inputs": {
+      "AGENTS.md": "a1e5c18c9477b137ab6372f492f67c81215109725d47531c76d1f53feef55dba",
+      "CLAUDE.md": "38ecfaebd844f89fa32eff68bd581c88f00b1aff8da0d93cbfa9806603d2da04",
+      "app/build.gradle.kts": "2f5af388a012de3933fe5b3d10bb8071fbc35acd14b3fb83eb8ca8d5dc767cd8",
+      "build.gradle.kts": "b22544870c22bf616c4f072ad415513c7b346524e3b9a2b4001a6514424f24dd",
+      "composeApp/build.gradle.kts": "e9c70fdecd14f1bf7678e2d58d0141d73e09ca42b5b88082ade338d835ba35f3",
+      "core/build.gradle.kts": "0f6a9398471461c285e82d0e1a9147a13790fef382eb10b687766c57d0b9de54",
+      "data/build.gradle.kts": "b1691c1fb5d2fcb620bca9af09949e67764833b2bd9a2161b995eea433222334",
+      "data/download/build.gradle.kts": "346ae3f50c5c1477ff11dfd11089bec2d26f88626684b808784c6562092f406d",
+      "data/local/build.gradle.kts": "af618e441f024af7239e476e48098c9f7ec4e09bb358e1055e6c787f81aec8cb",
+      "data/remote/build.gradle.kts": "2091e27c030a7b0b97cd3511eb4c92ad848b6f578ca66863063b0cf508086b52",
+      "desktopApp/build.gradle.kts": "33cbe01c54993042df2ce3bc5bf20dedaf23256969b1c3097ad77a226bdc99ba",
+      "domain/build.gradle.kts": "ade4c1e77d35a3e57879b45159e2d10c96d0c33f879d53df4bc085f0208bb85f",
+      "gradle.properties": "fbcfeeae64de28e5a2756cd74a01f1c8b9eceedf395d5c114573c0aea6fc9f2a",
+      "gradle/libs.versions.toml": "07762523b2f0ed601389a606f7d1203f3019a2702a82b29b559ce5dc8f7e08e9",
+      "gradle/wrapper/gradle-wrapper.jar": "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7",
+      "gradle/wrapper/gradle-wrapper.properties": "556f4aa5f360e35fca77b010b306307765d4f4915a82a612035cd5cfb7a587cb",
+      "gradlew": "e01b5c97892572c82405c02b96a3382379100e7d825ce7c48883d95c26928750",
+      "platform/build.gradle.kts": "88de9859b66d47df9df0ff6765017939537a856292ed808697c4121f39109a94",
+      "platform/libs/libwebp/COPYING": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+      "platform/libs/libwebp/PATENTS": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c",
+      "platform/libs/libwebp/README.md": "878109b556ab68b0b54555b2e6aeff27fdf95f7ed780e0ee1ec7f6ff1e7a661e",
+      "platform/libs/libwebp/include/webp/decode.h": "300db34c56d965ee8304f0f0e947ba226403362833ce5d956c6d5f9814a5297f",
+      "platform/libs/libwebp/include/webp/demux.h": "984983b09785e2af7e8c5cefd2e2f08d2116870c13108445665b11256aa82fec",
+      "platform/libs/libwebp/include/webp/encode.h": "009eb07d15f117b7e26484d0bc0c2a6a571ba378c7ddac0ea4322596167aeab1",
+      "platform/libs/libwebp/include/webp/format_constants.h": "6f26d54038b770c5f9ddcd8f8e2da05d43c92168cb30f0e7060240f90df5fd7f",
+      "platform/libs/libwebp/include/webp/mux.h": "c72cf593f8194c671efcade33f1678294380120d45a337511d612a3acb643f35",
+      "platform/libs/libwebp/include/webp/mux_types.h": "d3313ad38c26d17abd244ab683e662dedead1489ec0f910bc31eba7ce2f8838c",
+      "platform/libs/libwebp/include/webp/types.h": "5ec7cd176fa921379ae463cecb2ab1616068031e58ad705f51c1f3bbc7d70aa3",
+      "platform/libs/libwebp/ios-arm64-simulator/libwebp.a": "ab7bbf5d3baa0f97c1c56093311aafa68a840d5fcf488fa174f12604c0d1bd24",
+      "platform/libs/libwebp/provenance.json": "c2a658e9188b7afb476183c6c469fa159f9f10faa02aa223ee6b6dedeb48bb31",
+      "platform/src/nativeInterop/cinterop/libwebp.def": "ceeb8cc717e8e98ce21b5ae6cc57865c80aeda00c4c5ae1113a6ed652d39b0db",
+      "platform/vendor/avif/maven/org/aomedia/avif/android/avif/1.3.0.841110fd-kira-limits1/avif-1.3.0.841110fd-kira-limits1.aar": "3fb46514a771c9d8efc38192d80e69031021c3b6f7f5f09a154131ca083c5888",
+      "platform/vendor/avif/maven/org/aomedia/avif/android/avif/1.3.0.841110fd-kira-limits1/avif-1.3.0.841110fd-kira-limits1.pom": "b8190c2b737308dd81d1adcf362c64e26179a6d0913e9c9ed0a84a40091b0400",
+      "presentation/build.gradle.kts": "e084af1ba5a9906e7639f49f55d004075d91cf0c5cf32adcc493da960d432b92",
+      "release/version.properties": "814383ff95724a36e24779e7ec871eb6765422ad86562a76866e90aab48eb5d3",
+      "settings.gradle.kts": "11ec5e60925a93195abcbb66dcf1090a29289f88b7ff04f3ce7b1cabfc4ec0f0",
+      "sources/config/build.gradle.kts": "63db5f2564a6fdf21ccb7bdfa9bbafc8cdb395d08606a6f77417a1ae35ba203c",
+      "sources/contracts/build.gradle.kts": "cd0ead53d56a2072fec38d047f0a6d2a8972e205ba15b005df2060907232597b",
+      "sources/engine/build.gradle.kts": "d71d385ce90d99ac3b7a2a17d7f5cd44fa01fd529f35868c87df9476f49d1954",
+      "sources/legacy/build.gradle.kts": "ca9b5ecaa8294db0eda6f2ce3cced2a16d80089b4a723c4eeddf707d6e359e7f",
+      "ui/build.gradle.kts": "83c84f6f1d0cd94df6cde744804d7e8abd3c2bfe7fe26184255ab3ade8792838"
+    },
+    "repository": "kira-manga/kira-app",
+    "sha": "d4a18aac34a32f8332af9aa91d196fb69fd93550",
+    "tree": "261f80d6487a26e50e120302642e56bcef7b9241"
+  },
+  "app_modules": [
+    "core",
+    "platform"
+  ],
+  "native": {
+    "distribution": "PREBUILT",
+    "kgp": "2.4.0",
+    "native": "2.4.0"
+  },
+  "note": "Exact d4a18aac checkout. All project configuration is ordinary; only core/platform Native compilation/link tasks run. No Engine/host source checkout or substitution. Main and platform test inventories are read from this clean source and matched at actual compiler tasks.",
+  "schema": "app70-apple-source-pins-v1",
+  "status": "SOURCE_BOUND_NOT_AUTHORIZATION"
+}
