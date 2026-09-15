@@ -177,12 +177,9 @@ class DownloadsActionRepositoryImpl(
 
     override suspend fun deleteDownload(chapterId: Long): Result<Unit> =
         runCatchingCancellable {
-            // #10 (native-wins): ROW-ONLY delete — remove the chapter_downloads queue row only, exactly
-            // like native DownloadRepositoryImpl.deleteDownload (= dao.deleteByChapterId). The on-disk
-            // files and the saved_chapters `isDownloaded` flag are intentionally LEFT intact, so the
-            // chapter stays readable offline and the "Downloaded" badge stays lit. Full cleanup
-            // (clear the flag + delete files) is the SEPARATE Library "delete downloaded" path
-            // (LibraryRepository.deleteDownloadedChapters), surfaced via [deleteDownloadedChapter].
+            // SUCCESS stays history-only/readable. FAILED/active Delete settles only that captured
+            // attempt's partial bytes before removing its row, preserving prior CBZ/restore files.
+            // Full offline-artifact removal remains the separate deleteDownloadedChapter action.
             legacy.deleteDownload(chapterId)
         }
 

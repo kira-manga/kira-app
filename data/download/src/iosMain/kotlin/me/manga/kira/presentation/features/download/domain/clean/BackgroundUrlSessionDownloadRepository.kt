@@ -282,26 +282,28 @@ class BackgroundUrlSessionDownloadRepository(
     }
 
     override suspend fun deleteDownload(chapterId: Long) {
-        val (row, claim) = mutex.withLock {
-            val current = dao.getDownloadByChapter(chapterId) ?: return
-            if (current.state == DownloadingState.SUCCESS) {
-                // SUCCESS eviction is history-only, including a restored archive with no queue row.
-                dao.deleteHistoryAttempt(chapterId, current.id)
-                return
-            }
-            current to cancelLocked(chapterId)
+        val row = mutex.withLock { dao.getDownloadByChapter(chapterId) } ?: return
+        try {
+            check(artifacts.deleteAttempt(row) { claim ->
+                mutex.withLock {
+                    transport.cancelChapter(chapterId, claim.token)
+                    clearChapterCaches(chapterId)
+                    runCatching { downloadNotifier.clear(chapterId.toInt()) }
+                }
+            }) { "Download cleanup could not be settled" }
+        } finally {
+            mutex.withLock { fillWindowLocked() }
         }
-        if (claim != null && !artifacts.settle(claim)) return
-        dao.deleteHistoryAttempt(chapterId, row.id)
-        mutex.withLock { fillWindowLocked() }
     }
 
     override suspend fun onCancel(chapterId: Long) {
-        val claim = mutex.withLock {
-            cancelLocked(chapterId).also { fillWindowLocked() }
+        val claim = mutex.withLock { cancelLocked(chapterId) }
+        try {
+            // Revoke is synchronous; observe cleanup outside the engine mutex after real users drain.
+            if (claim != null) check(artifacts.settleCancelled(claim)) { "Download cleanup could not be settled" }
+        } finally {
+            mutex.withLock { fillWindowLocked() }
         }
-        // Revoke is synchronous; cleanup waits outside the engine mutex for actual file users.
-        if (claim != null) applicationScope.launch { artifacts.settle(claim) }
     }
 
     private suspend fun cancelLocked(chapterId: Long): ChapterArtifactClaim? {
@@ -319,7 +321,9 @@ class BackgroundUrlSessionDownloadRepository(
             dao.observeAllDownloads().first().filter { it.state in WorkSignalRules.ACTIVE_STATES }
                 .mapNotNull { cancelLocked(it.chapterId) }
         }
-        claims.forEach { claim -> applicationScope.launch { artifacts.settle(claim) } }
+        var settled = true
+        claims.forEach { if (!artifacts.settleCancelled(it)) settled = false }
+        check(settled) { "Download cleanup could not be settled" }
     }
 
     override suspend fun reconcileInterruptedDownloads() {

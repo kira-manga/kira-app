@@ -54,6 +54,19 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     suspend fun downloadClaim(expected: ChapterDownloadEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.chapterId) { token -> dao.claimExistingDownload(expected, token) }
 
+    /** Current FAILED generation only; same gates as Retry, never producer authority. */
+    suspend fun beginFailedCleanup(expected: ChapterDownloadEntity): ChapterArtifactClaim? =
+        admission(expected.mangaId, expected.chapterId) { token -> dao.claimFailedCleanup(expected, token) }
+
+    /** Capture, revoke and failure bookkeeping share the existing short publication fence. */
+    internal suspend fun cancelCapturedDownload(
+        expected: ChapterDownloadEntity,
+        cancelled: suspend (ChapterArtifactClaim) -> Boolean,
+    ): ChapterArtifactClaim? = admission(expected.mangaId, expected.chapterId) { token ->
+        val claim = dao.claimCapturedCancellation(expected, token) ?: return@admission null
+        if (cancelled(claim)) claim else null
+    }
+
     /** Queue drains may await this exact refusal outside producer/file/engine locks. */
     internal suspend fun downloadAdmission(expected: ChapterDownloadEntity): ChapterArtifactAdmission {
         var parentReopen: Deferred<Unit>? = null
@@ -142,6 +155,24 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
         }
     }
 
+    /**
+     * Request a stop only for actual users of this retiring token, not historical cleanup custody.
+     * The signal is synchronous under the existing transition fence: do not await or re-enter here.
+     * In particular, Android's shared worker must not stop for an unrelated settled FAILED row.
+     */
+    suspend fun requestStopIfProducing(claim: ChapterArtifactClaim, stop: () -> Unit): Boolean {
+        val gate = gates.chapter(claim.owner.chapterId)
+        return gate.transition.withLock {
+            val record = dao.get(claim.owner.chapterId) ?: return@withLock false
+            if (!record.isOwnedBy(claim) || !record.retiring || gate.drained(claim.token) == null) {
+                false
+            } else {
+                stop()
+                true
+            }
+        }
+    }
+
     /** Revocation and cancellation bookkeeping share the same publication fence. */
     suspend fun <T> invalidate(claim: ChapterArtifactClaim, action: suspend () -> T): T? {
         val gate = gates.chapter(claim.owner.chapterId)
@@ -167,6 +198,8 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
                     ?: return@transition false
                 if (!cleanup(record)) false else if (claim.operation == ChapterArtifactOperation.DELETE) {
                     dao.finishRemoval(claim.owner.chapterId, claim.token) == 1
+                } else if (claim.operation == ChapterArtifactOperation.FAILED_CLEANUP) {
+                    dao.finishFailedCleanup(claim)
                 } else dao.release(claim.owner.chapterId, claim.token) == 1
             }
         }

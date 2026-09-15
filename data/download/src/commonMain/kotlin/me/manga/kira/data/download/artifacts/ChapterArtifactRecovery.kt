@@ -47,6 +47,8 @@ class ChapterArtifactRecovery(
                             log.w { "Chapter cleanup retained for retry" }
                         }
                     }
+                } else if (record.operation == ChapterArtifactOperation.FAILED_CLEANUP) {
+                    record.claimOrNull()?.let { settleFailedCleanup(artifacts, it) }
                 } else if (record.operation == ChapterArtifactOperation.CONVERT) {
                     record.claimOrNull()?.let { claim -> settleConversion(artifacts, claim) }
                 }
@@ -95,6 +97,23 @@ class ChapterArtifactRecovery(
             }
             ChapterConversionOutcome.UNKNOWN -> false
         }
+    }
+
+    /** Explicit Delete never inherits ordinary failure's page-retention policy for Retry. */
+    suspend fun settleFailedCleanup(artifacts: ChapterArtifacts, claim: ChapterArtifactClaim): Boolean = try {
+        artifacts.settle(claim) {
+            if (!dao.canSettleFailedCleanup(claim) || !commits.settleIncompleteDownload(claim, requeue = false)) {
+                false
+            } else {
+                deleteUncommittedPages(claim)
+                true // The shared coordinator atomically removes the captured FAILED row + token.
+            }
+        }.also { settled -> if (!settled) log.w { "Chapter cleanup retained for retry" } }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        log.w { "Chapter cleanup retained for retry" }
+        false // Failed deletion or SQL release keeps both durable cleanup custody and the row.
     }
 
     /** Caller holds this chapter's exclusive files/transition gates and its durable DELETE token. */

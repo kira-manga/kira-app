@@ -114,6 +114,12 @@ private class FakeArtifactRecords(
         return 1
     }
 
+    override suspend fun removeTerminalDownload(
+        chapterId: Long,
+        downloadId: Long,
+        terminalState: me.manga.kira.presentation.features.download.data.DownloadingState,
+    ): Int = if (download(chapterId)?.state == terminalState) removeDownload(chapterId, downloadId) else 0
+
     override suspend fun revoke(chapterId: Long, token: String): Int =
         mutate(chapterId, token) { it.copy(retiring = true) }
 

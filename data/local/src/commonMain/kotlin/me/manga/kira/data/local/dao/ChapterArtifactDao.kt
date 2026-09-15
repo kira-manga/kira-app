@@ -134,11 +134,83 @@ interface ChapterArtifactDao {
         return reserve(chapter, token, ChapterArtifactOperation.DOWNLOAD, current.id, null)
     }
 
+    /** Cancel only the captured active ledger; never refresh authority from chapterId alone. */
+    @Transaction
+    suspend fun claimCapturedCancellation(expected: ChapterDownloadEntity, token: String): ChapterArtifactClaim? {
+        val current = download(expected.chapterId) ?: return null
+        if (!current.sameAttempt(expected) || current.api != expected.api || !current.isActiveArtifactDownload()) return null
+        val claim = claimExistingDownload(current, token) ?: return null
+        check(revoke(current.chapterId, claim.token) == 1)
+        return claim
+    }
+
+    /**
+     * Terminal cleanup is not producer authority. Legacy and tokenless retained FAILED attempts
+     * get durable custody; an exact old DOWNLOAD token is reused only to drain its real file users.
+     * A conversion, restore, replacement ledger or unresolved retired path is never taken over.
+     */
+    @Transaction
+    suspend fun claimFailedCleanup(expected: ChapterDownloadEntity, token: String): ChapterArtifactClaim? {
+        require(token.isNotBlank())
+        val current = download(expected.chapterId) ?: return null
+        if (!current.sameAttempt(expected) || current.api != expected.api || current.state != DownloadingState.FAILED) return null
+        val chapter = saved(current.chapterId) ?: return null
+        if (!current.matches(chapter) || mangaApi(chapter.mangaId) != current.api) return null
+        val previous = get(chapter.id)
+        if (previous != null && (previous.mangaId != chapter.mangaId || previous.chapterUrl != chapter.url ||
+                previous.retiredRelativePath != null || previous.pendingRelativePath != null || previous.pendingSizeBytes != null)
+        ) return null
+        val original = previous?.claimOrNull()
+        if (original != null) {
+            if (original.downloadId != current.id || !original.owner.matches(chapter) ||
+                original.operation !in setOf(ChapterArtifactOperation.DOWNLOAD, ChapterArtifactOperation.FAILED_CLEANUP)
+            ) return null
+        } else if (!previous.canReserve(chapter.mangaId)) return null
+        val next = (previous ?: ChapterArtifactEntity(chapter.id, chapter.mangaId, chapter.url)).copy(
+            token = original?.token ?: token, operation = ChapterArtifactOperation.FAILED_CLEANUP,
+            retiring = true, downloadId = current.id, pendingRelativePath = null,
+            pendingSizeBytes = null, ownsPendingPath = false, conversionSourceRoster = null,
+        )
+        if (previous == null) insert(next) else check(update(next) == 1)
+        return checkNotNull(next.claimOrNull())
+    }
+
+    /** Read authority again under the file/transition gates before touching failed-attempt bytes. */
+    @Transaction
+    suspend fun canSettleFailedCleanup(claim: ChapterArtifactClaim): Boolean {
+        val record = get(claim.owner.chapterId) ?: return false
+        if (!record.isOwnedBy(claim) || !record.retiring || claim.operation != ChapterArtifactOperation.FAILED_CLEANUP) return false
+        val chapter = saved(record.chapterId) ?: return false
+        val row = download(chapter.id) ?: return false
+        return claim.owner.matches(chapter) && row.id == claim.downloadId && row.matches(chapter) &&
+            row.state == DownloadingState.FAILED && mangaApi(chapter.mangaId) == row.api
+    }
+
+    @Query("DELETE FROM chapter_downloads WHERE chapterId = :chapterId AND id = :downloadId AND state = :terminalState")
+    suspend fun removeTerminalDownload(chapterId: Long, downloadId: Long, terminalState: DownloadingState): Int
+
+    /** Files are settled first; removal and release commit together or leave BOTH row and custody. */
+    @Transaction
+    suspend fun finishFailedCleanup(claim: ChapterArtifactClaim): Boolean {
+        if (!canSettleFailedCleanup(claim)) return false
+        check(removeTerminalDownload(claim.owner.chapterId, checkNotNull(claim.downloadId), DownloadingState.FAILED) == 1)
+        check(release(claim.owner.chapterId, claim.token) == 1)
+        return true
+    }
+
+    /** History-only removal does not acquire file authority or disturb a readable conversion. */
+    @Transaction
+    suspend fun removeSuccessHistory(expected: ChapterDownloadEntity): Boolean {
+        val current = download(expected.chapterId) ?: return false
+        if (!current.sameAttempt(expected) || current.api != expected.api || current.state != DownloadingState.SUCCESS) return false
+        return removeTerminalDownload(current.chapterId, current.id, DownloadingState.SUCCESS) == 1
+    }
+
     /** Rechecks the original owner and ledger, not just whatever currently has chapterId. */
     @Transaction
     suspend fun canPublish(claim: ChapterArtifactClaim): Boolean {
         val record = get(claim.owner.chapterId) ?: return false
-        if (record.retiring || !record.isOwnedBy(claim)) return false
+        if (record.retiring || !record.isOwnedBy(claim) || claim.operation == ChapterArtifactOperation.FAILED_CLEANUP) return false
         val chapter = saved(claim.owner.chapterId) ?: return false
         if (!claim.owner.matches(chapter) || mangaApi(chapter.mangaId) == null) return false
         val row = download(chapter.id)

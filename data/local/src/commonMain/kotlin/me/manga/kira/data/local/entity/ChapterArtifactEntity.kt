@@ -61,6 +61,7 @@ object ChapterArtifactOperation {
     const val RESTORE = "restore"
     const val CONVERT = "convert"
     const val DELETE = "delete"
+    const val FAILED_CLEANUP = "failed_cleanup"
 }
 
 /** Null means no operation owns this record; committed references may still remain. */
