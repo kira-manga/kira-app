@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import me.manga.kira.platform.download.BgDownloadLog
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
+import okio.IOException
 import okio.buffer
 import okio.use
 import kotlin.random.Random
@@ -42,9 +43,8 @@ data class ManifestPage(
 )
 
 /**
- * Reads/writes [DownloadManifest] files under each chapter directory. Tolerant: a missing or corrupt
- * manifest reads back as `null` (the engine then falls back to re-resolving the chapter). Traced
- * under the `KiraBgDownload` tag, including the manifest path.
+ * Reads/writes [DownloadManifest] files under each chapter directory. Only a genuinely missing file
+ * reads as null. Unreadable/invalid state must not silently erase the durable transfer retry budget.
  */
 class DownloadManifestStore(
     private val appFileSystem: AppFileSystem,
@@ -68,24 +68,45 @@ class DownloadManifestStore(
         chapterId: Long,
     ): DownloadManifest? {
         val p = path(mangaId, chapterId)
-        if (!system.exists(p)) {
+        val metadata = system.metadataOrNull(p)
+        if (metadata == null) {
             BgDownloadLog.log("manifest.store.read.miss", "chapterId" to chapterId, "path" to p.toString())
             return null
         }
         val manifest =
             runCatching {
+                require(metadata.isRegularFile && metadata.symlinkTarget == null)
                 val text = system.source(p).buffer().use { it.readUtf8() }
                 json.decodeFromString(DownloadManifest.serializer(), text).also {
                     require(it.mangaId == mangaId && it.chapterId == chapterId && it.hasValidPageRoster())
                 }
-            }.onFailure {
+            }.getOrElse {
                 if (it is CancellationException) throw it
                 BgDownloadLog.warn("manifest.store.read.unreadable", "chapterId" to chapterId, "path" to p.toString())
-            }.getOrNull()
-        if (manifest != null) {
-            BgDownloadLog.log("manifest.store.read.hit", "chapterId" to chapterId, "pages" to manifest.pages.size, "path" to p.toString())
-        }
+                throw IOException("Download manifest is unreadable", it)
+            }
+        BgDownloadLog.log("manifest.store.read.hit", "chapterId" to chapterId, "pages" to manifest.pages.size, "path" to p.toString())
         return manifest
+    }
+
+    /** Caller holds the existing chapter file pin shared by EVERY writer; never an age-based sweep. */
+    fun cleanOrphanedStaging(mangaId: Long, chapterId: Long) {
+        var directory = appFileSystem.filesDir
+        if (system.metadataOrNull(directory) == null) return
+        check(system.metadata(directory).isDirectory)
+        var canonical = system.canonicalize(directory)
+        for (part in listOf("manga", mangaId.toString(), "chapter_$chapterId")) {
+            directory /= part
+            canonical /= part
+            val metadata = system.metadataOrNull(directory) ?: return
+            check(metadata.isDirectory && metadata.symlinkTarget == null && system.canonicalize(directory) == canonical)
+        }
+        check(directory == appFileSystem.chapterDir(mangaId, chapterId))
+        for (stage in system.list(directory)) {
+            if (stage.parent != directory || !STAGING_NAME.matches(stage.name)) continue
+            val metadata = system.metadataOrNull(stage) ?: continue
+            if (metadata.isRegularFile && metadata.symlinkTarget == null) system.delete(stage, mustExist = false)
+        }
     }
 
     /** Atomic write; callers must handle failure, never treat a merely attempted refusal as durable. */
@@ -141,7 +162,7 @@ class DownloadManifestStore(
         }
     }
 
-    /** Increment the attempt count for [pageIndex]; returns the new count (0 when there is no manifest). */
+    /** Returns only a committed count. Missing/unreadable/mismatched custody cannot grant a new budget. */
     fun incrementAttempt(
         mangaId: Long,
         chapterId: Long,
@@ -149,8 +170,8 @@ class DownloadManifestStore(
         policyRejected: Boolean = false,
         attemptToken: String? = null,
     ): Int {
-        val manifest = read(mangaId, chapterId) ?: return 0
-        if (manifest.attemptToken != attemptToken) return 0
+        val manifest = read(mangaId, chapterId) ?: throw IOException("Download retry manifest is missing")
+        if (manifest.attemptToken != attemptToken) throw IOException("Download retry manifest custody changed")
         var newCount = 0
         val updated =
             manifest.copy(
@@ -172,6 +193,7 @@ class DownloadManifestStore(
     private companion object {
         const val MANIFEST_NAME = "manifest.json"
         const val TEMPORARY_NAME_RADIX = 16
+        val STAGING_NAME = Regex("\\.manifest-[0-9a-f]{1,16}\\.tmp")
         val json =
             Json {
                 ignoreUnknownKeys = true

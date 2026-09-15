@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertContentEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -19,8 +20,8 @@ import okio.Path
  * Regression tests for [DownloadManifestStore] — the durable state the iOS background engine's
  * resume path stands on. A manifest that fails to round-trip breaks force-quit recovery; an
  * [DownloadManifestStore.incrementAttempt] that bumps the wrong page (or fails to persist) breaks
- * the bounded-retry contract [BackgroundReconciler] enforces; and a corrupt manifest must read as
- * `null` (the engine then re-resolves) rather than throw. Runs against the real okio filesystem
+ * the bounded-retry contract [BackgroundReconciler] enforces; and a corrupt manifest must remain
+ * distinguishable from an absent inventory. Runs against the real okio filesystem
  * under a throwaway temp root, mirroring the `:data` `TempDirAppFileSystem` pattern.
  */
 class DownloadManifestStoreTest {
@@ -83,13 +84,65 @@ class DownloadManifestStoreTest {
     }
 
     @Test
-    fun read_corruptManifest_returnsNull_insteadOfThrowing() {
-        // A torn write / disk corruption must degrade to "no manifest" (the engine re-resolves),
-        // never to a throw that would kill the pump.
+    fun read_corruptManifest_refusesInsteadOfResettingTheDurableRoster() {
         val dir = appFs.chapterDir(7L, 42L)
         appFs.fileSystem().createDirectories(dir)
         appFs.fileSystem().write(dir / "manifest.json") { writeUtf8("{\"mangaId\": 7, \"chapt") }
-        assertNull(store.read(7L, 42L))
+        assertFailsWith<IOException> { store.read(7L, 42L) }
+    }
+
+    @Test
+    fun unreadableManifestDoesNotBecomeMissingOrReportAnUncommittedAttempt() {
+        store.write(manifest())
+        val path = appFs.chapterDir(7, 42) / "manifest.json"
+        val before = appFs.fileSystem().read(path) { readByteArray() }
+        val unavailable = object : AppFileSystem by appFs {
+            override fun fileSystem(): FileSystem = object : ForwardingFileSystem(appFs.fileSystem()) {
+                override fun source(file: Path): okio.Source {
+                    if (file == path) throw IOException("manifest read unavailable")
+                    return super.source(file)
+                }
+            }
+        }
+        val unreadable = DownloadManifestStore(unavailable)
+        assertFailsWith<IOException> { unreadable.read(7, 42) }
+        assertFailsWith<IOException> { unreadable.incrementAttempt(7, 42, 0) }
+        assertContentEquals(before, appFs.fileSystem().read(path) { readByteArray() })
+    }
+
+    @Test
+    fun orphanStageCleanupIsExactChapterScopedAndNeverRecursive() {
+        store.write(manifest())
+        val fs = appFs.fileSystem()
+        val directory = appFs.chapterDir(7, 42)
+        val manifestBytes = fs.read(directory / "manifest.json") { readByteArray() }
+        val orphan = directory / ".manifest-abc123.tmp"
+        val unrelated = directory / ".manifest-not-hex.tmp"
+        val page = directory / "page_0.png"
+        val otherChapter = appFs.chapterDir(7, 43) / ".manifest-123.tmp"
+        val stageNamedDirectory = directory / ".manifest-f.tmp"
+        fs.createDirectories(stageNamedDirectory)
+        fs.createDirectories(otherChapter.parent!!)
+        listOf(orphan, unrelated, page, otherChapter, stageNamedDirectory / "keep").forEach { path ->
+            fs.write(path) { writeUtf8("owned test bytes") }
+        }
+        store.cleanOrphanedStaging(7, 42)
+        assertFalse(fs.exists(orphan))
+        listOf(unrelated, page, otherChapter, stageNamedDirectory / "keep").forEach { assertTrue(fs.exists(it)) }
+        assertContentEquals(manifestBytes, fs.read(directory / "manifest.json") { readByteArray() })
+    }
+
+    @Test
+    fun orphanCleanupRefusesASymlinkedChapterInsteadOfDeletingItsTarget() {
+        val fs = appFs.fileSystem()
+        val outsideChapter = appFs.filesDir / "outside-chapter"
+        fs.createDirectories(outsideChapter)
+        fs.createDirectories(appFs.chapterDir(7, 42).parent!!)
+        val retained = outsideChapter / ".manifest-a.tmp"
+        fs.write(retained) { writeUtf8("must remain") }
+        fs.createSymlink(appFs.chapterDir(7, 42), outsideChapter)
+        assertFailsWith<Exception> { store.cleanOrphanedStaging(7, 42) }
+        assertEquals("must remain", fs.read(retained) { readUtf8() })
     }
 
     @Test
@@ -140,10 +193,8 @@ class DownloadManifestStoreTest {
     }
 
     @Test
-    fun incrementAttempt_missingManifest_returnsZero() {
-        // Retry accounting for a chapter whose manifest is gone (deleted mid-flight) degrades to 0 —
-        // the engine's reconcile then re-resolves instead of counting against a ghost budget.
-        assertEquals(0, store.incrementAttempt(7L, 42L, pageIndex = 0))
+    fun incrementAttempt_missingManifest_refusesAnUncommittedZeroBudget() {
+        assertFailsWith<IOException> { store.incrementAttempt(7L, 42L, pageIndex = 0) }
     }
 
     @Test

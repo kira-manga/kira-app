@@ -24,6 +24,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
@@ -53,6 +54,7 @@ import platform.Foundation.NSNotificationCenter
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import okio.Path.Companion.toPath
+import okio.IOException
 
 /**
  * iOS [DownloadRepository] backed by a background `NSURLSession` (background-downloads M2–M5).
@@ -256,12 +258,13 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
-    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = withContext(Dispatchers.Default) {
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = withContext(platformIoDispatcher) {
         mutex.withLock {
             val claim = artifacts.retry(expected) { token ->
                 // Atomic file publication precedes QUEUED visibility under the shared file pin.
                 // Failure/rollback leaves idle FAILED history; a committed retry always has its
                 // new-token roster, including durable media-policy refusals, even across restart.
+                manifestStore.cleanOrphanedStaging(expected.mangaId, expected.chapterId)
                 if (manifestStore.exists(expected.mangaId, expected.chapterId)) {
                     val retained = checkNotNull(manifestStore.read(expected.mangaId, expected.chapterId)) {
                         "Retained download manifest is unreadable"
@@ -462,6 +465,20 @@ class BackgroundUrlSessionDownloadRepository(
             throw cancelled
         } catch (failure: Exception) {
             BgDownloadLog.error(failure, "page.failed.persistence", "chapterId" to chapterId)
+            try {
+                mutex.withLock {
+                    callbackClaimLocked(mangaId, chapterId, attemptToken)?.let { claim ->
+                        currentAttempt(claim)?.let { failChapterLocked(it, "Download retry state could not be read") }
+                        fillWindowLocked()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (recoveryFailure: Exception) {
+                // A second storage/transport failure must not escape the delegate's launched job.
+                // Keep the retained state for a later pump; acknowledgement remains in its finally.
+                BgDownloadLog.error(recoveryFailure, "page.failed.recovery", "chapterId" to chapterId)
+            }
         }
     }
 
@@ -476,16 +493,31 @@ class BackgroundUrlSessionDownloadRepository(
 
     private suspend fun claimLocked(entity: ChapterDownloadEntity, admitted: ChapterArtifactClaim? = null): ChapterArtifactClaim? {
         val retained = attempts[entity.chapterId]
-        if (admitted == null && retained != null && retained.downloadId == entity.id && currentAttempt(retained) != null) return retained
-        val claim = admitted ?: artifacts.claim(entity) ?: return null
+        val claim = admitted ?: retained?.takeIf { it.downloadId == entity.id && currentAttempt(it) != null }
+            ?: artifacts.claim(entity) ?: return null
         if (retained?.token != claim.token) clearChapterCaches(entity.chapterId)
         attempts[entity.chapterId] = claim
-        artifacts.ownership.files(claim) {
-            val legacy = manifestStore.read(entity.mangaId, entity.chapterId)
-            if (legacy != null && legacy.attemptToken == null && legacy.api == entity.api) {
-                // Upgrade owns the legacy on-disk roster, never tokenless URLSession callbacks.
-                manifestStore.write(legacy.copy(attemptToken = claim.token))
+        try {
+            val inspected = artifacts.ownership.files(claim) {
+                withContext(platformIoDispatcher) {
+                    // Every manifest writer holds this same pin. A live stage cannot be reclaimed.
+                    manifestStore.cleanOrphanedStaging(entity.mangaId, entity.chapterId)
+                    val legacy = manifestStore.read(entity.mangaId, entity.chapterId)
+                    if (legacy != null) {
+                        check(legacy.api == entity.api && (legacy.attemptToken == null || legacy.attemptToken == claim.token)) {
+                            "Download manifest custody changed"
+                        }
+                        // Upgrade a readable pre-custody roster without resetting its page attempts.
+                        if (legacy.attemptToken == null) manifestStore.write(legacy.copy(attemptToken = claim.token))
+                    }
+                }
             }
+            if (inspected == null) return null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failChapterLocked(entity, "Download manifest could not be read")
+            return null
         }
         return claim
     }
@@ -522,8 +554,13 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
-    private fun readManifest(mangaId: Long, chapterId: Long): DownloadManifest? =
-        manifestStore.read(mangaId, chapterId)?.takeIf { it.attemptToken != null && it.attemptToken == attempts[chapterId]?.token }
+    private fun readManifest(mangaId: Long, chapterId: Long): DownloadManifest? {
+        val manifest = manifestStore.read(mangaId, chapterId) ?: return null
+        if (manifest.attemptToken == null || manifest.attemptToken != attempts[chapterId]?.token) {
+            throw IOException("Download manifest custody changed")
+        }
+        return manifest
+    }
 
     // ---- locked internals (callers hold [mutex]) ----
 
@@ -781,7 +818,9 @@ class BackgroundUrlSessionDownloadRepository(
                 window = RESOLVE_AHEAD_WINDOW,
                 resolving = resolving,
                 prefetching = prefetching,
-                hasManifest = { id -> byId.getValue(id).let { readManifest(it.mangaId, it.chapterId) != null } },
+                // This is only a resolve-ahead selection hint. Admission validates the retained
+                // roster under its file pin; unreadable bytes are not permission to scrape again.
+                hasManifest = { id -> byId.getValue(id).let { manifestStore.exists(it.mangaId, it.chapterId) } },
             ) ?: return
         val entity = byId.getValue(targetId)
         val claim = claimLocked(entity) ?: return
