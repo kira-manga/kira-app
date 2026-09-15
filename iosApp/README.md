@@ -21,6 +21,7 @@ SwiftUI wrapper. The Kotlin/Native framework (`ComposeApp.framework`) is produce
   on macOS to (re)generate `iosApp.xcodeproj`.
 - `iosApp/Info-Debug.plist` — isolated Debug metadata: **Kira Manga Debug**, no production URL
   schemes or remote-push background mode, and Firebase explicitly disabled.
+- `Package.resolved` — reviewed shipping SwiftPM resolution, retained outside the generated project.
 
 ## One-time macOS bootstrap (required before "Run iOS" works in Android Studio)
 
@@ -28,13 +29,65 @@ The `.xcodeproj` is intentionally NOT committed — its `project.pbxproj` is ful
 paths and per-machine UUIDs that make it hostile to source control. Generate it once on macOS:
 
 ```bash
-# Install xcodegen (one time, on macOS)
-brew install xcodegen
+# Verify the committed bootstrap pins and install that exact XcodeGen on macOS.
+cd "<repo-root>"
+(
+  set -e
+  repo_root="$PWD"
+  xcodegen=""
+  trap 'KIRA_XCODEGEN="$xcodegen" bash "$repo_root/scripts/release/cleanup-xcodegen.sh"' EXIT
+  xcodegen="$(bash scripts/release/install-xcodegen.sh)"
 
-# Generate iosApp.xcodeproj from project.yml
-cd "<repo-root>/iosApp"
-xcodegen generate
+  # Generate iosApp.xcodeproj; the trap removes the tool even if generation fails.
+  cd iosApp
+  "$xcodegen" generate
+  cd "$repo_root"
+  /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --restore-swiftpm
+)
 ```
+
+`release/verified-tools.json` pins XcodeGen 2.46.0's official ZIP and executable.
+The installer checks the archive before extraction and the binary checksum/version
+before returning its private temporary path; it never selects Homebrew or a PATH
+copy. Only the binary, required runtime presets, and license are extracted. CI
+installs it before protected inputs and uses that explicit path for generation;
+an always-run step immediately afterward removes the installer-owned directory,
+including when generation or an earlier step fails. Local generation above uses
+the same guarded cleanup on exit. Do not delete temporary directories by glob.
+The same metadata pins the four Gradle wrapper files, Action commits, and shipping
+SwiftPM lock. Update these inputs together through review; do not edit a digest just
+to silence a mismatch. Gradle dependency verification/locks and full runner/JDK/Xcode
+reproducibility remain separate requirements, not guarantees of this bootstrap check.
+
+### Locked SwiftPM inputs for TestFlight
+
+TestFlight generates the shipping project and resolves its reviewed SwiftPM lock
+**before any protected input is exposed**. This ordering requires App63's project
+semantics: Firebase is excluded from source discovery and copied only by the
+existing Release-only build phase. No real or placeholder Firebase file is needed
+for generation; Debug remains service-isolated. Do not use the early-generation
+workflow with the older unconditional Firebase-resource project.
+
+The fixed `--restore-swiftpm` mode copies `iosApp/Package.resolved` only to
+`iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`.
+It refuses symlinked paths and a stale existing generated lock rather than silently
+refreshing it. `--check-swiftpm` is read-only and rejects missing or changed bytes.
+Neither mode resolves packages or invokes Xcode/Gradle. A stale disposable project
+must be deliberately regenerated; never replace the reviewed canonical lock just
+to make a check pass.
+
+The credential-free Xcode preflight uses resolved-file-only flags with signing
+disabled. Archive uses the same flags, DerivedData/package/cache paths, and checks
+the exact lock both before and after Xcode. It cannot silently choose another
+allowed version. Existing real Firebase/signing validation and the mandatory
+post-archive Crashlytics/upload gates still apply.
+
+For an intentional package update, retain the actual shipping project's raw
+`Package.resolved` plus source/project/Xcode identity from an authorized resolution,
+review every changed revision, and update the canonical bytes and manifest digest
+together. Do not reconstruct a lock from logs, reuse a UIKit-test lock, or add an
+automatic unlocked-resolution fallback. A checked-in lock alone is not evidence
+that the real clean-checkout pre-secret preflight or locked archive has passed.
 
 After this runs once, `iosApp/iosApp.xcodeproj` exists locally on the Mac, and the
 `.idea/runConfigurations/iosApp.xml` run configuration that's already checked in will work in
@@ -67,7 +120,8 @@ pick a simulator or attached device, press **Run**. AS calls the bound Gradle pr
 ```bash
 ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
-  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17'
+  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates
 ```
 
 ## What still requires manual work on the Mac
