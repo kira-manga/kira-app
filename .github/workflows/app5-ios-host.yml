@@ -1,0 +1,115 @@
+# One changed direct Kotlin/Native framework link plus ReaderShare5 and real-Room cancellation2; prepared, not dispatched.
+# One nondeployment verification attempt; no Store, release or credentials.
+name: Targeted Apple framework and Native7
+on:
+  push:
+    branches: [remediation/app-125456-648-apple-framework-native7-20260915-01]
+    paths: [ci/app5-ios-host.request.json]
+permissions:
+  contents: read
+concurrency:
+  group: app5-ios-host-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  framework:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-125456-648-apple-framework-native7-20260915-01' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Exact control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Admit bound one-attempt request
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app5-ios-host.py request
+      - name: Exact unmodified App source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Exact original public Engine source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ${{ steps.request.outputs.engine_sha }}
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Direct framework link then ReaderShare5 and Room2 on one owned simulator
+        id: host
+        timeout-minutes: 55
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app5-ios-host.py host
+      - name: Bounded evidence after final owned absence
+        if: ${{ always() && steps.host.outputs.retention_ready == 'true' }}
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app-125456-648-apple-framework-native7-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ env.APP5_RUN }}/reports/ComposeApp.h
+            ${{ env.APP5_RUN }}/reports/ComposeApp.modulemap
+            ${{ env.APP5_RUN }}/reports/app-tasks.json
+            ${{ env.APP5_RUN }}/reports/commands.json
+            ${{ env.APP5_RUN }}/reports/engine-tasks.json
+            ${{ env.APP5_RUN }}/reports/framework-arch.log
+            ${{ env.APP5_RUN }}/reports/framework-metadata.json
+            ${{ env.APP5_RUN }}/reports/framework-proof.json
+            ${{ env.APP5_RUN }}/reports/gradle-stop-cleanup.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-final.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-immediate.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-native.log
+            ${{ env.APP5_RUN }}/reports/host-build.log
+            ${{ env.APP5_RUN }}/reports/identity.json
+            ${{ env.APP5_RUN }}/reports/native-app-tasks.json
+            ${{ env.APP5_RUN }}/reports/native-composeApp-arch.log
+            ${{ env.APP5_RUN }}/reports/native-composeApp-platform.log
+            ${{ env.APP5_RUN }}/reports/native-data-arch.log
+            ${{ env.APP5_RUN }}/reports/native-data-platform.log
+            ${{ env.APP5_RUN }}/reports/native-engine-tasks.json
+            ${{ env.APP5_RUN }}/reports/native-proof.json
+            ${{ env.APP5_RUN }}/reports/native-source.json
+            ${{ env.APP5_RUN }}/reports/native-tests.log
+            ${{ env.APP5_RUN }}/reports/native-xml-diagnostics.json
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/composeApp/01.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/composeApp/02.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/composeApp/03.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/composeApp/04.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/01.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/02.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/03.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/04.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/composeApp/TEST-iosSimulatorArm64Test.me.manga.kira.reader.ReaderShareCoordinatorTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/TEST-iosSimulatorArm64Test.me.manga.kira.data.repository.IosRoomCancellationIntegrityTest.xml
+            ${{ env.APP5_RUN }}/reports/proof.json
+            ${{ env.APP5_RUN }}/reports/request.json
+            ${{ env.APP5_RUN }}/reports/result.json
+            ${{ env.APP5_RUN }}/reports/simulator.json
+            ${{ env.APP5_RUN }}/reports/source.json
+            ${{ env.APP5_RUN }}/reports/tools.json

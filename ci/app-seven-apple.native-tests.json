@@ -1,0 +1,34 @@
+{
+  "schema": "app-125456-apple-native-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "e604243c2f3204df2b124cb77133d9ce3e37383c",
+    "tree": "7cacedffed3084eb31f3c217df416527f0a8e7de"
+  },
+  "suites": [
+    {
+      "task": ":composeApp:iosSimulatorArm64Test",
+      "class": "me.manga.kira.reader.ReaderShareCoordinatorTest",
+      "source": "composeApp/src/commonTest/kotlin/me/manga/kira/reader/ReaderShareCoordinatorTest.kt",
+      "sourceSha256": "8da30f313323e299fc1a926600e5d11f66d19083d6e4dec7f11c1d12b6fdfd1b",
+      "methods": [
+        "burstAndTwoOwnersHoldOneCaptureUntilDispatchReturns",
+        "cancelledBeforeStartNeverCapturesAndReleasesAdmission",
+        "cancellationWaitsForNonCooperativeEncodeBeforeRearming",
+        "nullAndFailedStagesReleaseWithoutSwallowingCancellation",
+        "inactiveReentryAndClosedAttachmentCannotCapture"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosRoomCancellationIntegrityTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosRoomCancellationIntegrityTest.kt",
+      "sourceSha256": "eee8d309c81ba747663f0288a2b84e504fd969cb02b7eb9abd276fd49db1f628",
+      "methods": [
+        "discoveryCancellationRollsBackBeforeJoinedRetryAndReopen",
+        "coverCancellationRollsBackBeforeJoinedRetryAndReopen"
+      ]
+    }
+  ]
+}
