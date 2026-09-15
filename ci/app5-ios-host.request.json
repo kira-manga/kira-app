@@ -1,0 +1,51 @@
+{
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_ONLY",
+  "agreementSha256": "c92ff8d96f13eb271f9b2b66e2189531e1e969bb3aae419bbfce4ff3b933641a",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "d4a18aac34a32f8332af9aa91d196fb69fd93550",
+    "tree": "261f80d6487a26e50e120302642e56bcef7b9241"
+  },
+  "authorization": "APP70_APPLE_CAPTURE_ONE_ATTEMPT_AUTHORIZED",
+  "controls": {
+    ".github/workflows/app5-ios-host.yml": "75f09e0b1784e3721e8ae9c82aae2b4c898fa18e30a36b2056715a15b19e2347",
+    "ci/app-seven-apple-native.init.gradle": "9b781fdf9338f902857fd22cc1cc856c5cde58f705d9e18267034d7fb273406d",
+    "ci/app-seven-apple-native.py": "02b3e2388b790d64ba682e65cca18fb8f78656c892e72faaf0a527434d8e538d",
+    "ci/app-seven-apple.native-tests.json": "de9bbdd0b242bf1b682cfc74752c25ed441aff56d11548224b16f2db13286f5f",
+    "ci/app5-ios-host-commands.py": "e75fe37d7a961570edd205634963b0f0c62ca7756d67888040dc4b3b7af8edc7",
+    "ci/app5-ios-host-evidence.py": "fb0912bf5feba94fda270cdc6cecbc7a8422d73fd1e410e3bf263ee0c20bf800",
+    "ci/app5-ios-host.py": "176cb3b09fcd77ebc93311c31156ec9577c4ae57f7abf4ced6b1ab8746371808",
+    "ci/app5-ios-host.source-pins.json": "ac0f87d37122423c77c9e0048f165bf97f8a9c7bcbeb10f09767c8dba1347e8d",
+    "ci/app8-apple.py": "acc6794ea1ca226be350feae2d80dcf11a90977370e73e4b592250c39c10ee5e"
+  },
+  "expectedRunAttempt": 1,
+  "limits": {
+    "aggregateCommandLogBytes": 8388608,
+    "canarySeconds": 60,
+    "cleanupCommandLogBytes": 1048576,
+    "cleanupSeconds": 240,
+    "controllerSeconds": 1860,
+    "diskFloorGiB": 8,
+    "gradleWorkers": 1,
+    "jobMinutes": 40,
+    "jvmHeapGiB": 3,
+    "metaspaceMiB": 768,
+    "nativeBinaryFingerprintBytes": 1073741824,
+    "nativeCommandLogBytes": 4194304,
+    "nativeSeconds": 1200,
+    "nativeThreads": 1,
+    "otherAggregateCommandLogBytes": 4194304,
+    "otherCommandLogBytes": 1048576,
+    "querySeconds": 30,
+    "stopSeconds": 40,
+    "workSeconds": 1620
+  },
+  "mode": "APP70_CAPTURE_ONLY",
+  "nativeTasks": [
+    ":platform:linkDebugTestIosSimulatorArm64"
+  ],
+  "planSha256": "54e814090b9c600c9e685922d5f0d1187c4a02ce87e430c34a5a1b95b72e140c",
+  "ref": "remediation/app70-apple-capture-20260915-02",
+  "schema": "app70-apple-capture-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW"
+}
