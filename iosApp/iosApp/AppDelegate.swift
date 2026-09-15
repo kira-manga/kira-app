@@ -168,25 +168,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    // MARK: - Source activation links
-
-    func application(
-        _ application: UIApplication,
-        continue userActivity: NSUserActivity,
-        restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
-    ) -> Bool {
-        guard let link = userActivity.webpageURL?.absoluteString else { return false }
-        return IosSourceActivationBridgeKt.onSourceActivationLink(link: link)
-    }
-
-    func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        IosSourceActivationBridgeKt.onSourceActivationLink(link: url.absoluteString)
-    }
-
     func application(
         _ application: UIApplication,
         handleEventsForBackgroundURLSession identifier: String,

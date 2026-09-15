@@ -28,6 +28,12 @@ struct iOSApp: App {
         WindowGroup {
             ContentView()
                 .ignoresSafeArea(.keyboard) // matches Android `windowSoftInputMode=adjustResize`
+                // SwiftUI delivers both custom-scheme and Universal Links here, including cold starts.
+                // Koin is ready in init; the shared router keeps a pending request until navigation
+                // consumes it. Do not replay links from onAppear or scene-phase/foreground callbacks.
+                .onOpenURL { url in
+                    _ = IosSourceActivationBridgeKt.onSourceActivationLink(link: url.absoluteString)
+                }
         }
     }
 }
