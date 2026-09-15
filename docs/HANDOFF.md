@@ -299,6 +299,8 @@ machines (see `CLAUDE.md`).
     participating transports, not every socket; packaged/signed-build verification remains external.
 11. Android Auto Backup/device transfer excludes all app persistence domains so DB/settings/manga
     files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
+    iOS excludes only chapter media; full restore reconciliation/device evidence remain open
+    ([App26 scope](ENGINEERING_NOTES.md#2-ios-background-downloads)).
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.
 13. The signed source-config client is fail-closed and compiled for Android/iOS, but the production
     backend HTTPS origin and signing ceremony are not configured; set `KIRA_SOURCE_CONFIG_BASE_URL`

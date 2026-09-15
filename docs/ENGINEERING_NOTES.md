@@ -119,6 +119,17 @@ in-flight transfers and does not relaunch — **OS rule, not a bug**; next manua
 (pages on disk kept, missing re-enqueued). Best-effort only: background scraping of further
 chapters, BG task grant timing.
 
+**iOS backup scope (App26 partial remediation):** launch eagerly creates or re-marks only the
+stable `Documents/manga` directory with `NSURLIsExcludedFromBackupKey`. This covers chapter
+pages, CBZs (including imported copies), manifests, and their temporary files without moving
+existing data. Documents itself, Room/SQLite sidecars, settings, and credentials are unchanged.
+A failed directory/flag operation is logged and retried next launch, never treated as success
+or allowed to crash startup. Future replacement of the manga root must reapply the policy.
+Unlike Android's whole-persistence-graph backup exclusion, this is **not** a complete iOS restore
+policy: metadata-only restore can retain stale SUCCESS/downloaded/size state. App26 remains open
+for that reconciliation and physical-device backup-footprint/restore checks; native resource-value
+tests alone do not prove either. Keep an external Kira ZIP for deliberate transfer of chapter copies.
+
 **Notification rule (load-bearing UX)**: user-facing "complete" means the CBZ exists. Silent
 per-page progress → silent "Finalizing chapter…" at `RUNNING→DOWNLOADED` → banner+sound only at
 `finalize.success`. Foreground presentation via `willPresent`: `DOWNLOAD_PROGRESS` silent,
