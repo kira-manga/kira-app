@@ -4,6 +4,7 @@ import me.manga.kira.platform.image.AvifTestFixtures
 import okio.FileSystem
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.impl.use
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals

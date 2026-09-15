@@ -9,6 +9,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.buffer
+import okio.use
 import okio.utf8Size
 
 private const val RECORD_MAGIC = 0x4B484331 // KHC1: length-prefixed metadata and raw body, no base64.

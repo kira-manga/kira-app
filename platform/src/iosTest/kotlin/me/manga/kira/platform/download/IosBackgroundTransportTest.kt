@@ -12,6 +12,7 @@ import okio.ForwardingFileSystem
 import okio.IOException
 import okio.Path
 import okio.buffer
+import okio.use
 import platform.Foundation.NSError
 import platform.Foundation.NSURLErrorCancelled
 import platform.Foundation.NSURLErrorDomain

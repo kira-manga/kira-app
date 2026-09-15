@@ -11,6 +11,7 @@ import me.manga.kira.platform.media.PageMediaTestImages
 import okio.FileSystem
 import okio.Path
 import okio.buffer
+import okio.use
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
