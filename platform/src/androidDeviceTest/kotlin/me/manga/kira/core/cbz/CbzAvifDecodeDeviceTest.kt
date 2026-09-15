@@ -3,7 +3,9 @@ package me.manga.kira.core.cbz
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.util.heap.DeviceTier
 import me.manga.kira.platform.device.DeviceTierProbe
@@ -63,8 +65,8 @@ class CbzAvifDecodeDeviceTest {
                 assertTrue(cbzAvifOutputAdmitted(edge, edge, bytes.size, SMALL_NATIVE_WORKING_BYTES))
                 val failure =
                     assertFailsWith<AvifDecodeException> {
-                        withTimeout(NATIVE_COMPLETION_TIMEOUT_MILLIS) {
-                            decoder.decodeAvif(source, maxWorkingBytes = SMALL_NATIVE_WORKING_BYTES)
+                        withNativeCompletionTimeout {
+                            decoder.decodeAvif(source, maxWorkingBytes = SMALL_NATIVE_WORKING_BYTES).recycle()
                         }
                     }
                 // Container parsing/output admission fit. The unchanged 320x640 AV1 frame does not.
@@ -104,19 +106,26 @@ class CbzAvifDecodeDeviceTest {
         decoder: CbzImageDecoder,
         source: File,
         dimensions: Pair<Int, Int>,
-    ) {
-        // This is the production CbzImageDecoder: both bounded metadata and pixel calls reach real JNI.
-        val bitmap = withTimeout(NATIVE_COMPLETION_TIMEOUT_MILLIS) { decoder.decodeAvif(source) }
-        try {
-            assertEquals(dimensions, bitmap.width to bitmap.height)
-            assertEquals(Bitmap.Config.RGB_565, bitmap.config)
-            assertFalse(bitmap.isRecycled)
-            assertTrue(bitmap.allocationByteCount > 0)
-        } finally {
-            bitmap.recycle()
+    ) =
+        withNativeCompletionTimeout {
+            // Assert and recycle before crossing back to the virtual test dispatcher.
+            val bitmap = decoder.decodeAvif(source)
+            try {
+                assertEquals(dimensions, bitmap.width to bitmap.height)
+                assertEquals(Bitmap.Config.RGB_565, bitmap.config)
+                assertFalse(bitmap.isRecycled)
+                assertTrue(bitmap.allocationByteCount > 0)
+            } finally {
+                bitmap.recycle()
+            }
+            assertTrue(bitmap.isRecycled)
         }
-        assertTrue(bitmap.isRecycled)
-    }
+
+    // JNI runs on real worker threads; its deadline must not use runTest's virtual clock.
+    private suspend fun withNativeCompletionTimeout(block: suspend () -> Unit) =
+        withContext(Dispatchers.Default) {
+            withTimeout(NATIVE_COMPLETION_TIMEOUT_MILLIS) { block() }
+        }
 
     private fun assertNativeArchive(file: File) {
         ZipFile(file).use { archive ->
