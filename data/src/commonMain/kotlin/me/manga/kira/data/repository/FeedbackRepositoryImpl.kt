@@ -7,6 +7,7 @@ import me.manga.kira.domain.auth.UserIdProvider
 import me.manga.kira.domain.device.DeviceInfoProvider
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.repository.FeedbackRepository
+import me.manga.kira.platform.version.AppVersionProvider
 import me.manga.kira.presentation.features.complaint.model.Complaint
 import me.manga.kira.presentation.features.complaint.model.ComplaintStatus
 import me.manga.kira.presentation.features.complaint.usecase.SendComplaintUseCase as LegacySendComplaintUseCase
@@ -14,7 +15,7 @@ import me.manga.kira.presentation.features.complaint.model.ComplaintType as Lega
 
 /**
  * [FeedbackRepository] strangler-fig delegate over the legacy `:shared`
- * [LegacySendComplaintUseCase] + [UserIdProvider] + [DeviceInfoProvider].
+ * [LegacySendComplaintUseCase] + [UserIdProvider] + [DeviceInfoProvider] + [AppVersionProvider].
  *
  * Phase 7.x.language.request rework (introduction) + Phase 7.x.settings.feedback (extension).
  * The extension generalised the impl from a language-pinned `sendLanguageRequest(body)` to a
@@ -34,8 +35,8 @@ import me.manga.kira.presentation.features.complaint.model.ComplaintType as Lega
  * **Orchestration mirrors the legacy `ComplaintViewModel.submit`**:
  *  1. `userIdProvider.getUserId()` — platform-stable user/device ID (Android: `Settings.Secure.
  *     ANDROID_ID`; iOS: `identifierForVendor`; Desktop: per-install UUID).
- *  2. `deviceInfoProvider.getDeviceMetadata()` — manufacturer / model / OS version / app
- *     version map.
+ *  2. `deviceInfoProvider.getDeviceMetadata()` — manufacturer / model / OS version map,
+ *     enriched with the running [AppVersionProvider.versionName] under `appVersion`.
  *  3. Assemble [Complaint] with:
  *     - `userId` from step 1
  *     - `type` = caller-provided (mapped from the `:domain` [ComplaintType] enum to the
@@ -127,6 +128,7 @@ class FeedbackRepositoryImpl(
     private val sendComplaint: LegacySendComplaintUseCase,
     private val userIdProvider: UserIdProvider,
     private val deviceInfoProvider: DeviceInfoProvider,
+    private val appVersionProvider: AppVersionProvider,
 ) : FeedbackRepository {
 
     override suspend fun submit(
@@ -141,7 +143,8 @@ class FeedbackRepositoryImpl(
             body = body,
             createdAt = Clock.System.now(),
             status = ComplaintStatus.OPEN,
-            metadata = deviceInfoProvider.getDeviceMetadata(),
+            metadata = deviceInfoProvider.getDeviceMetadata() +
+                ("appVersion" to appVersionProvider.versionName.ifBlank { "unknown" }),
         )
         sendComplaint(complaint)
     }
