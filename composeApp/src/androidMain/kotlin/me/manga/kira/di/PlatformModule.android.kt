@@ -41,8 +41,10 @@ import me.manga.kira.platform.intent.AndroidIntentLauncher
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.platform.jobs.AndroidBackgroundJobScheduler
 import me.manga.kira.platform.jobs.BackgroundJobScheduler
+import me.manga.kira.platform.locale.AndroidLocaleState
 import me.manga.kira.platform.locale.AndroidLocaleSwitcher
 import me.manga.kira.platform.locale.LocaleSwitcher
+import me.manga.kira.platform.locale.androidLocaleState
 import me.manga.kira.platform.media.AndroidPageMediaInspector
 import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.notification.AndroidNotificationPresenter
@@ -55,7 +57,6 @@ import me.manga.kira.platform.review.AndroidInAppReviewClient
 import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.platform.storage.AndroidSecureStorage
 import me.manga.kira.platform.storage.AndroidSettingsFactory
-import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.storage.SettingsFactory
 import me.manga.kira.platform.toast.AndroidToastShower
@@ -91,8 +92,11 @@ actual fun platformModule(): Module =
         // NO migration from any legacy Yami store. The app launches with default preferences; old
         // native/Yami data is intentionally not imported.
         single<SettingsFactory> { AndroidSettingsFactory(androidContext()) }
-        single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }
-        single { DataStoreHelper(get()) }
+        // MyApp attaches this owner before resource access; never create a second locale store here.
+        single { androidContext().androidLocaleState() }
+        single<ObservableSettings> { get<AndroidLocaleState>().settings }
+        single { get<AndroidLocaleState>().dataStore }
+        single { get<AndroidLocaleState>().resourceLocales }
 
         // ---- Room database + DAOs ----
         // Relocated to :data:local `databaseModule()` (strangler-fig Phase 1), added to the graph via

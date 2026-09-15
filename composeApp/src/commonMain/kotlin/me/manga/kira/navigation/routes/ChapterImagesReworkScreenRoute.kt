@@ -86,12 +86,13 @@ fun ChapterImagesReworkScreenRoute(
 
     // Reader parity item #6 (legacy auto-403→WebView recovery): the shared
     // `rememberCloudflareChallengeSolver` helper — navigates to the WebView to clear the
-    // Cloudflare challenge, then arms a one-shot that re-dispatches OnRetry once the back-stack
-    // returns to this Reader entry (cookies minted), so the chapter re-fetches automatically.
+    // Cloudflare challenge, then retries the captured challenged operation once the back-stack
+    // returns to this Reader entry, without substituting an unrelated anchor fetch.
     val solveCloudflare = rememberCloudflareChallengeSolver(
         navController = navController,
         ownerEntry = backStackEntry,
-        onRetry = { viewModel.submit(ReaderIntent.OnRetry) },
+        onRetry = { viewModel.submit(ReaderIntent.OnCloudflareSolverReturned(it)) },
+        recoveryRequestId = viewModel::cloudflareRecoveryRequestId,
     )
 
     val args = backStackEntry.toRoute<Screen.ChapterImagesRework>()

@@ -2,6 +2,9 @@ package me.manga.kira
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
+import android.content.res.AssetManager
+import android.content.res.Resources
 import android.os.Bundle
 import androidx.work.Configuration
 import co.touchlab.kermit.ExperimentalKermitApi
@@ -18,6 +21,9 @@ import me.manga.kira.di.initKoin
 import me.manga.kira.firebase_cores.messaging.MessagingNotificationChannels
 import me.manga.kira.platform.activity.ActivityHolder
 import me.manga.kira.platform.firebase.firebaseServicesAvailable
+import me.manga.kira.platform.locale.AndroidLocaleOwner
+import me.manga.kira.platform.locale.AndroidLocaleResources
+import me.manga.kira.platform.locale.AndroidLocaleState
 import me.manga.kira.platform.notification.NotificationPresenter
 import me.manga.kira.platform.update.AppUpdateClient
 import me.manga.kira.work.LibraryRefreshScheduling
@@ -62,8 +68,25 @@ import org.koin.androidx.workmanager.koin.workManagerFactory
  */
 class MyApp :
     Application(),
+    AndroidLocaleOwner,
     Configuration.Provider {
     private val log = Logger.withTag("MyApp")
+    private var localeState: AndroidLocaleState? = null
+    private var localeResources: AndroidLocaleResources? = null
+
+    override val androidLocaleState: AndroidLocaleState
+        get() = checkNotNull(localeState) { "Application locale state is not attached" }
+
+    override fun attachBaseContext(base: Context) {
+        val state = AndroidLocaleState(base)
+        localeState = state
+        localeResources = AndroidLocaleResources(base, state.resourceLocales)
+        super.attachBaseContext(base)
+    }
+
+    override fun getResources(): Resources = localeResources?.resources ?: super.getResources()
+
+    override fun getAssets(): AssetManager = resources.assets
 
     @OptIn(ExperimentalKermitApi::class)
     override fun onCreate() {

@@ -32,7 +32,7 @@ import kotlin.coroutines.resume
  * Per-page identity travels on each task's `taskDescription` (`"<mangaId>|<chapterId>|<pageIndex>"`)
  * so completions are matched back to chapters/pages even after a relaunch (recovered via
  * `getAllTasksWithCompletionHandler`). Every event is traced under the `KiraBgDownload` tag
- * ([BgDownloadLog]) — URL hosts and header *names* only (no tokens/cookies/full headers).
+ * ([BgDownloadLog]) — numeric local identifiers/status only, never URL/header/path or error text.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosBackgroundTransport(
@@ -63,7 +63,7 @@ class IosBackgroundTransport(
                 // movement for N minutes while connectivity is up → cancel + re-enqueue that page)
                 // instead of a wall-clock resource cap.
             }
-        BgDownloadLog.log("session.created", "sessionId" to SESSION_ID, "maxPerHost" to MAX_CONNECTIONS_PER_HOST)
+        BgDownloadLog.log("session.created", "maxPerHost" to MAX_CONNECTIONS_PER_HOST)
         NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
     }
 
@@ -79,7 +79,7 @@ class IosBackgroundTransport(
     override suspend fun ensureReady() {
         // Touch the lazy session so the delegate is attached and the OS can deliver pending events.
         session
-        BgDownloadLog.log("session.ensureReady", "sessionId" to SESSION_ID)
+        BgDownloadLog.log("session.ensureReady")
     }
 
     override suspend fun enqueue(requests: List<TransferRequest>) {
@@ -112,9 +112,6 @@ class IosBackgroundTransport(
             "mangaId" to req.mangaId,
             "pageIndex" to req.pageIndex,
             "taskId" to task.taskIdentifier,
-            "taskDesc" to task.taskDescription,
-            "host" to url.host,
-            "headerNames" to req.headers.keys.joinToString(","),
         )
     }
 
@@ -146,7 +143,6 @@ class IosBackgroundTransport(
             "session.getAllTasks",
             "chapterId" to chapterId,
             "inFlight" to out.size,
-            "pages" to out.sorted(),
         )
         return out
     }

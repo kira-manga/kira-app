@@ -23,6 +23,7 @@ import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.core.util.notification.NotificationPostingShadow
 import me.manga.kira.core.util.notification.NotificationRoomFixture
 import me.manga.kira.core.util.notification.notificationCoverCalls
+import me.manga.kira.locale.LocaleOnlyTestApplication
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,7 +43,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class, shadows = [NotificationPostingShadow::class])
+@Config(sdk = [35], application = LocaleOnlyTestApplication::class, shadows = [NotificationPostingShadow::class])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -109,7 +110,15 @@ class LibraryRefreshNotificationTest {
                     ListenableWorker.Result.success(),
                     run.future.get(NOTIFICATION_WAIT_MILLIS, TimeUnit.MILLISECONDS),
                 )
-                assertEquals(1, posting.rejectedChannels.get())
+                assertEquals(
+                    "Starting foreground, batch progress and completion must each recheck the rejected channel",
+                    3,
+                    posting.rejectedChannels.get(),
+                )
+                assertTrue(
+                    "Rejected refresh-channel creation must not post a refresh notification",
+                    posting.posted.none { it.second.channelId == "library_refresh" },
+                )
                 val rows = room.updates()
                 assertEquals(2, rows.size)
                 room.assertStoredWithRealChapterIds(rows)

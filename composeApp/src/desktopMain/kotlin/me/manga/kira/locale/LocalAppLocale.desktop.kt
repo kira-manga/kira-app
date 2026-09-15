@@ -3,6 +3,7 @@ package me.manga.kira.locale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.LayoutDirection
 import java.util.Locale
 
 /**
@@ -21,6 +22,9 @@ actual object LocalAppLocale {
 
     actual val current: String
         @Composable get() = LocalAppLocale.current
+
+    @Composable
+    actual fun layoutDirection(value: String?): LayoutDirection = selectedLanguageLayoutDirection(value)
 
     @Composable
     actual infix fun provides(value: String?): ProvidedValue<*> {

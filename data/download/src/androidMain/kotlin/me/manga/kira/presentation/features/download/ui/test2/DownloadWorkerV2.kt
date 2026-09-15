@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -31,6 +32,8 @@ import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.filesystem.folderSize
+import me.manga.kira.platform.locale.localizedResourceSnapshot
+import me.manga.kira.platform.notification.ensureLocalizedChannel
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.data.download.R
@@ -112,18 +115,12 @@ class DownloadWorkerV2(
         const val ACTION_CANCEL_CHAPTER = "me.manga.kira.ACTION_CANCEL_CHAPTER_DOWNLOAD"
         const val EXTRA_CHAPTER_ID = "EXTRA_CHAPTER_ID"
         const val EXTRA_MANGA_ID = "EXTRA_MANGA_ID"
-
-        @Volatile
-        private var channelsCreated = false
-        private val channelLock = Mutex()
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo = buildForegroundInfo()
 
     override suspend fun doWork(): Result =
         coroutineScope {
-            setupChannelsSafely()
-
             // The overall foreground notification content is static, so post it once at worker start
             // instead of rebuilding and re-posting it through setForegroundAsync IPC on every collected
             // state and inside every per-chapter notification update.
@@ -278,17 +275,20 @@ class DownloadWorkerV2(
         chapterNumber: String,
     ) {
         val notifManager = context.getSystemService(NotificationManager::class.java)!!
-        val compressingNotification =
-            NotificationCompat
-                .Builder(context, CHANNEL_CHAPTER)
-                .setContentTitle(context.getString(R.string.notification_chapter_title, chapterNumber))
-                .setContentText(context.getString(R.string.notification_compressing_images))
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setProgress(0, 0, true)
-                .build()
-
+        val compressingNotification = buildChapterCompressingNotification(chapterNumber)
         notifManager.notify(NOTIF_CHAPTER_BASE + chapterId.toInt(), compressingNotification)
         lastNotifiedChapterId = chapterId
+    }
+
+    internal fun buildChapterCompressingNotification(chapterNumber: String): Notification {
+        val resources = context.localizedResourceSnapshot()
+        setupChannelsSafely(resources)
+        return NotificationCompat.Builder(resources, CHANNEL_CHAPTER)
+            .setContentTitle(resources.getString(R.string.notification_chapter_title, chapterNumber))
+            .setContentText(resources.getString(R.string.notification_compressing_images))
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setProgress(0, 0, true)
+            .build()
     }
 
     private suspend fun handleInProgressSafely(
@@ -376,39 +376,40 @@ class DownloadWorkerV2(
     }
 
     private fun buildForegroundInfo(): ForegroundInfo {
-        val cancelAllIntent =
-            Intent(ACTION_CANCEL).apply {
-                setPackage(context.packageName)
-                putExtra(EXTRA_WORK_ID, id.toString())
-            }
-
-        val cancelAllPendingIntent =
-            PendingIntent.getBroadcast(
-                context,
-                0,
-                cancelAllIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        val resources = context.localizedResourceSnapshot()
+        setupChannelsSafely(resources)
+        val notification = NotificationCompat.Builder(resources, CHANNEL_ALL)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(resources.getString(R.string.notification_downloading_chapters))
+            .setContentText(resources.getString(R.string.notification_downloading_background))
+            .addAction(
+                R.drawable.ic_download_cancel,
+                resources.getString(R.string.action_cancel_all),
+                cancelAllPendingIntent(),
             )
-
-        val notification =
-            NotificationCompat
-                .Builder(context, CHANNEL_ALL)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle(context.getString(R.string.notification_downloading_chapters))
-                .setContentText(context.getString(R.string.notification_downloading_background))
-                .addAction(
-                    R.drawable.ic_download_cancel,
-                    context.getString(R.string.action_cancel_all),
-                    cancelAllPendingIntent,
-                ).setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .build()
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(NOTIF_ALL_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             ForegroundInfo(NOTIF_ALL_ID, notification)
         }
+    }
+
+    private fun cancelAllPendingIntent(): PendingIntent {
+        val cancelAllIntent = Intent(ACTION_CANCEL).apply {
+            setPackage(context.packageName)
+            putExtra(EXTRA_WORK_ID, id.toString())
+        }
+
+        return PendingIntent.getBroadcast(
+            context,
+            0,
+            cancelAllIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private fun notifyChapterProgress(
@@ -418,38 +419,48 @@ class DownloadWorkerV2(
         downloaded: Int,
         total: Int,
     ) {
-        val cancelChapterIntent =
-            Intent(ACTION_CANCEL_CHAPTER).apply {
-                setPackage(context.packageName)
-                putExtra(EXTRA_WORK_ID, id.toString())
-                putExtra(EXTRA_CHAPTER_ID, chapterId)
-                putExtra(EXTRA_MANGA_ID, mangaId)
-            }
-
-        val cancelChapterPendingIntent =
-            PendingIntent.getBroadcast(
-                context,
-                (chapterId and 0xFFFF).toInt(),
-                cancelChapterIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
         val notifManager = context.getSystemService(NotificationManager::class.java)!!
-        val progressNotification =
-            NotificationCompat
-                .Builder(context, CHANNEL_CHAPTER)
-                .setContentTitle(context.getString(R.string.notification_chapter_title, chapterNumber))
-                .setContentText(context.getString(R.string.notification_images_progress, downloaded, total))
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .addAction(
-                    R.drawable.ic_download_cancel,
-                    context.getString(R.string.action_cancel_chapter),
-                    cancelChapterPendingIntent,
-                ).setProgress(total, downloaded, false)
-                .build()
-
-        notifManager.notify(NOTIF_CHAPTER_BASE + chapterId.toInt(), progressNotification)
+        val notification = buildChapterProgressNotification(chapterId, mangaId, chapterNumber, downloaded, total)
+        notifManager.notify(NOTIF_CHAPTER_BASE + chapterId.toInt(), notification)
         lastNotifiedChapterId = chapterId
+    }
+
+    internal fun buildChapterProgressNotification(
+        chapterId: Long,
+        mangaId: Long,
+        chapterNumber: String,
+        downloaded: Int,
+        total: Int,
+    ): Notification {
+        val resources = context.localizedResourceSnapshot()
+        setupChannelsSafely(resources)
+        return NotificationCompat.Builder(resources, CHANNEL_CHAPTER)
+            .setContentTitle(resources.getString(R.string.notification_chapter_title, chapterNumber))
+            .setContentText(resources.getString(R.string.notification_images_progress, downloaded, total))
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .addAction(
+                R.drawable.ic_download_cancel,
+                resources.getString(R.string.action_cancel_chapter),
+                cancelChapterPendingIntent(chapterId, mangaId),
+            )
+            .setProgress(total, downloaded, false)
+            .build()
+    }
+
+    private fun cancelChapterPendingIntent(chapterId: Long, mangaId: Long): PendingIntent {
+        val cancelChapterIntent = Intent(ACTION_CANCEL_CHAPTER).apply {
+            setPackage(context.packageName)
+            putExtra(EXTRA_WORK_ID, id.toString())
+            putExtra(EXTRA_CHAPTER_ID, chapterId)
+            putExtra(EXTRA_MANGA_ID, mangaId)
+        }
+
+        return PendingIntent.getBroadcast(
+            context,
+            (chapterId and 0xFFFF).toInt(),
+            cancelChapterIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private fun clearAllDownloadNotifications() {
@@ -459,33 +470,28 @@ class DownloadWorkerV2(
         }
     }
 
-    private suspend fun setupChannelsSafely() {
-        channelLock.withLock {
-            if (!channelsCreated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                try {
-                    notificationManager.createChannel(
-                        CHANNEL_ALL,
-                        context.getString(R.string.notification_channel_all_downloads),
-                        NotificationManager.IMPORTANCE_DEFAULT,
-                        context.getString(R.string.notification_channel_all_downloads_desc),
-                    )
-                    notificationManager.createChannel(
-                        CHANNEL_CHAPTER,
-                        context.getString(R.string.notification_channel_chapter_download),
-                        NotificationManager.IMPORTANCE_LOW,
-                        context.getString(R.string.notification_channel_chapter_download_desc),
-                    )
-                    notificationManager.createChannel(
-                        CHANNEL_SUMMARY,
-                        context.getString(R.string.notification_channel_download_summary),
-                        NotificationManager.IMPORTANCE_MIN,
-                        context.getString(R.string.notification_channel_download_summary_desc),
-                    )
-                    channelsCreated = true
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to create notification channels", e)
-                }
-            }
+    private fun setupChannelsSafely(resources: Context) {
+        try {
+            notificationManager.createChannel(
+                CHANNEL_ALL,
+                resources.getString(R.string.notification_channel_all_downloads),
+                NotificationManager.IMPORTANCE_DEFAULT,
+                resources.getString(R.string.notification_channel_all_downloads_desc),
+            )
+            notificationManager.createChannel(
+                CHANNEL_CHAPTER,
+                resources.getString(R.string.notification_channel_chapter_download),
+                NotificationManager.IMPORTANCE_LOW,
+                resources.getString(R.string.notification_channel_chapter_download_desc),
+            )
+            notificationManager.createChannel(
+                CHANNEL_SUMMARY,
+                resources.getString(R.string.notification_channel_download_summary),
+                NotificationManager.IMPORTANCE_MIN,
+                resources.getString(R.string.notification_channel_download_summary_desc),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create notification channels", e)
         }
     }
 
@@ -495,7 +501,7 @@ class DownloadWorkerV2(
         importance: Int,
         description: String,
     ) {
-        createNotificationChannel(
+        ensureLocalizedChannel(
             NotificationChannel(id, name, importance).apply { this.description = description },
         )
     }

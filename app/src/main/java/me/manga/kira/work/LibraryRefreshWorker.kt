@@ -1,5 +1,6 @@
 package me.manga.kira.work
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -20,6 +21,8 @@ import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.platform.locale.localizedResourceSnapshot
+import me.manga.kira.platform.notification.ensureLocalizedChannel
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import me.manga.kira.sources.contracts.SourceRegistry
 import kotlin.coroutines.cancellation.CancellationException
@@ -68,31 +71,25 @@ class LibraryRefreshWorker(
         applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    private fun createRefreshChannelIfNeeded() {
+    private fun createRefreshChannelIfNeeded(resources: Context) {
         // minSdk = 26 so NotificationChannel is always available.
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
-                context.getString(R.string.notification_channel_library_refresh),
+                resources.getString(R.string.notification_channel_library_refresh),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = context.getString(R.string.notification_channel_library_refresh_desc)
+                description = resources.getString(R.string.notification_channel_library_refresh_desc)
             }
-        notificationManager.createNotificationChannel(channel)
+        notificationManager.ensureLocalizedChannel(channel)
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
-        createRefreshChannelIfNeeded()
-
         val notification =
-            NotificationCompat
-                .Builder(applicationContext, CHANNEL_ID)
-                .setContentTitle(context.getString(R.string.notification_refreshing_library))
-                .setContentText(context.getString(R.string.notification_starting))
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setOnlyAlertOnce(true)
-                .setProgress(100, 0, false)
-                .build()
+            buildNotification(
+                text = { it.getString(R.string.notification_starting) },
+                progress = 0,
+            )
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(
@@ -123,7 +120,7 @@ class LibraryRefreshWorker(
             } catch (e: Exception) {
                 runCatchingCancellable {
                     updateNotification(
-                        context.getString(R.string.notification_refresh_failed, e.message ?: ""),
+                        text = { it.getString(R.string.notification_refresh_failed, e.message ?: "") },
                         isComplete = true,
                         isError = true,
                     )
@@ -163,13 +160,17 @@ class LibraryRefreshWorker(
     private fun showProgress(progress: LibraryRefreshWorkProgress) {
         val total = progress.snapshotSize ?: 0
         if (progress.stop != null) {
-            val text =
-                when {
-                    !progress.isComplete -> context.getString(R.string.notification_refresh_failed, "")
-                    total == 0 -> context.getString(R.string.notification_no_manga_to_refresh)
-                    else -> context.getString(R.string.notification_refresh_completed, progress.succeeded, 0)
-                }
-            updateNotification(text, isComplete = true, isError = !progress.isComplete)
+            updateNotification(
+                text = { resources ->
+                    when {
+                        !progress.isComplete -> resources.getString(R.string.notification_refresh_failed, "")
+                        total == 0 -> resources.getString(R.string.notification_no_manga_to_refresh)
+                        else -> resources.getString(R.string.notification_refresh_completed, progress.succeeded, 0)
+                    }
+                },
+                isComplete = true,
+                isError = !progress.isComplete,
+            )
         } else if (total > 0) {
             showBatchProgress(progress, total)
         }
@@ -179,60 +180,65 @@ class LibraryRefreshWorker(
         progress: LibraryRefreshWorkProgress,
         total: Int,
     ) {
-        val status =
-            if (progress.attempted < total) {
-                context.getString(
-                    R.string.notification_processing_batch,
-                    progress.attempted / LibraryRefreshWork.BATCH_SIZE + 1,
-                )
-            } else {
-                context.getString(R.string.notification_finishing_up)
-            }
         updateNotification(
-            context.getString(
-                R.string.notification_refresh_progress,
-                status,
-                progress.succeeded,
-                total,
-                progress.failed + progress.timedOut,
-            ),
+            text = { resources ->
+                val status =
+                    if (progress.attempted < total) {
+                        resources.getString(
+                            R.string.notification_processing_batch,
+                            progress.attempted / LibraryRefreshWork.BATCH_SIZE + 1,
+                        )
+                    } else {
+                        resources.getString(R.string.notification_finishing_up)
+                    }
+                resources.getString(
+                    R.string.notification_refresh_progress,
+                    status,
+                    progress.succeeded,
+                    total,
+                    progress.failed + progress.timedOut,
+                )
+            },
             progress = progress.attempted * 100 / total,
         )
     }
 
     private fun updateNotification(
-        text: String,
+        text: (Context) -> String,
         progress: Int = -1,
         isComplete: Boolean = false,
         isError: Boolean = false,
     ) {
         try {
-            val title =
-                if (isError) {
-                    context.getString(R.string.notification_library_refresh_failed)
-                } else {
-                    context.getString(R.string.notification_refreshing_library)
-                }
-
-            val builder =
-                NotificationCompat
-                    .Builder(applicationContext, CHANNEL_ID)
-                    .setContentTitle(title)
-                    .setContentText(text)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setOnlyAlertOnce(true)
-
-            if (!isComplete && progress >= 0) {
-                builder.setProgress(100, progress, false)
-            } else if (isComplete) {
-                builder.setProgress(0, 0, false)
-            }
-
-            notificationManager.notify(NOTIF_ID, builder.build())
+            notificationManager.notify(NOTIF_ID, buildNotification(text, progress, isComplete, isError))
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: Exception) {
         }
+    }
+
+    internal fun buildNotification(
+        text: (Context) -> String,
+        progress: Int = -1,
+        isComplete: Boolean = false,
+        isError: Boolean = false,
+    ): Notification {
+        val resources = context.localizedResourceSnapshot()
+        createRefreshChannelIfNeeded(resources)
+        val title =
+            if (isError) R.string.notification_library_refresh_failed else R.string.notification_refreshing_library
+        val builder =
+            NotificationCompat.Builder(resources, CHANNEL_ID)
+                .setContentTitle(resources.getString(title))
+                .setContentText(text(resources))
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setOnlyAlertOnce(true)
+        if (!isComplete && progress >= 0) {
+            builder.setProgress(100, progress, false)
+        } else if (isComplete) {
+            builder.setProgress(0, 0, false)
+        }
+        return builder.build()
     }
 
     private fun cleanupNotification() {

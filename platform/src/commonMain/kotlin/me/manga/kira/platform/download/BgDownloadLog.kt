@@ -16,8 +16,8 @@ import co.touchlab.kermit.Logger
  * which selects the engine). It is **on** for this test build; set it `false` to silence before
  * shipping.
  *
- * **Privacy:** never pass auth tokens, cookies, or full private header values here. Log header *names*
- * only and URL *hosts* only (call sites already sanitize). Local sandbox file paths are fine to log.
+ * **Privacy:** only closed event names and allowlisted primitive fields/code-owned tokens are emitted.
+ * Unknown values, URLs, hosts, headers, paths and Throwable details never reach this boundary's writer.
  */
 object BgDownloadLog {
     const val TAG = "KiraBgDownload"
@@ -48,7 +48,7 @@ object BgDownloadLog {
 
     fun log(event: String, vararg fields: Pair<String, Any?>) {
         if (!VERBOSE) return
-        logger.i { format(event, fields) }
+        logger.i { BgDownloadLogFormat.format(event, fields) }
     }
 
     /**
@@ -58,19 +58,20 @@ object BgDownloadLog {
      */
     fun dlperf(event: String, vararg fields: Pair<String, Any?>) {
         if (!DLPERF) return
-        logger.i { format("DLPERF.$event", fields) }
+        logger.i { BgDownloadLogFormat.format(event, fields, performance = true) }
     }
 
     /** Always logged (not gated by [VERBOSE]) — a warning must survive the release info-silence flip. */
     fun warn(event: String, vararg fields: Pair<String, Any?>) {
-        logger.w { format(event, fields) }
+        logger.w { BgDownloadLogFormat.format(event, fields) }
     }
 
-    /** Always logged (not gated by [VERBOSE]) — an error must survive the release info-silence flip. */
-    fun error(t: Throwable?, event: String, vararg fields: Pair<String, Any?>) {
-        if (t != null) logger.e(t) { format(event, fields) } else logger.e { format(event, fields) }
+    /** Always emitted; [t] remains call-compatible but is never inspected or forwarded to the writer. */
+    fun error(
+        @Suppress("UnusedParameter") t: Throwable?,
+        event: String,
+        vararg fields: Pair<String, Any?>,
+    ) {
+        logger.e { BgDownloadLogFormat.format(event, fields) }
     }
-
-    private fun format(event: String, fields: Array<out Pair<String, Any?>>): String =
-        if (fields.isEmpty()) event else event + " | " + fields.joinToString(" ") { (k, v) -> "$k=$v" }
 }
