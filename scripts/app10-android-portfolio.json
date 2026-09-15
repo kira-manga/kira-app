@@ -1,0 +1,110 @@
+{
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "contract": "app-native-continuation-app10-v1",
+  "source": {
+    "head": "5195cc4132868c417824875bf7fdf71f76483a7b",
+    "tree": "75b725541c183f24f0ed888259a6b8348e1be5d3"
+  },
+  "branch": "remediation/app-next-mobile-native9-continuation-20260915-02",
+  "tests": [],
+  "assembly_root": null,
+  "device": {
+    "task": ":platform:connectedAndroidDeviceTest",
+    "compiler": ":platform:compileAndroidDeviceTest",
+    "runner": "androidx.test.runner.AndroidJUnitRunner",
+    "selector_property": "android.testInstrumentationRunnerArguments.class",
+    "classes": [
+      "me.manga.kira.platform.image.AvifNativeLimitsDeviceTest",
+      "me.manga.kira.platform.image.AvifNativeLimitsFailureDeviceTest",
+      "me.manga.kira.platform.image.AndroidAvifNativeAllowanceDeviceTest",
+      "me.manga.kira.platform.image.AndroidAvifPermitDeviceTest",
+      "me.manga.kira.platform.image.AndroidAvifPermitFailureDeviceTest",
+      "me.manga.kira.platform.image.AvifDecoderCoilDeviceTest",
+      "me.manga.kira.platform.image.AvifDecoderCoilFailureDeviceTest",
+      "me.manga.kira.core.cbz.CbzAvifDecodeDeviceTest",
+      "me.manga.kira.platform.media.AndroidPageMediaInspectorDeviceTest"
+    ],
+    "serial": "emulator-5580",
+    "adb_port": 5038,
+    "api": 35,
+    "image": "system-images;android-35;default;x86_64",
+    "observed_task_api": "NOT_RUN",
+    "dependency_compilation": "fresh-core-platform"
+  },
+  "budgets": {
+    "work_seconds": 4500,
+    "cleanup_seconds": 150,
+    "workflow_minutes": 85,
+    "device_batch_seconds": 900,
+    "gradle_stop_seconds": 90,
+    "natural_foreground_drain_seconds": 30,
+    "avd_create_seconds": 60,
+    "private_adb_listener_seconds": 20,
+    "emulator_boot_seconds": 180,
+    "evidence_seconds": 120,
+    "initial_disk_gib": 16,
+    "ongoing_disk_gib": 8
+  },
+  "carry": {
+    "app10_android8": "Prior requester7/onboarding1 only; not repeated, not cold-root proof",
+    "listener10": "Prior mocked listener correction only; unchanged owned_listener body",
+    "reader_owner_android_host": "Prior ReaderNavigationBarOwnerTest source-scoped carry only; not repeated",
+    "linux41": "Separate job; not admitted in this Android lane",
+    "download_android_host31": "Run34920067507/source6b8e2af:31 raw historical PASS; old physical_joins_before_cleanup=false remains. Not rerun or automatically attributed to the newly composed source.",
+    "worker4_and_di2": "Run34923263634/source826d7d2:6 qualified historical PASS (worker4+DI2), not automatically transferred to this source. Current host29 carry comes only from source-identical run34952259413; no host tests are rerun here.",
+    "linux03": "14 relevant methods PASS; full invocation blocked by absent offline original source-engine dependency. Those Linux observations remain separate; host29 carry comes only from later source-identical run34952259413.",
+    "host29_and_production_apk": {
+      "run_id": 34952259413,
+      "carrier": "360bc62be2e57e8dc203d0903a1898cb37d0e696",
+      "source": [
+        "5195cc4132868c417824875bf7fdf71f76483a7b",
+        "75b725541c183f24f0ed888259a6b8348e1be5d3"
+      ],
+      "overall_run_status": "FAIL",
+      "host_tests": {
+        "pass": 29,
+        "fail": 0,
+        "skip": 0,
+        "fresh_in_this_continuation": false
+      },
+      "host_tests_sha256": "2b09ad653d11545d3decbe9ec2f76b8def8db44380117e73c7e050991a62fa01",
+      "host_xml_sha256": {
+        "host-01.xml": "69e0f3c2591c85584b8d031af83600f3563c132b20a4c3eb63654503e0205364",
+        "host-02.xml": "c2cf2201fdd5d288bff46792aa8d3032748b5820841e40a8809b8fea6141b7b4",
+        "host-03.xml": "6922da655b158aceb193af7ee53e611b4d8e4886d812c194d7ea733f55547558",
+        "host-04.xml": "8ab7cc70c4bda695cc549df55890928665ebd4026e7ee0fe89ed5fae5b1cb296"
+      },
+      "host_provenance_sha256": "71212360f01ac4aae516a261ef86f9ca7dc5bd3cd4dbbbfad0f7a353e7e467b5",
+      "physical_joins_before_cleanup": true,
+      "production_apk": {
+        "build_root": ":app:assembleDebug",
+        "bytes": 60111305,
+        "sha256": "3e89d1ff9037f47e6ad0fc9d694ad50709f667169262ded06aad56cafcf6f666"
+      },
+      "app_native_report_sha256": "08c89b006ad3f4a906cbe5aa7f7e292c923fcfe11f5fd176630c8057d36ed6b0",
+      "original_failure": {
+        "stage": "device-api",
+        "type": "RuntimeError",
+        "native_authored_methods_not_run": 37,
+        "native_classes_not_run": 9
+      },
+      "limitation": "Historical source-identical host/APK evidence only; not rebuilt, downloaded, installed or claimed fresh here; no device/other-ABI/16KiB loading proof.",
+      "build_log_sha256": "09eef5b9f162a57e02bc5b814992506566b09912828f35d2eddde4011429c5e3",
+      "result_sha256": "6230407c33522dcb2ac85da035cc561613ea09fef64e2d500edf9b94d5afd49e",
+      "report_artifact": {
+        "id": 10390465363,
+        "bytes": 2930589,
+        "sha256": "3dcba48b9cfc1c9a6ea1c1e84d00ef183745fec5b03ae29e967804bd795c85f2"
+      }
+    }
+  },
+  "exclusions": [
+    "No UI automation or UI-before-native prerequisite; owner physical UI checks remain NOT_RUN and Android09 raw FAIL is unchanged",
+    "No source exclusions/forcing/fake artifacts",
+    "No producer rebuild or AAR repack",
+    "No Desktop/Apple/testkit/test-all/static/release/store/signing roots",
+    "Only the exact nonrelease library-device-test APK may be retained separately for1day; no production APK download/rebuild, UI XML/raw prefs/full emulator transcript upload",
+    "No API26/27, other-ABI runtime,16KiB-device or physical/release qualification claim",
+    "No host tests, production APK rebuild or Engine/app compiler roots in this native-only continuation; historical29PASS/APK retained separately"
+  ]
+}
