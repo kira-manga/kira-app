@@ -1317,7 +1317,7 @@ class BackgroundUrlSessionDownloadRepository(
                 }
                 // Completion remains alerting only after the original ledger actually committed.
                 val row = dao.getDownloadByChapter(chapterId)
-                if (row?.id == claim.downloadId && row.state == DownloadingState.SUCCESS) {
+                if (row != null && row.id == claim.downloadId && row.state == DownloadingState.SUCCESS) {
                     runCatching { downloadNotifier.onComplete(chapterId.toInt(), notifTitle(entity)) }
                 }
             } catch (cancelled: CancellationException) {
