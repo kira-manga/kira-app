@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -154,6 +155,36 @@ class LibraryRefreshWorkTest {
                 assertEquals("new success", port.lastSuccess)
                 assertEquals(1, port.persistedNotifications.size) // Port result, not Room proof.
                 assertEquals(if (committedCount == 0) 0 else 1, port.displayCalls.size)
+            }
+        }
+
+    @Test
+    fun equalCoverWithNoNewChapters_stillRepairsMetadata_butBlankCoverIsSkipped() =
+        runTest {
+            for (remoteCover in listOf("old", " ")) {
+                val port =
+                    LibraryRefreshWorkTestFixtures().apply {
+                        fetch = { AppResult.Success(refreshDetails(it).copy(coverUrl = remoteCover)) }
+                        chapterFlow = { mangaId ->
+                            flowOf(
+                                listOf(
+                                    SavedChapterEntity(
+                                        mangaId = mangaId,
+                                        name = "1",
+                                        number = "1",
+                                        url = "m/$mangaId/c/1",
+                                        date = null,
+                                    ),
+                                ),
+                            )
+                        }
+                    }
+                val progress = mutableListOf<LibraryRefreshWorkProgress>()
+                assertEquals(Result.success(), work(port, progress).run())
+                assertEquals(if (remoteCover.isBlank()) emptyList() else listOf(1L to "old"), port.coverCalls)
+                assertEquals(0, progress.last().newChapterCount)
+                assertTrue(port.inserts.isEmpty())
+                assertEquals(1, port.stamps)
             }
         }
 

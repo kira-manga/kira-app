@@ -185,7 +185,7 @@ internal class LibraryRefreshWork(
         manga: SavedMangaEntity,
         coverUrl: String,
     ) {
-        if (coverUrl.isBlank() || coverUrl == manga.imageUrl) return
+        if (coverUrl.isBlank()) return
         runCatchingCancellable {
             port.updateCover(manga.id, coverUrl)
         }.onFailure { t ->
