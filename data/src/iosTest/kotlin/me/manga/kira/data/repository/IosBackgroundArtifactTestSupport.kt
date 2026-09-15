@@ -79,14 +79,15 @@ internal fun IosCbzFinalizationFixture.engine(
         scope, BackgroundScheduler.NoOp, BackgroundWorkSignal(), DownloadNotifier.NoOp,
     ),
     downloadArtifacts: ChapterDownloadArtifacts = artifacts,
+    pageProvider: ChapterPageProvider = object : ChapterPageProvider {
+        override suspend fun pagesOrNull(api: String, mangaUrl: String, mangaLanguage: String, chapterUrl: String): List<DownloadPage> =
+            error("Persisted manifests must avoid a new resolve")
+    },
 ) =
     BackgroundUrlSessionDownloadRepository(
         storage = BackgroundDownloadStorage(downloads, DownloadManifestStore(files), files),
         stages = ChapterDownloadStages(
-            ChapterPageResolver(db.mangaDao(), object : ChapterPageProvider {
-                override suspend fun pagesOrNull(api: String, mangaUrl: String, mangaLanguage: String, chapterUrl: String): List<DownloadPage> =
-                    error("Persisted manifests must avoid a new resolve")
-            }),
+            ChapterPageResolver(db.mangaDao(), pageProvider),
             finalizer(UnusedReceiverCbzWriter),
         ),
         pageTransfer = BackgroundPageTransfer(transport, IosPageMediaInspector(system = system)),
