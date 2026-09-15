@@ -219,13 +219,95 @@ class RuntimeInputsTest(unittest.TestCase):
         diagnostic = io.StringIO()
         with mock.patch.object(runtime, "tree_snapshot", side_effect=RuntimeError("snapshot unavailable")) as snapshot, \
                 contextlib.redirect_stderr(diagnostic), self.assertRaisesRegex(RuntimeError, "snapshot unavailable"):
-            runtime.verify_existing_ruby(self.ruby_prefix, {})
-        snapshot.assert_called_once_with(self.ruby_prefix)
+            runtime.verify_existing_ruby(self.ruby_prefix, {}, "linux-x64")
+        snapshot.assert_called_once_with(self.ruby_prefix, directory_modes={})
         report = json.loads(diagnostic.getvalue().split(": ", 1)[1])
         self.assertEqual("unavailable", report["comparison"])
         self.assertTrue(all(count is None for count in report["mismatches"].values()))
         self.assertIsNone(report["namesOmitted"])
         self.assertTrue(self.ruby_prefix.is_dir())
+
+    def test_existing_ruby_rejects_privileged_files_links_and_directories_on_the_exact_route(self):
+        pin = self.archive("x64", [("bin/ruby", b"fixture-ruby")], [("bin/ruby-link", "ruby")])
+        authenticated, expected = self.extract(pin)
+        shutil.copytree(authenticated, self.ruby_prefix, symlinks=True)
+        self.assertEqual("archive", runtime.verify_existing_ruby(self.ruby_prefix, expected, "linux-x64"))
+        for path in (self.ruby_prefix / "bin/ruby", self.ruby_prefix / "bin", self.ruby_prefix):
+            original = path.lstat().st_mode & 0o777
+            for special in (0o4000, 0o2000, 0o1000):
+                with self.subTest(path=path.name, special=special):
+                    path.chmod(original | special)
+                    with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(RuntimeError):
+                        runtime.verify_existing_ruby(self.ruby_prefix, expected, "linux-x64")
+                    path.chmod(original)
+        lstat = Path.lstat
+        for special in (0o4000, 0o2000, 0o1000):
+            def privileged_link(path):
+                info = lstat(path)
+                return os.stat_result((info.st_mode | special, *info[1:])) if path == self.ruby_prefix / "bin/ruby-link" else info
+
+            with mock.patch.object(Path, "lstat", privileged_link), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaisesRegex(RuntimeError, "privileged installed runtime mode"):
+                runtime.verify_existing_ruby(self.ruby_prefix, expected, "linux-x64")
+
+    def test_ruby_accepts_only_the_complete_documented_linux_hosted_mode_transform(self):
+        pin = self.archive("x64", [("bin/ruby", b"fixture-ruby"), ("lib/data.rb", b"fixture-data")],
+                           [("bin/ruby-link", "ruby")])
+        authenticated, expected = self.extract(pin)
+        shutil.copytree(authenticated, self.ruby_prefix, symlinks=True)
+        Path(str(self.ruby_prefix) + ".complete").touch()
+        for path in [self.ruby_prefix, *self.ruby_prefix.rglob("*")]:
+            if not path.is_symlink():
+                path.chmod(0o1777 if path.is_dir() else 0o777)
+        os.environ.update(GITHUB_ACTIONS="true", RUNNER_ENVIRONMENT="github-hosted")
+        self.install("ruby", pin).assert_not_called()
+        receipt = json.loads((Path(self.values()["KIRA_VERIFIED_RUBY_AREA"]) / "owned.json").read_text())
+        self.assertEqual("ubuntu-hosted-permissions", receipt["rubyCachePolicy"])
+        self.assertFalse(receipt["createdRuby"])
+        self.cleanup("ruby")
+        self.assertTrue(self.ruby_prefix.is_dir())
+        self.assertEqual(0o1777, self.ruby_prefix.stat().st_mode & 0o7777)
+        self.assertEqual(0o777, (self.ruby_prefix / "bin/ruby").stat().st_mode & 0o7777)
+
+        def refused(prefix=self.ruby_prefix, host="linux-x64"):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(RuntimeError):
+                runtime.verify_existing_ruby(prefix, expected, host)
+
+        ruby = self.ruby_prefix / "bin/ruby"
+        for mode in (0o755, 0o775, 0o4777, 0o2777, 0o1777):
+            with self.subTest(file_mode=mode):
+                ruby.chmod(mode)
+                refused()
+                ruby.chmod(0o777)
+        for path in (self.ruby_prefix, self.ruby_prefix / "bin"):
+            for mode in (0o777, 0o2777, 0o4777):
+                with self.subTest(directory=path.name, mode=mode):
+                    path.chmod(mode)
+                    refused()
+                    path.chmod(0o1777)
+        ruby.write_bytes(b"unreviewed")
+        refused()
+        ruby.write_bytes(b"fixture-ruby")
+        extra = self.ruby_prefix / "extra-gem"
+        extra.write_bytes(b"unreviewed")
+        extra.chmod(0o777)
+        refused()
+        extra.unlink()
+        link = self.ruby_prefix / "bin/ruby-link"
+        link.unlink()
+        link.symlink_to("../lib/data.rb")
+        refused()
+        link.unlink()
+        link.symlink_to("ruby")
+        for key, value in (("GITHUB_ACTIONS", "false"), ("RUNNER_ENVIRONMENT", "self-hosted")):
+            with mock.patch.dict(os.environ, {key: value}):
+                refused()
+        refused(host="macos-arm64")
+        other = self.root / "other-ruby"
+        shutil.copytree(self.ruby_prefix, other, symlinks=True)
+        refused(prefix=other)
+        runtime.verify_existing_ruby(self.ruby_prefix, expected, "linux-x64")
+        self.assertEqual(b"fixture-ruby", ruby.read_bytes())
 
     def test_ruby_cache_diagnostic_counts_all_differences_without_exposing_extra_names(self):
         expected = {"bin/ruby": ["file", 3, 0o755, "before"], "lib/link": ["link", "before"],

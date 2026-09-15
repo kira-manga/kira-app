@@ -17,12 +17,21 @@ system libraries and the selected Xcode are not independently attested here.
 - **Ruby 3.3.12:** the official Ruby-builder archives embed
   `/opt/hostedtoolcache/Ruby/3.3.12/x64` or
   `/Users/runner/hostedtoolcache/Ruby/3.3.12/arm64`. Authenticate the archive before
-  accepting that entire existing tree; extra/changed files, links or file modes
-  fail closed. Only an absent prefix may be installed. Never overwrite or delete
-  an unmatched preinstallation. The pinned `setup-ruby` action follows immediately
+  accepting that entire existing tree; extra/changed files and links or unsupported
+  file modes fail closed. Only an absent prefix may be installed. Never overwrite
+  or delete an unmatched preinstallation. The pinned `setup-ruby` action follows immediately
   with `self-hosted: true`, forcing cache-only runtime selection, and continues to
   install the already-locked Bundler/Fastlane dependencies. A hosted image with a
-  differently provisioned Ruby tree is a failure, not an excuse to ignore files.
+  provisioning difference outside the policies below is a failure, not an excuse
+  to ignore files.
+  One explicit alternative is allowed for the canonical preexisting Ubuntu24.04
+  GitHub-hosted cache: the entire authenticated path/type/size/hash/link inventory
+  must match, every regular file must have mode0777 with no special bits, and
+  every directory (including the prefix root) must have mode01777. This validates
+  the documented hosted permission transformation, not archive-mode identity;
+  mixed or other modes fail, and the borrowed tree is never changed. The ordinary
+  exact-archive route requires no privileged directory modes; both routes reject
+  special bits on regular files and links. macOS has no transformed-mode route.
   Refusals report bounded difference counts and at most eight ASCII relative names
   already present in the authenticated archive; extra cache names are withheld.
   An unavailable tree comparison is reported as unknown, never as zero mismatches.
@@ -60,6 +69,13 @@ offline/property contract is from Kotlin 2.4.0 commit
 `add726ca8c82922b6ab4cb2a27ae738d6a780817`, particularly `DependencyProcessor.kt`.
 Gradle Action post behavior is from
 `ed408507eac070d1f99cc633dbcf757c94c7933a` (`sources/src/caching/caches.ts`).
+
+The Ubuntu cache permission policy is from `actions/runner-images` commit
+`fc63e1b4dbfacf7e2449bf0706226f9f6eea583e` (image tag `ubuntu24/20260907.300`):
+`images/ubuntu/scripts/build/configure-system.sh` recursively sets mode0777 on
+`/opt` and adds sticky bits to Ruby directories after archive installation, as
+ordered by `images/ubuntu/templates/build.ubuntu-24_04.pkr.hcl`. This does not
+attest the whole hosted image or permit relocating the fixed-prefix Ruby archive.
 
 Synthetic installer fixtures and workflow mutation checks are separate from
 actual provider-archive/host execution. A source review or an exact version string

@@ -116,7 +116,7 @@
     }
   },
   "runtime_archives": {
-    "installer_sha256": "dbc3f26af9a5afa33cfd8dd76394d8d11d3bd77351ca19a78270a98cf9f8ac69",
+    "installer_sha256": "283b66f85596e91e1443e061445d92981410a30692072e48087c2c5ca7290b99",
     "java": {
       "linux-x64": {
         "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",

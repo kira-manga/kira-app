@@ -78,22 +78,30 @@ def archive_name(name):
     return str(path)
 
 
-def tree_snapshot(root):
+def tree_snapshot(root, *, directory_modes=None):
     require(root.is_dir() and root.resolve() == root, "invalid installed root")
+    modes = {".": root.lstat().st_mode & 0o7777}
     result = {}
     for path in root.rglob("*"):
         name = path.relative_to(root).as_posix()
         info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            require(not info.st_mode & 0o7000, "privileged installed runtime mode")
         if stat.S_ISLNK(info.st_mode):
             # Lexical containment alone misses '..' after an intermediate symlink.
             target = path.resolve()
             require(target == root or root in target.parents, "installed symlink escapes authenticated tree")
             result[name] = ["link", os.readlink(path)]
         elif stat.S_ISDIR(info.st_mode):
+            modes[name] = info.st_mode & 0o7777
             result[name] = ["directory"]
         else:
             require(stat.S_ISREG(info.st_mode), "unexpected installed file type")
             result[name] = ["file", info.st_size, info.st_mode & 0o777, digest(path)]
+    if directory_modes is None:
+        require(all(not mode & 0o7000 for mode in modes.values()), "privileged installed directory mode")
+    else:
+        directory_modes.update(modes)
     return result
 
 
@@ -124,15 +132,32 @@ def ruby_cache_difference(expected, actual, canonical, prefix_status):
             "mismatches": counts, "names": names, "namesOmitted": omitted}
 
 
-def verify_existing_ruby(prefix, expected):
+def verify_existing_ruby(prefix, expected, current_host):
     canonical, actual, prefix_status = None, None, "unavailable"
+    directory_modes = {}
     try:
         mode = prefix.lstat().st_mode
         prefix_status = "directory" if stat.S_ISDIR(mode) else "symlink" if stat.S_ISLNK(mode) else "other"
         canonical = prefix.resolve() == prefix
         if canonical:
-            actual = tree_snapshot(prefix)
-        require(canonical and actual == expected, "preinstalled Ruby differs from authenticated archive")
+            actual = tree_snapshot(prefix, directory_modes=directory_modes)
+        ordinary_directories = all(not mode & 0o7000 for mode in directory_modes.values())
+        hosted_directories = (canonical and current_host == "linux-x64" and prefix == RUBY_PREFIXES["linux-x64"] and
+                              os.environ.get("GITHUB_ACTIONS") == "true" and
+                              os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+                              all(mode == 0o1777 for mode in directory_modes.values()))
+        require(ordinary_directories or hosted_directories, "preinstalled Ruby directory modes differ from supported policies")
+        matches = ordinary_directories and actual == expected
+        policy = "archive"
+        if not matches and hosted_directories:
+            # Reviewed Ubuntu image provisioning: chmod -R 777 /opt, then +t on Ruby directories.
+            # Compare the entire authenticated inventory; do not alter any borrowed cache entry.
+            hosted_expected = {name: ["file", entry[1], 0o777, entry[3]] if entry[0] == "file" else entry
+                               for name, entry in expected.items()}
+            matches = actual == hosted_expected
+            policy = "ubuntu-hosted-permissions"
+        require(canonical and matches, "preinstalled Ruby differs from supported authenticated tree policies")
+        return policy
     except (OSError, RuntimeError):
         print("Preinstalled Ruby cache diagnostic: " +
               json.dumps(ruby_cache_difference(expected, actual, canonical, prefix_status), sort_keys=True), file=sys.stderr)
@@ -297,7 +322,7 @@ def install(role, current_host, temporary, pins):
             require(Path(os.environ["RUNNER_TOOL_CACHE"]).resolve() == prefix.parents[2], "wrong embedded Ruby tool-cache prefix")
             marker = Path(str(prefix) + ".complete")
             if prefix.exists() or prefix.is_symlink():
-                verify_existing_ruby(prefix, inventories[0])
+                receipt["rubyCachePolicy"] = verify_existing_ruby(prefix, inventories[0], current_host)
                 require(marker.is_file() and not marker.is_symlink() and marker.stat().st_size == 0, "preinstalled Ruby has no valid cache marker")
             else:
                 require(not marker.exists() and not marker.is_symlink(), "preexisting incomplete Ruby marker")
