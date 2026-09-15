@@ -1,7 +1,9 @@
 package me.manga.kira.data.repository
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CopyableThrowable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
@@ -80,7 +82,7 @@ class CbzConversionPersistenceTest {
         val original = seed(isDownloaded = true)
         val pages = installValidPages(original)
         val mirror = conversionMirror(original)
-        val cancellation = CancellationException("cancelled Room return")
+        val cancellation = RoomReturnCancellation()
         conversionFaults(ConversionCommitFault(db.chapterArtifactCommitDao(), after = { throw cancellation }))
         val (archive, _) = installPreviousArchive(original, pages.values.toList())
         val repository = settingsConverter(CbzCallerWriter { _, _ -> archive })
@@ -189,6 +191,14 @@ class CbzConversionPersistenceTest {
             assertEquals(original.saved, saved(original))
             assertEquals(original.download, download(original))
         }
+}
+
+/** Keep the identity assertion about application propagation, not coroutine debug-stack copies. */
+@OptIn(ExperimentalCoroutinesApi::class)
+private class RoomReturnCancellation :
+    CancellationException("cancelled Room return"),
+    CopyableThrowable<RoomReturnCancellation> {
+    override fun createCopy(): RoomReturnCancellation? = null
 }
 
 private const val WRITER_ENTRY_TIMEOUT_MILLIS = 15_000L

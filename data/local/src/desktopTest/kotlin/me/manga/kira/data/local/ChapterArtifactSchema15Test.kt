@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -122,7 +123,8 @@ class ChapterArtifactSchema15Test {
         val roster = fields.last().jsonObject
         assertEquals("conversionSourceRoster", roster.getValue("columnName").jsonPrimitive.content)
         assertEquals("TEXT", roster.getValue("affinity").jsonPrimitive.content)
-        assertEquals("false", roster.getValue("notNull").jsonPrimitive.content)
+        // Genuine Room exports omit this key when its default value is false.
+        assertFalse(roster["notNull"]?.jsonPrimitive?.boolean ?: false)
         assertEquals(prior["primaryKey"], next["primaryKey"])
         assertEquals(prior["indices"], next["indices"])
         assertEquals(prior["foreignKeys"], next["foreignKeys"])
