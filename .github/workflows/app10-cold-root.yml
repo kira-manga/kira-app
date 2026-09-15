@@ -1,0 +1,103 @@
+# Bound consolidated host29/APK/native9 preparation; no UI automation, deployment or Store upload.
+# Bind final composed source and all controls independently before this single attempt.
+name: Targeted Android host29 APK and native-device9 validation
+
+on:
+  push:
+    branches: [remediation/app-next-mobile-host29-native9-20260915-02]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app10-mainactivity-cold-root
+  cancel-in-progress: false
+
+jobs:
+  one-shared-android:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/remediation/app-next-mobile-host29-native9-20260915-02' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - name: Check out only the event's controls carrier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: controls
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out the separately bound exact public App source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 5195cc4132868c417824875bf7fdf71f76483a7b
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out the original public Engine source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Exactly29 app host methods, APK provenance and native-device9; no UI
+        id: cold_root
+        working-directory: controls
+        env:
+          APP10_COLD_ROOT_ADMISSION: APP_NEXT_MOBILE_HOST29_NATIVE9_20260915_02
+          APP10_COLD_ROOT_MODE: native-only
+          # Dedicated ephemeral GitHub Ubuntu24 VM only; matching KVM restoration remains mandatory.
+          APP10_KVM_PERMISSION_POLICY: github-hosted-ubuntu24-kvm-0666-owned-restore-v1
+        run: exec python3 -B scripts/app10_cold_root.py
+
+      - name: Retain only controller-owned bounded public reports, including failures
+        if: always() && steps.cold_root.outputs.public_reports == 'ready'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app10-shared-android-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/app10-shared-android-reports/result.json
+            ${{ runner.temp }}/app10-shared-android-reports/inputs.json
+            ${{ runner.temp }}/app10-shared-android-reports/commands.json
+            ${{ runner.temp }}/app10-shared-android-reports/cleanup.json
+            ${{ runner.temp }}/app10-shared-android-reports/adb-server.log
+            ${{ runner.temp }}/app10-shared-android-reports/build.log
+            ${{ runner.temp }}/app10-shared-android-reports/device-build.log
+            ${{ runner.temp }}/app10-shared-android-reports/host-provenance.json
+            ${{ runner.temp }}/app10-shared-android-reports/device-provenance.json
+            ${{ runner.temp }}/app10-shared-android-reports/host-tests.json
+            ${{ runner.temp }}/app10-shared-android-reports/device-tests.json
+            ${{ runner.temp }}/app10-shared-android-reports/app-native.json
+            ${{ runner.temp }}/app10-shared-android-reports/device-native.json
+            ${{ runner.temp }}/app10-shared-android-reports/host-01.xml
+            ${{ runner.temp }}/app10-shared-android-reports/host-02.xml
+            ${{ runner.temp }}/app10-shared-android-reports/host-03.xml
+            ${{ runner.temp }}/app10-shared-android-reports/host-04.xml
+            ${{ runner.temp }}/app10-shared-android-reports/device-*.xml
+
+      - name: Retain only exact nonrelease verification APK inputs for one day
+        if: always() && steps.cold_root.outputs.verification_apks == 'ready'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app10-shared-android-verification-apks-${{ github.sha }}-attempt1
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: false
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/app10-shared-android-reports/app-debug.apk
+            ${{ runner.temp }}/app10-shared-android-reports/platform-device-test.apk
+            ${{ runner.temp }}/app10-shared-android-reports/inputs.json
