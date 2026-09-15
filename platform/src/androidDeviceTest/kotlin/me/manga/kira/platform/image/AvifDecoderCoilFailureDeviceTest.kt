@@ -35,7 +35,8 @@ class AvifDecoderCoilFailureDeviceTest {
     fun declaredSourceBudgetRejectsEvenATinyTarget() =
         runTest {
             val source = TrackingSource(Buffer().write(AvifTestFixtures.regular()))
-            val decoder = AvifDecoderCoil(source.buffered, options, AvifDecodeLimits(maxSourcePixels = REGULAR_PIXELS - 1))
+            val decoder =
+                AvifDecoderCoil(source.buffered, options, AvifDecodeLimits(maxSourcePixels = REGULAR_PIXELS - 1))
             val failure = assertFailsWith<AvifDecodeException> { decoder.decode() }
             assertTrue(failure.message.orEmpty().contains("bounded native decoder"))
             assertTrue(source.closed)
