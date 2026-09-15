@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cbz_conversion_partial">Dönüştürme Kısmen Tamamlandı</string>
+    <string name="cbz_chapters_failed">%1$d bölüm dönüştürülemedi. Lütfen yeniden deneyin.</string>
+</resources>

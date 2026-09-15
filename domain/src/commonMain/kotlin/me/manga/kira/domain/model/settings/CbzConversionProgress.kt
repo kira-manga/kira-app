@@ -27,7 +27,7 @@ package me.manga.kira.domain.model.settings
  *  - [error] — non-null when the DAO walk itself threw; renders the Error terminal state. Treat as
  *    a presence-only flag: because `:data` has no compose-resources access, the impl writes a
  *    stable non-localized terminal marker here, not renderable text.
- *  - [successMessage] — non-null on a completed OR stopped run; renders the Success / Stopped
+ *  - [successMessage] — non-null on a completed OR stopped run; failure counts distinguish partial/failed from Success / Stopped
  *    terminal state. Like [error], this is a presence-only terminal-state marker (a fixed
  *    non-localized sentinel), NOT a message carrier — the `:ui` `CbzConversionDialog` builds all
  *    user-visible copy (converted / remaining / failed summary) from the structured count fields.
@@ -48,4 +48,6 @@ data class CbzConversionProgress(
     val error: String? = null,
     val successMessage: String? = null,
     val wasStopped: Boolean = false,
+    /** Attempted chapters whose writer or path publication failed; not user-stopped work. */
+    val failedChapters: Int = 0,
 )

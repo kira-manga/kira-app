@@ -318,9 +318,10 @@ class SettingsRepositoryImpl(
                     }
 
                     var converted = 0
-                    chapters.forEachIndexed { index, chapter ->
+                    var failed = 0
+                    chapters.forEach { chapter ->
                         if (shouldStop.value) {
-                            emitStopped(total = total, converted = converted)
+                            emitStopped(total = total, converted = converted, failed = failed)
                             return@withContext
                         }
                         val mangaTitle =
@@ -329,7 +330,8 @@ class SettingsRepositoryImpl(
                                 .orEmpty()
                         conversionProgress.update {
                             it.copy(
-                                convertedChapters = index,
+                                convertedChapters = converted,
+                                failedChapters = failed,
                                 currentMangaTitle = mangaTitle,
                                 currentChapterNumber = chapter.number,
                             )
@@ -356,18 +358,23 @@ class SettingsRepositoryImpl(
                                 if (sizeBytes > 0L) chapterDownloadDao.updateSize(chapter.id, sizeBytes)
                             }
                         }.onSuccess { converted++ }
+                            .onFailure { failed++ }
+                        conversionProgress.update {
+                            it.copy(convertedChapters = converted, failedChapters = failed)
+                        }
                     }
 
                     // Re-check after the last chapter so a Stop pressed during the final convert still
                     // surfaces the Stopped terminal state (native re-checks `shouldStopConversion` too).
                     if (shouldStop.value) {
-                        emitStopped(total = total, converted = converted)
+                        emitStopped(total = total, converted = converted, failed = failed)
                     } else {
                         conversionProgress.value =
                             CbzConversionProgress(
                                 isConverting = false,
                                 totalChapters = total,
                                 convertedChapters = converted,
+                                failedChapters = failed,
                                 successMessage = TERMINAL_MARKER,
                             )
                     }
@@ -410,18 +417,20 @@ class SettingsRepositoryImpl(
 
     /**
      * Emit the terminal Stopped snapshot (native `stopConversion()` body) — `wasStopped = true`,
-     * `isConverting = false`, carrying the converted count + the implied remaining
-     * (`total - converted`). The `:ui` renders the localized "stopped by user" summary from these.
+     * `isConverting = false`, carrying converted/failed counts + the unattempted remainder
+     * (`total - converted - failed`). The `:ui` renders the localized "stopped by user" summary from these.
      */
     private fun emitStopped(
         total: Int,
         converted: Int,
+        failed: Int,
     ) {
         conversionProgress.value =
             CbzConversionProgress(
                 isConverting = false,
                 totalChapters = total,
                 convertedChapters = converted,
+                failedChapters = failed,
                 wasStopped = true,
                 successMessage = TERMINAL_MARKER,
             )
