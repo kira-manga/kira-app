@@ -1,0 +1,71 @@
+{
+  "schema": "app-seven-apple-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "authorization": "APP_SEVEN_APPLE_ONE_ATTEMPT_AUTHORIZED",
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_FIREBASE_SWIFTPM_ONLY",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "973924f03ba4800019acd28bff14567bbb91c5a9",
+    "tree": "fe1df7f30ad617743bfb896bae5c5b7c2ce4e63d"
+  },
+  "engine": {
+    "repository": "kira-manga/kira-source-engine",
+    "sha": "ed184165ebd3ee7f0d1db533cc40ca5a0868fdda",
+    "tree": "14e46a1ead24b5757d612fd55031e440f5304661"
+  },
+  "expectedRunAttempt": 1,
+  "planSha256": "46c1ce0de8fa23f6b7095fab3a124309108dc318efa5c2bc0bde0d954a0ad724",
+  "controls": {
+    "ci/app5-ios-host.py": "8e0932a67008e29f92ad22cb78298bcfccfee41c519fe41ffa6ddc6a92c26b38",
+    "ci/app5-ios-host-evidence.py": "d79b4fb25a116cd99386ffc00347ab6df6b5906e84f9fdccd724edefa3a03e29",
+    "ci/app5-ios-host.init.gradle": "0e9d258d9054c827bd92f995599cec4fd76fe6b950cf7614fea7ad17ed86d03d",
+    "ci/app5-original-engine.init.gradle": "757a469c45892f46e3ec8a0f6612a49ec42d39ef7f62143512202cba2a573768",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf",
+    "ci/app5-ios-host.source-pins.json": "f0702ecfaee98e46a0c1ce6d0f9f1d76f194bdace04bcc6626baa1ba64df308a",
+    "ci/app5-ios-host-commands.py": "4134f5dcc39aa7b7a182bf45701dc5192e7e5c0f4ff07065a948cb2c2b84acc1",
+    "ci/app5-ios-host-xcodegen.py": "a8db941f5e99061f2a5747d114f4329e50332474e006ae19571c01e26b09d30b",
+    "ci/app5-ios-host-xcode.py": "633bf3a12e27ef541b9118c1ef79df02536896b1ecf5de5d9ecb3a82951ce90f",
+    "ci/app5-ios-host-products.py": "820faf4d87e328d05011355467aa980b7a596280d3e299d2c7b2a06db0d5ccfa",
+    ".github/workflows/app5-ios-host.yml": "0961c6a1b17f15d1b2897f3235ebdf78f7fe9b7feaccbb035d256afaffcdb291",
+    "ci/app-seven-apple-native.py": "86667c971876e0da55c99484bf84e01f34c078fd74f3bd10114929bfdfc1819f",
+    "ci/app-seven-apple-native.init.gradle": "6112a9e4bbeaeeac679940c9017d25b47c4385ed2102226f37a593cbfa003e4b",
+    "ci/app-seven-apple.native-tests.json": "31827fed2a9aeb6a794ce5bda170f6d21ad231991fe7181b4b17bba6a023b4d9",
+    "ci/app-seven-apple-uikit.py": "b4129d9e38f21c90f26d440fdf9201ca6feb7358f30566993ddc0caea7c8f397",
+    "ci/app-seven-apple.uikit-tests.json": "10c8bb854fb46bf9321abafad58b0a5c8a24694faecb20ce2504e966816e6a01"
+  },
+  "ref": "remediation/app-next-mobile-host-native30-20260915-01",
+  "agreementSha256": "2435c27391e5387481afff62432ada4e570bb26fe25ae3ae0cd103ee0e7743ec",
+  "limits": {
+    "buildSeconds": 2400,
+    "nativeSeconds": 1200,
+    "uikitSeconds": 0,
+    "workSeconds": 4020,
+    "controllerSeconds": 4260,
+    "cleanupSeconds": 240,
+    "stopSeconds": 40,
+    "jobMinutes": 80,
+    "xcodeWorkers": 1,
+    "gradleWorkers": 1,
+    "nativeThreads": 1,
+    "jvmHeapGiB": 3,
+    "metaspaceMiB": 768,
+    "diskFloorGiB": 8,
+    "hostCommandLogBytes": 8388608,
+    "nativeCommandLogBytes": 4194304,
+    "uikitCommandLogBytes": 4194304,
+    "otherCommandLogBytes": 1048576,
+    "aggregateCommandLogBytes": 20971520,
+    "otherAggregateCommandLogBytes": 4194304,
+    "cleanupCommandLogBytes": 1048576,
+    "staticFrameworkFingerprintBytes": 1073741824,
+    "nativeBinaryFingerprintBytes": 1073741824
+  },
+  "nativeTasks": [
+    ":platform:iosSimulatorArm64Test",
+    ":data:download:iosSimulatorArm64Test",
+    ":composeApp:iosSimulatorArm64Test"
+  ],
+  "mode": "HOST_NATIVE",
+  "xcodegenIntakeAuthorization": "PINNED_XCODEGEN_2_46_0_ONE_INTAKE_AUTHORIZED",
+  "task": ":composeApp:embedAndSignAppleFrameworkForXcode"
+}
