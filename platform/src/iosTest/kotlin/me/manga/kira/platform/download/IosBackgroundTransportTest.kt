@@ -33,6 +33,7 @@ class IosBackgroundTransportTest {
     fun callbackRetainsOutsideTheLiveTreeUntilTheOriginalAttemptAcceptsIt() {
         withHarness { h ->
             val prior = h.seedPage(0, "png", PageMediaTestImages.gif())
+            val abandoned = h.seedStaging(".image_7-$TEST_ATTEMPT_TOKEN.partial")
             var staged: StagedDownloadPage? = null
             h.transport.setListener(object : TransferListener {
                 override fun onPageComplete(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, page: StagedDownloadPage) {
@@ -48,13 +49,115 @@ class IosBackgroundTransportTest {
             h.transport.handleFinishedDownload(task, source.url(), h.response())
             h.transport.handleCompleted(task, error = null)
             val retained = checkNotNull(staged)
+            assertFalse(h.system.exists(abandoned), "direct callbacks prepare before their first retain")
             assertTrue(retained.path.toString().contains("/.download-staging/"))
             assertContentEquals(PageMediaTestImages.png(), h.system.read(retained.path) { readByteArray() })
             assertContentEquals(PageMediaTestImages.gif(), h.system.read(prior) { readByteArray() })
+            // Preparing a later first session touch and another callback must not rescan a live handoff.
+            repeat(2) { h.transport.prepareStaging() }
+            val nextTask = h.task(1)
+            h.transport.handleFinishedDownload(nextTask, h.sourceFile(PageMediaTestImages.png()).url(), h.response())
+            h.transport.handleCompleted(nextTask, error = null)
+            checkNotNull(staged).discard()
+            assertContentEquals(PageMediaTestImages.png(), h.system.read(retained.path) { readByteArray() })
             // A stale listener rejects/disposes its own staging only, never a current live artifact.
             retained.discard()
             assertFalse(h.system.exists(retained.path))
             assertTrue(h.system.exists(prior))
+        }
+    }
+
+    @Test
+    fun startupPrunesOnlyGeneratedRegularStagesAndPreservesUnknownAndLiveTreeBytes() {
+        withHarness { h ->
+            val png = PageMediaTestImages.png()
+            val abandoned = listOf(
+                h.seedStaging(".image_0-${TEST_ATTEMPT_TOKEN.uppercase()}.partial"),
+                h.seedStaging(".image_2147483647-$TEST_ATTEMPT_TOKEN.partial"),
+            )
+            val unknown = listOf(
+                ".image_0-incomplete.partial",
+                ".image_-1-$TEST_ATTEMPT_TOKEN.partial",
+                ".image_2147483648-$TEST_ATTEMPT_TOKEN.partial",
+                ".image_01-$TEST_ATTEMPT_TOKEN.partial",
+                ".image_0-$TEST_ATTEMPT_TOKEN.partial.extra",
+                "notes.txt",
+            ).map { h.seedStaging(it) }
+            val staging = checkNotNull(abandoned.first().parent)
+            val directory = staging / ".image_1-$TEST_ATTEMPT_TOKEN.partial"
+            h.system.createDirectories(directory)
+            val nested = directory / ".image_2-$TEST_ATTEMPT_TOKEN.partial"
+            h.system.write(nested) { write(png) }
+            val canonical = h.seedPage(0, "png", png)
+            val chapter = checkNotNull(canonical.parent)
+            val legacyPartial = chapter / ".image_0-$TEST_ATTEMPT_TOKEN.partial"
+            h.system.write(legacyPartial) { write(png) }
+            val restored = chapter / "_restored" / TEST_ATTEMPT_TOKEN / "chapter.cbz"
+            h.system.createDirectories(checkNotNull(restored.parent))
+            h.system.write(restored) { write(png) }
+
+            h.transport.prepareStaging() // The exact preparation used before native session creation.
+
+            abandoned.forEach { assertFalse(h.system.exists(it)) }
+            (unknown + listOf(nested, canonical, legacyPartial, restored)).forEach { path ->
+                assertContentEquals(png, h.system.read(path) { readByteArray() })
+            }
+            assertTrue(h.system.metadata(directory).isDirectory)
+        }
+    }
+
+    @Test
+    fun startupNeverTraversesAStagingEntryOrRootSymlink() {
+        for (linkRoot in listOf(false, true)) {
+            withHarness { h ->
+                val targetDirectory = h.root / "outside-staging"
+                h.system.createDirectories(targetDirectory)
+                val target = targetDirectory / ".image_0-$TEST_ATTEMPT_TOKEN.partial"
+                h.system.write(target) { write(PageMediaTestImages.png()) }
+                val staging = h.root / "files" / ".download-staging"
+                val link = if (linkRoot) staging else staging / ".image_1-$TEST_ATTEMPT_TOKEN.partial"
+                h.system.createDirectories(checkNotNull(link.parent))
+                h.system.createSymlink(link, if (linkRoot) targetDirectory else target)
+                val abandoned = if (linkRoot) null else h.seedStaging(".image_2-$TEST_ATTEMPT_TOKEN.partial")
+
+                h.transport.prepareStaging()
+
+                assertTrue(h.system.metadata(link).symlinkTarget != null)
+                assertContentEquals(PageMediaTestImages.png(), h.system.read(target) { readByteArray() })
+                if (abandoned != null) assertFalse(h.system.exists(abandoned))
+            }
+        }
+    }
+
+    @Test
+    fun failedStartupPruneRetainsBytesWithoutRetryingOverLaterTransfers() {
+        var failedPath: Path? = null
+        var failedDeletes = 0
+        val failing = object : ForwardingFileSystem(FileSystem.SYSTEM) {
+            override fun delete(path: Path, mustExist: Boolean) {
+                if (path == failedPath) {
+                    failedDeletes++
+                    throw IOException("synthetic staging deletion failure")
+                }
+                super.delete(path, mustExist)
+            }
+        }
+        withHarness(fileSystem = failing) { h ->
+            val abandoned = h.seedStaging(".image_0-$TEST_ATTEMPT_TOKEN.partial")
+            failedPath = abandoned
+            val removable = h.seedStaging(".image_1-$TEST_ATTEMPT_TOKEN.partial")
+            h.transport.prepareStaging()
+            assertEquals(1, failedDeletes)
+            assertFalse(h.system.exists(removable), "one failed deletion does not block another")
+            val task = h.task(0)
+            h.transport.handleFinishedDownload(task, h.sourceFile(PageMediaTestImages.png()).url(), h.response())
+            h.transport.handleCompleted(task, error = null)
+            h.transport.prepareStaging()
+
+            assertEquals(1, failedDeletes, "failed bytes wait for a later process, not a live rescan")
+            assertContentEquals(PageMediaTestImages.png(), h.system.read(abandoned) { readByteArray() })
+            assertContentEquals(PageMediaTestImages.png(), h.system.read(h.page(0, "png")) { readByteArray() })
+            assertEquals(listOf(TestEvent(0, complete = true)), h.events)
         }
     }
 
@@ -328,6 +431,12 @@ class IosBackgroundTransportTest {
             h.assertNoPartial()
         }
     }
+
+    private fun TransportHarness.seedStaging(name: String): Path =
+        (root / "files" / ".download-staging" / name).also { path ->
+            system.createDirectories(checkNotNull(path.parent))
+            system.write(path) { write(PageMediaTestImages.png()) }
+        }
 
     private fun policyFailure(index: Int): TestEvent =
         TestEvent(index, complete = false, failure = "${PAGE_POLICY_REJECTED_PREFIX}ENCODED_BYTES")

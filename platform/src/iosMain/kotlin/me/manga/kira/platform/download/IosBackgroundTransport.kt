@@ -53,6 +53,7 @@ class IosBackgroundTransport(
     // The ONE background session. iOS persists its tasks across suspension/termination; recreating
     // the SAME identifier on relaunch re-attaches us to receive the pending callbacks.
     private val session: NSURLSession by lazy {
+        prepareStaging()
         val config =
             NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(SESSION_ID).apply {
                 sessionSendsLaunchEvents = true
@@ -70,6 +71,9 @@ class IosBackgroundTransport(
         BgDownloadLog.log("session.created", "maxPerHost" to MAX_CONNECTIONS_PER_HOST)
         NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
     }
+
+    /** Once, before native callbacks can arrive; also testable without starting a real session. */
+    internal fun prepareStaging() = callbacks.prepareStaging()
 
     override fun setListener(listener: TransferListener) {
         this.listener = listener

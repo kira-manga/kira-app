@@ -25,6 +25,8 @@ internal class IosPageTransferCallbacks(
     private val pages = IosDownloadedPageStore(appFileSystem, mediaInspector, pageBytePolicy)
     private val outcomes = mutableMapOf<ULong, PageOutcome>()
 
+    fun prepareStaging() = pages.prepareStaging()
+
     fun handleWroteData(
         task: NSURLSessionTask,
         bytesWritten: Long,
