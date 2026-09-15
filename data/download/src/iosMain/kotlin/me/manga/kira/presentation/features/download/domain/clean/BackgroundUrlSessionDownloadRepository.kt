@@ -166,7 +166,7 @@ class BackgroundUrlSessionDownloadRepository(
             runCatching {
                 transport.ensureReady()
                 mutex.withLock { pumpLocked("startup") }
-            }.onFailure { BgDownloadLog.error(it, "startup.pumpFailed", "msg" to it.message) }
+            }.onFailure { BgDownloadLog.error(it, "startup.pumpFailed") }
         }
         // Mirror queue state into the work signal (read synchronously by the iOS host's BG-task layer)
         // and ask the OS for a background CPU window when work first becomes pending.
@@ -215,7 +215,7 @@ class BackgroundUrlSessionDownloadRepository(
                 if (wasDeferred && !deferred && workSignal.hasPendingWork) {
                     BgDownloadLog.log("compressionGate.clearedPump")
                     runCatching { reconcileInterruptedDownloads() }
-                        .onFailure { BgDownloadLog.error(it, "compressionGate.pumpFailed", "msg" to it.message) }
+                        .onFailure { BgDownloadLog.error(it, "compressionGate.pumpFailed") }
                 }
                 wasDeferred = deferred
             }
@@ -246,11 +246,10 @@ class BackgroundUrlSessionDownloadRepository(
                 "enqueue.request",
                 "chapterId" to chapter.id,
                 "mangaId" to chapter.mangaId,
-                "api" to mangaApi,
-                "existingState" to existing,
+                "existingState" to logState(existing),
             )
             if (existing in WorkSignalRules.ACTIVE_STATES) {
-                BgDownloadLog.log("enqueue.skip.alreadyActive", "chapterId" to chapter.id, "state" to existing)
+                BgDownloadLog.log("enqueue.skip.alreadyActive", "chapterId" to chapter.id, "state" to logState(existing))
                 return@withLock
             }
             // Retry of a FAILED|SUCCESS row: drop any stale manifest so attempt counts reset (pages already
@@ -321,7 +320,7 @@ class BackgroundUrlSessionDownloadRepository(
         when (FinalizeRules.cancelCleanup(row.state, encodeInFlight = row.chapterId in finalizing)) {
             FinalizeRules.CancelCleanup.NONE -> Unit
             FinalizeRules.CancelCleanup.DELETE_PARTIAL_PAGES -> {
-                BgDownloadLog.log("cancel.deletePartialPages", "chapterId" to row.chapterId, "state" to row.state)
+                BgDownloadLog.log("cancel.deletePartialPages", "chapterId" to row.chapterId, "state" to logState(row.state))
                 deletePartialPageFiles(row.mangaId, row.chapterId)
             }
             FinalizeRules.CancelCleanup.REVERT_ONLY -> {
@@ -374,7 +373,7 @@ class BackgroundUrlSessionDownloadRepository(
     private suspend fun revertReadableIfCancelledInFinalizeWindowLocked(chapterId: Long) {
         val state = runCatching { dao.getDownloadByChapter(chapterId)?.state }.getOrNull()
         if (!FinalizeRules.cancelMustRevertReadable(state)) return
-        BgDownloadLog.log("cancel.revertReadable", "chapterId" to chapterId, "state" to state)
+        BgDownloadLog.log("cancel.revertReadable", "chapterId" to chapterId, "state" to logState(state))
         runCatching { chapterFinalizer.revertReadable(chapterId) }
             .onFailure { BgDownloadLog.error(it, "cancel.revertReadable.failed", "chapterId" to chapterId) }
     }
@@ -441,7 +440,6 @@ class BackgroundUrlSessionDownloadRepository(
             "chapterId" to chapterId,
             "mangaId" to mangaId,
             "pageIndex" to pageIndex,
-            "msg" to message,
         )
         applicationScope.launch { runCatching { mutex.withLock { handlePageFailedLocked(mangaId, chapterId, pageIndex, message) } } }
     }
@@ -574,7 +572,7 @@ class BackgroundUrlSessionDownloadRepository(
     private fun launchResolve(entity: ChapterDownloadEntity) {
         applicationScope.launch {
             try {
-                BgDownloadLog.log("prepare.resolve.start", "chapterId" to entity.chapterId, "url" to entity.url)
+                BgDownloadLog.log("prepare.resolve.start", "chapterId" to entity.chapterId)
                 val resolveMark = TimeSource.Monotonic.markNow() // DLPERF: page/link resolution (network scrape, off-mutex)
                 val resolved =
                     try {
@@ -589,7 +587,7 @@ class BackgroundUrlSessionDownloadRepository(
                     } catch (ce: CancellationException) {
                         throw ce
                     } catch (t: Throwable) {
-                        BgDownloadLog.error(t, "prepare.resolve.failed", "chapterId" to entity.chapterId, "msg" to t.message)
+                        BgDownloadLog.error(t, "prepare.resolve.failed", "chapterId" to entity.chapterId)
                         // Stamp a Cloudflare sentinel for a WebView-solvable challenge so the Details VM can
                         // auto-route to the solver and re-enqueue (downloads parity with the reading path).
                         val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
@@ -611,7 +609,7 @@ class BackgroundUrlSessionDownloadRepository(
                     // remove the row under this same lock, so the two can never interleave mid-write).
                     val current = dao.getDownloadByChapter(entity.chapterId)
                     if (current == null || current.state != DownloadingState.RUNNING) {
-                        BgDownloadLog.log("prepare.resolve.discarded", "chapterId" to entity.chapterId, "state" to current?.state)
+                        BgDownloadLog.log("prepare.resolve.discarded", "chapterId" to entity.chapterId, "state" to logState(current?.state))
                         return@withLock
                     }
                     // Prefer a manifest another pass may have written while we resolved (idempotent resume).
@@ -693,7 +691,7 @@ class BackgroundUrlSessionDownloadRepository(
             try {
                 // Space chained top-ups; the network scrape must remain outside the engine mutex.
                 delay(PREFETCH_SPACING_MS)
-                BgDownloadLog.log("prefetch.resolve.start", "chapterId" to entity.chapterId, "url" to entity.url)
+                BgDownloadLog.log("prefetch.resolve.start", "chapterId" to entity.chapterId)
                 val resolved = resolvePrefetch(entity) ?: return@launch
                 mutex.withLock { completePrefetchLocked(entity, resolved) }
             } finally {
@@ -721,7 +719,6 @@ class BackgroundUrlSessionDownloadRepository(
             "prefetch.resolve.failed",
             "chapterId" to entity.chapterId,
             "challenge" to isChallenge,
-            "msg" to failure.message,
         )
         mutex.withLock {
             pausePrefetchLocked()
@@ -746,7 +743,7 @@ class BackgroundUrlSessionDownloadRepository(
             current.state == DownloadingState.QUEUED -> persistQueuedPrefetchLocked(entity, resolved)
             current.state == DownloadingState.RUNNING -> promotePrefetchLocked(entity, current, resolved)
             else ->
-                BgDownloadLog.log("prefetch.discarded", "chapterId" to entity.chapterId, "state" to current.state)
+                BgDownloadLog.log("prefetch.discarded", "chapterId" to entity.chapterId, "state" to logState(current.state))
         }
     }
 
@@ -818,7 +815,7 @@ class BackgroundUrlSessionDownloadRepository(
         BgDownloadLog.log(
             "reconcile.plan",
             "chapterId" to entity.chapterId,
-            "roomState" to entity.state,
+            "roomState" to logState(entity.state),
             "manifestPages" to manifest.pages.size,
             "onDisk" to onDisk.size,
             "inFlight" to inFlight.size,
@@ -853,7 +850,7 @@ class BackgroundUrlSessionDownloadRepository(
                         val headers = HeaderRefreshRules.overlayFreshHeaders(frozen = mp.headers, fresh = live)
                         TransferRequest(entity.mangaId, entity.chapterId, idx, mp.url, headers)
                     }
-                BgDownloadLog.log("reconcile.enqueue", "chapterId" to entity.chapterId, "pages" to plan.toEnqueue)
+                BgDownloadLog.log("reconcile.enqueue", "chapterId" to entity.chapterId, "pages" to plan.toEnqueue.size)
                 transport.enqueue(requests)
             }
             else -> BgDownloadLog.log("reconcile.waitInFlight", "chapterId" to entity.chapterId, "inFlight" to inFlight.size)
@@ -872,7 +869,7 @@ class BackgroundUrlSessionDownloadRepository(
         if (entity.state == DownloadingState.RUNNING || entity.state == DownloadingState.DOWNLOADED) {
             recordPageCompleteLocked(entity, mangaId, pageIndex)
         } else {
-            BgDownloadLog.log("page.complete.ignored", "chapterId" to chapterId, "state" to entity.state)
+            BgDownloadLog.log("page.complete.ignored", "chapterId" to chapterId, "state" to logState(entity.state))
         }
     }
 
@@ -971,7 +968,7 @@ class BackgroundUrlSessionDownloadRepository(
     ): ChapterDownloadEntity? {
         val entity = dao.getDownloadByChapter(chapterId) ?: return null
         return if (entity.state != DownloadingState.RUNNING) {
-            BgDownloadLog.log("page.failed.ignored", "chapterId" to chapterId, "state" to entity.state)
+            BgDownloadLog.log("page.failed.ignored", "chapterId" to chapterId, "state" to logState(entity.state))
             null
         } else {
             val manifest = cachedManifest(mangaId, chapterId)
@@ -1025,7 +1022,7 @@ class BackgroundUrlSessionDownloadRepository(
                     "retry.skip.notRunning",
                     "chapterId" to chapterId,
                     "pageIndex" to pageIndex,
-                    "state" to entity.state,
+                    "state" to logState(entity.state),
                 )
                 false
             }
@@ -1310,18 +1307,18 @@ class BackgroundUrlSessionDownloadRepository(
                         // them: remove the artifact (loose pages and/or published .cbz — whole
                         // chapter dir) and re-assert the readable-bookkeeping revert, so a cancelled
                         // chapter can never remain Downloaded or openable.
-                        BgDownloadLog.log("finalize.cancelledCleanup", "chapterId" to chapterId, "state" to finalState)
+                        BgDownloadLog.log("finalize.cancelledCleanup", "chapterId" to chapterId, "state" to logState(finalState))
                         deleteChapterFiles(entity.mangaId, chapterId)
                         runCatching { chapterFinalizer.revertReadable(chapterId) }
                     }
                     else -> {
-                        BgDownloadLog.log("notif.complete.skipped", "chapterId" to chapterId, "state" to finalState)
+                        BgDownloadLog.log("notif.complete.skipped", "chapterId" to chapterId, "state" to logState(finalState))
                     }
                 }
             } catch (ce: CancellationException) {
                 throw ce
             } catch (t: Throwable) {
-                BgDownloadLog.error(t, "finalize.failed", "chapterId" to chapterId, "msg" to t.message)
+                BgDownloadLog.error(t, "finalize.failed", "chapterId" to chapterId)
                 // A CBZ/finalize failure must NOT fail a chapter whose pages are already on disk and
                 // readable — the user can read it; the archive retries on the next window/foreground pump.
                 // Keep-readable requires a complete, validated roster or a validated archive, not
@@ -1354,14 +1351,14 @@ class BackgroundUrlSessionDownloadRepository(
                     // cleanup + bookkeeping revert (2026-07-04 device smoke) — the cancel path left
                     // the files to this encode.
                     FinalizeRules.FailureAction.IGNORE_STALE_ROW -> {
-                        BgDownloadLog.log("finalize.staleRowError.ignored", "chapterId" to chapterId, "state" to cur?.state)
+                        BgDownloadLog.log("finalize.staleRowError.ignored", "chapterId" to chapterId, "state" to logState(cur?.state))
                         if (FinalizeRules.shouldAbandonFinalize(cur?.state)) {
                             deleteChapterFiles(entity.mangaId, chapterId)
                             runCatching { chapterFinalizer.revertReadable(chapterId) }
                         }
                     }
                     FinalizeRules.FailureAction.KEEP_READABLE ->
-                        BgDownloadLog.warn("finalize.failed.keepReadable", "chapterId" to chapterId, "msg" to (t.message ?: ""))
+                        BgDownloadLog.warn("finalize.failed.keepReadable", "chapterId" to chapterId)
                     FinalizeRules.FailureAction.FAIL ->
                         runCatching { mutex.withLock { failChapterLocked(entity, t.message ?: "Finalize failed") } }
                 }
@@ -1398,7 +1395,7 @@ class BackgroundUrlSessionDownloadRepository(
     ) {
         val current = dao.getDownloadByChapter(chapterId)
         if (current == null || current.state != DownloadingState.RUNNING) {
-            BgDownloadLog.log("prepare.resolve.failDiscarded", "chapterId" to chapterId, "state" to current?.state)
+            BgDownloadLog.log("prepare.resolve.failDiscarded", "chapterId" to chapterId, "state" to logState(current?.state))
             return
         }
         failChapterLocked(current, message)
@@ -1409,7 +1406,7 @@ class BackgroundUrlSessionDownloadRepository(
         entity: ChapterDownloadEntity,
         message: String,
     ) {
-        BgDownloadLog.warn("state.transition", "chapterId" to entity.chapterId, "to" to "FAILED", "reason" to message)
+        BgDownloadLog.warn("state.transition", "chapterId" to entity.chapterId, "to" to "FAILED")
         transport.cancelChapter(entity.chapterId)
         clearChapterCaches(entity.chapterId)
         dao.updateFailure(entity.chapterId, message)
@@ -1524,7 +1521,7 @@ class BackgroundUrlSessionDownloadRepository(
         val dir = appFileSystem.chapterDir(mangaId, chapterId)
         runCatching {
             if (appFileSystem.fileSystem().exists(dir)) appFileSystem.fileSystem().deleteRecursively(dir)
-        }.onFailure { BgDownloadLog.warn("files.deleteFailed", "chapterId" to chapterId, "dir" to dir.toString()) }
+        }.onFailure { BgDownloadLog.warn("files.deleteFailed", "chapterId" to chapterId) }
     }
 
     /**
@@ -1551,12 +1548,11 @@ class BackgroundUrlSessionDownloadRepository(
                         BgDownloadLog.warn(
                             "files.partialDeleteFailed",
                             "chapterId" to chapterId,
-                            "file" to page.name,
                         )
                     }
                 }
         }.onFailure {
-            BgDownloadLog.warn("files.partialDeleteFailed", "chapterId" to chapterId, "dir" to dir.toString())
+            BgDownloadLog.warn("files.partialDeleteFailed", "chapterId" to chapterId)
         }
         manifestStore.delete(mangaId, chapterId)
     }
@@ -1581,6 +1577,18 @@ class BackgroundUrlSessionDownloadRepository(
         val base = entity.mangaTitle?.takeIf { it.isNotBlank() } ?: "Download"
         return "$base - Ch ${entity.number}"
     }
+
+    // Logging-only tokens; the platform boundary never renders arbitrary downstream enum objects.
+    private fun logState(state: DownloadingState?): String =
+        when (state) {
+            DownloadingState.QUEUED -> "QUEUED"
+            DownloadingState.RUNNING -> "RUNNING"
+            DownloadingState.DOWNLOADED -> "DOWNLOADED"
+            DownloadingState.COMPRESSING -> "COMPRESSING"
+            DownloadingState.SUCCESS -> "SUCCESS"
+            DownloadingState.FAILED -> "FAILED"
+            null -> "ABSENT"
+        }
 
     // Retry-vs-fail + backoff policy moved to the pure commonMain [TransferRetryRules] (test
     // hardening — the decision also stamps the Cloudflare sentinel on a challenge-class exhaustion).
