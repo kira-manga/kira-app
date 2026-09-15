@@ -74,30 +74,31 @@ class ChapterArtifactRecovery(
         return outcome
     }
 
-    private suspend fun settleConversionFiles(claim: ChapterArtifactClaim, proved: (ChapterConversionOutcome) -> Unit): Boolean {
-        val path = conversionFiles.canonical(claim.owner)
-        val size = conversionFiles.archiveMetadata(claim)?.size
-        return when (commits.readConversionOutcome(claim, path.toString(), size)) {
-            ChapterConversionOutcome.COMMITTED -> {
-                conversionFiles.validateArchive(claim)
-                if (claim.conversionSourceRoster != null) conversionFiles.sources(claim)
-                proved(ChapterConversionOutcome.COMMITTED)
-                // Pre-v16 committed receipts lack cleanup provenance: retain loose files.
-                if (claim.conversionSourceRoster != null) conversionFiles.cleanSources(claim)
-                true
-            }
-            ChapterConversionOutcome.NOT_COMMITTED -> {
-                if (claim.conversionSourceRoster != null) conversionFiles.sources(claim) else {
-                    val legacy = dao.saved(claim.owner.chapterId) ?: return false
-                    if (!claim.owner.matches(legacy)) return false
-                    conversionFiles.capture(legacy) // Old receipts grant NO source deletion.
+    private suspend fun settleConversionFiles(claim: ChapterArtifactClaim, proved: (ChapterConversionOutcome) -> Unit): Boolean =
+        withContext(platformIoDispatcher) {
+            val path = conversionFiles.canonical(claim.owner)
+            val size = conversionFiles.archiveMetadata(claim)?.size
+            when (commits.readConversionOutcome(claim, path.toString(), size)) {
+                ChapterConversionOutcome.COMMITTED -> {
+                    conversionFiles.validateArchive(claim)
+                    if (claim.conversionSourceRoster != null) conversionFiles.sources(claim)
+                    proved(ChapterConversionOutcome.COMMITTED)
+                    // Pre-v16 committed receipts lack cleanup provenance: retain loose files.
+                    if (claim.conversionSourceRoster != null) conversionFiles.cleanSources(claim)
+                    true
                 }
-                proved(ChapterConversionOutcome.NOT_COMMITTED)
-                true // Retained-input writers have not reached any destructive cleanup.
+                ChapterConversionOutcome.NOT_COMMITTED -> {
+                    if (claim.conversionSourceRoster != null) conversionFiles.sources(claim) else {
+                        val legacy = dao.saved(claim.owner.chapterId) ?: return@withContext false
+                        if (!claim.owner.matches(legacy)) return@withContext false
+                        conversionFiles.capture(legacy) // Old receipts grant NO source deletion.
+                    }
+                    proved(ChapterConversionOutcome.NOT_COMMITTED)
+                    true // Retained-input writers have not reached any destructive cleanup.
+                }
+                ChapterConversionOutcome.UNKNOWN -> false
             }
-            ChapterConversionOutcome.UNKNOWN -> false
         }
-    }
 
     /** Explicit Delete never inherits ordinary failure's page-retention policy for Retry. */
     suspend fun settleFailedCleanup(artifacts: ChapterArtifacts, claim: ChapterArtifactClaim): Boolean = try {

@@ -8,6 +8,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
@@ -78,7 +79,9 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
 
     suspend fun beginConversion(expected: SavedChapterEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.id, pinFiles = true) { token ->
-            dao.claimConversion(expected, token, recovery.conversionFiles.capture(expected))
+            // Dispatch before Room reservation, never add a prompt-cancellable return after it.
+            val roster = withContext(platformIoDispatcher) { recovery.conversionFiles.capture(expected) }
+            dao.claimConversion(expected, token, roster)
         }
 
     /** The exact captured inputs, retained writer, archive validation and Room write share one pin. */
@@ -87,7 +90,7 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
         write: suspend (List<Path>) -> Path,
         commit: suspend (Path, Long) -> Boolean,
     ): Boolean? = files(claim) {
-        val archive = recovery.conversionFiles.prepare(claim, write)
+        val archive = withContext(platformIoDispatcher) { recovery.conversionFiles.prepare(claim, write) }
         publish(claim) { commit(archive.path, archive.sizeBytes) }
     }
 

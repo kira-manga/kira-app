@@ -1,12 +1,15 @@
 package me.manga.kira.data.repository
 
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.entity.ChapterConversionRoster
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.claimOrNull
 import okio.IOException
+import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -17,6 +20,31 @@ import kotlin.test.assertTrue
 
 /** Persisted-boundary reconstruction with fresh Room/runtime, not an OS-kill/fsync claim. */
 class CbzConversionRecoveryTest {
+    @Test
+    fun conversionCapturePrepareAndStartupSettlementLeaveTheCallingUiDispatcher() = downloadRecoveryTest {
+        val original = seed(isDownloaded = true)
+        val pages = installValidPages(original)
+        val mirror = conversionMirror(original)
+        val (archive, bytes) = installPreviousArchive(original, pages.values.toList())
+        Executors.newSingleThreadExecutor { Thread(it, "conversion-caller-ui") }.asCoroutineDispatcher().use { ui ->
+            withContext(ui) {
+                val guarded = ConversionIoGuard(fs, Thread.currentThread())
+                conversionFaults(storage = guarded)
+                val claim = assertNotNull(artifactRuntime.ownership.beginConversion(original.saved))
+                assertTrue(artifactRuntime.ownership.convertFiles(claim, write = { archive }, commit = { path, size ->
+                    db.chapterArtifactCommitDao().commitConversion(claim, original.saved, listOf(path.toString()), size)
+                }) == true)
+                reopen() // No local settlement: the new runtime must settle on its first UI admission.
+                conversionFaults(storage = guarded)
+                artifactRuntime.ownership.read(original.saved.id) { assertNull(it?.token) }
+                assertTrue(guarded.operations.containsAll(setOf("stat", "canonicalize", "open", "delete")))
+            }
+        }
+        assertConverted(original, mirror, archive)
+        pages.keys.forEach { assertFalse(fs.exists(it)) }
+        assertContentEquals(bytes, fs.read(archive) { readByteArray() })
+    }
+
     @Test
     fun committedButUnverifiableCanonicalKeepsOriginalsAndCustodyWithoutSuccessCredit() = downloadRecoveryTest {
         val original = seed(isDownloaded = true)

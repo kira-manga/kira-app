@@ -2,10 +2,13 @@ package me.manga.kira.data.repository
 
 import kotlinx.coroutines.flow.first
 import me.manga.kira.data.local.entity.ChapterNotification
+import okio.FileHandle
+import okio.FileMetadata
 import okio.FileSystem
 import okio.ForwardingFileSystem
 import okio.IOException
 import okio.Path
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.assertEquals
 
 /** Narrow stat/delete cuts using the same real bytes and existing Room fixture. */
@@ -22,6 +25,33 @@ internal class ConversionFileFaults(delegate: FileSystem) : ForwardingFileSystem
     override fun delete(path: Path, mustExist: Boolean) {
         deleteAttempts += path
         if (path == deleteFailure) throw IOException("conversion source cleanup failed")
+        super.delete(path, mustExist)
+    }
+}
+
+/** Actual filesystem entrypoints, not an injected dispatcher flag or a second runtime harness. */
+internal class ConversionIoGuard(delegate: FileSystem, private val uiThread: Thread) : ForwardingFileSystem(delegate) {
+    val operations = ConcurrentHashMap.newKeySet<String>()
+
+    private fun observe(operation: String) {
+        check(Thread.currentThread() !== uiThread) { "Blocking conversion filesystem work on UI" }
+        operations += operation
+    }
+
+    override fun metadataOrNull(path: Path): FileMetadata? {
+        observe("stat")
+        return super.metadataOrNull(path)
+    }
+    override fun canonicalize(path: Path): Path {
+        observe("canonicalize")
+        return super.canonicalize(path)
+    }
+    override fun openReadOnly(file: Path): FileHandle {
+        observe("open")
+        return super.openReadOnly(file)
+    }
+    override fun delete(path: Path, mustExist: Boolean) {
+        observe("delete")
         super.delete(path, mustExist)
     }
 }
