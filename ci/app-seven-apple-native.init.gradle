@@ -1,0 +1,203 @@
+// Native-only invocation with ordinary main/test source joins. No source/dependency/compiler replacement.
+// The host-only init/graph guard is NOT loaded into this invocation.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.security.MessageDigest
+import org.gradle.api.tasks.testing.AbstractTestTask
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def run = new File(System.getenv('KIRA_APP5_RUN') ?: '/UNBOUND').canonicalFile
+def control = new File(System.getenv('KIRA_APP5_CONTROL') ?: '/UNBOUND').canonicalFile
+def reports = new File(run, 'reports')
+def read = { name ->
+    def file = new File(reports, name)
+    require(file.isFile() && !Files.isSymbolicLink(file.toPath()) && file.length() <= 1048576, 'Bound report required')
+    new JsonSlurper().parse(file)
+}
+def source = read('source.json')
+def nativeSource = read('native-source.json')
+def request = read('request.json')
+def simulator = read('simulator.json')
+def candidate = '63b5f819edeaac3d99b47a05a9a79b482b60aea9'
+require(candidate ==~ /[0-9a-f]{40}/ && request.schema == 'app-seven-apple-v1' &&
+    request.status == 'PRIMARY_BOUND_FOR_REVIEW' && request.mode == 'NATIVE_ONLY' &&
+    request.app.sha == candidate && source.app.sha == candidate &&
+    nativeSource.app == request.app && nativeSource.root == source.app.root &&
+    source.engine.sha == 'ed184165ebd3ee7f0d1db533cc40ca5a0868fdda', 'No direct/unbound native invocation')
+def realHome = new File(System.getenv('KIRA_APP7_SIMULATOR_HOME') ?: '/UNBOUND').canonicalFile
+def device = System.getenv('KIRA_APP7_DEVICE')
+require(device ==~ /[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}/ && simulator.udid == device &&
+    simulator.runnerHome == realHome.path && realHome.isDirectory() && !realHome.toPath().startsWith(run.toPath()),
+    'Wrong owned simulator/home')
+def suites = nativeSource.suites
+def testPaths = [':platform:iosSimulatorArm64Test', ':data:download:iosSimulatorArm64Test']
+require(request.nativeTasks == testPaths && suites*.task == testPaths &&
+    suites*.methods*.size() == [4, 2], 'Exactly targeted PNG4/manifest2')
+def compilePaths = testPaths.collect { it.replace('iosSimulatorArm64Test', 'compileTestKotlinIosSimulatorArm64') }
+def linkPaths = testPaths.collect { it.replace('iosSimulatorArm64Test', 'linkDebugTestIosSimulatorArm64') }
+def arguments = testPaths.collectMany { task ->
+    [task] + suites.findAll { it.task == task }.collectMany { spec ->
+        spec.methods.collectMany { ['--tests', spec.'class' + '.' + it] }
+    } + ['--device', device]
+}
+def modules = [':core', ':domain', ':presentation', ':ui', ':platform', ':data:local', ':data:remote', ':sources:legacy',
+    ':sources:contracts', ':data:download', ':data', ':sources:engine', ':sources:config', ':composeApp']
+def c = [role: null, source: source, require: require, producerName: 'original-engine-ed184165-app5-apple01',
+    graph: [], observed: [:], states: [:]]
+gradle.ext.app5Apple = c // The same unchanged original-Engine route remains the second init.
+def hashBytes = { byte[] bytes -> MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() }
+def sha = { File file, long cap = 1073741824L ->
+    require(file.isFile() && file.canonicalPath == file.absolutePath && !Files.isSymbolicLink(file.toPath()) &&
+        file.length() <= cap, 'Invalid/oversized Native evidence file')
+    def digest = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { stream ->
+        byte[] buffer = new byte[1048576]
+        for (int count; (count = stream.read(buffer)) != -1;) digest.update(buffer, 0, count)
+    }
+    digest.digest().encodeHex().toString()
+}
+def fingerprint = { File file ->
+    require(file.exists() && file.canonicalPath == file.absolutePath && !Files.isSymbolicLink(file.toPath()), 'Unowned Native output')
+    if (file.isFile()) return [file: file.path, kind: 'file', bytes: file.length(), sha256: sha(file)]
+    def rows = []
+    long bytes = 0
+    file.eachFileRecurse { child ->
+        require(!Files.isSymbolicLink(child.toPath()), 'Symlink Native KLIB entry')
+        if (child.isFile()) {
+            bytes += child.length()
+            require(rows.size() < 4096 && bytes <= 268435456, 'Native test KLIB cap')
+            rows.add([path: file.toPath().relativize(child.toPath()).toString(), sha256: sha(child)])
+        }
+    }
+    rows.sort { it.path }
+    require(!rows.empty, 'Empty Native KLIB')
+    [file: file.path, kind: 'directory', bytes: bytes, files: rows.size(),
+        sha256: hashBytes(rows.collect { it.sha256 + '  ' + it.path + '\n' }.join('').getBytes('UTF-8'))]
+}
+def save = {
+    def bytes = (JsonOutput.prettyPrint(JsonOutput.toJson([role: c.role, source: source[c.role].sha,
+        testTasks: c.role == 'app' ? testPaths : [], graph: c.graph, observed: c.observed, states: c.states])) + '\n').getBytes('UTF-8')
+    require(bytes.length <= 1048576, 'Native task report cap')
+    def name = 'native-' + c.role + '-tasks.json'
+    def file = new File(reports, name).toPath()
+    def pending = new File(reports, name + '.pending').toPath()
+    require(!Files.isSymbolicLink(file), 'Aliased Native report')
+    Files.write(pending, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    Files.move(pending, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+def libraries = { t ->
+    def files = t.libraries.files.sort { it.path }
+    def owners = [source.app.root, source.engine.root, new File(run, 'gradle-home/caches').path, new File(run, 'konan').path]
+    require(!files.empty && files.size() <= 512 && files.every { file ->
+        file.exists() && file.canonicalPath == file.absolutePath && !file.path.contains('/me.manga.kira.source/') &&
+            owners.any { file.path.startsWith(it + '/') }
+    }, 'Unowned/published-neutral/oversized Native libraries')
+    files*.path // Actual ordinary inputs, not another expanded all-library provenance framework.
+}
+def nativeCompiler = { t ->
+    def version = c.role == 'app' ? '2.4.0' : '2.2.21'
+    require(t.target == 'ios_simulator_arm64' && t.kotlinNativeVersion == version &&
+        new File(t.konanHome.get().toString()).canonicalFile == new File(run, 'konan/kotlin-native-prebuilt-macos-aarch64-' + version),
+        'Wrong actual Native target/compiler/home')
+    if (c.role == 'engine') require(t.compilerOptions.languageVersion.get().version == '2.1' &&
+        t.compilerOptions.apiVersion.get().version == '2.1', 'Original Engine language/API2.1')
+}
+gradle.settingsEvaluated { settings ->
+    def root = settings.settingsDir.canonicalFile
+    c.role = root.path == source.app.root ? 'app' : (root.path == source.engine.root ? 'engine' : null)
+    require(c.role != null && root == new File(control.parentFile, c.role), 'Only exact App/original Engine checkouts')
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21' &&
+        !gradle.startParameter.offline && !gradle.startParameter.dryRun && gradle.startParameter.excludedTaskNames.empty &&
+        gradle.startParameter.maxWorkerCount == 1 && !gradle.startParameter.parallelProjectExecutionEnabled &&
+        !gradle.startParameter.buildCacheEnabled && !gradle.startParameter.configurationCacheRequested, 'Ordinary one-worker uncached work')
+    require(System.getenv('HOME') == new File(run, 'home').path && System.getProperty('user.home') == new File(run, 'home').path &&
+        gradle.gradleUserHomeDir.canonicalFile == new File(run, 'gradle-home') &&
+        System.getenv('KONAN_DATA_DIR') == new File(run, 'konan').path, 'Isolated Gradle/Native scratch homes')
+    if (c.role == 'app') require(gradle.startParameter.taskNames in [testPaths, arguments], 'Only the two literal Native roots/options')
+    c.mains = (c.role == 'app' ? modules : [':source-contract', ':source-engine']).collect { it + ':compileKotlinIosSimulatorArm64' }
+}
+gradle.projectsEvaluated {
+    gradle.rootProject.allprojects.each { p ->
+        require(['kotlin.native.home', 'kotlin.native.version', 'kotlin.native.distribution.type'].every { p.findProperty(it) == null },
+            'No global Native home/version/distribution override')
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    c.graph = graph.allTasks.collect { [path: it.path, type: it.class.name] }
+    save()
+    if (c.role == 'app') require(graph.allTasks*.path.containsAll(testPaths + compilePaths + linkPaths), 'Missing real Native compile/link/run closure')
+    graph.allTasks.each { t ->
+        require(t.project.path in (c.role == 'app' ? modules + [':'] : [':', ':source-contract', ':source-engine', ':source-testkit']) &&
+            (!(t instanceof AbstractTestTask) || (c.role == 'app' && t.path in testPaths)) &&
+            (!t.class.name.contains('KotlinNativeLink') || (c.role == 'app' && t.path in linkPaths)) &&
+            !t.class.name.contains('PublishToMaven') && !(t.name in ['downloadKcef', 'setupKcef', 'extractKcef']),
+            'No other tests/framework/link/publication/CEF work')
+        if (t.name.startsWith('compile') && t.name.contains('Kotlin') && !t.name.contains('Metadata'))
+            require(t.path in c.mains || (c.role == 'app' && t.path in compilePaths), 'No independent iosArm64/JVM/other compiler')
+        if (t.path in c.mains || (c.role == 'app' && t.path in compilePaths)) {
+            t.doFirst {
+                nativeCompiler(t)
+                def expected = t.path in c.mains ? source[c.role].mains[t.project.path] : nativeSource.compilations[t.path]
+                def files = t.sources.files.findAll { it.name.endsWith('.kt') }
+                def made = files.findAll { it.canonicalPath.startsWith(t.project.buildDir.canonicalPath + '/') }
+                def original = (files - made).collectEntries { [(t.project.rootProject.relativePath(it)): sha(it)] }
+                require(files.size() <= 4096 && original == expected && made.every {
+                    it.canonicalPath.startsWith(t.project.buildDir.canonicalPath + '/generated/') }, 'Pruned/extra ordinary main/test sources')
+                c.observed[t.path] = [target: t.target, sourcesMatched: true, sourceCount: original.size(),
+                    sourceDigest: hashBytes(original.sort().collect { name, digest -> digest + '  ' + name + '\n' }.join('').getBytes('UTF-8')),
+                    generated: made.collectEntries { [(it.path): sha(it)] }, libraries: libraries(t)]
+                save()
+            }
+            t.doLast { c.observed[t.path].output = fingerprint(t.klibOutput.get()); c.observed[t.path].ended = true; save() }
+        }
+        if (c.role == 'app' && t.path in linkPaths) {
+            def compilePath = compilePaths[linkPaths.indexOf(t.path)]
+            t.doFirst {
+                def includes = t.'getSourceFiles$kotlin_gradle_plugin_common'().files.collect { fingerprint(it) }
+                require(c.observed[compilePath]?.ended && includes == [c.observed[compilePath].output] &&
+                    t.binary.target.konanTarget.name == 'ios_simulator_arm64', 'Link must consume the real freshly compiled test KLIB')
+                c.observed[t.path] = [target: t.binary.target.konanTarget.name, includes: includes, libraries: libraries(t)]
+                save()
+            }
+            t.doLast { c.observed[t.path].output = fingerprint(t.outputFile.get()); c.observed[t.path].ended = true; save() }
+        }
+        if (c.role == 'app' && t.path in testPaths) {
+            def index = testPaths.indexOf(t.path)
+            def selectors = suites.findAll { it.task == t.path }.collectMany { spec ->
+                spec.methods.collect { spec.'class' + '.' + it }
+            }.sort()
+            t.standalone.set(false)
+            t.environment('HOME', realHome.path)
+            t.environment('CFFIXED_USER_HOME', realHome.path)
+            t.filter.failOnNoMatchingTests = true
+            t.ignoreFailures = false
+            t.ignoreRunFailures = false
+            t.reports.junitXml.required.set(true)
+            t.reports.junitXml.outputLocation.set(new File(run, 'work/native-xml/' + t.project.path.substring(1).replace(':', '/')))
+            t.outputs.upToDateWhen { false } // Only test execution; ordinary main/link dependency execution is unchanged.
+            t.doFirst {
+                def linked = c.observed[linkPaths[index]]
+                def executable = fingerprint(t.executable)
+                require(t.includePatterns == (selectors as Set) && t.excludePatterns.empty && t.args.empty && !t.debugMode &&
+                    t.standalone.get() == false && t.filter.failOnNoMatchingTests && !t.ignoreFailures && !t.ignoreRunFailures,
+                    'Missing/broader/hidden/skipped Native selection')
+                require(t.device.get() == device && t.environment['HOME'] == realHome.path &&
+                    t.environment['CFFIXED_USER_HOME'] == realHome.path && t.targetName == 'iosSimulatorArm64' &&
+                    linked?.ended && executable == linked.output, 'Wrong owned simulator or linked executable')
+                c.observed[t.path] = [selectors: selectors, device: device, standalone: false, targetName: t.targetName,
+                    simulatorHome: realHome.path, executable: executable]
+                save()
+            }
+            t.doLast { c.observed[t.path].ended = true; save() }
+        }
+    }
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.path in c.mains && !state.failure && !state.noSource) nativeCompiler(task)
+    c.states[task.path] = [executed: state.executed, didWork: state.didWork, skipped: state.skipped, upToDate: state.upToDate,
+        noSource: state.noSource, failure: state.failure?.class?.name, ended: c.observed[task.path]?.ended == true]
+    save()
+}
