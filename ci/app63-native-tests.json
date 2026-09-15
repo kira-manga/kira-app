@@ -1,0 +1,156 @@
+{
+  "schema": "app-seven-apple-native-tests-v2",
+  "status": "PREPARED_BOUND_NOT_RUN",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "14918702e814c7c62e0615a9727a152706bd9768",
+    "tree": "6a1081a65458de21a3556c66a5da5a9c3d9355e6"
+  },
+  "native_cases": 53,
+  "native_module_counts": {
+    "platform": 34,
+    "data": 19
+  },
+  "swiftpm_inputs": {
+    "scripts/release/verify-toolchain-inputs.rb": "53b6f3e8154be5090cbe42ef6f2f2988095e3795223b267d01d0ac4d4b107324",
+    "release/verified-tools.json": "91e8208a47ad9cc3dc02d50fcc5f8821479e31587ab707cc758d5d0f8eae99a2",
+    "iosApp/Package.resolved": "fa47d64d18b1010dc7415816f69762a4f50f50acabebdda5f55eb83b86db1dd5",
+    "iosApp/project.yml": "944300de9eacdd611a9c95a85130e3cf7d13661bd4d4cd0ec44913bded2d93da",
+    ".github/workflows/testflight.yml": "71063d3eafa68f100169cafaeb5272ebf848d0d33831d8d66ea78d1f565164b6"
+  },
+  "suites": [
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundTransportTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundTransportTest.kt",
+      "sourceSha256": "edc1d6c3589b440734b1ca0612c4e78bdd8ca92f7acb5e22f6cd923dcb20873c",
+      "methods": [
+        "callbackRetainsOutsideTheLiveTreeUntilTheOriginalAttemptAcceptsIt",
+        "startupPrunesOnlyGeneratedRegularStagesAndPreservesUnknownAndLiveTreeBytes",
+        "startupNeverTraversesAStagingEntryOrRootSymlink",
+        "failedStartupPruneRetainsBytesWithoutRetryingOverLaterTransfers",
+        "legacyTokenlessCallbackCannotBeAdoptedAsTheCurrentAttempt",
+        "exactUnknownAndUnderstatedLengthsPublishTheSameBytesWithTheirNativeSuffix",
+        "progressRefusalsRemainPerTaskAndKeepTheirPolicyReasonThroughCancellation",
+        "finalFileOverLimitCannotUseAnUnknownOrUnderstatedLengthToReachTheDecoder",
+        "oversizedDeclaredLengthFailsBeforeAdoptionEvenWhenTheFinalFileWouldFit",
+        "missingOrBadHttpResponseCannotAdoptOrDecodeAFile",
+        "emptyMissingAndNonregularSourcesAreNotAdoptedOrRecursivelyDeleted",
+        "htmlTruncationBadCrcAndCrcCorrectCorruptPixelsCannotReplaceAGoodPage",
+        "nativeMediaPolicyRejectionKeepsItsStableNonretryableReason",
+        "failedPublicationRetainsBothThePriorTargetAndAlternateAndDiscardsOnlyItsOwnedFile",
+        "retainedFileSizeIsRecheckedBeforeNativeInspection",
+        "userCancellationIsSilentButCompletionWithoutAFileIsNotSuccess"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundCompletionTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundCompletionTest.kt",
+      "sourceSha256": "e32081c2d0db43dac803c29267ec46fcb06ce0b21b470c3785f49c8f5266ca0c",
+      "methods": [
+        "terminalNetworkErrorKeepsItsReasonWithoutInventingAPage",
+        "throwingTerminalListenerStillReleasesThePerTaskOutcome",
+        "nativePageHandoffsDrainAfterDisposalWithoutWaitingForTheNextWindow",
+        "eagerFailureAcknowledgementCannotBeatCallbackTemporaryDisposal",
+        "absentReceiverAndSilentCancellationReleaseOnlyTheirOwnCallbackCustody",
+        "invalidUrlFailureIsAdmittedUntilItsReceiverAcknowledges",
+        "failedPageIsReportedBeforeItsTemporaryIsDiscardedEvenWhenTheListenerThrows",
+        "unmatchedTaskDescriptionsCannotProduceTerminalCallbacks"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundEventDrainTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundEventDrainTest.kt",
+      "sourceSha256": "4d0c845e3af63a85f95934d680043dbdfd5cc6ff79d9a1c4d4b9baf50eb8ed5a",
+      "methods": [
+        "heldAdmissionDelaysMainCompletionAndDuplicateAcknowledgementsCannotRepeatIt",
+        "finishedBatchExcludesFutureEventsAndCannotConsumeTheirHandler",
+        "handlerReplacementPreservesBothOwnersAndDuplicateFinishDoesNotCloseTheNextWindow",
+        "lateHandlerWaitsForItsAlreadyFinishedUnownedBatch",
+        "newAdmissionInvalidatesAnUnclaimedFinishInsteadOfReleasingTheHostEarly",
+        "concurrentAcknowledgementsAndNativeFinishConsumeOneMainCompletion"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzRetainedInputTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzRetainedInputTest.kt",
+      "sourceSha256": "1e6186096df451b9fb98e046f327df3368e95c22354cc4840806a78ff0a75b0d",
+      "methods": [
+        "retainedSplittingPreservesEveryRederivedSourceAndPublishesEveryBand",
+        "staleInputRetryCannotReplaceTheSuccessfullyPublishedArchive"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.filesystem.IosAppFileSystemBackupTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/filesystem/IosAppFileSystemBackupTest.kt",
+      "sourceSha256": "bb664f09c5b2990086d8efd36a04c13a040dc1c7bd3c069fa9ddde41010210f9",
+      "methods": [
+        "createdMangaRootIsExcludedAndChildPublicationPreservesThePolicy",
+        "existingMangaRootIsRepairedWithoutChangingStoredBytes"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundArtifactTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundArtifactTest.kt",
+      "sourceSha256": "5b1a8aa754bdfc4891a25fa7b75a058c01d09b26af03aba11ffa6ad3e24b1398",
+      "methods": [
+        "retryRefusesUnreadableMismatchedOrUnwritableRetainedManifestBeforeQueueAdmission",
+        "retryRebindsRetainedRosterWithoutRedownloadingVerifiedPageOrAcceptingOldCapture",
+        "retryNeverResetsDurablePagePolicyRefusal",
+        "receiverPublicationFailureExhaustsOriginalAttemptAndCannotChargeReplacementOrCancellation",
+        "parentReopenRefillsIosWindowWithoutExternalPump"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundEventSettlementTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundEventSettlementTest.kt",
+      "sourceSha256": "bec4e89db4bb41e4d60216397e3d002b1d8937a6e18eeeecc7c9db2f4844c018",
+      "methods": [
+        "pageReceiptWaitsForOriginalTokenRoomProgressWrite",
+        "failureReceiptWaitsForManifestAndOwnedStageButNotForRetryTransfer",
+        "coldWindowRequeriesRoomBeforeSchedulingAndMainCompletion",
+        "cancelledReceiverScopeDisposesAndAcknowledgesWithoutPublication",
+        "failedRefreshAndFailedSchedulerStillCompleteOnceOnMain",
+        "cancelledRefreshStillSchedulesAndCompletesOnceOnMain",
+        "neverEmittingRefreshTimesOutAndReleasesItsCollectionBeforeMainCompletion"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundFailedCleanupTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundFailedCleanupTest.kt",
+      "sourceSha256": "8df4b098da301bdcb301462ee3cd8844488dbc5003b6c86df4dfa06f2056738a",
+      "methods": [
+        "legacyFailedDeleteRemovesPagesAndManifestButPreservesPriorReadableCbz",
+        "settledFailureKeepsRetryPagesUntilDeleteWhileSuccessHistoryRemainsReadable",
+        "failedIosCleanupThrowsAndRetainsItsRowAndIntentForReopen"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosCbzConversionTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosCbzConversionTest.kt",
+      "sourceSha256": "ea0797f01dcc9ee7a77550f7eef3a2ba3a4dedfcc1da75681f5943bf613f35b8",
+      "methods": [
+        "retainedNativePublicationRoomFailureReopenAndLegacyRepairPreserveTheArchive"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosManifestPersistenceTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosManifestPersistenceTest.kt",
+      "sourceSha256": "7bfb575b0a358bddb82849cd2fdf2260b85ebd76762b0f53186ef019aaa563e9",
+      "methods": [
+        "initialManifestOpenWriteCloseAndRenameFailuresNeverEnqueueTransfers",
+        "retryIncrementFailurePreservesLastManifestAndNeverEnqueuesAcrossReopen",
+        "committedRetryCountSurvivesReopenBeforeEnqueueAndStillEnforcesTheBound"
+      ]
+    }
+  ]
+}
