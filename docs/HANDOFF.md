@@ -68,6 +68,14 @@ owner sign-off — high import churn, zero behavior value).
 | Cloudflare WebView solver | ✅ | ✅ | Windows/Linux only (macOS KCEF upstream-broken) |
 | AVIF decode | ✅ native | ✅ ImageIO | ✗ unsupported |
 
+- App72 preparation: Cloudflare recovery allows two solver round-trips per unresolved operation,
+  separating Details metadata/download batches and Reader anchor/appended chapters. Transient
+  download queue states and unrelated fetch successes do not replenish a failure streak. Browser
+  returns carry an owner-latched opaque request and retry only that work; stale returns are ignored.
+  Guardian self-review: bounded helpers stay in presentation, navigation stays in composeApp, no
+  UI/Swift callback or engine contracts change; existing oversized ViewModels shrink rather than
+  undergo unrelated restructuring. Production-VM and non-UI latch regressions/platform gates: **NOT_RUN**.
+
 ## 4. Sources (the content backbone)
 
 - **12 config-driven generic sources** in the revision-6 bundled floor: Azora, Mangamello,

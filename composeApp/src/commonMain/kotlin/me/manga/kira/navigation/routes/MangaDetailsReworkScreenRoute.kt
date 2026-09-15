@@ -88,7 +88,8 @@ fun MangaDetailsReworkScreenRoute(
     val solveCloudflare = rememberCloudflareChallengeSolver(
         navController = navController,
         ownerEntry = backStackEntry,
-        onRetry = { viewModel.submit(DetailsIntent.OnRetry) },
+        onRetry = { viewModel.submit(DetailsIntent.OnCloudflareSolverReturned(it)) },
+        recoveryRequestId = viewModel::cloudflareRecoveryRequestId,
     )
 
     val manga = Manga(
@@ -206,7 +207,8 @@ fun MangaDetailsByUrlReworkScreenRoute(
     val solveCloudflare = rememberCloudflareChallengeSolver(
         navController = navController,
         ownerEntry = backStackEntry,
-        onRetry = { viewModel.submit(DetailsIntent.OnRetry) },
+        onRetry = { viewModel.submit(DetailsIntent.OnCloudflareSolverReturned(it)) },
+        recoveryRequestId = viewModel::cloudflareRecoveryRequestId,
     )
 
     DetailsScreenByUrl(

@@ -27,6 +27,7 @@ import me.manga.kira.domain.usecase.reader.SavePagePositionUseCase
 import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.StartReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
+import me.manga.kira.presentation.cloudflare.isCloudflareChallenge
 import me.manga.kira.presentation.mvi.MviViewModel
 
 /**
@@ -287,9 +288,7 @@ class ReaderViewModel(
     private val pageProgressJobs = mutableMapOf<String, Job>()
     private var chapterGeneration = 0L
 
-    /** Consecutive Cloudflare-solve round-trips; bounded by [MAX_CLOUDFLARE_ATTEMPTS], reset on a
-     *  successful page fetch. */
-    private var cloudflareAttempts = 0
+    private val challengeRecovery = ReaderChallengeRecovery()
 
     /**
      * Tracked chapter-bookmark-observer coroutine (Phase 6.4.x.bookmark, Reader-convergence R2).
@@ -313,11 +312,19 @@ class ReaderViewModel(
         }
     }
 
+    /** Capture the exact outstanding recovery before navigation; stale browser returns are no-ops. */
+    fun cloudflareRecoveryRequestId(
+        url: String,
+        api: String,
+    ): String? =
+        challengeRecovery.requestId(url).takeIf { state.value.manga?.api == api }
+
     override suspend fun handle(intent: ReaderIntent) {
         when (intent) {
             is ReaderIntent.OnEnter -> onEnter(intent.manga, intent.chapter)
             is ReaderIntent.OnPageChanged -> onPageChanged(intent.pageIndex)
             ReaderIntent.OnRetry -> onRetry()
+            is ReaderIntent.OnCloudflareSolverReturned -> onCloudflareSolverReturned(intent.requestId)
             ReaderIntent.OnBackClick -> emit(ReaderEffect.NavigateBack)
             ReaderIntent.OnUiToggle -> updateState { it.copy(isUiVisible = !it.isUiVisible) }
             is ReaderIntent.OnReadingModeChanged -> onReadingModeChanged(intent.mode)
@@ -417,7 +424,7 @@ class ReaderViewModel(
         bookmarkJob?.cancel()
         revokePageProgress()
         clearLoadedExtractedPages(current, exclude = chapter.url)
-        cloudflareAttempts = 0
+        challengeRecovery.clearOwner()
         val mangaChanged = current.manga?.matches(manga) != true
         FlowLog.log("Reader", "enter", "chapter=${chapter.url} num=${chapter.number} api=${manga.api}")
         updateState {
@@ -567,6 +574,8 @@ class ReaderViewModel(
         manga: Manga,
         chapter: Chapter,
     ) {
+        val operation = ReaderChallengeOperation(chapter.url, append = true)
+        challengeRecovery.begin(operation)
         appendJob?.cancel()
         val generation = chapterGeneration
         appendJob =
@@ -575,6 +584,7 @@ class ReaderViewModel(
                     if (generation != chapterGeneration) return@collect
                     when (result) {
                         is AppResult.Success -> {
+                            challengeRecovery.recovered(operation)
                             val newPages = result.value
                             if (newPages.isEmpty()) {
                                 // #4 (append path): an appended chapter that RESOLVED to zero pages must
@@ -595,28 +605,7 @@ class ReaderViewModel(
                         }
                         is AppResult.Failure -> {
                             FlowLog.log("Reader", "appendError", "chapter=${chapter.url} error=${result.error::class.simpleName}")
-                            // #6 (append path): a Cloudflare / anti-bot interstitial on a continuous-mode
-                            // chapter advance must get the same AUTO 403→WebView recovery as the replace
-                            // path (runFetch) — otherwise advancing past a CF-walled next chapter dead-ends
-                            // with a generic snackbar. Same CHALLENGE_STATUSES + bounded cloudflareAttempts
-                            // gate; on return the route adapter re-dispatches OnRetry (re-fetches the anchor
-                            // with the freshly-minted cookies, so a subsequent scroll re-appends). Any other
-                            // error keeps the existing non-blocking ShowError.
-                            val error = result.error
-                            if (error is AppError.Network.Http &&
-                                error.statusCode in CHALLENGE_STATUSES &&
-                                cloudflareAttempts < MAX_CLOUDFLARE_ATTEMPTS
-                            ) {
-                                cloudflareAttempts++
-                                emit(
-                                    ReaderEffect.SolveCloudflareChallenge(
-                                        url = chapter.url,
-                                        api = manga.api,
-                                    ),
-                                )
-                            } else {
-                                emit(ReaderEffect.ShowError(error))
-                            }
+                            onPageFetchFailure(manga, operation, result.error)
                         }
                     }
                 }
@@ -732,10 +721,37 @@ class ReaderViewModel(
         runFetch(manga, chapter)
     }
 
+    private fun onCloudflareSolverReturned(requestId: String) {
+        val operation = challengeRecovery.consume(requestId) ?: return
+        val current = state.value
+        val manga = current.manga ?: return
+        if (operation.append) {
+            if (current.pages.isEmpty()) return
+            val chapter = current.chapters.firstOrNull { it.url == operation.chapterUrl } ?: return
+            appendChapterPages(manga, chapter)
+        } else if (current.chapter?.url == operation.chapterUrl) {
+            onRetry()
+        }
+    }
+
+    private suspend fun onPageFetchFailure(
+        manga: Manga,
+        operation: ReaderChallengeOperation,
+        error: AppError,
+    ) {
+        if (error.isCloudflareChallenge() && challengeRecovery.request(operation)) {
+            emit(ReaderEffect.SolveCloudflareChallenge(url = operation.chapterUrl, api = manga.api))
+        } else {
+            emit(ReaderEffect.ShowError(error))
+        }
+    }
+
     private fun runFetch(
         manga: Manga,
         chapter: Chapter,
     ) {
+        val operation = ReaderChallengeOperation(chapter.url, append = false)
+        challengeRecovery.begin(operation)
         // Cancel the previous fetch before starting a new one. Critical for streaming sources
         // (Prochan): without this, an intra-manga Next / Prev OnEnter would leave the prior
         // chapter's flow still streaming pages and overwriting the new chapter's state. See
@@ -775,8 +791,7 @@ class ReaderViewModel(
                                         error = null,
                                     ),
                                 )
-                                // Successful fetch clears the Cloudflare-solve budget for this reader.
-                                cloudflareAttempts = 0
+                                challengeRecovery.recovered(operation)
                             }
                         }
                         is AppResult.Failure -> {
@@ -786,39 +801,7 @@ class ReaderViewModel(
                                 "chapter=${chapter.url} error=${result.error::class.simpleName}",
                             )
                             updateState { it.copy(isLoading = false, error = result.error) }
-                            // Reader parity item #6 (legacy auto-403→WebView recovery): a Cloudflare /
-                            // anti-bot interstitial is not a hard failure. AUTO-route the user to the
-                            // WebView to solve the challenge (which primes the per-source cookie/header
-                            // store) instead of leaving a dead-end "failed to load" pane. The
-                            // `:composeApp` route adapter auto-re-dispatches OnRetry when it returns
-                            // from the WebView, mirroring the legacy auto-reload-on-return and the
-                            // proven Details `SolveCloudflareChallenge` pattern. Any other error keeps
-                            // the existing generic ShowError snackbar behaviour.
-                            //
-                            // GAP-RDR-01: the detected status set now matches Details'
-                            // [CHALLENGE_STATUSES] ({403, 429, 503, 520-524}) rather than 403-only, so a
-                            // Cloudflare 503 ("checking your browser") / 429 (rate-limit interstitial)
-                            // on a reader page auto-routes to the WebView the same way Details does —
-                            // closing the recovery asymmetry between the two surfaces.
-                            val error = result.error
-                            if (error is AppError.Network.Http &&
-                                error.statusCode in CHALLENGE_STATUSES &&
-                                cloudflareAttempts < MAX_CLOUDFLARE_ATTEMPTS
-                            ) {
-                                // Bounded auto-recovery — cap consecutive solver round-trips so an
-                                // unsolvable challenge can't loop the user back into the WebView forever.
-                                cloudflareAttempts++
-                                emit(
-                                    ReaderEffect.SolveCloudflareChallenge(
-                                        url = chapter.url,
-                                        api = manga.api,
-                                    ),
-                                )
-                            } else {
-                                // Not a challenge, or solve budget exhausted — surface the error instead
-                                // of re-entering the WebView loop (the user can still retry manually).
-                                emit(ReaderEffect.ShowError(error))
-                            }
+                            onPageFetchFailure(manga, operation, result.error)
                         }
                     }
                 }
@@ -909,6 +892,7 @@ class ReaderViewModel(
 
     override fun onCleared() {
         chapterGeneration++
+        challengeRecovery.clearOwner()
         revokePageProgress()
         updateState { it.copy(pageProgressHandles = emptyMap(), pageProgress = emptyMap()) }
         super.onCleared()
@@ -940,30 +924,6 @@ class ReaderViewModel(
         } else {
             loaded.forEach { clearExtractedPages(manga, it) }
         }
-    }
-
-    private companion object {
-        /**
-         * HTTP statuses that a Cloudflare / anti-bot interstitial uses and that the user can clear
-         * in a WebView. Mirrors
-         * [me.manga.kira.presentation.details.DetailsViewModel]'s `CHALLENGE_STATUSES`
-         * verbatim (GAP-RDR-01): 403 is the classic Cloudflare challenge; 503 ("checking your
-         * browser"), 429 (rate-limit interstitial), and 520-524 (CF origin/edge errors) are also
-         * routinely transient WebView-solvable states. The `:data` layer additionally re-surfaces
-         * code-0 challenge-bodied throws as 403, so genuine 404/500 app errors keep falling to the
-         * generic ShowError snackbar. Keeping the two surfaces' status sets identical closes the
-         * recovery asymmetry the audit flagged (Reader was previously 403-only).
-         */
-        val CHALLENGE_STATUSES = setOf(403, 429, 503, 520, 521, 522, 523, 524)
-
-        /**
-         * Max consecutive Cloudflare-solve round-trips before the reader stops auto-routing to the
-         * WebView and surfaces the error. Inspired by native `Handle403Error`'s `maxDismissals`
-         * (native defaulted to 1 re-show); we allow 2 — an initial solve plus one retry. Prevents
-         * an unsolvable challenge from trapping the user in an infinite WebView re-route loop.
-         * Reset to 0 on any successful page fetch AND on each chapter change (see [onEnter]).
-         */
-        const val MAX_CLOUDFLARE_ATTEMPTS = 2
     }
 }
 
