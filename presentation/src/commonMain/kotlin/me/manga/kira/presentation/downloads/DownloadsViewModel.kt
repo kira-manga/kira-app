@@ -5,7 +5,8 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.usecase.downloads.CancelDownloadUseCase
 import me.manga.kira.domain.usecase.downloads.CancelRunningDownloadUseCase
@@ -168,6 +169,8 @@ class DownloadsViewModel(
 ) : MviViewModel<DownloadsState, DownloadsIntent, DownloadsEffect>(
     initialState = DownloadsState(),
 ) {
+    // Main-confined screen actions only, not persistent download admission/ownership.
+    private val pendingActions = mutableMapOf<Long, PendingRowActions>()
 
     init {
         observeDownloads()
@@ -214,34 +217,66 @@ class DownloadsViewModel(
             }
             is DownloadsIntent.OnRetry -> {
                 val chapterId = intent.chapter.chapterId
-                viewModelScope.launch {
-                    val result = retryDownload(chapterId)
-                    emitOnFailure(result)
+                runRowAction(chapterId) {
+                    retryDownload(chapterId)
                 }
             }
             is DownloadsIntent.OnCancel -> {
                 val chapterId = intent.chapter.chapterId
-                viewModelScope.launch {
-                    val result = cancelDownload(chapterId)
-                    emitOnFailure(result)
+                runRowAction(chapterId) {
+                    cancelDownload(chapterId)
                 }
             }
             is DownloadsIntent.OnCancelRunning -> {
                 val chapterId = intent.chapter.chapterId
                 val mangaId = intent.chapter.mangaId
-                viewModelScope.launch {
-                    val result = cancelRunningDownload(chapterId, mangaId)
-                    emitOnFailure(result)
+                runRowAction(chapterId) {
+                    cancelRunningDownload(chapterId, mangaId)
                 }
             }
             is DownloadsIntent.OnDelete -> {
                 val chapterId = intent.chapter.chapterId
-                viewModelScope.launch {
-                    val result = deleteDownload(chapterId)
-                    emitOnFailure(result)
+                runRowAction(chapterId, deleting = true) {
+                    deleteDownload(chapterId)
                 }
             }
         }
+    }
+
+    private suspend fun runRowAction(
+        chapterId: Long,
+        deleting: Boolean = false,
+        action: suspend () -> Result<Unit>,
+    ) {
+        val current = pendingActions[chapterId]
+        val pending = if (current == null) {
+            PendingRowActions(deleteAccepted = deleting).also {
+                pendingActions[chapterId] = it
+                updateState { state -> state.copy(pendingChapterIds = state.pendingChapterIds + chapterId) }
+            }
+        } else {
+            // Coalesce repeat taps. A Delete already dispatched from a stale visible row is still
+            // accepted once, and runs AFTER the earlier action; no later Retry may overtake it.
+            if (!deleting || current.deleteAccepted) return
+            current.deleteAccepted = true
+            current.acceptedActions++
+            current
+        }
+        try {
+            pending.mutex.withLock { emitOnFailure(action()) }
+        } finally {
+            if (deleting) pending.deleteAccepted = false
+            pending.acceptedActions--
+            if (pending.acceptedActions == 0) {
+                pendingActions.remove(chapterId)
+                updateState { it.copy(pendingChapterIds = it.pendingChapterIds - chapterId) }
+            }
+        }
+    }
+
+    private class PendingRowActions(var deleteAccepted: Boolean) {
+        val mutex = Mutex()
+        var acceptedActions = 1
     }
 
     private suspend fun emitOnFailure(result: Result<Unit>) {

@@ -1,12 +1,18 @@
 package me.manga.kira.presentation.downloads
 
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.domain.model.Manga
@@ -67,54 +73,53 @@ class DownloadsViewModelTest {
 
     private class RecordingActionRepository(
         private val result: Result<Unit> = Result.success(Unit),
+        private val beforeResult: suspend (String) -> Unit = {},
     ) : DownloadsActionRepository {
         val calls = mutableListOf<String>()
+
+        private suspend fun record(call: String): Result<Unit> {
+            calls += call
+            beforeResult(call)
+            return result
+        }
 
         override suspend fun enqueueDownload(
             chapterId: Long,
             mangaTitle: String,
             api: String,
         ): Result<Unit> {
-            calls += "enqueue:$chapterId"
-            return result
+            return record("enqueue:$chapterId")
         }
 
         override suspend fun retryDownload(chapterId: Long): Result<Unit> {
-            calls += "retry:$chapterId"
-            return result
+            return record("retry:$chapterId")
         }
 
         override suspend fun cancelDownload(chapterId: Long): Result<Unit> {
-            calls += "cancel:$chapterId"
-            return result
+            return record("cancel:$chapterId")
         }
 
         override suspend fun cancelRunningDownload(
             chapterId: Long,
             mangaId: Long,
         ): Result<Unit> {
-            calls += "cancelRunning:$chapterId:$mangaId"
-            return result
+            return record("cancelRunning:$chapterId:$mangaId")
         }
 
         override suspend fun cancelAllDownloads(): Result<Unit> {
-            calls += "cancelAll"
-            return result
+            return record("cancelAll")
         }
 
         override suspend fun deleteDownload(chapterId: Long): Result<Unit> {
-            calls += "delete:$chapterId"
-            return result
+            return record("delete:$chapterId")
         }
 
         override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> {
-            calls += "deleteChapter:$chapterId"
-            return result
+            return record("deleteChapter:$chapterId")
         }
 
         override suspend fun reconcileInterrupted(): Result<Unit> {
-            calls += "reconcile"
-            return result
+            return record("reconcile")
         }
     }
 
@@ -215,6 +220,7 @@ class DownloadsViewModelTest {
 
             vm.submit(DownloadsIntent.OnRetry(chapter(8, DownloadState.FAILED)))
             assertEquals(listOf<DownloadsEffect>(DownloadsEffect.ShowActionFailed), effects, "failure → the generic effect (no raw text)")
+            assertTrue(vm.state.value.pendingChapterIds.isEmpty(), "failed action releases its pending row")
 
             val succeeding = RecordingActionRepository()
             val vm2 = viewModel(MutableSharedFlow(replay = 1), succeeding)
@@ -222,10 +228,128 @@ class DownloadsViewModelTest {
             val collector2 = launch(dispatcher) { vm2.effects.collect { effects2 += it } }
             vm2.submit(DownloadsIntent.OnRetry(chapter(9, DownloadState.FAILED)))
             assertTrue(effects2.isEmpty(), "success is silent — the Room re-emit is the confirmation")
+            assertTrue(vm2.state.value.pendingChapterIds.isEmpty())
 
             collector.cancel()
             collector2.cancel()
         }
+
+    @Test
+    fun acceptedDeleteWaitsForRetryWhileDuplicateTapsAndOtherChaptersStayIndependent() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val retry = CompletableDeferred<Unit>()
+        val delete = CompletableDeferred<Unit>()
+        val actions = RecordingActionRepository(beforeResult = { call ->
+            when (call) {
+                "retry:7" -> retry.await()
+                "delete:7" -> delete.await()
+                else -> Unit
+            }
+        })
+        val target = chapter(7, DownloadState.FAILED)
+        val other = chapter(8, DownloadState.FAILED)
+        val upstream = MutableSharedFlow<List<DownloadedChapter>>(replay = 1).apply {
+            tryEmit(listOf(target, other))
+        }
+        val vm = viewModel(upstream, actions)
+        try {
+            vm.submit(DownloadsIntent.OnRetry(target))
+            runCurrent()
+            assertEquals(setOf(7L), vm.state.value.pendingChapterIds)
+
+            vm.submit(DownloadsIntent.OnRetry(target))
+            vm.submit(DownloadsIntent.OnCancel(target))
+            vm.submit(DownloadsIntent.OnDelete(target))
+            vm.submit(DownloadsIntent.OnDelete(target))
+            vm.submit(DownloadsIntent.OnRetry(target))
+            vm.submit(DownloadsIntent.OnDelete(other))
+            runCurrent()
+            assertEquals(listOf("retry:7", "delete:8"), actions.calls)
+            assertEquals(setOf(7L), vm.state.value.pendingChapterIds)
+
+            upstream.tryEmit(listOf(target.copy(state = DownloadState.QUEUED), other))
+            runCurrent()
+            assertEquals(setOf(7L), vm.state.value.pendingChapterIds, "Room re-bucketing must retain pending controls")
+            retry.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("retry:7", "delete:8", "delete:7"), actions.calls)
+            assertEquals(setOf(7L), vm.state.value.pendingChapterIds, "queued Delete keeps the row pending")
+            delete.complete(Unit)
+            runCurrent()
+            assertTrue(vm.state.value.pendingChapterIds.isEmpty())
+        } finally {
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun pendingDeleteRejectsLaterRetryAndRepeatDeleteWithoutBlockingAnotherChapter() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val delete = CompletableDeferred<Unit>()
+        val actions = RecordingActionRepository(beforeResult = { call ->
+            if (call == "delete:7") delete.await()
+        })
+        val vm = viewModel(MutableSharedFlow(replay = 1), actions)
+        val target = chapter(7, DownloadState.FAILED)
+        try {
+            vm.submit(DownloadsIntent.OnDelete(target))
+            vm.submit(DownloadsIntent.OnRetry(target))
+            vm.submit(DownloadsIntent.OnDelete(target))
+            vm.submit(DownloadsIntent.OnRetry(chapter(8, DownloadState.FAILED)))
+            runCurrent()
+            assertEquals(listOf("delete:7", "retry:8"), actions.calls)
+            assertEquals(setOf(7L), vm.state.value.pendingChapterIds)
+            delete.complete(Unit)
+            runCurrent()
+            assertTrue(vm.state.value.pendingChapterIds.isEmpty())
+        } finally {
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun cancelledRetryReleasesItsRowWithoutDiscardingAnAcceptedDelete() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val retry = CompletableDeferred<Unit>()
+        val actions = RecordingActionRepository(beforeResult = { call ->
+            if (call == "retry:7") retry.await()
+        })
+        val vm = viewModel(MutableSharedFlow(replay = 1), actions)
+        val target = chapter(7, DownloadState.FAILED)
+        try {
+            vm.submit(DownloadsIntent.OnRetry(target))
+            vm.submit(DownloadsIntent.OnDelete(target))
+            runCurrent()
+            assertEquals(listOf("retry:7"), actions.calls)
+            retry.completeExceptionally(CancellationException("cancel retry"))
+            runCurrent()
+            assertEquals(listOf("retry:7", "delete:7"), actions.calls)
+            assertTrue(vm.state.value.pendingChapterIds.isEmpty())
+        } finally {
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun clearingViewModelCancelsQueuedActionsAndClearsPendingRows() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val retry = CompletableDeferred<Unit>()
+        val actions = RecordingActionRepository(beforeResult = { call ->
+            if (call == "retry:7") retry.await()
+        })
+        val vm = viewModel(MutableSharedFlow(replay = 1), actions)
+        val target = chapter(7, DownloadState.FAILED)
+        vm.submit(DownloadsIntent.OnRetry(target))
+        vm.submit(DownloadsIntent.OnDelete(target))
+        runCurrent()
+        assertEquals(setOf(7L), vm.state.value.pendingChapterIds)
+
+        vm.viewModelScope.cancel()
+        runCurrent()
+
+        assertEquals(listOf("retry:7"), actions.calls, "no queued Delete may run after the screen scope is cancelled")
+        assertTrue(vm.state.value.pendingChapterIds.isEmpty())
+    }
 
     @Test
     fun tabSelect_updatesSelectedTabOnly() =
