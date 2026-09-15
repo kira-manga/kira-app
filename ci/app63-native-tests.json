@@ -1,0 +1,29 @@
+{
+  "schema": "app-seven-apple-retry-v1",
+  "status": "BOUND_NOT_RUN",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "dff1ff5675889dc20debd9da5f73e2049bcbf7a3",
+    "tree": "261f80d6487a26e50e120302642e56bcef7b9241"
+  },
+  "native_cases": 1,
+  "native_module_counts": {
+    "data": 1
+  },
+  "task_module_mapping": {
+    ":data:iosSimulatorArm64Test": "data"
+  },
+  "compile_task": null,
+  "suites": [
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundArtifactTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundArtifactTest.kt",
+      "sourceSha256": "3b937950030e32c968960b443ffaa04a63248f816bae03a4a9c15e180cf917b0",
+      "methods": [
+        "retryRebindsRetainedRosterWithoutRedownloadingVerifiedPageOrAcceptingOldCapture"
+      ]
+    }
+  ],
+  "scope": "Only corrected fixture method; prior26Native+Compose+platform34/host/SwiftPM carry on original source receipts."
+}
