@@ -25,6 +25,8 @@ data class ChapterArtifactEntity(
     val committedToken: String? = null,
     val committedRelativePath: String? = null,
     val retiredRelativePath: String? = null,
+    /** Ordered original/normalized loose inputs, retained until CONVERT cleanup is known complete. */
+    val conversionSourceRoster: String? = null,
 )
 
 /** Retained receiver identity; never resolve a delayed operation against a new URL/title owner. */
@@ -45,6 +47,7 @@ data class ChapterArtifactClaim(
     val operation: String,
     val downloadId: Long?,
     val pending: ChapterArtifactFile?,
+    val conversionSourceRoster: String? = null,
 ) {
     val relativePath: String? get() = pending?.relativePath
 }
@@ -68,6 +71,7 @@ fun ChapterArtifactEntity.claimOrNull(): ChapterArtifactClaim? =
                 ChapterArtifactOwner(chapterId, mangaId, chapterUrl), active, kind,
                 downloadId,
                 pendingRelativePath?.let { path -> pendingSizeBytes?.let { ChapterArtifactFile(path, it) } },
+                conversionSourceRoster,
             )
         }
     }
@@ -77,4 +81,5 @@ fun ChapterArtifactEntity.isOwnedBy(claim: ChapterArtifactClaim): Boolean =
     chapterId == claim.owner.chapterId && mangaId == claim.owner.mangaId &&
         chapterUrl == claim.owner.chapterUrl && token == claim.token &&
         operation == claim.operation && downloadId == claim.downloadId &&
-        pendingRelativePath == claim.relativePath && pendingSizeBytes == claim.pending?.sizeBytes
+        pendingRelativePath == claim.relativePath && pendingSizeBytes == claim.pending?.sizeBytes &&
+        conversionSourceRoster == claim.conversionSourceRoster

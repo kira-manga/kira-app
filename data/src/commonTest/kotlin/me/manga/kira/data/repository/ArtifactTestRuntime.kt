@@ -15,19 +15,22 @@ import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.platform.media.PageMediaInspector
+import me.manga.kira.platform.media.PageInspection
 
 /** One runtime per fixture/database, reset only when the fixture reopens Room. */
 internal class ArtifactTestRuntime(
     val dao: ChapterArtifactDao,
     val commits: ChapterArtifactCommitDao,
     files: AppFileSystem,
+    mediaInspector: PageMediaInspector = NoConversionInspector,
 ) {
-    val recovery = ChapterArtifactRecovery(dao, commits, files)
+    val recovery = ChapterArtifactRecovery(dao, commits, files, mediaInspector)
     val ownership = ChapterArtifacts(dao, recovery)
     val downloads = ChapterDownloadArtifacts(ownership, dao, commits, recovery, files)
 
-    constructor(database: MangaDatabase, files: AppFileSystem) : this(
-        database.chapterArtifactDao(), database.chapterArtifactCommitDao(), files,
+    constructor(database: MangaDatabase, files: AppFileSystem, inspector: PageMediaInspector = NoConversionInspector) : this(
+        database.chapterArtifactDao(), database.chapterArtifactCommitDao(), files, inspector,
     )
 }
 
@@ -36,9 +39,16 @@ internal fun fakeArtifactRuntime(
     files: AppFileSystem = UnusedArtifactFiles,
     chapters: ChapterDao = FakeChapterDao(),
     downloads: ChapterDownloadDao = FakeChapterDownloadDao(),
+    mediaInspector: PageMediaInspector = NoConversionInspector,
 ): ArtifactTestRuntime {
     val records = FakeArtifactRecords(chapters, downloads)
-    return ArtifactTestRuntime(records, records, files)
+    return ArtifactTestRuntime(records, records, files, mediaInspector)
+}
+
+/** Unrelated fixtures must not accidentally claim conversion/archive validation. */
+private object NoConversionInspector : PageMediaInspector {
+    override fun inspect(encoded: ByteArray): PageInspection = error("This fixture has no conversion inspector")
+    override fun inspect(path: okio.Path): PageInspection = error("This fixture has no conversion inspector")
 }
 
 private object UnusedArtifactFiles : AppFileSystem {
@@ -116,7 +126,7 @@ private class FakeArtifactRecords(
         if (get(chapterId)?.retiredRelativePath != null) return 0
         return mutate(chapterId, token) {
             it.copy(token = null, operation = null, retiring = false, downloadId = null,
-                pendingRelativePath = null, pendingSizeBytes = null, ownsPendingPath = false)
+                pendingRelativePath = null, pendingSizeBytes = null, ownsPendingPath = false, conversionSourceRoster = null)
         }
     }
 

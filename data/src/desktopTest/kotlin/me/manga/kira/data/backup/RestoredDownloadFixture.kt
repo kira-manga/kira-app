@@ -57,7 +57,8 @@ internal class RestoredDownloadFixture {
     val source = RestoredChapterArchive(root / "validated.cbz", CONTENT.size.toLong())
     val canonical: Path get() = appFs.filesDir / "manga/${saved.mangaId}/chapter_${saved.id}/chapter_${saved.id}.cbz"
     private var commits: ChapterArtifactCommitDao = db.chapterArtifactCommitDao()
-    private var recovery = ChapterArtifactRecovery(db.chapterArtifactDao(), commits, appFs)
+    private var recovery = ChapterArtifactRecovery(db.chapterArtifactDao(), commits, appFs,
+        me.manga.kira.platform.media.DesktopPageMediaInspector())
     var artifacts = ChapterArtifacts(db.chapterArtifactDao(), recovery)
         private set
 
@@ -136,7 +137,8 @@ internal class RestoredDownloadFixture {
 
     fun decorateCommits(decorate: (ChapterArtifactCommitDao) -> ChapterArtifactCommitDao) {
         commits = decorate(db.chapterArtifactCommitDao())
-        recovery = ChapterArtifactRecovery(db.chapterArtifactDao(), commits, appFs)
+        recovery = ChapterArtifactRecovery(db.chapterArtifactDao(), commits, appFs,
+        me.manga.kira.platform.media.DesktopPageMediaInspector())
         artifacts = ChapterArtifacts(db.chapterArtifactDao(), recovery)
     }
 

@@ -117,13 +117,14 @@ class ChapterArtifactConsumerTest {
     @Test
     fun manualConversionPinsWriterAndHistoryOnlyDeletionDoesNotRecreateLedger() = downloadRecoveryTest {
         val original = seed(isDownloaded = true)
+        installValidPages(original)
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val archive = appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"
         val converter = settingsConverter(CbzCallerWriter { _, _ ->
             entered.complete(Unit)
             release.await()
-            fs.write(archive) { writeUtf8("converted-archive") }
+            installPreviousArchive(original, List(2) { recoveryTestPng() })
             archive
         })
         coroutineScope {

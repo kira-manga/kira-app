@@ -32,10 +32,9 @@ import me.manga.kira.presentation.features.settings.domain.SettingsRepository as
  * this fix it only rewrote `localImagePaths`, so Details kept displaying the stale pre-conversion
  * loose-pages size forever (the startup reconcile only back-fills rows whose size is 0).
  *
- * Disk-backed on purpose (desktopTest): real temp-dir pages, a [CbzWriter] fake that writes a real
- * archive of a known byte size and deletes the sources (the interface contract), and the real
- * `folderSize` walk. The best-effort guard (walk failure -> no size write, convert still succeeds)
- * is exercised by `CompressExistingDownloadsTest`, whose AppFileSystem fake throws.
+ * Disk-backed on purpose (desktopTest): real temp-dir pages and a retaining [CbzWriter] fake that
+ * writes a valid archive of a known byte size. The coordinator measures that archive and reclaims
+ * sources only after committed readback. Real Room/fault behavior has separate persistence tests.
  */
 class CompressExistingDownloadsSizeRefreshTest {
     private val fs = FileSystem.SYSTEM
@@ -96,8 +95,7 @@ class CompressExistingDownloadsSizeRefreshTest {
 
     /**
      * Contract-faithful [CbzWriter] fake: writes a REAL archive of `cbzBytes[chapterId]` bytes at
-     * the conventional `chapter_<id>.cbz` location and deletes the source pages, so the post-convert
-     * `folderSize` walk sees exactly what production sees — the new archive alone.
+     * the conventional `chapter_<id>.cbz` location and retains source pages until settlement.
      */
     private inner class SizedCbzWriter(
         private val cbzBytes: Map<Long, Int>,
@@ -110,6 +108,10 @@ class CompressExistingDownloadsSizeRefreshTest {
         ): Path = error("not used by compressExistingDownloads")
 
         override suspend fun createCbzWithSplitting(
+            imagePaths: List<Path>, mangaId: Long, chapterId: Long, quality: Int, maxHeight: Int, maxMemoryBytes: Long,
+        ): Path = error("Manual conversion must retain its sources")
+
+        override suspend fun createCbzWithSplittingRetainingSources(
             imagePaths: List<Path>,
             mangaId: Long,
             chapterId: Long,
@@ -118,8 +120,7 @@ class CompressExistingDownloadsSizeRefreshTest {
             maxMemoryBytes: Long,
         ): Path {
             val cbz = appFs.chapterDir(mangaId, chapterId) / "chapter_$chapterId.cbz"
-            fs.write(cbz) { write(ByteArray(cbzBytes.getValue(chapterId))) }
-            imagePaths.forEach { fs.delete(it, mustExist = false) }
+            fs.write(cbz) { write(cbzCallerArchiveBytes(sizeBytes = cbzBytes.getValue(chapterId))) }
             return cbz
         }
     }
@@ -197,7 +198,7 @@ class CompressExistingDownloadsSizeRefreshTest {
         downloadDao: SizeRecordingDownloadDao,
     ): SettingsRepositoryImpl {
         downloadDao.chapters = chapterDao.rows
-        val artifacts = fakeArtifactRuntime(appFs, chapterDao, downloadDao)
+        val artifacts = fakeArtifactRuntime(appFs, chapterDao, downloadDao, me.manga.kira.platform.media.DesktopPageMediaInspector())
         return SettingsRepositoryImpl(
             legacy =
                 LegacySettingsRepository(

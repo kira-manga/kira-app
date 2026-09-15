@@ -44,7 +44,7 @@ internal class DownloadWorkerCancellationRows(
     val artifacts: ChapterDownloadArtifacts by lazy {
         val artifactsDao = db.chapterArtifactDao()
         val commits = db.chapterArtifactCommitDao()
-        val recovery = ChapterArtifactRecovery(artifactsDao, commits, storage.fileSystem)
+        val recovery = ChapterArtifactRecovery(artifactsDao, commits, storage.fileSystem, me.manga.kira.platform.media.AndroidPageMediaInspector())
         ChapterDownloadArtifacts(ChapterArtifacts(artifactsDao, recovery), artifactsDao, commits, recovery, storage.fileSystem)
     }
     private var seeded: DownloadRowsSeed? = null

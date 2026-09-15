@@ -56,7 +56,8 @@ internal class DetailsUrlOnlyRoomFixture(
     var db: MangaDatabase = openDatabase()
         private set
     private fun newArtifacts(): ChapterArtifacts = ChapterArtifacts(
-        db.chapterArtifactDao(), ChapterArtifactRecovery(db.chapterArtifactDao(), db.chapterArtifactCommitDao(), fileSystem),
+        db.chapterArtifactDao(), ChapterArtifactRecovery(db.chapterArtifactDao(), db.chapterArtifactCommitDao(), fileSystem,
+            me.manga.kira.platform.media.DesktopPageMediaInspector()),
     )
     var artifacts = newArtifacts()
         private set

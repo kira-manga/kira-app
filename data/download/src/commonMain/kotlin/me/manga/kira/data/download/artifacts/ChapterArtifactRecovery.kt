@@ -8,6 +8,7 @@ import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterRestoreOutcome
 import me.manga.kira.data.local.dao.ChapterDownloadOutcome
+import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
@@ -15,6 +16,7 @@ import me.manga.kira.data.local.entity.claimOrNull
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadingState
 
 /** Bounded per-chapter restore settlement. Unknown SQL/file outcomes keep both intent and bytes. */
@@ -22,9 +24,11 @@ class ChapterArtifactRecovery(
     private val dao: ChapterArtifactDao,
     private val commits: ChapterArtifactCommitDao,
     private val appFileSystem: AppFileSystem,
+    mediaInspector: PageMediaInspector,
 ) {
     private val log = Logger.withTag("ChapterArtifactRecovery")
 
+    internal val conversionFiles = ChapterConversionFiles(appFileSystem, mediaInspector)
     /** Called once by the shared admission barrier, before any new producer/import can start. */
     suspend fun beforeAdmission(artifacts: ChapterArtifacts) {
         for (record in dao.getUnsettled()) {
@@ -44,9 +48,7 @@ class ChapterArtifactRecovery(
                         }
                     }
                 } else if (record.operation == ChapterArtifactOperation.CONVERT) {
-                    // The old process's native codec is gone. Preserve whichever paths/bytes actually
-                    // committed; conversion atomicity/recovery is separate from shared file custody.
-                    record.claimOrNull()?.let { claim -> artifacts.settle(claim) { true } }
+                    record.claimOrNull()?.let { claim -> settleConversion(artifacts, claim) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -54,6 +56,44 @@ class ChapterArtifactRecovery(
                 // Keep this chapter's durable custody without blocking unrelated chapters.
                 log.w { "Chapter cleanup retained for retry" }
             }
+        }
+    }
+
+    /** Exact retained-input settlement after the writer has unwound; no inference from its return. */
+    suspend fun settleConversion(artifacts: ChapterArtifacts, claim: ChapterArtifactClaim): ChapterConversionOutcome {
+        var outcome = ChapterConversionOutcome.UNKNOWN
+        try {
+            artifacts.settle(claim) { settleConversionFiles(claim) { outcome = it } }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Before proof this is UNKNOWN. After commit proof, cleanup/release can be retried.
+        }
+        return outcome
+    }
+
+    private suspend fun settleConversionFiles(claim: ChapterArtifactClaim, proved: (ChapterConversionOutcome) -> Unit): Boolean {
+        val path = conversionFiles.canonical(claim.owner)
+        val size = conversionFiles.archiveMetadata(claim)?.size
+        return when (commits.readConversionOutcome(claim, path.toString(), size)) {
+            ChapterConversionOutcome.COMMITTED -> {
+                conversionFiles.validateArchive(claim)
+                if (claim.conversionSourceRoster != null) conversionFiles.sources(claim)
+                proved(ChapterConversionOutcome.COMMITTED)
+                // Pre-v16 committed receipts lack cleanup provenance: retain loose files.
+                if (claim.conversionSourceRoster != null) conversionFiles.cleanSources(claim)
+                true
+            }
+            ChapterConversionOutcome.NOT_COMMITTED -> {
+                if (claim.conversionSourceRoster != null) conversionFiles.sources(claim) else {
+                    val legacy = dao.saved(claim.owner.chapterId) ?: return false
+                    if (!claim.owner.matches(legacy)) return false
+                    conversionFiles.capture(legacy) // Old receipts grant NO source deletion.
+                }
+                proved(ChapterConversionOutcome.NOT_COMMITTED)
+                true // Retained-input writers have not reached any destructive cleanup.
+            }
+            ChapterConversionOutcome.UNKNOWN -> false
         }
     }
 

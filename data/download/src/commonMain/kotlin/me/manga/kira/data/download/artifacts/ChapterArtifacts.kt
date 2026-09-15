@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.manga.kira.data.local.dao.ChapterArtifactDao
+import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactFile
@@ -18,6 +19,7 @@ import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.claimOrNull
 import me.manga.kira.data.local.entity.isOwnedBy
+import okio.Path
 
 /**
  * One singleton per database, shared by download producers, backup, readers and destructive users.
@@ -62,7 +64,32 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     }
 
     suspend fun beginConversion(expected: SavedChapterEntity): ChapterArtifactClaim? =
-        admission(expected.mangaId, expected.id) { token -> dao.claimConversion(expected, token) }
+        admission(expected.mangaId, expected.id, pinFiles = true) { token ->
+            dao.claimConversion(expected, token, recovery.conversionFiles.capture(expected))
+        }
+
+    /** The exact captured inputs, retained writer, archive validation and Room write share one pin. */
+    suspend fun convertFiles(
+        claim: ChapterArtifactClaim,
+        write: suspend (List<Path>) -> Path,
+        commit: suspend (Path, Long) -> Boolean,
+    ): Boolean? = files(claim) {
+        val archive = recovery.conversionFiles.prepare(claim, write)
+        publish(claim) { commit(archive.path, archive.sizeBytes) }
+    }
+
+    suspend fun settleConversion(claim: ChapterArtifactClaim): ChapterConversionOutcome =
+        recovery.settleConversion(this, claim)
+
+    /** Explicit retry is bounded to retiring conversions; never revoke or wait on a live writer. */
+    suspend fun recoverConversions() {
+        ensureReady()
+        for (record in dao.getUnsettled()) {
+            if (record.retiring && record.operation == ChapterArtifactOperation.CONVERT) {
+                record.claimOrNull()?.let { recovery.settleConversion(this, it) }
+            }
+        }
+    }
 
     /** Read current custody without manufacturing authority for an asynchronous producer. */
     suspend fun currentClaim(chapterId: Long): ChapterArtifactClaim? = dao.get(chapterId)?.claimOrNull()
@@ -196,22 +223,21 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
         ensureReady()
         return gates.parent(mangaId).admit(onClosed = onParentClosed) {
             val gate = gates.chapter(chapterId)
-            suspend fun transition() = gate.transition.withLock {
-                val token = newToken()
-                withContext(NonCancellable) {
-                    try {
-                        action(token)
-                    } catch (cancelled: CancellationException) {
-                        // Any possibly committed custody remains durable for later settlement.
-                        throw cancelled
-                    } catch (failure: Exception) {
-                        // A native commit can precede a failing return. Only this token's receipt
-                        // may recover admission; a failed read propagates and leaves custody intact.
-                        dao.get(chapterId)?.claimOrNull()?.takeIf { it.token == token } ?: throw failure
-                    }
-                }
+            val reserve = suspend { gate.transition.withLock { reserveToken(chapterId, action) } }
+            if (pinFiles) gate.files.withLock { reserve() } else reserve()
+        }
+    }
+
+    private suspend fun reserveToken(chapterId: Long, action: suspend (String) -> ChapterArtifactClaim?): ChapterArtifactClaim? {
+        val token = newToken()
+        return withContext(NonCancellable) {
+            try {
+                action(token)
+            } catch (cancelled: CancellationException) {
+                throw cancelled // Possibly committed custody stays durable.
+            } catch (failure: Exception) {
+                dao.get(chapterId)?.claimOrNull()?.takeIf { it.token == token } ?: throw failure
             }
-            if (pinFiles) gate.files.withLock { transition() } else transition()
         }
     }
 

@@ -69,7 +69,8 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // v12 -> v13: retain the source-supplied author on saved manga for complete offline details.
     // v14: one notification per discovered chapter, with repaired manga-scoped legacy bindings.
     // v14 -> v15: durable artifact custody, independent of deletable download history.
-    version = 15,
+    // v15 -> v16: exact retained-input CONVERT roster for post-commit cleanup/restart.
+    version = 16,
     exportSchema = true,
 )
 @TypeConverters(

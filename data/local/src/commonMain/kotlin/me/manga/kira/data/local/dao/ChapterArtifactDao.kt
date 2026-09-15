@@ -12,6 +12,7 @@ import me.manga.kira.data.local.entity.ChapterArtifactFile
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.ChapterConversionRoster
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.claimOrNull
 import me.manga.kira.data.local.entity.isOwnedBy
@@ -164,7 +165,8 @@ interface ChapterArtifactDao {
     @Query(
         """
         UPDATE chapter_artifacts SET token = NULL, operation = NULL, retiring = 0,
-            downloadId = NULL, pendingRelativePath = NULL, pendingSizeBytes = NULL, ownsPendingPath = 0
+            downloadId = NULL, pendingRelativePath = NULL, pendingSizeBytes = NULL, ownsPendingPath = 0,
+            conversionSourceRoster = NULL
         WHERE chapterId = :chapterId AND token = :token AND retiredRelativePath IS NULL
         """,
     )
@@ -189,21 +191,23 @@ interface ChapterArtifactDao {
         val next = (previous ?: ChapterArtifactEntity(owner.chapterId, owner.mangaId, owner.chapterUrl)).copy(
             token = token, operation = ChapterArtifactOperation.DELETE, retiring = false,
             downloadId = download(owner.chapterId)?.id, pendingRelativePath = null,
-            pendingSizeBytes = null, ownsPendingPath = false,
+            pendingSizeBytes = null, ownsPendingPath = false, conversionSourceRoster = null,
         )
         if (previous == null) insert(next) else check(update(next) == 1)
         return checkNotNull(next.claimOrNull())
     }
 
     @Transaction
-    suspend fun claimConversion(expected: SavedChapterEntity, token: String): ChapterArtifactClaim? {
+    suspend fun claimConversion(expected: SavedChapterEntity, token: String, sourceRoster: String): ChapterArtifactClaim? {
+        require(ChapterConversionRoster.decode(sourceRoster).map { it.storedPath } == expected.localImagePaths)
         val current = saved(expected.id) ?: return null
         if (!sameDownloadSnapshot(current, expected) || !current.isDownloaded) return null
+        val api = mangaApi(current.mangaId) ?: return null
         val row = download(current.id)
-        if (row?.isActiveArtifactDownload() == true || (row != null && !row.matches(current))) return null
+        if (row != null && (row.isActiveArtifactDownload() || !row.matches(current) || row.api != api)) return null
         // Explicit restored archives already are CBZ; conversion must never replace their reference.
         if (get(current.id)?.committedRelativePath != null) return null
-        return reserve(current, token, ChapterArtifactOperation.CONVERT, row?.id, null)
+        return reserve(current, token, ChapterArtifactOperation.CONVERT, row?.id, null, sourceRoster)
     }
 
     @Transaction
@@ -213,14 +217,17 @@ interface ChapterArtifactDao {
         operation: String,
         downloadId: Long?,
         pending: ChapterArtifactFile?,
+        conversionSourceRoster: String? = null,
     ): ChapterArtifactClaim? {
         require(token.isNotBlank())
+        require((operation == ChapterArtifactOperation.CONVERT) == (conversionSourceRoster != null))
         val previous = get(chapter.id)
         if (!previous.canReserve(chapter.mangaId)) return null
         val next = (previous ?: ChapterArtifactEntity(chapter.id, chapter.mangaId, chapter.url)).copy(
             chapterUrl = chapter.url, token = token, operation = operation, retiring = false,
             downloadId = downloadId, pendingRelativePath = pending?.relativePath,
             pendingSizeBytes = pending?.sizeBytes, ownsPendingPath = false,
+            conversionSourceRoster = conversionSourceRoster,
         )
         if (previous == null) insert(next) else check(update(next) == 1)
         return checkNotNull(next.claimOrNull())
@@ -228,7 +235,7 @@ interface ChapterArtifactDao {
 }
 
 internal fun ChapterArtifactEntity?.canReserve(mangaId: Long): Boolean =
-    this == null || (this.mangaId == mangaId && token == null && retiredRelativePath == null)
+    this == null || (this.mangaId == mangaId && token == null && retiredRelativePath == null && conversionSourceRoster == null)
 
 internal fun sameDownloadSnapshot(actual: SavedChapterEntity, expected: SavedChapterEntity): Boolean =
     ChapterArtifactOwner.of(expected).matches(actual) && actual.isDownloaded == expected.isDownloaded &&

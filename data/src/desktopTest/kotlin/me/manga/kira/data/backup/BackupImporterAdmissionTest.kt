@@ -161,7 +161,8 @@ class BackupImporterAdmissionTest {
             ): ChapterRestoreOutcome = ChapterRestoreOutcome.UNKNOWN
         }
         val dao = db.chapterArtifactDao()
-        val recovery = ChapterArtifactRecovery(dao, commits, appFileSystem)
+        val recovery = ChapterArtifactRecovery(dao, commits, appFileSystem,
+            me.manga.kira.platform.media.DesktopPageMediaInspector())
         val artifacts = ChapterArtifacts(dao, recovery)
         val publisher = RestoredDownloadPublisher(artifacts, dao, commits, appFileSystem, recovery)
         val preflight = BackupArchivePreflight(appFileSystem, BackupImportStaging(appFileSystem), native)

@@ -18,9 +18,80 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 /** Shared Settings caller on real file-backed Room; platform codecs/atomic IO are tested separately. */
 class CbzConversionPersistenceTest {
+    @Test
+    fun publicationThenStatFailureKeepsBothCopiesAndOriginalMetadata() = failedPublicationReturn(stat = true)
+
+    @Test
+    fun publicationThenRoomRefusalKeepsBothCopiesAndOriginalMetadata() = failedPublicationReturn(stat = false)
+
+    private fun failedPublicationReturn(stat: Boolean) = downloadRecoveryTest {
+        val original = seed(isDownloaded = true, sizeBytes = 987L)
+        val pages = installValidPages(original)
+        val mirror = conversionMirror(original)
+        val (archive, bytes) = installPreviousArchive(original, pages.values.toList())
+        val faults = ConversionFileFaults(fs)
+        val commits = ConversionCommitFault(db.chapterArtifactCommitDao(), before = {
+            if (!stat) throw IOException("Room rejected conversion before commit")
+        })
+        conversionFaults(commits, faults)
+        val repository = settingsConverter(CbzCallerWriter { _, _ ->
+            fs.write(archive) { write(bytes) }
+            if (stat) faults.statFailure = archive
+            archive
+        })
+        assertTrue(repository.compressExistingDownloads().isSuccess)
+        assertEquals(1, repository.observeCbzConversion().first().failedChapters)
+        assertEquals(0, repository.observeCbzConversion().first().convertedChapters)
+        assertEquals(original.saved, saved(original))
+        assertEquals(original.download, download(original))
+        assertEquals(mirror, conversionMirror(original.saved.id))
+        pages.forEach { (path, content) -> assertContentEquals(content, fs.read(path) { readByteArray() }) }
+        assertContentEquals(bytes, fs.read(archive) { readByteArray() })
+        assertNull(artifactRuntime.dao.get(original.saved.id)?.token)
+    }
+
+    @Test
+    fun committedRoomTransactionSurvivesItsFailingSuspendReturn() = downloadRecoveryTest {
+        val original = seed(isDownloaded = true)
+        val pages = installValidPages(original)
+        val mirror = conversionMirror(original)
+        val commits = ConversionCommitFault(db.chapterArtifactCommitDao(), after = { throw IOException("failed return") })
+        conversionFaults(commits)
+        val (archive, bytes) = installPreviousArchive(original, pages.values.toList())
+        val repository = settingsConverter(CbzCallerWriter { _, _ -> archive })
+        assertTrue(repository.compressExistingDownloads().isSuccess)
+        assertEquals(1, repository.observeCbzConversion().first().convertedChapters)
+        assertEquals(0, repository.observeCbzConversion().first().failedChapters)
+        assertConverted(original, mirror, archive)
+        pages.keys.forEach { assertFalse(fs.exists(it)) }
+        assertContentEquals(bytes, fs.read(archive) { readByteArray() })
+        assertNull(artifactRuntime.dao.get(original.saved.id)?.token)
+        reopen()
+        assertConverted(original, mirror, archive)
+    }
+
+    @Test
+    fun cancelledRoomReturnPropagatesUnchangedEvenWhenReadbackProvesCommit() = downloadRecoveryTest {
+        val original = seed(isDownloaded = true)
+        val pages = installValidPages(original)
+        val mirror = conversionMirror(original)
+        val cancellation = CancellationException("cancelled Room return")
+        conversionFaults(ConversionCommitFault(db.chapterArtifactCommitDao(), after = { throw cancellation }))
+        val (archive, _) = installPreviousArchive(original, pages.values.toList())
+        val repository = settingsConverter(CbzCallerWriter { _, _ -> archive })
+        assertSame(cancellation, assertFailsWith<CancellationException> { repository.compressExistingDownloads() })
+        assertFalse(repository.observeCbzConversion().first().isConverting)
+        assertEquals(0, repository.observeCbzConversion().first().convertedChapters)
+        assertConverted(original, mirror, archive)
+        pages.keys.forEach { assertFalse(fs.exists(it)) }
+        assertNull(artifactRuntime.dao.get(original.saved.id)?.token)
+    }
+
     @Test
     fun missingSecondSourceKeepsTheFullRoomRosterDownloadedFlagSizeAndConvertedCount() =
         downloadRecoveryTest {

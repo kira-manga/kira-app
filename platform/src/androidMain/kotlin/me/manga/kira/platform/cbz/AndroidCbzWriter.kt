@@ -74,16 +74,33 @@ class AndroidCbzWriter(
         maxMemoryBytes: Long,
     ): Path = archive(imagePaths, mangaId, chapterId, EncodingOptions(quality, maxHeight, maxMemoryBytes))
 
+    override suspend fun createCbzWithSplittingRetainingSources(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        quality: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): Path =
+        archive(
+            imagePaths,
+            mangaId,
+            chapterId,
+            EncodingOptions(quality, maxHeight, maxMemoryBytes),
+            retainSources = true,
+        )
+
     private suspend fun archive(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
         encoding: EncodingOptions,
+        retainSources: Boolean = false,
     ): Path =
         withContext(Dispatchers.Default) {
             conversionMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                createArchive(imagePaths, mangaId, chapterId, encoding)
+                createArchive(imagePaths, mangaId, chapterId, encoding, retainSources)
             }
         }
 
@@ -92,6 +109,7 @@ class AndroidCbzWriter(
         mangaId: Long,
         chapterId: Long,
         encoding: EncodingOptions,
+        retainSources: Boolean,
     ): Path {
         require(imagePaths.isNotEmpty()) { "No images to archive" }
         require(encoding.maxHeight > 0 && encoding.maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
@@ -106,8 +124,8 @@ class AndroidCbzWriter(
         } finally {
             temporary.deleteCbzOwnedFileQuietly()
         }
-        // Nothing fallible after publication may advertise the now-obsolete loose paths as success.
-        deleteCbzSourcesAfterCommit(sources)
+        // Manual conversion defers reclamation until its caller proves the metadata commit.
+        if (!retainSources) deleteCbzSourcesAfterCommit(sources)
         return destination
     }
 

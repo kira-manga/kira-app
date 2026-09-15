@@ -275,6 +275,9 @@ class SettingsRepositoryImpl(
             conversionProgress.value = CbzConversionProgress(isConverting = true)
             try {
                 withContext(dispatchers.io) {
+                    // Recovery can repair/settle an earlier commit. Select only AFTER that readback;
+                    // a previously captured loose roster must not enter the writer or count twice.
+                    conversion.recover()
                     // B4: a chapter the background download engine is still transferring/finalizing shares this
                     // chapter's dir (.cbz.part + loose pages); compressing it concurrently corrupts one of the two
                     // writers. Skip any chapter with an active download row — the engine finalizes it on its own.
