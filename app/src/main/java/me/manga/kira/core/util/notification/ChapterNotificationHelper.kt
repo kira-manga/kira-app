@@ -130,7 +130,7 @@ class ChapterNotificationHelper(
         return builder.build()
     }
 
-    private companion object {
+    internal companion object {
         const val CHANNEL_ID = "me.manga.kira.new_chapters"
         const val TAG = "ChapterNotifHelper"
         const val DISPLAY_LIMIT = 6
