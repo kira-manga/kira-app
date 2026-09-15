@@ -1,7 +1,6 @@
 package me.manga.kira.reader
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -143,8 +142,9 @@ data class IosReaderSnapshot(
 /**
  * Per-reader session handed to Swift. Wraps the shared [ReaderViewModel]: streams [IosReaderSnapshot]s
  * and routes one-shot effects (nav effects to the Compose host's Kotlin callbacks; UI-feedback effects
- * to Swift callbacks), and exposes intent methods. Created by [ReaderHostSwitch] (iOS actual); closed
- * when the host leaves composition.
+ * to Swift callbacks), and exposes intent methods. Created by [ReaderHostSwitch] (iOS actual).
+ * Composition closes the current renderer on native-slot disposal, including a temporary WebView
+ * handoff; the remembered session can then start a replacement attachment.
  */
 class ReaderNativeSession internal constructor(
     private val viewModel: ReaderViewModel,
@@ -156,43 +156,48 @@ class ReaderNativeSession internal constructor(
     private val onOpenInWebViewEffect: (url: String, api: String) -> Unit,
     private val onSolveCloudflare: (url: String, api: String) -> Unit,
 ) {
-    private var stateJob: Job? = null
-    private var effectJob: Job? = null
-    private var onShowNotInLibrary: (() -> Unit)? = null
-    private var onShowError: (() -> Unit)? = null
+    private val lifecycle =
+        ReaderNativeLifecycle(
+            scope = scope,
+            onResumed = { viewModel.submit(ReaderIntent.OnScreenResumed) },
+            onPaused = { viewModel.submit(ReaderIntent.OnScreenPaused) },
+        )
 
     private val feedProjection = ReaderNativeFeedProjection()
 
     /**
      * Swift registers its UI callbacks and starts observation. [onSnapshot] fires with the current
      * state immediately (StateFlow replay) and on every change. Safe to call once from the native VC's
-     * `viewDidLoad`.
+     * `viewDidLoad`. The returned attachment owns this VC's collectors and lifecycle input; the VC
+     * detaches only that attachment on teardown, never the remembered destination's whole session.
      */
     fun start(
         onSnapshot: (IosReaderSnapshot) -> Unit,
         onShowNotInLibrary: () -> Unit,
         onShowError: () -> Unit,
-    ) {
-        this.onShowNotInLibrary = onShowNotInLibrary
-        this.onShowError = onShowError
-        stateJob?.cancel()
-        effectJob?.cancel()
-        stateJob = scope.launch {
+    ): ReaderNativeAttachment {
+        val attachment = lifecycle.attach()
+        attachment.scope.launch {
             viewModel.state.collect { onSnapshot(it.toSnapshot()) }
         }
-        effectJob = scope.launch {
-            viewModel.effects.collect { handleEffect(it) }
+        attachment.scope.launch {
+            viewModel.effects.collect { handleEffect(it, onShowNotInLibrary, onShowError) }
         }
+        return attachment
     }
 
-    private fun handleEffect(effect: ReaderEffect) {
+    private fun handleEffect(
+        effect: ReaderEffect,
+        onShowNotInLibrary: () -> Unit,
+        onShowError: () -> Unit,
+    ) {
         if (dispatchOpenInWebViewEffect(effect, onOpenInWebViewEffect)) return
         when (effect) {
             is ReaderEffect.NavigateBack -> onNavigateBack()
             is ReaderEffect.OpenChapterInWebView -> Unit
             is ReaderEffect.SolveCloudflareChallenge -> onSolveCloudflare(effect.url, effect.api)
-            is ReaderEffect.ShowNotInLibrary -> onShowNotInLibrary?.invoke()
-            is ReaderEffect.ShowError -> onShowError?.invoke()
+            is ReaderEffect.ShowNotInLibrary -> onShowNotInLibrary()
+            is ReaderEffect.ShowError -> onShowError()
             // Native chrome shares the on-screen page directly (it already holds the decoded image), so
             // the ShareCurrentPage effect is a no-op on the native path.
             is ReaderEffect.ShareCurrentPage -> Unit
@@ -209,8 +214,6 @@ class ReaderNativeSession internal constructor(
     fun onToggleBookmark() = viewModel.submit(ReaderIntent.OnToggleBookmark)
     fun onRetry() = viewModel.submit(ReaderIntent.OnRetry)
     fun onBackClick() = viewModel.submit(ReaderIntent.OnBackClick)
-    fun onScreenResumed() = viewModel.submit(ReaderIntent.OnScreenResumed)
-    fun onScreenPaused() = viewModel.submit(ReaderIntent.OnScreenPaused)
     fun onOpenInWebView(url: String, api: String) = viewModel.submit(ReaderIntent.OnOpenInWebView(url, api))
 
     /** Swift passes a `ReadingMode.name`; unknown values are ignored. */
@@ -219,12 +222,9 @@ class ReaderNativeSession internal constructor(
         viewModel.submit(ReaderIntent.OnReadingModeChanged(mode))
     }
 
-    /** Cancels the state/effect collectors. Call from the native VC's `deinit`. */
+    /** Destination disposal: end any active span, then cancel its current renderer's collectors. */
     fun close() {
-        stateJob?.cancel()
-        effectJob?.cancel()
-        onShowNotInLibrary = null
-        onShowError = null
+        lifecycle.close()
     }
 
     private fun ReaderState.toSnapshot(): IosReaderSnapshot {

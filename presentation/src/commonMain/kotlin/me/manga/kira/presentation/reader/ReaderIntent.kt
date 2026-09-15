@@ -174,42 +174,31 @@ sealed interface ReaderIntent : MviIntent {
     /**
      * Screen lifecycle: the host became visible / resumed (Phase 6.4.x.statistics).
      *
-     * Dispatched from `ReaderScreenContent`'s `DisposableEffect(Unit)` on first composition (and
-     * on re-composition after host restoration). Routes to [StartReadingSessionUseCase] which
-     * records `now()` in the session-timer (legacy parity with
-     * `ReaderViewModel.onScreenResume()` / `StatisticsRepository.startReadingSession`).
+     * Compose dispatches from its lifecycle observer; native iOS dispatches only when its Reader
+     * attachment is both confirmed visible and scene-active. Routes to [StartReadingSessionUseCase]
+     * which records `now()` in the session timer.
      *
-     * Idempotence: a second [OnScreenResumed] before [OnScreenPaused] overwrites the recorded
-     * start with the later value — see [ReadingSessionRepository.begin] KDoc. Practically
-     * harmless: the only way to trigger this is a buggy double-resume, and the user-visible
-     * effect is "the second resume's window is what gets counted", which is the right answer
-     * if the first window was actually interrupted by something the VM didn't see.
+     * The VM ignores a second resume before pause, preserving the first start timestamp. The raw
+     * [ReadingSessionRepository.begin] still resets its timestamp; VM edge coalescing prevents
+     * duplicate platform events (including Compose START followed by RESUME) from reaching it.
      *
-     * Pure side-effect dispatch (no state mutation). The session timer is intentionally NOT
+     * No rendered state mutation. The session timer is intentionally NOT
      * surfaced in [ReaderState] because the UI has no reason to render it — it's a write-only
      * counter that lands in the on-disk statistics totals consumed by the Statistics screen.
      *
-     * Why not piggyback on [OnEnter]: OnEnter dispatches once per `(manga, chapter)` identity
-     * change (LaunchedEffect keyed on the four-tuple), but a configuration change re-creates
-     * the host and re-runs the LaunchedEffect with the same key → no re-dispatch → no
-     * re-start of the timer that should have been restarted. The screen-lifecycle intents
-     * are keyed on `Unit` via DisposableEffect, so config changes properly bracket every
-     * resume / pause cycle.
+     * This is independent of [OnEnter]: changing chapters while the Reader stays foregrounded
+     * must not split a span, while backgrounding the same chapter must end it.
      */
     data object OnScreenResumed : ReaderIntent
 
     /**
      * Screen lifecycle: the host left the foreground / is being torn down (Phase 6.4.x.statistics).
      *
-     * Dispatched from `ReaderScreenContent`'s `DisposableEffect(Unit).onDispose`. Routes to
-     * [EndReadingSessionUseCase] which persists the elapsed minutes (legacy parity with
-     * `ReaderViewModel.onScreenPause()` / `StatisticsRepository.endReadingSession`).
+     * Dispatched on lifecycle pause/stop, native scene inactivity or loss of Reader visibility,
+     * and final disposal. Routes to [EndReadingSessionUseCase] which persists elapsed minutes.
      *
-     * Safe when no session is in progress (no-op via [ReadingSessionRepository.end] KDoc).
-     * This is load-bearing because `DisposableEffect.onDispose` ALWAYS fires (even if the
-     * resume callback never landed, e.g. Compose tears the composition down before the host
-     * reaches its resumed state) — the no-op guard means that path doesn't corrupt the
-     * persisted counter.
+     * The VM ignores an unpaired or duplicate pause. It marks the span ended before awaiting
+     * persistence, so completion of an older end cannot clear a later resumed span.
      *
      * Sessions shorter than 60 seconds round down to zero minutes and are NOT persisted (legacy
      * parity, lives in the impl).
