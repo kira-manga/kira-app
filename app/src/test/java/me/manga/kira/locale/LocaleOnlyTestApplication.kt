@@ -7,7 +7,7 @@ import me.manga.kira.platform.locale.AndroidLocaleState
 
 /** Locale ownership only; no MyApp, Koin, SDK startup or Activity lifecycle replacement. */
 open class LocaleOnlyTestApplication : Application(), AndroidLocaleOwner {
-    override lateinit var androidLocaleState: AndroidLocaleState
+    final override lateinit var androidLocaleState: AndroidLocaleState
         private set
 
     override fun attachBaseContext(base: Context) {
