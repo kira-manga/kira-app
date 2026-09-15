@@ -138,6 +138,19 @@ Per-platform engines behind one `DownloadRepository` interface (`:data:download`
   `ENGINEERING_NOTES.md` §2/§4.
 - **Desktop**: in-process coroutine engine (also the iOS rollback path).
 
+### Backup import hardening — composition required
+
+The authored import path admits a bounded, privately owned ZIP/JSON/CBZ plan before any Room or
+resume mutation; every publication consumes those same retained bytes. Android acquisition counts
+the provider stream; iOS uses a coordinated, security-scoped open-in-place copy. Provider/OS hydration
+is outside the application's bound. Pending picker cleanup is registry-only, never path-prefix based.
+Metadata merges remain atomic per manga, not globally across the archive or filesystem. Restored
+downloads require the shared chapter-artifact publisher: only `COMMITTED` counts; `UNKNOWN` keeps
+durable custody/files and stops the import with a storage failure. Re-export pins and resolves the
+exact committed generation, with no canonical fallback when that explicit file is missing.
+This source depends on the chapter-artifact ownership changes and native page-inspection APIs; it
+must not ship independently. Compile, tests, lint and mobile-provider checks are **NOT_RUN** here.
+
 ## 7. Firebase / push / crash reporting
 
 Same Firebase project across Android + iOS (BOM 34.15.0). Config files are BYO/gitignored with

@@ -1,10 +1,12 @@
 package me.manga.kira.core.platform
 
 import androidx.compose.runtime.Composable
+import me.manga.kira.core.result.AppResult
 
 /**
  * Platform file-picker round-trips for the Backup & restore feature. Repositories and ViewModels
- * only ever see absolute paths inside the app sandbox — no Uri/NSURL crosses a module boundary.
+ * only ever see local paths — no Uri/NSURL crosses a module boundary. Shipping mobile pickers
+ * acquire a bounded, owned app-cache snapshot; Desktop leaves cloning to the repository.
  */
 interface BackupFilePicker {
     /**
@@ -20,12 +22,12 @@ interface BackupFilePicker {
     )
 
     /**
-     * Open the platform file-picker for a backup archive. [onResult] fires once with an
-     * app-sandbox copy of the picked file, or `null` on cancel/failure. The copy lives in
-     * ephemeral cache space that each platform actual reclaims (cleared on the next launch or
-     * by the OS) — callers need no cleanup of their own.
+     * Open the platform file-picker for a backup archive. Success(null) is user cancellation;
+     * acquisition failures are typed, not disguised as cancellation. A non-null success names
+     * a bounded owned snapshot on mobile. Import claims it once; a busy/disposed caller must
+     * discard only its unclaimed capability. No picker recursively clears a shared cache root.
      */
-    fun launchImport(onResult: (localCachePath: String?) -> Unit)
+    fun launchImport(onResult: (AppResult<String?>) -> Unit)
 }
 
 /**

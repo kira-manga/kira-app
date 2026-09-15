@@ -6,7 +6,7 @@ package me.manga.kira.platform.backup
  * commonMain twin of the one-shot `crc32()` in iosMain's StoreZipWriter, reshaped as an
  * accumulator so [BackupZipWriter] can hash a file in streamed chunks without ever holding the
  * whole entry in memory. Matches the CRC stored in every ZIP local-file/central-directory header
- * (okio's `openZip` reader validates it).
+ * (the backup import reader explicitly verifies it; `openZip` must not be assumed to do so).
  */
 internal class Crc32 {
     private var crc: Int = 0.inv()

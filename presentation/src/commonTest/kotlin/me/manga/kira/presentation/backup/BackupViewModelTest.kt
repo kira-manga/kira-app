@@ -2,8 +2,6 @@ package me.manga.kira.presentation.backup
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -11,22 +9,13 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.domain.model.backup.BackupExportResult
-import me.manga.kira.domain.model.backup.BackupImportResult
 import me.manga.kira.domain.model.backup.BackupPhase
 import me.manga.kira.domain.model.backup.BackupProgress
 import me.manga.kira.domain.model.backup.BackupScope
 import me.manga.kira.domain.model.settings.CbzConversionProgress
-import me.manga.kira.domain.repository.BackupRepository
 import me.manga.kira.domain.repository.MangaKey
-import me.manga.kira.domain.usecase.backup.ClearBackupProgressUseCase
-import me.manga.kira.domain.usecase.backup.DiscardBackupArtifactUseCase
-import me.manga.kira.domain.usecase.backup.ExportBackupUseCase
-import me.manga.kira.domain.usecase.backup.ImportBackupUseCase
-import me.manga.kira.domain.usecase.backup.ObserveBackupProgressUseCase
-import me.manga.kira.domain.usecase.backup.StopBackupUseCase
-import me.manga.kira.domain.usecase.settings.ObserveCbzConversionUseCase
 import me.manga.kira.presentation.testing.FakeSettingsRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -55,80 +44,6 @@ class BackupViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private val exportResult = BackupExportResult(
-        archivePath = "/cache/kira-backup.kira.zip",
-        suggestedName = "kira-backup.kira.zip",
-        sizeBytes = 1_024,
-        mangaCount = 2,
-        chapterCount = 30,
-        downloadCount = 0,
-        skippedLooseDownloads = 0,
-    )
-
-    private val importResult = BackupImportResult(
-        mangasAdded = 1,
-        mangasMerged = 1,
-        chaptersAdded = 5,
-        chaptersMerged = 95,
-        downloadsRestored = 0,
-        historyMerged = 1,
-    )
-
-    private inner class FakeBackupRepository : BackupRepository {
-        val progress = MutableStateFlow(BackupProgress())
-        val exportCalls = mutableListOf<Pair<BackupScope, Boolean>>()
-        val importCalls = mutableListOf<String>()
-        val discardedArtifacts = mutableListOf<String>()
-        var stopCount = 0
-        var clearCount = 0
-        var exportOutcome: AppResult<BackupExportResult> = AppResult.Success(exportResult)
-        var importOutcome: AppResult<BackupImportResult> = AppResult.Success(importResult)
-
-        override fun observeProgress(): Flow<BackupProgress> = progress
-
-        override suspend fun exportBackup(
-            scope: BackupScope,
-            includeDownloads: Boolean,
-        ): AppResult<BackupExportResult> {
-            exportCalls += scope to includeDownloads
-            return exportOutcome
-        }
-
-        override suspend fun importBackup(archivePath: String): AppResult<BackupImportResult> {
-            importCalls += archivePath
-            return importOutcome
-        }
-
-        override suspend fun discardExportArtifact(archivePath: String) {
-            discardedArtifacts += archivePath
-        }
-
-        override fun stop() {
-            stopCount++
-        }
-
-        override fun clearProgress() {
-            clearCount++
-            progress.value = BackupProgress()
-        }
-    }
-
-    private fun buildVm(
-        repo: FakeBackupRepository,
-        scope: BackupScope = BackupScope.FullLibrary,
-        settings: FakeSettingsRepository = FakeSettingsRepository(),
-    ): BackupViewModel =
-        BackupViewModel(
-            scope = scope,
-            exportBackup = ExportBackupUseCase(repo),
-            importBackup = ImportBackupUseCase(repo),
-            observeBackupProgress = ObserveBackupProgressUseCase(repo),
-            stopBackup = StopBackupUseCase(repo),
-            clearBackupProgress = ClearBackupProgressUseCase(repo),
-            discardBackupArtifact = DiscardBackupArtifactUseCase(repo),
-            observeCbzConversion = ObserveCbzConversionUseCase(settings),
-        )
-
     private val scopedKeys = listOf(MangaKey(api = "azora", language = "ar", title = "Solo Leveling"))
 
     // --- progress projection ---------------------------------------------------------------------
@@ -136,7 +51,7 @@ class BackupViewModelTest {
     @Test
     fun repository_progress_stream_is_projected_into_state() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
 
         repo.progress.value = BackupProgress(
             phase = BackupPhase.EXPORTING,
@@ -155,7 +70,7 @@ class BackupViewModelTest {
     fun cbz_conversion_busy_flag_is_projected_and_blocks_runs() = runTest {
         val repo = FakeBackupRepository()
         val settings = FakeSettingsRepository()
-        val vm = buildVm(repo, settings = settings)
+        val vm = buildBackupVm(repo, settings = settings)
 
         settings.conversionProgress.value = CbzConversionProgress(isConverting = true)
 
@@ -169,7 +84,7 @@ class BackupViewModelTest {
     @Test
     fun export_success_launches_save_picker_with_the_artifact() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
         val effects = mutableListOf<BackupEffect>()
         val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
 
@@ -193,7 +108,7 @@ class BackupViewModelTest {
     @Test
     fun scoped_route_exports_its_manga_keys() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo, scope = BackupScope.Mangas(scopedKeys))
+        val vm = buildBackupVm(repo, scope = BackupScope.Mangas(scopedKeys))
 
         vm.submit(BackupIntent.OnExport)
 
@@ -206,7 +121,7 @@ class BackupViewModelTest {
     fun export_failure_surfaces_the_typed_error_without_a_picker() = runTest {
         val repo = FakeBackupRepository()
         repo.exportOutcome = AppResult.Failure(AppError.Unexpected("boom"))
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
         val effects = mutableListOf<BackupEffect>()
         val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
 
@@ -221,7 +136,7 @@ class BackupViewModelTest {
     fun cancelled_export_is_not_an_error() = runTest {
         val repo = FakeBackupRepository()
         repo.exportOutcome = AppResult.Failure(AppError.Cancelled())
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
 
         vm.submit(BackupIntent.OnExport)
 
@@ -231,14 +146,14 @@ class BackupViewModelTest {
     @Test
     fun export_handoff_discards_the_cache_artifact_on_both_outcomes() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
-        repo.progress.value = BackupProgress(phase = BackupPhase.EXPORTING, exportResult = exportResult)
+        val vm = buildBackupVm(repo)
+        repo.progress.value = BackupProgress(phase = BackupPhase.EXPORTING, exportResult = backupTestExportResult)
 
         vm.submit(BackupIntent.OnExportDelivered(success = true))
         assertEquals(listOf("/cache/kira-backup.kira.zip"), repo.discardedArtifacts)
         assertEquals(0, repo.clearCount, "delivered: the terminal summary stays visible")
 
-        repo.progress.value = BackupProgress(phase = BackupPhase.EXPORTING, exportResult = exportResult)
+        repo.progress.value = BackupProgress(phase = BackupPhase.EXPORTING, exportResult = backupTestExportResult)
         vm.submit(BackupIntent.OnExportDelivered(success = false))
         assertEquals(2, repo.discardedArtifacts.size)
         assertEquals(1, repo.clearCount, "dismissed picker: summary dropped silently")
@@ -249,7 +164,7 @@ class BackupViewModelTest {
     @Test
     fun import_asks_for_the_platform_picker_only_in_full_library_mode() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
         val effects = mutableListOf<BackupEffect>()
         val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
 
@@ -257,7 +172,7 @@ class BackupViewModelTest {
         assertEquals(listOf<BackupEffect>(BackupEffect.LaunchImportPicker), effects)
         collector.cancel()
 
-        val scopedVm = buildVm(FakeBackupRepository(), scope = BackupScope.Mangas(scopedKeys))
+        val scopedVm = buildBackupVm(FakeBackupRepository(), scope = BackupScope.Mangas(scopedKeys))
         val scopedEffects = mutableListOf<BackupEffect>()
         val scopedCollector = launch(dispatcher) { scopedVm.effects.collect { scopedEffects += it } }
         scopedVm.submit(BackupIntent.OnImport)
@@ -268,13 +183,15 @@ class BackupViewModelTest {
     @Test
     fun picked_file_is_imported_and_cancelled_picker_is_a_no_op() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
 
         vm.submit(BackupIntent.OnImportFilePicked(localPath = null))
         assertTrue(repo.importCalls.isEmpty(), "picker cancel imports nothing")
+        assertTrue(repo.discardedImports.isEmpty())
 
         vm.submit(BackupIntent.OnImportFilePicked(localPath = "/cache/backup_import/picked.zip"))
         assertEquals(listOf("/cache/backup_import/picked.zip"), repo.importCalls)
+        assertEquals(repo.importCalls, repo.discardedImports)
         assertNull(vm.state.value.error)
     }
 
@@ -282,22 +199,52 @@ class BackupViewModelTest {
     fun import_failure_surfaces_the_typed_error() = runTest {
         val repo = FakeBackupRepository()
         repo.importOutcome = AppResult.Failure(AppError.Validation.Format("backup_file"))
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
 
         vm.submit(BackupIntent.OnImportFilePicked(localPath = "/cache/bad.zip"))
 
         assertEquals(AppError.Validation.Format("backup_file"), vm.state.value.error)
+        assertEquals(listOf("/cache/bad.zip"), repo.discardedImports)
     }
 
     @Test
     fun import_refused_while_a_run_is_in_flight() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
         repo.progress.value = BackupProgress(phase = BackupPhase.EXPORTING, isRunning = true)
 
         vm.submit(BackupIntent.OnImportFilePicked(localPath = "/cache/late.zip"))
 
         assertTrue(repo.importCalls.isEmpty())
+        assertEquals(listOf("/cache/late.zip"), repo.discardedImports)
+    }
+
+    @Test
+    fun picker_failure_is_typed_and_never_starts_an_import() = runTest {
+        val repo = FakeBackupRepository()
+        val vm = buildBackupVm(repo)
+        val error = AppError.Validation.OutOfRange("backup_size")
+        vm.submit(BackupIntent.OnImportFilePickFailed(error))
+        assertEquals(error, vm.state.value.error)
+        assertTrue(repo.importCalls.isEmpty())
+    }
+
+    @Test
+    fun scoped_late_picker_result_is_discarded_without_import() = runTest {
+        val repo = FakeBackupRepository()
+        val vm = buildBackupVm(repo, BackupScope.Mangas(scopedKeys))
+        vm.submit(BackupIntent.OnImportFilePicked("/cache/scoped.zip"))
+        assertTrue(repo.importCalls.isEmpty())
+        assertEquals(listOf("/cache/scoped.zip"), repo.discardedImports)
+    }
+
+    @Test
+    fun cancelled_import_still_discards_unclaimed_picker_custody() = runTest {
+        val repo = FakeBackupRepository().apply { importCancellation = CancellationException("cancel import") }
+        val vm = buildBackupVm(repo)
+        vm.submit(BackupIntent.OnImportFilePicked("/cache/cancelled.zip"))
+        assertEquals(listOf("/cache/cancelled.zip"), repo.discardedImports)
+        assertNull(vm.state.value.error)
     }
 
     // --- stop / dismiss ----------------------------------------------------------------------------
@@ -305,7 +252,7 @@ class BackupViewModelTest {
     @Test
     fun stop_forwards_to_the_repository() = runTest {
         val repo = FakeBackupRepository()
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
 
         vm.submit(BackupIntent.OnStop)
 
@@ -316,7 +263,7 @@ class BackupViewModelTest {
     fun dismiss_clears_terminal_progress_but_never_a_running_one() = runTest {
         val repo = FakeBackupRepository()
         repo.exportOutcome = AppResult.Failure(AppError.Unexpected("boom"))
-        val vm = buildVm(repo)
+        val vm = buildBackupVm(repo)
         vm.submit(BackupIntent.OnExport)
 
         repo.progress.value = BackupProgress(phase = BackupPhase.EXPORTING, isRunning = true)
@@ -331,7 +278,7 @@ class BackupViewModelTest {
 
     @Test
     fun back_emits_the_navigation_effect() = runTest {
-        val vm = buildVm(FakeBackupRepository())
+        val vm = buildBackupVm(FakeBackupRepository())
         val effects = mutableListOf<BackupEffect>()
         val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
 
