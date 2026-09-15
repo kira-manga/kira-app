@@ -34,6 +34,7 @@ import me.manga.kira.platform.locale.localizedResourceSnapshot
 import me.manga.kira.platform.notification.ensureLocalizedChannel
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
+import me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRules
 import me.manga.kira.data.download.R
 import org.koin.core.context.GlobalContext
 
@@ -342,9 +343,10 @@ class DownloadWorkerV2(
         chapter: ChapterDownloadEntity,
         exception: Throwable,
     ) {
+        val errorMessage = HeaderRefreshRules.persistedFailureMessage(exception)
         val claim = artifactClaim ?: return
         if (!ownsUnfinishedDownload(chapter)) return
-        artifacts.fail(claim, exception.message)
+        artifacts.fail(claim, errorMessage)
         // Files remain in custody until processChapter's producer scope has really unwound.
 
         notificationLock.withLock {

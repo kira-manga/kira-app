@@ -303,3 +303,17 @@ machines (see `CLAUDE.md`).
     backend HTTPS origin and signing ceremony are not configured; set `KIRA_SOURCE_CONFIG_BASE_URL`
     and `KIRA_SOURCE_CONFIG_PINNED_KEYS` in the release environment only after the backend's protected
     private key and matching public key exist. No orphan placeholder pin is accepted.
+
+## App87 Android download challenge recovery — authored, validation pending (2026-09-15)
+
+Android resolve and image-transfer terminal failures now share a cancellation-safe persisted-message
+rule. Optional typed HTTP status survives the generic provider and page-transfer exception boundaries;
+403/429/503/520–524 use the existing Details Cloudflare sentinel, while ordinary HTTP statuses retain
+their original messages even when a URL mentions a challenge. Untyped failures retain the existing
+legacy classifier. `GenericPagesFailedException(String)` and the image-transfer `IOException` message
+remain compatible. No ownership, cleanup, retry budget, queue, source-config or solver UI changes.
+New provider/shared-rule and actual Android worker/service Room-fixture regressions are authored but
+**NOT_RUN**; the existing bounded Details recovery tests remain the downstream contract. This is not
+device/network verification or issue closure. Independent review and the primary's composed gate
+are still required. The App33 composition preserves its production token guards and adapts only the
+new Android fixture to real artifact admission, producer drain and checked settlement.

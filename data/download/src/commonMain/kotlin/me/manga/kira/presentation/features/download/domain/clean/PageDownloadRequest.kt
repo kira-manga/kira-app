@@ -45,7 +45,7 @@ internal suspend fun downloadValidatedPage(
         .prepareGet(request.url) {
             headers { request.headers.forEach { (name, value) -> append(name, value) } }
         }.execute { response ->
-            if (!response.status.isSuccess()) throw IOException("Image download HTTP ${response.status.value}")
+            if (!response.status.isSuccess()) throw PageDownloadHttpException(response.status.value)
             // transferPageBody only deletes a file it successfully created; a name collision is not ours.
             transferPageBody(
                 response.bodyAsChannel(),
@@ -67,3 +67,8 @@ internal suspend fun downloadValidatedPage(
             }.getOrThrow()
         }
 }
+
+/** Keeps the existing IOException/message contract while retaining status for challenge recovery. */
+internal class PageDownloadHttpException(
+    override val httpStatusCode: Int,
+) : IOException("Image download HTTP $httpStatusCode"), DownloadHttpStatusFailure

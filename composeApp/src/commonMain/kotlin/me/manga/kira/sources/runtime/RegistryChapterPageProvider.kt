@@ -1,10 +1,13 @@
 package me.manga.kira.sources.runtime
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
+import me.manga.kira.presentation.features.download.domain.clean.DownloadHttpStatusFailure
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
 import me.manga.kira.sources.contracts.SourceRegistry
 
@@ -18,7 +21,7 @@ import me.manga.kira.sources.contracts.SourceRegistry
  *  - Missing source client → throw [GenericPagesFailedException]. No legacy download path exists.
  *  - Config-backed, generic `Success` → the generic page URLs (+ `Page.headers` for cookies/Referer/UA)
  *    mapped to [DownloadPage]s.
- *  - Config-backed, generic `Failure` (or an empty / no emission) → **throw** [GenericPagesFailedException].
+ *  - Config-backed, non-cancellation `Failure` (or an empty / no emission) → **throw** [GenericPagesFailedException].
  *    The download engines' worker catches it and marks the chapter FAILED (a clear error). It is NEVER
  *    `null` for a config-backed source, so the engines never fall back to the legacy scraper here.
  *
@@ -26,7 +29,12 @@ import me.manga.kira.sources.contracts.SourceRegistry
  * [mangaLanguage] are forwarded for completeness (a future source whose pages endpoint references
  * `{itemUrl}`) and to build a faithful [Manga].
  */
-class GenericPagesFailedException(message: String) : Exception(message)
+class GenericPagesFailedException(
+    message: String,
+    override val httpStatusCode: Int?,
+) : Exception(message), DownloadHttpStatusFailure {
+    constructor(message: String) : this(message, null)
+}
 
 class RegistryChapterPageProvider(
     private val sourceRegistry: SourceRegistry,
@@ -66,8 +74,16 @@ class RegistryChapterPageProvider(
                 result.value.takeIf { it.isNotEmpty() }?.map { DownloadPage(url = it.url, headers = it.headers) }
                     ?: throw GenericPagesFailedException("generic pages() returned no pages for api=$api chapter=$chapterUrl")
             // Generic failure is surfaced as a clear download failure — the legacy scraper is NOT executed.
-            is AppResult.Failure ->
-                throw GenericPagesFailedException("generic pages() failed for api=$api chapter=$chapterUrl: ${result.error}")
+            is AppResult.Failure -> {
+                val error = result.error
+                if (error is AppError.Cancelled) {
+                    throw (error.cause as? CancellationException ?: CancellationException("Chapter page resolution cancelled"))
+                }
+                throw GenericPagesFailedException(
+                    "generic pages() failed for api=$api chapter=$chapterUrl: $error",
+                    (error as? AppError.Network.Http)?.statusCode,
+                )
+            }
         }
     }
 }

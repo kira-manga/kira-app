@@ -22,6 +22,7 @@ import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.media.publishPageSnapshot
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
+import me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRules
 import me.manga.kira.presentation.features.download.domain.clean.PageDownloadRequest
 import me.manga.kira.presentation.features.download.domain.clean.PageDownloadTransfer
 import me.manga.kira.presentation.features.download.domain.clean.downloadValidatedPage
@@ -148,7 +149,7 @@ class ChapterDownloadService(
             }
         }.catch { e ->
             if (e is CancellationException) throw e
-            artifacts.fail(claim, e.message)
+            artifacts.fail(claim, HeaderRefreshRules.persistedFailureMessage(e))
             emit(DownloadState.Error(e, 0, pages.size))
         }
 

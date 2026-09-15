@@ -248,7 +248,7 @@ private fun closeFixtureResources(
     }
 }
 
-private class ImmediateFixtureForegroundUpdater(
+internal class ImmediateFixtureForegroundUpdater(
     private val calls: AtomicInteger,
 ) : ForegroundUpdater {
     override fun setForegroundAsync(
