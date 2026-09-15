@@ -1,7 +1,8 @@
 package me.manga.kira.data.repository
 
 import kotlinx.coroutines.CancellationException
-import me.manga.kira.core.dispatchers.DefaultDispatcherProvider
+import kotlinx.coroutines.Dispatchers
+import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -97,7 +98,7 @@ class LibraryRemovalRecoveryTest {
             downloadRepository = FakeDownloadRepository(),
             fileService = FileService(fileSystem),
             readProgress = RecordingReadProgressRepository(),
-            dispatchers = DefaultDispatcherProvider(),
+            dispatchers = LibraryRemovalDispatchers,
             artifacts = ArtifactTestRuntime(db, fileSystem).ownership,
         )
 
@@ -112,4 +113,13 @@ class LibraryRemovalRecoveryTest {
             override fun fileSystem() = failing
         }
     }
+}
+
+/** These repository tests need real I/O dispatch, but do not install or exercise a UI Main loop. */
+private object LibraryRemovalDispatchers : DispatcherProvider {
+    override val main = Dispatchers.Default
+    override val mainImmediate = Dispatchers.Default
+    override val default = Dispatchers.Default
+    override val io = Dispatchers.IO
+    override val unconfined = Dispatchers.Unconfined
 }
