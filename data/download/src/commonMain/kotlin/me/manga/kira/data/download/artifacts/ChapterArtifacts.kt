@@ -1,10 +1,12 @@
 package me.manga.kira.data.download.artifacts
 
+import kotlin.coroutines.coroutineContext
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -275,6 +277,13 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
                 dao.get(chapterId)?.claimOrNull()?.takeIf { it.token == token } ?: throw failure
             }
         }
+    }
+
+    /** Await the existing startup recovery pass before caller/engine locks; recovery must not re-enter. */
+    internal suspend fun awaitReady() {
+        coroutineContext.ensureActive()
+        ensureReady()
+        coroutineContext.ensureActive()
     }
 
     private suspend fun ensureReady() = readiness.withLock {

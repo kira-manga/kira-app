@@ -169,7 +169,12 @@ class BackgroundUrlSessionDownloadRepository(
             appActive = true
             foregroundedAtMark = TimeSource.Monotonic.markNow()
             BgDownloadLog.log("lifecycle.didBecomeActive")
-            applicationScope.launch { runCatching { mutex.withLock { pumpLocked("didBecomeActive") } } }
+            applicationScope.launch {
+                runCatching {
+                    artifacts.ownership.awaitReady()
+                    mutex.withLock { pumpLocked("didBecomeActive") }
+                }
+            }
         }
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, null) { _ ->
             appActive = false
@@ -178,6 +183,7 @@ class BackgroundUrlSessionDownloadRepository(
         applicationScope.launch {
             BgDownloadLog.log("lifecycle.launch startupReconcile")
             runCatching {
+                artifacts.ownership.awaitReady()
                 transport.ensureReady()
                 mutex.withLock { pumpLocked("startup") }
             }.onFailure { BgDownloadLog.error(it, "startup.pumpFailed") }
@@ -330,6 +336,7 @@ class BackgroundUrlSessionDownloadRepository(
     }
 
     override suspend fun reconcileInterruptedDownloads() {
+        artifacts.ownership.awaitReady()
         mutex.withLock {
             BgDownloadLog.log("reconcile.requested")
             transport.ensureReady()
@@ -386,14 +393,17 @@ class BackgroundUrlSessionDownloadRepository(
         // Enter finally before the first suspension, including an already-cancelled application scope.
         applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                mutex.withLock {
-                    acceptReceivedPageLocked(mangaId, chapterId, pageIndex, attemptToken, page)
+                if (!awaitCallbackReadiness(chapterId)) return@launch
+                try {
+                    mutex.withLock {
+                        acceptReceivedPageLocked(mangaId, chapterId, pageIndex, attemptToken, page)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
+                    recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
-                recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
             } finally {
                 disposeReceivedPage(chapterId, page, acknowledge)
             }
@@ -441,11 +451,24 @@ class BackgroundUrlSessionDownloadRepository(
     ) {
         applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message)
+                if (awaitCallbackReadiness(chapterId)) {
+                    recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message)
+                }
             } finally {
                 acknowledge()
             }
         }
+    }
+
+    /** Admission failures dispose/acknowledge the callback, never rewrite its retry ledger. */
+    private suspend fun awaitCallbackReadiness(chapterId: Long): Boolean = try {
+        artifacts.ownership.awaitReady()
+        true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        BgDownloadLog.error(failure, "page.admission.failed", "chapterId" to chapterId)
+        false
     }
 
     /** Receiver-side publication failures use the same bounded retry path as native transfer failures. */
