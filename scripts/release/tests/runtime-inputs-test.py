@@ -40,17 +40,23 @@ class RuntimeInputsTest(unittest.TestCase):
         prefixes.start()
         self.addCleanup(prefixes.stop)
 
-    def archive(self, root, files, symlinks=(), hardlinks=(), pin_directory=True):
+    def archive(self, root, files, symlinks=(), hardlinks=(), pin_directory=True, directories=(), modes=None):
+        modes = modes or {}
         path = self.root / ("archive-" + str(len(list(self.root.glob("archive-*")))) + ".tar.gz")
         with tarfile.open(path, "w:gz") as archive:
+            for name in directories:
+                member = tarfile.TarInfo(root + ("/" + name if name else ""))
+                member.type, member.mode = tarfile.DIRTYPE, modes.get(name, 0o755)
+                archive.addfile(member)
             for name, data in files:
                 member = tarfile.TarInfo(root + "/" + name)
-                member.size, member.mode = len(data), 0o755 if "/bin/" in member.name else 0o644
+                member.size = len(data)
+                member.mode = modes.get(name, 0o755 if "/bin/" in member.name else 0o644)
                 archive.addfile(member, io.BytesIO(data))
             for kind, links in ((tarfile.SYMTYPE, symlinks), (tarfile.LNKTYPE, hardlinks)):
                 for name, target in links:
                     member = tarfile.TarInfo(root + "/" + name)
-                    member.type, member.linkname, member.mode = kind, target, 0o755
+                    member.type, member.linkname, member.mode = kind, target, modes.get(name, 0o755)
                     archive.addfile(member)
         pin = {"url": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size}
         if pin_directory:
@@ -96,6 +102,23 @@ class RuntimeInputsTest(unittest.TestCase):
         (installed / "unexpected-gem").write_bytes(b"unreviewed")
         self.assertNotEqual(inventory, runtime.tree_snapshot(installed))
 
+    def test_directory_sgid_is_stripped_before_extraction_without_changing_files(self):
+        pin = self.archive("jdk", [("bin/java", b"fixture")], directories=("", "bin"),
+                           modes={"": 0o2755, "bin": 0o2770, "bin/java": 0o751})
+        extractall = tarfile.TarFile.extractall
+
+        def checked(source, destination, **options):
+            self.assertEqual([0o755, 0o770, 0o751], [member.mode for member in options["members"]])
+            return extractall(source, destination, **options)
+
+        with mock.patch.object(runtime.tarfile.TarFile, "extractall", checked):
+            installed, inventory = self.extract(pin)
+        self.assertEqual(0o755, installed.stat().st_mode & 0o7777)
+        self.assertEqual(0o770, (installed / "bin").stat().st_mode & 0o7777)
+        self.assertEqual(0o751, (installed / "bin/java").stat().st_mode & 0o7777)
+        self.assertEqual(b"fixture", (installed / "bin/java").read_bytes())
+        self.assertEqual(inventory, runtime.tree_snapshot(installed))
+
     def test_unsafe_authenticated_archive_layouts_are_rejected(self):
         fixtures = [
             ([("../outside", b"x")], (), (), "unsafe archive path"),
@@ -110,6 +133,18 @@ class RuntimeInputsTest(unittest.TestCase):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(RuntimeError, message):
                     self.extract(self.archive("jdk", files, symlinks, hardlinks))
+        for kind in ("directory", "file", "symlink", "hardlink"):
+            for special in (0o4000, 0o2000, 0o1000):
+                if kind == "directory" and special == 0o2000:
+                    continue  # This one bit is normalized, not installed.
+                with self.subTest(kind=kind, special=special):
+                    pin = self.archive("jdk", [("bin/java", b"x")] + ([("danger", b"x")] if kind == "file" else []),
+                        symlinks=[("danger", "bin/java")] if kind == "symlink" else (),
+                        hardlinks=[("danger", "jdk/bin/java")] if kind == "hardlink" else (),
+                        directories=("danger",) if kind == "directory" else (),
+                        modes={"danger": special | (0o2755 if kind == "directory" else 0o755)})
+                    with self.assertRaisesRegex(RuntimeError, "privileged runtime archive mode"):
+                        self.extract(pin)
         self.assertFalse((self.root / "outside").exists())
 
     def test_java_executes_only_after_authentication_and_publishes_its_discovered_home(self):
@@ -169,10 +204,43 @@ class RuntimeInputsTest(unittest.TestCase):
             with self.subTest(changed=changed.name):
                 old = changed.read_bytes() if changed.exists() else None
                 changed.write_bytes(b"unreviewed")
-                with self.assertRaisesRegex(RuntimeError, "preinstalled Ruby differs"):
+                diagnostic = io.StringIO()
+                with contextlib.redirect_stderr(diagnostic), self.assertRaisesRegex(RuntimeError, "preinstalled Ruby differs"):
                     self.install("ruby", pin)
+                report = json.loads(diagnostic.getvalue().split(": ", 1)[1])
+                self.assertEqual(True, report["canonical"])
+                self.assertEqual("directory", report["prefix"])
+                self.assertEqual("complete", report["comparison"])
+                self.assertEqual({"missing": 0, "extra": int(old is None), "type": 0, "mode": 0,
+                                  "size": int(old is not None), "hash": int(old is not None), "link": 0}, report["mismatches"])
+                self.assertEqual(["bin/ruby"] if old is not None else [], report["names"])
                 self.assertEqual(b"unreviewed", changed.read_bytes())
                 changed.unlink() if old is None else changed.write_bytes(old)
+        diagnostic = io.StringIO()
+        with mock.patch.object(runtime, "tree_snapshot", side_effect=RuntimeError("snapshot unavailable")) as snapshot, \
+                contextlib.redirect_stderr(diagnostic), self.assertRaisesRegex(RuntimeError, "snapshot unavailable"):
+            runtime.verify_existing_ruby(self.ruby_prefix, {})
+        snapshot.assert_called_once_with(self.ruby_prefix)
+        report = json.loads(diagnostic.getvalue().split(": ", 1)[1])
+        self.assertEqual("unavailable", report["comparison"])
+        self.assertTrue(all(count is None for count in report["mismatches"].values()))
+        self.assertIsNone(report["namesOmitted"])
+        self.assertTrue(self.ruby_prefix.is_dir())
+
+    def test_ruby_cache_diagnostic_counts_all_differences_without_exposing_extra_names(self):
+        expected = {"bin/ruby": ["file", 3, 0o755, "before"], "lib/link": ["link", "before"],
+                    "lib/type": ["directory"], **{"lib/missing" + str(i): ["directory"] for i in range(12)}}
+        for name in ("lib/unsafe\nname", "lib/nonascii-\u00e9", "lib/" + "x" * 161, ".hidden"):
+            expected[name] = ["directory"]
+        actual = {"bin/ruby": ["file", 4, 0o644, "after"], "lib/link": ["link", "after"],
+                  "lib/type": ["file", 0, 0o644, "after"], "extra-private-name": ["directory"]}
+        report = runtime.ruby_cache_difference(expected, actual, True, "directory")
+        self.assertEqual({"missing": 16, "extra": 1, "type": 1, "mode": 1, "size": 1, "hash": 1, "link": 1},
+                         report["mismatches"])
+        self.assertEqual(["bin/ruby", "lib/link", "lib/missing0", "lib/missing1", "lib/missing10",
+                          "lib/missing11", "lib/missing2", "lib/missing3"], report["names"])
+        self.assertEqual(12, report["namesOmitted"])
+        self.assertNotIn("extra-private-name", json.dumps(report))
 
     def test_ruby_rejects_a_changed_cache_root_before_installation(self):
         pin = self.archive("x64", [("bin/ruby", b"fixture-ruby")])

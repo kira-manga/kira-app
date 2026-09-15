@@ -23,6 +23,9 @@ system libraries and the selected Xcode are not independently attested here.
   with `self-hosted: true`, forcing cache-only runtime selection, and continues to
   install the already-locked Bundler/Fastlane dependencies. A hosted image with a
   differently provisioned Ruby tree is a failure, not an excuse to ignore files.
+  Refusals report bounded difference counts and at most eight ASCII relative names
+  already present in the authenticated archive; extra cache names are withheld.
+  An unavailable tree comparison is reported as unknown, never as zero mismatches.
 - **Apple Kotlin/Native 2.4.0:** authenticate the official GitHub release archive,
   LLVM `21-aarch64-macos-essentials-97` and libffi `3.3-1-macos-arm64`. Use a fresh
   Native home and fresh `KONAN_DATA_DIR`, selected with the exact Gradle project
@@ -34,6 +37,9 @@ system libraries and the selected Xcode are not independently attested here.
   deliberately **not** described as byte-identical to the upstream archive.
 
 Tar paths, links, member types and expansion bounds are checked before extraction.
+Directory SGID metadata is stripped before extraction; setuid/sticky bits anywhere
+and all privileged file/link modes remain forbidden. Regular-file bytes and modes
+are not normalized.
 Installer-owned temporary directories and newly created Ruby prefixes are removed
 by the final `always()` step. Preexisting verified Ruby prefixes are preserved.
 Gradle Action caches remain explicitly read-only: its pinned post hook otherwise

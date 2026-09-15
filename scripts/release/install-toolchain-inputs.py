@@ -97,6 +97,48 @@ def tree_snapshot(root):
     return result
 
 
+def ruby_cache_difference(expected, actual, canonical, prefix_status):
+    counts = dict.fromkeys(("missing", "extra", "type", "mode", "size", "hash", "link"))
+    names, omitted = [], None
+    if actual is not None:
+        counts = dict.fromkeys(counts, 0)
+        counts["missing"], counts["extra"] = len(expected.keys() - actual.keys()), len(actual.keys() - expected.keys())
+        changed = expected.keys() ^ actual.keys()
+        for name in expected.keys() & actual.keys():
+            before, after = expected[name], actual[name]
+            if before[0] != after[0]:
+                counts["type"] += 1
+            elif before[0] == "file":
+                for kind, index in (("size", 1), ("mode", 2), ("hash", 3)):
+                    counts[kind] += before[index] != after[index]
+            elif before[0] == "link":
+                counts["link"] += before[1] != after[1]
+            if before != after:
+                changed.add(name)
+        # Only public archive-known names may be shown, never arbitrary extra cache names.
+        names = [name for name in sorted(changed & expected.keys()) if len(name) <= 160 and
+                 re.fullmatch(r"[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*", name)][:8]
+        omitted = len(changed) - len(names)
+    return {"canonical": canonical, "prefix": prefix_status,
+            "comparison": "complete" if actual is not None else "unavailable",
+            "mismatches": counts, "names": names, "namesOmitted": omitted}
+
+
+def verify_existing_ruby(prefix, expected):
+    canonical, actual, prefix_status = None, None, "unavailable"
+    try:
+        mode = prefix.lstat().st_mode
+        prefix_status = "directory" if stat.S_ISDIR(mode) else "symlink" if stat.S_ISLNK(mode) else "other"
+        canonical = prefix.resolve() == prefix
+        if canonical:
+            actual = tree_snapshot(prefix)
+        require(canonical and actual == expected, "preinstalled Ruby differs from authenticated archive")
+    except (OSError, RuntimeError):
+        print("Preinstalled Ruby cache diagnostic: " +
+              json.dumps(ruby_cache_difference(expected, actual, canonical, prefix_status), sort_keys=True), file=sys.stderr)
+        raise
+
+
 def extract_verified(archive, destination, pin):
     # Both checks precede archive parsing, extraction, runtime execution or cache acceptance.
     require(archive.is_file() and not archive.is_symlink() and 0 < archive.stat().st_size <= MAX_ARCHIVE,
@@ -119,6 +161,8 @@ def extract_verified(archive, destination, pin):
             require(name not in by_name and (name == root_name or name.startswith(root_name + "/")),
                     "duplicate or foreign archive root")
             require(member.isdir() or member.isfile() or member.issym() or member.islnk(), "unsupported archive member")
+            if member.isdir():
+                member.mode &= ~stat.S_ISGID  # Provider directory SGID is never installed.
             require(not member.mode & 0o7000, "privileged runtime archive mode")
             by_name[name] = member
             if member.issym():
@@ -154,9 +198,9 @@ def extract_verified(archive, destination, pin):
                     expected[relative] = ["file", content.size, content.mode & 0o777, stream_digest(stream)]
         # The complete member/link inventory was checked above; no downloaded installer is run.
         if hasattr(tarfile, "fully_trusted_filter"):
-            source.extractall(destination, filter="fully_trusted")
+            source.extractall(destination, members=members, filter="fully_trusted")
         else:  # Apple's system Python also supports the reviewed pre-filter tarfile API.
-            source.extractall(destination)
+            source.extractall(destination, members=members)
     installed = destination / root_name
     require(tree_snapshot(installed) == expected, "extracted runtime tree differs from authenticated archive")
     return installed, expected
@@ -253,7 +297,7 @@ def install(role, current_host, temporary, pins):
             require(Path(os.environ["RUNNER_TOOL_CACHE"]).resolve() == prefix.parents[2], "wrong embedded Ruby tool-cache prefix")
             marker = Path(str(prefix) + ".complete")
             if prefix.exists() or prefix.is_symlink():
-                require(prefix.resolve() == prefix and tree_snapshot(prefix) == inventories[0], "preinstalled Ruby differs from authenticated archive")
+                verify_existing_ruby(prefix, inventories[0])
                 require(marker.is_file() and not marker.is_symlink() and marker.stat().st_size == 0, "preinstalled Ruby has no valid cache marker")
             else:
                 require(not marker.exists() and not marker.is_symlink(), "preexisting incomplete Ruby marker")
