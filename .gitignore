@@ -24,6 +24,8 @@ local.properties
 
 # --- Secrets (bring-your-own; sanitized *.example files are committed instead) ---
 google-services.json
+# The Debug client is deliberately inert, contains no credentials, and never selects the BYO Store client.
+!app/src/debug/google-services.json
 # Firebase iOS config — same posture as google-services.json above: the real plist is a secret
 # (contains API_KEY / GOOGLE_APP_ID), so it stays local and uncommitted; a sanitized
 # GoogleService-Info.plist.example is committed to document the required structure.

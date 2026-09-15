@@ -39,6 +39,10 @@ kotlin {
         namespace = "me.manga.kira.data"
         compileSdk = 37
         minSdk = 26
+        // Reuse commonTest on the Android variant without a device or UI harness.
+        withHostTestBuilder {
+            sourceSetTreeName = "test"
+        }
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -139,6 +143,12 @@ kotlin {
             // MapSettings (in-memory ObservableSettings) — backs the real legacy `SourcesRepository`
             // the Home/Search `:data` impls strangle, so its tests don't need a real DataStore.
             implementation(libs.multiplatform.settings.test)
+        }
+
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            // Common artifact fixtures reference MangaDatabase and its RoomDatabase base.
+            implementation(libs.androidx.room.runtime)
         }
 
         getByName("desktopTest").dependencies {

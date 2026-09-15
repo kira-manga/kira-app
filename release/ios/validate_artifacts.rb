@@ -103,6 +103,8 @@ def validate_app(app_path, build_number, expected_profile_uuid, expected_applica
   raise "App Info.plist is missing" unless File.file?(info_path)
   info = KiraRelease::PlistReader.read(info_path)
   raise "Artifact bundle ID is incorrect" unless info["CFBundleIdentifier"] == EXPECTED_BUNDLE_ID
+  raise "Artifact display name is not the Store name" unless info["CFBundleDisplayName"] == "Kira Manga"
+  raise "Artifact has development service configuration" unless info["KiraFirebaseServicesEnabled"] == true
   raise "Artifact marketing version is incorrect" unless info["CFBundleShortVersionString"] == EXPECTED_VERSION
   raise "Artifact build number is incorrect" unless info["CFBundleVersion"].to_s == build_number
   raise "Artifact App Store ID is incorrect" unless info["KiraAppStoreID"].to_s == EXPECTED_APP_STORE_ID

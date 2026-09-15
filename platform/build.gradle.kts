@@ -41,6 +41,10 @@ kotlin {
         namespace = "me.manga.kira.platform"
         compileSdk = 37
         minSdk = 26
+        // Reuse commonTest on the Android variant without a device or UI harness.
+        withHostTestBuilder {
+            sourceSetTreeName = "test"
+        }
         withDeviceTestBuilder {
             sourceSetTreeName = "test"
         }.configure {
@@ -138,6 +142,10 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
         }
 
         getByName("androidDeviceTest").dependencies {

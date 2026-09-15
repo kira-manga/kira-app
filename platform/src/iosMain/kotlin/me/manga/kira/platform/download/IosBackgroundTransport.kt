@@ -2,9 +2,12 @@ package me.manga.kira.platform.download
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
+import platform.Foundation.NSBundle
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSMutableURLRequest
@@ -42,12 +45,15 @@ class IosBackgroundTransport(
     private var listener: TransferListener? = null
     private var systemCompletionHandler: (() -> Unit)? = null
     private val delegate = IosBackgroundSessionDelegate(this)
+    private val readiness = Mutex()
+    private var legacyTasksFenced = false
 
     private val callbacks = IosPageTransferCallbacks(appFileSystem, mediaInspector, pageBytePolicy) { listener }
 
     // The ONE background session. iOS persists its tasks across suspension/termination; recreating
     // the SAME identifier on relaunch re-attaches us to receive the pending callbacks.
     private val session: NSURLSession by lazy {
+        prepareStaging()
         val config =
             NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(SESSION_ID).apply {
                 sessionSendsLaunchEvents = true
@@ -66,6 +72,9 @@ class IosBackgroundTransport(
         NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
     }
 
+    /** Once, before native callbacks can arrive; also testable without starting a real session. */
+    internal fun prepareStaging() = callbacks.prepareStaging()
+
     override fun setListener(listener: TransferListener) {
         this.listener = listener
     }
@@ -78,6 +87,13 @@ class IosBackgroundTransport(
     override suspend fun ensureReady() {
         // Touch the lazy session so the delegate is attached and the OS can deliver pending events.
         session
+        // Tokenless/v1 tasks have no publication authority after upgrade. Never adopt their callbacks.
+        readiness.withLock {
+            if (!legacyTasksFenced) {
+                allTasks().filter { IosTransferIdentity.decode(it.taskDescription) == null }.forEach { it.cancel() }
+                legacyTasksFenced = true
+            }
+        }
         BgDownloadLog.log("session.ensureReady")
     }
 
@@ -89,13 +105,13 @@ class IosBackgroundTransport(
         val url = NSURL.URLWithString(req.url)
         if (url == null) {
             BgDownloadLog.warn("task.enqueue.invalidUrl", "chapterId" to req.chapterId, "pageIndex" to req.pageIndex)
-            listener?.onPageFailed(req.mangaId, req.chapterId, req.pageIndex, "Invalid URL: ${req.url}")
+            listener?.onPageFailed(req.mangaId, req.chapterId, req.pageIndex, req.attemptToken, "Invalid URL: ${req.url}")
             return
         }
         val request = NSMutableURLRequest.requestWithURL(url)
         req.headers.forEach { (name, value) -> request.setValue(value, forHTTPHeaderField = name) }
         val task = session.downloadTaskWithRequest(request)
-        task.taskDescription = IosTransferIdentity(req.mangaId, req.chapterId, req.pageIndex).encode()
+        task.taskDescription = IosTransferIdentity(req.mangaId, req.chapterId, req.pageIndex, req.attemptToken).encode()
         logEnqueued(req, url, task)
         task.resume()
     }
@@ -114,11 +130,11 @@ class IosBackgroundTransport(
         )
     }
 
-    override suspend fun cancelChapter(chapterId: Long) {
+    override suspend fun cancelChapter(chapterId: Long, attemptToken: String) {
         var cancelled = 0
         allTasks().forEach { task ->
             val d = IosTransferIdentity.decode(task.taskDescription) ?: return@forEach
-            if (d.chapterId == chapterId) {
+            if (d.chapterId == chapterId && d.attemptToken == attemptToken) {
                 task.cancel()
                 cancelled++
             }
@@ -132,11 +148,11 @@ class IosBackgroundTransport(
         BgDownloadLog.log("task.cancelAll", "cancelled" to tasks.size)
     }
 
-    override suspend fun inFlightPages(chapterId: Long): Set<Int> {
+    override suspend fun inFlightPages(chapterId: Long, attemptToken: String): Set<Int> {
         val out = mutableSetOf<Int>()
         allTasks().forEach { task ->
             val d = IosTransferIdentity.decode(task.taskDescription) ?: return@forEach
-            if (d.chapterId == chapterId) out += d.pageIndex
+            if (d.chapterId == chapterId && d.attemptToken == attemptToken) out += d.pageIndex
         }
         BgDownloadLog.log(
             "session.getAllTasks",
@@ -197,7 +213,7 @@ class IosBackgroundTransport(
     }
 
     private companion object {
-        const val SESSION_ID = "me.manga.kira.download.transfers"
+        val SESSION_ID = "${NSBundle.mainBundle.bundleIdentifier ?: "me.manga.kira.debug"}.download.transfers"
         const val MAX_CONNECTIONS_PER_HOST: Long = 4
     }
 }

@@ -1,6 +1,8 @@
 package me.manga.kira.data.complaint.di
 
 import kotlinx.cinterop.BetaInteropApi
+import me.manga.kira.data.complaint.DisabledComplaintRepository
+import me.manga.kira.platform.firebase.firebaseServicesAvailable
 import me.manga.kira.presentation.features.complaint.repository.ComplaintFirestoreRestConfig
 import me.manga.kira.presentation.features.complaint.repository.ComplaintFirestoreRestDataSource
 import me.manga.kira.presentation.features.complaint.repository.ComplaintRepository
@@ -14,7 +16,13 @@ import platform.Foundation.create
 // the Koin-injected HttpClient (Darwin engine).
 actual fun complaintRepositoryModule(): Module =
     module {
-        single<ComplaintRepository> { ComplaintFirestoreRestDataSource(get(), firebaseComplaintConfig()) }
+        single<ComplaintRepository> {
+            if (firebaseServicesAvailable()) {
+                ComplaintFirestoreRestDataSource(get(), firebaseComplaintConfig())
+            } else {
+                DisabledComplaintRepository
+            }
+        }
     }
 
 @OptIn(BetaInteropApi::class)

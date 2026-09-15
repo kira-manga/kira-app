@@ -36,6 +36,9 @@ internal class RefreshDiscoveryFixture : AutoCloseable {
         override fun fileSystem(): FileSystem = error("No refresh test may delete user files")
     }
 
+    var artifactRuntime = ArtifactTestRuntime(db, files)
+        private set
+
     private fun openDatabase() = Room.databaseBuilder<MangaDatabase>(root.resolve("refresh.db").toString())
         .setDriver(sql)
         .setQueryCoroutineContext(Dispatchers.IO)
@@ -44,7 +47,7 @@ internal class RefreshDiscoveryFixture : AutoCloseable {
     fun repository(library: LibraryDeo = db.libraryDeo()) = LibraryRepositoryImpl(
         db.mangaDao(), library, db.chapterDao(), db.notificationDao(), db.historyDao(),
         db.chapterDownloadingDao(), FakeDownloadRepository(), FileService(files),
-        RecordingReadProgressRepository(), IoDispatchers,
+        RecordingReadProgressRepository(), IoDispatchers, artifactRuntime.ownership,
     )
 
     suspend fun parent(label: String = "one"): SavedMangaEntity {
@@ -61,6 +64,7 @@ internal class RefreshDiscoveryFixture : AutoCloseable {
     fun reopen() {
         db.close()
         db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, files)
     }
 
     fun executeWhileClosed(sql: String) {
@@ -69,6 +73,7 @@ internal class RefreshDiscoveryFixture : AutoCloseable {
             BundledSQLiteDriver().open(root.resolve("refresh.db").toString()).use { it.execSQL(sql) }
         } finally {
             db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, files)
         }
     }
 

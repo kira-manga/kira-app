@@ -14,6 +14,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import me.manga.kira.core.platform.rememberBackupFilePicker
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.domain.model.backup.BackupScope
@@ -101,8 +102,11 @@ fun BackupReworkScreenRoute(
             }
         },
         onLaunchImportPicker = {
-            picker.launchImport { localPath ->
-                viewModel.submit(BackupIntent.OnImportFilePicked(localPath))
+            picker.launchImport { result ->
+                when (result) {
+                    is AppResult.Success -> viewModel.submit(BackupIntent.OnImportFilePicked(result.value))
+                    is AppResult.Failure -> viewModel.submit(BackupIntent.OnImportFilePickFailed(result.error))
+                }
             }
         },
     )

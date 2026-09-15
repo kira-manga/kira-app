@@ -189,7 +189,7 @@ jobs:
             :data:local:desktopTest :data:download:desktopTest :platform:desktopTest \
             :presentation:desktopTest :composeApp:desktopTest :ui:desktopTest \
             :sources:engine:desktopTest :sources:config:desktopTest :sources:legacy:desktopTest \
-            :app:testDebugUnitTest :app:lintRelease :app:bundleRelease \
+            :app:testDebugUnitTest :app:lintRelease :app:verifyReleaseBundleIdentity \
             --stacktrace
 
           signature_report="$RUNNER_TEMP/kira-aab-signature.txt"

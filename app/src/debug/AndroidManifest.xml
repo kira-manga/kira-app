@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="Kira Manga Debug" tools:replace="android:label">
+        <!-- Provider initialization precedes Application.onCreate. Debug must never create a
+             default Firebase app, even when a developer has the real Store config locally. -->
+        <provider android:name="com.google.firebase.provider.FirebaseInitProvider" tools:node="remove" />
+        <receiver android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver" tools:node="remove" />
+        <receiver android:name="com.google.android.gms.measurement.AppMeasurementReceiver" tools:node="remove" />
+        <service android:name="com.google.firebase.messaging.FirebaseMessagingService" tools:node="remove" />
+        <service android:name=".firebase_cores.messaging.MyFirebaseMessagingService" tools:node="remove" />
+        <service android:name="com.google.android.gms.measurement.AppMeasurementService" tools:node="remove" />
+        <service android:name="com.google.android.gms.measurement.AppMeasurementJobService" tools:node="remove" />
+
+        <meta-data android:name="firebase_data_collection_default_enabled" android:value="false" />
+        <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
+        <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="false" />
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
+        <meta-data android:name="firebase_inapp_messaging_auto_data_collection_enabled" android:value="false" />
+    </application>
+</manifest>

@@ -130,6 +130,7 @@ val libraryReworkModule: Module = module {
             // removal; resolved cross-module by Koin's single graph.
             readProgress = get(),
             dispatchers = get(),
+            artifacts = get(),
         )
     }
 

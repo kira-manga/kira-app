@@ -1,6 +1,8 @@
 package me.manga.kira.details
 
 import androidx.lifecycle.ViewModelStore
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
+import me.manga.kira.data.download.artifacts.ChapterArtifactRecovery
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.russhwolf.settings.MapSettings
@@ -53,6 +55,11 @@ internal class DetailsUrlOnlyRoomFixture(
         }
     var db: MangaDatabase = openDatabase()
         private set
+    private fun newArtifacts(): ChapterArtifacts = ChapterArtifacts(
+        db.chapterArtifactDao(), ChapterArtifactRecovery(db.chapterArtifactDao(), db.chapterArtifactCommitDao(), fileSystem),
+    )
+    var artifacts = newArtifacts()
+        private set
     val library =
         DeferredDetailsMembership(
             LibraryRepositoryImpl(
@@ -66,6 +73,7 @@ internal class DetailsUrlOnlyRoomFixture(
                 fileService = FileService(fileSystem),
                 readProgress = ReadProgressRepositoryImpl(MapSettings()),
                 dispatchers = dispatchers,
+                artifacts = artifacts,
             ),
         )
     val source = DetailsRoomSource()
@@ -98,6 +106,7 @@ internal class DetailsUrlOnlyRoomFixture(
     fun reopen() {
         db.close()
         db = openDatabase()
+        artifacts = newArtifacts()
     }
 
     fun close() {

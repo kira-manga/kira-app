@@ -130,7 +130,7 @@ val downloadsReworkModule: Module = module {
             chapterDownloadDao = get(),
             chapterDao = get(),
             appFileSystem = get(),
-            fileService = get(),
+            artifacts = get(),
         )
     }
     factory { ObserveDownloadsUseCase(get()) }

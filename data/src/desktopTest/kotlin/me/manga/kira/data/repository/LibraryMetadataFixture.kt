@@ -42,10 +42,12 @@ internal class LibraryMetadataFixture : AutoCloseable {
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()
 
+    private var artifactRuntime = ArtifactTestRuntime(db, files)
+
     fun shared(mangaDao: MangaDao = db.mangaDao()) = LibraryRepositoryImpl(
         mangaDao, db.libraryDeo(), db.chapterDao(), db.notificationDao(), db.historyDao(),
         db.chapterDownloadingDao(), FakeDownloadRepository(), FileService(files),
-        RecordingReadProgressRepository(), MetadataDispatchers,
+        RecordingReadProgressRepository(), MetadataDispatchers, artifactRuntime.ownership,
     )
 
     fun worker() = WorkerLibraryRepository(
@@ -81,6 +83,7 @@ internal class LibraryMetadataFixture : AutoCloseable {
     fun reopen() {
         db.close()
         db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, files)
     }
 
     override fun close() {

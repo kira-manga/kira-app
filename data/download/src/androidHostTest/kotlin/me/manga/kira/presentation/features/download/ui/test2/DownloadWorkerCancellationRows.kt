@@ -6,6 +6,9 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.download.artifacts.ChapterArtifactRecovery
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterNotification
@@ -38,6 +41,12 @@ internal class DownloadWorkerCancellationRows(
         }
     val db: MangaDatabase get() = database.value
     val realDao: ChapterDownloadDao get() = db.chapterDownloadingDao()
+    val artifacts: ChapterDownloadArtifacts by lazy {
+        val artifactsDao = db.chapterArtifactDao()
+        val commits = db.chapterArtifactCommitDao()
+        val recovery = ChapterArtifactRecovery(artifactsDao, commits, storage.fileSystem)
+        ChapterDownloadArtifacts(ChapterArtifacts(artifactsDao, recovery), artifactsDao, commits, recovery, storage.fileSystem)
+    }
     private var seeded: DownloadRowsSeed? = null
     val original: DownloadRowsSeed get() = checkNotNull(seeded)
     val manga =

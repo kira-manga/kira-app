@@ -97,17 +97,12 @@ jobs:
         run: |
           ruby scripts/release/tests/ios-upload-only-workflow-test.rb
           ruby scripts/release/tests/google-play-open-testing-test.rb
-      - name: Provision placeholder google-services.json for the :app debug tasks
-        # app/google-services.json is BYO/gitignored; the google-services plugin hard-fails
-        # without it on a clean runner (this exact miss is why the job's only two historical runs
-        # were red — 2026-07 audit). The committed placeholder makes debug builds compile with
-        # inert Firebase backends; release builds reject it (app/build.gradle.kts guard).
-        run: cp app/google-services.json.example app/google-services.json
+      # Ordinary Debug selects app/src/debug/google-services.json, never the BYO Store client.
       - name: Compile :app + Koin DI-graph registration test
-        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:testReleaseBundleIdentity --stacktrace
       - name: Assemble debug APK (packaging + dex + manifest/resource merge)
         run: ./gradlew :app:assembleDebug --stacktrace
-      - name: Upload installable internal-test APK
+      - name: Upload isolated Debug APK (not a Play testing build)
         uses: actions/upload-artifact@v4
         with:
           name: android-debug-${{ github.run_number }}

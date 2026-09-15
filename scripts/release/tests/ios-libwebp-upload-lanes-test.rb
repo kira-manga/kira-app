@@ -40,6 +40,7 @@ class IosLibwebpUploadLanesTest < Minitest::Test
     end
 
     attr_reader :calls, :uploads
+    attr_accessor :artifact_inspection_failure
 
     def initialize
       @calls = []
@@ -51,10 +52,18 @@ class IosLibwebpUploadLanesTest < Minitest::Test
         @calls << :upload
         @uploads << options
       end
+      define_singleton_method(:sh) do |*command|
+        @calls << [:artifact_inspection, command]
+        raise @artifact_inspection_failure if @artifact_inspection_failure
+      end
+      define_singleton_method(:upload_to_play_store) do |**options|
+        @calls << :upload
+        @uploads << options
+      end
     end
 
-    def run_lane(name)
-      instance_exec(&self.class.lanes.fetch([:ios, name]))
+    def run_lane(name, platform: :ios)
+      instance_exec(&self.class.lanes.fetch([platform, name]))
     end
   end
 
@@ -114,7 +123,45 @@ class IosLibwebpUploadLanesTest < Minitest::Test
     end
   end
 
+  def test_android_upload_inspects_the_exact_selected_aab_before_the_uploader
+    with_android_lane_environment do |path|
+      harness = FastfileHarness.new
+      harness.run_lane(:upload_internal, platform: :android)
+      command = [File.join(ROOT, "gradlew"), "--project-dir", ROOT, ":app:verifyReleaseBundleIdentity",
+                 "-Pkira.releaseBundleToVerify=#{path}"]
+      assert_equal [[:artifact_inspection, command], :upload], harness.calls
+      assert_equal path, harness.uploads.fetch(0).fetch(:aab)
+      assert_equal "me.manga.kira", harness.uploads.fetch(0).fetch(:package_name)
+    end
+  end
+
+  def test_android_binary_identity_refusal_prevents_any_upload
+    with_android_lane_environment do |_path|
+      harness = FastfileHarness.new
+      harness.artifact_inspection_failure = ArgumentError.new("fixture inspector refusal: development AAB")
+      assert_raises(ArgumentError) { harness.run_lane(:upload_internal, platform: :android) }
+      assert_equal [:artifact_inspection], harness.calls.map(&:first)
+      assert_empty harness.uploads
+    end
+  end
+
   private
+
+  # Only the task/uploader boundary is doubled here. Binary protobuf rejection is exercised by
+  # :app:testReleaseBundleIdentity against the same inspector used by the production task.
+  def with_android_lane_environment
+    Dir.mktmpdir("kira-android-upload-guard") do |directory|
+      path = File.join(directory, "selected candidate.aab")
+      mapping = File.join(directory, "mapping.txt")
+      File.write(path, "command-boundary fixture; not a signed AAB")
+      File.write(mapping, "fixture")
+      with_environment({
+        "KIRA_ANDROID_AAB_PATH" => path, "KIRA_ANDROID_MAPPING_PATH" => mapping,
+        "KIRA_BUILD_NUMBER" => "7", "KIRA_VERSION_NAME" => "1.0.5",
+        "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" => "fixture-not-credentials"
+      }) { yield path }
+    end
+  end
 
   def assert_both_lanes_refuse(entries)
     with_ipa(entries) do |path, directory|

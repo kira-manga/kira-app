@@ -18,6 +18,10 @@ as the parity spec) and since rebranded:
 
 - Display name: **Kira Manga** · package root `me.manga.kira.*` · Android `applicationId` and iOS
   bundle id `me.manga.kira` · version **1.0.5**.
+- Ordinary Debug is isolated as **Kira Manga Debug** / `me.manga.kira.debug`, with no production
+  Firebase, APNs or activation-link registration. Reading/downloads/local notifications remain
+  available; complaints fail explicitly while services are disabled. Release identities/services
+  are unchanged. Physical side-by-side install/service checks remain necessary.
 - Feature set: multi-source manga browsing (Home tabs per source), search, details, a
   webtoon/paged reader, library with categories, chapter downloads (CBZ), reading history,
   updates feed, statistics, complaints (Firestore-backed; internal-test/public-release blocker), what's-new, theming (incl. AMOLED),
@@ -137,6 +141,29 @@ Per-platform engines behind one `DownloadRepository` interface (`:data:download`
   vs Skia's 274–566 ms). Full architecture + log vocabulary + test plan:
   `ENGINEERING_NOTES.md` §2/§4.
 - **Desktop**: in-process coroutine engine (also the iOS rollback path).
+
+### Chapter-artifact ownership — validation pending
+
+The prepared shared runtime fences downloads, restores, conversions, reads and deletion with
+original-attempt custody and real file-user drains. Ordinary FAILED attempts retain resumable pages;
+user cancellation/system-stop cleanup stays separate, and unknown outcomes retain custody/bytes.
+Queue drains skip closing parents and resume on their captured reopen signal outside producer locks;
+iOS receiver publication failures enter the existing bounded page-failure path. Room schema15 must
+come from the real compiler. Composed compile/tests/native checks are **NOT_RUN**; tokenless FAILED
+history cleanup remains a separate issue, including retained failures released by this runtime.
+
+### Backup import hardening — composition required
+
+The authored import path admits a bounded, privately owned ZIP/JSON/CBZ plan before any Room or
+resume mutation; every publication consumes those same retained bytes. Android acquisition counts
+the provider stream; iOS uses a coordinated, security-scoped open-in-place copy. Provider/OS hydration
+is outside the application's bound. Pending picker cleanup is registry-only, never path-prefix based.
+Metadata merges remain atomic per manga, not globally across the archive or filesystem. Restored
+downloads require the shared chapter-artifact publisher: only `COMMITTED` counts; `UNKNOWN` keeps
+durable custody/files and stops the import with a storage failure. Re-export pins and resolves the
+exact committed generation, with no canonical fallback when that explicit file is missing.
+This source depends on the chapter-artifact ownership changes and native page-inspection APIs; it
+must not ship independently. Compile, tests, lint and mobile-provider checks are **NOT_RUN** here.
 
 ## 7. Firebase / push / crash reporting
 
@@ -276,3 +303,17 @@ machines (see `CLAUDE.md`).
     backend HTTPS origin and signing ceremony are not configured; set `KIRA_SOURCE_CONFIG_BASE_URL`
     and `KIRA_SOURCE_CONFIG_PINNED_KEYS` in the release environment only after the backend's protected
     private key and matching public key exist. No orphan placeholder pin is accepted.
+
+## App87 Android download challenge recovery — authored, validation pending (2026-09-15)
+
+Android resolve and image-transfer terminal failures now share a cancellation-safe persisted-message
+rule. Optional typed HTTP status survives the generic provider and page-transfer exception boundaries;
+403/429/503/520–524 use the existing Details Cloudflare sentinel, while ordinary HTTP statuses retain
+their original messages even when a URL mentions a challenge. Untyped failures retain the existing
+legacy classifier. `GenericPagesFailedException(String)` and the image-transfer `IOException` message
+remain compatible. No ownership, cleanup, retry budget, queue, source-config or solver UI changes.
+New provider/shared-rule and actual Android worker/service Room-fixture regressions are authored but
+**NOT_RUN**; the existing bounded Details recovery tests remain the downstream contract. This is not
+device/network verification or issue closure. Independent review and the primary's composed gate
+are still required. The App33 composition preserves its production token guards and adapts only the
+new Android fixture to real artifact admission, producer drain and checked settlement.

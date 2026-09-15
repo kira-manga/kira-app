@@ -20,13 +20,8 @@ import me.manga.kira.domain.model.settings.CbzConversionProgress
 import me.manga.kira.domain.model.settings.SettingsSnapshot
 import me.manga.kira.domain.model.settings.SettingsToggle
 import me.manga.kira.domain.repository.SettingsRepository
-import me.manga.kira.platform.cbz.CbzWriter
-import me.manga.kira.platform.filesystem.AppFileSystem
-import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import okio.Path.Companion.toPath
 import kotlin.coroutines.cancellation.CancellationException
 import me.manga.kira.presentation.features.settings.domain.SettingsRepository as LegacySettingsRepository
 
@@ -144,18 +139,15 @@ class SettingsRepositoryImpl(
     private val legacy: LegacySettingsRepository,
     private val dispatchers: DispatcherProvider,
     private val dataStore: DataStoreHelper,
-    conversion: DownloadedChapterConversion,
+    private val conversion: DownloadedChapterConversion,
     private val httpCache: HttpCacheClearer,
 ) : SettingsRepository {
     private val chapterDao: ChapterDao = conversion.chapters
-    private val cbzWriter: CbzWriter = conversion.archives
     private val mangaDao: MangaDao = conversion.manga
 
     // The manual converter must skip active transfers/finalizers before touching their chapter files.
     private val chapterDownloadDao: ChapterDownloadDao = conversion.downloads
 
-    // Re-walk the converted chapter directory to refresh the existing SUCCESS row's size ledger.
-    private val appFileSystem: AppFileSystem = conversion.files
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)
 
     // GAP-SET-16 — hot progress state for the CBZ bulk-convert run, native-parity port of the
@@ -337,26 +329,7 @@ class SettingsRepositoryImpl(
                             )
                         }
                         runCatchingCancellable {
-                            val cbz =
-                                cbzWriter.createCbzWithSplitting(
-                                    imagePaths = chapter.localImagePaths.map { it.toPath() },
-                                    mangaId = chapter.mangaId,
-                                    chapterId = chapter.id,
-                                )
-                            chapterDao.updateChapterLocalPaths(chapter.id, listOf(cbz.toString()))
-                            // The WebP re-encode changed the chapter's on-disk size — refresh the
-                            // chapter_downloads SUCCESS row's sizeBytes (the canonical size ledger
-                            // Details reads) with an engine-parity dir walk. Keyed by chapter.id
-                            // (unique-indexed), never by url. Best-effort in its own guard: a
-                            // walk/DB hiccup keeps the convert successful, and a row-only-deleted
-                            // ledger row makes updateSize a no-op — never resurrect a queue row.
-                            runCatchingCancellable {
-                                val sizeBytes =
-                                    appFileSystem.folderSize(
-                                        appFileSystem.chapterDir(chapter.mangaId, chapter.id),
-                                    )
-                                if (sizeBytes > 0L) chapterDownloadDao.updateSize(chapter.id, sizeBytes)
-                            }
+                            check(conversion.convert(chapter)) { "Chapter conversion lost artifact custody" }
                         }.onSuccess { converted++ }
                             .onFailure { failed++ }
                         conversionProgress.update {

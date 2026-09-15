@@ -36,7 +36,7 @@ class SavedChapterOrderTest : ChapterOwnershipFixture() {
                 LibraryRepositoryImpl(
                     db.mangaDao(), db.libraryDeo(), db.chapterDao(), db.notificationDao(),
                     db.historyDao(), db.chapterDownloadingDao(), FakeDownloadRepository(),
-                    FileService(appFs), RecordingReadProgressRepository(), dispatchers,
+                    FileService(appFs), RecordingReadProgressRepository(), dispatchers, artifactRuntime.ownership,
                 )
 
             val before = assertIs<AppResult.Success<List<Chapter>>>(reader()(mangaA)).value
@@ -68,6 +68,7 @@ class SavedChapterOrderTest : ChapterOwnershipFixture() {
 
             db.close()
             db = openDatabase()
+            artifactRuntime = ArtifactTestRuntime(db, appFs)
             assertEquals(projected, assertIs<AppResult.Success<List<Chapter>>>(reader()(mangaA)).value)
             assertEquals(1, networkCalls)
         }

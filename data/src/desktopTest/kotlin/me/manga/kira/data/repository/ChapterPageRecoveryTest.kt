@@ -1,20 +1,31 @@
 package me.manga.kira.data.repository
 
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.backup.RestoredChapterArchive
+import me.manga.kira.data.backup.RestoredDownloadPublisher
+import me.manga.kira.data.local.dao.ChapterRestoreOutcome
+import me.manga.kira.data.local.entity.ChapterArtifactOwner
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.platform.backup.BackupZipWriter
 import me.manga.kira.platform.cbz.DefaultCbzReader
+import me.manga.kira.platform.cbz.CbzReader
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.media.DesktopPageMediaInspector
 import okio.Path
+import okio.Path.Companion.toPath
 import okio.buffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** Real local recovery through Room, the production reader and the native JVM codec test host. */
@@ -129,13 +140,74 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
             assertTrue(fs.exists(stored))
         }
 
-    private fun repository(source: OwnerPagesSource) =
+    @Test
+    fun restoredGenerationSurvivesHistoryDeletionAndSandboxMoveButNeverFallsBackToOlderCanonical() = runTest {
+        val saved = seed(mangaA).single()
+        val restored = restoreSinglePage(saved)
+        val reader = DefaultCbzReader(appFs, dispatchers, inspector)
+        writeArchive(reader.cbzPath(saved.mangaId, saved.id), "0.png" to recoveryTestPng(), "1.png" to recoveryTestPng())
+        val relative = assertNotNull(db.chapterArtifactDao().get(saved.id)?.committedRelativePath)
+        db.chapterDao().updateChapterLocalPaths(saved.id, listOf("/old-container/$relative"))
+        db.chapterDownloadingDao().deleteByChapterId(saved.id)
+        db.close()
+        db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, appFs)
+        val source = OwnerPagesSource()
+        val repository = repository(source)
+
+        val local = assertIs<AppResult.Success<List<Page>>>(repository.fetchPages(mangaA, chapter).first())
+        assertEquals(1, local.value.size, "The one-page generation, not the two-page old canonical, is authoritative")
+        assertTrue(source.requests.isEmpty())
+        fs.delete(restored)
+        assertEquals(networkPages(), repository.fetchPages(mangaA, chapter).first())
+        assertEquals(1, source.requests.size, "A missing explicit generation must use recovery, not stale canonical bytes")
+    }
+
+    @Test
+    fun fullDeletionWaitsForActualRestoredArchiveExtraction() = runTest {
+        val saved = seed(mangaA).single()
+        val restored = restoreSinglePage(saved)
+        val real = DefaultCbzReader(appFs, dispatchers, inspector)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val reader = object : CbzReader by real {
+            override suspend fun extractImages(cbzPath: Path, mangaId: Long, chapterId: Long): List<Path> {
+                entered.complete(Unit)
+                release.await()
+                assertTrue(fs.exists(cbzPath))
+                return real.extractImages(cbzPath, mangaId, chapterId)
+            }
+        }
+        val reading = async { repository(OwnerPagesSource(), reader).fetchPages(mangaA, chapter).first() }
+        entered.await()
+        val deletion = async(start = CoroutineStart.UNDISPATCHED) { artifactRuntime.ownership.removeChapter(ChapterArtifactOwner.of(saved)) }
+        assertFalse(deletion.isCompleted)
+        assertTrue(fs.exists(restored))
+        release.complete(Unit)
+        assertIs<AppResult.Success<List<Page>>>(reading.await())
+        assertTrue(deletion.await())
+        assertFalse(fs.exists(restored))
+    }
+
+    private suspend fun restoreSinglePage(saved: SavedChapterEntity): Path {
+        val source = root / "validated-${saved.id}.cbz"
+        writeArchive(source, "0.png" to recoveryTestPng())
+        val runtime = artifactRuntime
+        assertEquals(ChapterRestoreOutcome.COMMITTED, RestoredDownloadPublisher(
+            runtime.ownership, runtime.dao, runtime.commits, appFs, runtime.recovery,
+        ).publish(RestoredChapterArchive(source, assertNotNull(fs.metadata(source).size)), saved, mangaA.api, mangaA.title))
+        return assertNotNull(row(saved.id).localImagePaths.singleOrNull()).toPath()
+    }
+
+    private fun repository(source: OwnerPagesSource, reader: CbzReader = DefaultCbzReader(appFs, dispatchers, inspector)) =
         ChapterPagesRepositoryImpl(
             dispatchers,
             db.chapterDao(),
-            DefaultCbzReader(appFs, dispatchers, inspector),
+            reader,
             chapterOwnershipRegistry(source),
             DownloadedPageFiles(appFs, inspector),
+            artifactRuntime.ownership,
+            appFs,
         )
 
     private fun networkPages() = AppResult.Success(listOf(Page("${mangaA.url}/network-page", emptyMap())))

@@ -150,7 +150,7 @@ class LibraryRepositoryAddTest {
     @Test
     fun addToLibrary_persists_the_manga_and_its_chapters() = runTest {
         val deo = FakeLibraryDeo()
-        val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers)
+        val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers, fakeArtifactRuntime().ownership)
         // Source ships newest-first.
         val chapters = listOf(chapter("3", "c/3"), chapter("2", "c/2"), chapter("1", "c/1"))
 
@@ -176,7 +176,7 @@ class LibraryRepositoryAddTest {
     @Test
     fun addToLibrary_is_idempotent_and_inserts_only_new_chapter_urls() = runTest {
         val deo = FakeLibraryDeo()
-        val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers)
+        val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers, fakeArtifactRuntime().ownership)
         repo.addToLibrary(details(listOf(chapter("1", "c/1"), chapter("2", "c/2"))))
 
         // Re-add with one overlapping + one new chapter: manga is a no-op, only the new URL inserts.
@@ -191,7 +191,7 @@ class LibraryRepositoryAddTest {
     @Test
     fun addToLibrary_with_empty_chapters_persists_only_the_manga_row() = runTest {
         val deo = FakeLibraryDeo()
-        val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers)
+        val repo = LibraryRepositoryImpl(FakeMangaDao(), deo, FakeChapterDao(), RecordingNotificationDao(), RecordingHistoryDao(), FakeChapterDownloadDao(), FakeDownloadRepository(), fileService(), RecordingReadProgressRepository(), testDispatchers, fakeArtifactRuntime().ownership)
 
         val result = repo.addToLibrary(details())
 
