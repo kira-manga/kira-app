@@ -16,7 +16,14 @@ import me.manga.kira.sources.contracts.model.SourceConfigDocument
 interface SourceUpdateManager {
     val state: StateFlow<UpdateState>
 
-    /** The complete document currently in effect. Always non-null; bundled is the trusted floor. */
+    /**
+     * Complete accepted document, replayed to new observers and published whenever the active tier
+     * changes, including verified-cache restoration before a remote request finishes. Diagnostics
+     * are not a catalog signal. Implementations must expose their actual accepted state.
+     */
+    val acceptedDocument: StateFlow<SourceConfigDocument>
+
+    /** The current [acceptedDocument] value. Always non-null; bundled is the trusted floor. */
     fun activeDocument(): SourceConfigDocument
 
     /**

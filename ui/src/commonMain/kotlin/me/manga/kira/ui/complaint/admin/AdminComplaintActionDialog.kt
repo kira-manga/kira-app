@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
@@ -56,6 +58,7 @@ import me.manga.kira.ui.complaint.ClosureReasonType
 import me.manga.kira.ui.complaint.ComplaintStatusChip
 import me.manga.kira.ui.complaint.displayName
 import me.manga.kira.ui.complaint.displayText
+import me.manga.kira.ui.components.KiraDialogError
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.add_reason
 import me.manga.kira.ui.generated.resources.admin_actions
@@ -84,6 +87,7 @@ import me.manga.kira.ui.generated.resources.delete
 import me.manga.kira.ui.generated.resources.delete_forever
 import me.manga.kira.ui.generated.resources.edit
 import me.manga.kira.ui.generated.resources.edit_placeholder
+import me.manga.kira.ui.generated.resources.error_occurred
 import me.manga.kira.ui.generated.resources.np_admin_current_status_label
 import me.manga.kira.ui.generated.resources.np_admin_status_label
 import me.manga.kira.ui.generated.resources.np_closure_reason_details
@@ -113,6 +117,10 @@ import org.jetbrains.compose.resources.stringResource
  *  - Submit-button loading state comes from
  *    [me.manga.kira.presentation.complaint.admin.AdminComplaintState.isSubmittingAction]
  *    (single source of truth).
+ *  - Mutation failure stays inside this modal via [KiraDialogError]; the current mode and its
+ *    remembered input/selection remain mounted, with the existing submit control as retry.
+ *    The error stays above the scrollable form so it and access to the submit control remain
+ *    available under constrained height.
  *
  * **Per-mode branching**:
  *  - [AdminActionDialogMode.MENU] → [ActionSelectionContent] (3 admin actions).
@@ -209,8 +217,10 @@ internal fun AdminComplaintActionDialog(
     complaint: ComplaintSummary,
     mode: AdminActionDialogMode,
     isSubmitting: Boolean,
+    actionFailed: Boolean,
     onIntent: (AdminComplaintIntent) -> Unit,
 ) {
+    val spacing = LocalSpacing.current
     Dialog(onDismissRequest = {
         if (!isSubmitting) onIntent(AdminComplaintIntent.OnDismissActionDialog)
     }) {
@@ -221,6 +231,12 @@ internal fun AdminComplaintActionDialog(
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
             shape = RoundedCornerShape(16.dp),
         ) {
+            if (actionFailed) {
+                KiraDialogError(
+                    message = stringResource(Res.string.error_occurred),
+                    modifier = Modifier.padding(start = spacing.xl, top = spacing.xl, end = spacing.xl),
+                )
+            }
             when (mode) {
                 AdminActionDialogMode.NONE -> Unit
                 AdminActionDialogMode.MENU -> ActionSelectionContent(
@@ -337,7 +353,7 @@ private fun StatusChangeContent(
     // from the current status). Replaces the prior button-per-status immediate-apply layout.
     var selectedStatus by rememberSaveable(complaint.id) { mutableStateOf(complaint.status) }
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
@@ -428,7 +444,7 @@ private fun ClosureReasonContent(
     var showTypeDropdown by rememberSaveable(complaint.id) { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
@@ -610,7 +626,7 @@ private fun EditContent(
         editedBody != complaint.body
 
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
@@ -814,7 +830,7 @@ private fun DeleteConfirmationContent(
 ) {
     val spacing = LocalSpacing.current
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(

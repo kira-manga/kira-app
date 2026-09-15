@@ -1,7 +1,13 @@
 package me.manga.kira.di
 
+import me.manga.kira.platform.version.AppVersionProvider
+import me.manga.kira.platform.version.IosAppVersionProvider
 import org.koin.dsl.koinApplication
+import platform.Foundation.NSBundle
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * #27 (B13) — iOS DI-graph registration smoke test (runs on iosSimulatorArm64Test / iosArm64Test).
@@ -14,8 +20,9 @@ import kotlin.test.Test
  * No verify() here — koin-test's reflective resolution is JVM-only, and the only resolution-level
  * coverage is :app's KoinGraphResolutionTest (which verifies the Android platformModule actuals).
  * The Desktop test (DesktopKoinGraphRegistrationTest) is registration-only too, so a Desktop-only
- * missing binding would surface only at runtime — a known gap. Singletons are lazy here, so nothing
- * is instantiated. No `appKoinModule` (it lives in :app).
+ * missing binding would surface only at runtime — a known gap. The registration check instantiates
+ * no singletons. The targeted version check resolves only app metadata, not UI/services.
+ * No `appKoinModule` (it lives in :app).
  */
 class IosKoinGraphRegistrationTest {
 
@@ -26,5 +33,21 @@ class IosKoinGraphRegistrationTest {
             modules(allSharedModules() + platformModule() + allReworkModules())
         }
         app.close()
+    }
+
+    @Test
+    fun ios_version_binding_reads_the_main_bundle_or_unknown() {
+        val app = koinApplication {
+            modules(platformModule())
+        }
+        try {
+            val version = app.koin.get<AppVersionProvider>()
+            val bundleVersion = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String
+            assertIs<IosAppVersionProvider>(version)
+            assertEquals(bundleVersion ?: "unknown", version.versionName)
+            assertTrue(version.versionName.isNotBlank())
+        } finally {
+            app.close()
+        }
     }
 }

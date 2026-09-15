@@ -76,7 +76,8 @@ interface NotificationDao {
     @Query("UPDATE notifications SET mangaImageUrl = :newImageUrl WHERE mangaId = :mangaId")
     suspend fun updateMangaImageUrl(mangaId: Long, newImageUrl: String)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Undo/retries must not replace a newer notification's read/download state or primary key.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertNotificationsList(notifications: List<ChapterNotification>): List<Long>
 
     @Update

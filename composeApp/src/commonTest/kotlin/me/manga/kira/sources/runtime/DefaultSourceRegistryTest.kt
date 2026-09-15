@@ -1,10 +1,14 @@
 package me.manga.kira.sources.runtime
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
@@ -18,6 +22,7 @@ import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
@@ -26,25 +31,59 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Pins the generic-only registry: catalog absence can never infer a legacy adapter. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class DefaultSourceRegistryTest {
     private class FixedUpdateManager(
         document: SourceConfigDocument,
     ) : SourceUpdateManager {
-        private var document = document
+        private val documents = MutableStateFlow(document)
         private val mutableState =
             MutableStateFlow<UpdateState>(
                 UpdateState.Active(document.revision, UpdateState.Origin.BUNDLED),
             )
         override val state: StateFlow<UpdateState> = mutableState.asStateFlow()
+        override val acceptedDocument: StateFlow<SourceConfigDocument> = documents.asStateFlow()
+        var imperativeReads = 0
+            private set
 
-        override fun activeDocument(): SourceConfigDocument = document
+        override fun activeDocument(): SourceConfigDocument {
+            imperativeReads++
+            return documents.value
+        }
 
-        override suspend fun refresh(): AppResult<SourceConfigDocument> = AppResult.Success(document)
+        override suspend fun refresh(): AppResult<SourceConfigDocument> = AppResult.Success(documents.value)
 
         fun replace(document: SourceConfigDocument) {
-            this.document = document
+            documents.value = document
             mutableState.value = UpdateState.Active(document.revision, UpdateState.Origin.REMOTE)
         }
+    }
+
+    @Test
+    fun catalog_observer_projects_each_accepted_document_without_imperative_reads() = runTest {
+        val first = SourceConfigDocument(1, revision = 1, sources = listOf(config("first"), config("second")))
+        val manager = FixedUpdateManager(first)
+        val registry = DefaultSourceRegistry(manager) { MarkerClient(it.api) }
+        val observed = mutableListOf<SourceCatalogSnapshot>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { registry.catalog.toList(observed) }
+        val renamed = config("second").copy(displayName = "Renamed", language = "ja", siteState = "STOPPED")
+        val hidden = listOf(
+            config("disabled").copy(lifecycle = "disabled"),
+            config("legacy").copy(engine = "legacy"),
+        )
+        manager.replace(first.copy(revision = 2, sources = listOf(renamed, config("first")) + hidden))
+        assertEquals(listOf(1L, 2L), observed.map { it.revision })
+        assertEquals(listOf("second", "first"), observed.last().descriptors.map { it.api })
+        val descriptor = observed.last().descriptors.first()
+        assertEquals(
+            listOf("Renamed", "ja", "STOPPED"),
+            listOf(descriptor.displayName, descriptor.language, descriptor.siteState),
+        )
+        assertEquals(listOf("first", "second"), observed.first().descriptors.map { it.api })
+        manager.replace(first.copy(revision = 3, sources = emptyList()))
+        assertTrue(observed.last().descriptors.isEmpty())
+        assertEquals(3, observed.size)
+        assertEquals(0, manager.imperativeReads)
     }
 
     private class MarkerClient(

@@ -5,19 +5,19 @@ import kotlinx.serialization.json.Json
 
 /**
  * Common Ktor configuration values shared by per-platform `createHttpClient()` actuals. Each
- * platform's actual installs `ContentNegotiation` / `HttpTimeout` / `Logging` inline (no shared
- * config extension here — Ktor's `HttpClientConfig<TEngineConfig>` is generic over the engine
- * config type, so a non-trivial shared extension would have to be re-generic on every target).
+ * platform's actual installs `ContentNegotiation` / `HttpTimeout` / `Logging` inline; only the
+ * app-owned metadata cache installation is shared across engines.
  *
  * Migration note (Phase 7): replaces source's `AppModule.provideOkHttpClient(Context)`. The
  * Ktor `OkHttp` engine on Android keeps the same `OkHttpClient`-backed transport that source
  * used. `Darwin` (iOS) and `CIO` (Desktop) are the locked-stack engines for non-Android targets.
  */
-val DefaultJson: Json = Json {
-    ignoreUnknownKeys = true
-    isLenient = true
-    coerceInputValues = true
-}
+val DefaultJson: Json =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
 
 /**
  * Per-platform Ktor client constructor.
@@ -25,8 +25,11 @@ val DefaultJson: Json = Json {
  *   iosMain     — Darwin engine
  *   desktopMain — CIO engine
  *
- * @param cacheResponses Install the existing response cache by default. Scoped catalog streaming
- * must opt out because HttpCache can buffer entire responses before the bounded reader runs.
+ * @param cacheResponses Install the bounded metadata cache by default (16 MiB aggregate charged
+ * bytes, 128 entries, four total public/private Vary variants per URL; 4 MiB body/64 KiB metadata).
+ * Only explicitly fresh text/JSON/XML metadata is retained. This is a retention budget, not a
+ * transfer ceiling: Ktor HttpCache buffers responses before storage admission. Chapter downloads,
+ * catalog streaming and other one-shot bodies must opt out before their bounded readers run.
  */
 expect fun createHttpClient(cacheResponses: Boolean = true): HttpClient
 

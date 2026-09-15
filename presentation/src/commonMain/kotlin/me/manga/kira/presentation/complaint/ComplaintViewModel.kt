@@ -30,10 +30,10 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *    [handleSelectAction]).
  *  - `OnSubmitReply` / `OnSubmitEdit` / `OnConfirmDelete` each call the matching domain use
  *    case and route the [Result] through [completeAction]. Success: dismiss dialog, emit
- *    [ComplaintEffect.ShowSuccessMessage], refire `loadList()`. Failure: keep dialog open at
- *    its current sub-mode, emit [ComplaintEffect.ShowErrorMessage].
+ *    [ComplaintEffect.ShowActionSuccess], refire `loadList()`. Failure: keep the dialog open at
+ *    its current sub-mode and set [ComplaintState.actionFailed] for dialog-local feedback.
  *  - `OnDismissActionDialog` clears the dialog substate (mode → `NONE`, activeComplaint → null,
- *    isSubmittingAction → false).
+ *    actionFailed → false). Dismissal is ignored while an action is in flight.
  *
  * **In-flight guard via `isSubmittingAction`**: each action handler short-circuits when
  * `state.isSubmittingAction == true`. The `:ui` dialog also disables its submit buttons while
@@ -43,8 +43,8 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *
  * **`completeAction` shape**: the three actions (reply / edit / delete) share an identical
  * post-result handler — set `isSubmittingAction = false`, branch on `result.isSuccess`,
- * dismiss + emit success + refire `loadList()` OR keep dialog open at current mode + emit
- * error. Extracted into a private helper to keep each action handler short and the
+ * dismiss + emit success + refire `loadList()` OR keep dialog open at current mode + set a
+ * non-leaking modal error. Extracted into a private helper to keep each action handler short and the
  * success/failure shape consistent. Same posture as the rework's
  * [me.manga.kira.presentation.feedback.FeedbackViewModel.submit] flow.
  *
@@ -175,6 +175,7 @@ class ComplaintViewModel(
             it.copy(
                 actionDialogMode = ActionDialogMode.MENU,
                 activeComplaint = complaint,
+                actionFailed = false,
             )
         }
     }
@@ -185,6 +186,7 @@ class ComplaintViewModel(
             it.copy(
                 actionDialogMode = ActionDialogMode.NONE,
                 activeComplaint = null,
+                actionFailed = false,
             )
         }
     }
@@ -193,14 +195,14 @@ class ComplaintViewModel(
         if (state.value.isSubmittingAction) return
         if (mode == ActionDialogMode.NONE) return
         if (state.value.activeComplaint == null) return
-        updateState { it.copy(actionDialogMode = mode) }
+        updateState { it.copy(actionDialogMode = mode, actionFailed = false) }
     }
 
     private fun handleSubmitReply(body: String) {
         val current = state.value
         if (current.isSubmittingAction) return
         val parent = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = replyToComplaint(parent, body)
             completeAction(result, action = ComplaintAction.REPLY_SENT)
@@ -211,7 +213,7 @@ class ComplaintViewModel(
         val current = state.value
         if (current.isSubmittingAction) return
         val original = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = editComplaint(original, subject, body)
             completeAction(result, action = ComplaintAction.UPDATED)
@@ -222,7 +224,7 @@ class ComplaintViewModel(
         val current = state.value
         if (current.isSubmittingAction) return
         val target = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = deleteComplaint(target.id)
             completeAction(result, action = ComplaintAction.DELETED)
@@ -236,16 +238,16 @@ class ComplaintViewModel(
                     isSubmittingAction = false,
                     actionDialogMode = ActionDialogMode.NONE,
                     activeComplaint = null,
+                    actionFailed = false,
                 )
             }
             emit(ComplaintEffect.ShowActionSuccess(action))
             loadList()
         } else {
             // The throwable (often a raw Firestore SDK string) is logged, never surfaced to the user:
-            // the snackbar shows a generic localized error resolved in :ui.
+            // the retained dialog shows a generic localized error resolved in :ui.
             Logger.withTag(TAG).w(result.exceptionOrNull()) { "complaint action $action failed" }
-            updateState { it.copy(isSubmittingAction = false) }
-            emit(ComplaintEffect.ShowActionFailure)
+            updateState { it.copy(isSubmittingAction = false, actionFailed = true) }
         }
     }
 

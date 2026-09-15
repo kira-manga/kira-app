@@ -96,7 +96,7 @@ import org.jetbrains.compose.resources.stringResource
  *       bottom of the picker column. (Phase 7.x.theme.onboardingcontinue.)
  *     - `hasNotificationPermission: Boolean = true` — current notification permission state.
  *     - `isNotificationPermissionRequired: Boolean = false` — separates platform policy from
- *       permission state. Android opts into required gating; iOS remains optional.
+ *       permission state. Android and iOS both use optional onboarding.
  *     - `onRequestNotificationPermission: (() -> Unit)?` — when non-null, renders an
  *       "Enable Notifications" grant row (header + descriptive copy + Grant Permission
  *       button) inside the picker card, below the TabRow. Native parity (P2 picker fix):
@@ -516,7 +516,7 @@ private fun ThemePickerColumn(
         if (onContinue != null) {
             // Native Continue button: fillMaxWidth + height(50dp) + clip(RoundedCornerShape(26dp))
             // + shape = shapes.medium + containerColor = primary, label labelLarge @ 16sp /
-            // onPrimary. Enabled-gated on the notification permission state in the onboarding flow.
+            // onPrimary. A grant gates Continue only when the caller explicitly requires permission.
             Button(
                 onClick = onContinue,
                 enabled =

@@ -2,16 +2,22 @@ package me.manga.kira.data.repository
 
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.core.result.map
+import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.domain.model.library.LibraryRefreshCompleted
 import me.manga.kira.domain.usecase.library.RefreshAllLibraryChaptersUseCase
 import me.manga.kira.platform.jobs.BackgroundJob
 import me.manga.kira.platform.jobs.BackgroundJobScheduler
@@ -93,25 +99,33 @@ import me.manga.kira.domain.repository.LibraryRefreshRepository
  * LibraryRefreshRepositoryImpl continues to schedule + observe via
  * [BackgroundJobScheduler] through the legacy VM retire.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
-class LibraryRefreshRepositoryImpl(
+class LibraryRefreshRepositoryImpl internal constructor(
     private val scheduler: BackgroundJobScheduler,
-    // #1 cross-platform: the in-process refresh used where the scheduler can't dispatch a worker
-    // (Desktop/iOS). On Android the WorkManager worker runs instead and this stays unused.
-    private val refreshAllChapters: RefreshAllLibraryChaptersUseCase,
-    // Records the refresh-completion timestamp on the inline path so the "Last updated" header is
-    // correct on Desktop/iOS too (Android's LibraryRefreshWorker already writes the same cell).
-    private val libraryPrefs: LibraryPrefsRepository,
-    private val dispatchers: DispatcherProvider,
+    private val refreshAllChapters: suspend () -> AppResult<LibraryRefreshCompleted>,
+    private val stampLastSuccess: suspend () -> Unit,
+    private val scope: CoroutineScope,
 ) : LibraryRefreshRepository {
-
-    private val scope = CoroutineScope(dispatchers.io + SupervisorJob())
+    constructor(
+        scheduler: BackgroundJobScheduler,
+        refreshAllChapters: RefreshAllLibraryChaptersUseCase,
+        libraryPrefs: LibraryPrefsRepository,
+        dispatchers: DispatcherProvider,
+    ) : this(
+        scheduler = scheduler,
+        refreshAllChapters = { refreshAllChapters() },
+        stampLastSuccess = { libraryPrefs.setLastUpdated(Clock.System.now()) },
+        scope = CoroutineScope(dispatchers.io + SupervisorJob()),
+    )
 
     /** Drives the spinner on platforms that run the refresh inline (Desktop/iOS). */
     private val inlineRefreshing = MutableStateFlow(false)
 
-    /** Terminal outcome of the last inline refresh run (null until one completes). */
-    private val lastRefreshResult = MutableStateFlow<AppResult<Int>?>(null)
+    /**
+     * Terminal outcome of the last inline refresh run (null until one completes).
+     * SharedFlow retains the last outcome without StateFlow's equality conflation: two failed
+     * attempts with the same typed error must both reach an active Library VM collector.
+     */
+    private val lastRefreshResult = MutableSharedFlow<AppResult<Int>?>(replay = 1).apply { tryEmit(null) }
 
     override fun refresh() {
         if (scheduler.dispatchesWorkerClass) {
@@ -134,26 +148,42 @@ class LibraryRefreshRepositoryImpl(
                     requiresNetwork = false,
                 ),
             )
-        } else if (inlineRefreshing.compareAndSet(expect = false, update = true)) {
-            // Desktop/iOS: no Worker classpath — run the shared use case in-process while the screen
-            // is open. The atomic compareAndSet claim guards against re-entry so two rapid refresh()
-            // calls can't both pass the check before the first coroutine starts and double-run.
+        } else {
+            refreshInline()
+        }
+    }
+
+    private fun refreshInline() {
+        // Claim before launching, so concurrent gestures cannot double-run on Desktop/iOS.
+        if (!inlineRefreshing.compareAndSet(expect = false, update = true)) return
+        val job =
             scope.launch {
-                try {
-                    val result = refreshAllChapters()
-                    // Publish the terminal outcome so the VM can surface a failure (instead of stale
-                    // data presented as a successful refresh — the inline path has no notification).
-                    lastRefreshResult.value = result
-                    // Record the completion timestamp on success so the "Last updated" header
-                    // updates on Desktop/iOS (the Android worker writes the same cell on its path).
-                    if (result is AppResult.Success) {
-                        libraryPrefs.setLastUpdated(Clock.System.now())
-                    }
-                } finally {
-                    inlineRefreshing.value = false
+                runCatchingCancellable {
+                    val result = refreshAndStamp()
+                    currentCoroutineContext().ensureActive()
+                    lastRefreshResult.emit(result)
+                }.onFailure { t ->
+                    currentCoroutineContext().ensureActive()
+                    lastRefreshResult.emit(
+                        AppResult.Failure(AppError.Unexpected(message = "Library refresh failed", cause = t)),
+                    )
                 }
             }
+        // Also clears a claim when the scope was cancelled before the launch body started.
+        job.invokeOnCompletion { inlineRefreshing.value = false }
+    }
+
+    private suspend fun refreshAndStamp(): AppResult<Int> {
+        val result = refreshAllChapters()
+        currentCoroutineContext().ensureActive()
+        if (result is AppResult.Success && result.value.snapshotSize > 0) {
+            val stampFailure = runCatchingCancellable { stampLastSuccess() }.exceptionOrNull()
+            if (stampFailure != null) return AppResult.Failure(AppError.Storage.Io(stampFailure))
         }
+        // A metadata write may already have committed when cancellation arrives. Never roll it
+        // back or publish success from the cancelled run; there is no cross-operation transaction.
+        currentCoroutineContext().ensureActive()
+        return result.map { it.newChapterCount }
     }
 
     override fun observeIsRefreshing(): Flow<Boolean> =
@@ -161,13 +191,14 @@ class LibraryRefreshRepositoryImpl(
             // #8: observe the UNIQUE-work chain by name, not a single job id — this survives the
             // ExistingWorkPolicy.REPLACE swap (new request id) that a by-id observer would race
             // against, so the spinner always tracks the live run.
-            scheduler.observeUniqueWork(REFRESH_WORK_NAME)
+            scheduler
+                .observeUniqueWork(REFRESH_WORK_NAME)
                 .map { it == JobState.Running }
         } else {
             inlineRefreshing.asStateFlow()
         }
 
-    override fun observeLastRefreshResult(): Flow<AppResult<Int>?> = lastRefreshResult.asStateFlow()
+    override fun observeLastRefreshResult(): Flow<AppResult<Int>?> = lastRefreshResult.asSharedFlow()
 
     private companion object {
         const val REFRESH_WORK_NAME = "LibraryRefresh"

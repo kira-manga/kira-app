@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.local.dao.ChapterDao
@@ -143,16 +144,18 @@ class SettingsRepositoryImpl(
     private val legacy: LegacySettingsRepository,
     private val dispatchers: DispatcherProvider,
     private val dataStore: DataStoreHelper,
-    private val chapterDao: ChapterDao,
-    private val cbzWriter: CbzWriter,
-    private val mangaDao: MangaDao,
-    // B4: lets the manual compressor skip chapters that the background download engine is actively
-    // transferring/finalizing, so the two never race on the same chapter dir's .cbz.part + loose pages.
-    private val chapterDownloadDao: ChapterDownloadDao,
-    // Ledger-size invariant (ChapterDownloadEntity KDoc): after a convert rewrites the chapter dir,
-    // the SUCCESS row's sizeBytes must be re-walked or Details keeps showing the loose-pages size.
-    private val appFileSystem: AppFileSystem,
+    conversion: DownloadedChapterConversion,
+    private val httpCache: HttpCacheClearer,
 ) : SettingsRepository {
+    private val chapterDao: ChapterDao = conversion.chapters
+    private val cbzWriter: CbzWriter = conversion.archives
+    private val mangaDao: MangaDao = conversion.manga
+
+    // The manual converter must skip active transfers/finalizers before touching their chapter files.
+    private val chapterDownloadDao: ChapterDownloadDao = conversion.downloads
+
+    // Re-walk the converted chapter directory to refresh the existing SUCCESS row's size ledger.
+    private val appFileSystem: AppFileSystem = conversion.files
     private val cacheRefresh = MutableSharedFlow<Unit>(replay = 1)
 
     // GAP-SET-16 — hot progress state for the CBZ bulk-convert run, native-parity port of the
@@ -238,6 +241,7 @@ class SettingsRepositoryImpl(
     override suspend fun clearLargeCache(): Result<Unit> =
         runCatchingCancellable {
             withContext(dispatchers.io) {
+                httpCache.clear()
                 legacy.clearFilesLargerThan1MB()
             }
             cacheRefresh.tryEmit(Unit)
@@ -314,9 +318,10 @@ class SettingsRepositoryImpl(
                     }
 
                     var converted = 0
-                    chapters.forEachIndexed { index, chapter ->
+                    var failed = 0
+                    chapters.forEach { chapter ->
                         if (shouldStop.value) {
-                            emitStopped(total = total, converted = converted)
+                            emitStopped(total = total, converted = converted, failed = failed)
                             return@withContext
                         }
                         val mangaTitle =
@@ -325,7 +330,8 @@ class SettingsRepositoryImpl(
                                 .orEmpty()
                         conversionProgress.update {
                             it.copy(
-                                convertedChapters = index,
+                                convertedChapters = converted,
+                                failedChapters = failed,
                                 currentMangaTitle = mangaTitle,
                                 currentChapterNumber = chapter.number,
                             )
@@ -352,18 +358,23 @@ class SettingsRepositoryImpl(
                                 if (sizeBytes > 0L) chapterDownloadDao.updateSize(chapter.id, sizeBytes)
                             }
                         }.onSuccess { converted++ }
+                            .onFailure { failed++ }
+                        conversionProgress.update {
+                            it.copy(convertedChapters = converted, failedChapters = failed)
+                        }
                     }
 
                     // Re-check after the last chapter so a Stop pressed during the final convert still
                     // surfaces the Stopped terminal state (native re-checks `shouldStopConversion` too).
                     if (shouldStop.value) {
-                        emitStopped(total = total, converted = converted)
+                        emitStopped(total = total, converted = converted, failed = failed)
                     } else {
                         conversionProgress.value =
                             CbzConversionProgress(
                                 isConverting = false,
                                 totalChapters = total,
                                 convertedChapters = converted,
+                                failedChapters = failed,
                                 successMessage = TERMINAL_MARKER,
                             )
                     }
@@ -406,18 +417,20 @@ class SettingsRepositoryImpl(
 
     /**
      * Emit the terminal Stopped snapshot (native `stopConversion()` body) — `wasStopped = true`,
-     * `isConverting = false`, carrying the converted count + the implied remaining
-     * (`total - converted`). The `:ui` renders the localized "stopped by user" summary from these.
+     * `isConverting = false`, carrying converted/failed counts + the unattempted remainder
+     * (`total - converted - failed`). The `:ui` renders the localized "stopped by user" summary from these.
      */
     private fun emitStopped(
         total: Int,
         converted: Int,
+        failed: Int,
     ) {
         conversionProgress.value =
             CbzConversionProgress(
                 isConverting = false,
                 totalChapters = total,
                 convertedChapters = converted,
+                failedChapters = failed,
                 wasStopped = true,
                 successMessage = TERMINAL_MARKER,
             )

@@ -9,19 +9,33 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import me.manga.kira.data.repository.AdminComplaintListRepositoryImpl
+import me.manga.kira.data.repository.FeedbackRepositoryImpl
+import me.manga.kira.domain.auth.UserIdProvider
+import me.manga.kira.domain.device.DeviceInfoProvider
+import me.manga.kira.platform.version.AppVersionProvider
 import me.manga.kira.presentation.features.complaint.model.Complaint
 import me.manga.kira.presentation.features.complaint.model.ComplaintStatus
 import me.manga.kira.presentation.features.complaint.model.ComplaintType
+import me.manga.kira.presentation.features.complaint.usecase.GetAllComplaintUseCase
+import me.manga.kira.presentation.features.complaint.usecase.SendComplaintUseCase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import me.manga.kira.domain.model.complaint.ComplaintType as DomainComplaintType
 
 class ComplaintFirestoreRestDataSourceTest {
     private val config =
@@ -85,6 +99,58 @@ class ComplaintFirestoreRestDataSourceTest {
             assertEquals("test-api-key", request.url.parameters["key"])
             assertNull(request.headers[HttpHeaders.Authorization])
         }
+
+    @Test
+    fun feedbackVersion_roundTripsThroughFirestoreFieldsIntoTheAdminSummary() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        var storedDocument: JsonObject? = null
+        val source = dataSource(requests) { request ->
+            when (request.method) {
+                HttpMethod.Post -> {
+                    val fields = Json.parseToJsonElement((request.body as TextContent).text)
+                        .jsonObject.getValue("fields").jsonObject
+                    val metadata = fields.getValue("metadata").jsonObject.getValue("mapValue")
+                        .jsonObject.getValue("fields").jsonObject
+                    assertEquals(
+                        "7.8.9",
+                        metadata.getValue("appVersion").jsonObject.getValue("stringValue").jsonPrimitive.content,
+                    )
+                    storedDocument = JsonObject(
+                        mapOf(
+                            "name" to JsonPrimitive("projects/test-project/databases/(default)/documents/complaints_v2/doc123"),
+                            "fields" to fields,
+                        ),
+                    )
+                    checkNotNull(storedDocument).toString() to HttpStatusCode.OK
+                }
+                HttpMethod.Get -> JsonObject(
+                    mapOf("documents" to JsonArray(listOf(checkNotNull(storedDocument)))),
+                ).toString() to HttpStatusCode.OK
+                else -> error("Unexpected request method")
+            }
+        }
+        val feedback = FeedbackRepositoryImpl(
+            sendComplaint = SendComplaintUseCase(source),
+            userIdProvider = object : UserIdProvider {
+                override fun getUserId(): String = "device-user"
+            },
+            deviceInfoProvider = object : DeviceInfoProvider {
+                override fun getDeviceMetadata(): Map<String, Any> = mapOf("manufacturer" to "Test manufacturer")
+            },
+            appVersionProvider = object : AppVersionProvider {
+                override val versionName: String = "7.8.9"
+                override val packageName: String = "me.manga.kira"
+            },
+        )
+
+        feedback.submit(DomainComplaintType.TECHNICAL, "Test subject", "Test complaint body").getOrThrow()
+        val summary = AdminComplaintListRepositoryImpl(GetAllComplaintUseCase(source))
+            .loadAllComplaints().getOrThrow().single()
+
+        assertEquals("7.8.9", summary.appVersion)
+        assertEquals("Test manufacturer", summary.manufacturer)
+        assertEquals(listOf(HttpMethod.Post, HttpMethod.Get), requests.map { it.method })
+    }
 
     @Test
     fun readPaths_decodeDocuments_andPageTheAdminList() =

@@ -266,13 +266,11 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Request POST_NOTIFICATIONS once ever on Android 13+ (guarded by a prefs flag so we never nag).
-     * Onboarding's Theme step is the sole owner of the NEW-user ask (contextual, with a denial toast +
-     * settings deep-link), so this fires ONLY once onboarding is complete (`first_launch == false`) —
-     * a backfill for existing installs that onboarded before notifications existed. Gating on
-     * `first_launch` prevents both this and the Theme step firing on a fresh install and burning
-     * Android's two allowed prompts (#6). A denial degrades gracefully — notifications simply aren't
-     * shown; the FCM token + deep-link paths are unaffected.
+     * One-shot POST_NOTIFICATIONS backfill on Android 13+, after onboarding has completed.
+     * The Theme step's optional, user-initiated request does not consume this separate prefs flag.
+     * A later Activity creation may therefore ask after a new user skipped or declined onboarding's
+     * request. Gating on `first_launch` suppresses this backfill only while the wizard is active.
+     * Denial never blocks Library; the FCM token and deep-link paths are unaffected.
      */
     private fun maybeRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
@@ -284,8 +282,8 @@ class MainActivity : ComponentActivity() {
         if (alreadyGranted) return
         try {
             val prefs = GlobalContext.get().get<SharedPrefsHelper>()
-            // Onboarding (Theme step) owns the new-user ask; only backfill once onboarding is done, so
-            // the two paths never both fire on a fresh install (#6).
+            // Defer this separate backfill while onboarding is active. It may still run after a new
+            // user skipped or declined the Theme request and completed the wizard.
             if (prefs.getBoolean(StorageKeys.FIRST_LAUNCH, true)) return
             if (prefs.getBoolean(StorageKeys.NOTIF_PERMISSION_ASKED, false)) return
             // Launch BEFORE persisting the one-shot flag (2026-07 audit): a throw out of launch()

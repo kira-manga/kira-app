@@ -11,6 +11,10 @@ final class ReaderPageCell: UICollectionViewCell {
     private let progressView = ReaderPageProgressView()
     private let errorView = ReaderPageErrorView()
     private var token: String?
+    private var loadGeneration = 0
+    var imageLoader: ReaderImageLoading = ReaderImageLoader.shared {
+        willSet { if imageLoader !== newValue { cancelLoad() } }
+    }
     private var pageURL: String?
     private var pageHeaders: [String: String] = [:]
     private var targetWidthPx: CGFloat = 1170
@@ -54,6 +58,7 @@ final class ReaderPageCell: UICollectionViewCell {
     ///     `widthPt * screenScale`, so zooming in re-decodes sharper (no blur) while 1× stays light.
     ///   - onAspect: reports the decoded aspect ratio (height / width) so the layout can size the cell.
     func configure(url: String, headers: [String: String], widthPt: CGFloat, onAspect: ((CGFloat) -> Void)?) {
+        if pageURL != url || pageHeaders != headers { imageView.image = nil }
         self.pageURL = url
         self.pageHeaders = headers
         self.targetWidthPx = widthPt * UIScreen.main.scale
@@ -63,17 +68,21 @@ final class ReaderPageCell: UICollectionViewCell {
 
     private func load() {
         guard let url = pageURL else { return }
+        cancelLoad()
+        let generation = loadGeneration
         errorView.isHidden = true
         // No-flash reload: keep any existing image on screen while a higher-res (zoom) decode is fetched.
         if imageView.image == nil { progressView.startIndeterminate() } else { progressView.hide() }
-        token = ReaderImageLoader.shared.load(
+        let loader = imageLoader
+        let newToken = loader.load(
             url: url, headers: pageHeaders, targetWidthPx: targetWidthPx,
             onProgress: { [weak self] fraction in
-                guard let self = self, self.pageURL == url, self.imageView.image == nil else { return }
+                guard let self = self, self.loadGeneration == generation, self.pageURL == url,
+                      self.imageView.image == nil else { return }
                 self.progressView.setFraction(fraction)
             },
             completion: { [weak self] image in
-                guard let self = self, self.pageURL == url else { return }
+                guard let self = self, self.loadGeneration == generation, self.pageURL == url else { return }
                 self.progressView.hide()
                 if let image = image {
                     ReaderPerfLog.log("assign", ReaderPerfLog.tail(url)) // expect MAIN, should be trivial
@@ -85,12 +94,20 @@ final class ReaderPageCell: UICollectionViewCell {
                 }
             }
         )
+        if loadGeneration == generation { token = newToken } else { loader.cancel(token: newToken) }
     }
+
+    private func cancelLoad() {
+        loadGeneration &+= 1
+        if let token = token { imageLoader.cancel(token: token) }
+        token = nil
+    }
+
+    deinit { if let token = token { imageLoader.cancel(token: token) } }
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        if let token = token { ReaderImageLoader.shared.cancel(token: token) }
-        token = nil
+        cancelLoad()
         pageURL = nil
         onAspect = nil
         onOpenInWebView = nil

@@ -6,45 +6,23 @@ import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /**
- * Android actual — hides the navigation bar for the duration of the composition.
- *
- * Body is the native pre-KMP `HideSystemBars()` implementation
- * (`yami-manga-apk-main/.../ReaderScreen.kt:768-786`) ported verbatim. The Activity is resolved
- * via the standard `LocalContext` → `Context.findActivity()` walk (`Context` can be a
- * `ContextWrapper` chain ending in the Activity when used from a Compose host inside a
- * `ComponentActivity`).
- *
- * `WindowCompat.getInsetsController` is the back-compat aware way to obtain a
- * `WindowInsetsControllerCompat` — it picks the framework `WindowInsetsController` on API 30+
- * and the support-library `WindowInsetsControllerCompat` shim below that, so we don't need an
- * SDK version branch here.
- *
- * Defensive fallback: if no Activity is reachable from the context chain, the side-effect
- * becomes a no-op (`return@DisposableEffect onDispose {}` is *not* sufficient on its own — the
- * Kotlin shape used here mirrors the native code's `?: return@DisposableEffect onDispose {}`).
- * In practice every Compose host inside this app is an `Activity`, so the fallback is
- * defence-in-depth, not an expected branch.
+ * Owns navigation-bar hiding for this Reader entry, not for the entire Activity composition.
+ * NavHost transitions can compose multiple Readers in the same Window: only their final release
+ * restores navigation bars. The helper also reapplies hiding after resume, focus and attachment.
+ * Status bars and the other platforms' actuals are unchanged. A context without an Activity is
+ * still a no-op; changing the resolved Window or entry lifecycle replaces the lease.
  */
 @Composable
 actual fun HideNavigationBarSideEffect() {
-    val context = LocalContext.current
+    val window = LocalContext.current.findActivity()?.window
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-    DisposableEffect(Unit) {
-        val window = context.findActivity()?.window
-            ?: return@DisposableEffect onDispose {}
-        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-
-        insetsController.hide(WindowInsetsCompat.Type.navigationBars())
-        insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-
-        onDispose {
-            insetsController.show(WindowInsetsCompat.Type.navigationBars())
-        }
+    DisposableEffect(window, lifecycle) {
+        val owner = window?.let { ReaderNavigationBarOwner(it, lifecycle) }
+        onDispose { owner?.release() }
     }
 }
 
@@ -58,6 +36,8 @@ private fun Context.findActivity(): Activity? {
 }
 
 /**
+ * Historical snapshot, before per-Window Reader ownership:
+ *
  * **Audit-trail postscript** (Phase 9.x.cluster163.staleKdocSweep.cascade,
  * Task #619, 2026-05-29): classified as follows after recursive symbol
  * verification (two-hundred-and-twenty-third sibling of the cluster57-162

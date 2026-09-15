@@ -1,6 +1,8 @@
 package me.manga.kira.sources.contracts
 
+import kotlinx.coroutines.flow.Flow
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 
 /**
  * Lookup of generic sources by API key. [get] returns an executable client only for an active,
@@ -13,6 +15,13 @@ import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
  * (docs/sources/MANGASOURCE_DECOUPLING_PLAN.md §2).
  */
 interface SourceRegistry {
+    /**
+     * Current accepted metadata followed by its replacements. Each emission derives from one
+     * accepted document; consumers must project the whole emission without per-row registry reads.
+     * Dynamic registries must publish changes, not provide a one-shot imperative snapshot.
+     */
+    val catalog: Flow<SourceCatalogSnapshot>
+
     fun get(api: String): MangaSourceClient?
 
     /** True when [api] is present with an active lifecycle in the accepted generic catalog. */

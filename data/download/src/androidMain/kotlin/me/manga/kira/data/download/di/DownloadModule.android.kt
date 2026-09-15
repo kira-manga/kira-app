@@ -1,11 +1,14 @@
 package me.manga.kira.data.download.di
 
+import me.manga.kira.presentation.features.download.domain.ChapterDownloadArchive
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadPersistence
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepositoryImpl
+import me.manga.kira.presentation.features.download.domain.clean.PageDownloadTransfer
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 // Android download engine: WorkManager-backed DownloadRepositoryImpl driving DownloadWorkerV2, with
@@ -14,13 +17,14 @@ import org.koin.dsl.module
 actual fun downloadModule(): Module =
     module {
         single { ChapterDownloadPersistence(get(), get(), get(), get()) }
+        factory { PageDownloadTransfer(get(named("chapter-download-http")), get()) }
+        factory { ChapterDownloadArchive(get(), get()) }
         single {
             ChapterDownloadService(
                 context = androidContext(),
                 persistence = get(),
-                httpClient = get(),
-                optimizedCbzManager = get(),
-                dataStoreHelper = get(),
+                pageTransfer = get(),
+                archive = get(),
             )
         }
         single<DownloadRepository> {

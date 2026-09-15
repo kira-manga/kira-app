@@ -25,6 +25,7 @@ import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /**
@@ -165,6 +166,12 @@ internal class StatefulMangaDao(
     }
 
     // --- unused surface ---------------------------------------------------------------------------
+    override suspend fun toggleLiked(mangaId: Long) = error("unused")
+    override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+    override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+    override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+    override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
+
     override fun getAllChapterMetricsFlow(): Flow<List<MangaChapterMetrics>> = flowOf(emptyList())
 
     override fun getAllSavedMangaFlow(): Flow<List<SavedMangaEntity>> = flowOf(rows.toList())
@@ -180,6 +187,11 @@ internal class StatefulMangaDao(
         api: String,
         title: String,
     ): Long? = rows.firstOrNull { it.api == api && it.title == title }?.id
+
+    override suspend fun getIdByApiAndUrl(
+        api: String,
+        mangaUrl: String,
+    ): Long? = rows.firstOrNull { it.api == api && it.url == mangaUrl }?.id
 }
 
 internal class StatefulChapterDao(
@@ -412,6 +424,7 @@ internal class FixedUpdateManager(
 ) : SourceUpdateManager {
     override val state: StateFlow<UpdateState> =
         MutableStateFlow(UpdateState.Active(doc.revision, UpdateState.Origin.BUNDLED))
+    override val acceptedDocument: StateFlow<SourceConfigDocument> = MutableStateFlow(doc)
 
     override fun activeDocument(): SourceConfigDocument = doc
 
@@ -423,6 +436,13 @@ internal class PilotRegistry(
     private val descriptors: Map<String, RuntimeSourceDescriptor> = emptyMap(),
     private val client: (String) -> MangaSourceClient? = { null },
 ) : SourceRegistry {
+    override val catalog: Flow<SourceCatalogSnapshot> = flowOf(
+        SourceCatalogSnapshot(
+            revision = 1,
+            descriptors = genericDescriptors().filter { it.isGeneric && it.lifecycle == "active" },
+        ),
+    )
+
     override fun get(api: String): MangaSourceClient? = if (api in piloted) client(api) else null
 
     override fun isConfigBacked(api: String): Boolean = api in piloted

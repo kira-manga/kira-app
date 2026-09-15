@@ -72,7 +72,7 @@ class FakeLibraryRepository : LibraryRepository {
 
     fun emitLibrary(value: List<LibraryManga>) { library.value = value }
 
-    /** Lets a test flip the reactive "in library" flag the Details VM gates persistence on. */
+    /** Lets a test drive the reactive membership affordance independently of persistence. */
     fun emitInLibrary(value: Boolean) { inLibrary.value = value }
 
     /** Chapters captured by the most recent [persistNewChapters] call (#3 refresh-persist test). */
@@ -97,11 +97,10 @@ class FakeLibraryRepository : LibraryRepository {
     }
     override suspend fun persistNewChapters(
         api: String,
-        language: String,
-        title: String,
+        mangaUrl: String,
         fetched: List<Chapter>,
     ): AppResult<Int> {
-        calls += "persistNewChapters($title,fetched=${fetched.size})"
+        calls += "persistNewChapters($api,$mangaUrl,fetched=${fetched.size})"
         lastPersistedNewChapters = fetched
         return AppResult.Success(fetched.size)
     }

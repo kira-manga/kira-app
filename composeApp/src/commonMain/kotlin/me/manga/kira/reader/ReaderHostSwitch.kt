@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.presentation.reader.ReaderViewModel
 
 /**
@@ -25,7 +24,7 @@ internal expect fun ReaderHostSwitch(
     chapter: Chapter,
     onNavigateBack: () -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
-    onSharePage: (ImageBitmap) -> Unit,
+    onSharePage: (capture: suspend () -> ImageBitmap?) -> Unit,
+    isSharing: Boolean,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
 )

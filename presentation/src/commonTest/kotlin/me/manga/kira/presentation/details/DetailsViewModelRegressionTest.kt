@@ -598,7 +598,7 @@ class DetailsViewModelRegressionTest {
         }
 
     @Test
-    fun refresh_doesNotPersist_whenNotInLibrary() =
+    fun refresh_offersFetchedChapters_evenWhenMembershipObserverSaysFalse() =
         runTest {
             val saved = FakeSavedMangaDetailsRepository() // null → not saved/in-library
             val libraryRepo = FakeLibraryRepository() // inLibrary stays false
@@ -612,10 +612,13 @@ class DetailsViewModelRegressionTest {
             vm.submit(DetailsIntent.OnEnter(manga())) // fresh network open (not in library)
 
             assertEquals(
-                0,
+                1,
                 libraryRepo.calls.count { it.startsWith("persistNewChapters") },
-                "a not-in-library Details open must NOT create saved rows",
+                "the repository, not observer timing, decides whether the manga has a saved row",
             )
+            // This fake only records offers. DetailsUrlOnlyRoomTest proves an unsaved offer writes
+            // neither a manga nor a chapter through the real production repository and Room.
+            assertEquals(listOf(chapter("c/1"), chapter("c/2")), libraryRepo.lastPersistedNewChapters)
         }
 
     @Test

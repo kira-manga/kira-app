@@ -1,3 +1,7 @@
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.security.MessageDigest
+
 pluginManagement {
     repositories {
         google {
@@ -12,9 +16,48 @@ pluginManagement {
     }
 }
 
+// Source-bound Android candidate only; this integrity check is not runtime qualification.
+// Check the exact AAR and its inspected POM before Gradle can resolve this local module.
+val avifCandidateDirectory =
+    file("platform/vendor/avif/maven/org/aomedia/avif/android/avif/1.3.0.841110fd-kira-limits1")
+val avifCandidateInputs =
+    mapOf(
+        "avif-1.3.0.841110fd-kira-limits1.aar" to
+            (3002110L to "3fb46514a771c9d8efc38192d80e69031021c3b6f7f5f09a154131ca083c5888"),
+        "avif-1.3.0.841110fd-kira-limits1.pom" to
+            (1247L to "b8190c2b737308dd81d1adcf362c64e26179a6d0913e9c9ed0a84a40091b0400"),
+    )
+avifCandidateInputs.forEach { (name, expected) ->
+    val input = avifCandidateDirectory.resolve(name)
+    check(Files.isRegularFile(input.toPath(), LinkOption.NOFOLLOW_LINKS) && input.length() == expected.first) {
+        "Missing or changed pinned AVIF candidate input: $name"
+    }
+    val digest = MessageDigest.getInstance("SHA-256").digest(input.readBytes()).joinToString("") { byte ->
+        (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+    }
+    check(digest == expected.second) { "Pinned AVIF candidate checksum mismatch: $name" }
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // Only this Android module is local. Never fall back to the baseline AAR or
+        // use this repository for unrelated dependencies; POM-only metadata is hash-pinned above.
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "KiraAvifCandidate"
+                    url = uri("platform/vendor/avif/maven")
+                    metadataSources {
+                        mavenPom()
+                        ignoreGradleMetadataRedirection()
+                    }
+                }
+            }
+            filter {
+                includeModule("org.aomedia.avif.android", "avif")
+            }
+        }
         google()
         mavenCentral()
         if (providers.gradleProperty("kiraUseMavenLocal").orNull == "true") {

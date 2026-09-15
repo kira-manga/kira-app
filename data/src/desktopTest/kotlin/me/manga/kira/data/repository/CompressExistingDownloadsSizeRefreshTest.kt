@@ -4,9 +4,11 @@ import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.MangaDao
+import me.manga.kira.data.local.dao.MangaIdentityQueries
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.platform.cbz.CbzWriter
@@ -148,12 +150,20 @@ class CompressExistingDownloadsSizeRefreshTest {
         }
     }
 
-    private object InertMangaDao : MangaDao {
+    private object InertMangaDao :
+        FailingMangaIdentityQueries(),
+        MangaDao {
         override suspend fun getMangaById(mangaId: Long) = null
 
         override fun getAllChapterMetricsFlow() = error("unused")
 
         override suspend fun updateManga(manga: SavedMangaEntity): Int = error("unused")
+
+        override suspend fun toggleLiked(mangaId: Long) = error("unused")
+        override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+        override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+        override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+        override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
 
         override suspend fun update(manga: SavedMangaEntity) = error("unused")
 
@@ -165,11 +175,6 @@ class CompressExistingDownloadsSizeRefreshTest {
             mangaId: Long,
             timestamp: Long,
         ) = error("unused")
-
-        override suspend fun getIdByApiAndTitle(
-            api: String,
-            title: String,
-        ): Long? = error("unused")
 
         override suspend fun getMangaByApi(api: String) = error("unused")
 
@@ -190,11 +195,15 @@ class CompressExistingDownloadsSizeRefreshTest {
                 ),
             dispatchers = testDispatchers,
             dataStore = DataStoreHelper(MapSettings()),
-            chapterDao = chapterDao,
-            cbzWriter = writer,
-            mangaDao = InertMangaDao,
-            chapterDownloadDao = downloadDao,
-            appFileSystem = appFs,
+            conversion =
+                DownloadedChapterConversion(
+                    chapters = chapterDao,
+                    archives = writer,
+                    manga = InertMangaDao,
+                    downloads = downloadDao,
+                    files = appFs,
+                ),
+            httpCache = HttpCacheClearer { },
         )
 
     @Test
@@ -247,4 +256,17 @@ class CompressExistingDownloadsSizeRefreshTest {
                 "each write is scoped to its own (manga, chapter) via the unique chapterId — never by url",
             )
         }
+}
+
+/** Unused identity calls still fail immediately rather than becoming permissive fake lookups. */
+private open class FailingMangaIdentityQueries : MangaIdentityQueries {
+    override suspend fun getIdByApiAndTitle(
+        api: String,
+        title: String,
+    ): Long? = error("unused")
+
+    override suspend fun getIdByApiAndUrl(
+        api: String,
+        mangaUrl: String,
+    ): Long? = error("unused")
 }

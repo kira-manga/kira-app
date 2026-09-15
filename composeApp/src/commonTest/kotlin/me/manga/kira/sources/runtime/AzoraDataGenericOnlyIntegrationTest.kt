@@ -185,6 +185,7 @@ class AzoraDataGenericOnlyIntegrationTest {
                 UpdateState.Active(doc.revision, UpdateState.Origin.BUNDLED),
             )
         override val state: StateFlow<UpdateState> = mutableState.asStateFlow()
+        override val acceptedDocument: StateFlow<SourceConfigDocument> = MutableStateFlow(doc)
 
         override fun activeDocument(): SourceConfigDocument = doc
 

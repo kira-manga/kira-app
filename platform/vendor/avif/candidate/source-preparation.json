@@ -1,0 +1,20 @@
+{
+  "source_commits": {
+    "libavif": "841110fd8723abd0d5439cbb2cfb8e9cfa11f808",
+    "dav1d": "42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa",
+    "libyuv": "464c51a0353c71f08fe45f683d6a97a638d47833"
+  },
+  "source_manifest_sha256": "494ea6ce65ffb8483b98b80616575cd0f50297e3bb9184e0931c54de11469f76",
+  "patch_sha256": "9ddfc543b54a30f0422cccb98f2f89eb7c27424bbe503ce5eab97f6f43b69abe",
+  "modified_producer_input_sha256": {
+    "libavif/android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java": "72623a821c496ec5af766ee9dbe32b318c000235230fce3fe203f2190ecd0b55",
+    "libavif/android_jni/avifandroidjni/src/main/jni/libavif_jni.cc": "04316b70dc9e58a866cb7dea4b2e455788ce7d8b293b371603ee48b1bad1ef2f",
+    "libavif/android_jni/gradle/wrapper/gradle-wrapper.properties": "06d4dd56f9c0d158e40e1571c39ec7d1d679f021fcc892052a9713d78cab3ae1"
+  },
+  "ndk_compiled_cpufeatures_sha256": {
+    "sources/android/cpufeatures/cpu-features.c": "ab4b8f1d2ef649069867a33540928d8ab8fa0eb1873b53f146629f656d7cfe18",
+    "sources/android/cpufeatures/cpu-features.h": "7867cc62277f04859e8eeb33573996f18839b577f8ec874b0818d92aeee20726",
+    "sources/android/cpufeatures/NOTICE": "c870d52f42a8f93023b99a85fe68d02637d6b04e5f35bbcd7f98759adb4e4d49"
+  },
+  "native_tests": "NOT_RUN"
+}

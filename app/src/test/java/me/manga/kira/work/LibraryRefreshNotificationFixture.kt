@@ -20,6 +20,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -36,6 +37,8 @@ import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.core.util.notification.NotificationRoomFixture
 import me.manga.kira.core.util.notification.notificationCoverCalls
 import me.manga.kira.core.util.notification.startWorkExecutionJob
+import me.manga.kira.data.local.dao.LibraryDeo
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -45,6 +48,7 @@ import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -139,6 +143,8 @@ private fun Manga.fixtureDetails(chapters: List<SavedChapterEntity>) =
 
 private fun fixtureRegistry(client: MangaSourceClient): SourceRegistry =
     object : SourceRegistry {
+        override val catalog = flowOf(SourceCatalogSnapshot(1, emptyList()))
+
         override fun get(api: String) = client.takeIf { it.api == api }
 
         override fun isConfigBacked(api: String) = api == client.api
@@ -261,17 +267,21 @@ internal class RefreshDeadlineWitness(
     val coverWaiting = CompletableDeferred<Unit>()
     val coverExpired = CompletableDeferred<Unit>()
     val attempts = AtomicInteger()
-    val chapters =
-        room.chapterInserts {
-            val ids = room.db.chapterDao().insertChaptersSafely(it)
-            if (attempts.incrementAndGet() == 1) {
-                withContext(dispatcher) {
-                    storageWaiting.complete(Unit)
-                    delay(25_000)
-                }
+    val discoveries = object : LibraryDeo by room.db.libraryDeo() {
+        override suspend fun persistChapterDiscoveries(
+            api: String,
+            mangaUrl: String,
+            chapters: List<SavedChapterEntity>,
+            expectedMangaId: Long?,
+        ): List<ChapterNotification> {
+            attempts.incrementAndGet()
+            withContext(dispatcher) {
+                storageWaiting.complete(Unit)
+                delay(25_000)
             }
-            ids
+            return room.db.libraryDeo().persistChapterDiscoveries(api, mangaUrl, chapters, expectedMangaId)
         }
+    }
     val covers =
         object : NotificationCovers {
             override suspend fun withCover(

@@ -107,7 +107,14 @@ internal class CbzHostFixture : AutoCloseable {
     }
 
     fun assertNoTemporary(chapter: Long = 1L) {
-        assertFalse(directory(chapter).listFiles().orEmpty().any { it.name.endsWith(".cbz.tmp") })
+        assertFalse(
+            directory(chapter)
+                .listFiles()
+                .orEmpty()
+                .any {
+                    it.name.endsWith(".cbz.tmp") || (it.name.startsWith(".cbz-page-") && it.name.endsWith(".snapshot"))
+                },
+        )
     }
 
     override fun close() {

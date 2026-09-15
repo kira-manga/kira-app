@@ -93,9 +93,9 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Phase 7.x.complaint.foundation rework. Renders [ComplaintState] (loading / error / empty /
  * list with search + filter chips) and dispatches [ComplaintIntent]. Phase 7.x.complaint.actions
- * rework append: row clicks open the [ComplaintActionDialog], and one-shot effects
- * ([ComplaintEffect.ShowSuccessMessage] / [ComplaintEffect.ShowErrorMessage]) drive a Material 3
- * [SnackbarHost] anchored to the Scaffold.
+ * rework append: row clicks open the [ComplaintActionDialog], and [ComplaintEffect.ShowActionSuccess]
+ * drives a Material 3 [SnackbarHost] anchored to the Scaffold. Mutation failure stays inside the
+ * active dialog via [ComplaintState.actionFailed], not in an underlying-screen snackbar.
  *
  * **Visual parity vs the legacy `composeApp/.../ComplaintScreen.kt`** (unchanged from
  * foundation slice):
@@ -126,7 +126,7 @@ import org.jetbrains.compose.resources.stringResource
  *    `state.activeComplaint != null` (both fields are set/cleared together by the VM — see
  *    [ComplaintState] dialog-mount precondition KDoc).
  *  - A [LaunchedEffect] collects [ComplaintViewModel.effects] and routes each
- *    [ComplaintEffect.ShowSuccessMessage] / [ComplaintEffect.ShowErrorMessage] to the
+ *    [ComplaintEffect.ShowActionSuccess] to the
  *    [SnackbarHostState]. The collector runs as long as the composable is in composition;
  *    snackbars survive recompositions but not screen-departure (same posture as the legacy
  *    Snackbar usage in `ComplaintScreen.kt`).
@@ -202,7 +202,6 @@ fun ComplaintScreen(
     val updatedMessage = stringResource(Res.string.np_complaint_action_updated)
     val deletedMessage = stringResource(Res.string.np_complaint_action_deleted)
     val bodyCopiedMessage = stringResource(Res.string.np_complaint_body_copied)
-    val actionFailureMessage = stringResource(Res.string.error_occurred)
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collectLatest { effect ->
@@ -213,7 +212,6 @@ fun ComplaintScreen(
                     ComplaintAction.DELETED -> deletedMessage
                     ComplaintAction.BODY_COPIED -> bodyCopiedMessage
                 }
-                ComplaintEffect.ShowActionFailure -> actionFailureMessage
             }
             scope.launch { snackbarHostState.showSnackbar(message) }
         }
@@ -316,6 +314,7 @@ internal fun ComplaintScreenContent(
                     complaint = activeComplaint,
                     mode = state.actionDialogMode,
                     isSubmitting = state.isSubmittingAction,
+                    actionFailed = state.actionFailed,
                     onIntent = onIntent,
                 )
             }

@@ -1,25 +1,21 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.toRoute
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.manga.kira.core.platform.HideNavigationBarSideEffect
-import me.manga.kira.core.platform.encodeImageBitmapToPng
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
-import me.manga.kira.platform.image.ScreenshotProvider
 import me.manga.kira.presentation.reader.ReaderIntent
 import me.manga.kira.presentation.reader.ReaderViewModel
 import me.manga.kira.reader.ReaderHostSwitch
+import me.manga.kira.reader.rememberReaderSharing
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -83,15 +79,10 @@ fun ChapterImagesReworkScreenRoute(
     // (per-URL collectors started in the `runFetch` Success branch). Splitting reporter +
     // observer across two consumers is intentional — `:ui` only knows the `:domain` callback
     // shape, never the repository type, which keeps `:ui` decoupled from `:data`.
-    val pageProgressRepo: PageProgressRepository = koinInject()
 
-    // Reader parity item #5 (share current page): the existing `:platform` ScreenshotProvider SPI
-    // (relocated in Phase 5.y.3 — Android shares via Intent.ACTION_SEND + FileProvider, iOS via
-    // UIActivityViewController, Desktop by copying the saved-file path to the clipboard). Bound as
-    // a `single` in `:shared` PlatformModule.{android,ios,desktop}.kt; resolved here via Koin so
-    // `:ui` never sees a `:platform` type — it just hands back a captured ImageBitmap.
-    val screenshotProvider: ScreenshotProvider = koinInject()
-    val shareScope = rememberCoroutineScope()
+    // Reader-only admission is shared across routes, but this entry owns the operation's lifetime.
+    val sharing = rememberReaderSharing(backStackEntry)
+    val isSharing by sharing.isSharing.collectAsState()
 
     // Reader parity item #6 (legacy auto-403→WebView recovery): the shared
     // `rememberCloudflareChallengeSolver` helper — navigates to the WebView to clear the
@@ -141,24 +132,11 @@ fun ChapterImagesReworkScreenRoute(
         onOpenInWebView = { url, api ->
             navController.safeNavigate(Screen.WebView(url, api))
         },
-        // Reader parity item #5: `:ui` hands back the captured page bitmap; the adapter encodes it
-        // to PNG bytes and invokes the `:platform` share SPI. PNG-encode mirrors legacy
-        // `ScreenshotUtils` (PNG, quality 100). Title is an inline literal copying the legacy
-        // chooser title ("Share screenshot") verbatim. Launched on a remembered scope because
-        // `shareBitmapBytes` is suspend; the encode hops to Dispatchers.Default because pages are
-        // tall multi-megapixel strips (main-thread encode janks); a null encode (e.g. OOM on a
-        // huge strip) no-ops the share.
-        onSharePage = { bitmap ->
-            shareScope.launch {
-                val bytes = withContext(Dispatchers.Default) { encodeImageBitmapToPng(bitmap) }
-                if (bytes != null) {
-                    screenshotProvider.shareBitmapBytes(bytes, "Share screenshot")
-                }
-            }
-        },
+        // Admission precedes lazy viewport capture; the effect collector never waits for encoding.
+        onSharePage = sharing::request,
+        isSharing = isSharing,
         // Reader parity item #6: AUTO 403→WebView recovery + auto-retry-on-return.
         onSolveCloudflareChallenge = solveCloudflare,
-        onReportProgress = pageProgressRepo::report,
     )
 }
 

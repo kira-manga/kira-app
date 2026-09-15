@@ -146,7 +146,7 @@ actual fun rememberNotificationPermissionRequester(): NotificationPermissionRequ
     return remember(app, launcher) {
         object : NotificationPermissionRequester {
             override val onboardingPolicy: NotificationPermissionOnboardingPolicy =
-                NotificationPermissionOnboardingPolicy.REQUIRED_AUTOMATIC
+                NotificationPermissionOnboardingPolicy.OPTIONAL_USER_INITIATED
 
             override val hasPermission: StateFlow<Boolean> = hasPermission.asStateFlow()
 
@@ -162,10 +162,11 @@ actual fun rememberNotificationPermissionRequester(): NotificationPermissionRequ
             }
 
             override fun openAppSettings() {
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.fromParts("package", app.packageName, null)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+                val intent =
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", app.packageName, null)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
                 app.startActivity(intent)
             }
         }

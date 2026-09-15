@@ -8,12 +8,12 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.room.Room
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.LocalDate
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
@@ -36,18 +36,21 @@ import java.util.concurrent.atomic.AtomicInteger
 
 internal const val CHAPTER_NOTIFICATION_CHANNEL = "me.manga.kira.new_chapters"
 
-/** Real generated Room DAOs; individual failure tests delegate only the explicitly faulted call. */
+/** Real generated Room DAOs; SQL faults are injected inside their actual transaction. */
 internal class NotificationRoomFixture(
     private val context: Context,
 ) : AutoCloseable {
     private val previousNativeProperties = NATIVE_PROPERTIES.associateWith(System::getProperty)
     private val nativeRoot = Files.createTempDirectory(context.cacheDir.toPath(), "notification-room-").toFile()
+    lateinit var sql: NotificationSqlWitness
+        private set
     val db: MangaDatabase =
         try {
             stageOwnedNative()
+            sql = NotificationSqlWitness()
             Room
                 .inMemoryDatabaseBuilder<MangaDatabase>(context)
-                .setDriver(BundledSQLiteDriver())
+                .setDriver(sql)
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build()
         } catch (failure: Throwable) {
@@ -83,23 +86,9 @@ internal class NotificationRoomFixture(
 
     fun helper(
         covers: NotificationCovers,
-        repository: LibraryRepository = repository(),
-        notifications: NotificationDao = db.notificationDao(),
+        discoveries: LibraryDeo = db.libraryDeo(),
         context: Context = this.context,
-    ) = ChapterNotificationHelper(context, notifications, repository, covers)
-
-    fun chapterInserts(insert: suspend (List<SavedChapterEntity>) -> List<Long>): ChapterDao =
-        object : ChapterDao by db.chapterDao() {
-            override suspend fun insertChaptersSafely(chapters: List<SavedChapterEntity>) = insert(chapters)
-        }
-
-    fun notificationInserts(insert: suspend (List<ChapterNotification>) -> List<Long>): NotificationDao =
-        object : NotificationDao by db.notificationDao() {
-            override suspend fun insertNotificationsList(notifications: List<ChapterNotification>): List<Long> {
-                val ids = insert(notifications)
-                return ids
-            }
-        }
+    ) = ChapterNotificationHelper(context, discoveries, covers)
 
     suspend fun manga(
         label: String = "manga",
@@ -146,7 +135,8 @@ internal class NotificationRoomFixture(
     suspend fun assertStoredWithRealChapterIds(rows: List<ChapterNotification>) {
         assertEquals(rows.sortedBy { it.id }, updates())
         val chapters = db.chapterDao().getChaptersByMangaIdR(rows.first().mangaId).associateBy { it.url }
-        assertEquals(rows.size, chapters.size)
+        // Previously saved chapters need not have a discovery notification.
+        assertEquals(rows.size, chapters.values.count { chapter -> rows.any { it.chapterId == chapter.id } })
         rows.forEach { assertEquals(chapters.getValue(it.chapterUrl).id, it.chapterId) }
     }
 

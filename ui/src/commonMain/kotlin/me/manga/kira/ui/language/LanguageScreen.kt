@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.domain.model.language.Language
+import me.manga.kira.ui.components.KiraDialogError
 import me.manga.kira.ui.components.KiraSocialMediaRow
 import me.manga.kira.presentation.language.LanguageEffect
 import me.manga.kira.presentation.language.LanguageIntent
@@ -73,7 +76,6 @@ import me.manga.kira.ui.generated.resources.request_failed
 import me.manga.kira.ui.generated.resources.request_language
 import me.manga.kira.ui.generated.resources.request_language_prompt
 import me.manga.kira.ui.generated.resources.request_submitted_successfully
-import me.manga.kira.ui.generated.resources.retry
 import me.manga.kira.ui.generated.resources.select_language
 import me.manga.kira.ui.generated.resources.selected
 import me.manga.kira.ui.generated.resources.submit
@@ -105,17 +107,17 @@ import org.jetbrains.compose.resources.stringResource
  *    `OutlinedTextField` bound to [LanguageState.requestText]. Submit dispatches
  *    [LanguageIntent.OnSubmitRequest]; the VM hands off to
  *    [me.manga.kira.domain.usecase.feedback.SendLanguageRequestUseCase] and emits
- *    [LanguageEffect.RequestSubmitted] / [LanguageEffect.RequestFailed] on completion.
+ *    [LanguageEffect.RequestSubmitted] on success. Failure stays in
+ *    [LanguageState.requestFailed] and is rendered inside the retained dialog.
  *    The legacy screen used a `composeApp`-local `FeedbackDialog` with a category dropdown
  *    pre-set to `ComplaintType.LANGUAGES`; the rework dialog omits the dropdown because the
  *    `:data` impl hardcodes `subject = "Languages"` (single-purpose flow). Validation
  *    threshold (5 chars, [MIN_REQUEST_LENGTH]) matches the native `FeedbackDialog` submit
  *    gate (`feedbackBody.length >= 5`) and the current `SendComplaintUseCase` floor
  *    (`MIN_BODY_LENGTH = 5`).
- *  - **Snackbars** for submission feedback: [SnackbarHost] wired to a remembered
- *    [SnackbarHostState] that consumes effects via [LaunchedEffect]. RequestSubmitted →
- *    "Request submitted successfully"; RequestFailed → "Request failed". Same posture as
- *    LibraryScreen's effect-to-snackbar bridge.
+ *  - **Success snackbar**: [SnackbarHost] consumes [LanguageEffect.RequestSubmitted] after the
+ *    dialog closes. Failure uses [KiraDialogError] inside the modal, preserving the draft and
+ *    keeping the existing Submit button as the only resubmit action.
  *  - **Bottom-bar visible**: same posture as Sources / History / Updates / Statistics / Theme —
  *    the Scaffold has no special bottom-bar suppression.
  *  - Chrome labels (top bar, Request-Language row + dialog, snackbars) resolve through
@@ -147,7 +149,7 @@ import org.jetbrains.compose.resources.stringResource
  * The Request-Language dialog body is a private composable in this file (it has no other
  * call sites). The Snackbar message text resolves via `stringResource` in composable scope
  * (UP-3j) and is captured into vals before the effect collector; state only carries the
- * dialog-visibility + submitting flags + body text.
+ * dialog-visibility + submitting + failure flags + body text.
  *
  * **Stateless inner [LanguageScreenContent]** for preview / test substitution — same
  * convention the other rework screens follow.
@@ -236,11 +238,6 @@ internal fun LanguageScreenContent(
     // Snackbar copy resolved in composable scope — stringResource can't run inside the
     // effect-collector coroutine below.
     val submittedMessage = stringResource(Res.string.request_submitted_successfully)
-    val failedMessage = stringResource(Res.string.request_failed)
-    // GAP-LANG-05 — request-failed snackbar Retry action label (native LanguageSelectionScreen.kt
-    // :146 `actionLabel = retry`). Resolved here in composable scope; the effect collector below
-    // can't call stringResource.
-    val retryLabel = stringResource(Res.string.retry)
 
     LaunchedEffect(effects) {
         effects.collect { effect ->
@@ -251,20 +248,6 @@ internal fun LanguageScreenContent(
                         snackbarHostState.showSnackbar(
                             message = submittedMessage,
                             duration = SnackbarDuration.Short,
-                        )
-                    }
-                is LanguageEffect.RequestFailed ->
-                    // GAP-LANG-05 — native onError surfaces a Retry action label with the longer
-                    // SnackbarDuration.Long (LanguageSelectionScreen.kt:144-148). The failure path
-                    // keeps the dialog open with the typed text preserved (LanguageState.requestText
-                    // survives RequestFailed), so the Retry affordance routes the user back to the
-                    // still-mounted dialog to resubmit — matching native, which likewise only shows
-                    // the label and leaves the dialog/text intact rather than auto-resubmitting.
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = failedMessage,
-                            actionLabel = retryLabel,
-                            duration = SnackbarDuration.Long,
                         )
                     }
             }
@@ -330,6 +313,7 @@ internal fun LanguageScreenContent(
         LanguageRequestDialog(
             text = state.requestText,
             submitting = state.requestSubmitting,
+            failed = state.requestFailed,
             onTextChange = { onIntent(LanguageIntent.OnRequestTextChange(it)) },
             onSubmit = { onIntent(LanguageIntent.OnSubmitRequest) },
             onDismiss = { onIntent(LanguageIntent.OnDismissRequestDialog) },
@@ -543,16 +527,17 @@ private fun RequestLanguageRow(
  * current `SendComplaintUseCase` floor (`MIN_BODY_LENGTH = 5`). Below 5 chars, the helper text
  * shows "At least 5 characters" in the error colour; the Send button is disabled.
  *
- * **Submitting state**: when `submitting == true`, the OutlinedTextField stays interactive
- * (the VM is fire-and-forget; the dialog stays mounted until the effect completes), but the
- * Send button shows a [CircularProgressIndicator] in place of the label and is disabled to
- * prevent double-submission. Cancel remains tappable — closing mid-submit hides the dialog;
- * the success/failure snackbar still shows on the underlying screen via the effect channel.
+ * **Submitting state**: input, Send and Cancel are disabled, and scrim/back dismissal is ignored.
+ * Send shows a [CircularProgressIndicator]. Failure retains this composition and local draft,
+ * exposes [KiraDialogError] within the modal and re-enables the same Submit control. No failure
+ * snackbar or second Retry action is posted to the underlying screen.
+ * The error stays in the fixed header while the form body scrolls under constrained height.
  */
 @Composable
 private fun LanguageRequestDialog(
     text: String,
     submitting: Boolean,
+    failed: Boolean,
     onTextChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onDismiss: () -> Unit,
@@ -561,6 +546,7 @@ private fun LanguageRequestDialog(
     // dialog footer.
     onOpenUrl: (String) -> Unit,
 ) {
+    val spacing = LocalSpacing.current
     // Local echo (2026-07 audit): the field renders from dialog-local state so fast typing / IME
     // composition never races the per-intent VM round-trip (each keystroke used to launch a fresh
     // coroutine whose async updateState could drop/reorder characters). Every change is still
@@ -569,7 +555,7 @@ private fun LanguageRequestDialog(
     var localText by remember { mutableStateOf(text) }
     val submitEnabled = !submitting && localText.length >= MIN_REQUEST_LENGTH
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!submitting) onDismiss() },
         // GAP-LANG-03 — title + "We'd love to hear from you" subtitle (native FeedbackDialog.kt
         // :58-72 wraps the header + subtitle in a Column).
         title = {
@@ -581,10 +567,16 @@ private fun LanguageRequestDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (failed) {
+                    KiraDialogError(
+                        message = stringResource(Res.string.request_failed),
+                        modifier = Modifier.padding(top = spacing.md),
+                    )
+                }
             }
         },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     text = stringResource(Res.string.request_language_prompt),
                     style = MaterialTheme.typography.bodyMedium,
@@ -606,6 +598,7 @@ private fun LanguageRequestDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 120.dp),
+                    enabled = !submitting,
                     minLines = 4,
                     maxLines = 6,
                     label = { Text(stringResource(Res.string.enter_your_language)) },
@@ -676,7 +669,7 @@ private fun LanguageRequestDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !submitting) {
                 Text(stringResource(Res.string.cancel))
             }
         },

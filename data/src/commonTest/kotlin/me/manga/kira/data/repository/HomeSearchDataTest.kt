@@ -33,6 +33,7 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourceState
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.sources_repositry.BaseMangaRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -282,6 +283,7 @@ class HomeSearchDataTest {
 
     /** A registry whose given APIs are active, each served by a fixed generic client. */
     private class PilotedRegistry(private val clients: Map<String, MangaSourceClient>) : SourceRegistry {
+        override val catalog: Flow<SourceCatalogSnapshot> = flowOf(SourceCatalogSnapshot(1, genericDescriptors()))
         override fun get(api: String): MangaSourceClient? = clients[api]
         override fun isConfigBacked(api: String): Boolean = api in clients
         override fun descriptor(api: String): RuntimeSourceDescriptor? =

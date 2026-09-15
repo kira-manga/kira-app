@@ -35,6 +35,7 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepositor
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.sources_repositry.BaseMangaRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -478,6 +479,7 @@ class AzoraHomeSearchRoutingTest {
         private val piloted: Set<String>,
         private val client: (String) -> MangaSourceClient?,
     ) : SourceRegistry {
+        override val catalog: Flow<SourceCatalogSnapshot> = flowOf(SourceCatalogSnapshot(1, genericDescriptors()))
         val getCalls = mutableListOf<String>()
 
         override fun get(api: String): MangaSourceClient? {

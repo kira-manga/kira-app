@@ -63,7 +63,8 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // v10 -> v11: add the single-row source_config_cache table (durable generic-sources config
     // cache; Sources Migration Phase 1). MIGRATION_10_11; schema regenerated to 11.json.
     // v12 -> v13: retain the source-supplied author on saved manga for complete offline details.
-    version = 13,
+    // v14: one notification per discovered chapter, with repaired manga-scoped legacy bindings.
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(
