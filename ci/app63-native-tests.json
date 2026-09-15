@@ -1,0 +1,104 @@
+{
+  "schema": "app-seven-apple-native-tests-v3",
+  "status": "PREPARED_BOUND_NOT_RUN",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "ead0130667be8f97b4d6a9d1540b252c49f7e027",
+    "tree": "abec8295260be06c423a534ba550d41d49b4116c"
+  },
+  "native_cases": 27,
+  "native_module_counts": {
+    "data/download": 5,
+    "data": 22
+  },
+  "task_module_mapping": {
+    ":data:download:iosSimulatorArm64Test": "data/download",
+    ":data:iosSimulatorArm64Test": "data"
+  },
+  "compile_task": ":composeApp:compileKotlinIosSimulatorArm64",
+  "suites": [
+    {
+      "task": ":data:download:iosSimulatorArm64Test",
+      "class": "me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStoreTest",
+      "source": "data/download/src/commonTest/kotlin/me/manga/kira/presentation/features/download/domain/clean/DownloadManifestStoreTest.kt",
+      "sourceSha256": "2e7bf1b3a8fc6533f83dab7836529887afdec0ec919e01972a41332e1693aa28",
+      "methods": [
+        "read_corruptManifest_refusesInsteadOfResettingTheDurableRoster",
+        "unreadableManifestDoesNotBecomeMissingOrReportAnUncommittedAttempt",
+        "orphanStageCleanupIsExactChapterScopedAndNeverRecursive",
+        "orphanCleanupRefusesASymlinkedChapterInsteadOfDeletingItsTarget",
+        "incrementAttempt_missingManifest_refusesAnUncommittedZeroBudget"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundArtifactTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundArtifactTest.kt",
+      "sourceSha256": "9521794e335713841c9c110e6375952bc6968c383a864ca2036abac605df4cd5",
+      "methods": [
+        "retryRefusesUnreadableMismatchedOrUnwritableRetainedManifestBeforeQueueAdmission",
+        "retryRebindsRetainedRosterWithoutRedownloadingVerifiedPageOrAcceptingOldCapture",
+        "retryNeverResetsDurablePagePolicyRefusal",
+        "receiverPublicationFailureExhaustsOriginalAttemptAndCannotChargeReplacementOrCancellation",
+        "parentReopenRefillsIosWindowWithoutExternalPump"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundEventSettlementTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundEventSettlementTest.kt",
+      "sourceSha256": "bec4e89db4bb41e4d60216397e3d002b1d8937a6e18eeeecc7c9db2f4844c018",
+      "methods": [
+        "pageReceiptWaitsForOriginalTokenRoomProgressWrite",
+        "failureReceiptWaitsForManifestAndOwnedStageButNotForRetryTransfer",
+        "coldWindowRequeriesRoomBeforeSchedulingAndMainCompletion",
+        "cancelledReceiverScopeDisposesAndAcknowledgesWithoutPublication",
+        "failedRefreshAndFailedSchedulerStillCompleteOnceOnMain",
+        "cancelledRefreshStillSchedulesAndCompletesOnceOnMain",
+        "neverEmittingRefreshTimesOutAndReleasesItsCollectionBeforeMainCompletion"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosBackgroundFailedCleanupTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosBackgroundFailedCleanupTest.kt",
+      "sourceSha256": "8df4b098da301bdcb301462ee3cd8844488dbc5003b6c86df4dfa06f2056738a",
+      "methods": [
+        "legacyFailedDeleteRemovesPagesAndManifestButPreservesPriorReadableCbz",
+        "settledFailureKeepsRetryPagesUntilDeleteWhileSuccessHistoryRemainsReadable",
+        "failedIosCleanupThrowsAndRetainsItsRowAndIntentForReopen"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosCbzConversionTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosCbzConversionTest.kt",
+      "sourceSha256": "ea0797f01dcc9ee7a77550f7eef3a2ba3a4dedfcc1da75681f5943bf613f35b8",
+      "methods": [
+        "retainedNativePublicationRoomFailureReopenAndLegacyRepairPreserveTheArchive"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosManifestPersistenceTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosManifestPersistenceTest.kt",
+      "sourceSha256": "eaa77ab3010f674476e06c6d5314389d0c23d0c93804d9da93519314db3e4ef1",
+      "methods": [
+        "initialManifestOpenWriteCloseAndRenameFailuresNeverEnqueueTransfers",
+        "retryIncrementFailurePreservesLastManifestAndNeverEnqueuesAcrossReopen",
+        "committedRetryCountSurvivesReopenBeforeEnqueueAndStillEnforcesTheBound"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosManifestRecoverySafetyTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosManifestRecoverySafetyTest.kt",
+      "sourceSha256": "bc58fb3933fd84a7d01b162371144535a94239981ddc6a05ff368d6ae79f5de6",
+      "methods": [
+        "secondaryCallbackPersistenceFailureStillAcknowledgesWithoutEscaping",
+        "unreadableOrForeignManifestFailsClosedWithoutResolveAndReadableExplicitRetryStillWorks",
+        "startupReclaimsOnlyOwnedManifestStagesAndResumesTheUnchangedDurableBudget"
+      ]
+    }
+  ]
+}
