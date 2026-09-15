@@ -76,9 +76,10 @@ class ChapterPagesRepositoryImpl(
     private val cleanupLocks = mutableMapOf<Long, Mutex>()
     private val cleanupLocksGuard = Mutex()
 
-    private suspend fun cleanupLockFor(chapterId: Long): Mutex = cleanupLocksGuard.withLock {
-        cleanupLocks.getOrPut(chapterId) { Mutex() }
-    }
+    private suspend fun cleanupLockFor(chapterId: Long): Mutex =
+        cleanupLocksGuard.withLock {
+            cleanupLocks.getOrPut(chapterId) { Mutex() }
+        }
 
     override fun fetchPages(
         manga: Manga,

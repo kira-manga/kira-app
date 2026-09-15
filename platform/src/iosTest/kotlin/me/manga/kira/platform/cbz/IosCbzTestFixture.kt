@@ -47,9 +47,10 @@ internal class IosCbzTestFixture {
             override fun fileSystem(): FileSystem = delegate
         }
 
-    fun directory(chapterId: Long = 1L): Path = fileSystem().chapterDir(mangaId, chapterId).also {
-        system.createDirectories(it)
-    }
+    fun directory(chapterId: Long = 1L): Path =
+        fileSystem().chapterDir(mangaId, chapterId).also {
+            system.createDirectories(it)
+        }
 
     fun destination(chapterId: Long = 1L): Path = directory(chapterId) / "chapter_$chapterId.cbz"
 

@@ -71,9 +71,10 @@ class DefaultCbzReaderFailurePolicyTest {
         }
 
     @Test
-    fun cleanupFailureIsSuppressedOnTheOriginalCancellation() = assertSuppressedRollback(
-        ReaderCancellation("cancel second page"),
-    )
+    fun cleanupFailureIsSuppressedOnTheOriginalCancellation() =
+        assertSuppressedRollback(
+            ReaderCancellation("cancel second page"),
+        )
 
     @Test
     fun cleanupFailureIsSuppressedOnTheOriginalFatalThrowable() = assertSuppressedRollback(ReaderFatal("fatal page"))

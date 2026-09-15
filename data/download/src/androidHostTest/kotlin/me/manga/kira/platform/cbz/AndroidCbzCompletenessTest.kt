@@ -168,9 +168,10 @@ class AndroidCbzCompletenessTest {
             val nativeInspector = AndroidPageMediaInspector()
             val inspector =
                 object : PageMediaInspector by nativeInspector {
-                    override fun inspect(encoded: ByteArray): PageInspection = nativeInspector.inspect(encoded).also {
-                        inspected = encoded
-                    }
+                    override fun inspect(encoded: ByteArray): PageInspection =
+                        nativeInspector.inspect(encoded).also {
+                            inspected = encoded
+                        }
                 }
             val decoder =
                 object : AndroidCbzImageDecoder() {
