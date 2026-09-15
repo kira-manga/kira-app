@@ -78,14 +78,17 @@ class IosBackgroundArtifactTest {
             val original = fixture.seed()
             val prior = fixture.prepareAttempt(original, DownloadingState.RUNNING)
             val store = DownloadManifestStore(fixture.appFileSystem)
-            assertNotNull(fixture.artifacts.ownership.files(prior) {
+            val retained = ReceiverPage(fixture, original, "retry-retained", failPublication = false)
+            val retainedPath = assertNotNull(fixture.artifacts.ownership.files(prior) {
                 store.write(fixture.manifest(original).copy(pages = listOf(
                     ManifestPage(0, "https://example.test/page0.png", emptyMap()),
                     ManifestPage(1, "https://example.test/page1.png", emptyMap(), attempts = 3),
                 )))
+                // CBZ fixture inputs are not download filenames; use the actual page publisher.
+                original.pages.keys.forEach { fixture.system.delete(it) }
+                retained.page.publish(fixture.appFileSystem.chapterDir(original.saved.mangaId, original.saved.id), 0)
             })
-            val retained = original.pages.entries.first()
-            fixture.system.delete(original.pages.keys.last())
+            assertEquals("image_0.png", retainedPath.name)
             assertTrue(fixture.artifacts.fail(prior, "ordinary failure"))
             assertTrue(fixture.artifacts.settle(prior))
             val captured = fixture.download(original)
@@ -99,7 +102,7 @@ class IosBackgroundArtifactTest {
             assertEquals(listOf(1), transport.enqueued.map { it.pageIndex })
             assertEquals(request.attemptToken, fixture.manifest(original).attemptToken)
             assertEquals(0, fixture.manifest(original).pages[1].attempts)
-            assertContentEquals(retained.value, fixture.system.read(retained.key) { readByteArray() })
+            assertContentEquals(original.pages.values.last(), fixture.system.read(retainedPath) { readByteArray() })
             assertFalse(engine.retryChapterDownload(captured))
             assertEquals(listOf(1), transport.enqueued.map { it.pageIndex })
         } finally {
