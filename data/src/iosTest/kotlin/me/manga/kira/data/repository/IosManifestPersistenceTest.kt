@@ -15,7 +15,6 @@ import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
 import okio.Buffer
 import okio.FileSystem
 import okio.ForwardingFileSystem
-import okio.ForwardingSink
 import okio.IOException
 import okio.Path
 import okio.Sink
@@ -169,16 +168,16 @@ private class ManifestWriteFault(delegate: FileSystem, private val directory: Pa
         if (file.parent != directory || !file.name.startsWith(".manifest-")) return super.sink(file, mustCreate)
         if (cut == ManifestWriteCut.OPEN) fail()
         val delegate = super.sink(file, mustCreate)
-        return object : ForwardingSink(delegate) {
+        return object : Sink by delegate {
             override fun write(source: Buffer, byteCount: Long) {
                 if (cut == ManifestWriteCut.WRITE) {
-                    if (byteCount > 0) super.write(source, minOf(byteCount, 1L))
+                    if (byteCount > 0) delegate.write(source, minOf(byteCount, 1L))
                     fail()
                 }
-                super.write(source, byteCount)
+                delegate.write(source, byteCount)
             }
             override fun close() {
-                super.close()
+                delegate.close()
                 if (cut == ManifestWriteCut.CLOSE) fail()
             }
         }
