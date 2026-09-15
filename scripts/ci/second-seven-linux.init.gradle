@@ -1,0 +1,131 @@
+// Ordinary four-task / 21-whole-class Linux follow-up; no successful-scope rerun.
+// Prior Engine/Compose success is reviewed privately, never counted as current execution.
+// No source, target, task-action, dependency-version, metadata or compiler-option rewrites.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.tasks.testing.AbstractTestTask
+import org.gradle.api.tasks.testing.Test
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def sha = { File f -> MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+require(System.getenv('KIRA_SEVEN_APP_ROOT') && System.getenv('KIRA_SEVEN_SCOPE_SHA'),
+    'Exact hosted source/scope binding required')
+def appRoot = new File(System.getenv('KIRA_SEVEN_APP_ROOT')).canonicalFile
+def scopeFile = new File(appRoot, 'scripts/ci/second-seven-linux-scope.json')
+require(sha(scopeFile) == System.getenv('KIRA_SEVEN_SCOPE_SHA'), 'Bound public scope changed')
+def scope = new JsonSlurper().parse(scopeFile)
+def expectedTests = scope.tests.keySet().toList()
+def requestedRoots = expectedTests
+def role = null
+def emit = { label, row -> logger.lifecycle('KIRA_SEVEN_' + label + ' ' + JsonOutput.toJson([build: role] + row)) }
+
+gradle.settingsEvaluated { settings ->
+    def root = settings.settingsDir.canonicalFile
+    require(root == appRoot, 'Only the exact App follow-up build; no producer rebuild for identity')
+    role = 'app'
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21' &&
+        !gradle.startParameter.offline && !gradle.startParameter.dryRun &&
+        gradle.startParameter.excludedTaskNames.empty && gradle.startParameter.maxWorkerCount == 1 &&
+        !gradle.startParameter.parallelProjectExecutionEnabled && !gradle.startParameter.buildCacheEnabled &&
+        !gradle.startParameter.configurationCacheRequested, 'Hosted ordinary online single-worker Gradle9.6.1/JDK21 only')
+    require(gradle.startParameter.taskNames.findAll { it.startsWith(':') } == requestedRoots,
+        'Only the four bound Desktop Test roots')
+}
+gradle.projectsEvaluated {
+    require(gradle.includedBuilds.empty, 'No composite producer is needed by the ordinary follow-up graph')
+}
+gradle.beforeProject { p ->
+    p.tasks.withType(Test).configureEach { t ->
+        maxParallelForks = 1
+        forkEvery = 0
+        maxHeapSize = '768m'
+        jvmArgs('-XX:ActiveProcessorCount=2')
+        filter.failOnNoMatchingTests = true
+        systemProperty('junit.jupiter.execution.parallel.enabled', 'false')
+        systemProperty('java.awt.headless', 'true')
+        systemProperty('java.io.tmpdir', System.getenv('TMPDIR'))
+        systemProperty('user.home', System.getenv('HOME'))
+        doFirst {
+            require(role == 'app' && t.path in expectedTests, 'Only the selected App Test tasks, no producer tests')
+            require(t.filter.commandLineIncludePatterns.toSet() == scope.tests[t.path].toSet(), 'Exact literal class selection')
+            require(!t.classpath.files.any { f ->
+                f.name.startsWith('source-engine-') || f.name.startsWith('source-contract-')
+            }, 'Neutral Engine binaries are outside the ordinary follow-up graph')
+            emit('TEST_CLASSPATH', [task: t.path, entries: t.classpath.files.collect { f ->
+                [path: f.canonicalPath, kind: f.isFile() ? 'file' : (f.isDirectory() ? 'directory' : 'missing')]
+            }, maxHeapSize: t.maxHeapSize, maxParallelForks: t.maxParallelForks])
+            if (t.path == ':platform:desktopTest') {
+                // Reuse App17's actual artifact/Coil/Skiko checks here, after normal Test inputs
+                // resolve. No new preflight task, frozen repository, version forcing or graph edge.
+                def configuration = p.configurations.getByName('desktopTestRuntimeClasspath')
+                require(configuration.state.toString() == 'RESOLVED', 'Observe only the consumed Desktop runtime')
+                def selected = configuration.incoming.artifacts.artifacts.findAll { artifact ->
+                    def id = artifact.id.componentIdentifier
+                    id instanceof ModuleComponentIdentifier &&
+                        ((id.group == 'io.coil-kt.coil3' && id.module in ['coil-core-jvm', 'coil-svg-jvm']) ||
+                         (id.group == 'org.jetbrains.skiko' &&
+                          (id.module == 'skiko-awt' || id.module.startsWith('skiko-awt-runtime-'))))
+                }.collect { artifact ->
+                    def id = artifact.id.componentIdentifier
+                    require(artifact.file.isFile(), 'Actual selected image runtime files required')
+                    [component: id.displayName, group: id.group, module: id.module, version: id.version,
+                     artifact: artifact.id.displayName, variant: artifact.variant.displayName,
+                     path: artifact.file.canonicalPath, filename: artifact.file.name,
+                     size: artifact.file.length(), sha256: sha(artifact.file)]
+                }.sort { a, b -> a.component <=> b.component }
+                // Preserve the actual selection even when its guards reject it.
+                emit('IMAGE_RUNTIME_SELECTION', [task: t.path, artifacts: selected])
+                def coil = selected.findAll { it.group == 'io.coil-kt.coil3' }
+                def api = selected.findAll { it.group == 'org.jetbrains.skiko' && it.module == 'skiko-awt' }
+                def nativeRuntime = selected.findAll {
+                    it.group == 'org.jetbrains.skiko' && it.module.startsWith('skiko-awt-runtime-')
+                }
+                require(coil.size() == 2 && coil*.module.toSet() == ['coil-core-jvm', 'coil-svg-jvm'].toSet() &&
+                    coil.every { it.version == '3.5.0' }, 'Actual Coil core/SVG JVM 3.5.0 required; no forcing')
+                require(api.size() == 1 && nativeRuntime.size() == 1 &&
+                    nativeRuntime[0].module == 'skiko-awt-runtime-linux-x64' &&
+                    api[0].version == nativeRuntime[0].version,
+                    'Actual selected Skiko API/Linux-x64 native artifacts must align')
+                def actual = t.classpath.files.findAll { f ->
+                    f.name.startsWith('coil-core-jvm-') || f.name.startsWith('coil-svg-jvm-') ||
+                        f.name.startsWith('skiko-awt-')
+                }
+                require(actual.size() == 4 && actual.collectEntries { [(it.canonicalPath): sha(it)] } ==
+                    selected.collectEntries { [(it.path): it.sha256] },
+                    'Same-invocation Test classpath must contain exactly the observed Coil/Skiko bytes')
+            }
+        }
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    def tasks = graph.allTasks
+    emit('GRAPH', [root: gradle.rootProject.projectDir.canonicalPath,
+        requested: gradle.startParameter.taskNames, tasks: tasks.collect { [path: it.path, type: it.class.name] }])
+    require(tasks.findAll { it instanceof AbstractTestTask }*.path.toSet() ==
+        (role == 'app' ? expectedTests.toSet() : [] as Set), 'No broad or extra Test roots')
+    if (role == 'app') require(tasks*.path.containsAll(scope.required_compilers.app),
+        'Keep the normal full production and selected-module test compilation')
+    // Do not add unrelated compilers/resources merely to reproduce prior identity observations.
+    def forbidden = tasks.findAll {
+        def name = it.name.toLowerCase(Locale.ROOT)
+        name.contains('ios') || name.contains('cinterop') || name.contains('framework') || name.contains('publish') ||
+            (name.contains('android') && (name.startsWith('compile') || name.startsWith('ksp'))) ||
+            (role == 'app' && it.project.path in [':app', ':desktopApp', ':composeApp', ':ui', ':presentation',
+                ':sources:engine', ':sources:config']) ||
+            name.contains('ktlint') || name.contains('detekt') || name.startsWith('install') || name.startsWith('sign') ||
+            name.startsWith('assemble') ||
+            it.name == 'checkLocaleKeyParity'
+    }
+    require(forbidden.empty,
+        'No unrelated identity rebuild, Android compiler/host/device, Apple, release/publish/install, static analysis or locale work: ' + forbidden*.path)
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.name.startsWith('compile') || task.name.startsWith('ksp') || task.name == 'copyRoomSchemas' ||
+        task.path in expectedTests) {
+        emit('TASK_COMPLETE', [path: task.path, type: task.class.name, executed: state.executed, didWork: state.didWork,
+            skipped: state.skipped, upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.class?.name])
+    }
+}

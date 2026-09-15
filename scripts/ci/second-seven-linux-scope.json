@@ -1,0 +1,74 @@
+{
+  "tests": {
+    ":platform:desktopTest": [
+      "me.manga.kira.platform.image.AvifDecodeLimitsTest",
+      "me.manga.kira.platform.image.AvifDecodeSizeTest",
+      "me.manga.kira.platform.image.AvifEncodedSourceTest",
+      "me.manga.kira.platform.image.AvifNativeAllowanceTest",
+      "me.manga.kira.platform.image.HighQualitySkiaImageDecoderTest",
+      "me.manga.kira.platform.image.HighQualitySkiaJpegDecoderTest",
+      "me.manga.kira.platform.cbz.CbzTranscodeBudgetTest",
+      "me.manga.kira.platform.cbz.PagePathRederivationTest",
+      "me.manga.kira.platform.cbz.DefaultCbzReaderValidationTest",
+      "me.manga.kira.platform.cbz.DefaultCbzReaderFailurePolicyTest",
+      "me.manga.kira.platform.cbz.SkiaWebpEncoderTest",
+      "me.manga.kira.platform.media.PageMediaPolicyTest",
+      "me.manga.kira.platform.media.DesktopPageMediaInspectorTest"
+    ],
+    ":data:remote:desktopTest": [
+      "me.manga.kira.data.remote.ktor.HttpCacheRevalidationTest",
+      "me.manga.kira.data.remote.ktor.HttpCacheRevalidationSafetyTest",
+      "me.manga.kira.data.remote.ktor.HttpCacheRevalidationConcurrencyTest",
+      "me.manga.kira.data.remote.ktor.HttpCacheRevalidationRedirectTest"
+    ],
+    ":data:download:desktopTest": [
+      "me.manga.kira.presentation.features.download.domain.clean.BoundedPageTransferTest"
+    ],
+    ":data:desktopTest": [
+      "me.manga.kira.data.repository.ChapterPageRecoveryTest",
+      "me.manga.kira.data.repository.ChapterFinalizerCompletenessTest",
+      "me.manga.kira.data.repository.CbzConversionPersistenceTest"
+    ]
+  },
+  "test_sources": {
+    "me.manga.kira.platform.image.AvifDecodeLimitsTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/image/AvifDecodeLimitsTest.kt",
+    "me.manga.kira.platform.image.AvifDecodeSizeTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/image/AvifDecodeSizeTest.kt",
+    "me.manga.kira.platform.image.AvifEncodedSourceTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/image/AvifEncodedSourceTest.kt",
+    "me.manga.kira.platform.image.AvifNativeAllowanceTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/image/AvifNativeAllowanceTest.kt",
+    "me.manga.kira.platform.image.HighQualitySkiaImageDecoderTest": "platform/src/desktopTest/kotlin/me/manga/kira/platform/image/HighQualitySkiaImageDecoderTest.kt",
+    "me.manga.kira.platform.image.HighQualitySkiaJpegDecoderTest": "platform/src/desktopTest/kotlin/me/manga/kira/platform/image/HighQualitySkiaJpegDecoderTest.kt",
+    "me.manga.kira.platform.cbz.CbzTranscodeBudgetTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/cbz/CbzTranscodeBudgetTest.kt",
+    "me.manga.kira.platform.cbz.PagePathRederivationTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/cbz/PagePathRederivationTest.kt",
+    "me.manga.kira.platform.cbz.DefaultCbzReaderValidationTest": "platform/src/desktopTest/kotlin/me/manga/kira/platform/cbz/DefaultCbzReaderValidationTest.kt",
+    "me.manga.kira.platform.cbz.DefaultCbzReaderFailurePolicyTest": "platform/src/desktopTest/kotlin/me/manga/kira/platform/cbz/DefaultCbzReaderFailurePolicyTest.kt",
+    "me.manga.kira.platform.cbz.SkiaWebpEncoderTest": "platform/src/desktopTest/kotlin/me/manga/kira/platform/cbz/SkiaWebpEncoderTest.kt",
+    "me.manga.kira.platform.media.PageMediaPolicyTest": "platform/src/commonTest/kotlin/me/manga/kira/platform/media/PageMediaPolicyTest.kt",
+    "me.manga.kira.platform.media.DesktopPageMediaInspectorTest": "platform/src/desktopTest/kotlin/me/manga/kira/platform/media/DesktopPageMediaInspectorTest.kt",
+    "me.manga.kira.data.remote.ktor.HttpCacheRevalidationTest": "data/remote/src/commonTest/kotlin/me/manga/kira/data/remote/ktor/HttpCacheRevalidationTest.kt",
+    "me.manga.kira.data.remote.ktor.HttpCacheRevalidationSafetyTest": "data/remote/src/commonTest/kotlin/me/manga/kira/data/remote/ktor/HttpCacheRevalidationSafetyTest.kt",
+    "me.manga.kira.data.remote.ktor.HttpCacheRevalidationConcurrencyTest": "data/remote/src/commonTest/kotlin/me/manga/kira/data/remote/ktor/HttpCacheRevalidationConcurrencyTest.kt",
+    "me.manga.kira.data.remote.ktor.HttpCacheRevalidationRedirectTest": "data/remote/src/commonTest/kotlin/me/manga/kira/data/remote/ktor/HttpCacheRevalidationRedirectTest.kt",
+    "me.manga.kira.presentation.features.download.domain.clean.BoundedPageTransferTest": "data/download/src/commonTest/kotlin/me/manga/kira/presentation/features/download/domain/clean/BoundedPageTransferTest.kt",
+    "me.manga.kira.data.repository.ChapterPageRecoveryTest": "data/src/desktopTest/kotlin/me/manga/kira/data/repository/ChapterPageRecoveryTest.kt",
+    "me.manga.kira.data.repository.ChapterFinalizerCompletenessTest": "data/src/desktopTest/kotlin/me/manga/kira/data/repository/ChapterFinalizerCompletenessTest.kt",
+    "me.manga.kira.data.repository.CbzConversionPersistenceTest": "data/src/desktopTest/kotlin/me/manga/kira/data/repository/CbzConversionPersistenceTest.kt"
+  },
+  "required_compilers": {
+    "app": [
+      ":core:compileKotlinDesktop",
+      ":domain:compileKotlinDesktop",
+      ":platform:compileKotlinDesktop",
+      ":data:local:compileKotlinDesktop",
+      ":data:remote:compileKotlinDesktop",
+      ":sources:legacy:compileKotlinDesktop",
+      ":data:download:compileKotlinDesktop",
+      ":sources:contracts:compileKotlinDesktop",
+      ":data:compileKotlinDesktop",
+      ":data:local:kspKotlinDesktop",
+      ":platform:compileTestKotlinDesktop",
+      ":data:remote:compileTestKotlinDesktop",
+      ":data:download:compileTestKotlinDesktop",
+      ":data:compileTestKotlinDesktop"
+    ]
+  }
+}
