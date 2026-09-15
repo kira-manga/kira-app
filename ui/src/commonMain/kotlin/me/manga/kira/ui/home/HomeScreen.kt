@@ -47,6 +47,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -56,8 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeChapterRef
@@ -421,7 +421,7 @@ private fun HomeGrid(
     // from item 0 rather than the previous tab's scroll offset. The state itself is hoisted to
     // [HomeFeedBody] (P3-LOW) so the grid<->list toggle preserves position.
     LaunchedEffect(state.activeTabIndex) { gridState.scrollToItem(0) }
-    InfiniteScrollEffect(onEndReached = { onIntent(HomeIntent.OnEndReached) }) {
+    InfiniteScrollEffect(state = state, onEndReached = { onIntent(HomeIntent.OnEndReached) }) {
         val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         val total = gridState.layoutInfo.totalItemsCount
         total > 0 && last >= total - 1
@@ -474,7 +474,7 @@ private fun HomeList(
     // The state itself is hoisted to [HomeFeedBody] (P3-LOW) so the grid<->list toggle preserves
     // position.
     LaunchedEffect(state.activeTabIndex) { listState.scrollToItem(0) }
-    InfiniteScrollEffect(onEndReached = { onIntent(HomeIntent.OnEndReached) }) {
+    InfiniteScrollEffect(state = state, onEndReached = { onIntent(HomeIntent.OnEndReached) }) {
         val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         val total = listState.layoutInfo.totalItemsCount
         total > 0 && last >= total - 1
@@ -536,18 +536,28 @@ private fun NextPageSpinner() {
 }
 
 /**
- * Fires [onEndReached] once each time [atEnd] transitions to true — the infinite-scroll trigger.
- * The VM's own pagination guard makes [HomeIntent.OnEndReached] a no-op while a page is in flight,
- * so a `distinctUntilChanged` + `filter { it }` over a `snapshotFlow` is sufficient (mirrors legacy
- * `isScrolledToTheEnd()` snapshotFlow).
+ * A successful append rearms even when every row still fits. Initial/refresh loads suspend the
+ * observer. One request per page also prevents a loading footer from retriggering failed pages.
  */
 @Composable
-private fun InfiniteScrollEffect(onEndReached: () -> Unit, atEnd: () -> Boolean) {
-    LaunchedEffect(Unit) {
-        snapshotFlow(atEnd)
-            .distinctUntilChanged()
-            .filter { it }
-            .collect { onEndReached() }
+private fun InfiniteScrollEffect(
+    state: HomeState,
+    onEndReached: () -> Unit,
+    atEnd: () -> Boolean,
+) {
+    val currentState by rememberUpdatedState(state)
+    val currentOnEndReached by rememberUpdatedState(onEndReached)
+    LaunchedEffect(
+        state.activeTab,
+        state.page,
+        state.feed.size,
+        state.isFeedLoading,
+        state.isRefreshing,
+        state.hasMorePages,
+    ) {
+        if (state.isFeedLoading || state.isRefreshing || !state.hasMorePages) return@LaunchedEffect
+        snapshotFlow { atEnd() && !currentState.isLoadingNextPage }.first { it }
+        currentOnEndReached()
     }
 }
 
