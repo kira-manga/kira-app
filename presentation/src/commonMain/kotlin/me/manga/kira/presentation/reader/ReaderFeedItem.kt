@@ -19,9 +19,8 @@ sealed interface ReaderFeedItem {
 
     /**
      * The boundary after a chapter's last image. [finishedChapter] is the chapter just read;
-     * [nextChapter] is the next chapter in source order (`chapters[idx+1]`, the same direction
-     * [ReaderViewModel.onAppendNextChapter] appends), or `null` when [finishedChapter] is the last
-     * chapter (terminal "no next chapter" card).
+     * [nextChapter] is the next chapter in source order not known to be empty, matching append
+     * traversal, or `null` when no unskipped chapter remains (terminal "no next chapter" card).
      */
     data class Boundary(val finishedChapter: Chapter?, val nextChapter: Chapter?) : ReaderFeedItem
 }
@@ -57,6 +56,7 @@ fun buildReaderFeed(
     pageChapters: List<String>,
     chapters: List<Chapter>,
     anchorChapter: Chapter?,
+    skippedChapterUrls: Set<String> = emptySet(),
 ): ReaderFeed {
     if (pages.isEmpty()) return ReaderFeed(emptyList(), emptyList(), emptyList())
     val items = ArrayList<ReaderFeedItem>(pages.size + 4)
@@ -71,12 +71,22 @@ fun buildReaderFeed(
         val isRunEnd = i == pages.lastIndex || nextUrl != curUrl
         if (isRunEnd) {
             val finished = curUrl?.let { u -> chapters.firstOrNull { it.url == u } } ?: anchorChapter
-            val finishedIdx = finished?.let { f -> chapters.indexOfFirst { it.url == f.url } } ?: -1
-            val next = if (finishedIdx in 0 until chapters.lastIndex) chapters[finishedIdx + 1] else null
+            val next = nextUnskippedChapter(chapters, finished?.url, skippedChapterUrls)
             items.add(ReaderFeedItem.Boundary(finishedChapter = finished, nextChapter = next))
             // Boundary reports the page it follows (its run's last image), not the next chapter's page.
             feedToPage.add(i)
         }
     }
     return ReaderFeed(items, pageToFeed.toList(), feedToPage)
+}
+
+/** Shared source-order traversal for append admission and boundary labels. */
+internal fun nextUnskippedChapter(
+    chapters: List<Chapter>,
+    afterUrl: String?,
+    skippedChapterUrls: Set<String>,
+): Chapter? {
+    val index = chapters.indexOfFirst { it.url == afterUrl }
+    if (index < 0) return null
+    return chapters.asSequence().drop(index + 1).firstOrNull { it.url !in skippedChapterUrls }
 }

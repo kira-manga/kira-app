@@ -13,6 +13,7 @@ import me.manga.kira.core.cbz.CbzEncodeGate
 import me.manga.kira.core.cbz.OptimizedCbzManager
 import me.manga.kira.core.cbz.cbzTier
 import me.manga.kira.presentation.features.download.data.DownloadState
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -38,7 +39,7 @@ import kotlin.test.assertTrue
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CbzServiceFailureTest {
     @Test
-    fun cbzEncoderOomPersistsAndEmitsReadableLoosePaths() =
+    fun cbzEncoderOomFailsWithoutPublishingLooseSuccessOrDeletingInputs() =
         cbzServiceTest {
             val encoded = AtomicReference<Bitmap>()
             val oom = OutOfMemoryError("synthetic App64 encoder OOM")
@@ -52,17 +53,35 @@ class CbzServiceFailureTest {
                     },
                 )
             val states = download(manager).toList()
-            assertEquals(paths, assertIs<DownloadState.Complete>(states.last()).localPaths)
-            assertTrue(states.none { it is DownloadState.Error })
+            assertIs<DownloadState.Error>(states.last())
+            assertTrue(states.none { it is DownloadState.Complete })
             assertTrue(assertNotNull(encoded.get()).isRecycled)
             storage.assertImages(paths)
-            // Saved paths alone do not set the saved chapter's terminal isDownloaded flag.
-            assertEquals(rows.original.saved.copy(localImagePaths = paths), rows.saved())
-            val notification =
-                assertNotNull(rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id))
-            assertEquals(paths, notification.localImagePaths)
-            assertTrue(notification.isDownloaded)
-            assertEquals(rows.original.download, rows.download()) // Service did not commit worker SUCCESS.
+            assertEquals(rows.original.saved, rows.saved())
+            assertEquals(
+                emptyList(),
+                rows.db
+                    .notificationDao()
+                    .getNotificationByChapterId(rows.original.saved.id)
+                    ?.localImagePaths
+                    .orEmpty(),
+            )
+            assertFalse(rows.download().state == DownloadingState.SUCCESS)
+            assertNoArchiveOrTemporary()
+        }
+
+    @Test
+    fun anExceptionMentioningMemoryIsNotATypedBudgetPreservationResult() =
+        cbzServiceTest {
+            val manager =
+                OptimizedCbzManager(storage.context, cbzTier(), encode = { _, _, _, _ ->
+                    throw IllegalStateException("synthetic memory write failure")
+                })
+            val states = download(manager).toList()
+            assertIs<DownloadState.Error>(states.last())
+            assertTrue(states.none { it is DownloadState.Complete })
+            assertEquals(rows.original.saved, rows.saved())
+            storage.assertImages(paths)
             assertNoArchiveOrTemporary()
         }
 

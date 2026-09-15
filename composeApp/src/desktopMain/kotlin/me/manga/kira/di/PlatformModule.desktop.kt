@@ -34,6 +34,8 @@ import me.manga.kira.platform.jobs.BackgroundJobScheduler
 import me.manga.kira.platform.jobs.DesktopBackgroundJobScheduler
 import me.manga.kira.platform.locale.DesktopLocaleSwitcher
 import me.manga.kira.platform.locale.LocaleSwitcher
+import me.manga.kira.platform.media.DesktopPageMediaInspector
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.notification.DesktopNotificationPresenter
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.notification.NotificationPresenter
@@ -94,7 +96,8 @@ actual fun platformModule(): Module =
         // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
         single<AppFileSystem> { DesktopAppFileSystem() }
         single<CbzWriter> { DesktopCbzWriter(get()) }
-        single<CbzReader> { DefaultCbzReader(get(), get()) }
+        single<PageMediaInspector> { DesktopPageMediaInspector() }
+        single<CbzReader> { DefaultCbzReader(get(), get(), get()) }
 
         // ---- Background jobs (Phase 8.6) ----
         single<BackgroundJobScheduler> { DesktopBackgroundJobScheduler() }

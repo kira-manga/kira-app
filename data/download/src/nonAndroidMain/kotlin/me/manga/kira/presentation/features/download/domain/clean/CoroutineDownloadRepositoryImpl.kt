@@ -2,13 +2,6 @@ package me.manga.kira.presentation.features.download.domain.clean
 
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.headers
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.isSuccess
-import io.ktor.utils.io.exhausted
-import io.ktor.utils.io.readBuffer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -25,19 +18,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.io.readByteArray
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.background.BackgroundExecutionGuard
+import me.manga.kira.platform.media.PageBytePolicy
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import okio.buffer
-import okio.use
 
 /**
  * Phase 14.x — shared real implementation of [DownloadRepository] for iOS + Desktop.
@@ -96,20 +88,23 @@ import okio.use
  */
 class CoroutineDownloadRepositoryImpl(
     private val dao: ChapterDownloadDao,
-    private val httpClient: HttpClient,
-    private val applicationScope: CoroutineScope,
     private val appFileSystem: AppFileSystem,
-    // iOS download-progress notifications (silent per-page progress + banner/sound on done);
-    // Desktop binds DownloadNotifier.NoOp. Android is unaffected (WorkManager handles its own).
-    private val downloadNotifier: DownloadNotifier,
-    // iOS background-execution grace period for an in-flight chapter; Desktop binds PassThrough.
-    private val backgroundGuard: BackgroundExecutionGuard,
-    // M1 (clean seam): page-URL/header resolution and the terminal CBZ/bookkeeping/SUCCESS step are
-    // extracted into these shared collaborators so the queue engine stays focused on scheduling and
-    // page transfer. The iOS background-URLSession engine reuses the very same two collaborators.
-    private val chapterPageResolver: ChapterPageResolver,
-    private val chapterFinalizer: ChapterFinalizer,
+    pageTransfer: PageDownloadTransfer,
+    host: CoroutineDownloadHost,
+    stages: ChapterDownloadStages,
 ) : DownloadRepository {
+    private val httpClient: HttpClient = pageTransfer.httpClient
+    private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
+    private val pageBytePolicy: PageBytePolicy = pageTransfer.pageBytePolicy
+    private val applicationScope: CoroutineScope = host.applicationScope
+    private val downloadNotifier: DownloadNotifier = host.downloadNotifier
+    private val backgroundGuard: BackgroundExecutionGuard = host.backgroundGuard
+    private val chapterPageResolver: ChapterPageResolver = stages.resolver
+    private val chapterFinalizer: ChapterFinalizer = stages.finalizer
+
+    init {
+        requireUncachedPageClient(httpClient)
+    }
 
     private val log = Logger.withTag(TAG)
 
@@ -179,7 +174,10 @@ class CoroutineDownloadRepositoryImpl(
         dao.updateFailure(chapterId, CANCELLED_BY_USER)
     }
 
-    override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
+    override suspend fun cancelARunningChapter(
+        chapterId: Long,
+        mangaId: Long,
+    ) {
         val toCancel: Job?
         activeJobMutex.withLock {
             toCancel = if (activeChapterId == chapterId) activeJob else null
@@ -257,22 +255,23 @@ class CoroutineDownloadRepositoryImpl(
                 try {
                     val next = dao.getNextQueuedChapter() ?: break
                     val done = CompletableDeferred<Unit>()
-                    val job = applicationScope.launch(Dispatchers.Default) {
-                        try {
-                            // Hold an iOS background-task assertion for the chapter so it can keep
-                            // going briefly if the app is backgrounded (no-op on Desktop).
-                            backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next) }
-                        } catch (ce: CancellationException) {
-                            log.w { "Job for chapter ${next.chapterId} cancelled" }
-                            runCatching { dao.updateFailure(next.chapterId, CANCELLED_BY_USER) }
-                            throw ce
-                        } catch (t: Throwable) {
-                            log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
-                            runCatching { dao.updateFailure(next.chapterId, t.message) }
-                        } finally {
-                            done.complete(Unit)
+                    val job =
+                        applicationScope.launch(Dispatchers.Default) {
+                            try {
+                                // Hold an iOS background-task assertion for the chapter so it can keep
+                                // going briefly if the app is backgrounded (no-op on Desktop).
+                                backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next) }
+                            } catch (ce: CancellationException) {
+                                log.w { "Job for chapter ${next.chapterId} cancelled" }
+                                runCatching { dao.updateFailure(next.chapterId, CANCELLED_BY_USER) }
+                                throw ce
+                            } catch (t: Throwable) {
+                                log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
+                                runCatching { dao.updateFailure(next.chapterId, t.message) }
+                            } finally {
+                                done.complete(Unit)
+                            }
                         }
-                    }
                     activeJobMutex.withLock {
                         activeJob = job
                         activeChapterId = next.chapterId
@@ -324,16 +323,17 @@ class CoroutineDownloadRepositoryImpl(
         // auto-routes to the solver and re-enqueues, exactly like the iOS background engine and the
         // reading path. Non-challenge failures keep the raw message; the worker loop's terminal
         // notification (NotifierRules → onFailed) fires identically either way.
-        val resolved = try {
-            chapterPageResolver.resolve(entity)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
-            log.e(t) { "Resolve failed for chapter ${entity.chapterId} (challenge=$isChallenge): ${t.message}" }
-            dao.updateFailure(entity.chapterId, if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed"))
-            return
-        }
+        val resolved =
+            try {
+                chapterPageResolver.resolve(entity)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                val isChallenge = HeaderRefreshRules.isCloudflareChallengeFailure(t.message)
+                log.e(t) { "Resolve failed for chapter ${entity.chapterId} (challenge=$isChallenge): ${t.message}" }
+                dao.updateFailure(entity.chapterId, if (isChallenge) CLOUDFLARE_CHALLENGE else (t.message ?: "Resolve failed"))
+                return
+            }
         val imageUrls = resolved.imageUrls
         if (imageUrls.isEmpty()) {
             dao.updateFailure(entity.chapterId, "No images for chapter")
@@ -396,51 +396,22 @@ class CoroutineDownloadRepositoryImpl(
         chapter: SavedChapterEntity,
         imageIndex: Int,
         pageHeaders: Map<String, String>,
-    ): String = withContext(Dispatchers.Default) {
-        val response: HttpResponse = httpClient.get(imageUrl) {
-            headers {
-                pageHeaders.forEach { (name, value) -> append(name, value) }
-            }
+    ): String =
+        withContext(Dispatchers.Default) {
+            val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
+            downloadValidatedPage(
+                httpClient,
+                PageDownloadRequest(imageUrl, pageHeaders, dir, imageIndex),
+                appFileSystem.fileSystem(),
+                mediaInspector,
+                pageBytePolicy,
+            ).toString()
         }
-        if (!response.status.isSuccess()) {
-            throw IllegalStateException("Image download HTTP ${response.status.value} for $imageUrl")
-        }
-        val contentType = response.headers["Content-Type"]
-        val extension = detectImageExtension(contentType, imageUrl)
 
-        val dir = appFileSystem.chapterDir(chapter.mangaId, chapter.id)
-        appFileSystem.fileSystem().createDirectories(dir)
-        val outPath = dir / "image_$imageIndex.$extension"
-
-        // Stream the page body in bounded chunks instead of materialising the whole (multi-megabyte)
-        // image in heap before the write — avoids per-page peak-memory spikes, which matter on iOS
-        // especially when a download runs concurrently with the reader.
-        val channel = response.bodyAsChannel()
-        appFileSystem.fileSystem().sink(outPath).buffer().use { sink ->
-            while (!channel.exhausted()) {
-                val chunk = channel.readBuffer(STREAM_CHUNK_BYTES).readByteArray()
-                if (chunk.isNotEmpty()) sink.write(chunk)
-            }
-        }
-        outPath.toString()
-    }
-
-    private fun detectImageExtension(contentType: String?, imageUrl: String): String {
-        val urlExt = imageUrl.substringAfterLast('.', "").substringBefore('?').lowercase()
-        if (urlExt in IMAGE_EXTENSIONS) return urlExt
-        val ct = contentType?.lowercase().orEmpty()
-        return when {
-            "avif" in ct -> "avif"
-            "jpeg" in ct || "jpg" in ct -> "jpg"
-            "png" in ct -> "png"
-            "gif" in ct -> "gif"
-            "webp" in ct -> "webp"
-            "bmp" in ct -> "bmp"
-            else -> "jpg"
-        }
-    }
-
-    private fun deleteChapterFiles(mangaId: Long, chapterId: Long) {
+    private fun deleteChapterFiles(
+        mangaId: Long,
+        chapterId: Long,
+    ) {
         val dir = appFileSystem.chapterDir(mangaId, chapterId)
         runCatching {
             if (appFileSystem.fileSystem().exists(dir)) {
@@ -451,20 +422,18 @@ class CoroutineDownloadRepositoryImpl(
 
     private companion object {
         const val TAG = "CoroutineDownloadRepository"
+
         // Locale-independent sentinel for a user-cancelled download. Persisted into errorMsg and
         // mapped to the localized "cancelled by user" string at render time in :ui, so a localized
         // device never shows English here (and the label tracks the current app locale). Must match
         // DownloadedChapter.CANCELLED_BY_USER_SENTINEL in :domain (which :ui compares against).
         const val CANCELLED_BY_USER = "__cancelled_by_user__"
+
         // Mirrors DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL in :domain (and the iOS background
         // engine's local copy): written into errorMsg when a resolve fails on a Cloudflare/anti-bot
         // challenge so the Details VM auto-routes to the WebView solver. Kept as a local literal
         // (no :domain dep), in lockstep exactly like CANCELLED_BY_USER.
         const val CLOUDFLARE_CHALLENGE = "__cloudflare_challenge__"
-        // Per-read chunk size for streaming page bodies to disk (kotlin.io.DEFAULT_BUFFER_SIZE is
-        // JVM-only, so it is unavailable on the iOS/native target this nonAndroid source set covers).
-        const val STREAM_CHUNK_BYTES = 8192
-        val IMAGE_EXTENSIONS = setOf("avif", "jpg", "jpeg", "png", "gif", "webp", "bmp")
     }
 }
 

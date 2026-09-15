@@ -34,6 +34,10 @@ object BackgroundReconciler {
         inFlightPages: Set<Int>,
         maxAttempts: Int,
     ): ReconcilePlan {
+        if (!manifest.hasValidPageRoster()) {
+            return ReconcilePlan(emptyList(), false, manifest.pages.firstOrNull()?.index ?: 0)
+        }
+        manifest.pages.firstOrNull { it.policyRejected }?.let { return ReconcilePlan(emptyList(), false, it.index) }
         val missing = manifest.pages.filter { it.index !in pagesOnDisk }
         if (missing.isEmpty()) {
             return ReconcilePlan(toEnqueue = emptyList(), isComplete = true, failedPageIndex = null)
@@ -44,9 +48,10 @@ object BackgroundReconciler {
         if (exhausted != null) {
             return ReconcilePlan(toEnqueue = emptyList(), isComplete = false, failedPageIndex = exhausted.index)
         }
-        val toEnqueue = missing
-            .filter { it.index !in inFlightPages && it.attempts < maxAttempts }
-            .map { it.index }
+        val toEnqueue =
+            missing
+                .filter { it.index !in inFlightPages && it.attempts < maxAttempts }
+                .map { it.index }
         return ReconcilePlan(toEnqueue = toEnqueue, isComplete = false, failedPageIndex = null)
     }
 }

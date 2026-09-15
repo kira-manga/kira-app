@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.ChapterDao
@@ -215,6 +216,11 @@ class CompressExistingDownloadsTest {
             title: String,
         ): Long? = error("unused")
 
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
+        ): Long? = error("unused")
+
         override suspend fun getMangaByApi(api: String): List<SavedMangaEntity> = error("unused")
 
         override suspend fun getMangaIdsByApi(api: String): List<Long> = error("unused")
@@ -272,11 +278,15 @@ class CompressExistingDownloadsTest {
             legacy = legacySettings(),
             dispatchers = testDispatchers,
             dataStore = dataStore,
-            chapterDao = dao,
-            cbzWriter = writer,
-            mangaDao = FakeMangaDao,
-            chapterDownloadDao = downloadDao,
-            appFileSystem = FakeAppFileSystem,
+            conversion =
+                DownloadedChapterConversion(
+                    chapters = dao,
+                    archives = writer,
+                    manga = FakeMangaDao,
+                    downloads = downloadDao,
+                    files = FakeAppFileSystem,
+                ),
+            httpCache = HttpCacheClearer { },
         )
 
     @Test

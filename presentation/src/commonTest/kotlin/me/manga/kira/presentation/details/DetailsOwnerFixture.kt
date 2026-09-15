@@ -61,13 +61,17 @@ internal class DetailsOwnerFixture(
     val actions = OwnerDownloadActions()
     val resolver = OwnerResolver(idsByMangaUrl)
     val deletedChapters = mutableListOf<Long>()
+    val failingRowDeletes = mutableSetOf<Long>()
+    var deleteGate: CompletableDeferred<Unit>? = null
+    var onRowDeleted: (Long) -> Unit = {}
     val chaptersByMangaUrl = mutableMapOf<String, List<Chapter>>()
+    val fetchRequests = mutableListOf<Manga>()
 
     // Single-owner overlay control only: the legacy saved port cannot distinguish identical metadata.
     // Opposite-owner scenarios use the exact-URL fetch map instead of pretending this port can.
     val savedDetails = MutableStateFlow<MangaDetails?>(null)
     var fetchGate: CompletableDeferred<Unit>? = null
-    private val library = FakeLibraryRepository().apply { emitInLibrary(true) }
+    val library = FakeLibraryRepository().apply { emitInLibrary(true) }
     private val reads = RecordingMarkChapterReadRepository()
     private val enqueue = EnqueueDownloadUseCase(actions)
     private val dispatchers =
@@ -81,6 +85,7 @@ internal class DetailsOwnerFixture(
     private val fetch =
         object : MangaDetailsRepository {
             override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
+                fetchRequests += manga
                 fetchGate?.await()
                 return AppResult.Success(detailsFor(manga, chaptersByMangaUrl[manga.url] ?: chapters))
             }
@@ -110,7 +115,10 @@ internal class DetailsOwnerFixture(
         object : ChapterDeletionRepository {
             override suspend fun deleteChapter(chapterId: Long) {
                 actions.deleteOrder += "row:$chapterId"
+                deleteGate?.await()
+                check(chapterId !in failingRowDeletes) { "row deletion failed" }
                 deletedChapters += chapterId
+                onRowDeleted(chapterId)
             }
         }
     private val connectivity =

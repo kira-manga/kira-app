@@ -5,11 +5,14 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import okio.FileSystem
+import okio.ForwardingFileSystem
+import okio.IOException
 import okio.Path
 
 /**
@@ -21,22 +24,52 @@ import okio.Path
  * under a throwaway temp root, mirroring the `:data` `TempDirAppFileSystem` pattern.
  */
 class DownloadManifestStoreTest {
-
     private val appFs = TempDirAppFileSystem()
     private val store = DownloadManifestStore(appFs)
 
     @AfterTest
     fun tearDown() = appFs.cleanUp()
 
-    private fun manifest() = DownloadManifest(
-        mangaId = 7L,
-        chapterId = 42L,
-        api = "azora",
-        pages = listOf(
-            ManifestPage(index = 0, url = "https://cdn.example/p0.webp", headers = mapOf("Referer" to "https://example")),
-            ManifestPage(index = 1, url = "https://cdn.example/p1.webp", headers = emptyMap(), attempts = 2),
-        ),
-    )
+    private fun manifest() =
+        DownloadManifest(
+            mangaId = 7L,
+            chapterId = 42L,
+            api = "azora",
+            pages =
+                listOf(
+                    ManifestPage(index = 0, url = "https://cdn.example/p0.webp", headers = mapOf("Referer" to "https://example")),
+                    ManifestPage(index = 1, url = "https://cdn.example/p1.webp", headers = emptyMap(), attempts = 2),
+                ),
+        )
+
+    @Test
+    fun policyRejectionPersistsForRelaunchAndDoesNotMarkOtherPages() {
+        store.write(manifest())
+        store.incrementAttempt(7, 42, 0, policyRejected = true)
+        val reread = store.read(7, 42)!!
+        assertTrue(reread.pages[0].policyRejected)
+        assertFalse(reread.pages[1].policyRejected)
+        assertEquals(0, BackgroundReconciler.plan(reread, emptySet(), emptySet(), 3).failedPageIndex)
+    }
+
+    @Test
+    fun failedRefusalWriteIsReportedAndPreservesThePreviousAtomicManifest() {
+        store.write(manifest())
+        val failingFiles =
+            object : AppFileSystem by appFs {
+                override fun fileSystem(): FileSystem =
+                    object : ForwardingFileSystem(appFs.fileSystem()) {
+                        override fun atomicMove(
+                            source: Path,
+                            target: Path,
+                        ) = throw IOException("synthetic manifest rename failure")
+                    }
+            }
+        val failingStore = DownloadManifestStore(failingFiles)
+        assertFailsWith<IOException> { failingStore.incrementAttempt(7, 42, 0, policyRejected = true) }
+        assertEquals(manifest(), store.read(7, 42))
+        assertFalse(appFs.fileSystem().list(appFs.chapterDir(7, 42)).any { it.name.endsWith(".tmp") })
+    }
 
     @Test
     fun writeThenRead_roundTripsPagesHeadersAndAttempts() {
@@ -96,7 +129,14 @@ class DownloadManifestStoreTest {
         store.incrementAttempt(7L, 42L, pageIndex = 0)
         store.incrementAttempt(7L, 42L, pageIndex = 0)
         assertEquals(3, store.incrementAttempt(7L, 42L, pageIndex = 0))
-        assertEquals(3, store.read(7L, 42L)!!.pages.first { it.index == 0 }.attempts)
+        assertEquals(
+            3,
+            store
+                .read(7L, 42L)!!
+                .pages
+                .first { it.index == 0 }
+                .attempts,
+        )
     }
 
     @Test
@@ -143,7 +183,9 @@ class DownloadManifestStoreTest {
                 "yami-manifest-test-${Random.nextLong().toString().trimStart('-')}"
         override val filesDir: Path = root
         override val cacheDir: Path = root / "cache"
+
         override fun fileSystem(): FileSystem = fs
+
         fun cleanUp() = fs.deleteRecursively(root, mustExist = false)
     }
 }

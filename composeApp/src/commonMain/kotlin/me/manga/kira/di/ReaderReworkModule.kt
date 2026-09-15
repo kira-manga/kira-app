@@ -2,6 +2,7 @@ package me.manga.kira.di
 
 import me.manga.kira.data.repository.ChapterBookmarkRepositoryImpl
 import me.manga.kira.data.repository.ChapterPagesRepositoryImpl
+import me.manga.kira.data.repository.DownloadedPageFiles
 import me.manga.kira.data.repository.MarkChapterReadRepositoryImpl
 import me.manga.kira.data.repository.PageProgressRepositoryImpl
 import me.manga.kira.data.repository.ReadProgressRepositoryImpl
@@ -85,120 +86,140 @@ import org.koin.dsl.module
  *  - [ReaderViewModel] → `viewModel`: Koin's `ViewModelStore`-aware binding so the screen
  *    survives configuration changes / pop-and-restore navigation. Mirrors `DetailsViewModel`.
  */
-val readerReworkModule: Module = module {
-    single<ChapterPagesRepository> {
-        ChapterPagesRepositoryImpl(
-            dispatchers = get(),
-            // Downloaded-chapter local-read path: ChapterDao (saved-chapter lookup by URL +
-            // localImagePaths) is the per-platform :shared Room singleton; CbzReader is the
-            // :platform okio-backed reader. Both are bound in PlatformModule.{android,ios,desktop}.
-            chapterDao = get(),
-            cbzReader = get(),
-            // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic engine for the network
-            // page fetch; the downloaded-chapter offline path and all other sources stay unchanged.
-            sourceRegistry = get(),
-            // Re-derives loose downloaded-page paths under the live chapter dir (iOS container-UUID
-            // staleness) and gates the local-read fall-through. The :platform AppFileSystem singleton.
-            appFileSystem = get(),
-        )
+val readerReworkModule: Module =
+    module {
+        single { DownloadedPageFiles(get(), get()) }
+        single<ChapterPagesRepository> {
+            ChapterPagesRepositoryImpl(
+                dispatchers = get(),
+                // Downloaded-chapter local-read path: ChapterDao (saved-chapter lookup by URL +
+                // localImagePaths) is the per-platform :shared Room singleton; CbzReader is the
+                // :platform okio-backed reader. Both are bound in PlatformModule.{android,ios,desktop}.
+                chapterDao = get(),
+                cbzReader = get(),
+                // Routes ONLY config-backed sources (engine="generic" stanzas) through the generic
+                // engine for network pages; downloaded-chapter offline paths and other sources stay unchanged.
+                sourceRegistry = get(),
+                // Re-derive the live container's paths and require the entire loose roster to be valid.
+                // Uses the same platform inspector as downloads, CBZ writing, and archive recovery.
+                pageFiles = get(),
+            )
+        }
+
+        factory { FetchChapterPagesUseCase(get()) }
+        // Fire-and-forget cleanup of extracted-CBZ temp dirs (wraps the same ChapterPagesRepository).
+        factory { ClearExtractedPagesUseCase(get()) }
+
+        // Reading-mode persistence (Phase 6.4.x.mode). The impl re-uses the legacy
+        // `single<ObservableSettings>` declared in `PlatformModule.<target>.kt` — strangler-fig
+        // posture so the rework reader and the legacy reader share the same disk cell. Single
+        // because the impl holds no per-call state and the backing `ObservableSettings` is itself a
+        // singleton; reconstructing per resolution would be wasteful. Use cases stay factory
+        // (stateless, matches the established slice pattern).
+        single<ReadingModeRepository> { ReadingModeRepositoryImpl(settings = get()) }
+        factory { ObserveReadingModeUseCase(get()) }
+        factory { SetReadingModeUseCase(get()) }
+
+        // Multi-chapter navigation (Phase 7.x.reader.next). Reuses [MangaDetailsRepository] from
+        // [detailsReworkModule] via Koin cross-module resolution — see class-level KDoc rationale.
+        // Factory because the use case is stateless and cheap to instantiate per resolution,
+        // matching the established slice pattern.
+        // Network-first chapter list with a Room offline fallback (SavedMangaDetailsRepository is a
+        // single bound in detailsReworkModule; resolved cross-module).
+        factory { ListChaptersUseCase(get(), get()) }
+
+        // Reading-session timer (Phase 6.4.x.statistics). The impl delegates to the legacy
+        // [me.manga.kira.presentation.features.statistics.domain.StatisticsRepository] declared
+        // by `SharedModule.kt` — strangler-fig posture so the rework reader and the legacy reader
+        // accumulate minutes into the SAME on-disk counter (`StorageKeys.READ_MINUTES`).
+        // `single` because the legacy [StatisticsRepository] holds the per-session `sessionStartMillis`
+        // field — a `factory` impl would resolve a fresh wrapper per call, but the wrapper would
+        // still resolve the same legacy singleton; harmless but wasteful. The Start use case is
+        // factory (cheap, stateless, matches the slice pattern); same for End. Both resolve to the
+        // same [ReadingSessionRepository] singleton so begin / end share state.
+        single<ReadingSessionRepository> { ReadingSessionRepositoryImpl(legacy = get()) }
+        factory { StartReadingSessionUseCase(get()) }
+        factory { EndReadingSessionUseCase(get()) }
+
+        // Per-chapter last-read-page persistence (Phase 7.x.reader.resumeposition). The impl writes
+        // a fresh `reader.last_page.<hash>` Settings cell — no strangler-fig delegation because the
+        // legacy `HistoryItemD.lastReadPage` column is dead-write (legacy reader always passes 0).
+        // `single` because the impl holds no per-call state and the backing `ObservableSettings` is
+        // itself a singleton; reconstructing per resolution would be wasteful. Use cases stay
+        // `factory` (stateless, matches the established slice pattern).
+        single<ReadProgressRepository> { ReadProgressRepositoryImpl(settings = get()) }
+        factory { SavePagePositionUseCase(get()) }
+        factory { LoadPagePositionUseCase(get()) }
+
+        // Per-page download/decode progress (Phase 7.x.reader.modelayout.pageprogress). Pure-in-memory
+        // [MutableStateFlow]-backed repository — no `ObservableSettings`, no Room, no on-disk cell.
+        // Progress state is ephemeral and resets to [PageDownloadProgress.Idle] on process restart
+        // (correct — a fresh process re-fetches every page anyway). `single` because the repository
+        // IS the in-memory cache; multiple instances would partition state between reporters and
+        // observers. The Reader VM observes through [ObservePageProgressUseCase] (DIP — A19); the
+        // reporters (the Coil per-request listener attached in `:ui`, and the Android OkHttp body
+        // wrap in `:platform/androidMain`) drive the write half (`report`) directly through the
+        // `:domain` interface. Use case `factory` per the slice pattern.
+        single<PageProgressRepository> { PageProgressRepositoryImpl() }
+        factory { ObservePageProgressUseCase(get()) }
+        factory { ClearPageProgressUseCase(get()) }
+
+        // Chapter-bookmark strangler-fig (Phase 6.4.x.bookmark, task #217; re-pointed at the DAO in
+        // RS-3, task #738). Delegates straight to the Room `ChapterDao` (bound per-platform) so the
+        // rework reader and the legacy reader flip the SAME `saved_chapters.isBookmarked` column —
+        // which keeps the Library bookmarkedCount badge (MangaDao.getAllChapterMetricsFlow COUNT,
+        // consumed by LibraryRepositoryImpl.observeLibrary) correct automatically via Room
+        // invalidation. The seam no longer routes through the legacy :shared LibraryRepository wrapper
+        // (which only forwarded these calls to the same DAO); the legacy repo STAYS for :app
+        // (LibraryRefreshWorker + ChapterNotificationHelper). `single` (impl holds no per-call state,
+        // backing DAO is itself a singleton); use cases `factory` per the slice pattern.
+        single<ChapterBookmarkRepository> { ChapterBookmarkRepositoryImpl(chapterDao = get()) }
+        factory { ObserveChapterBookmarkUseCase(get()) }
+        factory { ToggleChapterBookmarkUseCase(get()) }
+
+        // Reading-history record-on-open (Reader-convergence R3a). Resolves the rework
+        // HistoryRepository (bound in historyReworkModule, strangler-fig over the legacy :shared
+        // HistoryRepository facade + HistoryDao) and SettingsRepository (bound in settingsReworkModule
+        // — the incognito gate reads its narrow observeIncognito() accessor off the shared Settings
+        // cell, NOT the full observeSettings() snapshot whose first emission waits on a cache-folder
+        // walk). Both are aggregated into the same dep graph by allReworkModules, so Koin cross-module
+        // resolution wires them transparently. Factory because the use case is stateless and cheap,
+        // matching the established slice pattern. The incognito gate lives inside the use case (no-op
+        // when ON).
+        factory { RecordHistoryUseCase(repository = get(), settings = get()) }
+
+        // Mark-chapter-read strangler-fig (Reader-convergence R3b; re-pointed at the DAO in RS-3,
+        // task #738). Delegates straight to the Room `ChapterDao` (bound per-platform) so the rework
+        // reader sets the SAME `saved_chapters.isRead` column the legacy reader did — which keeps the
+        // Library readCount + the UNREAD filter (MangaDao.getAllChapterMetricsFlow COUNT, consumed by
+        // LibraryRepositoryImpl.observeLibrary) correct automatically via Room invalidation. The seam
+        // no longer routes through the legacy :shared LibraryRepository wrapper (which only forwarded
+        // this call to the same DAO); the legacy repo STAYS for :app. `single` (impl holds no per-call
+        // state, backing DAO is itself a singleton); use case `factory` per the slice pattern. NOT
+        // incognito-gated — read state is library progress, not a browsing trail (legacy parity).
+        single<MarkChapterReadRepository> { MarkChapterReadRepositoryImpl(chapterDao = get()) }
+        factory { MarkChapterReadUseCase(get()) }
+
+        viewModel {
+            ReaderViewModel(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+            )
+        }
     }
-
-    factory { FetchChapterPagesUseCase(get()) }
-    // Fire-and-forget cleanup of extracted-CBZ temp dirs (wraps the same ChapterPagesRepository).
-    factory { ClearExtractedPagesUseCase(get()) }
-
-    // Reading-mode persistence (Phase 6.4.x.mode). The impl re-uses the legacy
-    // `single<ObservableSettings>` declared in `PlatformModule.<target>.kt` — strangler-fig
-    // posture so the rework reader and the legacy reader share the same disk cell. Single
-    // because the impl holds no per-call state and the backing `ObservableSettings` is itself a
-    // singleton; reconstructing per resolution would be wasteful. Use cases stay factory
-    // (stateless, matches the established slice pattern).
-    single<ReadingModeRepository> { ReadingModeRepositoryImpl(settings = get()) }
-    factory { ObserveReadingModeUseCase(get()) }
-    factory { SetReadingModeUseCase(get()) }
-
-    // Multi-chapter navigation (Phase 7.x.reader.next). Reuses [MangaDetailsRepository] from
-    // [detailsReworkModule] via Koin cross-module resolution — see class-level KDoc rationale.
-    // Factory because the use case is stateless and cheap to instantiate per resolution,
-    // matching the established slice pattern.
-    // Network-first chapter list with a Room offline fallback (SavedMangaDetailsRepository is a
-    // single bound in detailsReworkModule; resolved cross-module).
-    factory { ListChaptersUseCase(get(), get()) }
-
-    // Reading-session timer (Phase 6.4.x.statistics). The impl delegates to the legacy
-    // [me.manga.kira.presentation.features.statistics.domain.StatisticsRepository] declared
-    // by `SharedModule.kt` — strangler-fig posture so the rework reader and the legacy reader
-    // accumulate minutes into the SAME on-disk counter (`StorageKeys.READ_MINUTES`).
-    // `single` because the legacy [StatisticsRepository] holds the per-session `sessionStartMillis`
-    // field — a `factory` impl would resolve a fresh wrapper per call, but the wrapper would
-    // still resolve the same legacy singleton; harmless but wasteful. The Start use case is
-    // factory (cheap, stateless, matches the slice pattern); same for End. Both resolve to the
-    // same [ReadingSessionRepository] singleton so begin / end share state.
-    single<ReadingSessionRepository> { ReadingSessionRepositoryImpl(legacy = get()) }
-    factory { StartReadingSessionUseCase(get()) }
-    factory { EndReadingSessionUseCase(get()) }
-
-    // Per-chapter last-read-page persistence (Phase 7.x.reader.resumeposition). The impl writes
-    // a fresh `reader.last_page.<hash>` Settings cell — no strangler-fig delegation because the
-    // legacy `HistoryItemD.lastReadPage` column is dead-write (legacy reader always passes 0).
-    // `single` because the impl holds no per-call state and the backing `ObservableSettings` is
-    // itself a singleton; reconstructing per resolution would be wasteful. Use cases stay
-    // `factory` (stateless, matches the established slice pattern).
-    single<ReadProgressRepository> { ReadProgressRepositoryImpl(settings = get()) }
-    factory { SavePagePositionUseCase(get()) }
-    factory { LoadPagePositionUseCase(get()) }
-
-    // Per-page download/decode progress (Phase 7.x.reader.modelayout.pageprogress). Pure-in-memory
-    // [MutableStateFlow]-backed repository — no `ObservableSettings`, no Room, no on-disk cell.
-    // Progress state is ephemeral and resets to [PageDownloadProgress.Idle] on process restart
-    // (correct — a fresh process re-fetches every page anyway). `single` because the repository
-    // IS the in-memory cache; multiple instances would partition state between reporters and
-    // observers. The Reader VM observes through [ObservePageProgressUseCase] (DIP — A19); the
-    // reporters (the Coil per-request listener attached in `:ui`, and the Android OkHttp body
-    // wrap in `:platform/androidMain`) drive the write half (`report`) directly through the
-    // `:domain` interface. Use case `factory` per the slice pattern.
-    single<PageProgressRepository> { PageProgressRepositoryImpl() }
-    factory { ObservePageProgressUseCase(get()) }
-    factory { ClearPageProgressUseCase(get()) }
-
-    // Chapter-bookmark strangler-fig (Phase 6.4.x.bookmark, task #217; re-pointed at the DAO in
-    // RS-3, task #738). Delegates straight to the Room `ChapterDao` (bound per-platform) so the
-    // rework reader and the legacy reader flip the SAME `saved_chapters.isBookmarked` column —
-    // which keeps the Library bookmarkedCount badge (MangaDao.getAllChapterMetricsFlow COUNT,
-    // consumed by LibraryRepositoryImpl.observeLibrary) correct automatically via Room
-    // invalidation. The seam no longer routes through the legacy :shared LibraryRepository wrapper
-    // (which only forwarded these calls to the same DAO); the legacy repo STAYS for :app
-    // (LibraryRefreshWorker + ChapterNotificationHelper). `single` (impl holds no per-call state,
-    // backing DAO is itself a singleton); use cases `factory` per the slice pattern.
-    single<ChapterBookmarkRepository> { ChapterBookmarkRepositoryImpl(chapterDao = get()) }
-    factory { ObserveChapterBookmarkUseCase(get()) }
-    factory { ToggleChapterBookmarkUseCase(get()) }
-
-    // Reading-history record-on-open (Reader-convergence R3a). Resolves the rework
-    // HistoryRepository (bound in historyReworkModule, strangler-fig over the legacy :shared
-    // HistoryRepository facade + HistoryDao) and SettingsRepository (bound in settingsReworkModule
-    // — the incognito gate reads its narrow observeIncognito() accessor off the shared Settings
-    // cell, NOT the full observeSettings() snapshot whose first emission waits on a cache-folder
-    // walk). Both are aggregated into the same dep graph by allReworkModules, so Koin cross-module
-    // resolution wires them transparently. Factory because the use case is stateless and cheap,
-    // matching the established slice pattern. The incognito gate lives inside the use case (no-op
-    // when ON).
-    factory { RecordHistoryUseCase(repository = get(), settings = get()) }
-
-    // Mark-chapter-read strangler-fig (Reader-convergence R3b; re-pointed at the DAO in RS-3,
-    // task #738). Delegates straight to the Room `ChapterDao` (bound per-platform) so the rework
-    // reader sets the SAME `saved_chapters.isRead` column the legacy reader did — which keeps the
-    // Library readCount + the UNREAD filter (MangaDao.getAllChapterMetricsFlow COUNT, consumed by
-    // LibraryRepositoryImpl.observeLibrary) correct automatically via Room invalidation. The seam
-    // no longer routes through the legacy :shared LibraryRepository wrapper (which only forwarded
-    // this call to the same DAO); the legacy repo STAYS for :app. `single` (impl holds no per-call
-    // state, backing DAO is itself a singleton); use case `factory` per the slice pattern. NOT
-    // incognito-gated — read state is library progress, not a browsing trail (legacy parity).
-    single<MarkChapterReadRepository> { MarkChapterReadRepositoryImpl(chapterDao = get()) }
-    factory { MarkChapterReadUseCase(get()) }
-
-    viewModel { ReaderViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
-}
 
 /**
  * **Audit-trail postscript** (Phase 9.x.cluster150.staleKdocSweep.cascade,

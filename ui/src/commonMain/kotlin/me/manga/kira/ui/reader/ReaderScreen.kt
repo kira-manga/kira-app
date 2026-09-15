@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -84,7 +83,6 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -99,14 +97,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import coil3.compose.SubcomposeAsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
-import coil3.request.ImageRequest
-import coil3.request.maxBitmapSize
-import coil3.size.Dimension
-import coil3.size.Size
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -127,8 +117,6 @@ import me.manga.kira.ui.generated.resources.reading_mode_continuous
 import me.manga.kira.ui.generated.resources.reader_toggle_bookmark
 import me.manga.kira.ui.generated.resources.reader_show_controls
 import me.manga.kira.ui.generated.resources.np_reader_bookmark_not_in_library
-import me.manga.kira.ui.generated.resources.failed_to_load_image
-import me.manga.kira.ui.generated.resources.action_open_in_browser
 import me.manga.kira.ui.generated.resources.reader_chapter_fallback
 import me.manga.kira.ui.generated.resources.reader_error_network
 import me.manga.kira.ui.generated.resources.error_network_bad_gateway
@@ -160,6 +148,7 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.PageDownloadProgress
+import me.manga.kira.domain.model.reader.PageProgressHandle
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.model.reader.isPaged
 import me.manga.kira.presentation.reader.ReaderEffect
@@ -168,8 +157,6 @@ import me.manga.kira.presentation.reader.ReaderIntent
 import me.manga.kira.presentation.reader.ReaderState
 import me.manga.kira.presentation.reader.ReaderViewModel
 import me.manga.kira.presentation.reader.buildReaderFeed
-import me.manga.kira.ui.reader.internal.applyReaderDecoderHints
-import me.manga.kira.ui.reader.internal.readerDecodeMaxWidthPx
 import me.manga.kira.ui.theme.LocalSpacing
 
 /**
@@ -218,7 +205,7 @@ import me.manga.kira.ui.theme.LocalSpacing
  *    `applyReaderDecoderHints()` (expect in commonMain; Android actual applies
  *    `allowHardware(false) + bitmapConfig(RGB_565)`; iOS / Desktop actuals are no-ops because
  *    Skiko quality is supplied by `HighQualitySkiaImageDecoder` on the singleton ImageLoader).
- *    The Reader's inline [ImageRequest] now chains `.applyReaderDecoderHints()` so Android
+ *    The Reader page's image request now chains `.applyReaderDecoderHints()` so Android
  *    page decode matches legacy parity — no more ARGB_8888 cache-pressure regression.
  *
  * The deferred items are all logged in the Phase 7.x.reader entry of `ARCHITECTURE.md` §59.
@@ -362,7 +349,6 @@ fun ReaderScreen(
     onOpenInWebView: (url: String, api: String) -> Unit,
     onSharePage: (ImageBitmap) -> Unit,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -376,7 +362,6 @@ fun ReaderScreen(
         onOpenInWebView = onOpenInWebView,
         onSharePage = onSharePage,
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
-        onReportProgress = onReportProgress,
         modifier = modifier,
     )
 }
@@ -403,7 +388,6 @@ internal fun ReaderScreenContent(
     onOpenInWebView: (url: String, api: String) -> Unit,
     onSharePage: (ImageBitmap) -> Unit,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -645,7 +629,7 @@ internal fun ReaderScreenContent(
                         },
                 ) {
                     ReaderPageLayout(
-                        pages = state.pages,
+                        feedState = state,
                         readingMode = state.readingMode,
                     // Live page index threaded into each layout. Two roles:
                     //   1. Initial value for the layout's `remember*State` so a mode-toggle
@@ -679,9 +663,6 @@ internal fun ReaderScreenContent(
                         },
                         // Inline boundary-card tap (continuous modes): append the next chapter below.
                         onAppendNext = { onIntent(ReaderIntent.OnAppendNextChapter) },
-                        pageChapters = state.pageChapters,
-                        chapters = state.chapters,
-                        anchorChapter = state.chapter,
                         // Paged modes (#14): the chapter currently in view + the next chapter (null
                         // on the terminal chapter) so the pagers can append a dummy "Next Chapter"
                         // page after the last image — the last image is then dwellable and the
@@ -696,7 +677,7 @@ internal fun ReaderScreenContent(
                         // The loaded layout's zoomable gesture layer owns single-tap chrome toggles.
                         onToggleUi = { onIntent(ReaderIntent.OnUiToggle) },
                         pageProgress = state.pageProgress,
-                        onReportProgress = onReportProgress,
+                        pageProgressHandles = state.pageProgressHandles,
                     )
                 }
                 // #4 safety net: a loaded-but-empty, no-error state must NEVER render nothing (the
@@ -1269,26 +1250,23 @@ private fun ReaderPageIndicatorHud(text: String) {
  */
 @Composable
 private fun ReaderPageLayout(
-    pages: List<Page>,
+    feedState: ReaderState,
     readingMode: ReadingMode,
     currentPageIndex: Int,
     screenHeightDb: Dp,
     onPageChanged: (Int) -> Unit,
     onReachedEnd: () -> Unit,
     onAppendNext: () -> Unit,
-    pageChapters: List<String>,
-    chapters: List<Chapter>,
-    anchorChapter: Chapter?,
     activeChapter: Chapter,
     nextChapter: Chapter?,
     onOpenInWebView: () -> Unit,
     onToggleUi: () -> Unit,
     pageProgress: Map<String, PageDownloadProgress>,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
+    pageProgressHandles: Map<String, PageProgressHandle>,
 ) {
     when (readingMode) {
         ReadingMode.RIGHT_TO_LEFT -> ReaderHorizontalPager(
-            pages = pages,
+            pages = feedState.pages,
             reverseLayout = true,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
@@ -1299,10 +1277,10 @@ private fun ReaderPageLayout(
             onOpenInWebView = onOpenInWebView,
             onToggleUi = onToggleUi,
             pageProgress = pageProgress,
-            onReportProgress = onReportProgress,
+            pageProgressHandles = pageProgressHandles,
         )
         ReadingMode.LEFT_TO_RIGHT -> ReaderHorizontalPager(
-            pages = pages,
+            pages = feedState.pages,
             reverseLayout = false,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
@@ -1313,7 +1291,7 @@ private fun ReaderPageLayout(
             onOpenInWebView = onOpenInWebView,
             onToggleUi = onToggleUi,
             pageProgress = pageProgress,
-            onReportProgress = onReportProgress,
+            pageProgressHandles = pageProgressHandles,
         )
         // DEFAULT and VERTICAL both render the paged-vertical layout in legacy
         // (`VerticalReadingMode.kt`). Treating `DEFAULT` as a synonym for `VERTICAL` here is
@@ -1322,7 +1300,7 @@ private fun ReaderPageLayout(
         ReadingMode.DEFAULT,
         ReadingMode.VERTICAL,
         -> ReaderVerticalPager(
-            pages = pages,
+            pages = feedState.pages,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
             onPageChanged = onPageChanged,
@@ -1332,7 +1310,7 @@ private fun ReaderPageLayout(
             onOpenInWebView = onOpenInWebView,
             onToggleUi = onToggleUi,
             pageProgress = pageProgress,
-            onReportProgress = onReportProgress,
+            pageProgressHandles = pageProgressHandles,
         )
         // WEBTOON and CONTINUOUS_VERTICAL both render as free-scroll `LazyColumn` in legacy
         // (`WebToonReadingMode.kt` / `ContinuousVerticalReadingMode.kt`). They're not paged
@@ -1345,10 +1323,7 @@ private fun ReaderPageLayout(
         ReadingMode.WEBTOON,
         ReadingMode.CONTINUOUS_VERTICAL,
         -> ReaderVerticalList(
-            pages = pages,
-            pageChapters = pageChapters,
-            chapters = chapters,
-            anchorChapter = anchorChapter,
+            feedState = feedState,
             currentPageIndex = currentPageIndex,
             screenHeightDb = screenHeightDb,
             contentScale = if (readingMode == ReadingMode.WEBTOON) {
@@ -1362,17 +1337,14 @@ private fun ReaderPageLayout(
             onOpenInWebView = onOpenInWebView,
             onToggleUi = onToggleUi,
             pageProgress = pageProgress,
-            onReportProgress = onReportProgress,
+            pageProgressHandles = pageProgressHandles,
         )
     }
 }
 
 @Composable
 private fun ReaderVerticalList(
-    pages: List<Page>,
-    pageChapters: List<String>,
-    chapters: List<Chapter>,
-    anchorChapter: Chapter?,
+    feedState: ReaderState,
     currentPageIndex: Int,
     screenHeightDb: Dp,
     contentScale: ContentScale,
@@ -1382,16 +1354,19 @@ private fun ReaderVerticalList(
     onOpenInWebView: () -> Unit,
     onToggleUi: () -> Unit,
     pageProgress: Map<String, PageDownloadProgress>,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
+    pageProgressHandles: Map<String, PageProgressHandle>,
 ) {
     // #5 continuous reader: render an interleaved feed (pages + inline chapter-boundary cards) instead
     // of the raw page list. `pages`/`currentPageIndex` stay in PAGE-index space (the VM is unchanged);
     // the two maps translate between page-index space and feed-index (LazyColumn) space. Memoized so
-    // the feed + maps rebuild only when the page list / tags / chapter list change.
-    val feed = remember(pages, pageChapters, chapters, anchorChapter) {
-        buildReaderFeed(pages, pageChapters, chapters, anchorChapter)
-    }
-    val lastPageIndex = (pages.size - 1).coerceAtLeast(0)
+    // only these five feed fields are memoization keys, not progress/chrome changes in feedState.
+    val feed =
+        with(feedState) {
+            remember(pages, pageChapters, chapters, chapter, skippedChapterUrls) {
+                buildReaderFeed(pages, pageChapters, chapters, chapter, skippedChapterUrls)
+            }
+        }
+    val lastPageIndex = (feedState.pages.size - 1).coerceAtLeast(0)
     // `currentPageIndex` is honoured by `rememberLazyListState` only on the FIRST
     // composition (see KDoc: "the state will only be created once" per composable
     // identity). Mode-toggle creates a fresh `ReaderVerticalList` composition → fresh
@@ -1463,7 +1438,7 @@ private fun ReaderVerticalList(
         onAppendNext = onAppendNext,
         contentScale = contentScale,
         pageProgress = pageProgress,
-        onReportProgress = onReportProgress,
+        pageProgressHandles = pageProgressHandles,
     )
 }
 
@@ -1478,7 +1453,7 @@ private fun ReaderVerticalListBody(
     onAppendNext: () -> Unit,
     contentScale: ContentScale,
     pageProgress: Map<String, PageDownloadProgress>,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
+    pageProgressHandles: Map<String, PageProgressHandle>,
 ) {
     LazyColumn(
         state = listState,
@@ -1522,7 +1497,7 @@ private fun ReaderVerticalListBody(
                         screenHeightDb = screenHeightDb,
                         onOpenInWebView = onOpenInWebView,
                         progress = pageProgress[item.page.url] ?: PageDownloadProgress.Idle,
-                        onReportProgress = onReportProgress,
+                        progressHandle = pageProgressHandles[item.page.url],
                         // contentScale differs between the two LazyColumn modes (gestures-zoom finding #3):
                         // WEBTOON = FillWidth (strip fills width, height follows), CONTINUOUS_VERTICAL = Fit
                         // (image fits within its slot, native default). Passed down from ReaderVerticalList.
@@ -1575,7 +1550,7 @@ private fun ReaderHorizontalPager(
     onOpenInWebView: () -> Unit,
     onToggleUi: () -> Unit,
     pageProgress: Map<String, PageDownloadProgress>,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
+    pageProgressHandles: Map<String, PageProgressHandle>,
 ) {
     // #14: when a next chapter exists, append ONE dummy "Next Chapter" page after the last image
     // (index == pages.size). The last image is then dwellable — it is no longer the pager's last
@@ -1652,7 +1627,7 @@ private fun ReaderHorizontalPager(
                     screenHeightDb = screenHeightDb,
                     onOpenInWebView = onOpenInWebView,
                     progress = pageProgress[pages[index].url] ?: PageDownloadProgress.Idle,
-                    onReportProgress = onReportProgress,
+                    progressHandle = pageProgressHandles[pages[index].url],
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                 )
@@ -1695,7 +1670,7 @@ private fun ReaderVerticalPager(
     onOpenInWebView: () -> Unit,
     onToggleUi: () -> Unit,
     pageProgress: Map<String, PageDownloadProgress>,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
+    pageProgressHandles: Map<String, PageProgressHandle>,
 ) {
     // #14: dummy "Next Chapter" page after the last image — see [ReaderHorizontalPager] for the full
     // rationale. The last image is dwellable and the advance fires only when swiping onto the dummy.
@@ -1753,7 +1728,7 @@ private fun ReaderVerticalPager(
                 screenHeightDb = screenHeightDb,
                 onOpenInWebView = onOpenInWebView,
                 progress = pageProgress[pages[index].url] ?: PageDownloadProgress.Idle,
-                onReportProgress = onReportProgress,
+                progressHandle = pageProgressHandles[pages[index].url],
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
@@ -1767,215 +1742,6 @@ private fun ReaderVerticalPager(
                 onGoToNext = onReachedEnd,
             )
         }
-    }
-}
-
-@Composable
-private fun ReaderPageItem(
-    page: Page,
-    screenHeightDb: Dp,
-    onOpenInWebView: () -> Unit,
-    progress: PageDownloadProgress,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
-    modifier: Modifier = Modifier.fillMaxWidth(),
-    contentScale: ContentScale = ContentScale.FillWidth,
-) {
-    val context = LocalPlatformContext.current
-    // Wrap [onReportProgress] in `rememberUpdatedState` so the Coil listener (captured into the
-    // `remember`-cached [ImageRequest]) always invokes the latest callback, even if the screen's
-    // navigation parameters change identity across recompositions. Without this, the listener
-    // would keep firing the first-composition's lambda forever — usually fine because the
-    // route adapter binds `repo::report` once per route, but defensive against future scenarios
-    // (e.g. an unmemoized lambda passed by a parent composable). Cost is one extra
-    // `MutableState` allocation per page composable; negligible.
-    val reportProgress by rememberUpdatedState(onReportProgress)
-    val windowWidthPx = LocalWindowInfo.current.containerSize.width
-    val request = remember(page.url, page.headers, windowWidthPx) {
-        val headers = NetworkHeaders.Builder().apply {
-            page.headers.forEach { (key, value) -> add(key, value) }
-        }.build()
-        ImageRequest.Builder(context)
-            .data(page.url)
-            .httpHeaders(headers)
-            // Coil 3.4 defaults `maxBitmapSize` to `Size(4096, 4096)` and the loader-level
-            // override in `:composeApp/App.kt` doesn't always propagate to every request.
-            // Webtoon strips are typically 800×~14000; with the default cap, aspect-
-            // preservation collapses width to ~234 px before the decoder runs, producing a
-            // low-resolution bitmap that Compose then upscales at draw time. So HEIGHT stays
-            // Undefined (natural strip height decodes unrestricted) — but the WIDTH is capped
-            // at window-width × zoom headroom (mobile hardening 2026-07-04): with no cap at
-            // all, FillWidth's Scale.FILL made the sample size always 1 and a wide-and-tall
-            // page decoded at full natural size as a software bitmap — an OOM vector. Coil
-            // applies the two axes independently (no width-collapse) and scales bilinearly.
-            // See [me.manga.kira.ui.reader.internal.readerDecodeMaxWidthPx].
-            .maxBitmapSize(
-                readerDecodeMaxWidthPx(windowWidthPx)
-                    ?.let { Size(Dimension.Pixels(it), Dimension.Undefined) }
-                    ?: Size(Dimension.Undefined, Dimension.Undefined),
-            )
-            // Per-platform decode hints (Phase 7.x.reader.modelayout.pageprogress Step 7).
-            // Android adds `allowHardware(false) + bitmapConfig(RGB_565)`; iOS / Desktop are
-            // no-ops. RGB_565 halves cache pressure vs default ARGB_8888 — the load-bearing
-            // anti-blur fix documented in the project's image-quality memory: without it,
-            // Coil's memory cache fills ~2× faster, evicted pages re-decode at sample
-            // size >1, producing visibly blurry mid-scroll output. See
-            // [me.manga.kira.ui.reader.internal.applyReaderDecoderHints] KDoc.
-            .applyReaderDecoderHints()
-            // Per-request lifecycle listener (Phase 7.x.reader.modelayout.pageprogress).
-            // Bridges Coil's image-load callbacks to the rework's [PageProgressRepository]
-            // via the `:domain`-typed [onReportProgress] callback. The route adapter binds
-            // this to `PageProgressRepository::report`, keeping `:ui` decoupled from
-            // `:data`. Coil 3.x exposes onStart / onCancel / onError / onSuccess but NO
-            // per-byte hook — for per-byte fraction the Android slice adds an OkHttp
-            // body wrap in `:platform/androidMain` (Step 6 of the slice plan). iOS /
-            // Desktop ktor3 stays Started → Complete / Failed only (no fraction available
-            // in commonMain). [PageDownloadProgress.Idle] is reported on cancel so a
-            // chapter swap mid-fetch returns the slot to its placeholder default.
-            .listener(
-                onStart = { reportProgress(page.url, PageDownloadProgress.Started) },
-                onCancel = { reportProgress(page.url, PageDownloadProgress.Idle) },
-                onSuccess = { _, _ -> reportProgress(page.url, PageDownloadProgress.Complete) },
-                onError = { _, _ -> reportProgress(page.url, PageDownloadProgress.Failed) },
-            )
-            .build()
-    }
-    // SubcomposeAsyncImage (not AsyncImage) so the Loading / Error states can render
-    // distinct content with their own modifiers. The reserved-height contract:
-    // `defaultMinSize(minHeight = screenHeightDb)` on the loading + error placeholders
-    // keeps a streaming LazyColumn item from collapsing to 0 during the bitmap-in-flight
-    // window — without this, the LazyColumn scroll visibly jolts as each item's decoded
-    // height lands. For the pagers it's a no-op (the page's `.fillMaxSize()` already
-    // gives them maxHeight = viewportHeight ≥ screenHeightDb). Matches legacy parity
-    // (`composeApp/.../reading_modes/WebToonReadingMode.kt` lines 200–211 +
-    // `ContinuousVerticalReadingMode.kt` lines 200–211). Phase 7.x.reader.modelayout.placeholder.
-    SubcomposeAsyncImage(
-        model = request,
-        contentDescription = null,
-        modifier = modifier,
-        contentScale = contentScale,
-        loading = {
-            // Determinate vs indeterminate placeholder dispatch (Phase
-            // 7.x.reader.modelayout.pageprogress). Only [PageDownloadProgress.InProgress] with
-            // a non-null `fraction` produces a determinate ring — every other state stays
-            // indeterminate. `coerceIn(0f, 1f)` is a defensive guard against malformed
-            // Content-Length headers from misbehaving CDNs (see [PageDownloadProgress.InProgress]
-            // KDoc). The repository's `Idle` default is the placeholder's "nothing yet" state
-            // (chapter just entered, no per-page listener tick yet) — also indeterminate so
-            // the user sees a spinner instead of a frozen 0% ring. Decoding emits as
-            // indeterminate too because Coil's `onSuccess` lands almost immediately after the
-            // bytes arrive, so a brief flicker through a final spinner is the right ergonomics
-            // (matches legacy `WebToonReadingMode.kt` page placeholder).
-            val fraction = (progress as? PageDownloadProgress.InProgress)?.fraction
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = screenHeightDb),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (fraction != null) {
-                    CircularProgressIndicator(progress = { fraction.coerceIn(0f, 1f) })
-                } else {
-                    CircularProgressIndicator()
-                }
-            }
-        },
-        error = {
-            // Per-page retry button (Phase 7.x.reader.modelayout.pageretry). Driven by
-            // Coil-level `AsyncImagePainter.restart()` — re-issues this page's individual
-            // ImageRequest without touching the rest of the chapter. Mirrors legacy parity
-            // in `composeApp/.../reading_modes/WebToonReadingMode.kt` line 211,
-            // `PagerImageItem.kt` line 83, and `ContinuousVerticalReadingMode.kt` line 212
-            // (all three use `onRetry = { painter.restart() }`). No MVI plumbing required:
-            // per-page retry is a UI-only concern that Coil's painter contract already
-            // expresses; the `SubcomposeAsyncImageScope` receiver exposes `painter` here.
-            // Chapter-level OnRetry (top-bar refresh action) remains the only MVI-routed
-            // retry and re-fetches the whole page list. Legacy's "Open in WebView" half
-            // of the error pane is still deferred — it needs a new `ReaderEffect`
-            // (`OpenChapterInWebView`) + route adapter + platform IntentLauncher; tracked
-            // in ARCHITECTURE.md §71 deferrals.
-            // Capture `painter` from the `SubcomposeAsyncImageScope` receiver before
-            // entering the nested `BoxScope` / `ColumnScope` lambdas — the scope's
-            // implicit receiver is shadowed by inner Box/Column scopes, and Coil's
-            // `SubcomposeAsyncImageScope.painter` is only accessible at the top of
-            // the `error` slot (Kotlin compile error otherwise:
-            // "cannot be called in this context with an implicit receiver").
-            val errorPainter = painter
-            val errorSpacing = LocalSpacing.current
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = screenHeightDb),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(errorSpacing.md),
-                ) {
-                    Text(
-                        text = stringResource(Res.string.failed_to_load_image),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    // Retry + Open-in-WebView buttons side-by-side. Mirrors legacy
-                    // `ImageLoadError` `Row` of two `BorderedPrimaryButton`s — same
-                    // visual shape, same affordance pair. Phase 7.x.reader.modelayout.openwebview
-                    // (closes the §71.7 deferral on the Open-in-WebView half of the
-                    // legacy parity gap). Retry is Coil-level via `painter.restart()`
-                    // (§71); Open-in-WebView goes through MVI as
-                    // `ReaderIntent.OnOpenInWebView` → `ReaderEffect.OpenChapterInWebView`
-                    // → route adapter → `navController.safeNavigate(Screen.WebView(url, api))`.
-                    // Error-pane buttons geometry parity (reader-controls finding #8): native
-                    // `ImageLoadError.kt:42-54` lays out two `BorderedPrimaryButton`s — height
-                    // 38.dp, RoundedCornerShape(16.dp), contentPadding 8.dp vertical / 28.dp
-                    // horizontal, primary container + onPrimary content, elevation 4.dp — in a
-                    // 12.dp-spaced Row (`ReaderScreen.kt:731-765`). Replaces the rework's two
-                    // default M3 Buttons.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ReaderBorderedPrimaryButton(
-                            text = stringResource(Res.string.retry),
-                            onClick = { errorPainter.restart() },
-                        )
-                        ReaderBorderedPrimaryButton(
-                            text = stringResource(Res.string.action_open_in_browser),
-                            onClick = onOpenInWebView,
-                        )
-                    }
-                }
-            }
-        },
-    )
-}
-
-/**
- * Filled primary button with the native `BorderedPrimaryButton` geometry
- * (`native-app/.../reader/ui/screens/ReaderScreen.kt:731-765`), used by the per-page error pane
- * (reader-controls finding #8): fixed 38.dp height (min-height floor removed so the 38.dp takes
- * effect), `RoundedCornerShape(16.dp)`, 8.dp-vertical / 28.dp-horizontal content padding, primary
- * container + onPrimary content, and 4.dp resting elevation. Native also paints a 1.dp transparent
- * border before clipping to the same shape — a no-op once `shape` already rounds + clips the
- * button, so it is dropped here.
- */
-@Composable
-private fun ReaderBorderedPrimaryButton(
-    text: String,
-    onClick: () -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .height(38.dp)
-            .defaultMinSize(minHeight = 0.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 28.dp),
-    ) {
-        Text(text = text)
     }
 }
 
