@@ -11,18 +11,12 @@ import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.presentation.features.home.data.ApiTitle
 
 @Dao
-interface LibraryDeo {
+interface LibraryDeo : ChapterDiscoveryQueries {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertManga(manga: SavedMangaEntity): Long
 
     @Query("SELECT id FROM saved_manga WHERE url = :url LIMIT 1")
     suspend fun getMangaIdByUrl(url: String): Long?
-    @Query("SELECT url FROM saved_chapters WHERE mangaId = :mangaId")
-    suspend fun getSavedChapterUrls(mangaId: Long): List<String>
-
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertChapters(chapters: List<SavedChapterEntity>)
-
     @Query("SELECT api, title FROM saved_manga")
     fun getSavedMangaApiTitleFlow(): Flow<List<ApiTitle>>
 

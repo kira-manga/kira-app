@@ -68,6 +68,7 @@ fun buildMangaDatabase(): MangaDatabase =
             MIGRATION_10_11,
             MIGRATION_11_12,
             MIGRATION_12_13,
+            MIGRATION_13_14,
         )
         .addCallback(ForeignKeysOnCallback)
         .setDriver(ForeignKeysDriver(BundledSQLiteDriver()))

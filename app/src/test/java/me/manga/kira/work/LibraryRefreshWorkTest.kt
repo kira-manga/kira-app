@@ -90,7 +90,7 @@ class LibraryRefreshWorkTest {
                 assertEquals("old success", port.lastSuccess)
                 assertEquals(if (libraryRead) null else 1, progress.last().snapshotSize)
                 assertEquals(if (libraryRead) 0 else 1, progress.last().timedOut)
-                assertTrue(port.inserts.isEmpty())
+                assertTrue(port.persistenceCalls.isEmpty())
             }
         }
 
@@ -125,35 +125,35 @@ class LibraryRefreshWorkTest {
         }
 
     @Test
-    fun swallowedEmptyAndMalformedInsertReturns_failWithoutLaunchingNotifications() =
+    fun atomicPersistenceFailure_failsWithoutRetryDisplayOrStamp() =
         runTest {
-            for (ids in listOf(emptyList(), listOf(9L, 10L), listOf(0L), listOf(-2L))) {
-                val port = LibraryRefreshWorkTestFixtures().apply { write = { ids } }
-                assertEquals(Result.failure(), work(port).run())
-                assertEquals(1, port.inserts.size)
-                assertTrue(port.persistenceCalls.isEmpty())
-                assertTrue(port.displayCalls.isEmpty())
-                assertEquals("old success", port.lastSuccess)
+            val port = LibraryRefreshWorkTestFixtures().apply {
+                persist = { _, _ -> error("fixture_atomic_discovery_failure") }
             }
+            assertEquals(Result.failure(), work(port).run())
+            assertEquals(1, port.persistenceCalls.size)
+            assertTrue(port.persistedNotifications.isEmpty())
+            assertTrue(port.displayCalls.isEmpty())
+            assertEquals("old success", port.lastSuccess)
         }
 
     @Test
-    fun validIgnoreSlots_areNotFailure_andOnlyConfirmedInsertedIdsAreCounted() =
+    fun lostDiscoveryRace_isSuccess_andOnlyCommittedNotificationsAreCounted() =
         runTest {
-            for (ids in listOf(listOf(9L, -1L), listOf(-1L, -1L))) {
-                val port =
-                    LibraryRefreshWorkTestFixtures().apply {
-                        fetch = { AppResult.Success(refreshDetails(it, count = 2)) }
-                        write = { ids }
-                        cover = { error("best-effort cover failure") }
-                    }
+            for (committedCount in listOf(1, 0)) {
+                val port = LibraryRefreshWorkTestFixtures().apply {
+                    fetch = { AppResult.Success(refreshDetails(it, count = 2)) }
+                    val normalPersist = persist
+                    persist = { manga, rows -> normalPersist(manga, rows).take(committedCount) }
+                    cover = { error("best-effort cover failure") }
+                }
                 val progress = mutableListOf<LibraryRefreshWorkProgress>()
                 assertEquals(Result.success(), work(port, progress).run())
-                assertEquals(ids.count { it > 0 }, progress.last().newChapterCount)
+                assertEquals(committedCount, progress.last().newChapterCount)
                 assertEquals(1, port.stamps) // Nonempty zero-new also stamps.
                 assertEquals("new success", port.lastSuccess)
-                assertEquals(1, port.persistedNotifications.size) // Observed fake-port return, not Room proof.
-                assertEquals(1, port.displayCalls.size)
+                assertEquals(1, port.persistedNotifications.size) // Port result, not Room proof.
+                assertEquals(if (committedCount == 0) 0 else 1, port.displayCalls.size)
             }
         }
 
@@ -163,7 +163,7 @@ class LibraryRefreshWorkTest {
             val port = LibraryRefreshWorkTestFixtures().apply { libraryFlow = flowOf(emptyList()) }
             assertEquals(Result.success(), work(port).run())
             assertEquals("old success", port.lastSuccess)
-            assertTrue(port.inserts.isEmpty())
+            assertTrue(port.persistenceCalls.isEmpty())
         }
 
     @Test
@@ -215,7 +215,6 @@ class LibraryRefreshWorkTest {
                 assertEquals(if (expires) 1 else 0, terminal.timedOut)
                 assertEquals(0, terminal.newChapterCount)
                 assertEquals(if (expires) 31_000L else 26_000L, testScheduler.currentTime - started)
-                assertEquals(1, port.inserts.size)
                 assertEquals(1, port.persistenceCalls.size)
                 assertTrue(port.persistedNotifications.isEmpty())
                 assertTrue(port.displayCalls.isEmpty())
@@ -262,7 +261,6 @@ class LibraryRefreshWorkTest {
                 job.join()
                 assertTrue(job.isCancelled && settled.isCompleted)
                 assertNull(result)
-                assertEquals(1, port.inserts.size)
                 assertEquals(1, port.persistenceCalls.size)
                 assertEquals(if (stage == 4) 1 else 0, port.persistedNotifications.size)
                 assertEquals(if (stage == 4) 1 else 0, port.displayCalls.size)

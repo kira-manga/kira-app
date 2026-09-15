@@ -36,6 +36,8 @@ import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.core.util.notification.NotificationRoomFixture
 import me.manga.kira.core.util.notification.notificationCoverCalls
 import me.manga.kira.core.util.notification.startWorkExecutionJob
+import me.manga.kira.data.local.dao.LibraryDeo
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -261,17 +263,21 @@ internal class RefreshDeadlineWitness(
     val coverWaiting = CompletableDeferred<Unit>()
     val coverExpired = CompletableDeferred<Unit>()
     val attempts = AtomicInteger()
-    val chapters =
-        room.chapterInserts {
-            val ids = room.db.chapterDao().insertChaptersSafely(it)
-            if (attempts.incrementAndGet() == 1) {
-                withContext(dispatcher) {
-                    storageWaiting.complete(Unit)
-                    delay(25_000)
-                }
+    val discoveries = object : LibraryDeo by room.db.libraryDeo() {
+        override suspend fun persistChapterDiscoveries(
+            api: String,
+            mangaUrl: String,
+            chapters: List<SavedChapterEntity>,
+            expectedMangaId: Long?,
+        ): List<ChapterNotification> {
+            attempts.incrementAndGet()
+            withContext(dispatcher) {
+                storageWaiting.complete(Unit)
+                delay(25_000)
             }
-            ids
+            return room.db.libraryDeo().persistChapterDiscoveries(api, mangaUrl, chapters, expectedMangaId)
         }
+    }
     val covers =
         object : NotificationCovers {
             override suspend fun withCover(

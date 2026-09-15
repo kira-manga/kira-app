@@ -16,47 +16,31 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.R
-import me.manga.kira.data.local.dao.NotificationDao
+import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
-import me.manga.kira.presentation.features.library.domain.LibraryRepository
 
 /**
  * Worker-owned Updates persistence followed by optional Android display. No independent scope:
  * a cancelled worker may leave committed Updates, but cannot schedule later cover work/posts.
- * Chapter/notification atomicity and cross-worker discovery deduplication are separate concerns.
+ * The shared Room discovery transaction owns chapter/Updates atomicity and cross-worker dedup.
  */
 class ChapterNotificationHelper(
     private val context: Context,
-    private val notificationDao: NotificationDao,
-    private val libraryRepository: LibraryRepository,
+    private val libraryDeo: LibraryDeo,
     private val covers: NotificationCovers,
 ) {
     /** Persist all intended rows before making any notification-service or cover decision. */
     suspend fun persistNewChapterNotifications(
         manga: SavedMangaEntity,
         chapters: List<SavedChapterEntity>,
-    ): List<ChapterNotification> {
-        if (chapters.isEmpty()) return emptyList()
-        val rawIds = libraryRepository.insertChapterList(chapters)
-        check(rawIds.size == chapters.size) { "chapter_insert_result_count" }
-        val notifications =
-            chapters.mapIndexed { index, chapter ->
-                val raw = rawIds[index]
-                // Only a real IGNORE result may use the repository's chapter-identity fallback.
-                // Keep this seam at persistence, never repeat identity resolution during display.
-                val realId =
-                    if (raw == -1L) libraryRepository.getChapterIdByUrl(manga.id, chapter.url) else raw
-                check(realId != null && realId > 0L) { "chapter_insert_unresolved_id" }
-                chapter.notification(manga, realId)
-            }
-        val rowIds = notificationDao.insertNotificationsList(notifications)
-        check(rowIds.size == notifications.size && rowIds.all { it > 0L }) {
-            "notification_insert_result_ids"
-        }
-        return notifications.mapIndexed { index, row -> row.copy(id = rowIds[index]) }
-    }
+    ): List<ChapterNotification> = libraryDeo.persistChapterDiscoveries(
+        api = manga.api,
+        mangaUrl = manga.url,
+        chapters = chapters,
+        expectedMangaId = manga.id,
+    )
 
     /** Best effort only, joined by the worker outside its per-manga persistence timeout. */
     suspend fun displayNotifications(notifications: List<ChapterNotification>) {
@@ -136,21 +120,6 @@ class ChapterNotificationHelper(
         const val DISPLAY_LIMIT = 6
     }
 }
-
-private fun SavedChapterEntity.notification(
-    manga: SavedMangaEntity,
-    chapterId: Long,
-) = ChapterNotification(
-    mangaId = manga.id,
-    mangaTitle = manga.title,
-    mangaImageUrl = manga.imageUrl,
-    chapterId = chapterId,
-    chapterNumber = number,
-    chapterUrl = url,
-    mangaUrl = manga.url,
-    api = manga.api,
-    language = manga.language,
-)
 
 /*
  * §253 audit-trail postscript — cluster284 §253 sweep (2026-05-29)

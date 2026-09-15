@@ -146,12 +146,12 @@ interface LibraryRepository {
     ): AppResult<Int>
 
     /**
-     * Like [persistNewChapters] but ALSO writes a `notifications` row for each newly-persisted chapter
-     * so it appears in the Notifications/Updates screen (native parity: the Android `LibraryRefreshWorker`
-     * calls `addNewChapterNotification` after the insert). Used ONLY by the library refresh-all path
-     * (incl. the Desktop/iOS inline refresh) — NOT by the Details pull-to-refresh, which must stay
-     * notification-free to match native. De-dup is intrinsic: only genuinely-new chapters are notified.
-     * Returns the count newly persisted; 0 when the manga isn't in the library.
+     * Atomically persists chapter discoveries and their Updates for the exact saved `(api, manga.url)`
+     * parent. Overlapping refreshes notify/count only the chapters this call actually inserts, leaving
+     * existing chapter and notification user state intact. Returns that committed discovery count;
+     * 0 if no new chapters were inserted or the exact parent is no longer in the library.
+     * Used by refresh-all (including Desktop/iOS background/inline refresh), never the non-notifying
+     * Details pull-to-refresh path.
      */
     suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int>
 

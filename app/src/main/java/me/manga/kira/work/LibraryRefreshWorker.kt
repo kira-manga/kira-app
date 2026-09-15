@@ -146,8 +146,6 @@ class LibraryRefreshWorker(
             coverUrl: String,
         ) = libraryRepository.updateMangaImageUrlEverywhere(mangaId, coverUrl)
 
-        override suspend fun insert(chapters: List<SavedChapterEntity>) = libraryRepository.insertChapterList(chapters)
-
         override suspend fun persistNotifications(
             manga: SavedMangaEntity,
             chapters: List<SavedChapterEntity>,
