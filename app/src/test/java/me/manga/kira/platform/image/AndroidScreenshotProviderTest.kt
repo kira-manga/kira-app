@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -55,7 +56,17 @@ class AndroidScreenshotProviderTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        Robolectric.setupContentProvider(FileProvider::class.java, "${application.packageName}.fileprovider")
+        // The authority-only Robolectric overload fabricates ProviderInfo without URI grants.
+        // Attach the actual merged manifest entry, including its production FileProvider paths.
+        val info = checkNotNull(
+            application.packageManager.resolveContentProvider(
+                "${application.packageName}.fileprovider",
+                PackageManager.GET_META_DATA,
+            ),
+        )
+        assertTrue(info.grantUriPermissions)
+        assertFalse(info.exported)
+        Robolectric.buildContentProvider(FileProvider::class.java).create(info)
     }
 
     @After
