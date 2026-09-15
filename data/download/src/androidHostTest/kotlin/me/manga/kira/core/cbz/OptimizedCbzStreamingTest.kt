@@ -56,7 +56,7 @@ private suspend fun CoroutineScope.verifyModeledRegions(fixture: CbzHostFixture)
     val paths =
         fixture.pages(1, CBZ_REGION_PAGE_WIDTH, CBZ_SPLIT_PAGE_HEIGHT) +
             fixture.pages(1, CBZ_SMALL_PAGE_WIDTH, CBZ_SMALL_PAGE_HEIGHT, chapter = 2L)
-    val decoder = CbzObservedDecoder()
+    val decoder = CbzObservedDecoder(paths)
     val encodes = AtomicInteger()
     CbzEncodeGate().use { gate ->
         val archive = CbzHostArchiveOutput()
@@ -103,7 +103,9 @@ private fun assertModeledRegionsComplete(
         ),
         decoder.regions.toList(),
     )
-    assertEquals(paths, decoder.requested.map(File::getAbsolutePath))
+    // The observer compared each live snapshot with the corresponding source bytes, in order.
+    assertEquals(paths.size, decoder.requested.size)
+    assertTrue(decoder.requested.none(File::exists))
     assertEquals(1, decoder.regionCloses.get())
     assertTrue(decoder.bitmaps.all(Bitmap::isRecycled))
     fixture.assertArchive(
@@ -115,6 +117,7 @@ private fun assertModeledRegionsComplete(
     )
     assertTrue(paths.none { File(it).exists() })
     fixture.assertNoTemporary()
+    fixture.assertNoTemporary(2L)
 }
 
 private class CbzTierStreamingCase(
@@ -132,7 +135,7 @@ private class CbzTierStreamingCase(
         )
     private val before = fixture.priorArchive(chapter)
     private val output = RecordingArchiveOutput(paths, before)
-    private val decoder = CbzObservedDecoder()
+    private val decoder = CbzObservedDecoder(paths)
     private val encodes = AtomicInteger()
     private val progress = mutableListOf<Int>()
 
@@ -181,6 +184,8 @@ private class CbzTierStreamingCase(
     private fun assertCompleted() {
         assertEquals((1..CBZ_NOISY_PAGE_COUNT).toList(), progress)
         assertEquals(1, output.publications.get())
+        assertEquals(paths.size, decoder.requested.size)
+        assertTrue(decoder.requested.none(File::exists))
         assertTrue(decoder.bitmaps.all(Bitmap::isRecycled))
         assertTrue(paths.none { File(it).exists() })
         fixture.assertArchive(

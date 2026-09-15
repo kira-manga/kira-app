@@ -128,6 +128,8 @@ import me.manga.kira.ui.generated.resources.crash_diagnostics_settings_descripti
 import me.manga.kira.ui.generated.resources.crash_diagnostics_title
 import me.manga.kira.ui.generated.resources.chapters_converted_successfully
 import me.manga.kira.ui.generated.resources.chapters_remaining
+import me.manga.kira.ui.generated.resources.cbz_chapters_failed
+import me.manga.kira.ui.generated.resources.cbz_conversion_partial
 import me.manga.kira.ui.generated.resources.clear_chapter_cache
 import me.manga.kira.ui.generated.resources.close
 import me.manga.kira.ui.generated.resources.closure_reason_done
@@ -1780,14 +1782,14 @@ private fun ReadingModeDialog(
  * progress Flow into [SettingsState.cbzConversion]. Renders three states, exactly as native:
  *  - **Converting** ([CbzConversionProgress.isConverting]) — Warning icon, "Converting to CBZ"
  *    title, the "please don't close the app" caution, a determinate [LinearProgressIndicator]
- *    (`convertedChapters / totalChapters`), the "Completed X / Y" + "Remaining Z" count rows, the
+ *    (`(convertedChapters + failedChapters) / totalChapters`), the "Completed X / Y" + "Remaining Z" count rows, the
  *    "Current:" manga-title + chapter-number block (shown once a title is known), a spinner, and
  *    the Stop button. Dismissal is fully blocked (no-op `onDismissRequest`, back-press +
  *    outside-tap disabled).
  *  - **Error** ([CbzConversionProgress.error] non-null) — Error icon + the "Conversion Failed"
  *    line + a Close button.
  *  - **Success / Stopped** ([CbzConversionProgress.successMessage] non-null) — CheckCircle (or
- *    Warning when [CbzConversionProgress.wasStopped]) + the "Conversion Complete!" / "Conversion
+ *    Warning when stopped or any chapters failed) + the "Conversion Complete!" / "Conversion
  *    Stopped" title + the localized converted/remaining summary built from the count fields + a
  *    Done button.
  *
@@ -1829,10 +1831,14 @@ private fun CbzConversionDialog(
                     tint = MaterialTheme.colorScheme.error,
                 )
                 progress.successMessage != null -> Icon(
-                    imageVector = if (progress.wasStopped) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    imageVector = if (progress.wasStopped || progress.failedChapters > 0) {
+                        Icons.Default.Warning
+                    } else {
+                        Icons.Default.CheckCircle
+                    },
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
-                    tint = if (progress.wasStopped) {
+                    tint = if (progress.wasStopped || progress.failedChapters > 0) {
                         MaterialTheme.colorScheme.secondary
                     } else {
                         MaterialTheme.colorScheme.primary
@@ -1849,10 +1855,12 @@ private fun CbzConversionDialog(
         title = {
             val title = when {
                 progress.error != null -> stringResource(Res.string.conversion_failed)
-                progress.successMessage != null -> if (progress.wasStopped) {
-                    stringResource(Res.string.conversion_stopped)
-                } else {
-                    stringResource(Res.string.conversion_complete_)
+                progress.successMessage != null -> when {
+                    progress.wasStopped -> stringResource(Res.string.conversion_stopped)
+                    progress.failedChapters > 0 && progress.convertedChapters == 0 ->
+                        stringResource(Res.string.conversion_failed)
+                    progress.failedChapters > 0 -> stringResource(Res.string.cbz_conversion_partial)
+                    else -> stringResource(Res.string.conversion_complete_)
                 }
                 else -> stringResource(Res.string.converting_to_cbz)
             }
@@ -1934,7 +1942,7 @@ private fun CbzConvertingBody(progress: CbzConversionProgress) {
         Spacer(modifier = Modifier.height(24.dp))
 
         val fraction = if (progress.totalChapters > 0) {
-            progress.convertedChapters.toFloat() / progress.totalChapters.toFloat()
+            (progress.convertedChapters + progress.failedChapters).toFloat() / progress.totalChapters.toFloat()
         } else {
             0f
         }
@@ -1974,10 +1982,19 @@ private fun CbzConvertingBody(progress: CbzConversionProgress) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "${progress.totalChapters - progress.convertedChapters}",
+                text = "${(progress.totalChapters - progress.convertedChapters - progress.failedChapters).coerceAtLeast(0)}",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+
+        if (progress.failedChapters > 0) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(Res.string.cbz_chapters_failed, progress.failedChapters),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
             )
         }
 
@@ -2021,20 +2038,24 @@ private fun CbzConvertingBody(progress: CbzConversionProgress) {
  * GAP-SET-16 — the terminal Success / Stopped summary text of [CbzConversionDialog], built from
  * the structured count fields. Mirrors native's `buildString` summaries: the Stopped path prepends
  * "Conversion stopped by user." then the converted + remaining counts (native
- * `CbzConversionViewModel.stopConversion()`); the Success path shows the converted count (native
+ * `CbzConversionViewModel.stopConversion()`); the completed path shows converted/failed counts (native
  * `CbzConversionViewModel.startConversion()` completion message). The string lookups live here
  * because `:data` has no compose-resources access.
  */
 @Composable
 private fun CbzConversionSummary(progress: CbzConversionProgress) {
-    val remaining = (progress.totalChapters - progress.convertedChapters).coerceAtLeast(0)
+    val remaining = (progress.totalChapters - progress.convertedChapters - progress.failedChapters).coerceAtLeast(0)
     val message = buildString {
         if (progress.wasStopped) {
             append(stringResource(Res.string.conversion_stopped_by_user))
             append('\n')
         }
         append(stringResource(Res.string.chapters_converted_successfully, progress.convertedChapters))
-        if (progress.wasStopped && remaining > 0) {
+        if (progress.failedChapters > 0) {
+            append('\n')
+            append(stringResource(Res.string.cbz_chapters_failed, progress.failedChapters))
+        }
+        if (remaining > 0) {
             append('\n')
             append(stringResource(Res.string.chapters_remaining, remaining))
         }

@@ -3,6 +3,7 @@ package me.manga.kira.di
 import androidx.work.WorkManager
 import com.russhwolf.settings.ObservableSettings
 import me.manga.kira.core.cbz.CbzManager
+import me.manga.kira.core.cbz.CbzPagePolicy
 import me.manga.kira.core.cbz.OptimizedCbzManager
 import me.manga.kira.domain.auth.AndroidUserIdProvider
 import me.manga.kira.domain.auth.UserIdProvider
@@ -37,6 +38,8 @@ import me.manga.kira.platform.jobs.AndroidBackgroundJobScheduler
 import me.manga.kira.platform.jobs.BackgroundJobScheduler
 import me.manga.kira.platform.locale.AndroidLocaleSwitcher
 import me.manga.kira.platform.locale.LocaleSwitcher
+import me.manga.kira.platform.media.AndroidPageMediaInspector
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.notification.AndroidNotificationPresenter
 import me.manga.kira.platform.notification.NotificationPresenter
 import me.manga.kira.platform.push.AndroidPushTokenProvider
@@ -103,8 +106,9 @@ actual fun platformModule(): Module =
 
         // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
         single<AppFileSystem> { AndroidAppFileSystem(androidContext()) }
-        single<CbzWriter> { AndroidCbzWriter(get()) }
-        single<CbzReader> { DefaultCbzReader(get(), get()) }
+        single<PageMediaInspector> { AndroidPageMediaInspector() }
+        single<CbzWriter> { AndroidCbzWriter(get(), inspector = get()) }
+        single<CbzReader> { DefaultCbzReader(get(), get(), get()) }
 
         // ---- Background jobs (Phase 8.6) ----
         single<BackgroundJobScheduler> { AndroidBackgroundJobScheduler(androidContext()) }
@@ -173,7 +177,7 @@ actual fun platformModule(): Module =
         // (both deleted). OptimizedCbzManager injects it to size its decode/compress semaphores.
         single<DeviceTierProbe> { AndroidDeviceTierProbe(androidContext()) }
         single { CbzManager(androidContext()) }
-        single { OptimizedCbzManager(androidContext(), get()) }
+        single { OptimizedCbzManager(androidContext(), get(), pagePolicy = CbzPagePolicy(inspector = get())) }
         single { WorkManager.getInstance(androidContext()) }
         // ChapterDownloadService + DownloadRepositoryImpl bindings moved to :data:download's
         // downloadModule() (strangler-fig Phase 4), loaded via allReworkModules(). They resolve

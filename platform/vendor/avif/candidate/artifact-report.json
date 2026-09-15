@@ -1,0 +1,356 @@
+{
+  "abis": {
+    "arm64-v8a": {
+      "class": 2,
+      "load_segments": [
+        {
+          "alignment": 16384,
+          "file_bytes": 1456464,
+          "memory_bytes": 1456464,
+          "offset": 0,
+          "virtual_address": 0
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 30424,
+          "memory_bytes": 30424,
+          "offset": 1456464,
+          "virtual_address": 1472848
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 112,
+          "memory_bytes": 236440,
+          "offset": 1486888,
+          "virtual_address": 1519656
+        }
+      ],
+      "machine": 183,
+      "nm_output_sha256": "22ff6dcb058087a1dca92a78146b426ae898ce1f2d76f184bf63c6184d208d98",
+      "required_jni_exports": [
+        "Java_org_aomedia_avif_android_AvifDecoder_createDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_decode",
+        "Java_org_aomedia_avif_android_AvifDecoder_decodeWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_destroyDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfo",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfoWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_isAvifImage",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrameIndex",
+        "Java_org_aomedia_avif_android_AvifDecoder_nthFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_resultToString",
+        "Java_org_aomedia_avif_android_AvifDecoder_versionString"
+      ]
+    },
+    "armeabi-v7a": {
+      "class": 1,
+      "load_segments": [
+        {
+          "alignment": 16384,
+          "file_bytes": 1170432,
+          "memory_bytes": 1170432,
+          "offset": 0,
+          "virtual_address": 0
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 15372,
+          "memory_bytes": 15372,
+          "offset": 1170432,
+          "virtual_address": 1186816
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 40,
+          "memory_bytes": 231713,
+          "offset": 1185804,
+          "virtual_address": 1218572
+        }
+      ],
+      "machine": 40,
+      "nm_output_sha256": "a2743d7a00b4bb683a752d5b252aab00a59ef4a01fc251a26b4c2776de46796a",
+      "required_jni_exports": [
+        "Java_org_aomedia_avif_android_AvifDecoder_createDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_decode",
+        "Java_org_aomedia_avif_android_AvifDecoder_decodeWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_destroyDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfo",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfoWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_isAvifImage",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrameIndex",
+        "Java_org_aomedia_avif_android_AvifDecoder_nthFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_resultToString",
+        "Java_org_aomedia_avif_android_AvifDecoder_versionString"
+      ]
+    },
+    "x86": {
+      "class": 1,
+      "load_segments": [
+        {
+          "alignment": 16384,
+          "file_bytes": 1929552,
+          "memory_bytes": 1929552,
+          "offset": 0,
+          "virtual_address": 0
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 16936,
+          "memory_bytes": 16936,
+          "offset": 1929552,
+          "virtual_address": 1945936
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 56,
+          "memory_bytes": 232792,
+          "offset": 1946488,
+          "virtual_address": 1979256
+        }
+      ],
+      "machine": 3,
+      "nm_output_sha256": "75c506324378ce0b894740bccb4682dce544548a7f906457b522216536704199",
+      "required_jni_exports": [
+        "Java_org_aomedia_avif_android_AvifDecoder_createDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_decode",
+        "Java_org_aomedia_avif_android_AvifDecoder_decodeWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_destroyDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfo",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfoWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_isAvifImage",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrameIndex",
+        "Java_org_aomedia_avif_android_AvifDecoder_nthFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_resultToString",
+        "Java_org_aomedia_avif_android_AvifDecoder_versionString"
+      ]
+    },
+    "x86_64": {
+      "class": 2,
+      "load_segments": [
+        {
+          "alignment": 16384,
+          "file_bytes": 2662080,
+          "memory_bytes": 2662080,
+          "offset": 0,
+          "virtual_address": 0
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 28816,
+          "memory_bytes": 28816,
+          "offset": 2662080,
+          "virtual_address": 2678464
+        },
+        {
+          "alignment": 16384,
+          "file_bytes": 112,
+          "memory_bytes": 236400,
+          "offset": 2690896,
+          "virtual_address": 2723664
+        }
+      ],
+      "machine": 62,
+      "nm_output_sha256": "7d9d6f79a77146221e389a8e0e85db94cc16d56d82b4da96a6d6ab0e28f9f0f1",
+      "required_jni_exports": [
+        "Java_org_aomedia_avif_android_AvifDecoder_createDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_decode",
+        "Java_org_aomedia_avif_android_AvifDecoder_decodeWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_destroyDecoder",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfo",
+        "Java_org_aomedia_avif_android_AvifDecoder_getInfoWithLimitsNative",
+        "Java_org_aomedia_avif_android_AvifDecoder_isAvifImage",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_nextFrameIndex",
+        "Java_org_aomedia_avif_android_AvifDecoder_nthFrame",
+        "Java_org_aomedia_avif_android_AvifDecoder_resultToString",
+        "Java_org_aomedia_avif_android_AvifDecoder_versionString"
+      ]
+    }
+  },
+  "bytes": 3002110,
+  "elf_load_alignment": "PASS_16_KIB_OR_GREATER",
+  "final_apk_zip_alignment_and_device_loading": "NOT_RUN",
+  "java_api": {
+    "org.aomedia.avif.android.AvifDecoder": {
+      "actual_public_declarations": [
+        "public boolean getAlphaPresent();",
+        "public class org.aomedia.avif.android.AvifDecoder {",
+        "public double[] getFrameDurations();",
+        "public int getDepth();",
+        "public int getFrameCount();",
+        "public int getHeight();",
+        "public int getRepetitionCount();",
+        "public int getWidth();",
+        "public int nextFrame(android.graphics.Bitmap);",
+        "public int nextFrameIndex();",
+        "public int nthFrame(int, android.graphics.Bitmap);",
+        "public static boolean decode(java.nio.ByteBuffer, int, android.graphics.Bitmap);",
+        "public static boolean decodeWithLimits(java.nio.ByteBuffer, int, android.graphics.Bitmap, int, int, int);",
+        "public static boolean getInfoWithLimits(java.nio.ByteBuffer, int, org.aomedia.avif.android.AvifDecoder$Info, int, int);",
+        "public static boolean isAvifImage(java.nio.ByteBuffer);",
+        "public static native boolean decode(java.nio.ByteBuffer, int, android.graphics.Bitmap, int);",
+        "public static native boolean getInfo(java.nio.ByteBuffer, int, org.aomedia.avif.android.AvifDecoder$Info);",
+        "public static native java.lang.String resultToString(int);",
+        "public static native java.lang.String versionString();",
+        "public static org.aomedia.avif.android.AvifDecoder create(java.nio.ByteBuffer);",
+        "public static org.aomedia.avif.android.AvifDecoder create(java.nio.ByteBuffer, int);",
+        "public void release();"
+      ],
+      "bounded_private_jni_declarations": [
+        "private static native boolean decodeWithLimitsNative(java.nio.ByteBuffer, int, android.graphics.Bitmap, int, int, int);",
+        "private static native boolean getInfoWithLimitsNative(java.nio.ByteBuffer, int, org.aomedia.avif.android.AvifDecoder$Info, int, int);"
+      ],
+      "javap_output_sha256": "1491ae4a58bdb84b6f5332148ba49c96c9374a782274092d4755724fe5984170",
+      "required_public_declarations": [
+        "public boolean getAlphaPresent();",
+        "public double[] getFrameDurations();",
+        "public int getDepth();",
+        "public int getFrameCount();",
+        "public int getHeight();",
+        "public int getRepetitionCount();",
+        "public int getWidth();",
+        "public int nextFrame(android.graphics.Bitmap);",
+        "public int nextFrameIndex();",
+        "public int nthFrame(int, android.graphics.Bitmap);",
+        "public static boolean decode(java.nio.ByteBuffer, int, android.graphics.Bitmap);",
+        "public static boolean decodeWithLimits(java.nio.ByteBuffer, int, android.graphics.Bitmap, int, int, int);",
+        "public static boolean getInfoWithLimits(java.nio.ByteBuffer, int, org.aomedia.avif.android.AvifDecoder$Info, int, int);",
+        "public static boolean isAvifImage(java.nio.ByteBuffer);",
+        "public static native boolean decode(java.nio.ByteBuffer, int, android.graphics.Bitmap, int);",
+        "public static native boolean getInfo(java.nio.ByteBuffer, int, org.aomedia.avif.android.AvifDecoder$Info);",
+        "public static native java.lang.String resultToString(int);",
+        "public static native java.lang.String versionString();",
+        "public static org.aomedia.avif.android.AvifDecoder create(java.nio.ByteBuffer);",
+        "public static org.aomedia.avif.android.AvifDecoder create(java.nio.ByteBuffer, int);",
+        "public void release();"
+      ]
+    },
+    "org.aomedia.avif.android.AvifDecoder$Info": {
+      "actual_public_declarations": [
+        "public boolean alphaPresent;",
+        "public class org.aomedia.avif.android.AvifDecoder$Info {",
+        "public int depth;",
+        "public int height;",
+        "public int width;",
+        "public org.aomedia.avif.android.AvifDecoder$Info();"
+      ],
+      "bounded_private_jni_declarations": [],
+      "javap_output_sha256": "d65dfcde5f236de01359b890a4d9f528385d153d0b4b6a3a84875a9f06e9afe1",
+      "required_public_declarations": [
+        "public boolean alphaPresent;",
+        "public int depth;",
+        "public int height;",
+        "public int width;"
+      ]
+    }
+  },
+  "members": {
+    "AndroidManifest.xml": {
+      "bytes": 206,
+      "sha256": "377ee3fe5bff2b132ef6d7bd3ed438fed577390d5f32cd03e10064affe17d174"
+    },
+    "META-INF/com/android/build/gradle/aar-metadata.properties": {
+      "bytes": 121,
+      "sha256": "1a8a8d22989d9e2cc01fc939068f7f96dad91b3d2630715d070cefc57be53809"
+    },
+    "R.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "assets/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "assets/kira-avif-notices/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "assets/kira-avif-notices/Apache-2.0.txt": {
+      "bytes": 11324,
+      "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a"
+    },
+    "assets/kira-avif-notices/dav1d-COPYING.txt": {
+      "bytes": 1317,
+      "sha256": "b327887de263238deaa80c34cdd2ff3e0ba1d35db585ce14a37ce3e74ee389e9"
+    },
+    "assets/kira-avif-notices/jni-LICENSE.txt": {
+      "bytes": 1265,
+      "sha256": "05d27d3e3cf78bbc8d1306c9909fbc5e2aaf01f7e83a460ac431cc88012095ff"
+    },
+    "assets/kira-avif-notices/libavif-LICENSE.txt": {
+      "bytes": 20415,
+      "sha256": "165abf92cc04b39e80d29cadea7a6a7e8fddf59407d4ad2616507a7ebe8216f9"
+    },
+    "assets/kira-avif-notices/libyuv-LICENSE.txt": {
+      "bytes": 1506,
+      "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f"
+    },
+    "assets/kira-avif-notices/libyuv-PATENTS.txt": {
+      "bytes": 1387,
+      "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495"
+    },
+    "assets/kira-avif-notices/ndk-cpufeatures-BSD.txt": {
+      "bytes": 1398,
+      "sha256": "4102cd5ae35cbdeb0638c350966185e028ea9da863859f70e231c3cb273118d1"
+    },
+    "assets/kira-avif-notices/ndk-cpufeatures-NOTICE.txt": {
+      "bytes": 577,
+      "sha256": "c870d52f42a8f93023b99a85fe68d02637d6b04e5f35bbcd7f98759adb4e4d49"
+    },
+    "assets/kira-avif-notices/source-manifest.json": {
+      "bytes": 8444,
+      "sha256": "494ea6ce65ffb8483b98b80616575cd0f50297e3bb9184e0931c54de11469f76"
+    },
+    "classes.jar": {
+      "bytes": 3546,
+      "sha256": "458db3ee09e5a5899533fc40334d852a8a4e2b4e6fdb6592d085351c45afec88"
+    },
+    "jni/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "jni/arm64-v8a/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "jni/arm64-v8a/libavif_android.so": {
+      "bytes": 1489168,
+      "sha256": "98cecdc49e0662d31fcdb9e7042167ea0a3c154401556bb404dcbe99f595fb91"
+    },
+    "jni/armeabi-v7a/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "jni/armeabi-v7a/libavif_android.so": {
+      "bytes": 1187364,
+      "sha256": "3b2d3f1dbb8772718fe8f6f19dfa6194e6bc27eae08c9f6b2aa9ac762524264c"
+    },
+    "jni/x86/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "jni/x86/libavif_android.so": {
+      "bytes": 1948008,
+      "sha256": "08251468e52f7cc78f1b6a08cf0d6790a9b19590863b94b65abd2cb2c5da5d0c"
+    },
+    "jni/x86_64/": {
+      "bytes": 0,
+      "directory": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "jni/x86_64/libavif_android.so": {
+      "bytes": 2693104,
+      "sha256": "f33892512412222124236a580b5776167f033f63ee091e7f0651df836e0bcaab"
+    }
+  },
+  "native_behavior_and_app_qualification": "NOT_RUN",
+  "sha256": "3fb46514a771c9d8efc38192d80e69031021c3b6f7f5f09a154131ca083c5888"
+}

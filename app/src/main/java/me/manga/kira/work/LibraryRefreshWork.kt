@@ -168,27 +168,24 @@ internal class LibraryRefreshWork(
                         fetchedAt = fetchedAt,
                     )
                 }.reversed()
-        return if (chapters.isEmpty()) ItemOutcome.Completed(0) else insertChapters(manga, chapters)
+        return if (chapters.isEmpty()) ItemOutcome.Completed(0) else persistDiscoveries(manga, chapters)
     }
 
-    private suspend fun insertChapters(
+    private suspend fun persistDiscoveries(
         manga: SavedMangaEntity,
         chapters: List<SavedChapterEntity>,
     ): ItemOutcome {
-        val ids = port.insert(chapters)
-        // The legacy facade catches write errors and returns emptyList, not a thrown failure.
-        // Room IGNORE returns one slot per candidate; -1 is valid, but missing/invalid slots aren't.
-        if (ids.size != chapters.size || ids.any { it != -1L && it <= 0L }) return ItemOutcome.Failed
-        // The helper's checked second INSERT/IGNORE pass is mandatory, not a retry or new count.
+        // The earlier local read is only an optimization. Another refresh may already have won;
+        // only the atomic persistence result can decide the count and what Android may display.
         val notifications = port.persistNotifications(manga, chapters)
-        return ItemOutcome.Completed(ids.count { it > 0L }, notifications)
+        return ItemOutcome.Completed(notifications.size, notifications)
     }
 
     private suspend fun reconcileCover(
         manga: SavedMangaEntity,
         coverUrl: String,
     ) {
-        if (coverUrl.isBlank() || coverUrl == manga.imageUrl) return
+        if (coverUrl.isBlank()) return
         runCatchingCancellable {
             port.updateCover(manga.id, coverUrl)
         }.onFailure { t ->

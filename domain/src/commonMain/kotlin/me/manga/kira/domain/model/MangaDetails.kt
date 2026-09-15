@@ -18,8 +18,10 @@ package me.manga.kira.domain.model
  *    nuance.
  *  - [description] / [author] are free-form text from the source.
  *  - [genres] is a pre-split string list — the source-mappers do the splitting.
- *  - [chapters] is the chapter list ordered as the source ships it (typically newest-first; the
- *    presentation layer reorders if needed).
+ *  - [chapters] follows source order (normally newest-first). Saved details restore the initial
+ *    sequence and newest-prefix refresh batches, rather than exposing reversed insertion order.
+ *    The insert-only cache cannot reconstruct arbitrary source reordering or older backfills.
+ *    Presentation may apply an explicit display sort without changing Reader's canonical list.
  *
  * Identity is by [api] + [language] + [title] — same composite key as [Manga] (and the legacy
  * `SavedMangaEntity` primary key) so a [MangaDetails] always corresponds to exactly one [Manga].

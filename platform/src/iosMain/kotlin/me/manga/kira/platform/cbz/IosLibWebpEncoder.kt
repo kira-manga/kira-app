@@ -1,6 +1,5 @@
 package me.manga.kira.platform.cbz
 
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -10,172 +9,246 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import kotlin.time.TimeSource
-import libwebp.WebPEncodeRGBA
-import libwebp.WebPFree
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import me.manga.kira.platform.download.BgDownloadLog
-import platform.CoreFoundation.CFDataRef
+import okio.IOException
+import platform.CoreFoundation.CFDataCreate
 import platform.CoreFoundation.CFRelease
-import platform.CoreGraphics.CGBitmapContextCreate
+import platform.CoreGraphics.CGBitmapContextGetBytesPerRow
 import platform.CoreGraphics.CGBitmapContextGetData
+import platform.CoreGraphics.CGBitmapContextGetHeight
+import platform.CoreGraphics.CGBitmapContextGetWidth
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawImage
-import platform.CoreGraphics.CGContextRelease
-import platform.CoreGraphics.CGImageAlphaInfo
+import platform.CoreGraphics.CGContextRef
+import platform.CoreGraphics.CGImageGetBytesPerRow
 import platform.CoreGraphics.CGImageGetHeight
 import platform.CoreGraphics.CGImageGetWidth
 import platform.CoreGraphics.CGImageRef
-import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGRectMake
-import platform.Foundation.CFBridgingRetain
-import platform.Foundation.NSData
-import platform.Foundation.create
-import platform.ImageIO.CGImageSourceCreateImageAtIndex
 import platform.ImageIO.CGImageSourceCreateWithData
+import platform.ImageIO.CGImageSourceRef
+import kotlin.time.TimeSource
 
 /**
- * iOS-native WebP page encoder (Option K). The non-Android analogue of Android's
- * `Bitmap.compress(WEBP_LOSSY)` and the replacement for the skiko-based [SkiaWebpEncoder] on iOS.
+ * ImageIO/CoreGraphics + libwebp encoding of an already-validated encoded snapshot. Metadata comes
+ * from the writer's bounded PageMediaInspector on these same bytes. [CbzTranscodeBudget] reserves
+ * source copies, full decoded/native buffers, codec workspace and ONE output band before any full
+ * ImageIO decode or RGBA context allocation. A denied valid page is explicitly preserved, not tried
+ * repeatedly at full resolution. The admission estimate is not a hard native allocator/RSS bound;
+ * low-memory iPhone foreground/background profiling remains required.
  *
- * Why this exists: the Skia path forces ~190 MiB decoded webtoon-strip bitmaps + their interop objects
- * through the **Kotlin/Native heap**, whose stop-the-world GC then froze the UI for ~½ s during the
- * COMPRESSING stage. This encoder keeps the heavy pixel buffer in **CoreGraphics native memory** the whole
- * time — ImageIO decodes into a `CGBitmapContext`-owned RGBA buffer, libwebp's `WebPEncodeRGBA` reads band
- * slices of that buffer **by pointer** (no per-band copy), and only the small encoded WebP bytes
- * (~1–4 MiB/band) are ever copied into a Kotlin `ByteArray`. So the K/N heap never sees the big bitmap →
- * no GC stalls, mirroring Android's native pixel pipeline.
- *
- * Output stays **WebP** (cross-platform/sharing parity with Android, drop-in CBZ format). Banding is
- * preserved (≤ [maxHeight], ≤ WebP's 16383-px hard limit) so tall webtoon strips stay crisp. A page Skia
- * could decode but libwebp can't is signalled by a `null` return → [IosCbzWriter] stores it verbatim.
- *
- * Premultiplied-RGBA note: manga pages are opaque (alpha = 255), for which premultiplied RGBA is identical
- * to straight RGBA, so feeding the premultiplied buffer to `WebPEncodeRGBA` is colour-correct here.
+ * Each encoded band is size-checked, copied and WebPFree'd before emission; the writer streams it to
+ * its staged ZIP before the next band starts. All errors/cancellation propagate and native handles
+ * are released in finally. The premultiplied-RGBA opaque-page color behavior is unchanged.
  */
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class)
 internal object IosLibWebpEncoder {
-
-    private const val RGBA = 4
-    private const val WEBP_MAX_DIMENSION = 16383 // libwebp hard width/height limit
-
-    /**
-     * Decode [source] (any ImageIO-decodable format) and re-encode to one or more WebP bands at [quality]
-     * (0..100), splitting taller-than-[maxHeight] images into vertical bands. Returns the WebP byte arrays
-     * top-to-bottom, or `null` if the source can't be decoded (caller stores verbatim). [maxMemoryBytes] is
-     * accepted for API parity with [SkiaWebpEncoder]; banding here is bounded by [maxHeight] + the WebP
-     * dimension limit (bands share the one native buffer, so no per-band budget is needed).
-     */
-    fun encodeToWebpPages(
-        source: ByteArray,
-        quality: Int,
-        maxHeight: Int,
-        @Suppress("UNUSED_PARAMETER") maxMemoryBytes: Long,
-    ): List<ByteArray>? {
-        if (source.isEmpty()) return null
-        val mark = TimeSource.Monotonic.markNow()
-        val nsData: NSData = source.usePinned {
-            NSData.create(bytes = it.addressOf(0), length = source.size.toULong())
+    suspend fun encodeValidatedPage(
+        page: ValidatedCbzPage,
+        options: CbzEncodingOptions,
+        native: IosCbzNativeCodec = IosCbzNativeCodec(),
+        emit: suspend (ByteArray) -> Unit,
+    ): CbzPageEncoding {
+        currentCoroutineContext().ensureActive()
+        return when (val admission = options.admit(page)) {
+            CbzTranscodeAdmission.PreserveBudget ->
+                CbzPageEncoding.PreserveOriginal(CbzPreservationReason.MEMORY_BUDGET)
+            CbzTranscodeAdmission.PreserveWebpDimensions ->
+                CbzPageEncoding.PreserveOriginal(CbzPreservationReason.WEBP_DIMENSIONS)
+            is CbzTranscodeAdmission.Admitted ->
+                encodeAdmitted(page.bytes, admission.plan, BandEncoding(options.quality, native, emit))
         }
-        val cfData: CFDataRef = CFBridgingRetain(nsData)?.reinterpret() ?: return null
+    }
+
+    private suspend fun encodeAdmitted(
+        source: ByteArray,
+        plan: CbzTranscodePlan,
+        encoding: BandEncoding,
+    ): CbzPageEncoding.Encoded {
+        val trace = PageEncodingTrace(TimeSource.Monotonic.markNow(), source.size)
+        // Owned CFData avoids an autoreleased NSData copy surviving past the current page.
+        val data =
+            source.usePinned { CFDataCreate(null, it.addressOf(0).reinterpret(), source.size.toLong()) }
+                ?: throw IOException("CBZ source buffer allocation failed")
         try {
-            val cgSource = CGImageSourceCreateWithData(cfData, null) ?: return null
+            val cgSource =
+                CGImageSourceCreateWithData(data, null) ?: throw IOException("CBZ image source creation failed")
             try {
-                val cgImage = CGImageSourceCreateImageAtIndex(cgSource, 0uL, null) ?: return null
-                try {
-                    return encodeImage(cgImage, quality, maxHeight, source.size, mark)
-                } finally {
-                    CGImageRelease(cgImage)
-                }
+                return encodeImageSource(cgSource, plan, encoding, trace)
             } finally {
                 CFRelease(cgSource)
             }
         } finally {
-            CFRelease(cfData)
+            CFRelease(data)
         }
     }
 
-    private fun encodeImage(
-        cgImage: CGImageRef,
-        quality: Int,
-        maxHeight: Int,
-        srcBytes: Int,
-        mark: TimeSource.Monotonic.ValueTimeMark,
-    ): List<ByteArray>? {
-        val width = CGImageGetWidth(cgImage).toInt()
-        val height = CGImageGetHeight(cgImage).toInt()
-        if (width <= 0 || height <= 0) return null
-        val rowBytes = width * RGBA
+    private suspend fun encodeImageSource(
+        source: CGImageSourceRef,
+        plan: CbzTranscodePlan,
+        encoding: BandEncoding,
+        trace: PageEncodingTrace,
+    ): CbzPageEncoding.Encoded {
+        currentCoroutineContext().ensureActive()
+        val image = encoding.native.decode(source) ?: throw IOException("CBZ full source decode failed")
+        return try {
+            requireAdmittedImage(image, plan)
+            encodeImage(image, plan, encoding, trace)
+        } finally {
+            encoding.native.releaseImage(image)
+        }
+    }
 
-        val colorSpace = CGColorSpaceCreateDeviceRGB() ?: return null
+    private fun requireAdmittedImage(
+        image: CGImageRef,
+        plan: CbzTranscodePlan,
+    ) {
+        if (CGImageGetWidth(image) != plan.width.toULong() || CGImageGetHeight(image) != plan.height.toULong()) {
+            throw IOException("CBZ decoded dimensions differ from validated metadata")
+        }
+        val contextBytes = plan.rgbaRowBytes.toLong() * plan.height
+        val decodedAllowance = plan.sourceAllocationAllowanceBytes - contextBytes
+        val rowBytes = CGImageGetBytesPerRow(image)
+        if (rowBytes == 0uL || rowBytes > decodedAllowance.toULong() / plan.height.toULong()) {
+            throw IOException("CBZ decoded source exceeds its admitted native allocation")
+        }
+    }
+
+    private suspend fun encodeImage(
+        image: CGImageRef,
+        plan: CbzTranscodePlan,
+        encoding: BandEncoding,
+        trace: PageEncodingTrace,
+    ): CbzPageEncoding.Encoded {
+        currentCoroutineContext().ensureActive()
+        val colorSpace = CGColorSpaceCreateDeviceRGB() ?: throw IOException("CBZ RGB color space creation failed")
         try {
-            // data = null → CoreGraphics owns the ~width*height*4 pixel buffer (NATIVE memory, not the K/N
-            // heap). Freed when the context is released.
-            val ctx = CGBitmapContextCreate(
-                data = null,
-                width = width.toULong(),
-                height = height.toULong(),
-                bitsPerComponent = 8u,
-                bytesPerRow = rowBytes.toULong(),
-                space = colorSpace,
-                bitmapInfo = CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value,
-            ) ?: return null
+            val context =
+                encoding.native.createContext(plan, colorSpace)
+                    ?: throw IOException("CBZ RGBA context allocation failed")
             try {
-                CGContextDrawImage(ctx, CGRectMake(0.0, 0.0, width.toDouble(), height.toDouble()), cgImage)
-                val base: CPointer<UByteVar> = CGBitmapContextGetData(ctx)?.reinterpret() ?: return null
-                val decodeMs = mark.elapsedNow().inWholeMilliseconds
-
-                val bandHeight = effectiveBandHeight(maxHeight)
-                val pages = ArrayList<ByteArray>()
-                var top = 0
-                while (top < height) {
-                    val h = minOf(bandHeight, height - top)
-                    val bandPtr = (base + (top.toLong() * rowBytes)) ?: return null
-                    val webp = encodeBand(bandPtr, width, h, rowBytes, quality) ?: return null
-                    pages.add(webp)
-                    top += h
-                }
-                BgDownloadLog.dlperf(
-                    "webpEncode",
-                    "enc" to "libwebp",
-                    "dims" to "${width}x$height",
-                    "decodedMiB" to (width.toLong() * height * RGBA / (1024 * 1024)),
-                    "bands" to pages.size,
-                    "srcKiB" to (srcBytes / 1024),
-                    "outKiB" to (pages.sumOf { it.size } / 1024),
-                    "decodeMs" to decodeMs,
-                    "totalMs" to mark.elapsedNow().inWholeMilliseconds,
-                    "q" to quality,
-                )
-                return pages
+                val pixels = drawAdmittedImage(context, image, plan)
+                val decodeMs = trace.mark.elapsedNow().inWholeMilliseconds
+                val result = emitBands(pixels, plan, encoding)
+                logEncodedPage(plan, trace, result, encoding.quality, decodeMs)
+                return result
             } finally {
-                CGContextRelease(ctx)
+                encoding.native.releaseContext(context)
             }
         } finally {
             CGColorSpaceRelease(colorSpace)
         }
     }
 
-    /** libwebp-encode one band read directly from the native RGBA buffer at [rgba]; copies the encoded
-     *  output into a Kotlin [ByteArray] and frees libwebp's buffer. */
-    private fun encodeBand(rgba: CPointer<UByteVar>, width: Int, height: Int, stride: Int, quality: Int): ByteArray? =
+    private fun logEncodedPage(
+        plan: CbzTranscodePlan,
+        trace: PageEncodingTrace,
+        result: CbzPageEncoding.Encoded,
+        quality: Int,
+        decodeMs: Long,
+    ) {
+        BgDownloadLog.dlperf(
+            "webpEncode",
+            "enc" to "libwebp",
+            "dims" to "${plan.width}x${plan.height}",
+            "estimatedPeakBytes" to plan.estimatedPeakBytes,
+            "bands" to result.bandCount,
+            "srcKiB" to (trace.sourceSize / 1024),
+            "decodeMs" to decodeMs,
+            "totalMs" to trace.mark.elapsedNow().inWholeMilliseconds,
+            "q" to quality,
+        )
+    }
+
+    private suspend fun drawAdmittedImage(
+        context: CGContextRef,
+        image: CGImageRef,
+        plan: CbzTranscodePlan,
+    ): CPointer<UByteVar> {
+        if (CGBitmapContextGetWidth(context) != plan.width.toULong() ||
+            CGBitmapContextGetHeight(context) != plan.height.toULong() ||
+            CGBitmapContextGetBytesPerRow(context) != plan.rgbaRowBytes.toULong()
+        ) {
+            throw IOException("CBZ native context differs from its admitted dimensions or stride")
+        }
+        currentCoroutineContext().ensureActive()
+        CGContextDrawImage(context, CGRectMake(0.0, 0.0, plan.width.toDouble(), plan.height.toDouble()), image)
+        return CGBitmapContextGetData(context)?.reinterpret() ?: throw IOException("CBZ native context has no pixels")
+    }
+
+    private suspend fun emitBands(
+        pixels: CPointer<UByteVar>,
+        plan: CbzTranscodePlan,
+        encoding: BandEncoding,
+    ): CbzPageEncoding.Encoded {
+        var top = 0
+        var count = 0
+        while (top < plan.height) {
+            currentCoroutineContext().ensureActive()
+            val height = minOf(plan.bandHeight, plan.height - top)
+            // width/height/stride were checked before allocation; Long offsets cannot wrap here.
+            val band =
+                (pixels + top.toLong() * plan.rgbaRowBytes) ?: throw IOException("CBZ native band pointer is null")
+            emitOneBand(band, plan, height, encoding)
+            currentCoroutineContext().ensureActive()
+            count++
+            top += height
+        }
+        return CbzPageEncoding.Encoded(count)
+    }
+
+    /** Keep the encoded array out of the outer loop's suspension state before its next encode. */
+    private suspend fun emitOneBand(
+        rgba: CPointer<UByteVar>,
+        plan: CbzTranscodePlan,
+        height: Int,
+        encoding: BandEncoding,
+    ) {
+        val encoded = encodeBand(rgba, plan, height, encoding)
+        currentCoroutineContext().ensureActive()
+        encoding.emit(encoded)
+    }
+
+    private fun encodeBand(
+        rgba: CPointer<UByteVar>,
+        plan: CbzTranscodePlan,
+        height: Int,
+        encoding: BandEncoding,
+    ): ByteArray =
         memScoped {
-            val out = alloc<CPointerVar<UByteVar>>()
-            val size = WebPEncodeRGBA(rgba, width, height, stride, quality.toFloat(), out.ptr)
-            val ptr = out.value
-            if (size.toLong() <= 0L || ptr == null) {
-                if (ptr != null) WebPFree(ptr)
-                return@memScoped null
+            val output = alloc<CPointerVar<UByteVar>> { value = null }
+            try {
+                val size =
+                    encoding.native.encodeBand(
+                        IosRgbaBand(rgba, plan.width, height, plan.rgbaRowBytes),
+                        encoding.quality,
+                        output.ptr,
+                    )
+                val pointer = output.value ?: throw IOException("CBZ WebP encode returned no output")
+                // size_t is unsigned: check it BEFORE narrowing to Long/Int or making a Kotlin copy.
+                if (size == 0uL || size > plan.maxEncodedBandBytes.toULong() || size > Int.MAX_VALUE.toULong()) {
+                    throw IOException("CBZ WebP output exceeds its admitted allowance or encoding failed")
+                }
+                encoding.native.copyEncoded(pointer, size.toInt())
+            } finally {
+                output.value?.let { encoding.native.freeEncoded(it) }
             }
-            val bytes = ptr.readBytes(size.toInt())
-            WebPFree(ptr)
-            bytes
         }
 
-    private fun effectiveBandHeight(maxHeight: Int): Int =
-        minOf(if (maxHeight > 0) maxHeight else WEBP_MAX_DIMENSION, WEBP_MAX_DIMENSION).coerceAtLeast(1)
+    private data class BandEncoding(
+        val quality: Int,
+        val native: IosCbzNativeCodec,
+        val emit: suspend (ByteArray) -> Unit,
+    )
+
+    private data class PageEncodingTrace(
+        val mark: TimeSource.Monotonic.ValueTimeMark,
+        val sourceSize: Int,
+    )
 }

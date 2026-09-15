@@ -5,42 +5,13 @@ import me.manga.kira.presentation.mvi.MviEffect
 /**
  * One-shot effects emitted by the rework Feedback Manager screen.
  *
- * Phase 7.x.complaint.foundation rework: introduced as an empty sealed interface (extensibility
- * hook for follow-on slices). Phase 7.x.complaint.actions rework: appends two snackbar variants
- * ([ShowSuccessMessage] / [ShowErrorMessage]) emitted by the action-dialog flow.
+ * [ShowActionSuccess] carries the semantic action for a localized confirmation snackbar.
+ * Successful mutations dismiss the dialog before emitting; body-copy also uses this effect.
  *
- * Variants:
- *  - [ShowSuccessMessage]: fired after a Reply / Edit / Delete use case returns
- *    [Result.success]. The `:ui` composable hosts a [androidx.compose.material3.SnackbarHost]
- *    and shows [message] as a non-blocking confirmation. Examples: "Reply sent",
- *    "Complaint updated", "Complaint deleted".
- *  - [ShowErrorMessage]: fired after a Reply / Edit / Delete use case returns [Result.failure].
- *    [message] is the throwable's `message` (usually a Firestore SDK string like
- *    "PERMISSION_DENIED") with class-name + literal fallbacks — same fallback chain the
- *    foundation slice's [me.manga.kira.presentation.complaint.ComplaintViewModel.loadList]
- *    uses for inline error rendering.
- *
- * **Why effects (snackbars) and not state (inline banner)**: the dialog flow is modal —
- * Reply / Edit / Delete each take ~1-2s on a happy path, and the user's attention is on the
- * dialog. Inline state would force the user to dismiss the dialog before seeing the outcome;
- * snackbars overlay the dialog (or its successor, the list) and read more naturally for
- * "fire-and-forget confirmation" UX. Same posture as legacy `ComplaintActionDialog` whose
- * success / failure feedback lives in a SnackbarHost above the dialog mount.
- *
- * **Why two distinct variants vs a single `ShowMessage(text, isError)`**: a tag on the same
- * variant would let a future bug pass an `isError = false` to a real failure or vice-versa,
- * silently. Separate types make the failure path a compile-time-distinct branch — the `:ui`
- * collector handles each case with its own snackbar styling (severity colour). Same posture as
- * the rework's existing `ShowErrorMessage` variants in other slices.
- *
- * **OCP (contract §6)**: closed under modification, open under extension. The foundation slice's
- * KDoc on the empty surface explicitly anticipated this slice's additions; a future deep-link
- * slice could add `NavigateToComplaintDetail(id: String)` without touching these variants.
- *
- * **`data class` modifier rationale**: per the rework MVI contract — sealed-interface variants
- * carrying payload use `data class` so structural equality applies (not the default
- * identity-based equality of plain `class`). The `:ui` effect collector compares emissions to
- * deduplicate snackbars within a configuration-change burst.
+ * Mutation failure is [ComplaintState.actionFailed], not an effect: the error must remain
+ * visible and accessible inside the retained dialog while the user edits and resubmits. The
+ * failure flag carries no throwable text, and the dialog's existing submit control is the only
+ * retry path. The historical audit below predates this dialog-local policy.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster32.staleKdocSweep.cascade,
  * Task #488, 2026-05-28): one stale citation appears in the snackbars-
@@ -77,10 +48,4 @@ sealed interface ComplaintEffect : MviEffect {
      * contract effects never carry i18n text.
      */
     data class ShowActionSuccess(val action: ComplaintAction) : ComplaintEffect
-
-    /**
-     * A user action (Reply / Edit / Delete) failed — show a generic localized error snackbar. The
-     * underlying throwable is logged in the VM (never surfaced raw to the user / leaked to a snackbar).
-     */
-    data object ShowActionFailure : ComplaintEffect
 }

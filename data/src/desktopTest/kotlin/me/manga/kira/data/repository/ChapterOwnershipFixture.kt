@@ -27,6 +27,7 @@ import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import okio.FileSystem
 import okio.Path
 import kotlin.random.Random
@@ -196,6 +197,8 @@ internal class OwnerPagesSource : MangaSourceClient {
 
 internal fun chapterOwnershipRegistry(source: MangaSourceClient): SourceRegistry =
     object : SourceRegistry {
+        override val catalog: Flow<SourceCatalogSnapshot> = flowOf(SourceCatalogSnapshot(1, emptyList()))
+
         override fun get(api: String): MangaSourceClient = source
 
         override fun isConfigBacked(api: String): Boolean = true

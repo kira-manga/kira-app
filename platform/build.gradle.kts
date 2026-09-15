@@ -22,9 +22,9 @@ plugins {
 // skiko ships its JVM API (`org.jetbrains.skia.*`) without the native binary; the host-classified
 // `skiko-awt-runtime-*` artifact carries the .dylib/.so/.dll. The desktop test set needs it on its
 // runtime classpath so SkiaWebpEncoderTest can actually encode (the main desktop classpath gets the
-// native from :desktopApp's compose plugin, not here). Version must track the skiko `:platform`
-// resolves transitively via coil-core (currently 0.9.22.2 — bump if a coil/compose upgrade moves it).
-val skikoVersion = "0.9.22.2"
+// native from :desktopApp's compose plugin, not here). The shared test-only catalog version must
+// track the Skiko JVM API resolved transitively via Coil.
+val skikoVersion = libs.versions.skiko.test.get()
 val skikoHostTarget: String = run {
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
@@ -41,6 +41,11 @@ kotlin {
         namespace = "me.manga.kira.platform"
         compileSdk = 37
         minSdk = 26
+        withDeviceTestBuilder {
+            sourceSetTreeName = "test"
+        }.configure {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -133,6 +138,11 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.junit)
+            implementation("androidx.test:runner:1.7.0")
         }
 
         // SkiaWebpEncoderTest exercises real skiko encoding on the Desktop/JVM target; pull the

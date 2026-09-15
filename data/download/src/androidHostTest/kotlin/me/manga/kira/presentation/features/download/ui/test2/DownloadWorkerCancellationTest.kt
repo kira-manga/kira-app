@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,6 +18,7 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [ANDROID_TEST_SDK], application = Application::class)
 @LooperMode(LooperMode.Mode.PAUSED)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DownloadWorkerCancellationTest {
     @Test
     fun deliveredCompleteSurvivesCancelledSender() =

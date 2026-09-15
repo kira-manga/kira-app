@@ -1,0 +1,208 @@
+diff --git a/android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java b/android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java
+--- a/android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java
++++ b/android_jni/avifandroidjni/src/main/java/org/aomedia/avif/android/AvifDecoder.java
+@@ -88,6 +88,29 @@
+   public static native boolean getInfo(ByteBuffer encoded, int length, Info info);
+ 
+   /**
++   * Kira addition: parses metadata with positive per-request native limits.
++   *
++   * <p>This does not decode AV1 pixels and is not proof that the payload is readable. Info retains
++   * the original API's cropped dimensions. Use decodeWithLimits to validate the AV1 payload.
++   *
++   * @param encoded Direct input buffer with position zero; not modified by this call.
++   * @param length Positive byte count, no greater than encoded.remaining().
++   * @param info Non-null output metadata.
++   * @param maxPixels Positive libavif imageSizeLimit, no greater than its default (16384 squared).
++   * @param maxDimension Positive container-axis limit, no greater than its default (32768).
++   * @return false for invalid arguments, rejected metadata, or parse failure.
++   */
++  public static boolean getInfoWithLimits(
++      ByteBuffer encoded, int length, Info info, int maxPixels, int maxDimension) {
++    return validBoundedInput(encoded, length, maxPixels, maxDimension)
++        && info != null
++        && getInfoWithLimitsNative(encoded, length, info, maxPixels, maxDimension);
++  }
++
++  private static native boolean getInfoWithLimitsNative(
++      ByteBuffer encoded, int length, Info info, int maxPixels, int maxDimension);
++
++  /**
+    * Decodes the AVIF image into the bitmap.
+    *
+    * @param encoded The encoded AVIF image. encoded.position() must be 0.
+@@ -118,6 +141,44 @@
+    */
+   public static native boolean decode(ByteBuffer encoded, int length, Bitmap bitmap, int threads);
+ 
++  /**
++   * Kira addition: decodes the first image with native limits set before parsing and AV1 decode.
++   *
++   * <p>The pinned dav1d build applies maxPixels to actual AV1 frame pixels before frame decode,
++   * even if they disagree with the container. maxDimension constrains container dimensions;
++   * it is not an independent actual-AV1-axis or native-allocator/RSS limit.
++   *
++   * @param encoded Direct input buffer with position zero; keep its bytes unchanged during this call.
++   * @param length Positive byte count, no greater than encoded.remaining().
++   * @param bitmap Non-null mutable destination; scaled output does not bound source AV1 work.
++   * @param threads Same thread-count semantics as decode; bounded callers should pass one.
++   * @param maxPixels Positive libavif imageSizeLimit, no greater than its default (16384 squared).
++   * @param maxDimension Positive container-axis limit, no greater than its default (32768).
++   * @return false on invalid input, admission, parse, decode, or bitmap conversion failure.
++   */
++  public static boolean decodeWithLimits(
++      ByteBuffer encoded, int length, Bitmap bitmap, int threads, int maxPixels, int maxDimension) {
++    return validBoundedInput(encoded, length, maxPixels, maxDimension)
++        && bitmap != null
++        && bitmap.isMutable()
++        && !bitmap.isRecycled()
++        && decodeWithLimitsNative(encoded, length, bitmap, threads, maxPixels, maxDimension);
++  }
++
++  private static native boolean decodeWithLimitsNative(
++      ByteBuffer encoded, int length, Bitmap bitmap, int threads, int maxPixels, int maxDimension);
++
++  private static boolean validBoundedInput(
++      ByteBuffer encoded, int length, int maxPixels, int maxDimension) {
++    return encoded != null
++        && encoded.isDirect()
++        && encoded.position() == 0
++        && length > 0
++        && length <= encoded.remaining()
++        && maxPixels > 0
++        && maxDimension > 0;
++  }
++
+   /** Get the width of the image. */
+   public int getWidth() {
+     return width;
+diff --git a/android_jni/avifandroidjni/src/main/jni/libavif_jni.cc b/android_jni/avifandroidjni/src/main/jni/libavif_jni.cc
+--- a/android_jni/avifandroidjni/src/main/jni/libavif_jni.cc
++++ b/android_jni/avifandroidjni/src/main/jni/libavif_jni.cc
+@@ -50,14 +50,47 @@
+   avifCropRect crop;
+ };
+ 
++// Kira: constructed only after a successful lock; every following exit unlocks once.
++class ScopedBitmapUnlock {
++ public:
++  ScopedBitmapUnlock(JNIEnv* env, jobject bitmap) : env_(env), bitmap_(bitmap) {}
++  ScopedBitmapUnlock(const ScopedBitmapUnlock&) = delete;
++  ScopedBitmapUnlock& operator=(const ScopedBitmapUnlock&) = delete;
++  ~ScopedBitmapUnlock() { AndroidBitmap_unlockPixels(env_, bitmap_); }
++
++ private:
++  JNIEnv* const env_;
++  const jobject bitmap_;
++};
++
++// New bounded entrypoints reject invalid lengths and limit values before native parsing.
++const uint8_t* BoundedInput(JNIEnv* env, jobject encoded, jint length,
++                            jint max_pixels, jint max_dimension) {
++  if (encoded == nullptr || length <= 0 || max_pixels <= 0 ||
++      max_pixels > AVIF_DEFAULT_IMAGE_SIZE_LIMIT || max_dimension <= 0 ||
++      max_dimension > AVIF_DEFAULT_IMAGE_DIMENSION_LIMIT) {
++    return nullptr;
++  }
++  const jlong capacity = env->GetDirectBufferCapacity(encoded);
++  if (capacity < length) {
++    return nullptr;
++  }
++  return static_cast<const uint8_t*>(env->GetDirectBufferAddress(encoded));
++}
++
+ bool CreateDecoderAndParse(AvifDecoderWrapper* const decoder,
+                            const uint8_t* const buffer, int length,
+-                           int threads) {
++                           int threads,
++                           uint32_t max_pixels = AVIF_DEFAULT_IMAGE_SIZE_LIMIT,
++                           uint32_t max_dimension = AVIF_DEFAULT_IMAGE_DIMENSION_LIMIT) {
+   decoder->decoder = avifDecoderCreate();
+   if (decoder->decoder == nullptr) {
+     LOGE("Failed to create AVIF Decoder.");
+     return false;
+   }
++  // Kira: retained on this same decoder through Parse and NextImage; never set to zero.
++  decoder->decoder->imageSizeLimit = max_pixels;
++  decoder->decoder->imageDimensionLimit = max_dimension;
+   decoder->decoder->maxThreads = threads;
+   decoder->decoder->ignoreXMP = AVIF_TRUE;
+   decoder->decoder->ignoreExif = AVIF_TRUE;
+@@ -123,6 +156,7 @@
+     LOGE("Failed to lock Bitmap.");
+     return AVIF_RESULT_UNKNOWN_ERROR;
+   }
++  const ScopedBitmapUnlock unlock(env, bitmap);
+   avifImage* image;
+   std::unique_ptr<avifImage, decltype(&avifImageDestroy)> cropped_image(
+       nullptr, avifImageDestroy);
+@@ -190,7 +224,6 @@
+   // https://developer.android.com/reference/android/graphics/Bitmap#setPremultiplied(boolean)
+   rgb_image.alphaPremultiplied = AVIF_TRUE;
+   res = avifImageYUVToRGB(image, &rgb_image);
+-  AndroidBitmap_unlockPixels(env, bitmap);
+   if (res != AVIF_RESULT_OK) {
+     LOGE("Failed to convert YUV Pixels to RGB. Status: %d", res);
+     return res;
+@@ -276,12 +309,12 @@
+   CHECK_EXCEPTION(ret);                                                    \
+   if (var == nullptr) return ret
+ 
+-FUNC(jboolean, getInfo, jobject encoded, int length, jobject info) {
+-  IGNORE_UNUSED_JNI_PARAMETERS;
+-  const uint8_t* const buffer =
+-      static_cast<const uint8_t*>(env->GetDirectBufferAddress(encoded));
++static bool GetInfo(JNIEnv* env, const uint8_t* buffer, int length, jobject info,
++                     uint32_t max_pixels = AVIF_DEFAULT_IMAGE_SIZE_LIMIT,
++                     uint32_t max_dimension = AVIF_DEFAULT_IMAGE_DIMENSION_LIMIT) {
+   AvifDecoderWrapper decoder;
+-  if (!CreateDecoderAndParse(&decoder, buffer, length, /*threads=*/1)) {
++  if (!CreateDecoderAndParse(&decoder, buffer, length, /*threads=*/1,
++                             max_pixels, max_dimension)) {
+     return false;
+   }
+   FIND_CLASS(info_class, "org/aomedia/avif/android/AvifDecoder$Info", false);
+@@ -300,6 +333,43 @@
+   return true;
+ }
+ 
++FUNC(jboolean, getInfo, jobject encoded, int length, jobject info) {
++  IGNORE_UNUSED_JNI_PARAMETERS;
++  const uint8_t* const buffer =
++      static_cast<const uint8_t*>(env->GetDirectBufferAddress(encoded));
++  return GetInfo(env, buffer, length, info);
++}
++
++FUNC(jboolean, getInfoWithLimitsNative, jobject encoded, jint length,
++     jobject info, jint max_pixels, jint max_dimension) {
++  IGNORE_UNUSED_JNI_PARAMETERS;
++  const uint8_t* const buffer =
++      BoundedInput(env, encoded, length, max_pixels, max_dimension);
++  if (buffer == nullptr || info == nullptr) {
++    return false;
++  }
++  return GetInfo(env, buffer, length, info,
++                 static_cast<uint32_t>(max_pixels),
++                 static_cast<uint32_t>(max_dimension));
++}
++
++FUNC(jboolean, decodeWithLimitsNative, jobject encoded, jint length,
++     jobject bitmap, jint threads, jint max_pixels, jint max_dimension) {
++  IGNORE_UNUSED_JNI_PARAMETERS;
++  const uint8_t* const buffer =
++      BoundedInput(env, encoded, length, max_pixels, max_dimension);
++  if (buffer == nullptr || bitmap == nullptr) {
++    return false;
++  }
++  AvifDecoderWrapper decoder;
++  if (!CreateDecoderAndParse(&decoder, buffer, length, getThreadCount(threads),
++                             static_cast<uint32_t>(max_pixels),
++                             static_cast<uint32_t>(max_dimension))) {
++    return false;
++  }
++  return DecodeNextImage(env, &decoder, bitmap) == AVIF_RESULT_OK;
++}
++
+ FUNC(jboolean, decode, jobject encoded, int length, jobject bitmap,
+      jint threads) {
+   IGNORE_UNUSED_JNI_PARAMETERS;

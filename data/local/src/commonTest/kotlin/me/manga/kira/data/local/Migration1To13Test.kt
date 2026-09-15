@@ -10,7 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Exercises the complete supported upgrade path from the oldest application schema to v13.
+ * Exercises the oldest upgrade path through v13 and its v14 notification-uniqueness follow-on.
  *
  * This starts with representative v1 library/chapter rows, adds data to tables at the version
  * where those tables first exist, then runs every production [Migration] in order. The focused
@@ -24,6 +24,7 @@ class Migration1To13Test {
     fun open() {
         connection = BundledSQLiteDriver().open(":memory:")
         createVersionOneSchema()
+        connection.createLegacyNotificationsTable()
         seedVersionOneData()
     }
 
@@ -32,24 +33,7 @@ class Migration1To13Test {
 
     @Test
     fun oldest_schema_reaches_v13_without_losing_library_data() {
-        MIGRATION_1_2.migrate(connection)
-        connection.execSQL(
-            "INSERT INTO chapter_downloads " +
-                "(number, chapterId, mangaId, api, url, state, progress, errorMsg, mangaTitle) " +
-                "VALUES ('1', 11, 7, 'legacy', 'https://legacy/chapter/1', 'SUCCESS', 100, NULL, 'Legacy Manga')",
-        )
-        connection.execSQL(
-            "INSERT INTO chapter_downloads " +
-                "(number, chapterId, mangaId, api, url, state, progress, errorMsg, mangaTitle) " +
-                "VALUES ('orphan', 99, 999, 'legacy', 'https://legacy/chapter/orphan', 'FAILED', 0, NULL, 'Orphan')",
-        )
-
-        MIGRATION_2_3.migrate(connection)
-        connection.execSQL(
-            "INSERT INTO sources (name, isEnabled, priority, language) VALUES ('Legacy Source', 1, 3, 'ar')",
-        )
-
-        productionMigrations.drop(2).forEach { it.migrate(connection) }
+        migrateToVersion13()
 
         assertEquals("Legacy Manga", text("SELECT title FROM saved_manga WHERE id = 7"))
         assertEquals(0L, number("SELECT lastOpenTimestamp FROM saved_manga WHERE id = 7"))
@@ -86,6 +70,50 @@ class Migration1To13Test {
             1L,
             number("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'active_source_catalog'"),
         )
+    }
+
+    @Test
+    fun oldest_schema_reaches_v14_with_notification_uniqueness() {
+        migrateToVersion13()
+        connection.execSQL(
+            """
+            INSERT INTO notifications
+                (id, api, language, mangaId, mangaTitle, mangaImageUrl, mangaUrl, chapterId,
+                 chapterNumber, chapterUrl, notificationDate, isRead, isDownloaded, localImagePaths)
+            VALUES
+                (1, 'legacy', 'ar', 7, 'Legacy Manga', '', 'https://legacy/manga/1', 11,
+                 '1', 'https://legacy/chapter/1', 1, 0, 0, '[]'),
+                (2, 'legacy', 'ar', 7, 'Legacy Manga', '', 'https://legacy/manga/1', 11,
+                 '1', 'https://legacy/chapter/1', 2, 1, 0, '[]')
+            """.trimIndent(),
+        )
+        MIGRATION_13_14.migrate(connection)
+        assertEquals(1L, number("SELECT COUNT(*) FROM notifications"))
+        assertEquals(1L, number("SELECT id FROM notifications"))
+        assertEquals(11L, number("SELECT chapterId FROM notifications"))
+        assertEquals(1L, number("SELECT isRead FROM notifications"))
+        assertEquals(1L, number("SELECT \"unique\" FROM pragma_index_list('notifications') WHERE name = 'index_notifications_chapterId'"))
+    }
+
+    private fun migrateToVersion13() {
+        MIGRATION_1_2.migrate(connection)
+        connection.execSQL(
+            "INSERT INTO chapter_downloads " +
+                "(number, chapterId, mangaId, api, url, state, progress, errorMsg, mangaTitle) " +
+                "VALUES ('1', 11, 7, 'legacy', 'https://legacy/chapter/1', 'SUCCESS', 100, NULL, 'Legacy Manga')",
+        )
+        connection.execSQL(
+            "INSERT INTO chapter_downloads " +
+                "(number, chapterId, mangaId, api, url, state, progress, errorMsg, mangaTitle) " +
+                "VALUES ('orphan', 99, 999, 'legacy', 'https://legacy/chapter/orphan', 'FAILED', 0, NULL, 'Orphan')",
+        )
+
+        MIGRATION_2_3.migrate(connection)
+        connection.execSQL(
+            "INSERT INTO sources (name, isEnabled, priority, language) VALUES ('Legacy Source', 1, 3, 'ar')",
+        )
+
+        productionMigrations.drop(2).forEach { it.migrate(connection) }
     }
 
     private fun createVersionOneSchema() {

@@ -3,6 +3,7 @@ package me.manga.kira.core.cbz
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Rect
+import me.manga.kira.platform.cbz.CbzWriter
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -122,18 +123,25 @@ private class CbzCropFailureCase(
 ) {
     private val bytes = byteArrayOf(0, 0, 0, CBZ_AVIF_HEADER_LENGTH) + "ftypavif".toByteArray(Charsets.US_ASCII)
     private val source = File(fixture.directory(chapter), "modeled.avif").apply { writeBytes(bytes) }
+    private val inspector = CbzModeledAvifInspector(source, CBZ_SPLIT_PAGE_HEIGHT)
     private val previous = fixture.priorArchive(chapter)
     private var parent: Bitmap? = null
     private var firstCrop: Bitmap? = null
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File): Bitmap =
-                Bitmap
+            override suspend fun decodeAvif(
+                file: File,
+                maxWorkingBytes: Long,
+            ): Bitmap {
+                assertEquals(CbzWriter.DEFAULT_MAX_MEMORY_BYTES, maxWorkingBytes)
+                inspector.assertDecoderSnapshot(file)
+                return Bitmap
                     .createBitmap(
                         CBZ_AVIF_PAGE_WIDTH,
                         CBZ_SPLIT_PAGE_HEIGHT,
                         Bitmap.Config.ARGB_8888,
                     ).also { parent = it }
+            }
 
             override fun crop(
                 parent: Bitmap,
@@ -149,7 +157,14 @@ private class CbzCropFailureCase(
         }
 
     suspend fun verify() {
-        val manager = OptimizedCbzManager(fixture.context, cbzTier(), decoder, CbzHostArchiveOutput())
+        val manager =
+            OptimizedCbzManager(
+                fixture.context,
+                cbzTier(),
+                decoder,
+                CbzHostArchiveOutput(),
+                pagePolicy = CbzPagePolicy(inspector = inspector),
+            )
         val observed =
             assertNotNull(
                 runCatching {
@@ -161,6 +176,7 @@ private class CbzCropFailureCase(
         assertTrue(assertNotNull(firstCrop).isRecycled)
         assertContentEquals(bytes, source.readBytes())
         assertContentEquals(previous, fixture.destination(chapter).readBytes())
+        inspector.assertReleased()
         fixture.assertNoTemporary(chapter)
     }
 }

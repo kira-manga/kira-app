@@ -138,8 +138,8 @@ sealed interface DetailsIntent : MviIntent {
      * User tapped a chapter row's trash button — "delete chapter from the database" (user-requested).
      * Deletes the chapter's `saved_chapters` record AND its download (on-disk files + chapter_downloads
      * row), so nothing is orphaned. Gated on `state.isInLibrary` (a non-library manga has no DB row);
-     * the reactive saved-details flow re-emits without the chapter so it drops out of the list. For a
-     * source-backed manga a later refresh may re-discover and re-add it.
+     * successful cleanup and row deletion retract it from this identity's list and selection. Saved
+     * emissions cannot restore it; a later source refresh or re-entry may re-discover and re-add it.
      *
      * Additive KMP affordance beyond native (native deletes only downloads, via multi-select /
      * delete-all). INTENTIONALLY-DIFFERENT — do not "fix" toward native.

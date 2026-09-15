@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cbz_conversion_partial">اكتمل التحويل جزئيًا</string>
+    <string name="cbz_chapters_failed">تعذّر تحويل %1$d من الفصول. يُرجى إعادة المحاولة.</string>
+</resources>

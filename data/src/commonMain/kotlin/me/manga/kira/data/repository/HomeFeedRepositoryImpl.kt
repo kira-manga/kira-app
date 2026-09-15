@@ -2,6 +2,7 @@ package me.manga.kira.data.repository
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -27,8 +28,8 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * Home-feed adapter for the authoritative generic source catalog.
  *
- * The Room-backed source-selection store remains responsible for enablement, ordering, and the
- * selected API. Network access is resolved exclusively through [SourceRegistry]. An API missing
+ * The Room-backed source-selection store remains responsible for enablement, mirror URLs, and the
+ * selected API. Accepted catalog order and metadata come from [SourceRegistry]. An API missing
  * from the active catalog has no client and is never routed to a Kotlin scraper.
  */
 class HomeFeedRepositoryImpl(
@@ -42,15 +43,11 @@ class HomeFeedRepositoryImpl(
     private var accumulatorGeneration: Int = 0
 
     override fun observeSourceTabs(): Flow<List<SourceTab>> =
-        sourcesRepository.allSources.map { entities ->
-            entities
-                .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
-                .sortedBy { it.priority }
-                .mapNotNull { entity ->
-                    sourceRegistry.descriptor(entity.name)?.let { descriptor ->
-                        entity.toSourceTab(descriptor)
-                    }
-                }
+        combine(sourcesRepository.allSources, sourceRegistry.catalog) { entities, catalog ->
+            val enabledRows = entities.filter { it.isEnabled }.associateBy { it.name }
+            catalog.descriptors.mapNotNull { descriptor ->
+                enabledRows[descriptor.api]?.toSourceTab(descriptor)
+            }
         }
 
     override fun observeActiveTabIndex(): Flow<Int> =
@@ -59,7 +56,9 @@ class HomeFeedRepositoryImpl(
         }
 
     override fun observeSiteState(api: String): Flow<SiteState> =
-        sourcesRepository.getSiteStateFlow(api).map { it.toSiteState() }
+        sourceRegistry.catalog.map { catalog ->
+            catalog.descriptors.firstOrNull { it.api == api }?.toSiteState() ?: SiteState.STOPPED
+        }.distinctUntilChanged()
 
     override suspend fun selectTab(index: Int) {
         val api = observeSourceTabs().first().getOrNull(index)?.api ?: return
@@ -150,14 +149,7 @@ class HomeFeedRepositoryImpl(
     private suspend fun activeApiResult(): AppResult<String> =
         try {
             val persisted = sourcesRepository.activeApiFlow.value
-            val enabledApis =
-                sourcesRepository.allSources
-                    .first()
-                    .asSequence()
-                    .filter { it.isEnabled && sourceRegistry.isConfigBacked(it.name) }
-                    .sortedBy { it.priority }
-                    .map { it.name }
-                    .toList()
+            val enabledApis = observeSourceTabs().first().map { it.api }
             val selected = enabledApis.firstOrNull { it == persisted } ?: enabledApis.firstOrNull()
             selected?.let { AppResult.Success(it) }
                 ?: AppResult.Failure(AppError.Validation.NoEnabledSources())

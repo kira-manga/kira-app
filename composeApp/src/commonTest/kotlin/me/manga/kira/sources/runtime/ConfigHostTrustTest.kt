@@ -26,6 +26,7 @@ class ConfigHostTrustTest {
         private val _state =
             MutableStateFlow<UpdateState>(UpdateState.Active(document.revision, UpdateState.Origin.BUNDLED))
         override val state: StateFlow<UpdateState> = _state.asStateFlow()
+        override val acceptedDocument: StateFlow<SourceConfigDocument> = MutableStateFlow(document)
 
         override fun activeDocument(): SourceConfigDocument = document
 

@@ -1,95 +1,69 @@
 package me.manga.kira.platform.cbz
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.os.Build
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import me.manga.kira.core.cbz.CBZ_BUFFER_SIZE
+import me.manga.kira.core.cbz.CbzArchiveOutput
+import me.manga.kira.core.cbz.cbzEntryName
+import me.manga.kira.core.cbz.cbzWebpFormat
+import me.manga.kira.core.cbz.deleteCbzOwnedFileQuietly
+import me.manga.kira.core.cbz.deleteCbzSourcesAfterCommit
+import me.manga.kira.core.cbz.useForCbz
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.platform.media.AndroidPageMediaInspector
+import me.manga.kira.platform.media.PageBytePolicy
+import me.manga.kira.platform.media.PageImageFormat
+import me.manga.kira.platform.media.PageMediaInspector
+import me.manga.kira.platform.media.readPageSnapshot
+import me.manga.kira.platform.media.requireValid
 import okio.Path
+import okio.Path.Companion.toPath
+import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * Android actual for [CbzWriter].
- *
- * Page encoder: `Bitmap.compress(WEBP_LOSSY, quality, zipOut)` on API ≥ 30, the deprecated
- * `WEBP` format on older releases (preserving legacy behavior verbatim — the legacy enum got
- * deprecated post-30 but both produce wire-compatible WebP). The yield-every-other-page
- * + `ensureActive()` calls keep the writer cooperative with structured-concurrency
- * cancellation; the `Dispatchers.Default` confinement matches legacy.
- *
- * Verbatim port from legacy `:shared/androidMain/.../core/cbz/CbzWriter.android.kt`.
+ * Every requested input must finish encoding before the owned sibling ZIP replaces the final CBZ.
+ * One validated bounded snapshot feeds decode and any verbatim preservation. Full-source allocation
+ * is admitted conservatively before decode; bands are encoded/released sequentially. This is not a
+ * proven native allocator ceiling. The optimized writer's decoder/scheduling/policy is unchanged.
  */
-class AndroidCbzWriter(private val fs: AppFileSystem) : CbzWriter {
-
-    private val log = Logger.withTag(TAG)
+class AndroidCbzWriter(
+    private val fs: AppFileSystem,
+    private val decoder: AndroidCbzImageDecoder = AndroidCbzImageDecoder(),
+    private val output: CbzArchiveOutput = CbzArchiveOutput(),
+    private val encode: (Bitmap, Bitmap.CompressFormat, Int, OutputStream) -> Boolean =
+        { bitmap, format, quality, stream -> bitmap.compress(format, quality, stream) },
+    private val inspector: PageMediaInspector = AndroidPageMediaInspector(),
+    private val sourceBytePolicy: PageBytePolicy = PageBytePolicy(),
+) : CbzWriter {
+    private val conversionMutex = Mutex()
+    private val webpFormat = cbzWebpFormat()
 
     override suspend fun createCbz(
         imagePaths: List<Path>,
         mangaId: Long,
         chapterId: Long,
         quality: Int,
-    ): Path = withContext(Dispatchers.Default) {
-        val cbzFile = ensureCbzDestination(mangaId, chapterId).toFile()
-        val webpFormat = chooseWebpFormat()
-        val filesToDelete = mutableListOf<File>()
-
-        // #28: if the archive write fails partway (zip error, OOM, cancellation), delete the
-        // partial/corrupt .cbz and rethrow — mirrors Desktop/iOS. Source pages are deleted only
-        // AFTER a clean finish (below), so a failure leaves the loose pages intact for a retry.
-        try {
-            ZipOutputStream(FileOutputStream(cbzFile)).use { zipOut ->
-                imagePaths.forEachIndexed { index, path ->
-                    ensureActive()
-                    if (index % YIELD_EVERY_N_PAGES == 0) yield()
-
-                    val file = path.toFile()
-                    if (!file.exists()) {
-                        log.w { "File not found: $path" }
-                        return@forEachIndexed
-                    }
-                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                    if (bitmap == null) {
-                        log.e { "FAILED DECODE: $path" }
-                        return@forEachIndexed
-                    }
-                    try {
-                        zipOut.putNextEntry(ZipEntry(pageEntryName(index)))
-                        val success = bitmap.compress(webpFormat, quality, zipOut)
-                        if (!success) log.e { "Failed to compress: $path" }
-                        zipOut.closeEntry()
-                    } catch (e: Exception) {
-                        log.e(e) { "FAILED COMPRESS: $path" }
-                    } finally {
-                        bitmap.recycle()
-                    }
-                    filesToDelete += file
-                }
-            }
-        } catch (t: Throwable) {
-            runCatching { cbzFile.delete() }
-            throw t
-        }
-
-        // Every requested page was skipped (all missing/undecodable): a 0-page archive must not be
-        // reported as success — delete it and throw so the caller's per-chapter fallback keeps the
-        // loose source pages referenced rather than rewriting the chapter to an empty .cbz.
-        if (filesToDelete.isEmpty() && imagePaths.isNotEmpty()) {
-            runCatching { cbzFile.delete() }
-            error("CBZ write produced 0 pages from ${imagePaths.size} source paths")
-        }
-
-        filesToDelete.forEach { it.delete() }
-        log.i { "Created CBZ at ${cbzFile.absolutePath}" }
-        cbzFile.absolutePath.let { okio.Path.Companion.run { it.toPath() } }
-    }
+    ): Path =
+        archive(
+            imagePaths,
+            mangaId,
+            chapterId,
+            EncodingOptions(quality, Int.MAX_VALUE, CbzWriter.DEFAULT_MAX_MEMORY_BYTES),
+        )
 
     override suspend fun createCbzWithSplitting(
         imagePaths: List<Path>,
@@ -98,130 +72,198 @@ class AndroidCbzWriter(private val fs: AppFileSystem) : CbzWriter {
         quality: Int,
         maxHeight: Int,
         maxMemoryBytes: Long,
-    ): Path = withContext(Dispatchers.Default) {
-        val cbzFile = ensureCbzDestination(mangaId, chapterId).toFile()
-        val webpFormat = chooseWebpFormat()
-        val filesToDelete = mutableListOf<File>()
-        var pageCounter = 0
+    ): Path = archive(imagePaths, mangaId, chapterId, EncodingOptions(quality, maxHeight, maxMemoryBytes))
 
-        // #28: if the archive write fails partway (zip error, OOM, cancellation), delete the
-        // partial/corrupt .cbz and rethrow — mirrors Desktop/iOS. Source pages are deleted only
-        // AFTER a clean finish (below), so a failure leaves the loose pages intact for a retry.
-        try {
-            ZipOutputStream(FileOutputStream(cbzFile)).use { zipOut ->
-                imagePaths.forEachIndexed { index, path ->
-                    ensureActive()
-                    if (index % YIELD_EVERY_N_PAGES == 0) yield()
-
-                    val file = path.toFile()
-                    if (!file.exists()) {
-                        log.w { "File not found: $path" }
-                        return@forEachIndexed
-                    }
-                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                    if (bitmap == null) {
-                        log.e { "FAILED DECODE: $path" }
-                        return@forEachIndexed
-                    }
-
-                    val byteSize = bitmap.allocationByteCount.toLong()
-                    val needsSplit = bitmap.height > maxHeight || byteSize > maxMemoryBytes
-
-                    if (needsSplit) {
-                        log.w { "Splitting oversized image: $path (${bitmap.width}x${bitmap.height}, $byteSize bytes)" }
-                        val chunks = splitBitmapVertically(bitmap, maxHeight)
-                        chunks.forEachIndexed { chunkIndex, chunk ->
-                            try {
-                                // Advance the counter as soon as the entry name is committed, so a
-                                // compress/closeEntry failure can't make the next page re-use it.
-                                zipOut.putNextEntry(ZipEntry(pageEntryName(pageCounter++)))
-                                if (!chunk.compress(webpFormat, quality, zipOut)) {
-                                    log.e { "Failed chunk $chunkIndex of $path" }
-                                }
-                                zipOut.closeEntry()
-                            } catch (e: Exception) {
-                                log.e(e) { "FAILED COMPRESS chunk $chunkIndex: $path" }
-                            } finally {
-                                chunk.recycle()
-                            }
-                        }
-                    } else {
-                        try {
-                            zipOut.putNextEntry(ZipEntry(pageEntryName(pageCounter++)))
-                            if (!bitmap.compress(webpFormat, quality, zipOut)) {
-                                log.e { "Failed to compress: $path" }
-                            }
-                            zipOut.closeEntry()
-                        } catch (e: Exception) {
-                            log.e(e) { "FAILED COMPRESS: $path" }
-                        } finally {
-                            bitmap.recycle()
-                        }
-                    }
-
-                    filesToDelete += file
-                }
+    private suspend fun archive(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        encoding: EncodingOptions,
+    ): Path =
+        withContext(Dispatchers.Default) {
+            conversionMutex.withLock {
+                currentCoroutineContext().ensureActive()
+                createArchive(imagePaths, mangaId, chapterId, encoding)
             }
-        } catch (t: Throwable) {
-            runCatching { cbzFile.delete() }
-            throw t
         }
 
-        // Every requested page was skipped (all missing/undecodable): a 0-page archive must not be
-        // reported as success — delete it and throw so the caller's per-chapter fallback keeps the
-        // loose source pages referenced rather than rewriting the chapter to an empty .cbz.
-        if (pageCounter == 0 && imagePaths.isNotEmpty()) {
-            runCatching { cbzFile.delete() }
-            error("CBZ write produced 0 pages from ${imagePaths.size} source paths")
+    private suspend fun createArchive(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        encoding: EncodingOptions,
+    ): Path {
+        require(imagePaths.isNotEmpty()) { "No images to archive" }
+        require(encoding.maxHeight > 0 && encoding.maxMemoryBytes > 0) { "Invalid CBZ splitting limits" }
+        val sources = imagePaths.map { it.toString() }
+        val destination = ensureCbzDestination(mangaId, chapterId)
+        val temporary = File.createTempFile(".chapter_$chapterId-", ".cbz.tmp", destination.toFile().parentFile)
+        try {
+            val entries = writeArchive(temporary, sources, encoding)
+            validateAndroidCbzArchive(temporary, entries)
+            currentCoroutineContext().ensureActive()
+            output.publish(temporary, destination.toFile())
+        } finally {
+            temporary.deleteCbzOwnedFileQuietly()
         }
-
-        filesToDelete.forEach { it.delete() }
-        log.i { "Created CBZ with $pageCounter pages at ${cbzFile.absolutePath}" }
-        cbzFile.absolutePath.let { okio.Path.Companion.run { it.toPath() } }
+        // Nothing fallible after publication may advertise the now-obsolete loose paths as success.
+        deleteCbzSourcesAfterCommit(sources)
+        return destination
     }
 
-    private fun ensureCbzDestination(mangaId: Long, chapterId: Long): Path {
+    private suspend fun writeArchive(
+        temporary: File,
+        sources: List<String>,
+        encoding: EncodingOptions,
+    ): List<String> =
+        output.open(temporary).use { raw ->
+            ZipOutputStream(BufferedOutputStream(raw, CBZ_BUFFER_SIZE)).use { zip ->
+                val entries = mutableListOf<String>()
+                var acceptedInputs = 0
+                sources.forEachIndexed { index, path ->
+                    currentCoroutineContext().ensureActive()
+                    if (index % YIELD_EVERY_N_PAGES == 0) yield()
+                    val firstEntry = entries.size
+                    writePage(path, encoding, zip, entries)
+                    check(entries.size > firstEntry) { "CBZ input produced no entries" }
+                    acceptedInputs++
+                }
+                check(acceptedInputs == sources.size) { "CBZ input count mismatch" }
+                entries
+            }
+        }
+
+    private suspend fun writePage(
+        path: String,
+        encoding: EncodingOptions,
+        zip: ZipOutputStream,
+        entries: MutableList<String>,
+    ) {
+        if (!File(path).isFile) throw IOException("Missing CBZ source: ${File(path).name}")
+        val source = readPageSnapshot(fs.fileSystem(), path.toPath(), sourceBytePolicy)
+        val metadata = inspector.inspect(source).requireValid()
+        val admission =
+            CbzTranscodeBudget.admit(
+                metadata.width,
+                metadata.height,
+                source.size.toLong(),
+                encoding.maxHeight,
+                encoding.maxMemoryBytes,
+            )
+        val unsupported = metadata.format == PageImageFormat.AVIF && Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+        if (admission !is CbzTranscodeAdmission.Admitted || unsupported) {
+            val name = "${cbzEntryName(entries.size).substringBeforeLast('.')}.${metadata.format.extension}"
+            currentCoroutineContext().ensureActive()
+            zip.putNextEntry(ZipEntry(name))
+            zip.write(source)
+            zip.closeEntry()
+            entries += name
+            return
+        }
+        streamPage(source, admission.plan) { bitmap ->
+            currentCoroutineContext().ensureActive()
+            val name = cbzEntryName(entries.size)
+            zip.putNextEntry(ZipEntry(name))
+            val output = BoundedCbzEntryOutput(zip, admission.plan.maxEncodedBandBytes)
+            if (!encode(bitmap, webpFormat, encoding.quality, output)) throw IOException("CBZ page encode failed")
+            currentCoroutineContext().ensureActive()
+            zip.closeEntry()
+            entries += name
+        }
+    }
+
+    private suspend fun streamPage(
+        source: ByteArray,
+        plan: CbzTranscodePlan,
+        consume: suspend (Bitmap) -> Unit,
+    ) {
+        val bitmap = decoder.decode(source) ?: throw IOException("CBZ source decode failed")
+        bitmap.useForCbz { parent ->
+            currentCoroutineContext().ensureActive()
+            if (parent.width != plan.width ||
+                parent.height != plan.height ||
+                parent.allocationByteCount.toLong() > plan.sourceAllocationAllowanceBytes
+            ) {
+                throw IOException("CBZ decoded source exceeds its admitted dimensions or allocation")
+            }
+            if (parent.height <= plan.bandHeight) {
+                consume(parent)
+                return@useForCbz
+            }
+            var top = 0
+            while (top < parent.height) {
+                currentCoroutineContext().ensureActive()
+                val bottom = top + minOf(plan.bandHeight, parent.height - top)
+                val band = decoder.crop(parent, Rect(0, top, parent.width, bottom))
+                if (band === parent) {
+                    requireAdmittedBand(parent, plan.width, bottom - top)
+                    consume(parent)
+                } else {
+                    band.useForCbz {
+                        requireAdmittedBand(it, plan.width, bottom - top)
+                        consume(it)
+                    }
+                }
+                top = bottom
+            }
+        }
+    }
+
+    private fun requireAdmittedBand(
+        bitmap: Bitmap,
+        width: Int,
+        height: Int,
+    ) {
+        if (bitmap.width != width ||
+            bitmap.height != height ||
+            bitmap.allocationByteCount.toLong() > width.toLong() * height * BAND_BITMAP_BYTES_PER_PIXEL
+        ) {
+            throw IOException("CBZ crop exceeds its admitted dimensions or allocation")
+        }
+    }
+
+    private fun ensureCbzDestination(
+        mangaId: Long,
+        chapterId: Long,
+    ): Path {
         val dir = fs.chapterDir(mangaId, chapterId)
         fs.fileSystem().createDirectories(dir)
         return dir / "chapter_$chapterId.cbz"
     }
 
-    private fun splitBitmapVertically(bitmap: Bitmap, maxHeight: Int): List<Bitmap> {
-        if (bitmap.height <= maxHeight) return listOf(bitmap)
-        val chunks = mutableListOf<Bitmap>()
-        var currentY = 0
-        val width = bitmap.width
-        while (currentY < bitmap.height) {
-            val chunkHeight = minOf(maxHeight, bitmap.height - currentY)
-            try {
-                chunks += Bitmap.createBitmap(bitmap, 0, currentY, width, chunkHeight)
-                currentY += chunkHeight
-            } catch (e: Exception) {
-                log.e(e) { "Failed to create chunk at Y=$currentY" }
-                break
-            }
-        }
-        if (chunks.isNotEmpty() && chunks.first() !== bitmap) bitmap.recycle()
-        return chunks
-    }
-
-    private fun chooseWebpFormat(): Bitmap.CompressFormat =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Bitmap.CompressFormat.WEBP_LOSSY
-        } else {
-            @Suppress("DEPRECATION")
-            Bitmap.CompressFormat.WEBP
-        }
-
-    private fun pageEntryName(index: Int): String {
-        val padded = index.toString().padStart(PAGE_NUMBER_PAD_WIDTH, '0')
-        return "page_$padded.webp"
-    }
+    private data class EncodingOptions(
+        val quality: Int,
+        val maxHeight: Int,
+        val maxMemoryBytes: Long,
+    )
 
     private companion object {
-        const val TAG = "CbzWriter"
         const val YIELD_EVERY_N_PAGES = 2
-        const val PAGE_NUMBER_PAD_WIDTH = 4
+        const val BAND_BITMAP_BYTES_PER_PIXEL = 8
+    }
+}
+
+/** The encoder may write incrementally; enforce its admitted output allowance before each write. */
+internal class BoundedCbzEntryOutput(
+    private val delegate: OutputStream,
+    private val limit: Int,
+) : OutputStream() {
+    private var written = 0
+
+    override fun write(value: Int) {
+        if (written == limit) throw IOException("CBZ encoded page exceeds its admitted output allowance")
+        delegate.write(value)
+        written++
+    }
+
+    override fun write(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ) {
+        if (length > limit - written) throw IOException("CBZ encoded page exceeds its admitted output allowance")
+        delegate.write(bytes, offset, length)
+        written += length
     }
 }
 

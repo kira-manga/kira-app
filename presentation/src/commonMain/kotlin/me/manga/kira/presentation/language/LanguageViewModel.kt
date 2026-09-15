@@ -22,7 +22,8 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *  - [LanguageIntent.OnDismissRequestDialog] — closes it (.request)
  *  - [LanguageIntent.OnRequestTextChange] — updates the TextField buffer (.request)
  *  - [LanguageIntent.OnSubmitRequest] — submits the request via [SendLanguageRequestUseCase],
- *    emits [LanguageEffect.RequestSubmitted]/[LanguageEffect.RequestFailed] on completion (.request)
+ *    emits [LanguageEffect.RequestSubmitted] on success or sets [LanguageState.requestFailed]
+ *    for dialog-local feedback on failure
  *
  * **Why sync `getSupportedLanguages()` + async flow for `selectedCode`** (asymmetric): the
  * supported list is immutable across the process lifetime (11 hardcoded entries in the `:data`
@@ -70,10 +71,9 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *    mutations — no coroutines, no use cases.
  *  - `OnSubmitRequest` is the interesting branch: it launches a coroutine that sets
  *    `requestSubmitting = true`, calls the use case with the current `requestText`, folds the
- *    `Result<Unit>` into a state update + effect emission, and finally clears
- *    `requestSubmitting = false`. The branch is guarded against re-entrance: if `requestSubmitting`
- *    is already `true`, the branch returns immediately. Same posture as the Details slice's
- *    `onRetry` guard.
+ *    `Result<Unit>` into success feedback or a dialog-local error, and finally clears
+ *    `requestSubmitting = false`. Hidden-dialog and in-flight submissions are ignored. While
+ *    submitting, dismissal, re-opening and editing cannot replace the pending request's draft.
  *  - **Why not include `OnSubmitRequest` in the same `handle` suspend body** (i.e., why
  *    `viewModelScope.launch { ... }` inside the `when` branch)? Same reason as
  *    `OnSelectLanguage` — the `handle` suspend should return promptly so the view's
@@ -88,6 +88,8 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * translation — the `:data` impl owns the persist-then-`applyApplicationLocale` pairing. No
  * styling — the `:ui` composable owns the MaterialTheme/row layout. No Firestore plumbing —
  * the `:data` impl assembles the `Complaint` and the legacy `SendComplaintUseCase` writes it.
+ *
+ * The historical audit below predates the dialog-local failure and in-flight dismissal policy.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster106.staleKdocSweep.cascade,
  * Task #562, 2026-05-28): the file-scope VM manifest above is
@@ -174,24 +176,30 @@ class LanguageViewModel(
                 launchSafely { setLanguage(intent.code) }
             }
             is LanguageIntent.OnOpenRequestDialog -> {
+                if (state.value.requestDialogVisible || state.value.requestSubmitting) return
                 updateState {
                     it.copy(
                         requestDialogVisible = true,
                         requestText = "",
                         requestSubmitting = false,
+                        requestFailed = false,
                     )
                 }
             }
             is LanguageIntent.OnDismissRequestDialog -> {
-                updateState { it.copy(requestDialogVisible = false) }
+                if (state.value.requestSubmitting) return
+                updateState {
+                    it.copy(requestDialogVisible = false, requestText = "", requestFailed = false)
+                }
             }
             is LanguageIntent.OnRequestTextChange -> {
+                if (!state.value.requestDialogVisible || state.value.requestSubmitting) return
                 updateState { it.copy(requestText = intent.text) }
             }
             is LanguageIntent.OnSubmitRequest -> {
-                if (state.value.requestSubmitting) return
+                if (!state.value.requestDialogVisible || state.value.requestSubmitting) return
                 val body = state.value.requestText
-                updateState { it.copy(requestSubmitting = true) }
+                updateState { it.copy(requestSubmitting = true, requestFailed = false) }
                 viewModelScope.launch {
                     val result = sendLanguageRequest(body)
                     if (result.isSuccess) {
@@ -200,12 +208,12 @@ class LanguageViewModel(
                                 requestDialogVisible = false,
                                 requestText = "",
                                 requestSubmitting = false,
+                                requestFailed = false,
                             )
                         }
                         emit(LanguageEffect.RequestSubmitted)
                     } else {
-                        updateState { it.copy(requestSubmitting = false) }
-                        emit(LanguageEffect.RequestFailed)
+                        updateState { it.copy(requestSubmitting = false, requestFailed = true) }
                     }
                 }
             }

@@ -14,9 +14,9 @@ import me.manga.kira.presentation.mvi.MviState
  *  - the currently-selected IETF code projected from
  *    [me.manga.kira.domain.usecase.language.ObserveSelectedLanguageUseCase]
  *  - [isLoading] covering the gap between subscription and first emission from the upstream flow
- *  - **Phase 7.x.language.request**: three Request-Language dialog fields ([requestDialogVisible],
- *    [requestText], [requestSubmitting]) controlling the FeedbackDialog the user opens to submit a
- *    "Please add language X" complaint
+ *  - Request-Language dialog fields ([requestDialogVisible], [requestText], [requestSubmitting],
+ *    [requestFailed]) controlling the dialog the user opens to submit a "Please add language X"
+ *    complaint
  *
  * The state is **flow-driven** for [selectedCode]: the VM's `init {}` collector projects each
  * upstream emission into the field. Selection changes propagate naturally — the DataStore write
@@ -24,12 +24,9 @@ import me.manga.kira.presentation.mvi.MviState
  * `legacy.languageFlow` → the `:data` impl → here, so the picker is reactive without an explicit
  * `OnRefresh` intent. The [languages] list is set ONCE at construction time and never mutates.
  *
- * No `error` field — the upstream is a pure DataStore flow (no I/O), and the writes are
- * DataStore-`edit` calls whose runtime-failure modes are vanishingly small. The Request-Language
- * submission CAN fail (Firestore, network, validation), but the failure is surfaced as a one-shot
- * `LanguageEffect.RequestFailed` (snackbar), NOT stored on the state — same posture as the
- * Details slice's transient retry errors. Persisting the failure on state would require manual
- * dismiss; an effect auto-dismisses with the snackbar.
+ * [requestFailed] is a non-leaking flag for a localized error inside the active dialog. It stays
+ * visible while the user edits the retained draft, and clears on a new attempt or dialog reset.
+ * Failure is not an effect: a screen snackbar would sit behind the modal's accessibility root.
  *
  * **First-run defaults** (state-class defaults; the VM overrides [languages] at construction):
  *  - [languages] = `emptyList()` — defensive default for this data-class; the VM overrides via
@@ -43,28 +40,29 @@ import me.manga.kira.presentation.mvi.MviState
  *  - [requestDialogVisible] = `false` — dialog opens via `OnOpenRequestDialog` intent.
  *  - [requestText] = `""` — TextField is empty when the dialog first opens.
  *  - [requestSubmitting] = `false` — Send button enabled, no progress indicator.
+ *  - [requestFailed] = `false` — no submission error in the dialog.
  *
  * **Dialog state lifecycle**:
  *  - User taps "Request a language" row → VM sets `requestDialogVisible = true`,
- *    `requestText = ""`, `requestSubmitting = false`.
+ *    `requestText = ""`, `requestSubmitting = false`, `requestFailed = false`. Re-opening an
+ *    already visible dialog does not reset its draft.
  *  - User types → VM sets `requestText` per keystroke via `OnRequestTextChange`.
- *  - User taps Send → VM sets `requestSubmitting = true`, launches the use case.
- *  - Use case completes → VM emits `RequestSubmitted`/`RequestFailed`, and on EITHER outcome
- *    sets `requestSubmitting = false`. On success: also sets `requestDialogVisible = false`
- *    and `requestText = ""` (clearing for next time). On failure: keeps the dialog open with
- *    the typed text so the user can edit and retry without re-opening.
- *  - User taps Cancel/scrim → VM sets `requestDialogVisible = false`. Does NOT clear
- *    `requestSubmitting` — if an in-flight submission completes after dismissal, the success/
- *    failure snackbar still shows on the underlying screen. Acceptable.
+ *  - User taps Send → VM sets `requestSubmitting = true`, clears [requestFailed], and launches
+ *    the use case. Dismissal, editing and duplicate submissions are blocked while in flight.
+ *  - Use case completes → VM clears `requestSubmitting`. Success hides the dialog, clears the
+ *    text/error and emits `RequestSubmitted`. Failure sets [requestFailed] and keeps the dialog
+ *    and typed text so the user can edit and resubmit with the same Send control.
+ *  - User taps Cancel/scrim while idle → VM hides the dialog and clears the text/error.
  *
  * Contract §6 SRP: one rule — "what the language picker renders right now, including dialog
  * state". The dialog state lives here (not on a separate `LanguageDialogState`) because the
  * dialog IS part of the language-picker experience; splitting would over-segment a coherent
- * surface. The Snackbar message text lives in the `:ui` layer (i18n captures); state only
- * carries the dialog-visibility + submitting flags + body text.
+ * surface. All message text lives in the `:ui` layer; state carries only flags and body text.
  *
  * Contract §17: no `Any`, no `!!`, no `lateinit`. All fields are concrete value types with
  * sensible defaults.
+ *
+ * The historical audit below predates the dialog-local failure policy.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster106.staleKdocSweep.cascade,
  * Task #562, 2026-05-28): the file-scope state-shape manifest above is
@@ -116,4 +114,5 @@ data class LanguageState(
     val requestDialogVisible: Boolean = false,
     val requestText: String = "",
     val requestSubmitting: Boolean = false,
+    val requestFailed: Boolean = false,
 ) : MviState

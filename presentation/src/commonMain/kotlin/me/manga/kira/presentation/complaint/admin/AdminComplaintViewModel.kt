@@ -38,9 +38,9 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * Further work (bulk-update, bulk-delete) stays deferred via OCP §6 — sealed
  * [AdminComplaintIntent] / [AdminComplaintEffect] accept new variants without breaking the surface.
  *
- * **`effects`**: the two [AdminComplaintEffect] variants (`ShowSuccessMessage` /
- * `ShowErrorMessage`) drive action-result snackbars; inline list-load failure still lives in
- * [AdminComplaintState.error] with a Retry affordance.
+ * **`effects`**: [AdminComplaintEffect.ShowActionSuccess] drives confirmation snackbars.
+ * Mutation failure lives in [AdminComplaintState.actionFailed] inside the retained modal;
+ * list-load failure lives in [AdminComplaintState.error] with a Retry affordance.
  *
  * **`when (intent)` exhaustiveness**: the `:ui` composable can fire any of the
  * [AdminComplaintIntent] variants (list/search/filter/sort foundation plus the action-dialog
@@ -171,6 +171,7 @@ class AdminComplaintViewModel(
             it.copy(
                 actionDialogMode = AdminActionDialogMode.MENU,
                 activeComplaint = complaint,
+                actionFailed = false,
             )
         }
     }
@@ -181,6 +182,7 @@ class AdminComplaintViewModel(
             it.copy(
                 actionDialogMode = AdminActionDialogMode.NONE,
                 activeComplaint = null,
+                actionFailed = false,
             )
         }
     }
@@ -189,14 +191,14 @@ class AdminComplaintViewModel(
         if (state.value.isSubmittingAction) return
         if (mode == AdminActionDialogMode.NONE) return
         if (state.value.activeComplaint == null) return
-        updateState { it.copy(actionDialogMode = mode) }
+        updateState { it.copy(actionDialogMode = mode, actionFailed = false) }
     }
 
     private fun handleSubmitStatusChange(newStatus: ComplaintStatus) {
         val current = state.value
         if (current.isSubmittingAction) return
         val target = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = changeStatus(target, newStatus)
             completeAction(result, action = AdminComplaintAction.STATUS_UPDATED)
@@ -207,7 +209,7 @@ class AdminComplaintViewModel(
         val current = state.value
         if (current.isSubmittingAction) return
         val target = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = addClosureReason(target, reason)
             completeAction(result, action = AdminComplaintAction.CLOSURE_REASON_ADDED)
@@ -218,7 +220,7 @@ class AdminComplaintViewModel(
         val current = state.value
         if (current.isSubmittingAction) return
         val target = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = adminDeleteComplaint(target.id)
             completeAction(result, action = AdminComplaintAction.DELETED)
@@ -229,7 +231,7 @@ class AdminComplaintViewModel(
         val current = state.value
         if (current.isSubmittingAction) return
         val target = current.activeComplaint ?: return
-        updateState { it.copy(isSubmittingAction = true) }
+        updateState { it.copy(isSubmittingAction = true, actionFailed = false) }
         viewModelScope.launch {
             val result = adminEditComplaint(target, type, subject, body)
             completeAction(result, action = AdminComplaintAction.UPDATED)
@@ -247,16 +249,16 @@ class AdminComplaintViewModel(
                     isSubmittingAction = false,
                     actionDialogMode = AdminActionDialogMode.NONE,
                     activeComplaint = null,
+                    actionFailed = false,
                 )
             }
             emit(AdminComplaintEffect.ShowActionSuccess(action))
             loadList()
         } else {
             // The throwable (often a raw Firestore SDK string) is logged, never surfaced to the
-            // operator: the snackbar shows a generic localized error resolved in :ui.
+            // operator: the retained dialog shows a generic localized error resolved in :ui.
             Logger.withTag(TAG).w(result.exceptionOrNull()) { "admin complaint action $action failed" }
-            updateState { it.copy(isSubmittingAction = false) }
-            emit(AdminComplaintEffect.ShowActionFailure)
+            updateState { it.copy(isSubmittingAction = false, actionFailed = true) }
         }
     }
 

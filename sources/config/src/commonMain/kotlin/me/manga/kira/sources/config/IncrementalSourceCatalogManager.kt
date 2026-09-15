@@ -56,6 +56,7 @@ class IncrementalSourceCatalogManager(
     private val refreshLock = Mutex()
 
     override val state: StateFlow<UpdateState> = updateState.asStateFlow()
+    override val acceptedDocument: StateFlow<SourceConfigDocument> = active.asStateFlow()
     override val diagnostics: StateFlow<SourceCatalogDiagnostics> = catalogDiagnostics.asStateFlow()
 
     override fun activeDocument(): SourceConfigDocument = active.value

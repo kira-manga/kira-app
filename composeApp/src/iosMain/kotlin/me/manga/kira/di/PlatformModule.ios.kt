@@ -40,6 +40,8 @@ import me.manga.kira.platform.jobs.BackgroundJobScheduler
 import me.manga.kira.platform.jobs.IosBackgroundJobScheduler
 import me.manga.kira.platform.locale.IosLocaleSwitcher
 import me.manga.kira.platform.locale.LocaleSwitcher
+import me.manga.kira.platform.media.IosPageMediaInspector
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.notification.IosDownloadNotifier
 import me.manga.kira.platform.notification.IosNotificationPresenter
@@ -101,8 +103,9 @@ actual fun platformModule(): Module =
 
         // ---- Filesystem / CBZ (Phase 8.5; PC-6 cutover to :platform) ----
         single<AppFileSystem> { IosAppFileSystem() }
-        single<CbzWriter> { IosCbzWriter(get()) }
-        single<CbzReader> { DefaultCbzReader(get(), get()) }
+        single<PageMediaInspector> { IosPageMediaInspector() }
+        single<CbzWriter> { IosCbzWriter(get(), get()) }
+        single<CbzReader> { DefaultCbzReader(get(), get(), get()) }
 
         // ---- Background jobs (Phase 8.6) ----
         single<BackgroundJobScheduler> { IosBackgroundJobScheduler() }
@@ -171,7 +174,7 @@ actual fun platformModule(): Module =
         // DownloadRepository engine-selector) moved to :data:download's downloadModule() (strangler-fig
         // Phase 4). The :platform background facades below stay here and resolve into that module by type.
         // Background-URLSession transport for the iOS engine (durable transfers across suspension).
-        single<BackgroundTransport> { IosBackgroundTransport(get()) }
+        single<BackgroundTransport> { IosBackgroundTransport(get(), get()) }
         // M4: BG-task CPU scheduling (BGProcessingTask / BGContinuedProcessingTask via the Swift host) +
         // a synchronous work-state snapshot the host reads to decide submission + drive the progress UI.
         single { IosBackgroundScheduler() }

@@ -1,25 +1,21 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.toRoute
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.manga.kira.core.platform.HideNavigationBarSideEffect
-import me.manga.kira.core.platform.encodeImageBitmapToPng
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
-import me.manga.kira.platform.image.ScreenshotProvider
 import me.manga.kira.presentation.reader.ReaderIntent
 import me.manga.kira.presentation.reader.ReaderViewModel
 import me.manga.kira.reader.ReaderHostSwitch
+import me.manga.kira.reader.rememberReaderSharing
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -65,8 +61,8 @@ import org.koin.compose.viewmodel.koinViewModel
  * history/read-state side effects, which is what made this route-swap safe.
  *
  * Everything else mirrors [ChapterImagesReworkScreenRoute] verbatim: [HideNavigationBarSideEffect]
- * at the top, `koinViewModel()` [ReaderViewModel], `koinInject()` [PageProgressRepository] bridged
- * to `onReportProgress`, `onNavigateBack` → `safePopBackStack`, and `onOpenInWebView` → the legacy
+ * at the top, `koinViewModel()` [ReaderViewModel], `onNavigateBack` → `safePopBackStack`, and
+ * `onOpenInWebView` → the legacy
  * `Screen.WebView` in-app browser. See [ChapterImagesReworkScreenRoute] KDoc for the full
  * three-layer (Koin DI / `:presentation` MVI / `:ui` Compose) rationale.
  *
@@ -94,14 +90,10 @@ fun ChapterImagesByLegacyArgsReworkScreenRoute(
 
     // Per-page download/decode progress reporter bridged to the rework's in-memory progress
     // repository (mirrors [ChapterImagesReworkScreenRoute]).
-    val pageProgressRepo: PageProgressRepository = koinInject()
 
-    // Reader parity item #5 (share current page) + #6 (auto-403→WebView recovery). Both mirror
-    // [ChapterImagesReworkScreenRoute] verbatim — the existing `:platform` ScreenshotProvider SPI
-    // for the share, and the shared [rememberCloudflareChallengeSolver] helper for the 403
-    // auto-recovery (WebView + auto-retry-on-return).
-    val screenshotProvider: ScreenshotProvider = koinInject()
-    val shareScope = rememberCoroutineScope()
+    // Same admission and entry-scoped lifetime as the typed Reader route.
+    val sharing = rememberReaderSharing(backStackEntry)
+    val isSharing by sharing.isSharing.collectAsState()
     val solveCloudflare = rememberCloudflareChallengeSolver(
         navController = navController,
         ownerEntry = backStackEntry,
@@ -146,20 +138,10 @@ fun ChapterImagesByLegacyArgsReworkScreenRoute(
         onOpenInWebView = { url, api ->
             navController.safeNavigate(Screen.WebView(url, api))
         },
-        // Reader parity item #5: encode the captured page bitmap to PNG and share via the
-        // `:platform` SPI (mirrors [ChapterImagesReworkScreenRoute] — encode hops to
-        // Dispatchers.Default to keep the tall-strip PNG encode off the main thread). Inline
-        // literal share title copies the legacy chooser wording verbatim.
-        onSharePage = { bitmap ->
-            shareScope.launch {
-                val bytes = withContext(Dispatchers.Default) { encodeImageBitmapToPng(bitmap) }
-                if (bytes != null) {
-                    screenshotProvider.shareBitmapBytes(bytes, "Share screenshot")
-                }
-            }
-        },
+        // Admission precedes lazy viewport capture, just as in the typed Reader route.
+        onSharePage = sharing::request,
+        isSharing = isSharing,
         // Reader parity item #6: AUTO 403→WebView recovery + auto-retry-on-return.
         onSolveCloudflareChallenge = solveCloudflare,
-        onReportProgress = pageProgressRepo::report,
     )
 }
