@@ -1,0 +1,90 @@
+name: Targeted App28 App59 Native compilation
+on:
+  push:
+    branches: [validation/app-28-59-native-20260915-01]
+    paths: [.github/workflows/app5-ios-host.yml]
+permissions:
+  contents: read
+concurrency:
+  group: app-28-59-native-compile
+  cancel-in-progress: false
+jobs:
+  compile:
+    if: github.run_attempt == 1
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: c2c0136930674439b186bf429132a3a871eda73e
+      ENGINE_SHA: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      KIRA_SOURCE_CONFIG_BASE_URL: ''
+      KIRA_SOURCE_CONFIG_PINNED_KEYS: ''
+      KIRA_APP_VERSION: '1.0.5'
+      GRADLE_USER_HOME: ${{ runner.temp }}/kira-2859-gradle
+      KONAN_DATA_DIR: ${{ runner.temp }}/kira-2859-konan
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ${{ env.ENGINE_SHA }}
+          path: engine
+          persist-credentials: false
+      - name: Compile Native Room generation and composition root only
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+          export PATH="$JAVA_HOME/bin:$PATH"
+          mkdir -p reports
+          test "$(git -C app rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C engine rev-parse HEAD)" = "$ENGINE_SHA"
+          test -d "$DEVELOPER_DIR"
+          { git -C app rev-parse HEAD 'HEAD^{tree}'; git -C engine rev-parse HEAD 'HEAD^{tree}'; java -version; xcodebuild -version; } > reports/identity.txt 2>&1
+          (cd app && git ls-files -z | xargs -0 shasum -a 256) > reports/app-before.sha256
+          (cd engine && git ls-files -z | xargs -0 shasum -a 256) > reports/engine-before.sha256
+          cleanup() {
+            code=$?
+            trap - EXIT INT TERM
+            set +e
+            (cd app && ./gradlew --stop --console=plain) > reports/stop.log 2>&1
+            stop_code=$?
+            printf 'command_exit=%s\nstop_exit=%s\n' "$code" "$stop_code" > reports/result.txt
+            if (cd app && shasum -a 256 -c ../reports/app-before.sha256 >/dev/null); then echo app_source_unchanged=true >> reports/result.txt; else code=1; fi
+            if (cd engine && shasum -a 256 -c ../reports/engine-before.sha256 >/dev/null); then echo engine_source_unchanged=true >> reports/result.txt; else code=1; fi
+            if [ "$stop_code" -ne 0 ]; then exit 1; fi
+            # Only generated paths under these fresh checkouts and run-owned dependency homes.
+            for repo in app engine; do
+              for module in '' app composeApp desktopApp core domain data data/local data/remote data/download platform presentation ui sources/contracts sources/engine sources/config sources/legacy source-contract source-engine source-testkit; do
+                rm -rf "$repo/${module:+$module/}build" "$repo/${module:+$module/}.gradle" "$repo/${module:+$module/}.kotlin"
+              done
+            done
+            rm -rf "$GRADLE_USER_HOME" "$KONAN_DATA_DIR"
+            df -h . >> reports/result.txt
+            exit "$code"
+          }
+          trap cleanup EXIT INT TERM
+          df -h . > reports/resources.txt
+          (cd app && ./gradlew :composeApp:compileKotlinIosSimulatorArm64 \
+            --include-build ../engine --no-daemon --no-parallel --max-workers=1 \
+            --no-build-cache --no-configuration-cache --console=plain --stacktrace \
+            -Pkotlin.compiler.execution.strategy=in-process -PkiraUseMavenLocal=false \
+            -Dorg.gradle.vfs.watch=false '-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g') 2>&1 | tee reports/compile.log
+          find app/data/local/build/generated -type f -name '*SourcesDao*' -exec shasum -a 256 {} + > reports/room-generated.sha256
+          test -s reports/room-generated.sha256
+          test -d app/composeApp/build/classes/kotlin/iosSimulatorArm64/main/klib/composeApp
+          find app/composeApp/build/classes/kotlin/iosSimulatorArm64/main/klib/composeApp -type f -exec shasum -a 256 {} + > reports/compilation.sha256
+          test -s reports/compilation.sha256
+      - name: Retain compact public compilation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: app-28-59-native-compile-${{ github.run_id }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 3
