@@ -1,0 +1,140 @@
+# Targeted shared Apple verification: shipping host + Native57 + UIKit38; agreement-gated.
+# One nondeployment verification attempt; no Store, release or credentials.
+name: Shared two-batch public shipping iOS host and native tests
+on:
+  push:
+    branches: [remediation/app-two-batch-shared-apple-20260915-06]
+    paths: [ci/app5-ios-host.request.json]
+permissions:
+  contents: read
+concurrency:
+  group: app5-ios-host-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  host:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/remediation/app-two-batch-shared-apple-20260915-06' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 80
+    steps:
+      - name: Exact control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Admit bound one-attempt request
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app5-ios-host.py request
+      - name: Exact unmodified App source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Exact original public Engine source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ${{ steps.request.outputs.engine_sha }}
+          path: engine
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Shipping host then Native57 and UIKit38 on one simulator
+        id: host
+        timeout-minutes: 74
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app5-ios-host.py host
+      - name: Bounded evidence after final owned absence
+        if: ${{ always() && steps.host.outputs.retention_ready == 'true' }}
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ env.APP5_RUN }}/reports/request.json
+            ${{ env.APP5_RUN }}/reports/result.json
+            ${{ env.APP5_RUN }}/reports/identity.json
+            ${{ env.APP5_RUN }}/reports/source.json
+            ${{ env.APP5_RUN }}/reports/tools.json
+            ${{ env.APP5_RUN }}/reports/app-tasks.json
+            ${{ env.APP5_RUN }}/reports/engine-tasks.json
+            ${{ env.APP5_RUN }}/reports/proof.json
+            ${{ env.APP5_RUN }}/reports/commands.json
+            ${{ env.APP5_RUN }}/reports/host-build.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-immediate.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-final.log
+            ${{ env.APP5_RUN }}/reports/prerequisites.json
+            ${{ env.APP5_RUN }}/reports/project.json
+            ${{ env.APP5_RUN }}/reports/host-proof.json
+            ${{ env.APP5_RUN }}/reports/framework-metadata.json
+            ${{ env.APP5_RUN }}/reports/swiftpm.json
+            ${{ env.APP5_RUN }}/reports/build-result.json
+            ${{ env.APP5_RUN }}/reports/ComposeApp.h
+            ${{ env.APP5_RUN }}/reports/ComposeApp.modulemap
+            ${{ env.APP5_RUN }}/reports/generated-project.patch
+            ${{ env.APP5_RUN }}/reports/framework-arch.log
+            ${{ env.APP5_RUN }}/reports/host-binary-arch.log
+            ${{ env.APP5_RUN }}/reports/host-binary-platform.log
+            ${{ env.APP5_RUN }}/reports/host-linked-binary-arch.log
+            ${{ env.APP5_RUN }}/reports/host-linked-binary-platform.log
+            ${{ env.APP5_RUN }}/reports/native-source.json
+            ${{ env.APP5_RUN }}/reports/native-app-tasks.json
+            ${{ env.APP5_RUN }}/reports/native-engine-tasks.json
+            ${{ env.APP5_RUN }}/reports/native-proof.json
+            ${{ env.APP5_RUN }}/reports/simulator.json
+            ${{ env.APP5_RUN }}/reports/native-tests.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-native.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-cleanup.log
+            ${{ env.APP5_RUN }}/reports/native-platform-arch.log
+            ${{ env.APP5_RUN }}/reports/native-platform-platform.log
+            ${{ env.APP5_RUN }}/reports/native-data-arch.log
+            ${{ env.APP5_RUN }}/reports/native-data-platform.log
+            ${{ env.APP5_RUN }}/reports/native-data-download-arch.log
+            ${{ env.APP5_RUN }}/reports/native-data-download-platform.log
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.image.IosAvifDecoderTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.image.IosAvifDecoderFailureTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.cbz.IosCbzNativeOwnershipTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.cbz.IosCbzMemoryAdmissionTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.cbz.IosCbzCompletenessTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.cbz.IosCbzReaderValidationTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.media.IosPageMediaInspectorTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.download.IosBackgroundTransportTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/platform/TEST-iosSimulatorArm64Test.me.manga.kira.platform.download.IosBackgroundCompletionTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/TEST-iosSimulatorArm64Test.me.manga.kira.data.repository.IosCbzFinalizationTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/download/TEST-iosSimulatorArm64Test.me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStoreTest.xml
+            ${{ env.APP5_RUN }}/reports/uikit-source.json
+            ${{ env.APP5_RUN }}/reports/uikit-project.json
+            ${{ env.APP5_RUN }}/reports/uikit-results.json
+            ${{ env.APP5_RUN }}/reports/uikit-proof.json
+            ${{ env.APP5_RUN }}/reports/uikit-Package.resolved
+            ${{ env.APP5_RUN }}/reports/uikit-xcresult-summary-schema.json
+            ${{ env.APP5_RUN }}/reports/uikit-xcresult-summary.json
+            ${{ env.APP5_RUN }}/reports/uikit-xcresult-tests-schema.json
+            ${{ env.APP5_RUN }}/reports/uikit-xcresult-tests.json
+            ${{ env.APP5_RUN }}/reports/uikit-tests.log
+            ${{ env.APP5_RUN }}/reports/uikit-binary-arch.log
+            ${{ env.APP5_RUN }}/reports/uikit-binary-platform.log
+            ${{ env.APP5_RUN }}/reports/uikit-host-arch.log
+            ${{ env.APP5_RUN }}/reports/uikit-host-platform.log
