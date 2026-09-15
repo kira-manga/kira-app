@@ -57,8 +57,8 @@ internal val sourceCatalogHttpClientQualifier = named("source-catalog-http")
  *    Ed25519 verification with pinned keys.
  *  - The real [DataStoreHeaderStore] lets the generic clients reuse captured Cloudflare headers.
  *
- * Dependencies pulled from the merged graph are the shared Ktor [HttpClient] and
- * [DataStoreHelper]. This module separately owns the uncached catalog client until Koin closes.
+ * [DataStoreHelper] comes from the merged graph. This module owns one uncached [HttpClient]
+ * shared by bounded generic responses and catalog downloads, closing it with Koin.
  */
 val sourcesGenericModule =
     module {
@@ -68,7 +68,7 @@ val sourcesGenericModule =
         single<SourceConfigValidator> { DefaultSourceConfigValidator(get()) }
 
         // Ports (composition-root implementations of :sources:contracts interfaces).
-        single<HttpExecutor> { KtorHttpExecutor(get<HttpClient>()) }
+        single<HttpExecutor> { KtorHttpExecutor(get<HttpClient>(sourceCatalogHttpClientQualifier)) }
         single<HeaderStore> { DataStoreHeaderStore(get<DataStoreHelper>()) }
         single<SourceCatalogStore> {
             RoomSourceCatalogStore(
