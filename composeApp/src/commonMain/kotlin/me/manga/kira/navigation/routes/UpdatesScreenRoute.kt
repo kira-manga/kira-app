@@ -3,6 +3,7 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.domain.model.updates.UpdateEntry
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.presentation.updates.UpdatesViewModel
@@ -35,12 +36,12 @@ import org.koin.compose.viewmodel.koinViewModel
  *    with the full identity tuple (the GAP-NAV fix — see the inline body comment;
  *    rating/genres aren't part of Updates data).
  *  - **Chapter-row tap** → `onNavigateToReader(entry)` →
- *    [Screen.ChapterImagesFragment] with the SAME field-for-field nav-arg mapping as the
- *    pre-swap `onNotificationClick` (line 44-61): `isHome = false`, `api`, `language`,
+ *    [Screen.ChapterImagesFragment] retains the pre-swap chapter identity mapping:
+ *    `isHome = false`, `api`, `language`,
  *    `mangaId`, `chapterId = entry.chapterId`, `mangatitle`, `mangaUrl`, `mangaImgUrl`,
- *    `chapterNumber`, `chapterUrl`, `paths = entry.localImagePaths.takeIf { it.isNotEmpty() }`,
- *    `isDownload = entry.isDownloaded`. The legacy `ChapterNotification` Room entity carries
- *    `chapterId` as a dedicated field — no History-style "id-doubles-as-chapterId" quirk.
+ *    `chapterNumber`, `chapterUrl`, `paths = null`, `isDownload = entry.isDownloaded`.
+ *    The Reader resolves current downloaded paths from Room; the paths slot is compatibility-only.
+ *    `chapterId` remains a dedicated field — no History-style "id-doubles-as-chapterId" quirk.
  *  - **Mark-read per row / Mark all read / Delete per row / Delete all** — internalised in
  *    the rework `UpdatesViewModel`'s reducer. The pre-swap callbacks
  *    (`onMarkAsRead` / `onMarkAllAsRead` / `onDeleteAll`) are no longer threaded by the
@@ -127,22 +128,23 @@ fun UpdatesScreenRoute(
             )
         },
         onNavigateToReader = { entry ->
-            navController.safeNavigate(
-                Screen.ChapterImagesFragment(
-                    isHome = false,
-                    api = entry.api,
-                    language = entry.language,
-                    mangaId = entry.mangaId,
-                    chapterId = entry.chapterId,
-                    mangatitle = entry.mangaTitle,
-                    mangaUrl = entry.mangaUrl,
-                    mangaImgUrl = entry.mangaImageUrl,
-                    chapterNumber = entry.chapterNumber,
-                    chapterUrl = entry.chapterUrl,
-                    paths = entry.localImagePaths.takeIf { it.isNotEmpty() },
-                    isDownload = entry.isDownloaded,
-                ),
-            )
+            navController.safeNavigate(entry.toReaderRoute())
         },
     )
 }
+
+internal fun UpdateEntry.toReaderRoute(): Screen.ChapterImagesFragment =
+    Screen.ChapterImagesFragment(
+        isHome = false,
+        api = api,
+        language = language,
+        mangaId = mangaId,
+        chapterId = chapterId,
+        mangatitle = mangaTitle,
+        mangaUrl = mangaUrl,
+        mangaImgUrl = mangaImageUrl,
+        chapterNumber = chapterNumber,
+        chapterUrl = chapterUrl,
+        paths = null,
+        isDownload = isDownloaded,
+    )

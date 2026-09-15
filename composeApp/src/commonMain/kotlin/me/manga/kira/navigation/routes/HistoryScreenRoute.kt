@@ -3,6 +3,7 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.domain.model.history.HistoryEntry
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.presentation.history.HistoryViewModel
@@ -40,14 +41,14 @@ import org.koin.compose.viewmodel.koinViewModel
  *    `onNavigateToDetails(dest)` callback this adapter supplies.
  *  - `onChapterClick` (legacy) → `HistoryIntent.OnChapterClick(entry)` → `HistoryEffect.NavigateToReader`
  *    → [Screen.ChapterImagesFragment] (legacy reader route — same target as legacy). The
- *    field-for-field nav-arg mapping is identical: `isHome = false`, `api = entry.api`,
+ *    identity mapping is retained: `isHome = false`, `api = entry.api`,
  *    `language = entry.language`, `mangaId = entry.mangaId`, `chapterId = entry.id`,
  *    `mangatitle = entry.mangaTitle`, `mangaUrl = entry.mangaUrl`,
  *    `mangaImgUrl = entry.mangaImageUrl`, `chapterNumber = entry.chapterTitle` (legacy quirk —
  *    History row's chapter-title field doubles as the nav arg's `chapterNumber`),
- *    `chapterUrl = entry.chapterUrl`, `paths = entry.localImagePaths.takeIf { it.isNotEmpty() }`,
- *    `isDownload = entry.isDownloaded`. Same observable behaviour as the legacy adapter's
- *    `onChapterClick` handler at the prior `HistoryScreenRoute.kt` lines 44-61.
+ *    `chapterUrl = entry.chapterUrl`, `paths = null`,
+ *    `isDownload = entry.isDownloaded`. The Reader resolves current downloaded paths from Room;
+ *    the legacy serialized paths slot is retained only for saved-state compatibility.
  *  - `onDeleteHistory(it)` (legacy) — per-row delete; the rework HistoryScreen wires the row's
  *    "Delete" TextButton to `HistoryIntent.OnDeleteEntry(entry)`. Same observable behaviour
  *    (per-row removal of the entry from the underlying Room table).
@@ -189,22 +190,23 @@ fun HistoryScreenRoute(
             )
         },
         onNavigateToReader = { entry ->
-            navController.safeNavigate(
-                Screen.ChapterImagesFragment(
-                    isHome = false,
-                    api = entry.api,
-                    language = entry.language,
-                    mangaId = entry.mangaId,
-                    chapterId = entry.id,
-                    mangatitle = entry.mangaTitle,
-                    mangaUrl = entry.mangaUrl,
-                    mangaImgUrl = entry.mangaImageUrl,
-                    chapterNumber = entry.chapterTitle,
-                    chapterUrl = entry.chapterUrl,
-                    paths = entry.localImagePaths.takeIf { it.isNotEmpty() },
-                    isDownload = entry.isDownloaded,
-                ),
-            )
+            navController.safeNavigate(entry.toReaderRoute())
         },
     )
 }
+
+internal fun HistoryEntry.toReaderRoute(): Screen.ChapterImagesFragment =
+    Screen.ChapterImagesFragment(
+        isHome = false,
+        api = api,
+        language = language,
+        mangaId = mangaId,
+        chapterId = id,
+        mangatitle = mangaTitle,
+        mangaUrl = mangaUrl,
+        mangaImgUrl = mangaImageUrl,
+        chapterNumber = chapterTitle,
+        chapterUrl = chapterUrl,
+        paths = null,
+        isDownload = isDownloaded,
+    )
