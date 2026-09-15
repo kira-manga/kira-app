@@ -154,6 +154,13 @@ history cleanup remains a separate issue, including retained failures released b
 
 ### Backup import hardening — composition required
 
+Terminal/saved-only restored offline metadata has a separate authored absence-only repair
+(`MissingDownloadMetadataRepair` / `ChapterArtifactRepairDao`), with material Room/file tests
+**NOT_RUN**. It preserves user state, active work and unknown bytes, and conditionally clears the
+exact stale committed reference so explicit import can be admitted. It neither changes the active
+restore/re-download policy nor closes physical iPhone backup/restore acceptance; see
+`ENGINEERING_NOTES.md` §2. No database/schema relocation or filesystem cleanup is part of it.
+
 The authored import path admits a bounded, privately owned ZIP/JSON/CBZ plan before any Room or
 resume mutation; every publication consumes those same retained bytes. Android acquisition counts
 the provider stream; iOS uses a coordinated, security-scoped open-in-place copy. Provider/OS hydration

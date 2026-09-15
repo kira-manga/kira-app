@@ -14,6 +14,7 @@ import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
@@ -91,6 +92,7 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun chapterDownloadingDao(): ChapterDownloadDao
     abstract fun chapterArtifactDao(): ChapterArtifactDao
     abstract fun chapterArtifactCommitDao(): ChapterArtifactCommitDao
+    abstract fun chapterArtifactRepairDao(): ChapterArtifactRepairDao
     abstract fun sourcesDao(): SourcesDao
     abstract fun sourceConfigCacheDao(): SourceConfigCacheDao
     abstract fun sourceCatalogDao(): SourceCatalogDao

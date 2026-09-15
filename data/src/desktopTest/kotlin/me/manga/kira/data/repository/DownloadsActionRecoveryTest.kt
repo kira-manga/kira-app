@@ -97,7 +97,8 @@ class DownloadsActionRecoveryTest {
             db.backupDao().updateChapterRow(blankSaved)
             val valid = seed()
             assertTrue(actions().reconcileInterrupted().isSuccess)
-            for (original in listOf(missingFile, emptyFile, directory)) {
+            assertMissingMetadata(missingFile)
+            for (original in listOf(emptyFile, directory)) {
                 assertEquals(original.saved, saved(original))
                 assertEquals(original.download, download(original))
             }

@@ -5,14 +5,11 @@ import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterArtifactReference
-import me.manga.kira.data.download.artifacts.ChapterArtifacts
-import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.repository.DownloadsActionRepository
-import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -131,14 +128,13 @@ import okio.use
  */
 class DownloadsActionRepositoryImpl(
     private val legacy: DownloadRepository,
-    private val chapterDownloadDao: ChapterDownloadDao,
-    private val chapterDao: ChapterDao,
-    // Restart-freeze + size back-fill (2026-06-02): used by [reconcileInterrupted] to compute the
-    // on-disk size of completed rows that pre-date the sizeBytes column. Reaches `:platform` — the
-    // same `:data` -> `:platform` direction the layering contract permits.
-    private val appFileSystem: AppFileSystem,
-    private val artifacts: ChapterArtifacts,
+    private val storage: DownloadsActionStorage,
 ) : DownloadsActionRepository {
+    private val chapterDownloadDao get() = storage.downloads
+    private val chapterDao get() = storage.chapters
+    private val appFileSystem get() = storage.files
+    private val artifacts get() = storage.artifacts
+
     override suspend fun enqueueDownload(
         chapterId: Long,
         mangaTitle: String,
@@ -204,10 +200,13 @@ class DownloadsActionRepositoryImpl(
             // 1) Reset rows orphaned in RUNNING / COMPRESSING by a killed process and re-trigger the
             //    engine (WorkManager re-enqueue on Android; worker-loop wake-up on iOS/Desktop).
             legacy.reconcileInterruptedDownloads()
+            // Clear only terminal/saved-only claims whose referenced bytes are proven absent.
+            // Active queue policy and unknown filesystem/decoder outcomes remain unchanged.
+            val missingFailures = storage.missingMetadata.reconcile()
             // 2) Back-fill the on-disk size of completed rows that pre-date the sizeBytes column (rows
             //    migrated up from schema v8). Read only exact referenced files, never a recursive
             //    directory walk. Finish unrelated rows, then report a sanitized aggregate failure.
-            var failures = 0
+            var failures = missingFailures
             chapterDownloadDao.getCompletedWithoutSize().forEach { row ->
                 val result = runCatchingCancellable {
                     artifacts.read(row.chapterId) { record ->

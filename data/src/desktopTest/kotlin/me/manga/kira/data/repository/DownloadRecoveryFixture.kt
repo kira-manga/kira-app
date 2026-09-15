@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
@@ -87,12 +88,10 @@ internal class DownloadRecoveryFixture {
         downloadDao: ChapterDownloadDao = dao,
         fileSystem: AppFileSystem = appFileSystem,
         engine: me.manga.kira.presentation.features.download.domain.clean.DownloadRepository = legacy,
+        repairDao: ChapterArtifactRepairDao = db.chapterArtifactRepairDao(),
     ) = DownloadsActionRepositoryImpl(
         legacy = engine,
-        chapterDownloadDao = downloadDao,
-        chapterDao = db.chapterDao(),
-        appFileSystem = fileSystem,
-        artifacts = artifactRuntime.ownership,
+        storage = DownloadsActionStorage(downloadDao, db.chapterDao(), fileSystem, artifactRuntime.ownership, repairDao),
     )
 
     suspend fun seed(

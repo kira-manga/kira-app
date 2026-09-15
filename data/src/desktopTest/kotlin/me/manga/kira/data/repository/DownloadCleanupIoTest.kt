@@ -65,7 +65,10 @@ class DownloadCleanupIoTest {
                     }
                     val runtime = ArtifactTestRuntime(db, appFs)
                     val actions = DownloadsActionRepositoryImpl(
-                        FakeDownloadRepository(), dao, db.chapterDao(), appFs, runtime.ownership,
+                        FakeDownloadRepository(),
+                        DownloadsActionStorage(
+                            dao, db.chapterDao(), appFs, runtime.ownership, db.chapterArtifactRepairDao(),
+                        ),
                     )
                     assertTrue(actions.reconcileInterrupted().isSuccess)
                     assertTrue(runtime.downloads.exactSize(completed.saved.localImagePaths) > 0)
@@ -96,7 +99,10 @@ class DownloadCleanupIoTest {
         }
         val runtime = ArtifactTestRuntime(db, appFs)
         val actions = DownloadsActionRepositoryImpl(
-            FakeDownloadRepository(), dao, db.chapterDao(), appFs, runtime.ownership,
+            FakeDownloadRepository(),
+            DownloadsActionStorage(
+                dao, db.chapterDao(), appFs, runtime.ownership, db.chapterArtifactRepairDao(),
+            ),
         )
         val failed = actions.deleteDownloadedChapter(blocked.saved.id)
         assertTrue(failed.isFailure)
@@ -154,7 +160,10 @@ class DownloadCleanupIoTest {
         val appFs = object : AppFileSystem by appFileSystem { override fun fileSystem() = failing }
         val runtime = ArtifactTestRuntime(db, appFs)
         val actions = DownloadsActionRepositoryImpl(
-            FakeDownloadRepository(), dao, db.chapterDao(), appFs, runtime.ownership,
+            FakeDownloadRepository(),
+            DownloadsActionStorage(
+                dao, db.chapterDao(), appFs, runtime.ownership, db.chapterArtifactRepairDao(),
+            ),
         )
         assertFailsWith<CancellationException> { actions.deleteDownloadedChapter(original.saved.id) }
         assertEquals(ChapterArtifactOperation.DELETE, runtime.dao.get(original.saved.id)?.operation)

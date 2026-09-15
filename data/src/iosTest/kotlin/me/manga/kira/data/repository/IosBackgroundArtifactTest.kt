@@ -218,10 +218,10 @@ class IosBackgroundArtifactTest {
                         closed.complete(Unit) // Actual onCancel filled the window while parent M was closed.
                     }
                 },
-                chapterDownloadDao = fixture.dao,
-                chapterDao = fixture.db.chapterDao(),
-                appFileSystem = fixture.appFileSystem,
-                artifacts = fixture.artifacts.ownership,
+                storage = DownloadsActionStorage(
+                    fixture.dao, fixture.db.chapterDao(), fixture.appFileSystem,
+                    fixture.artifacts.ownership, fixture.db.chapterArtifactRepairDao(),
+                ),
             )
             coroutineScope {
                 val pin = launch {
