@@ -11,8 +11,8 @@ import me.manga.kira.domain.repository.SourcesRepository
  * Phase 7.x.sources.onboardingseed. Encapsulates the onboarding step 3 default-seed policy:
  * format the user's locale code as the parenthesised tag the legacy `saveSources` seed
  * uses (`"en"` → `"(EN)"`), pass that as the [SourcesRepository.setLanguageEnabledWithFallback]
- * primary, and pin the fallback to `"(EN)"`. The repository owns the snapshot + fan-out
- * mechanism; this use case owns the policy (which tag, which fallback).
+ * primary, and pin the fallback to `"(EN)"`. The repository owns admission, snapshot selection and
+ * atomic persistence; this use case owns the activation gate and policy (which tag, which fallback).
  *
  * **Mirrors legacy** `RepoSettingsViewModel.setLanguageEnabledDefault` semantics verbatim:
  * blank locale coerces to `"en"`; tag uppercases and is wrapped in parens; if no sources
@@ -31,11 +31,10 @@ import me.manga.kira.domain.repository.SourcesRepository
  * matching the legacy `userLanguageCode.ifBlank { "en" }` step. Case is normalized via
  * `.uppercase()` to match the parenthesised tag convention.
  *
- * **Idempotency** — the upstream Room `UPDATE sources SET isEnabled = 1 WHERE name = ?`
- * is idempotent on already-enabled rows, so re-invoking the seed when sources are already
- * enabled is a no-op (the Room flow does NOT re-emit when the row value doesn't change).
- * Callers can fire the seed on every `LaunchedEffect` key change without worrying about
- * accidental toggle-off.
+ * **Idempotency** — setting already-enabled flags to true preserves their values; this is not a
+ * promise about Room invalidation or Flow emission counts. Repeating the seed cannot toggle them
+ * off. Persistence errors and cancellation propagate; a committed atomic change may remain when
+ * cancellation races completion.
  *
  * Constructor injection per contract §6 DIP — Koin binds it as a `factory` in
  * `sourcesReworkModule`.

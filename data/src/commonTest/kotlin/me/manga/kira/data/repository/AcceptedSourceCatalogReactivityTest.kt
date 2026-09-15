@@ -48,6 +48,7 @@ class AcceptedSourceCatalogReactivityTest {
             assertEquals(rows, fixture.dao.current(), "catalog-only reactivation must need no repair write")
             assertEquals(listOf("b"), fixture.dao.inserts.map { it.name })
             assertTrue(fixture.dao.enabledCalls.isEmpty())
+            assertTrue(fixture.dao.bulkEnabledCalls.isEmpty())
         }
     }
 
@@ -63,17 +64,18 @@ class AcceptedSourceCatalogReactivityTest {
         fixture.home.selectTab(0)
         assertEquals("beta", fixture.selection.activeApiFlow.value)
         fixture.sources.setLanguageEnabled("(AR)", true)
-        assertTrue(fixture.dao.enabledCalls.isEmpty(), "bulk selection uses accepted language, not stale Room")
+        assertTrue(fixture.dao.bulkEnabledCalls.isEmpty(), "bulk selection uses accepted language, not stale Room")
         fixture.sources.setLanguageEnabledWithFallback("(UNKNOWN)", "(JA)", true)
         runCurrent()
-        assertEquals(listOf("off", "beta", "alpha").map { it to true }, fixture.dao.enabledCalls)
+        assertEquals(listOf(listOf("off", "beta", "alpha") to true), fixture.dao.bulkEnabledCalls)
+        assertTrue(fixture.dao.enabledCalls.isEmpty(), "one accepted-language command must use one bulk write")
         fixture.assertApis(listOf("off", "beta", "alpha"))
         fixture.registry.catalog.value = catalog(3)
         runCurrent()
         fixture.assertApis(emptyList())
         assertEquals(SiteState.STOPPED, fixture.siteStates.last())
         fixture.sources.setLanguageEnabled("(JA)", false)
-        assertEquals(3, fixture.dao.enabledCalls.size, "an empty accepted catalog has no toggle targets")
+        assertEquals(1, fixture.dao.bulkEnabledCalls.size, "an empty accepted catalog has no toggle targets")
         assertEquals(false, fixture.dao.current().single { it.name == "hidden" }.isEnabled)
     }
 }
@@ -87,7 +89,7 @@ private class CatalogProjectionFixture(
     val dao = StatefulSourcesDao(seed)
     val registry = ObservableProjectionRegistry(initial)
     val selection = SourceSelectionStore(dao, emptySet(), SharedPrefsHelper(MapSettings()), scope)
-    val sources = SourcesRepositoryImpl(selection, registry, DataStoreHelper(MapSettings()))
+    val sources = SourcesRepositoryImpl(selection, registry, DataStoreHelper(MapSettings()), dao)
     val home = HomeFeedRepositoryImpl(selection, testDispatchers, registry)
     val sourceEmissions = mutableListOf<List<Source>>()
     val homeEmissions = mutableListOf<List<SourceTab>>()

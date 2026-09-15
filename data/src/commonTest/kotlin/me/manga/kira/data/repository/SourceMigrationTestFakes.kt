@@ -310,6 +310,7 @@ internal class StatefulSourcesDao(
     val baseUrlUpdates = mutableListOf<Triple<String, String, Int>>()
     val imageBaseUpdates = mutableListOf<Triple<String, String, Int>>()
     val enabledCalls = mutableListOf<Pair<String, Boolean>>()
+    val bulkEnabledCalls = mutableListOf<Pair<List<String>, Boolean>>()
     val siteStateUpdates = mutableListOf<Pair<String, SourceState>>()
     val deletes = mutableListOf<String>()
 
@@ -359,6 +360,17 @@ internal class StatefulSourcesDao(
         val before = flow.value
         flow.value = before.map { if (it.name == name) it.copy(isEnabled = enabled) else it }
         return if (before.any { it.name == name }) 1 else 0
+    }
+
+    override suspend fun setEnabledByNames(
+        names: List<String>,
+        enabled: Boolean,
+    ): Int {
+        bulkEnabledCalls += names.toList() to enabled
+        val selected = names.toSet()
+        val before = flow.value
+        flow.value = before.map { if (it.name in selected) it.copy(isEnabled = enabled) else it }
+        return before.count { it.name in selected }
     }
 
     // Stateful + recording since the SourceRegistry retirement (previously no-ops): the catalog

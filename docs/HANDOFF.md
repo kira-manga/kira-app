@@ -75,6 +75,12 @@ owner sign-off — high import churn, zero behavior value).
   Zazamanga, Tapas. These run **generic-only**. The bundle contains no legacy stanzas.
 - The 33 unconverted sources are unavailable. The runtime scraper set is empty, and there is no
   fallback, inference, or union that can reactivate an api missing from the authoritative catalog.
+- Generic metadata responses are read in a scoped stream with a **4 MiB decoded-byte cap**, not
+  eagerly buffered. All request methods share the Koin-owned uncached catalog client; source
+  headers remain request-scoped. Declared charsets/UTF-8 fallback, HTTP status and cancellation
+  are preserved; oversize responses become typed invalid-response failures, not empty successes.
+  App28 guardian self-review: transport/DI and focused tests stay in `:composeApp`, with no
+  engine/contract changes; regression execution and platform validation remain pending.
 - The legacy SourceRegistry endpoint (`/source/35`) remains deleted. The app now consumes the
   backend's `/api/v2/source-config/manifest` and immutable per-source endpoints through a bounded
   HTTPS client. It authenticates exact checksums, revision-chain metadata, manifest and source
