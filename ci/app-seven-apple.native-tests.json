@@ -1,0 +1,156 @@
+{
+  "schema": "app-seven-apple-native-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "25496152d3f93110fb14427830c1781f3ca6c065",
+    "tree": "2ea43d63b9e8ee9e56921df1ba432f20f538cd3e"
+  },
+  "suites": [
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.image.IosAvifDecoderTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/image/IosAvifDecoderTest.kt",
+      "sourceSha256": "7d3af4ef0c1cd965f90fa9b0b3ace33288238c9ee664376b299fa511f8b948db",
+      "methods": [
+        "widthOnlyTallRequestUsesMetadataRatherThanTheRequestedLongestEdge",
+        "requestedSizeAndWidthCapDoNotCollapseIntoAHeightCap",
+        "imageIoFitAndFillMatchTheTwoAxisCoilPlan",
+        "heightOnlyRequestAndUnequalCapsRemainIndependent",
+        "originalAndInexactDoNotUpscale",
+        "exactUpscaleUsesTheBoundedDrawingStage",
+        "completeCoilPipelineDecodesTheTallPageAtItsRequestedWidth"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.image.IosAvifDecoderFailureTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/image/IosAvifDecoderFailureTest.kt",
+      "sourceSha256": "e50f79c5b9aeffa637c8fc14ea5b7512c1654e0a9b6bc0c4b6bf9a2044f6447d",
+      "methods": [
+        "encodedSourceAndOutputBudgetsFailTerminallyWithTinyFixtures",
+        "inputCancellationIsPropagatedAndClosesTheClaimedSource",
+        "claimedMalformedAvifDoesNotFallThroughToSkia"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzNativeOwnershipTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzNativeOwnershipTest.kt",
+      "sourceSha256": "10520721918ae95a065c585e8ca44804fec62ccbfcd82b8affefa51695d079c5",
+      "methods": [
+        "eachNativeBandIsCopiedFreedAndEmittedBeforeTheNextEncodeStarts",
+        "nativeOutputSizeIsCheckedBeforeCopyAndFreedEvenWhenCopyingFails",
+        "genuineFullDecodeOrContextFailureCannotBecomeVerbatimSuccess",
+        "aLateNativeEncodeFailureRollsBackEarlierRealBandsAndFreesAllBuffers",
+        "cancellationAfterTheActualNativeEncodeStillReleasesHandlesAndDoesNotPublish",
+        "rollbackEncoderLateEmissionFailureAlsoRetainsThePreviousArchive"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzMemoryAdmissionTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzMemoryAdmissionTest.kt",
+      "sourceSha256": "2dc72ff0202ceb3dc6c87496b7cb9ec8e0bea79333e22cffd4be837767e0bad4",
+      "methods": [
+        "exactBudgetReachesNativeDecodeButOneByteLessDoesNot",
+        "oneSourcePixelOrRowOverTheSameExactBudgetCannotEnterNativeDecode",
+        "tinyBudgetPreservesTheValidatedSnapshotWithoutFullDecodeOrContextCreation",
+        "validHighlyCompressedLargePageIsPreservedUnderTheDefaultBudget",
+        "validatedWidthBeyondWebpCapacityIsPreservedWithoutAThrowawayDecode",
+        "invalidBytesCannotUseBudgetPreservationWithEitherEncoderToggle",
+        "inspectionPolicyRejectionIsNotAValidatedBudgetPreservationDecision",
+        "skiaRollbackAlsoAdmitsBeforeDecodeAndStillProducesRealSplitPages"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzCompletenessTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzCompletenessTest.kt",
+      "sourceSha256": "f6b6c269736941462dfd6bb299af63a8251544652d9622885f9acf9b8ae50b24",
+      "methods": [
+        "missingUnreadableAndCorruptSourcesAbortAfterAnEarlierPageWasWritten",
+        "anEmptyCodecResultOrFailureAfterOneBandCannotPublish",
+        "liveContainerRederivationKeepsEveryPageAndAllowsRealSplitting",
+        "failedAtomicReplacementNeverDeletesTheOldArchiveOrRetriesDestructively",
+        "sinkWriteOrCloseFailureCannotPublishOrDeleteOriginals",
+        "cancellationAfterNativeEncodeCannotReachPublication",
+        "aReadableZipDirectoryWithDamagedPayloadIsNotPublished",
+        "emptyRequestedRosterDoesNotReplaceAnExistingArchive"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzReaderValidationTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzReaderValidationTest.kt",
+      "sourceSha256": "61d469da94359bfa1b3ab0e8b9f6e614b79e3e208cfa6ba5091b7f43ca03b8cc",
+      "methods": [
+        "invalidMemberCannotBecomeAPartialChapterOrMakeAnExistingCacheAuthoritative",
+        "validatedArchiveUsesActualSuffixAndNeverFlattensDuplicateZipBasenames"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.media.IosPageMediaInspectorTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/media/IosPageMediaInspectorTest.kt",
+      "sourceSha256": "6c62e4c3f06b7526ff7f8859b2d352a03d101fc6903a0200d5dd23a89b0534e1",
+      "methods": [
+        "pngJpegWebpGifAndBmpUseRealImageIoValidation",
+        "avifIsNativelyValidatedOrReportsTheExplicitOsCodecCapabilityGap",
+        "htmlTruncationPngCrcAndCrcCorrectBrokenPixelsNeverValidate",
+        "injectedBytePixelAndAxisLimitsStayDistinct",
+        "mappedFileValidationIgnoresItsNameAndMissingFilesReportReadFailure"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundTransportTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundTransportTest.kt",
+      "sourceSha256": "7ffc88bc711395e2424b7bd1eae74ae66986910189cf8bf070713f66c810f762",
+      "methods": [
+        "exactUnknownAndUnderstatedLengthsPublishTheSameBytesWithTheirNativeSuffix",
+        "progressRefusalsRemainPerTaskAndKeepTheirPolicyReasonThroughCancellation",
+        "finalFileOverLimitCannotUseAnUnknownOrUnderstatedLengthToReachTheDecoder",
+        "oversizedDeclaredLengthFailsBeforeAdoptionEvenWhenTheFinalFileWouldFit",
+        "missingOrBadHttpResponseCannotAdoptOrDecodeAFile",
+        "emptyMissingAndNonregularSourcesAreNotAdoptedOrRecursivelyDeleted",
+        "htmlTruncationBadCrcAndCrcCorrectCorruptPixelsCannotReplaceAGoodPage",
+        "nativeMediaPolicyRejectionKeepsItsStableNonretryableReason",
+        "failedPublicationRetainsBothThePriorTargetAndAlternateAndDiscardsOnlyItsOwnedFile",
+        "retainedFileSizeIsRecheckedBeforeNativeInspection",
+        "userCancellationIsSilentButCompletionWithoutAFileIsNotSuccess"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundCompletionTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundCompletionTest.kt",
+      "sourceSha256": "4aaf6a75ece687abd5f69b3679fbc7e016d83a199f952cbf80554cb4d8d25aeb",
+      "methods": [
+        "terminalNetworkErrorKeepsItsReasonWithoutInventingAPage",
+        "throwingTerminalListenerStillReleasesThePerTaskOutcome",
+        "failedPageIsReportedBeforeItsTemporaryIsDiscardedEvenWhenTheListenerThrows",
+        "unmatchedTaskDescriptionsCannotProduceTerminalCallbacks"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosCbzFinalizationTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosCbzFinalizationTest.kt",
+      "sourceSha256": "903c9a4f5657762d2f4fbdfc6e99a54a32c11e88c559c5167a72304bd34b56a2",
+      "methods": [
+        "budgetPreservationCompletesTheExpectedRosterAndReopensWithoutReencoding"
+      ]
+    },
+    {
+      "task": ":data:download:iosSimulatorArm64Test",
+      "class": "me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStoreTest",
+      "source": "data/download/src/commonTest/kotlin/me/manga/kira/presentation/features/download/domain/clean/DownloadManifestStoreTest.kt",
+      "sourceSha256": "591fa7bd6a043b8eff40b4a283606eeaee0f4510152c46e11f1156f8965abc4c",
+      "methods": [
+        "policyRejectionPersistsForRelaunchAndDoesNotMarkOtherPages",
+        "failedRefusalWriteIsReportedAndPreservesThePreviousAtomicManifest"
+      ]
+    }
+  ]
+}
