@@ -58,7 +58,8 @@ internal actual fun ReaderHostSwitch(
     chapter: Chapter,
     onNavigateBack: () -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
-    onSharePage: (ImageBitmap) -> Unit,
+    onSharePage: (capture: suspend () -> ImageBitmap?) -> Unit,
+    isSharing: Boolean,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
 ) {
     if (IosReaderFlags.NATIVE_READER_ENABLED && ReaderNativeBridge.hasFactory()) {
@@ -78,6 +79,7 @@ internal actual fun ReaderHostSwitch(
             onNavigateBack = onNavigateBack,
             onOpenInWebView = onOpenInWebView,
             onSharePage = onSharePage,
+            isSharing = isSharing,
             onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         )
     }

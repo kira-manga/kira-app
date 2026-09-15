@@ -49,6 +49,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -169,6 +171,10 @@ import me.manga.kira.ui.theme.LocalSpacing
  *    state without spinning up a VM.
  *  - Scroll position drives [ReaderIntent.OnPageChanged] via a `snapshotFlow` over
  *    `LazyListState.firstVisibleItemIndex`.
+ *
+ * [onSharePage] receives a lazy viewport-capture function, not an allocated bitmap. Its owner must
+ * acquire single-flight admission before invoking it in a lifecycle-owned scope with a Compose
+ * frame clock, and await capture through sharing. [isSharing] disables the existing share control.
  *
  * Effects routed:
  *  - [ReaderEffect.NavigateBack] → [onNavigateBack]
@@ -347,7 +353,8 @@ fun ReaderScreen(
     chapter: Chapter,
     onNavigateBack: () -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
-    onSharePage: (ImageBitmap) -> Unit,
+    onSharePage: (capture: suspend () -> ImageBitmap?) -> Unit,
+    isSharing: Boolean = false,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -361,6 +368,7 @@ fun ReaderScreen(
         onNavigateBack = onNavigateBack,
         onOpenInWebView = onOpenInWebView,
         onSharePage = onSharePage,
+        isSharing = isSharing,
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         modifier = modifier,
     )
@@ -386,7 +394,8 @@ internal fun ReaderScreenContent(
     onIntent: (ReaderIntent) -> Unit,
     onNavigateBack: () -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
-    onSharePage: (ImageBitmap) -> Unit,
+    onSharePage: (capture: suspend () -> ImageBitmap?) -> Unit,
+    isSharing: Boolean = false,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -420,6 +429,8 @@ internal fun ReaderScreenContent(
     var showReadingModeDialog by remember { mutableStateOf(false) }
 
     val currentOnIntent by rememberUpdatedState(onIntent)
+    val currentOnSharePage by rememberUpdatedState(onSharePage)
+    val currentHasPages by rememberUpdatedState(state.hasPages)
     val currentUiVisible by rememberUpdatedState(state.isUiVisible)
     val showControlsLabel = stringResource(Res.string.reader_show_controls)
     // Coalesce repeated accessibility requests until this hidden interval is acknowledged.
@@ -497,24 +508,23 @@ internal fun ReaderScreenContent(
                     scope.launch { snackbarHostState.showSnackbar(notInLibraryMsg) }
                 is ReaderEffect.OpenChapterInWebView ->
                     onOpenInWebView(effect.url, effect.api)
-                // Reader parity item #5: capture the recorded page area and forward the bitmap
-                // to the route adapter for PNG-encode + platform share via ScreenshotProvider.
-                // `toImageBitmap()` is suspend (it reads the recorded layer back off the render
-                // thread); we're already inside the effects collector coroutine so we can call it
-                // directly. Guarded on a non-zero recorded size — the layer has nothing to read
-                // back until the page Box has drawn at least one frame into it.
-                ReaderEffect.ShareCurrentPage -> {
-                    // Engage the recording for ONE frame, let two frames pass so the page Box draws
-                    // into the layer with the flag set (frame callbacks fire before that frame's draw,
-                    // so the first await schedules and the second lands after the recorded draw), read
-                    // the bitmap back, then clear the flag so scrolling returns to direct drawing.
+                // The route rejects a busy request BEFORE invoking this lazy capture. The collector
+                // returns immediately, so Back and other effects remain responsive while sharing.
+                ReaderEffect.ShareCurrentPage -> currentOnSharePage {
                     captureRequested = true
-                    withFrameNanos { }
-                    withFrameNanos { }
-                    if (pageGraphicsLayer.size.width > 0 && pageGraphicsLayer.size.height > 0) {
-                        onSharePage(pageGraphicsLayer.toImageBitmap())
+                    try {
+                        // Frame callbacks precede drawing: the second frame follows the recording.
+                        withFrameNanos { }
+                        withFrameNanos { }
+                        if (currentHasPages && pageGraphicsLayer.size.width > 0 && pageGraphicsLayer.size.height > 0) {
+                            pageGraphicsLayer.toImageBitmap()
+                        } else {
+                            null
+                        }
+                    } finally {
+                        // Also restore direct drawing when capture fails or its owner is cancelled.
+                        captureRequested = false
                     }
-                    captureRequested = false
                 }
                 // Reader parity item #6: AUTO 403→WebView recovery. Forward to the dedicated
                 // route-adapter callback that navigates to the WebView AND arms a one-shot retry
@@ -763,6 +773,7 @@ internal fun ReaderScreenContent(
                             ReaderBottomActionBar(
                                 isBookmarked = state.isBookmarked,
                                 canShare = state.hasPages,
+                                shareEnabled = !isSharing,
                                 onSettings = { showReadingModeDialog = true },
                                 onToggleBookmark = { onIntent(ReaderIntent.OnToggleBookmark) },
                                 onShare = { onIntent(ReaderIntent.OnShareCurrentPage) },
@@ -920,6 +931,7 @@ private fun ReaderTopBar(
 private fun ReaderBottomActionBar(
     isBookmarked: Boolean,
     canShare: Boolean,
+    shareEnabled: Boolean,
     onSettings: () -> Unit,
     onToggleBookmark: () -> Unit,
     onShare: () -> Unit,
@@ -954,6 +966,12 @@ private fun ReaderBottomActionBar(
                 contentDescription = stringResource(Res.string.np_reader_share),
                 onClick = onShare,
                 modifier = Modifier.weight(1f),
+                enabled = shareEnabled,
+                tint = if (shareEnabled) {
+                    LocalContentColor.current
+                } else {
+                    IconButtonDefaults.iconButtonColors().disabledContentColor
+                },
             )
         }
     }

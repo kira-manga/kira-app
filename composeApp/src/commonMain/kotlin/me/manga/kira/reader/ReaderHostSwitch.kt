@@ -24,6 +24,7 @@ internal expect fun ReaderHostSwitch(
     chapter: Chapter,
     onNavigateBack: () -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
-    onSharePage: (ImageBitmap) -> Unit,
+    onSharePage: (capture: suspend () -> ImageBitmap?) -> Unit,
+    isSharing: Boolean,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
 )

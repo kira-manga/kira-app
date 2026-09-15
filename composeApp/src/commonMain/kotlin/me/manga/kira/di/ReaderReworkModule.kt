@@ -31,6 +31,7 @@ import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.StartReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
 import me.manga.kira.presentation.reader.ReaderViewModel
+import me.manga.kira.reader.ReaderShareCoordinator
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
@@ -88,6 +89,9 @@ import org.koin.dsl.module
  */
 val readerReworkModule: Module =
     module {
+        // Both Reader routes share admission; a replacement cannot overlap a cancelling encoder.
+        single { ReaderShareCoordinator() }
+
         single { DownloadedPageFiles(get(), get()) }
         single<ChapterPagesRepository> {
             ChapterPagesRepositoryImpl(
