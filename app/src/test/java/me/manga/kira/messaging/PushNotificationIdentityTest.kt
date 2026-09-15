@@ -1,6 +1,5 @@
 package me.manga.kira.messaging
 
-import android.app.Application
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ComponentName
@@ -8,6 +7,7 @@ import android.content.Intent
 import com.google.firebase.messaging.RemoteMessage
 import me.manga.kira.MainActivity
 import me.manga.kira.firebase_cores.messaging.MyFirebaseMessagingService
+import me.manga.kira.locale.LocaleOnlyTestApplication
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.push.NotificationRouter
 import me.manga.kira.navigation.push.PushDestination
@@ -28,7 +28,7 @@ import org.robolectric.annotation.Config
 
 /** Real service/token/handler coverage, without booting MyApp or the Compose navigation graph. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class)
+@Config(sdk = [35], application = LocaleOnlyTestApplication::class)
 class PushNotificationIdentityTest {
     @Test
     fun differentSlotsRetainTheirPayloadAndDoNotAliasOtherActivityTokens() =
