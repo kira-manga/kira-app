@@ -209,7 +209,6 @@
         <error line="54" column="28" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/di/SourcesReworkModule.kt">
-        <error line="3" column="1" source="standard:import-ordering" />
         <error line="117" column="35" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="composeApp/src/commonMain/kotlin/me/manga/kira/di/StatisticsReworkModule.kt">
@@ -541,8 +540,8 @@
         <error line="253" column="47" source="standard:function-signature" />
         <error line="253" column="61" source="standard:function-signature" />
         <error line="253" column="77" source="standard:function-signature" />
-        <error line="257" column="76" source="standard:function-signature" />
-        <error line="260" column="82" source="standard:function-signature" />
+        <error line="262" column="76" source="standard:function-signature" />
+        <error line="265" column="82" source="standard:function-signature" />
     </file>
     <file name="composeApp/src/commonTest/kotlin/me/manga/kira/sources/runtime/AzoraPilotParityTest.kt">
         <error line="39" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -2108,17 +2107,17 @@
         <error line="73" column="34" source="standard:function-signature" />
         <error line="73" column="48" source="standard:function-signature" />
         <error line="73" column="64" source="standard:function-signature" />
-        <error line="97" column="47" source="standard:function-signature" />
-        <error line="97" column="61" source="standard:function-signature" />
-        <error line="97" column="78" source="standard:function-signature" />
-        <error line="97" column="90" source="standard:function-signature" />
-        <error line="100" column="52" source="standard:function-signature" />
-        <error line="100" column="69" source="standard:function-signature" />
-        <error line="100" column="94" source="standard:function-signature" />
-        <error line="100" column="114" source="standard:function-signature" />
-        <error line="103" column="39" source="standard:function-signature" />
-        <error line="103" column="53" source="standard:function-signature" />
-        <error line="103" column="75" source="standard:function-signature" />
+        <error line="104" column="47" source="standard:function-signature" />
+        <error line="104" column="61" source="standard:function-signature" />
+        <error line="104" column="78" source="standard:function-signature" />
+        <error line="104" column="90" source="standard:function-signature" />
+        <error line="107" column="52" source="standard:function-signature" />
+        <error line="107" column="69" source="standard:function-signature" />
+        <error line="107" column="94" source="standard:function-signature" />
+        <error line="107" column="114" source="standard:function-signature" />
+        <error line="110" column="39" source="standard:function-signature" />
+        <error line="110" column="53" source="standard:function-signature" />
+        <error line="110" column="75" source="standard:function-signature" />
     </file>
     <file name="data/local/src/commonMain/kotlin/me/manga/kira/data/local/dao/StatisticsDeo.kt">
         <error line="51" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -2606,17 +2605,13 @@
         <error line="42" column="30" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="data/src/commonMain/kotlin/me/manga/kira/data/repository/SourcesRepositoryImpl.kt">
-        <error line="157" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="183" column="43" source="standard:function-signature" />
-        <error line="183" column="56" source="standard:function-signature" />
-        <error line="183" column="72" source="standard:function-signature" />
-        <error line="187" column="45" source="standard:function-signature" />
-        <error line="187" column="63" source="standard:function-signature" />
-        <error line="187" column="79" source="standard:function-signature" />
-        <error line="204" column="23" source="standard:multiline-expression-wrapping" />
-        <error line="204" column="53" source="standard:if-else-bracing" />
-        <error line="204" column="53" source="standard:if-else-wrapping" />
-        <error line="204" column="53" source="standard:multiline-if-else" />
+        <error line="141" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="155" column="43" source="standard:function-signature" />
+        <error line="155" column="56" source="standard:function-signature" />
+        <error line="155" column="72" source="standard:function-signature" />
+        <error line="161" column="45" source="standard:function-signature" />
+        <error line="161" column="63" source="standard:function-signature" />
+        <error line="161" column="79" source="standard:function-signature" />
     </file>
     <file name="data/src/commonMain/kotlin/me/manga/kira/data/repository/ThemeRepositoryImpl.kt">
         <error line="152" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -2858,13 +2853,13 @@
         <error line="570" column="22" source="standard:property-naming" />
         <error line="571" column="22" source="standard:property-naming" />
         <error line="607" column="9" source="standard:blank-line-before-declaration" />
-        <error line="640" column="9" source="standard:blank-line-before-declaration" />
-        <error line="641" column="9" source="standard:blank-line-before-declaration" />
-        <error line="642" column="9" source="standard:blank-line-before-declaration" />
-        <error line="671" column="9" source="standard:blank-line-before-declaration" />
-        <error line="704" column="9" source="standard:blank-line-before-declaration" />
-        <error line="705" column="9" source="standard:blank-line-before-declaration" />
-        <error line="706" column="9" source="standard:blank-line-before-declaration" />
+        <error line="645" column="9" source="standard:blank-line-before-declaration" />
+        <error line="646" column="9" source="standard:blank-line-before-declaration" />
+        <error line="647" column="9" source="standard:blank-line-before-declaration" />
+        <error line="676" column="9" source="standard:blank-line-before-declaration" />
+        <error line="714" column="9" source="standard:blank-line-before-declaration" />
+        <error line="715" column="9" source="standard:blank-line-before-declaration" />
+        <error line="716" column="9" source="standard:blank-line-before-declaration" />
     </file>
     <file name="data/src/commonTest/kotlin/me/manga/kira/data/repository/ComplaintActionRepositoryMetadataTest.kt">
         <error line="3" column="1" source="standard:import-ordering" />
@@ -2937,81 +2932,81 @@
         <error line="152" column="47" source="standard:function-signature" />
         <error line="152" column="61" source="standard:function-signature" />
         <error line="152" column="77" source="standard:function-signature" />
-        <error line="153" column="9" source="standard:blank-line-before-declaration" />
-        <error line="153" column="68" source="standard:function-signature" />
-        <error line="155" column="9" source="standard:blank-line-before-declaration" />
-        <error line="155" column="76" source="standard:function-signature" />
-        <error line="157" column="9" source="standard:blank-line-before-declaration" />
-        <error line="157" column="82" source="standard:function-signature" />
-        <error line="159" column="9" source="standard:blank-line-before-declaration" />
-        <error line="159" column="9" source="standard:spacing-between-declarations-with-comments" />
-        <error line="160" column="60" source="standard:function-signature" />
-        <error line="160" column="74" source="standard:function-signature" />
-        <error line="160" column="91" source="standard:function-signature" />
-        <error line="160" column="103" source="standard:function-signature" />
-        <error line="161" column="9" source="standard:blank-line-before-declaration" />
-        <error line="161" column="65" source="standard:function-signature" />
-        <error line="161" column="82" source="standard:function-signature" />
-        <error line="161" column="107" source="standard:function-signature" />
-        <error line="161" column="127" source="standard:function-signature" />
+        <error line="158" column="9" source="standard:blank-line-before-declaration" />
+        <error line="158" column="68" source="standard:function-signature" />
+        <error line="160" column="9" source="standard:blank-line-before-declaration" />
+        <error line="160" column="76" source="standard:function-signature" />
         <error line="162" column="9" source="standard:blank-line-before-declaration" />
-        <error line="162" column="52" source="standard:function-signature" />
-        <error line="162" column="66" source="standard:function-signature" />
-        <error line="162" column="88" source="standard:function-signature" />
-        <error line="163" column="9" source="standard:blank-line-before-declaration" />
+        <error line="162" column="82" source="standard:function-signature" />
         <error line="164" column="9" source="standard:blank-line-before-declaration" />
-        <error line="165" column="9" source="standard:blank-line-before-declaration" />
+        <error line="164" column="9" source="standard:spacing-between-declarations-with-comments" />
+        <error line="165" column="60" source="standard:function-signature" />
+        <error line="165" column="74" source="standard:function-signature" />
+        <error line="165" column="91" source="standard:function-signature" />
+        <error line="165" column="103" source="standard:function-signature" />
         <error line="166" column="9" source="standard:blank-line-before-declaration" />
-        <error line="178" column="34" source="standard:multiline-expression-wrapping" />
-        <error line="178" column="34" source="standard:function-signature" />
-        <error line="189" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="196" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="221" column="19" source="standard:multiline-expression-wrapping" />
-        <error line="232" column="26" source="standard:multiline-expression-wrapping" />
-        <error line="253" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="254" column="26" source="standard:argument-list-wrapping" />
-        <error line="254" column="43" source="standard:argument-list-wrapping" />
-        <error line="254" column="56" source="standard:argument-list-wrapping" />
-        <error line="255" column="28" source="standard:argument-list-wrapping" />
-        <error line="255" column="43" source="standard:argument-list-wrapping" />
-        <error line="255" column="60" source="standard:argument-list-wrapping" />
-        <error line="262" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="263" column="26" source="standard:argument-list-wrapping" />
-        <error line="263" column="43" source="standard:argument-list-wrapping" />
-        <error line="263" column="62" source="standard:argument-list-wrapping" />
-        <error line="263" column="85" source="standard:argument-list-wrapping" />
-        <error line="284" column="35" source="standard:class-signature" />
-        <error line="284" column="86" source="standard:class-signature" />
-        <error line="286" column="9" source="standard:blank-line-before-declaration" />
-        <error line="287" column="9" source="standard:blank-line-before-declaration" />
-        <error line="287" column="73" source="standard:function-signature" />
-        <error line="289" column="9" source="standard:blank-line-before-declaration" />
-        <error line="299" column="9" source="standard:blank-line-before-declaration" />
-        <error line="300" column="9" source="standard:blank-line-before-declaration" />
-        <error line="300" column="37" source="standard:function-signature" />
-        <error line="300" column="52" source="standard:function-signature" />
-        <error line="300" column="63" source="standard:function-signature" />
-        <error line="300" column="88" source="standard:function-signature" />
-        <error line="301" column="9" source="standard:blank-line-before-declaration" />
-        <error line="302" column="9" source="standard:blank-line-before-declaration" />
-        <error line="302" column="28" source="standard:function-signature" />
-        <error line="302" column="42" source="standard:function-signature" />
-        <error line="302" column="58" source="standard:function-signature" />
-        <error line="316" column="42" source="standard:multiline-expression-wrapping" />
-        <error line="316" column="42" source="standard:function-signature" />
-        <error line="317" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="319" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="341" column="53" source="standard:multiline-expression-wrapping" />
-        <error line="341" column="53" source="standard:function-signature" />
-        <error line="342" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="358" column="65" source="standard:multiline-expression-wrapping" />
-        <error line="358" column="65" source="standard:function-signature" />
-        <error line="359" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="375" column="47" source="standard:multiline-expression-wrapping" />
-        <error line="375" column="47" source="standard:function-signature" />
-        <error line="381" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="383" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="404" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="166" column="65" source="standard:function-signature" />
+        <error line="166" column="82" source="standard:function-signature" />
+        <error line="166" column="107" source="standard:function-signature" />
+        <error line="166" column="127" source="standard:function-signature" />
+        <error line="167" column="9" source="standard:blank-line-before-declaration" />
+        <error line="167" column="52" source="standard:function-signature" />
+        <error line="167" column="66" source="standard:function-signature" />
+        <error line="167" column="88" source="standard:function-signature" />
+        <error line="168" column="9" source="standard:blank-line-before-declaration" />
+        <error line="169" column="9" source="standard:blank-line-before-declaration" />
+        <error line="170" column="9" source="standard:blank-line-before-declaration" />
+        <error line="171" column="9" source="standard:blank-line-before-declaration" />
+        <error line="183" column="34" source="standard:multiline-expression-wrapping" />
+        <error line="183" column="34" source="standard:function-signature" />
+        <error line="194" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="201" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="226" column="19" source="standard:multiline-expression-wrapping" />
+        <error line="237" column="26" source="standard:multiline-expression-wrapping" />
+        <error line="258" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="259" column="26" source="standard:argument-list-wrapping" />
+        <error line="259" column="43" source="standard:argument-list-wrapping" />
+        <error line="259" column="56" source="standard:argument-list-wrapping" />
+        <error line="260" column="28" source="standard:argument-list-wrapping" />
+        <error line="260" column="43" source="standard:argument-list-wrapping" />
+        <error line="260" column="60" source="standard:argument-list-wrapping" />
+        <error line="267" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="268" column="26" source="standard:argument-list-wrapping" />
+        <error line="268" column="43" source="standard:argument-list-wrapping" />
+        <error line="268" column="62" source="standard:argument-list-wrapping" />
+        <error line="268" column="85" source="standard:argument-list-wrapping" />
+        <error line="289" column="35" source="standard:class-signature" />
+        <error line="289" column="86" source="standard:class-signature" />
+        <error line="291" column="9" source="standard:blank-line-before-declaration" />
+        <error line="292" column="9" source="standard:blank-line-before-declaration" />
+        <error line="292" column="73" source="standard:function-signature" />
+        <error line="294" column="9" source="standard:blank-line-before-declaration" />
+        <error line="304" column="9" source="standard:blank-line-before-declaration" />
+        <error line="305" column="9" source="standard:blank-line-before-declaration" />
+        <error line="305" column="37" source="standard:function-signature" />
+        <error line="305" column="52" source="standard:function-signature" />
+        <error line="305" column="63" source="standard:function-signature" />
+        <error line="305" column="88" source="standard:function-signature" />
+        <error line="306" column="9" source="standard:blank-line-before-declaration" />
+        <error line="307" column="9" source="standard:blank-line-before-declaration" />
+        <error line="307" column="28" source="standard:function-signature" />
+        <error line="307" column="42" source="standard:function-signature" />
+        <error line="307" column="58" source="standard:function-signature" />
+        <error line="321" column="42" source="standard:multiline-expression-wrapping" />
+        <error line="321" column="42" source="standard:function-signature" />
+        <error line="322" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="324" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="346" column="53" source="standard:multiline-expression-wrapping" />
+        <error line="346" column="53" source="standard:function-signature" />
+        <error line="347" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="363" column="65" source="standard:multiline-expression-wrapping" />
+        <error line="363" column="65" source="standard:function-signature" />
+        <error line="364" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="380" column="47" source="standard:multiline-expression-wrapping" />
+        <error line="380" column="47" source="standard:function-signature" />
+        <error line="386" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="388" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="409" column="20" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="data/src/commonTest/kotlin/me/manga/kira/data/repository/LegacySourceFlowTest.kt">
         <error line="3" column="1" source="standard:import-ordering" />
@@ -3202,7 +3197,7 @@
         <error line="227" column="26" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="data/src/commonTest/kotlin/me/manga/kira/data/repository/SourceMigrationTestFakes.kt">
-        <error line="312" column="5" source="standard:blank-line-before-declaration" />
+        <error line="320" column="5" source="standard:blank-line-before-declaration" />
     </file>
     <file name="data/src/desktopTest/kotlin/me/manga/kira/data/backup/BackupCodecRoundTripTest.kt">
         <error line="5" column="1" source="standard:no-unused-imports" />
@@ -3474,17 +3469,17 @@
         <error line="131" column="65" source="standard:function-signature" />
     </file>
     <file name="domain/src/commonMain/kotlin/me/manga/kira/domain/repository/SourcesRepository.kt">
-        <error line="167" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="187" column="34" source="standard:function-signature" />
-        <error line="187" column="47" source="standard:function-signature" />
-        <error line="187" column="63" source="standard:function-signature" />
+        <error line="169" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="188" column="34" source="standard:function-signature" />
+        <error line="188" column="47" source="standard:function-signature" />
+        <error line="188" column="63" source="standard:function-signature" />
         <error line="210" column="36" source="standard:function-signature" />
         <error line="210" column="54" source="standard:function-signature" />
         <error line="210" column="70" source="standard:function-signature" />
-        <error line="241" column="48" source="standard:function-signature" />
-        <error line="241" column="65" source="standard:function-signature" />
-        <error line="241" column="83" source="standard:function-signature" />
-        <error line="241" column="99" source="standard:function-signature" />
+        <error line="240" column="48" source="standard:function-signature" />
+        <error line="240" column="65" source="standard:function-signature" />
+        <error line="240" column="83" source="standard:function-signature" />
+        <error line="240" column="99" source="standard:function-signature" />
     </file>
     <file name="domain/src/commonMain/kotlin/me/manga/kira/domain/repository/ThemeRepository.kt">
         <error line="80" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -3654,9 +3649,9 @@
         <error line="84" column="88" source="standard:function-signature" />
     </file>
     <file name="domain/src/commonMain/kotlin/me/manga/kira/domain/usecase/sources/SetLanguageEnabledUseCase.kt">
-        <error line="85" column="33" source="standard:function-signature" />
-        <error line="85" column="51" source="standard:function-signature" />
-        <error line="85" column="67" source="standard:function-signature" />
+        <error line="84" column="33" source="standard:function-signature" />
+        <error line="84" column="51" source="standard:function-signature" />
+        <error line="84" column="67" source="standard:function-signature" />
     </file>
     <file name="domain/src/commonMain/kotlin/me/manga/kira/domain/usecase/sources/SetSourceEnabledUseCase.kt">
         <error line="87" column="33" source="standard:function-signature" />

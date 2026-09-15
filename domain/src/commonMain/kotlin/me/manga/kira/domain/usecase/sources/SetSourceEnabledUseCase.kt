@@ -8,15 +8,15 @@ import me.manga.kira.domain.repository.SourcesRepository
  * Toggle a single content source's enabled state.
  *
  * Phase 7.x.sources rework. The rework `SourcesViewModel` injects this use case and invokes it
- * from `viewModelScope.launch` when the user flips a per-source `Switch`. Fire-and-forget: the
+ * from lifecycle-owned `launchSafely` work when the user flips a per-source `Switch`. The
  * upstream
  * [me.manga.kira.domain.usecase.sources.ObserveSourcesUseCase] flow re-emits with the
  * source's `isEnabled` flipped once the Room transaction commits — the row's `Switch` reflects
  * the new state by virtue of state-driven rebinding.
  *
  * Contract §6 SRP: owns ONE rule — "delegate to [SourcesRepository.setSourceEnabled]". The
- * legacy facade method is `enableDisAbleSource(name, enabled)` — naming-typo and all; the
- * rework interface renames cleanly while the rework `:data` impl forwards verbatim.
+ * use case gates source access; the data implementation preserves exact-name updates while
+ * sharing admission with language toggles. Persistence errors and cancellation propagate.
  *
  * Why a use case at all when this is a single-line pass-through: same rationale as the other
  * mutator use cases across the rework (`MarkUpdateAsReadUseCase` /
