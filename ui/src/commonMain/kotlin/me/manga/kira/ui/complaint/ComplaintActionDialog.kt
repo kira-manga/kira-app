@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Delete
@@ -44,6 +46,7 @@ import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
 import me.manga.kira.presentation.complaint.ActionDialogMode
 import me.manga.kira.presentation.complaint.ComplaintIntent
+import me.manga.kira.ui.components.KiraDialogError
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.back
 import me.manga.kira.ui.generated.resources.cancel
@@ -64,6 +67,7 @@ import me.manga.kira.ui.generated.resources.delete_warning_message
 import me.manga.kira.ui.generated.resources.edit
 import me.manga.kira.ui.generated.resources.edit_complaint
 import me.manga.kira.ui.generated.resources.edit_placeholder
+import me.manga.kira.ui.generated.resources.error_occurred
 import me.manga.kira.ui.generated.resources.np_reply_to_complaint_id
 import me.manga.kira.ui.generated.resources.reply
 import me.manga.kira.ui.generated.resources.reply_placeholder
@@ -93,6 +97,10 @@ import org.jetbrains.compose.resources.stringResource
  *    — legacy's local `var isLoading by remember { mutableStateOf(false) }` would split the
  *    source of truth (the VM also tracks it for the in-flight guard), so the rework drops the
  *    local flag.
+ *  - Mutation failure is rendered by [KiraDialogError] in this dialog, without replacing the
+ *    current mode or its remembered form inputs. The existing submit control is the retry path.
+ *    The error stays above the scrollable form so constrained height cannot hide either the
+ *    error or access to that control.
  *
  * **Per-mode branching** mirrors the legacy's `when (currentAction)` switch on `DialogAction`:
  *  - [ActionDialogMode.MENU] → [ActionSelectionContent] (Reply / Edit / Delete affordances).
@@ -225,8 +233,10 @@ internal fun ComplaintActionDialog(
     complaint: ComplaintSummary,
     mode: ActionDialogMode,
     isSubmitting: Boolean,
+    actionFailed: Boolean,
     onIntent: (ComplaintIntent) -> Unit,
 ) {
+    val spacing = LocalSpacing.current
     Dialog(onDismissRequest = {
         if (!isSubmitting) onIntent(ComplaintIntent.OnDismissActionDialog)
     }) {
@@ -237,6 +247,12 @@ internal fun ComplaintActionDialog(
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
             shape = RoundedCornerShape(16.dp),
         ) {
+            if (actionFailed) {
+                KiraDialogError(
+                    message = stringResource(Res.string.error_occurred),
+                    modifier = Modifier.padding(start = spacing.xl, top = spacing.xl, end = spacing.xl),
+                )
+            }
             when (mode) {
                 ActionDialogMode.NONE -> Unit
                 ActionDialogMode.MENU -> ActionSelectionContent(
@@ -363,7 +379,7 @@ private fun ReplyContent(
     var replyText by rememberSaveable(complaint.id) { mutableStateOf("") }
 
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
@@ -508,7 +524,7 @@ private fun EditContent(
     val hasChanges = editedSubject != complaint.subject || editedBody != complaint.body
 
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
@@ -657,7 +673,7 @@ private fun DeleteConfirmationContent(
 ) {
     val spacing = LocalSpacing.current
     Column(
-        modifier = Modifier.padding(24.dp),
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
