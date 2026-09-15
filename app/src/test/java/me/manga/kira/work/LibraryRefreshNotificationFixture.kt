@@ -20,6 +20,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -47,6 +48,7 @@ import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -141,6 +143,8 @@ private fun Manga.fixtureDetails(chapters: List<SavedChapterEntity>) =
 
 private fun fixtureRegistry(client: MangaSourceClient): SourceRegistry =
     object : SourceRegistry {
+        override val catalog = flowOf(SourceCatalogSnapshot(1, emptyList()))
+
         override fun get(api: String) = client.takeIf { it.api == api }
 
         override fun isConfigBacked(api: String) = api == client.api

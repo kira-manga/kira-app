@@ -21,6 +21,7 @@ internal class StaticSourceUpdateManager(
         )
 
     override val state: StateFlow<UpdateState> = mutableState.asStateFlow()
+    override val acceptedDocument: StateFlow<SourceConfigDocument> = MutableStateFlow(document)
 
     override fun activeDocument(): SourceConfigDocument = document
 

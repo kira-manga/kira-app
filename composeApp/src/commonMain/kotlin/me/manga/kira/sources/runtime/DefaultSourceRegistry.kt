@@ -1,10 +1,14 @@
 package me.manga.kira.sources.runtime
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.sources.contracts.model.SourceConfig
+import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import me.manga.kira.sources.contracts.model.toRuntimeDescriptor
 
 /**
@@ -18,6 +22,11 @@ class DefaultSourceRegistry(
     private val updateManager: SourceUpdateManager,
     private val genericClientFactory: (SourceConfig) -> MangaSourceClient,
 ) : SourceRegistry {
+    override val catalog: Flow<SourceCatalogSnapshot> =
+        updateManager.acceptedDocument.map { document ->
+            SourceCatalogSnapshot(document.revision, document.activeDescriptors())
+        }
+
     override fun get(api: String): MangaSourceClient? {
         val config = executableConfigFor(api)
         return config?.let(genericClientFactory)
@@ -26,16 +35,13 @@ class DefaultSourceRegistry(
     override fun isConfigBacked(api: String): Boolean = catalogConfigFor(api) != null
 
     override fun descriptor(api: String): RuntimeSourceDescriptor? =
-        updateManager
-            .activeDocument()
-            .sources
-            .firstOrNull { it.api == api && it.engine == ENGINE_GENERIC && it.lifecycle == LIFECYCLE_ACTIVE }
-            ?.toRuntimeDescriptor()
+        catalogConfigFor(api)?.toRuntimeDescriptor()
 
     override fun genericDescriptors(): List<RuntimeSourceDescriptor> =
-        updateManager
-            .activeDocument()
-            .sources
+        updateManager.activeDocument().activeDescriptors()
+
+    private fun SourceConfigDocument.activeDescriptors(): List<RuntimeSourceDescriptor> =
+        sources
             .filter { it.engine == ENGINE_GENERIC && it.lifecycle == LIFECYCLE_ACTIVE }
             .map { it.toRuntimeDescriptor() }
 

@@ -25,6 +25,7 @@ import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
 import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /**
@@ -423,6 +424,7 @@ internal class FixedUpdateManager(
 ) : SourceUpdateManager {
     override val state: StateFlow<UpdateState> =
         MutableStateFlow(UpdateState.Active(doc.revision, UpdateState.Origin.BUNDLED))
+    override val acceptedDocument: StateFlow<SourceConfigDocument> = MutableStateFlow(doc)
 
     override fun activeDocument(): SourceConfigDocument = doc
 
@@ -434,6 +436,13 @@ internal class PilotRegistry(
     private val descriptors: Map<String, RuntimeSourceDescriptor> = emptyMap(),
     private val client: (String) -> MangaSourceClient? = { null },
 ) : SourceRegistry {
+    override val catalog: Flow<SourceCatalogSnapshot> = flowOf(
+        SourceCatalogSnapshot(
+            revision = 1,
+            descriptors = genericDescriptors().filter { it.isGeneric && it.lifecycle == "active" },
+        ),
+    )
+
     override fun get(api: String): MangaSourceClient? = if (api in piloted) client(api) else null
 
     override fun isConfigBacked(api: String): Boolean = api in piloted

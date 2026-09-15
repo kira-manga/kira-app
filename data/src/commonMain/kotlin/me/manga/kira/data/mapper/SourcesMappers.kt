@@ -2,6 +2,7 @@ package me.manga.kira.data.mapper
 
 import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.domain.model.sources.Source
+import me.manga.kira.sources.contracts.model.RuntimeSourceDescriptor
 
 /**
  * Entity → domain mapper for the Sources slice.
@@ -39,13 +40,16 @@ import me.manga.kira.domain.model.sources.Source
  * legacy `saveSources` seeds it with `name = repo.API`). The rework model exposes the same
  * value as [Source.api] to make the intent obvious — the "name" column is semantically the API
  * identifier, not a display name.
+ *
+ * Catalog metadata and [catalogOrder] come from one accepted snapshot; only enablement comes
+ * from the Room row. The current catalog store persists document order, not stanza priority.
  */
-internal fun SourcesEntity.toDomain(displayName: String = name): Source = Source(
+internal fun SourcesEntity.toDomain(descriptor: RuntimeSourceDescriptor, catalogOrder: Int): Source = Source(
     api = name,
-    language = language,
-    priority = priority,
+    language = descriptor.language,
+    priority = catalogOrder,
     isEnabled = isEnabled,
-    displayName = displayName.ifBlank { name },
+    displayName = descriptor.displayName.ifBlank { name },
 )
 
 /**

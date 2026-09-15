@@ -93,27 +93,31 @@ internal fun LegacyPopularManga.toFeatured(): FeaturedManga = FeaturedManga(
  * Map an enabled sources row (+ its validated config descriptor) → the rework [SourceTab].
  *
  *  - row `name` → [SourceTab.api] (the tab identity + fetch/search key).
- *  - row `language` → [SourceTab.language] (label/grouping).
+ *  - descriptor language/site state → catalog-owned labels and availability.
  *  - `name` also seeds the vestigial [SourceTab.iconKey]; icon resolution happens by api through
  *    the app-root icon seam (`LocalSourceIconResolver`), per the [SourceTab] KDoc.
  *  - [SourceTab.displayName] joins from the validated config descriptor (MangaSource decoupling,
  *    2026-07) — the tab needs NO compiled BaseMangaRepository.
  */
-internal fun SourcesEntity.toSourceTab(descriptor: RuntimeSourceDescriptor?): SourceTab = SourceTab(
+internal fun SourcesEntity.toSourceTab(descriptor: RuntimeSourceDescriptor): SourceTab = SourceTab(
     api = name,
-    language = language,
+    language = descriptor.language,
     iconKey = name,
-    siteState = siteState.toSiteState(),
+    siteState = descriptor.toSiteState(),
     // The source's base URL — Home's "open in WebView" opens this (native parity). The Room row is
     // the live field (asserted to config truth by the catalog sync, and user-mirror-editable);
     // the descriptor's baseUrl is the fallback for a not-yet-synced row.
     // A legacy/user-editable Room row may contain a stale non-network value (observed:
     // `about:about`). It must not override the validated active descriptor or reach WKWebView.
-    baseUrl = baseUrl.takeIf(::isValidSourceBaseUrl) ?: descriptor?.baseUrl.orEmpty(),
+    baseUrl = baseUrl.takeIf(::isValidSourceBaseUrl) ?: descriptor.baseUrl,
     // MangaSource decoupling (2026-07): the tab is built from the row + the validated config
     // descriptor — no BaseMangaRepository required, so a config-only source appears like any other.
-    displayName = descriptor?.displayName ?: name,
+    displayName = descriptor.displayName,
 )
+
+/** Accepted descriptors are validated; an unknown operational state must still fail closed. */
+internal fun RuntimeSourceDescriptor.toSiteState(): SiteState =
+    SiteState.entries.firstOrNull { it.name == siteState } ?: SiteState.STOPPED
 
 /**
  * Map the legacy [SourceState] enum → the rework [SiteState] enum (value-for-value; the constants
