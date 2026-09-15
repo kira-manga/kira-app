@@ -25,6 +25,7 @@ import org.koin.dsl.module
 import org.robolectric.RuntimeEnvironment
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +42,7 @@ internal const val FIXTURE_API = "app75-host-fixture"
 internal const val USER_CANCELLED = "__cancelled_by_user__"
 
 internal enum class CancellationSeam {
+    PRECLAIM_CANCEL,
     DELIVERED_SEND,
     COMMITTED_RETURN,
     PARTIAL_SYSTEM,
@@ -148,6 +150,16 @@ internal class DownloadWorkerCancellationFixture(
         assertTrue(checkNotNull(future).isCancelled)
     }
 
+    suspend fun joinSuccessfulWorker() {
+        worker.join()
+        if (producer.job != null) producer.join()
+        assertEquals(
+            ListenableWorker.Result.success(),
+            checkNotNull(future).get(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+        )
+        assertFalse(checkNotNull(worker.job).isCancelled)
+    }
+
     suspend fun partialCheckpoint() {
         withTimeout(GATE_TIMEOUT_MILLIS) {
             transport.secondResponseEntered.await()
@@ -191,7 +203,10 @@ internal class DownloadWorkerCancellationFixture(
     }
 
     suspend fun close() {
-        if (daoHolder.isInitialized()) dao.releaseProgress.complete(Unit)
+        if (daoHolder.isInitialized()) {
+            dao.releaseQueuedSnapshot.complete(Unit)
+            dao.releaseProgress.complete(Unit)
+        }
         if (transportHolder.isInitialized()) transport.releaseSecondResponse.complete(Unit)
         commit.release()
         sender.release()

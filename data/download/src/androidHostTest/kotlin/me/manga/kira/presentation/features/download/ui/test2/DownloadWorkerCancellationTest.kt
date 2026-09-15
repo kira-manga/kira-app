@@ -1,6 +1,11 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeout
+import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -8,8 +13,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -19,6 +26,101 @@ import kotlin.test.assertTrue
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DownloadWorkerCancellationTest {
+    @Test
+    fun userCancelBeforeClaimRejectsCapturedQueuedRow() =
+        cancellationFixture(CancellationSeam.PRECLAIM_CANCEL) {
+            start()
+            val selected = withTimeout(GATE_TIMEOUT_MILLIS) { dao.queuedSnapshot.await() }
+            assertEquals(listOf(rows.original.download), selected)
+            assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+
+            val cancelled = assertNotNull(rows.artifacts.cancel(rows.original.saved.id, USER_CANCELLED))
+            val failed = rows.original.download.copy(state = DownloadingState.FAILED, errorMsg = USER_CANCELLED)
+            assertEquals(failed, rows.download())
+            assertTrue(rows.artifacts.settle(cancelled))
+            assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+            assertFalse(checkNotNull(worker.job).isCompleted)
+            receipt("user-cancel-settled; actual-queued-snapshot-held-before-worker-claim")
+
+            dao.releaseQueuedSnapshot.complete(Unit)
+            joinSuccessfulWorker()
+            assertEquals(failed, rows.download())
+            assertEquals(rows.original.saved, rows.saved())
+            assertEquals(0, dao.runningCalls.get())
+            assertEquals(0, dao.progressCalls.get())
+            assertEquals(0, dao.completionCalls.get())
+            assertEquals(0, transport.requests.get())
+            assertNull(producer.job)
+            assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+            assertFalse(checkNotNull(File(paths.first()).parentFile).exists())
+            receipt("stale-queue-rejected; no-RUNNING-write-or-producer-or-files")
+        }
+
+    @Test
+    fun cancelAndPurgeFenceBufferedProgressAndCompleteUntilProducerDrains() =
+        cancellationFixture(CancellationSeam.DELIVERED_SEND) {
+            start()
+            awaitSuspendedCompleteSender()
+            val cancelled = assertNotNull(rows.artifacts.cancel(rows.original.saved.id, USER_CANCELLED))
+            val failed = rows.original.download.copy(state = DownloadingState.FAILED, errorMsg = USER_CANCELLED)
+            assertEquals(failed, rows.download())
+            assertEquals(rows.original.saved, rows.saved())
+            assertFalse(rows.db.chapterArtifactDao().canPublish(cancelled))
+
+            coroutineScope {
+                val purgeEntered = CompletableDeferred<Unit>()
+                val purge = async(start = CoroutineStart.UNDISPATCHED) {
+                    rows.artifacts.ownership.removeChapter(ChapterArtifactOwner.of(rows.original.saved)) {
+                        purgeEntered.complete(Unit)
+                    }.also {
+                        assertTrue(checkNotNull(producer.job).isCompleted, "Purge returned before actual producer drain")
+                    }
+                }
+                try {
+                    withTimeout(GATE_TIMEOUT_MILLIS) { purgeEntered.await() }
+                    // Deliberately do not stop the worker Job: late real buffered states must run
+                    // through its ownership fences, not disappear through flow cancellation.
+                    dao.releaseProgress.complete(Unit)
+                    withTimeout(GATE_TIMEOUT_MILLIS) {
+                        dao.lastProgressReturned.await()
+                        sender.queuedResume.await()
+                    }
+                    assertEquals(FULL_BUFFER_PAGES, dao.progressCalls.get())
+                    assertEquals(failed, rows.download())
+                    assertEquals(rows.original.saved, rows.saved())
+                    assertFalse(purge.isCompleted, "A revocation request is not drained file custody")
+                    assertFalse(checkNotNull(producer.job).isCompleted)
+                    storage.assertImages(paths)
+                    receipt("cancelled-ledger-unchanged-after-late-progress; real-COMPLETE-send-resume-held; purge-pending")
+
+                    sender.release()
+                    joinSuccessfulWorker()
+                    assertTrue(withTimeout(GATE_TIMEOUT_MILLIS) { purge.await() })
+                } finally {
+                    dao.releaseProgress.complete(Unit)
+                    sender.release()
+                }
+            }
+
+            assertEquals(1, dao.runningCalls.get())
+            assertEquals(0, dao.completionCalls.get())
+            // Normal flow completion plus no fallback read excludes a swallowed COMPLETE/file
+            // failure or missing-terminal error being mistaken for the fenced completion path.
+            assertEquals(0, dao.ownershipReadCalls.get())
+            assertEquals(0, dao.requeueCalls.get())
+            assertEquals(FULL_BUFFER_PAGES, transport.requests.get())
+            assertEquals(1, sender.retainedResumeCount.get())
+            assertFalse(checkNotNull(producer.job).isCancelled)
+            assertNull(rows.realDao.getDownloadByChapter(rows.original.saved.id))
+            assertNull(rows.db.chapterArtifactDao().get(rows.original.saved.id))
+            assertEquals(rows.original.saved, rows.saved())
+            val notification = assertNotNull(rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id))
+            assertFalse(notification.isDownloaded)
+            assertTrue(notification.localImagePaths.isEmpty())
+            assertFalse(checkNotNull(File(paths.first()).parentFile).exists())
+            receipt("late-COMPLETE-collected-without-publication; actual-jobs-joined; purge-left-no-ledger-or-files")
+        }
+
     @Test
     fun deliveredCompleteSurvivesCancelledSender() =
         cancellationFixture(CancellationSeam.DELIVERED_SEND) {
