@@ -138,6 +138,16 @@ Per-platform engines behind one `DownloadRepository` interface (`:data:download`
   `ENGINEERING_NOTES.md` §2/§4.
 - **Desktop**: in-process coroutine engine (also the iOS rollback path).
 
+### Chapter-artifact ownership — validation pending
+
+The prepared shared runtime fences downloads, restores, conversions, reads and deletion with
+original-attempt custody and real file-user drains. Ordinary FAILED attempts retain resumable pages;
+user cancellation/system-stop cleanup stays separate, and unknown outcomes retain custody/bytes.
+Queue drains skip closing parents and resume on their captured reopen signal outside producer locks;
+iOS receiver publication failures enter the existing bounded page-failure path. Room schema15 must
+come from the real compiler. Composed compile/tests/native checks are **NOT_RUN**; tokenless FAILED
+history cleanup remains a separate issue, including retained failures released by this runtime.
+
 ### Backup import hardening — composition required
 
 The authored import path admits a bounded, privately owned ZIP/JSON/CBZ plan before any Room or

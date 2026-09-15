@@ -216,6 +216,8 @@ open class FakeChapterDownloadDao(
 
     override suspend fun getNextQueuedChapter(queuedState: DownloadingState): ChapterDownloadEntity? = null
 
+    override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> = emptyList()
+
     override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? = null
 
     override suspend fun getSavedChapterForDownload(chapterId: Long): SavedChapterEntity? = null

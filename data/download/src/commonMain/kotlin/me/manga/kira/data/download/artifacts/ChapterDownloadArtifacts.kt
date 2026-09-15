@@ -1,6 +1,8 @@
 package me.manga.kira.data.download.artifacts
 
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
@@ -25,6 +27,27 @@ class ChapterDownloadArtifacts(
         ownership.enqueue(chapter, requested)
 
     suspend fun claim(entity: ChapterDownloadEntity): ChapterArtifactClaim? = ownership.downloadClaim(entity)
+
+    /** Preserve queue order among eligible rows; a closing parent cannot block unrelated manga. */
+    suspend fun scanQueued(queued: List<ChapterDownloadEntity>): QueuedArtifactAdmission {
+        val blocked = linkedSetOf<Deferred<Unit>>()
+        for (row in queued) {
+            val admission = ownership.downloadAdmission(row)
+            admission.claim?.let { return QueuedArtifactAdmission(QueuedChapterArtifact(row, it), blocked.toList()) }
+            admission.parentReopen?.let { blocked += it }
+        }
+        return QueuedArtifactAdmission(null, blocked.toList())
+    }
+
+    /** Worker drains wait only for transient refusal, then re-read and recheck each exact ledger. */
+    suspend fun awaitNextQueued(readQueued: suspend () -> List<ChapterDownloadEntity>): QueuedChapterArtifact? {
+        while (true) {
+            val admission = scanQueued(readQueued())
+            admission.attempt?.let { return it }
+            if (admission.parentReopens.isEmpty()) return null
+            admission.awaitParentReopen()
+        }
+    }
 
     suspend fun complete(
         claim: ChapterArtifactClaim,
@@ -63,8 +86,11 @@ class ChapterDownloadArtifacts(
     suspend fun settle(
         claim: ChapterArtifactClaim,
         requeue: Boolean = false,
+        retainFailedPages: Boolean = true,
         afterIncomplete: suspend () -> Unit = {},
-    ): Boolean = withContext(NonCancellable) { recovery.settleDownload(ownership, claim, requeue, afterIncomplete) }
+    ): Boolean = withContext(NonCancellable) {
+        recovery.settleDownload(ownership, claim, requeue, retainFailedPages, afterIncomplete)
+    }
 
     fun exactSize(paths: List<String>): Long = paths.distinct().fold(0L) { total, path ->
         val metadata = files.fileSystem().metadata(path.toPath())
@@ -73,5 +99,14 @@ class ChapterDownloadArtifacts(
             throw IOException("Invalid artifact size")
         }
         total + size
+    }
+}
+
+data class QueuedChapterArtifact(val chapter: ChapterDownloadEntity, val claim: ChapterArtifactClaim)
+
+data class QueuedArtifactAdmission(val attempt: QueuedChapterArtifact?, val parentReopens: List<Deferred<Unit>>) {
+    suspend fun awaitParentReopen() {
+        require(parentReopens.isNotEmpty())
+        select<Unit> { parentReopens.forEach { parent -> parent.onAwait { Unit } } }
     }
 }

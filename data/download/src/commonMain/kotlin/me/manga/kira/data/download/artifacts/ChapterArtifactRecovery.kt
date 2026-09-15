@@ -9,8 +9,10 @@ import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.claimOrNull
+import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.presentation.features.download.data.DownloadingState
 
 /** Bounded per-chapter restore settlement. Unknown SQL/file outcomes keep both intent and bytes. */
 class ChapterArtifactRecovery(
@@ -60,6 +62,7 @@ class ChapterArtifactRecovery(
         artifacts: ChapterArtifacts,
         claim: ChapterArtifactClaim,
         requeue: Boolean = false,
+        retainFailedPages: Boolean = true,
         afterIncomplete: suspend () -> Unit = {},
     ): Boolean = try {
         artifacts.settle(claim) { record ->
@@ -75,8 +78,14 @@ class ChapterArtifactRecovery(
                     true
                 }
                 ChapterDownloadOutcome.INCOMPLETE -> {
+                    val row = dao.download(record.chapterId)
+                    // Ordinary failure keeps verified page work available to Retry, but only after
+                    // the old producer has drained. Cancellation/system-stop still discard partials.
+                    val retainForRetry = retainFailedPages && row != null && row.id == claim.downloadId &&
+                        row.state == DownloadingState.FAILED &&
+                        row.errorMsg != DownloadedChapter.CANCELLED_BY_USER_SENTINEL
                     if (!commits.settleIncompleteDownload(claim, requeue)) false else {
-                        deleteUncommittedPages(claim)
+                        if (!retainForRetry) deleteUncommittedPages(claim)
                         afterIncomplete()
                         true
                     }

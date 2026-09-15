@@ -4,6 +4,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ import kotlin.time.TimeSource
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.download.artifacts.QueuedArtifactAdmission
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.platform.download.StagedDownloadPage
@@ -91,6 +93,7 @@ class BackgroundUrlSessionDownloadRepository(
 
     private val mutex = Mutex()
     private val attempts = mutableMapOf<Long, ChapterArtifactClaim>()
+    private var parentAdmissionWaiter: Job? = null
 
     /** chapterIds with a finalize coroutine in flight — guards against double-finalize. (Guarded by [mutex].) */
     private val finalizing = mutableSetOf<Long>()
@@ -328,6 +331,7 @@ class BackgroundUrlSessionDownloadRepository(
                 throw cancelled
             } catch (failure: Exception) {
                 BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
+                recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
             } finally {
                 try {
                     page.discard() // Never deletes another attempt's live chapter directory.
@@ -345,17 +349,26 @@ class BackgroundUrlSessionDownloadRepository(
         attemptToken: String,
         message: String?,
     ) {
-        applicationScope.launch {
-            try {
-                mutex.withLock {
-                    callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return@withLock
-                    handlePageFailedLocked(mangaId, chapterId, pageIndex, message)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                BgDownloadLog.error(failure, "page.failed.persistence", "chapterId" to chapterId)
+        applicationScope.launch { recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message) }
+    }
+
+    /** Receiver-side publication failures use the same bounded retry path as native transfer failures. */
+    private suspend fun recordPageFailure(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        attemptToken: String,
+        message: String?,
+    ) {
+        try {
+            mutex.withLock {
+                callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return@withLock
+                handlePageFailedLocked(mangaId, chapterId, pageIndex, message)
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            BgDownloadLog.error(failure, "page.failed.persistence", "chapterId" to chapterId)
         }
     }
 
@@ -368,10 +381,10 @@ class BackgroundUrlSessionDownloadRepository(
         return claim
     }
 
-    private suspend fun claimLocked(entity: ChapterDownloadEntity): ChapterArtifactClaim? {
+    private suspend fun claimLocked(entity: ChapterDownloadEntity, admitted: ChapterArtifactClaim? = null): ChapterArtifactClaim? {
         val retained = attempts[entity.chapterId]
-        if (retained != null && retained.downloadId == entity.id && currentAttempt(retained) != null) return retained
-        val claim = artifacts.claim(entity) ?: return null
+        if (admitted == null && retained != null && retained.downloadId == entity.id && currentAttempt(retained) != null) return retained
+        val claim = admitted ?: artifacts.claim(entity) ?: return null
         if (retained?.token != claim.token) clearChapterCaches(entity.chapterId)
         attempts[entity.chapterId] = claim
         artifacts.ownership.files(claim) {
@@ -477,6 +490,8 @@ class BackgroundUrlSessionDownloadRepository(
      * CPU-gated CBZ from ever stalling the queue). Still never two chapters transferring at once.
      */
     private suspend fun fillWindowLocked() {
+        parentAdmissionWaiter?.cancel()
+        parentAdmissionWaiter = null
         // Only an in-flight TRANSFER occupies the slot. A DOWNLOADED (readable, CBZ-pending) or COMPRESSING
         // chapter is post-transfer work that must not block the next transfer. Use an indexed COUNT, not a
         // whole-table scan: bulk "Download all" calls this once per enqueue, and every enqueue after the
@@ -497,20 +512,48 @@ class BackgroundUrlSessionDownloadRepository(
             "freeSlots" to slots,
             "concurrency" to CHAPTER_CONCURRENCY,
         )
-        for (q in queued) {
-            if (slots <= 0) break
-            prepareLocked(q)
-            slots--
+        val remaining = queued.toMutableList()
+        while (slots > 0 && remaining.isNotEmpty()) {
+            val admission = artifacts.scanQueued(remaining)
+            val attempt = admission.attempt
+            if (attempt == null) {
+                resumeAfterParentReopen(admission)
+                break
+            }
+            remaining.removeAll { it.id == attempt.chapter.id }
+            if (prepareLocked(attempt.chapter, attempt.claim)) slots--
         }
         BgDownloadLog.dlperf("window.ms", "queued" to queued.size, "ms" to winMark.elapsedNow().inWholeMilliseconds)
     }
 
-    private suspend fun prepareLocked(entity: ChapterDownloadEntity) {
-        val claim = claimLocked(entity) ?: return
+    /** One cancellable waiter, outside the engine mutex and every producer/file-use scope. */
+    private fun resumeAfterParentReopen(admission: QueuedArtifactAdmission) {
+        if (admission.parentReopens.isEmpty()) return
+        val waiter = applicationScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                admission.awaitParentReopen()
+                val running = coroutineContext[Job]
+                mutex.withLock {
+                    if (parentAdmissionWaiter !== running) return@withLock
+                    parentAdmissionWaiter = null
+                    fillWindowLocked()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                BgDownloadLog.error(failure, "admission.resume.failed")
+            }
+        }
+        parentAdmissionWaiter = waiter
+        waiter.start()
+    }
+
+    private suspend fun prepareLocked(entity: ChapterDownloadEntity, admitted: ChapterArtifactClaim? = null): Boolean {
+        val claim = claimLocked(entity, admitted) ?: return false
         if (entity.state == DownloadingState.QUEUED) {
             if (artifacts.ownership.publish(claim) { dao.claimQueuedAsRunning(entity.chapterId) } != 1) {
                 BgDownloadLog.log("prepare.claim.raced", "chapterId" to entity.chapterId)
-                return // raced cancel
+                return false // raced cancel
             }
             BgDownloadLog.log("state.transition", "chapterId" to entity.chapterId, "from" to "QUEUED", "to" to "RUNNING")
         }
@@ -519,7 +562,7 @@ class BackgroundUrlSessionDownloadRepository(
         if (existing != null) {
             BgDownloadLog.log("manifest.read", "chapterId" to entity.chapterId, "pages" to existing.pages.size)
             reconcileChapterLocked(entity, existing)
-            return
+            return true
         }
         // A resolve-AHEAD scrape for this chapter is already in flight: its completion handles the
         // now-RUNNING row itself (persists the manifest + reconciles → transfers enqueue), and its
@@ -527,7 +570,7 @@ class BackgroundUrlSessionDownloadRepository(
         // double-scrape the source.
         if (entity.chapterId in prefetching) {
             BgDownloadLog.log("prepare.awaitingPrefetch", "chapterId" to entity.chapterId)
-            return
+            return true
         }
         // No manifest → the page/link resolution (network scrape) must NOT hold the engine mutex (B6: the
         // 200ms+ scrape under the lock serialized every other operation — page callbacks, new enqueues,
@@ -536,9 +579,10 @@ class BackgroundUrlSessionDownloadRepository(
         // the quick manifest write + reconcile. Mirrors launchFinalize's off-mutex heavy-work pattern.
         if (!resolving.add(entity.chapterId)) {
             BgDownloadLog.log("prepare.resolve.alreadyInFlight", "chapterId" to entity.chapterId)
-            return
+            return true
         }
         launchResolve(entity, claim)
+        return true
     }
 
     /**

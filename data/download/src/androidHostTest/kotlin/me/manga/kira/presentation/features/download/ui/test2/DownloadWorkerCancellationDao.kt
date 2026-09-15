@@ -47,10 +47,10 @@ internal class DownloadWorkerCancellationDao(
             }
         }
 
-    override suspend fun getNextQueuedChapter(queuedState: DownloadingState): ChapterDownloadEntity? {
+    override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> {
         // Before entering Room: capture doWork's coroutineScope, not a nested Room/collector Job.
         worker.capture(currentCoroutineContext().job)
-        return rows.realDao.getNextQueuedChapter(queuedState)
+        return rows.realDao.getQueuedChaptersForWorker(queuedState)
     }
 
     override suspend fun updateProgressForArtifact(

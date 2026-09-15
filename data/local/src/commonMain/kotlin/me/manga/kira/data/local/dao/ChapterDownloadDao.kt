@@ -115,6 +115,11 @@ interface ChapterDownloadDao {
     @Query("SELECT * FROM chapter_downloads WHERE state = :queuedState LIMIT 1")
     suspend fun getNextQueuedChapter(queuedState: DownloadingState = DownloadingState.QUEUED): ChapterDownloadEntity?
 
+    // Same scan as getNextQueuedChapter, without LIMIT so a closing parent can be skipped.
+    // Do not reuse the iOS newest-first query below: Android/coroutine keep their existing order.
+    @Query("SELECT * FROM chapter_downloads WHERE state = :queuedState")
+    suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState = DownloadingState.QUEUED): List<ChapterDownloadEntity>
+
     @Query("SELECT * FROM chapter_downloads WHERE chapterId = :chapterId LIMIT 1")
     suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity?
 

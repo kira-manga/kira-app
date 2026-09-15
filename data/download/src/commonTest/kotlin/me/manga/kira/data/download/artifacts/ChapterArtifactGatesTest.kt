@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 
@@ -40,10 +41,17 @@ class ChapterArtifactGatesTest {
         admitted.await()
         val removal = async(start = CoroutineStart.UNDISPATCHED) { parent.remove { "removed" } }
         assertFalse(removal.isCompleted)
-        assertNull(parent.admit { error("A draining callback must not enqueue another same-parent producer") })
+        var reopened: Deferred<Unit>? = null
+        assertNull(parent.admit(onClosed = { reopened = it }) {
+            error("A draining callback must not enqueue another same-parent producer")
+        })
+        val wake = requireNotNull(reopened)
+        assertFalse(wake.isCompleted)
         release.complete(Unit)
         use.await()
         assertEquals("removed", removal.await())
+        assertTrue(wake.isCompleted)
+        wake.await() // Reopening BEFORE the waiter suspends must not lose the wake.
         assertEquals("admitted", parent.admit { "admitted" })
     }
 }

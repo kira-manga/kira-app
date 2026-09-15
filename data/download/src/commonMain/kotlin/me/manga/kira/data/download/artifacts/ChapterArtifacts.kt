@@ -3,6 +3,7 @@ package me.manga.kira.data.download.artifacts
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,6 +42,15 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     /** Bind a queue snapshot once. A newer ledger id cannot inherit this producer's authority. */
     suspend fun downloadClaim(expected: ChapterDownloadEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.chapterId) { token -> dao.claimExistingDownload(expected, token) }
+
+    /** Queue drains may await this exact refusal outside producer/file/engine locks. */
+    internal suspend fun downloadAdmission(expected: ChapterDownloadEntity): ChapterArtifactAdmission {
+        var parentReopen: Deferred<Unit>? = null
+        val claim = admission(expected.mangaId, expected.chapterId, onParentClosed = { parentReopen = it }) { token ->
+            dao.claimExistingDownload(expected, token)
+        }
+        return ChapterArtifactAdmission(claim, parentReopen)
+    }
 
     suspend fun beginConversion(expected: SavedChapterEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.id) { token -> dao.claimConversion(expected, token) }
@@ -170,10 +180,11 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     private suspend fun admission(
         mangaId: Long,
         chapterId: Long,
+        onParentClosed: (Deferred<Unit>) -> Unit = {},
         action: suspend (String) -> ChapterArtifactClaim?,
     ): ChapterArtifactClaim? {
         ensureReady()
-        return gates.parent(mangaId).admit {
+        return gates.parent(mangaId).admit(onClosed = onParentClosed) {
             val gate = gates.chapter(chapterId)
             gate.transition.withLock {
                 val token = newToken()
@@ -203,3 +214,5 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     @OptIn(ExperimentalUuidApi::class)
     private fun newToken(): String = Uuid.random().toString()
 }
+
+internal data class ChapterArtifactAdmission(val claim: ChapterArtifactClaim?, val parentReopen: Deferred<Unit>?)

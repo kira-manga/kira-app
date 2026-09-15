@@ -129,12 +129,13 @@ class DownloadWorkerV2(
 
             try {
                 while (true) {
-                    val chapter = chapterDownloadDao.getNextQueuedChapter() ?: break
+                    val admitted = artifacts.awaitNextQueued { chapterDownloadDao.getQueuedChaptersForWorker() } ?: break
+                    val chapter = admitted.chapter
 
                     currentChapter = chapter
 
                     try {
-                        if (!processChapter(chapter)) break
+                        processChapter(chapter, admitted.claim)
                     } catch (ce: CancellationException) {
                         throw ce
                     } catch (e: Exception) {
@@ -182,9 +183,9 @@ class DownloadWorkerV2(
      * notification updates → the missing-terminal-state guard. Extracted from [doWork]'s loop so
      * the per-chapter failure isolation there wraps exactly one chapter's work.
      */
-    private suspend fun processChapter(chapter: ChapterDownloadEntity): Boolean {
-        val claim = artifacts.claim(chapter) ?: return false
+    private suspend fun processChapter(chapter: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
         artifactClaim = claim
+        var stopped = false
         try {
             artifacts.ownership.producing(claim) {
                 artifacts.ownership.publish(claim) {
@@ -209,10 +210,11 @@ class DownloadWorkerV2(
                 if (!sawTerminalState) handleErrorSafely(chapter, Throwable("No images for chapter"))
             }
         } catch (cancelled: CancellationException) {
+            stopped = true
             withContext(NonCancellable) {
                 // The actual flowOn sender has unwound; native commit readback still wins over stop.
                 if (ownsUnfinishedDownload(chapter)) {
-                    artifacts.settle(claim, afterIncomplete = {
+                    artifacts.settle(claim, retainFailedPages = false, afterIncomplete = {
                         chapterDownloadDao.requeueIfInFlight(chapter.chapterId)
                     })
                 }
@@ -221,10 +223,9 @@ class DownloadWorkerV2(
         } catch (failure: Exception) {
             handleErrorSafely(chapter, failure)
         } finally {
-            artifacts.settle(claim)
+            artifacts.settle(claim, retainFailedPages = !stopped)
             artifactClaim = null
         }
-        return true
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

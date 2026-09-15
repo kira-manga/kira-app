@@ -88,11 +88,12 @@ internal class DownloadRecoveryFixture {
         state: DownloadingState = DownloadingState.SUCCESS,
         sizeBytes: Long = 100L,
         isDownloaded: Boolean = false,
+        mangaId: Long? = null,
     ): RetainedDownload {
         val number = ++nextManga
         val chapter =
             SavedChapterEntity(
-                mangaId = seedManga(number),
+                mangaId = mangaId ?: seedManga(number),
                 name = "Chapter $number",
                 number = number.toString(),
                 url = "https://example.test/chapter/$number",

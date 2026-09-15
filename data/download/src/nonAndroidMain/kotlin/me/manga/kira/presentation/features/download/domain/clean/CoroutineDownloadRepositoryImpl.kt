@@ -224,8 +224,9 @@ class CoroutineDownloadRepositoryImpl(
             // the next wake-up retries. CancellationException still propagates (structured concurrency).
             while (currentCoroutineContext().isActive) {
                 try {
-                    val next = dao.getNextQueuedChapter() ?: break
-                    val claim = artifacts.claim(next) ?: break
+                    val admitted = artifacts.awaitNextQueued { dao.getQueuedChaptersForWorker() } ?: break
+                    val next = admitted.chapter
+                    val claim = admitted.claim
                     val job =
                         applicationScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
                             try {

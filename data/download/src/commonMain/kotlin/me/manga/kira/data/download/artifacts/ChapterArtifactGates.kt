@@ -1,6 +1,7 @@
 package me.manga.kira.data.download.artifacts
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,10 +27,14 @@ internal class ParentArtifactGate {
     private var closing = false
     private var admissions = 0
     private var drained = CompletableDeferred<Unit>().also { it.complete(Unit) }
+    private var reopened = CompletableDeferred<Unit>().also { it.complete(Unit) }
 
-    suspend fun <T> admit(action: suspend () -> T): T? {
+    suspend fun <T> admit(onClosed: (Deferred<Unit>) -> Unit = {}, action: suspend () -> T): T? {
         if (!state.withLock {
-                if (closing) false else {
+                if (closing) {
+                    onClosed(reopened) // Captured atomically with refusal: reopening cannot lose a wake.
+                    false
+                } else {
                     if (admissions++ == 0) drained = CompletableDeferred()
                     true
                 }
@@ -43,12 +48,12 @@ internal class ParentArtifactGate {
     }
 
     suspend fun <T> remove(action: suspend () -> T): T = removal.withLock {
-        val wait = state.withLock { closing = true; drained }
+        val wait = state.withLock { closing = true; reopened = CompletableDeferred(); drained }
         try {
             wait.await()
             action()
         } finally {
-            withContext(NonCancellable) { state.withLock { closing = false } }
+            withContext(NonCancellable) { state.withLock { closing = false; reopened.complete(Unit) } }
         }
     }
 }

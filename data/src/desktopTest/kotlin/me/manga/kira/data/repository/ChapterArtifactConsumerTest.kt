@@ -1,5 +1,6 @@
 package me.manga.kira.data.repository
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
@@ -12,6 +13,7 @@ import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -142,6 +144,131 @@ class ChapterArtifactConsumerTest {
         artifactRuntime.ownership.read(original.saved.id) { assertNull(it) }
         assertFalse(fs.exists(directory))
         assertNull(artifactRuntime.dao.get(original.saved.id))
+    }
+
+    @Test
+    fun ordinaryFailureRetainsPagesThroughSettlementOrRestartForRetryButCancelStillCleans() = downloadRecoveryTest {
+        for (restart in listOf(false, true)) {
+            val original = seed(DownloadingState.FAILED)
+            val runtime = artifactRuntime
+            val claim = assertNotNull(runtime.downloads.enqueue(
+                original.saved, original.download.copy(state = DownloadingState.QUEUED),
+            ))
+            val directory = appFileSystem.chapterDir(original.saved.mangaId, original.saved.id)
+            val page = directory / "image_0.png"
+            val manifest = directory / "manifest.json"
+            val bytes = recoveryTestPng()
+            runtime.ownership.files(claim) {
+                fs.write(page) { write(bytes) }
+                fs.write(manifest) { writeUtf8("retained-attempt-${claim.token}") }
+            }
+            assertTrue(runtime.downloads.fail(claim, "temporary source failure"))
+            if (restart) {
+                reopen()
+                artifactRuntime.ownership.read(original.saved.id) { assertNull(it?.token) }
+            } else {
+                assertTrue(runtime.downloads.settle(claim))
+            }
+            val recovered = artifactRuntime
+            assertNull(recovered.dao.get(original.saved.id)?.token)
+            assertContentEquals(bytes, fs.read(page) { readByteArray() })
+            assertTrue(fs.exists(manifest))
+            assertEquals("temporary source failure", download(original).errorMsg)
+
+            val retry = assertNotNull(recovered.downloads.enqueue(
+                saved(original), original.download.copy(state = DownloadingState.QUEUED),
+            ))
+            assertFalse(recovered.dao.canPublish(claim), "Retained bytes never revive the old attempt")
+            assertContentEquals(bytes, recovered.ownership.files(retry) { fs.read(page) { readByteArray() } })
+            assertNotNull(recovered.downloads.cancel(original.saved.id, "__cancelled_by_user__"))
+            assertTrue(recovered.downloads.settle(retry))
+            assertFalse(fs.exists(page))
+            assertFalse(fs.exists(manifest))
+        }
+    }
+
+    @Test
+    fun closingParentSkipsBlockedWorkAndResumesOriginalQueuedAttemptWithoutExternalWake() = downloadRecoveryTest {
+        val completed = seed(isDownloaded = true)
+        val running = seed(DownloadingState.QUEUED, mangaId = completed.saved.mangaId)
+        val waiting = seed(DownloadingState.QUEUED, mangaId = completed.saved.mangaId)
+        val unrelated = seed(DownloadingState.QUEUED)
+        val runtime = artifactRuntime
+        val runningClaim = assertNotNull(runtime.downloads.claim(running.download))
+        val waitingClaim = assertNotNull(runtime.downloads.claim(waiting.download))
+        assertEquals(1, runtime.ownership.publish(runningClaim) { dao.claimQueuedAsRunning(running.saved.id) })
+        assertEquals(waiting.download, dao.getNextQueuedChapter())
+        assertEquals(waiting.download, dao.getQueuedChaptersForWorker().first())
+        assertEquals(unrelated.download, dao.getQueuedChapters().first(), "iOS keeps its separate newest-first order")
+
+        val reading = CompletableDeferred<Unit>()
+        val releaseRead = CompletableDeferred<Unit>()
+        val closed = CompletableDeferred<Unit>()
+        val producing = CompletableDeferred<Unit>()
+        val finishRunning = CompletableDeferred<Unit>()
+        val engine = object : FakeDownloadRepository() {
+            override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
+                assertEquals(completed.saved.id, chapterId)
+                assertNull(runtime.downloads.cancel(chapterId, "__cancelled_by_user__"))
+                closed.complete(Unit) // The real deletion already closed M; SUCCESS A has no download claim.
+            }
+        }
+        coroutineScope {
+            val pin = launch {
+                runtime.ownership.read(completed.saved.id) {
+                    reading.complete(Unit)
+                    releaseRead.await()
+                }
+            }
+            val work = async {
+                val complete = runtime.ownership.producing(runningClaim) {
+                    producing.complete(Unit)
+                    finishRunning.await()
+                    runtime.downloads.complete(runningClaim, download(running), running.saved.localImagePaths)
+                }
+                complete == true && runtime.downloads.settle(runningClaim)
+            }
+            try {
+                reading.await()
+                producing.await()
+                val deletion = async { actions(engine = engine).deleteDownloadedChapter(completed.saved.id) }
+                closed.await()
+                assertFalse(deletion.isCompleted, "Removal must wait for the actual reader pin")
+                finishRunning.complete(Unit)
+                assertTrue(work.await(), "Already-admitted B can finish without reacquiring the parent gate")
+
+                val next = assertNotNull(runtime.downloads.awaitNextQueued { dao.getQueuedChaptersForWorker() })
+                assertEquals(unrelated.download, next.chapter, "Closed C must not park unrelated D")
+                assertEquals(1, runtime.ownership.publish(next.claim) { dao.claimQueuedAsRunning(unrelated.saved.id) })
+                assertTrue(runtime.downloads.complete(next.claim, download(unrelated), unrelated.saved.localImagePaths))
+                assertTrue(runtime.downloads.settle(next.claim))
+
+                val blocked = runtime.downloads.scanQueued(dao.getQueuedChaptersForWorker())
+                assertNull(blocked.attempt)
+                assertEquals(1, blocked.parentReopens.size)
+                assertFalse(blocked.parentReopens.single().isCompleted)
+                val queueRead = CompletableDeferred<Unit>()
+                val resumed = async(start = CoroutineStart.UNDISPATCHED) {
+                    runtime.downloads.awaitNextQueued {
+                        dao.getQueuedChaptersForWorker().also { queueRead.complete(Unit) }
+                    }
+                }
+                queueRead.await()
+                assertFalse(resumed.isCompleted)
+                releaseRead.complete(Unit)
+                pin.join()
+                assertTrue(deletion.await().isSuccess)
+                val resumedAttempt = assertNotNull(resumed.await())
+                assertEquals(waiting.download, resumedAttempt.chapter)
+                assertEquals(waitingClaim, resumedAttempt.claim, "Reopen rechecks the original queued ledger/token")
+                assertEquals(DownloadingState.QUEUED, download(waiting).state)
+                assertNull(dao.getDownloadByChapter(completed.saved.id))
+            } finally {
+                finishRunning.complete(Unit)
+                releaseRead.complete(Unit)
+            }
+        }
+        assertFalse(fs.exists(appFileSystem.chapterDir(completed.saved.mangaId, completed.saved.id)))
     }
 
     private companion object { const val TOKEN = "11111111-1111-4111-8111-111111111111" }
