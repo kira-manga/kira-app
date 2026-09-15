@@ -1,0 +1,99 @@
+{
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "contract": "app-two-batch-shared-android-app10-v1",
+  "source": {
+    "head": "826d7d2eecbcc8c2f834cc202d188898e41fd64f",
+    "tree": "e0e9400ace05d8e608e6f7765cd81f64cc3719e4"
+  },
+  "branch": "remediation/app-two-batch-shared-android-20260915-05",
+  "tests": [
+    {
+      "task": ":data:download:testAndroidHostTest",
+      "compiler": ":data:download:compileAndroidHostTest",
+      "platform": "androidJvm",
+      "target": "android",
+      "classes": [
+        "me.manga.kira.presentation.features.download.ui.test2.DownloadWorkerCancellationTest"
+      ],
+      "host_runtime": {
+        "stage_task": ":data:download:prepareApp75AndroidHostRuntime",
+        "relative_directory": "app75-android-host-runtime",
+        "sdk_configuration": "app75HostSdkInput",
+        "native_configuration": "app75HostNativeInput",
+        "native_property": "kira.app75.sqlite.native",
+        "resource_task": "processAndroidHostTestJavaRes"
+      }
+    },
+    {
+      "task": ":app:testDebugUnitTest",
+      "compiler": ":app:compileDebugUnitTestKotlin",
+      "platform": "androidJvm",
+      "target": "android",
+      "classes": [
+        "me.manga.kira.di.KoinGraphRegistrationTest",
+        "me.manga.kira.di.KoinGraphResolutionTest"
+      ],
+      "host_runtime": {
+        "stage_task": ":app:prepareNotificationAndroidHostRuntime",
+        "relative_directory": "notification-android-host-runtime",
+        "sdk_configuration": "notificationHostSdkInput",
+        "native_configuration": "notificationHostNativeInput",
+        "native_property": "kira.notification.sqlite.native",
+        "resource_task": "processDebugUnitTestJavaRes"
+      }
+    }
+  ],
+  "assembly_root": ":app:assembleDebug",
+  "device": {
+    "task": ":platform:connectedAndroidDeviceTest",
+    "compiler": ":platform:compileAndroidDeviceTest",
+    "runner": "androidx.test.runner.AndroidJUnitRunner",
+    "selector_property": "android.testInstrumentationRunnerArguments.class",
+    "classes": [
+      "me.manga.kira.platform.image.AvifNativeLimitsDeviceTest",
+      "me.manga.kira.platform.image.AvifNativeLimitsFailureDeviceTest",
+      "me.manga.kira.platform.image.AndroidAvifNativeAllowanceDeviceTest",
+      "me.manga.kira.platform.image.AndroidAvifPermitDeviceTest",
+      "me.manga.kira.platform.image.AndroidAvifPermitFailureDeviceTest",
+      "me.manga.kira.platform.image.AvifDecoderCoilDeviceTest",
+      "me.manga.kira.platform.image.AvifDecoderCoilFailureDeviceTest",
+      "me.manga.kira.core.cbz.CbzAvifDecodeDeviceTest",
+      "me.manga.kira.platform.media.AndroidPageMediaInspectorDeviceTest"
+    ],
+    "serial": "emulator-5580",
+    "adb_port": 5038,
+    "api": 35,
+    "image": "system-images;android-35;default;x86_64",
+    "observed_task_api": "NOT_RUN"
+  },
+  "budgets": {
+    "work_seconds": 4500,
+    "cleanup_seconds": 150,
+    "workflow_minutes": 85,
+    "host_batch_seconds": 1800,
+    "device_batch_seconds": 900,
+    "gradle_stop_seconds": 90,
+    "natural_foreground_drain_seconds": 30,
+    "avd_create_seconds": 60,
+    "private_adb_listener_seconds": 20,
+    "emulator_boot_seconds": 180,
+    "ui_seconds": 420,
+    "evidence_seconds": 120,
+    "initial_disk_gib": 16,
+    "ongoing_disk_gib": 8
+  },
+  "carry": {
+    "app10_android8": "Prior requester7/onboarding1 only; not repeated, not cold-root proof",
+    "listener10": "Prior mocked listener correction only; unchanged owned_listener body",
+    "reader_owner_android_host": "Prior ReaderNavigationBarOwnerTest source-scoped carry only; not repeated",
+    "linux41": "Separate job; not admitted in this Android lane",
+    "download_android_host31": "Run34920067507/source6b8e2af:31 passed methods in seven unchanged classes. Product and test bytes unchanged except other worker class native-mode annotation. Raw XML execution evidence only: prior physical_joins_before_cleanup=false. Successor must qualify its strict physical graph; not31 new executions."
+  },
+  "exclusions": [
+    "No source exclusions/forcing/fake artifacts",
+    "No producer rebuild or AAR repack",
+    "No Desktop/Apple/testkit/test-all/static/release/store/signing roots",
+    "No APK/UI XML/raw prefs/full emulator transcript artifact upload",
+    "No API26/27, other-ABI runtime,16KiB-device or physical/release qualification claim"
+  ]
+}
