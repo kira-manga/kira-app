@@ -1,12 +1,12 @@
-name: Targeted App28 App59 Native compilation
+name: Targeted App35 App70 App72 Native checks
 on:
   push:
-    branches: [validation/app-28-59-native-20260915-01]
+    branches: [validation/app-35-70-72-native-20260915-01]
     paths: [.github/workflows/app5-ios-host.yml]
 permissions:
   contents: read
 concurrency:
-  group: app-28-59-native-compile
+  group: app-35-70-72-native
   cancel-in-progress: false
 jobs:
   compile:
@@ -14,7 +14,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 35
     env:
-      SOURCE_SHA: c2c0136930674439b186bf429132a3a871eda73e
+      SOURCE_SHA: 1775f3d06119b1a86a438aab75b93bba9248073a
       ENGINE_SHA: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
       DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
       KIRA_SOURCE_CONFIG_BASE_URL: ''
@@ -32,12 +32,12 @@ jobs:
           ref: ${{ env.ENGINE_SHA }}
           path: engine
           persist-credentials: false
-      - name: Compile Native Room generation and composition root only
+      - name: Compile affected Apple source and run existing App70 Native16
         timeout-minutes: 30
         shell: bash
         env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/kira-2859-gradle
-          KONAN_DATA_DIR: ${{ runner.temp }}/kira-2859-konan
+          GRADLE_USER_HOME: ${{ runner.temp }}/kira-357072-gradle
+          KONAN_DATA_DIR: ${{ runner.temp }}/kira-357072-konan
         run: |
           set -euo pipefail
           export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -49,16 +49,30 @@ jobs:
           { git -C app rev-parse HEAD 'HEAD^{tree}'; git -C engine rev-parse HEAD 'HEAD^{tree}'; java -version; xcodebuild -version; } > reports/identity.txt 2>&1
           (cd app && git ls-files -z | xargs -0 shasum -a 256) > reports/app-before.sha256
           (cd engine && git ls-files -z | xargs -0 shasum -a 256) > reports/engine-before.sha256
+          xcrun simctl list devices --json > reports/simulators-before.json
           cleanup() {
             code=$?
             trap - EXIT INT TERM
             set +e
             (cd app && ./gradlew --stop --console=plain) > reports/stop.log 2>&1
             stop_code=$?
+            mkdir -p reports/xml
+            find app/platform/build/test-results/iosSimulatorArm64Test -name '*.xml' -exec cp {} reports/xml/ \; 2>/dev/null || true
+            # Shutdown only simulators newly booted during this job; never all devices.
+            python3 - <<'PYSHUTDOWN'
+          import json, subprocess
+          before = json.load(open('reports/simulators-before.json'))
+          booted = {d['udid'] for ds in before['devices'].values() for d in ds if d['state'] == 'Booted'}
+          after = json.loads(subprocess.check_output(['xcrun','simctl','list','devices','--json']))
+          owned = [d['udid'] for ds in after['devices'].values() for d in ds if d['state'] == 'Booted' and d['udid'] not in booted]
+          for device in owned: subprocess.run(['xcrun','simctl','shutdown',device],check=True)
+          json.dump({'newly_booted_shutdown':owned},open('reports/simulator-cleanup.json','w'))
+          PYSHUTDOWN
+            simulator_stop_code=$?
             printf 'command_exit=%s\nstop_exit=%s\n' "$code" "$stop_code" > reports/result.txt
             if (cd app && shasum -a 256 -c ../reports/app-before.sha256 >/dev/null); then echo app_source_unchanged=true >> reports/result.txt; else code=1; fi
             if (cd engine && shasum -a 256 -c ../reports/engine-before.sha256 >/dev/null); then echo engine_source_unchanged=true >> reports/result.txt; else code=1; fi
-            if [ "$stop_code" -ne 0 ]; then exit 1; fi
+            if [ "$stop_code" -ne 0 ] || [ "$simulator_stop_code" -ne 0 ]; then exit 1; fi
             # Only generated paths under these fresh checkouts and run-owned dependency homes.
             for repo in app engine; do
               for module in '' app composeApp desktopApp core domain data data/local data/remote data/download platform presentation ui sources/contracts sources/engine sources/config sources/legacy source-contract source-engine source-testkit; do
@@ -72,6 +86,8 @@ jobs:
           trap cleanup EXIT INT TERM
           df -h . > reports/resources.txt
           (cd app && ./gradlew :composeApp:compileKotlinIosSimulatorArm64 \
+            :data:download:compileKotlinIosArm64 :platform:iosSimulatorArm64Test \
+            --tests me.manga.kira.platform.download.BgDownloadLogTest \
             --include-build ../engine --no-daemon --no-parallel --max-workers=1 \
             --no-build-cache --no-configuration-cache --console=plain --stacktrace \
             -Pkotlin.compiler.execution.strategy=in-process -PkiraUseMavenLocal=false \
@@ -81,11 +97,18 @@ jobs:
           test -d app/composeApp/build/classes/kotlin/iosSimulatorArm64/main/klib/composeApp
           find app/composeApp/build/classes/kotlin/iosSimulatorArm64/main/klib/composeApp -type f -exec shasum -a 256 {} + > reports/compilation.sha256
           test -s reports/compilation.sha256
+          python3 - <<'PYTESTS'
+          import pathlib,xml.etree.ElementTree as E,json
+          cases = [c for f in pathlib.Path('app/platform/build/test-results/iosSimulatorArm64Test').glob('*.xml') for c in E.parse(f).getroot().iter('testcase')]
+          assert len(cases) == 16, [(c.get('classname'),c.get('name')) for c in cases]
+          assert all(c.get('classname','').endswith('BgDownloadLogTest') and not any(c.find(t) is not None for t in ['failure','error','skipped']) for c in cases)
+          json.dump({'native_pass':16,'cases':[c.attrib for c in cases],'default_apple_writer_capture':'NOT_RUN_UNQUALIFIED'},open('reports/native16.json','w'),indent=2)
+          PYTESTS
       - name: Retain compact public compilation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: app-28-59-native-compile-${{ github.run_id }}
+          name: app-35-70-72-native-${{ github.run_id }}
           path: reports/
           if-no-files-found: error
           retention-days: 3
