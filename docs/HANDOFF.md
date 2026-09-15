@@ -294,8 +294,9 @@ machines (see `CLAUDE.md`).
    point (incl. cache-first opens) before any store release.
 9. iOS reader loader changes (decode gate + cache tiers, 2026-07-04) are simulator-verified;
    recommend one device pass on fast webtoon fling on a low-RAM iPhone.
-10. iOS ATS uses a scoped `raijinscan.fr` exception rather than global arbitrary loads; confirm the
-    source still requires it and document/remove it when possible.
+10. The obsolete platform HTTP exemptions are removed from source: Android explicitly denies
+    cleartext in its base network policy, and iOS has no ATS override. These policies govern
+    participating transports, not every socket; packaged/signed-build verification remains external.
 11. Android Auto Backup/device transfer excludes all app persistence domains so DB/settings/manga
     files cannot be restored inconsistently; Kira ZIP import is the supported restore mechanism.
 12. FIAM has no campaigns; push has no server sender yet — both silently inert until owner acts.

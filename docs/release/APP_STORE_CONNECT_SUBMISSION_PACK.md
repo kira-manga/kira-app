@@ -495,7 +495,7 @@ Before selecting a build:
 | Third-party source privacy unknown | Audit source-provider collection, retention, and tracking |
 | Content rights not documented | Obtain rights/permission evidence per storefront |
 | Adult filters do not cover every source | Complete content audit before answering age rating |
-| Inactive raijinscan.co HTTP ATS exception remains | Remove unless a reviewed active source requires it |
+| Obsolete HTTP exemptions removed from Android/iOS source policies | Verify the effective policy in the next normally produced signed artifacts; source removal is not Store-build validation |
 | No processed production candidate | Produce and validate exact signed build |
 | No screenshot/accessibility device evidence | Capture and test on real supported devices |
 

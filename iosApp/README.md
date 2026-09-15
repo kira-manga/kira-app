@@ -14,8 +14,9 @@ SwiftUI wrapper. The Kotlin/Native framework (`ComposeApp.framework`) is produce
 - `iosApp/NativeReader/` — the shipping native UIKit reader (see `docs/ENGINEERING_NOTES.md` §3).
 - `iosApp/Info.plist` — Bundle metadata. `CFBundleShortVersionString`/`CFBundleVersion` mirror
   Android's `1.0.5`. Includes `NSPhotoLibraryAddUsageDescription` (required by
-  `ScreenshotProvider.saveBitmapBytesToGallery`) and `NSAppTransportSecurity.NSAllowsArbitraryLoads`
-  (manga sources mix HTTP and HTTPS).
+  `ScreenshotProvider.saveBitmapBytesToGallery`). The obsolete HTTP exception is removed;
+  no `NSAppTransportSecurity` override is present, so URL Loading System ATS defaults apply.
+  This source policy is not a universal socket firewall or signed-build validation.
 - `project.yml` — [xcodegen](https://github.com/yonaskolb/XcodeGen) project spec. Run `xcodegen`
   on macOS to (re)generate `iosApp.xcodeproj`.
 - `iosApp/Info-Debug.plist` — isolated Debug metadata: **Kira Manga Debug**, no production URL

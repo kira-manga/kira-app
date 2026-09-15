@@ -102,6 +102,7 @@ jobs:
           IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.IOS_PROVISIONING_PROFILE_SPECIFIER }}
         run: |
           set +x
+          python3 -B scripts/check_transport_policy.py
           ruby release/ios/validate_testflight_metadata.rb
 
       - name: Verify the HTTPS source-config authority is live and signed

@@ -95,6 +95,7 @@ jobs:
           ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
       - name: Validate release workflow safety contracts
         run: |
+          python3 -B scripts/check_transport_policy.py --self-test
           ruby scripts/release/tests/ios-upload-only-workflow-test.rb
           ruby scripts/release/tests/google-play-open-testing-test.rb
       # Ordinary Debug selects app/src/debug/google-services.json, never the BYO Store client.
