@@ -1,11 +1,14 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
+import androidx.work.WorkInfo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeout
+import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
+import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,16 +19,134 @@ import org.robolectric.annotation.LooperMode
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Real Android worker/service + generated Room transactions; not scheduler or device qualification. */
+/** Real Android adapter/worker + generated Room; test-scheduler queue evidence, not device qualification. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [ANDROID_TEST_SDK], application = DownloadLocaleTestApplication::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DownloadWorkerCancellationTest {
+    @Test
+    fun androidCancelAllBeforeClaimAndDeletedRetryCannotScheduleWork() =
+        cancellationFixture(CancellationSeam.PRECLAIM_CANCEL) {
+            val repository = androidRepository()
+            assertTrue(uniqueDownloadWork().isEmpty())
+            start()
+            assertEquals(
+                listOf(rows.original.download),
+                withTimeout(GATE_TIMEOUT_MILLIS) { dao.queuedSnapshot.await() },
+            )
+            assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+
+            repository.cancelAllDownloads()
+            val captured = rows.download()
+            assertEquals(
+                rows.original.download.copy(state = DownloadingState.FAILED, errorMsg = USER_CANCELLED),
+                captured,
+            )
+            assertNull(rows.artifacts.ownership.currentClaim(captured.chapterId))
+            assertTrue(uniqueDownloadWork().isEmpty())
+            assertFalse(checkNotNull(worker.job).isCompleted)
+            dao.releaseQueuedSnapshot.complete(Unit)
+            joinSuccessfulWorker()
+            assertEquals(captured, rows.download())
+
+            repository.deleteDownload(captured.chapterId)
+            assertNull(rows.realDao.getDownloadByChapter(captured.chapterId))
+            assertTrue(uniqueDownloadWork().isEmpty())
+            assertFalse(
+                repository.retryChapterDownload(captured),
+                "A deleted FAILED snapshot is not new enqueue authority",
+            )
+            assertNull(rows.realDao.getDownloadByChapter(captured.chapterId))
+            assertNull(rows.artifacts.ownership.currentClaim(captured.chapterId))
+            assertEquals(rows.original.saved, rows.saved())
+            assertTrue(uniqueDownloadWork().isEmpty(), "Rejected Retry must not schedule the Android drain worker")
+            assertEquals(0, dao.runningCalls.get())
+            assertEquals(0, dao.progressCalls.get())
+            assertEquals(0, dao.completionCalls.get())
+            assertEquals(0, transport.requests.get())
+            assertNull(producer.job)
+            assertFalse(checkNotNull(File(paths.first()).parentFile).exists())
+            receipt("actual-Android-cancelAll-before-claim; completed-delete; stale-Retry-false; unique-work-empty")
+        }
+
+    @Test
+    fun capturedAndroidDeleteCannotCancelAdmittedRetryWork() =
+        cancellationFixture(CancellationSeam.PRECLAIM_CANCEL) {
+            val selectedDelete = CompletableDeferred<ChapterDownloadEntity?>()
+            val releaseDelete = CompletableDeferred<Unit>()
+            val deleteDao =
+                object : ChapterDownloadDao by rows.realDao {
+                    override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? {
+                        val selected = rows.realDao.getDownloadByChapter(chapterId)
+                        check(selectedDelete.complete(selected)) { "Delete unexpectedly refreshed its captured row" }
+                        releaseDelete.await() // Hold only the return of the real generated Room read.
+                        return selected
+                    }
+                }
+            val repository = androidRepository(deleteDao)
+            repository.cancelAllDownloads()
+            val captured = rows.download()
+            assertEquals(DownloadingState.FAILED, captured.state)
+            assertTrue(uniqueDownloadWork().isEmpty())
+
+            coroutineScope {
+                val deletion = async(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        repository.deleteDownload(captured.chapterId)
+                        null
+                    } catch (rejected: IllegalStateException) {
+                        rejected
+                    }
+                }
+                try {
+                    assertEquals(captured, withTimeout(GATE_TIMEOUT_MILLIS) { selectedDelete.await() })
+                    assertTrue(
+                        repository.retryChapterDownload(captured),
+                        "Current FAILED Retry must reach actual WorkManager",
+                    )
+                    val retried = rows.download()
+                    assertNotEquals(captured.id, retried.id)
+                    assertEquals(
+                        captured.copy(
+                            id = retried.id,
+                            state = DownloadingState.QUEUED,
+                            progress = 0,
+                            errorMsg = null,
+                            sizeBytes = 0,
+                        ),
+                        retried,
+                    )
+                    val admitted = assertNotNull(rows.artifacts.ownership.currentClaim(captured.chapterId))
+                    assertEquals(retried.id, admitted.downloadId)
+                    val work = uniqueDownloadWork().single()
+                    assertEquals(WorkInfo.State.ENQUEUED, work.state)
+                    assertTrue(DownloadWorkerV2::class.java.name in work.tags)
+                    assertFalse(deletion.isCompleted)
+
+                    releaseDelete.complete(Unit)
+                    val rejection = assertNotNull(withTimeout(GATE_TIMEOUT_MILLIS) { deletion.await() })
+                    assertEquals("Download cleanup could not be settled", rejection.message)
+                    assertEquals(retried, rows.download())
+                    assertEquals(admitted, rows.artifacts.ownership.currentClaim(captured.chapterId))
+                    assertTrue(rows.db.chapterArtifactDao().canPublish(admitted))
+                    assertEquals(listOf(work), uniqueDownloadWork(), "Stale Delete must neither cancel nor append work")
+                    assertEquals(rows.original.saved, rows.saved())
+                    assertEquals(0, transport.requests.get())
+                    assertNull(producer.job)
+                    assertFalse(checkNotNull(File(paths.first()).parentFile).exists())
+                    receipt("actual-Android-Retry-admitted-new-ledger-token-and-work; captured-Delete-rejected; work-unchanged")
+                } finally {
+                    releaseDelete.complete(Unit)
+                }
+            }
+        }
+
     @Test
     fun userCancelBeforeClaimRejectsCapturedQueuedRow() =
         cancellationFixture(CancellationSeam.PRECLAIM_CANCEL) {

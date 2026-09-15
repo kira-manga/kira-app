@@ -6,7 +6,9 @@ import androidx.work.ForegroundInfo
 import androidx.work.ForegroundUpdater
 import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
+import androidx.work.impl.WorkManagerImpl
 import androidx.work.testing.TestListenableWorkerBuilder
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
@@ -16,7 +18,9 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
+import me.manga.kira.presentation.features.download.domain.clean.DownloadRepositoryImpl
 import org.koin.core.KoinApplication
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
@@ -100,6 +104,27 @@ internal class DownloadWorkerCancellationFixture(
     private var instance: DownloadWorkerV2? = null
     private var future: ListenableFuture<ListenableWorker.Result>? = null
     private val foregroundCalls = AtomicInteger()
+    private var previousWorkManager: WorkManagerImpl? = null
+    private val workManagerHolder = lazy {
+        previousWorkManager = WorkManagerImpl.getInstance()
+        // Installed Work2.11.2 helper uses synchronous task/worker executors and an in-memory DB.
+        // Do not satisfy CONNECTED: adapter requests must be observable without starting transfers.
+        WorkManagerTestInitHelper.initializeTestWorkManager(storage.context)
+        WorkManagerImpl.getInstance(storage.context)
+    }
+
+    fun androidRepository(downloads: ChapterDownloadDao = dao): DownloadRepositoryImpl =
+        DownloadRepositoryImpl(
+            workManagerHolder.value,
+            downloads,
+            checkNotNull(koin).koin.get<ChapterDownloadService>(),
+            rows.artifacts,
+        )
+
+    fun uniqueDownloadWork(): List<WorkInfo> =
+        // Completed query after the adapter's enqueue/cancel on the same synchronous serial executor.
+        workManagerHolder.value.getWorkInfosForUniqueWork("mangaDownloadv2")
+            .get(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 
     suspend fun prepare() {
         rows.seed()
@@ -232,6 +257,7 @@ internal class DownloadWorkerCancellationFixture(
 
     internal fun resourceClosers(): List<() -> Unit> =
         listOf(
+            { closeOwnedWorkManager() },
             { if (transportHolder.isInitialized()) transport.close() },
             { rows.close() },
             { sender.close() },
@@ -243,6 +269,21 @@ internal class DownloadWorkerCancellationFixture(
             },
             { storage.restoreProperties() },
         )
+
+    private fun closeOwnedWorkManager() {
+        if (!workManagerHolder.isInitialized()) return
+        val owned = workManagerHolder.value
+        check(WorkManagerImpl.getInstance() === owned) { "WorkManager ownership changed" }
+        try {
+            owned.cancelAllWork().result.get(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } finally {
+            try {
+                WorkManagerTestInitHelper.closeWorkDatabase()
+            } finally {
+                WorkManagerImpl.setDelegate(previousWorkManager)
+            }
+        }
+    }
 }
 
 private fun closeFixtureResources(
