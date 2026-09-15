@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.testing
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import me.manga.kira.core.result.AppResult
@@ -77,22 +78,31 @@ private class FakeSavedDetailsRepository : SavedMangaDetailsRepository {
 
 /**
  * Counting [ReadingSessionRepository] (#7) — records begin/end calls so a test can assert the
- * reader brackets exactly one begin per resume and one end per pause. A single shared instance is
+ * reader coalesces duplicate lifecycle callbacks into begin/end edges. A single shared instance is
  * wired into BOTH the start and end use cases in [readerTestEnv] (mirrors the production single
  * binding), so the counts reflect the same session.
  */
 class RecordingReadingSessionRepository : ReadingSessionRepository {
+    val calls = mutableListOf<String>()
+    /** Optional persistence barrier; record the end before waiting, matching capture-before-write order. */
+    var endCompletion: CompletableDeferred<Unit>? = null
     var beginCount = 0
         private set
     var endCount = 0
         private set
+    var completedEndCount = 0
+        private set
 
     override fun begin() {
         beginCount++
+        calls += "begin"
     }
 
     override suspend fun end() {
         endCount++
+        calls += "end"
+        endCompletion?.await()
+        completedEndCount++
     }
 }
 

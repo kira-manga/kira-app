@@ -107,12 +107,12 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *
  * Session-timer pair (Phase 6.4.x.statistics): [startReadingSession] / [endReadingSession]
  * are routed by the two screen-lifecycle intents [ReaderIntent.OnScreenResumed] /
- * [ReaderIntent.OnScreenPaused]. Both use cases are direct pass-throughs — neither mutates
+ * [ReaderIntent.OnScreenPaused]. The VM coalesces duplicate lifecycle edges — neither mutates
  * [ReaderState] (the session counter is a write-only sink for the on-disk Statistics totals;
  * the Reader UI has no reason to render the in-flight timer). The legacy reader bracketed
  * the same calls in its `onScreenResume` / `onScreenPause` host hooks; the rework moves the
- * brackets onto the MVI surface so the `:ui` host can stay stateless (DisposableEffect(Unit)
- * dispatches the two intents from `ReaderScreenContent`).
+ * brackets onto the MVI surface. Compose observes its lifecycle owner; native iOS combines
+ * confirmed Reader visibility with its scene's activation and ends on attachment disposal.
  *
  * Resume-position pair (Phase 7.x.reader.resumeposition): [loadPagePosition] / [savePagePosition]
  * persist the user's last-viewed page index per chapter so the Reader can resume there on
@@ -257,6 +257,9 @@ class ReaderViewModel(
 ) : MviViewModel<ReaderState, ReaderIntent, ReaderEffect>(
     initialState = ReaderState(),
     ) {
+    // Main-confined reducer state, not UI state. Duplicate resumes must not reset the raw timer.
+    private var readingSessionActive = false
+
     /**
      * Tracked page-fetch coroutine. Cancelled at the start of every new [runFetch] so a prior
      * streaming fetch (Prochan) cannot land emissions on top of a fresh chapter's state.
@@ -337,11 +340,26 @@ class ReaderViewModel(
             ReaderIntent.OnNextChapter -> onNextChapter()
             ReaderIntent.OnPrevChapter -> onPrevChapter()
             ReaderIntent.OnAppendNextChapter -> onAppendNextChapter()
-            ReaderIntent.OnScreenResumed -> startReadingSession()
-            ReaderIntent.OnScreenPaused -> endReadingSession()
+            ReaderIntent.OnScreenResumed -> onScreenResumed()
+            ReaderIntent.OnScreenPaused -> onScreenPaused()
             ReaderIntent.OnToggleBookmark -> onToggleBookmark()
             ReaderIntent.OnShareCurrentPage -> onShareCurrentPage()
         }
+    }
+
+    private fun onScreenResumed() {
+        if (readingSessionActive) return
+        startReadingSession()
+        readingSessionActive = true
+    }
+
+    private suspend fun onScreenPaused() {
+        if (!readingSessionActive) return
+        // End consumes the raw timestamp before suspending for persistence. Clear our flag before
+        // that suspension too: a new resume may start while the prior write is still completing.
+        // Do not reset the flag after await or cancel the prior write when a new span begins.
+        readingSessionActive = false
+        endReadingSession()
     }
 
     private suspend fun onShareCurrentPage() {

@@ -15,13 +15,16 @@ protocol ReaderChildController: UIViewController {
 
 /// Root native reader VC (the object Swift's factory returns to Kotlin's `UIKitViewController`).
 ///
-/// Owns the shared `ReaderNativeSession`: observes `IosReaderSnapshot`, renders the right child
-/// (continuous vs paged), overlays UIKit chrome **bars** (top + bottom only — never the middle), and
+/// Uses a per-VC attachment to the destination-owned `ReaderNativeSession`: observes snapshots,
+/// renders the right child (continuous vs paged), overlays UIKit chrome **bars** (never the middle), and
 /// forwards user actions back as intents. All list/append/resume/history/progress logic stays in the
 /// shared `ReaderViewModel`; this VC is a renderer. The scroll view sits at z-index 0 and fills the
 /// screen, so it always owns the pan; chrome bars float above it at the edges.
 final class ReaderHostViewController: UIViewController {
     private let session: ReaderNativeSession
+    private var attachment: ReaderNativeAttachment?
+    private weak var observedScene: UIWindowScene?
+    private var sceneObservers: [NSObjectProtocol] = []
     private let chrome = ReaderChromeBars()
     private let loadingSpinner = UIActivityIndicatorView(style: .large)
     private let errorLabel = UILabel()
@@ -62,24 +65,73 @@ final class ReaderHostViewController: UIViewController {
         installLoadingAndError()
         wireChrome()
 
-        session.start(
+        attachment = session.start(
             onSnapshot: { [weak self] snapshot in self?.apply(snapshot) },
             onShowNotInLibrary: { [weak self] in self?.toast(ReaderStrings.addToLibraryFirst) },
             onShowError: { [weak self] in self?.toast(ReaderStrings.couldntLoadChapter) }
         )
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        session.onScreenResumed()
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        observeReaderScene()
+        attachment?.onVisibilityChanged(visible: true)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        session.onScreenPaused()
+        attachment?.onVisibilityChanged(visible: false)
+        removeSceneObservers()
     }
 
-    deinit { session.close() }
+    deinit {
+        sceneObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        // The remembered session may already serve a replacement VC. Detach only this VC's lease.
+        // Keep the Kotlin gate main-confined even if the last interop reference is released elsewhere.
+        let oldAttachment = attachment
+        if Thread.isMainThread {
+            oldAttachment?.detach()
+        } else {
+            DispatchQueue.main.async { oldAttachment?.detach() }
+        }
+    }
+
+    private func observeReaderScene() {
+        let scene = viewIfLoaded?.window?.windowScene
+        // A duplicate didAppear must not overwrite an explicit willDeactivate edge with a stale
+        // activationState sample. Existing observation already owns this scene's subsequent edges.
+        guard observedScene !== scene else { return }
+        removeSceneObservers()
+        observedScene = scene
+        if let scene = scene {
+            let events: [(Notification.Name, Bool)] = [
+                (UIScene.didActivateNotification, true),
+                (UIScene.willDeactivateNotification, false),
+                (UIScene.didEnterBackgroundNotification, false),
+                (UIScene.didDisconnectNotification, false),
+            ]
+            sceneObservers = events.map { name, active in
+                NotificationCenter.default.addObserver(forName: name, object: scene, queue: .main) {
+                    [weak self, weak scene] _ in
+                    guard let self = self, let scene = scene, self.observedScene === scene else { return }
+                    // willDeactivate can arrive before activationState changes. Trust the event,
+                    // and never begin for a scene this Reader is no longer attached to.
+                    let isActive = active && self.viewIfLoaded?.window?.windowScene === scene
+                    self.attachment?.onSceneActiveChanged(active: isActive)
+                }
+            }
+        }
+        // Register before sampling: an initially inactive mount waits for didActivate. There is no
+        // application-global fallback or guessed connected scene when the view has no window.
+        attachment?.onSceneActiveChanged(active: scene?.activationState == .foregroundActive)
+    }
+
+    private func removeSceneObservers() {
+        sceneObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        sceneObservers.removeAll()
+        observedScene = nil
+        attachment?.onSceneActiveChanged(active: false)
+    }
 
     /// Full-screen loading + error overlay, shown while the chapter is still resolving its image URLs
     /// (no pages yet) — so the reader never looks like an empty/un-padded black screen (#4).

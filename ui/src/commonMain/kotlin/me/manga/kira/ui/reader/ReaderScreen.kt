@@ -458,8 +458,8 @@ internal fun ReaderScreenContent(
     // — the session is one continuous foreground span regardless of which chapter is on screen
     // (same posture as legacy ReaderActivity.onResume/onPause). The final onDispose end also bounds
     // the total to the screen's lifetime (covers screen-leave / config change, the case the old
-    // onDispose handled). begin/end are idempotent (begin overwrites start; end no-ops when start==0),
-    // so repeated or unpaired events can never corrupt the read_minutes counter.
+    // onDispose handled). The VM coalesces duplicate resume/pause intents, preserving the first
+    // START timestamp when RESUME follows it; the raw repository's resetting begin is not repeated.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

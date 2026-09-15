@@ -47,9 +47,9 @@ import platform.UIKit.UIViewController
 /**
  * iOS: choose the native Swift reader (flag ON + Swift factory registered) or the Compose reader.
  *
- * Default falls through to [ReaderScreen] so the live behavior is unchanged until the native reader is
- * explicitly enabled and verified. The native path reuses the SAME route-scoped [ReaderViewModel] (so
- * all shared state/logic and lifecycle are identical) and embeds the Swift VC via `UIKitViewController`.
+ * The native path reuses the route-scoped [ReaderViewModel] and embeds Swift via `UIKitViewController`.
+ * Its attachment combines confirmed visibility with the owning scene's activation; the Compose
+ * fallback observes its lifecycle owner. Both dispatch the same idempotent VM session intents.
  */
 @Composable
 @Suppress("FunctionNaming", "LongParameterList", "ktlint:standard:function-naming")
@@ -118,10 +118,13 @@ private fun NativeReaderHost(
     LaunchedEffect(session, manga, chapter) {
         session.onEnter(manga, chapter)
     }
-    DisposableEffect(session) {
-        onDispose { session.close() }
-    }
     if (webViewTransition.readerMounted) {
+        DisposableEffect(session) {
+            // Composition owns pause/close, including the temporary native unmount before WebView
+            // navigation. Do not wait for a delayed VC deinit. The remembered session is restartable;
+            // an old VC can only detach its own already-revoked attachment after a replacement starts.
+            onDispose { session.close() }
+        }
         UIKitViewController(
             factory = { ReaderNativeBridge.create(session) ?: UIViewController() },
             modifier = Modifier.fillMaxSize(),
