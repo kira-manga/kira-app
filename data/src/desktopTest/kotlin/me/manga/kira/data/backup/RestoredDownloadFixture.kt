@@ -6,16 +6,21 @@ import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.data.download.artifacts.ChapterArtifactRecovery
+import me.manga.kira.data.download.artifacts.ChapterArtifactReference
 import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterRestoreOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
+import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import okio.Buffer
+import okio.ByteString
 import okio.FileSystem
 import okio.ForwardingFileSystem
 import okio.ForwardingSink
@@ -75,8 +80,59 @@ internal class RestoredDownloadFixture {
         fs.write(canonical) { writeUtf8("incumbent-canonical") }
     }
 
-    suspend fun publish() = RestoredDownloadPublisher(artifacts, db.chapterArtifactDao(), commits, appFs, recovery)
-        .publish(source, saved, "test", "Test")
+    suspend fun publish(expected: SavedChapterEntity = saved) =
+        RestoredDownloadPublisher(artifacts, db.chapterArtifactDao(), commits, appFs, recovery)
+            .publish(source, expected, "test", "Test")
+
+    /** Reconstruct a persisted copy cut with real admission and exclusive-path custody, not a crash hook. */
+    suspend fun stageRestorePart(content: ByteArray): Pair<ChapterArtifactClaim, Path> {
+        val claim = checkNotNull(artifacts.beginRestore(saved, source.sizeBytes))
+        val target = ChapterArtifactReference.resolve(appFs, claim.owner, checkNotNull(claim.relativePath))
+        val directory = checkNotNull(target.parent)
+        fs.createDirectories(checkNotNull(directory.parent))
+        fs.createDirectory(directory, mustCreate = true)
+        check(db.chapterArtifactDao().confirmPendingPathOwnership(saved.id, claim.token) == 1)
+        fs.write(partPath(target), mustCreate = true) { write(content) }
+        return claim to target
+    }
+
+    fun partPath(target: Path): Path = checkNotNull(target.parent) / "${target.name}.part"
+
+    /** Same-manga controls catch overbroad cleanup without bypassing restore's unreadable-only admission. */
+    suspend fun seedRecoveryControls(): List<RestoreChapterSnapshot> {
+        val readable = seedSibling("2")
+        check(publish(readable) == ChapterRestoreOutcome.COMMITTED)
+        val restored = checkNotNull(db.chapterDao().getChapterByIdSuspend(readable.id))
+        check(restored.isDownloaded)
+        val queued = seedSibling("3")
+        val claim = checkNotNull(artifacts.enqueue(
+            queued, row.copy(number = queued.number, chapterId = queued.id, url = queued.url),
+        ))
+        val page = appFs.chapterDir(queued.mangaId, queued.id) / "image_0.png"
+        check(artifacts.files(claim) {
+            fs.createDirectories(checkNotNull(page.parent))
+            fs.write(page, mustCreate = true) { writeUtf8("unrelated-queued-page") }
+            true
+        } == true)
+        return listOf(
+            snapshot(restored.id, listOf(restored.localImagePaths.single().toPath())),
+            snapshot(queued.id, listOf(page)),
+        )
+    }
+
+    private suspend fun seedSibling(number: String): SavedChapterEntity {
+        val chapter = saved.copy(
+            id = 0, name = "Chapter $number", number = number, url = "https://example.test/chapter/$number",
+        )
+        return chapter.copy(id = db.backupDao().insertChapterRow(chapter))
+    }
+
+    suspend fun snapshot(chapterId: Long, paths: Collection<Path> = emptyList()): RestoreChapterSnapshot =
+        RestoreChapterSnapshot(
+            checkNotNull(db.chapterDao().getChapterByIdSuspend(chapterId)),
+            db.chapterArtifactDao().download(chapterId), db.chapterArtifactDao().get(chapterId),
+            paths.associateWith { path -> fs.read(path) { readByteString() } },
+        )
 
     fun decorateCommits(decorate: (ChapterArtifactCommitDao) -> ChapterArtifactCommitDao) {
         commits = decorate(db.chapterArtifactCommitDao())
@@ -84,6 +140,7 @@ internal class RestoredDownloadFixture {
         artifacts = ChapterArtifacts(db.chapterArtifactDao(), recovery)
     }
 
+    /** Graceful database close/reopen plus new ownership gates; not physical process termination. */
     fun reopen() {
         db.close()
         db = openDatabase()
@@ -103,6 +160,13 @@ internal class RestoredDownloadFixture {
         val CONTENT = "privately-validated-archive-content".encodeToByteArray()
     }
 }
+
+internal data class RestoreChapterSnapshot(
+    val saved: SavedChapterEntity,
+    val download: ChapterDownloadEntity?,
+    val artifact: ChapterArtifactEntity?,
+    val files: Map<Path, ByteString>,
+)
 
 internal class RestoreFaultFileSystem : ForwardingFileSystem(FileSystem.SYSTEM) {
     var duringCopy: (() -> Unit)? = null
