@@ -615,6 +615,11 @@ class AzoraHomeSearchRoutingTest {
             enabled: Boolean,
         ): Int = 0
 
+        override suspend fun setEnabledByNames(
+            names: List<String>,
+            enabled: Boolean,
+        ): Int = 0
+
         override suspend fun getBaseUrlFor(name: String): String? = null
 
         override fun getSiteStateByName(name: String): Flow<SourceState?> = flowOf(null)
@@ -676,6 +681,11 @@ class AzoraHomeSearchRoutingTest {
 
         override suspend fun setEnabledByName(
             name: String,
+            enabled: Boolean,
+        ): Int = 0
+
+        override suspend fun setEnabledByNames(
+            names: List<String>,
             enabled: Boolean,
         ): Int = 0
 

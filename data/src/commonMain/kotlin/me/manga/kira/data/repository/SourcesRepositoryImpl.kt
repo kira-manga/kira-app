@@ -3,39 +3,38 @@ package me.manga.kira.data.repository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import me.manga.kira.data.local.dao.SourcesDao
+import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.data.mapper.toDomain
 import me.manga.kira.domain.model.sources.Source
 import me.manga.kira.domain.repository.SourcesRepository
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.sources.contracts.SourceRegistry
+import me.manga.kira.sources.contracts.model.SourceCatalogSnapshot
 import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository as LegacySourcesRepository
 
 /**
- * [SourcesRepository] strangler-fig delegate over the legacy `:shared` [LegacySourcesRepository].
+ * [SourcesRepository] projection and serialized enablement over the shared Room source settings.
  *
  * Phase 7.x.sources rework. Translates the legacy Room entity (`SourcesEntity`) into the rework
- * `:domain` model ([Source]) via the mapper file `SourcesMappers.kt`, then forwards the call to
- * the underlying legacy facade. The legacy [LegacySourcesRepository] remains the cell of truth
- * for the Room queries + transaction boundaries + the routing surface
+ * `:domain` model ([Source]) via the mapper file `SourcesMappers.kt`. Enablement writes use
+ * [SourcesDao] directly so persistence errors propagate. [LegacySourcesRepository] still owns
+ * the read flow and routing surface
  * (`findRepoByHost` / `activeRepoFlow` / `getEnabledRepos`) — same posture as
  * [HistoryRepositoryImpl] / [UpdatesRepositoryImpl] / [ReadingStatisticsRepositoryImpl] /
  * [ReadingSessionRepositoryImpl]. (`repoTaps` / `getUrl` removed in Phase 9.x.repo.component
  * prune.cumulative — Task #415 — orphan-retired after the §243 inter-repository scan.)
  *
- * **SRP (contract §6)**: owns ONE rule — "translate between rework [Source] and the legacy
- * `SourcesEntity` Room entity, then forward the call to the legacy [LegacySourcesRepository]".
- * Query semantics (the DAO's `SELECT * FROM sources` for `allSources`,
- * `UPDATE sources SET isEnabled = :enabled WHERE name = :name` for `setEnabledByName`) live in
- * the legacy DAO. The seed (`saveSources`) and the routing surface (`findRepoByHost`,
+ * **SRP (contract §6)**: owns the source-settings projection and enablement commands. SQL and
+ * atomic persistence live in [SourcesDao]. The seed (`saveSources`) and routing (`findRepoByHost`,
  * `getEnabledRepos`, `updateActiveByApi`) stay on the legacy facade and the
  * rework deliberately does not duplicate them — see [SourcesRepository] KDoc for the scoped-
  * surface rationale.
  *
- * **DIP (contract §6)**: depends on the legacy [LegacySourcesRepository] type because it's the
- * only vendor for the `sources` table reads/writes today. The dependency is structurally at the
- * strangler-fig boundary — the rework `:data` layer is allowed to reach into `:shared` for
- * cross-cutting persistence that hasn't been ported yet. The [SourcesRepository] interface in
- * `:domain` is unaffected either way.
+ * **DIP (contract §6)**: the data layer depends on the existing legacy read facade and the
+ * `:data:local` DAO. The [SourcesRepository] interface in `:domain` exposes neither Room nor entities.
  *
  * **Import-alias note** — both the rework interface and the legacy class share the simple name
  * `SourcesRepository`. The legacy class is imported with the `as LegacySourcesRepository` alias
@@ -48,51 +47,34 @@ import me.manga.kira.presentation.features.repo_settings.domain.SourcesRepositor
  * screen needs (the screen renders disabled sources too — they're the ones with the `Switch`
  * in the off position). `activeRepoFlow` would only emit the single currently-active repo,
  * useless for a list screen. The rework deliberately depends on the read-only `allSources`
- * property; the write-side toggle (`enableDisAbleSource`) flows through Room and re-emits on
+ * property; the DAO enablement writes flow through Room and re-emit on
  * `allSources` so the screen reflects the new state without extra plumbing.
  *
- * **Why `setSourceEnabled` forwards verbatim (no entity round-trip)** — the legacy
- * `enableDisAbleSource(name: String, enabled: Boolean)` takes the API string and the target
- * value directly; the rework's [Source.api] equals the entity's `name` column (the legacy
- * `saveSources` seeds the row with `name = repo.API`). No mapping needed, no entity to
- * reconstruct.
+ * **Single-source writes** retain exact-name semantics without a new eligibility filter. Only
+ * `isEnabled` changes; no entity round-trip or legacy exception-swallowing facade is involved.
  *
- * **Why `setLanguageEnabled` snapshots via `.first()` and fan-outs through `setSourceEnabled`**
- * — the legacy facade exposes no language-bulk method (the legacy onboarding's
- * `RepoSettingsViewModel.toggleLanguage` does this same fan-out on the VM side, iterating over
- * the per-language source set). The rework lifts that fan-out to the `:data` layer so the VM
- * stays free of repository-shape leakage. The snapshot is a one-shot `.first()` on the
- * `allSources` flow — cheap (Room caches the query) and correct (the upstream flow re-emits
- * after each per-source write so the screen converges on the bulk result). `language` matching
- * is a case-sensitive `==` against the entity's `language` column, matching the legacy's
- * convention (the legacy filter is also `==` on the same column).
+ * **Bulk writes** snapshot accepted catalog metadata before reading persisted rows, select exact
+ * case-sensitive descriptor-language matches, then update every selected name in one SQL statement. Primary
+ * language selection falls back only when there are no eligible primary rows. Operationally
+ * non-working active sources remain eligible; executable-client availability is not a filter.
  *
- * **Why `setLanguageEnabledWithFallback` mirrors `setLanguageEnabled` plus a fallback pass**
- * — Phase 7.x.sources.onboardingseed. The legacy onboarding step 3
- * (`composeApp/.../onboarding/sources/SourcesScreen.kt:124-127`) fires a
- * `LaunchedEffect(userLanguageCode) { repoSettingsViewModel.setLanguageEnabledDefault
- * ("($tag)", true) }` whose body lives at the legacy `RepoSettingsViewModel.
- * setLanguageEnabledDefault` (snapshot, filter primary, fallback-filter on `"(EN)"` when
- * primary is empty, fan out). The rework lifts the mechanism here so the rework SourcesScreen
- * + a future `Phase 7.x.sources.swap` route can reproduce the auto-seed behavior verbatim.
- * The fallback is a method parameter (not a hard-coded EN constant) so the use case owns the
- * policy and the data layer stays neutral.
+ * **Admission and cancellation**: all three enablement methods share one mutex, acquired before
+ * snapshotting and held through persistence. The last successful admitted conflicting command
+ * wins. Cancellation/errors propagate and release admission; a cancellation racing a completed
+ * statement can leave the whole change, never a committed prefix of one bulk statement. Catalog
+ * publication is a separate boundary; commands do not include sources arriving after the snapshot.
  *
  * **Lifecycle**: `single` in Koin (per [SourcesRepository] KDoc). The upstream legacy
- * [LegacySourcesRepository] is `single` (declared by `SharedModule`); a `factory` here would
- * resubscribe `allSources` on each resolution — wasteful for a read-mostly surface shared
- * across the app's lifetime.
+ * [LegacySourcesRepository] is also `single`; repository admission must be shared across callers,
+ * including explicit-language and default-language commands from different ViewModels.
  *
- * **Threading**: no explicit dispatcher pinning. The legacy `SourcesDao` Room methods emit /
- * suspend on the IO context (per the legacy facade's `.flowOn(IODispatcher)` on `allSources`);
- * the rework's `map`/`first`/`toDomain` operators are pure transforms on whatever dispatcher
- * the upstream emits on. `setLanguageEnabled`'s per-source fan-out runs on the caller's
- * coroutine (the VM's `viewModelScope.launch`); Room serialises the writes internally.
+ * **Threading**: Room owns query dispatch. The repository mutex defines enablement admission;
+ * no ordering guarantee is inferred from Room's writer pool or from ViewModel scheduling.
  *
  * **Load-bearing fixes preserved**: the legacy `findRepoByHost` path used by the Coil image
  * interceptor (MEMORY: `project_yami_okhttp_fetcher`) and the `activeRepoFlow` used by Home /
  * Search / Manga details — ALL UNTOUCHED by this rework. The `:data` impl reaches into the
- * legacy facade for ONLY `allSources` + `enableDisAbleSource`; the legacy facade keeps serving
+ * legacy facade for `allSources`; the legacy facade keeps serving
  * everything else verbatim.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster23.staleKdocSweep.cascade,
@@ -153,7 +135,11 @@ class SourcesRepositoryImpl(
     // each session. Since the MangaSource decoupling (2026-07) that read goes through the registry's
     // descriptor projection — the same validated document the catalog sync enforces — so this class
     // no longer takes the SourceUpdateManager directly.)
+    // Direct enablement persistence shares the same singleton DAO used by the legacy read facade.
+    private val sourcesDao: SourcesDao,
 ) : SourcesRepository {
+
+    private val enablementMutex = Mutex()
 
     override fun observeHasNewSources(): Flow<Boolean> = dataStore.newSourcesFlow
 
@@ -163,22 +149,20 @@ class SourcesRepositoryImpl(
 
     override fun observeSources(): Flow<List<Source>> =
         combine(legacy.allSources, sourceRegistry.catalog) { entities, catalog ->
-            val rows = entities.associateBy { it.name }
-            // The atomic catalog store persists this order, not SourceConfig.priority. Keep every
-            // projected field on one accepted snapshot even when the Room emission arrives first.
-            catalog.descriptors.mapIndexedNotNull { order, descriptor ->
-                rows[descriptor.api]?.toDomain(descriptor, order)
-            }
+            projectSources(entities, catalog)
         }
 
     override suspend fun setSourceEnabled(api: String, enabled: Boolean) {
-        legacy.enableDisAbleSource(api, enabled)
+        enablementMutex.withLock {
+            sourcesDao.setEnabledByName(api, enabled)
+        }
     }
 
     override suspend fun setLanguageEnabled(language: String, enabled: Boolean) {
-        observeSources().first()
-            .filter { it.language == language }
-            .forEach { legacy.enableDisAbleSource(it.api, enabled) }
+        enablementMutex.withLock {
+            val targets = eligibleSourcesSnapshot().filter { it.language == language }
+            setSourcesEnabled(targets, enabled)
+        }
     }
 
     override suspend fun setLanguageEnabledWithFallback(
@@ -186,11 +170,39 @@ class SourcesRepositoryImpl(
         fallback: String,
         enabled: Boolean,
     ) {
-        val snapshot = observeSources().first()
-        val primaryHits = snapshot.filter { it.language == primary }
-        val targets = if (primaryHits.isNotEmpty()) primaryHits else {
-            snapshot.filter { it.language == fallback }
+        enablementMutex.withLock {
+            val snapshot = eligibleSourcesSnapshot()
+            val targets =
+                snapshot.filter { it.language == primary }.ifEmpty {
+                    snapshot.filter { it.language == fallback }
+                }
+            setSourcesEnabled(targets, enabled)
         }
-        targets.forEach { legacy.enableDisAbleSource(it.api, enabled) }
+    }
+
+    private suspend fun eligibleSourcesSnapshot(): List<Source> {
+        val catalog = sourceRegistry.catalog.first()
+        return projectSources(sourcesDao.getAllSourcesOnce(), catalog)
+    }
+
+    private fun projectSources(
+        entities: List<SourcesEntity>,
+        catalog: SourceCatalogSnapshot,
+    ): List<Source> {
+        val rows = entities.associateBy { it.name }
+        // Share the accepted metadata/order projection with the picker; stale Room language must
+        // not change a command's targets, even if catalog publication races the persisted-row read.
+        return catalog.descriptors.mapIndexedNotNull { order, descriptor ->
+            rows[descriptor.api]?.toDomain(descriptor, order)
+        }
+    }
+
+    private suspend fun setSourcesEnabled(
+        targets: List<Source>,
+        enabled: Boolean,
+    ) {
+        if (targets.isNotEmpty()) {
+            sourcesDao.setEnabledByNames(targets.map { it.api }, enabled)
+        }
     }
 }

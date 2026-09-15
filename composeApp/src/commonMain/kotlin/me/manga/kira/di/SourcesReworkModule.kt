@@ -1,7 +1,7 @@
 package me.manga.kira.di
 
-import me.manga.kira.data.repository.SourceCatalogSyncRepositoryImpl
 import me.manga.kira.data.repository.SourceAccessRepositoryImpl
+import me.manga.kira.data.repository.SourceCatalogSyncRepositoryImpl
 import me.manga.kira.data.repository.SourceUrlMigrator
 import me.manga.kira.data.repository.SourcesRepositoryImpl
 import me.manga.kira.domain.repository.SourceAccessRepository
@@ -9,8 +9,8 @@ import me.manga.kira.domain.repository.SourceCatalogSyncRepository
 import me.manga.kira.domain.repository.SourcesRepository
 import me.manga.kira.domain.usecase.sourceaccess.ActivateSourceAccessUseCase
 import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
-import me.manga.kira.domain.usecase.sources.EnableDefaultLanguageSourcesUseCase
 import me.manga.kira.domain.usecase.sources.ClearNewSourcesBadgeUseCase
+import me.manga.kira.domain.usecase.sources.EnableDefaultLanguageSourcesUseCase
 import me.manga.kira.domain.usecase.sources.ObserveNewSourcesBadgeUseCase
 import me.manga.kira.domain.usecase.sources.ObserveSourcesUseCase
 import me.manga.kira.domain.usecase.sources.SetLanguageEnabledUseCase
@@ -36,7 +36,7 @@ import org.koin.dsl.module
  *    `getEnabledRepos`, etc.) stays bound by `SharedModule`; both graphs coexist until
  *    Phase 9.x's user-facing route swap. The legacy onboarding `Screen.Sources` route + the
  *    rework `Screen.SourcesRework` route consume the SAME underlying Room `sources` table
- *    through the legacy facade — toggling a source in either route flips the same row, so the
+ *    through the shared DAO — toggling a source in either route flips the same row, so the
  *    two screens stay in sync. (`repoTaps` / `getUrl` removed in
  *    Phase 9.x.repo.componentprune.cumulative — Task #415.)
  *
@@ -47,6 +47,8 @@ import org.koin.dsl.module
  *    (and is consumed by every legacy screen that needs source identity — Home / Search /
  *    MangaDetails / Reader / the Coil interceptor for per-source header injection). Strangler-
  *    fig posture — see [SourcesRepositoryImpl] KDoc for the boundary rationale.
+ *  - `SourcesDao` is the existing singleton from `databaseModule`; enablement writes use it
+ *    directly, while the legacy facade continues to provide the source read flow and routing.
  *
  * SRP (contract §6): one module = one feature slice.
  *
@@ -54,11 +56,9 @@ import org.koin.dsl.module
  * impl at the composition root. Presentation and UI see only the use cases / interface.
  *
  * Lifecycle choices:
- *  - [SourcesRepository] → `single`: impl holds no per-call state; the underlying legacy
- *    `SourcesRepository` is already a singleton (it owns the `SourcesDao` and re-emits the
- *    `allSources` flow on every write). Re-creating the impl per resolution would mean
- *    resubscribing on each consumer — wasteful for a read-mostly surface shared across the
- *    app's lifetime.
+ *  - [SourcesRepository] → `single`: one admission mutex serializes all single-source,
+ *    explicit-language and default-language enablement commands across callers. Per-resolution
+ *    instances would split that coordination boundary. The legacy read facade is also singleton.
  *  - Three use cases ([ObserveSourcesUseCase], [SetSourceEnabledUseCase],
  *    [SetLanguageEnabledUseCase]) → `factory`: stateless thin pass-throughs, cheap; matches
  *    the established "use case is a factory" pattern.
@@ -125,7 +125,7 @@ val sourcesReworkModule: Module = module {
     // filters the legacy `sources` rows by SourceRegistry.isConfigBacked (bound in sourcesGenericModule,
     // resolved cross-module by Koin's single graph).
     single<SourcesRepository> {
-        SourcesRepositoryImpl(legacy = get(), sourceRegistry = get(), dataStore = get())
+        SourcesRepositoryImpl(legacy = get(), sourceRegistry = get(), dataStore = get(), sourcesDao = get())
     }
     factory { ObserveSourcesUseCase(get()) }
     factory { SetSourceEnabledUseCase(get(), get()) }
@@ -156,7 +156,7 @@ val sourcesReworkModule: Module = module {
     factory { SyncSourceCatalogUseCase(get()) }
     // Added in Phase 7.x.sources.onboardingseed — backs SourcesViewModel's 5th ctor dep
     // and SourcesIntent.OnSeedDefaultLanguage. The use case owns the tag-format + EN-
-    // fallback policy; the repository owns the snapshot + fan-out mechanism.
+    // fallback policy; the repository owns admission, snapshot selection and atomic persistence.
     factory { EnableDefaultLanguageSourcesUseCase(get(), get()) }
     // [SubmitFeedbackUseCase] is bound `factory` by the settings rework module
     // (see [settingsReworkModule] / `feedbackReworkModule`); we resolve via `get()` —

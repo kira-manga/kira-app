@@ -8,15 +8,14 @@ import me.manga.kira.domain.repository.SourcesRepository
  * Toggle every content source in a given language together.
  *
  * Phase 7.x.sources rework. The rework `SourcesViewModel` injects this use case and invokes it
- * from `viewModelScope.launch` when the user flips a per-language `Switch` in the language
- * group header. Fire-and-forget: the upstream
- * [me.manga.kira.domain.usecase.sources.ObserveSourcesUseCase] flow re-emits once each
- * per-source Room write commits — every row in the language group reflects the new state by
- * virtue of state-driven rebinding.
+ * from lifecycle-owned `launchSafely` work when the user flips a per-language `Switch`.
+ * After source-access activation, the repository serializes and atomically persists the selected
+ * flags; [ObserveSourcesUseCase] reflects committed state without VM-side list mutation.
+ * Persistence errors and cancellation propagate to the caller.
  *
  * Contract §6 SRP: owns ONE rule — "delegate to [SourcesRepository.setLanguageEnabled]". The
- * per-language fan-out (snapshot, filter, forward-per-source) lives inside the rework `:data`
- * impl rather than the VM — the VM stays free of repository-shape leakage.
+ * admission, snapshot selection and atomic persistence live inside the rework `:data` impl
+ * rather than the VM — the VM stays free of repository-shape leakage.
  *
  * Why a use case at all when this is a single-line pass-through: same rationale as
  * [SetSourceEnabledUseCase] — the VM depends on a stable use case interface, not on a
