@@ -10,6 +10,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.presentation.features.library.data.MangaChapterMetrics
+import kotlin.coroutines.CoroutineContext
 
 // Phase 9.x.dao.componentprune.cumulative (Task #392): dropped 4 independently-orphan members
 // surfaced by an exhaustive 3-pass reacher-chain audit (receiver-anchored `mangaDao.X(` + bare
@@ -138,16 +139,29 @@ interface MangaDao {
      * partial writes left by older versions. Cancellation and storage failures roll back and
      * propagate to the caller; no work is detached from its coroutine.
      */
-    @Transaction
     suspend fun updateCoverEverywhere(mangaId: Long, imageUrl: String) {
+        updateCoverEverywhereInTransaction(mangaId, imageUrl, currentCoroutineContext())
+    }
+
+    /** The entry wrapper captures its caller before Room installs its own coroutine context. */
+    @Transaction
+    suspend fun updateCoverEverywhereInTransaction(
+        mangaId: Long,
+        imageUrl: String,
+        callerContext: CoroutineContext,
+    ) {
+        callerContext.ensureActive()
         currentCoroutineContext().ensureActive()
         if (imageUrl.isBlank()) return
         val manga = getMangaById(mangaId) ?: return
         updateSavedCover(mangaId, imageUrl)
+        callerContext.ensureActive()
         currentCoroutineContext().ensureActive()
         updateHistoryCover(mangaId, manga.url, imageUrl)
+        callerContext.ensureActive()
         currentCoroutineContext().ensureActive()
         updateNotificationCover(mangaId, imageUrl)
+        callerContext.ensureActive()
         currentCoroutineContext().ensureActive()
     }
 

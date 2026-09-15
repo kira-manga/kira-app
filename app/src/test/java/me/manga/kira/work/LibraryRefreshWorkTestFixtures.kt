@@ -42,6 +42,7 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     val persistenceCalls = mutableListOf<List<SavedChapterEntity>>()
     val persistedNotifications = mutableListOf<List<ChapterNotification>>()
     val displayCalls = mutableListOf<List<ChapterNotification>>()
+    val coverCalls = mutableListOf<Pair<Long, String>>()
 
     override fun library() = libraryFlow
 
@@ -50,7 +51,10 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     override suspend fun updateCover(
         mangaId: Long,
         coverUrl: String,
-    ) = cover()
+    ) {
+        coverCalls += mangaId to coverUrl
+        cover()
+    }
 
     override suspend fun insert(chapters: List<SavedChapterEntity>): List<Long> {
         inserts += chapters
