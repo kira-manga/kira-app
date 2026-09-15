@@ -20,8 +20,6 @@ jobs:
       KIRA_SOURCE_CONFIG_BASE_URL: ''
       KIRA_SOURCE_CONFIG_PINNED_KEYS: ''
       KIRA_APP_VERSION: '1.0.5'
-      GRADLE_USER_HOME: ${{ runner.temp }}/kira-2859-gradle
-      KONAN_DATA_DIR: ${{ runner.temp }}/kira-2859-konan
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -37,6 +35,9 @@ jobs:
       - name: Compile Native Room generation and composition root only
         timeout-minutes: 30
         shell: bash
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/kira-2859-gradle
+          KONAN_DATA_DIR: ${{ runner.temp }}/kira-2859-konan
         run: |
           set -euo pipefail
           export JAVA_HOME=$(/usr/libexec/java_home -v 21)
