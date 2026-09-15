@@ -172,19 +172,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         bgLog("urlsession.handleEvents id=\(identifier) (app relaunched for background transfers)")
         IosBackgroundBridgeKt.handleBackgroundUrlSessionEvents(
             identifier: identifier,
+            requestProcessing: { [weak self] in
+                self?.scheduleProcessingTask(reason: "handleEvents")
+            },
             completionHandler: completionHandler
         )
-        // Pages just landed while we were suspended → those chapters are now DOWNLOADED and need a CPU
-        // window to finalize (CBZ) and to prepare/start the next chapter (strict chapter-by-chapter). The
-        // brief handleEvents window is NOT the place to run Skia, so request a *BGProcessingTask* — the
-        // reliable opportunistic background-CPU path. NOT a continued task: this is a pure background wake
-        // (no user watching), and a continued task submitted from the background races suspension and
-        // usually never starts, which left finalize stranded until the next app reopen. Best-effort — if
-        // the OS declines the window, finalize falls back to the next time the app is active.
-        if IosBackgroundBridgeKt.hasPendingDownloadWork() {
-            bgLog("urlsession.handleEvents.pendingWork=true requesting BGProcessingTask for finalize")
-            scheduleProcessingTask(reason: "handleEvents")
-        }
+        // The bridge drains durable callback processing, refreshes pending work from Room, and
+        // requests BGProcessing before invoking this system completion on main. The initial
+        // advisory signal may still be false on a cold wake; do not use it to skip continuation.
     }
 
     /// Invoked from the `UIApplication.didEnterBackgroundNotification` observer (the delegate's

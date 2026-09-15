@@ -17,8 +17,6 @@ import platform.Foundation.NSURLSessionConfiguration
 import platform.Foundation.NSURLSessionDownloadTask
 import platform.Foundation.NSURLSessionTask
 import platform.Foundation.setValue
-import platform.darwin.dispatch_async
-import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
 
 /**
@@ -43,12 +41,13 @@ class IosBackgroundTransport(
     pageBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : BackgroundTransport {
     private var listener: TransferListener? = null
-    private var systemCompletionHandler: (() -> Unit)? = null
+    private val eventDrain = IosBackgroundEventDrain()
     private val delegate = IosBackgroundSessionDelegate(this)
     private val readiness = Mutex()
     private var legacyTasksFenced = false
 
-    private val callbacks = IosPageTransferCallbacks(appFileSystem, mediaInspector, pageBytePolicy) { listener }
+    private val callbacks =
+        IosPageTransferCallbacks(appFileSystem, mediaInspector, pageBytePolicy, { listener }, ::admitEvent)
 
     // The ONE background session. iOS persists its tasks across suspension/termination; recreating
     // the SAME identifier on relaunch re-attaches us to receive the pending callbacks.
@@ -81,7 +80,7 @@ class IosBackgroundTransport(
 
     override fun setSystemCompletionHandler(handler: () -> Unit) {
         BgDownloadLog.log("session.completionHandler.received")
-        this.systemCompletionHandler = handler
+        eventDrain.setCompletionHandler(handler)
     }
 
     override suspend fun ensureReady() {
@@ -105,7 +104,7 @@ class IosBackgroundTransport(
         val url = NSURL.URLWithString(req.url)
         if (url == null) {
             BgDownloadLog.warn("task.enqueue.invalidUrl", "chapterId" to req.chapterId, "pageIndex" to req.pageIndex)
-            listener?.onPageFailed(req.mangaId, req.chapterId, req.pageIndex, req.attemptToken, "Invalid URL: ${req.url}")
+            reportInvalidUrl(req)
             return
         }
         val request = NSMutableURLRequest.requestWithURL(url)
@@ -114,6 +113,20 @@ class IosBackgroundTransport(
         task.taskDescription = IosTransferIdentity(req.mangaId, req.chapterId, req.pageIndex, req.attemptToken).encode()
         logEnqueued(req, url, task)
         task.resume()
+    }
+
+    private fun reportInvalidUrl(req: TransferRequest) {
+        val event = IosTransferEvent(admitEvent())
+        try {
+            val receiver = listener ?: return
+            event.deliver { acknowledge ->
+                receiver.onPageFailed(
+                    req.mangaId, req.chapterId, req.pageIndex, req.attemptToken, "Invalid download URL", acknowledge,
+                )
+            }
+        } finally {
+            event.finishDelivery()
+        }
     }
 
     private fun logEnqueued(
@@ -171,6 +184,9 @@ class IosBackgroundTransport(
 
     // ---- invoked by the delegate (on the session's serial delegate queue) ----
 
+    /** Payload-independent receipt seam; callback owners must settle it after durable work/cleanup. */
+    internal fun admitEvent(): () -> Unit = eventDrain.admitEvent()
+
     internal fun handleWroteData(
         task: NSURLSessionTask,
         bytesWritten: Long,
@@ -198,18 +214,7 @@ class IosBackgroundTransport(
 
     internal fun handleFinishedEvents() {
         BgDownloadLog.log("session.didFinishEvents")
-        val handler = systemCompletionHandler
-        systemCompletionHandler = null
-        if (handler != null) {
-            // Apple's background-session contract: the completion handler captured from
-            // `application(_:handleEventsForBackgroundURLSession:completionHandler:)` must be invoked
-            // on the MAIN thread (it triggers the UI-snapshot/suspend bookkeeping). This callback
-            // arrives on the session's delegate queue, so hop explicitly.
-            dispatch_async(dispatch_get_main_queue()) {
-                BgDownloadLog.log("session.completionHandler.invoked")
-                handler.invoke()
-            }
-        }
+        eventDrain.finishEvents()
     }
 
     private companion object {

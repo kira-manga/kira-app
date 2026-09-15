@@ -34,6 +34,7 @@ internal class TransportHarness(
     bytePolicy: PageBytePolicy,
     fileSystem: FileSystem,
     inspectionPolicy: PageInspectionPolicy,
+    registerListener: Boolean = true,
 ) {
     val system: FileSystem = FileSystem.SYSTEM
     val root: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ios-page-transport-${NSUUID().UUIDString}"
@@ -55,7 +56,7 @@ internal class TransportHarness(
     val inspector = RecordingNativeInspector(IosPageMediaInspector(inspectionPolicy, fileSystem))
     val transport =
         IosBackgroundTransport(files, inspector, bytePolicy).apply {
-            setListener(
+            if (registerListener) setListener(
                 object : TransferListener {
                     override fun onPageComplete(
                         mangaId: Long,
@@ -63,6 +64,7 @@ internal class TransportHarness(
                         pageIndex: Int,
                         attemptToken: String,
                         page: StagedDownloadPage,
+                        acknowledge: () -> Unit,
                     ) {
                         assertEquals(1L, mangaId)
                         assertEquals(2L, chapterId)
@@ -71,6 +73,7 @@ internal class TransportHarness(
                         // inside the data-layer original-token file gate, covered by custody tests.
                         page.publish(files.chapterDir(mangaId, chapterId), pageIndex)
                         events += TestEvent(pageIndex, complete = true)
+                        acknowledge()
                     }
 
                     override fun onPageFailed(
@@ -79,10 +82,12 @@ internal class TransportHarness(
                         pageIndex: Int,
                         attemptToken: String,
                         message: String?,
+                        acknowledge: () -> Unit,
                     ) {
                         assertEquals(1L, mangaId)
                         assertEquals(2L, chapterId)
                         events += TestEvent(pageIndex, complete = false, failure = message)
+                        acknowledge()
                     }
                 },
             )
@@ -158,3 +163,32 @@ internal class RecordingNativeInspector(
 }
 
 internal fun Path.url(): NSURL = NSURL.fileURLWithPath(toString())
+
+/** Retains real native handoffs so lifecycle tests can release receiver ownership explicitly. */
+internal class HeldTransferListener : TransferListener {
+    val pages = mutableMapOf<Int, HeldPage>()
+    val failures = mutableListOf<HeldFailure>()
+
+    override fun onPageComplete(
+        mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
+        page: StagedDownloadPage, acknowledge: () -> Unit,
+    ) {
+        pages[pageIndex] = HeldPage(page, acknowledge)
+    }
+
+    override fun onPageFailed(
+        mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
+        message: String?, acknowledge: () -> Unit,
+    ) {
+        failures += HeldFailure(pageIndex, message, acknowledge)
+    }
+}
+
+internal data class HeldPage(val page: StagedDownloadPage, val acknowledge: () -> Unit) {
+    fun discardAndAcknowledge() {
+        page.discard()
+        acknowledge()
+    }
+}
+
+internal data class HeldFailure(val pageIndex: Int, val message: String?, val acknowledge: () -> Unit)

@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -304,6 +305,42 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
+    /**
+     * Called only after the transport's admitted event window drains. Refreshes durable pending work
+     * independently of the advisory collector, then requests continuation before completing on main.
+     * Only the fresh query has a short timeout; its expiry keeps work unknown, unlike parent cancellation.
+     * [requestProcessing] directly submits the host's BGProcessing request, without another async hop.
+     * No reconciliation, retry delay, producer drain or CBZ encode is joined by this completion tail.
+     */
+    suspend fun completeBackgroundEventWindow(requestProcessing: () -> Unit, completionHandler: () -> Unit) {
+        var pendingOrUnknown = true
+        try {
+            val rows = withTimeoutOrNull(COMPLETION_REFRESH_TIMEOUT_MS) { dao.observeAllDownloads().first() }
+            if (rows == null) {
+                BgDownloadLog.warn("session.pendingWork.refreshTimedOut")
+                return
+            }
+            val snapshot = WorkSignalRules.compute(rows)
+            workSignal.update(
+                snapshot.pending, snapshot.progressPercent, snapshot.chapterProgress,
+                snapshot.leadChapterId, snapshot.hasTransferWork,
+            )
+            pendingOrUnknown = snapshot.pending
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            BgDownloadLog.error(failure, "session.pendingWork.refreshFailed")
+        } finally {
+            withContext(NonCancellable + Dispatchers.Main) {
+                try {
+                    if (pendingOrUnknown) requestProcessing()
+                } finally {
+                    completionHandler()
+                }
+            }
+        }
+    }
+
     // ---- TransferListener (callbacks from the background session delegate queue) ----
 
     override fun onPageComplete(
@@ -312,20 +349,13 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         attemptToken: String,
         page: StagedDownloadPage,
+        acknowledge: () -> Unit,
     ) {
         // Enter finally before the first suspension, including an already-cancelled application scope.
         applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 mutex.withLock {
-                    val claim = callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return@withLock
-                    artifacts.ownership.producing(claim) {
-                        val manifest = cachedManifest(mangaId, chapterId) ?: return@producing
-                        if (manifest.pages.none { it.index == pageIndex && !it.policyRejected }) return@producing
-                        artifacts.ownership.files(claim) {
-                            page.publish(appFileSystem.chapterDir(mangaId, chapterId), pageIndex)
-                        } ?: return@producing
-                        handlePageCompleteLocked(mangaId, chapterId, pageIndex)
-                    }
+                    acceptReceivedPageLocked(mangaId, chapterId, pageIndex, attemptToken, page)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -333,12 +363,39 @@ class BackgroundUrlSessionDownloadRepository(
                 BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
                 recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
             } finally {
-                try {
-                    page.discard() // Never deletes another attempt's live chapter directory.
-                } catch (failure: Exception) {
-                    BgDownloadLog.error(failure, "page.staging.retained", "chapterId" to chapterId)
-                }
+                disposeReceivedPage(chapterId, page, acknowledge)
             }
+        }
+    }
+
+    private suspend fun acceptReceivedPageLocked(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        attemptToken: String,
+        page: StagedDownloadPage,
+    ) {
+        val claim = callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return
+        artifacts.ownership.producing(claim) {
+            val manifest = cachedManifest(mangaId, chapterId) ?: return@producing
+            if (manifest.pages.none { it.index == pageIndex && !it.policyRejected }) return@producing
+            artifacts.ownership.files(claim) {
+                page.publish(appFileSystem.chapterDir(mangaId, chapterId), pageIndex)
+            } ?: return@producing
+            handlePageCompleteLocked(mangaId, chapterId, pageIndex)
+        }
+    }
+
+    private fun disposeReceivedPage(chapterId: Long, page: StagedDownloadPage, acknowledge: () -> Unit) {
+        try {
+            page.discard() // Never deletes another attempt's live chapter directory.
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // An undeletable private stage remains owned by the existing next-startup staging prune.
+            BgDownloadLog.error(failure, "page.staging.retained", "chapterId" to chapterId)
+        } finally {
+            acknowledge()
         }
     }
 
@@ -348,8 +405,15 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         attemptToken: String,
         message: String?,
+        acknowledge: () -> Unit,
     ) {
-        applicationScope.launch { recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message) }
+        applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message)
+            } finally {
+                acknowledge()
+            }
+        }
     }
 
     /** Receiver-side publication failures use the same bounded retry path as native transfer failures. */
@@ -1523,6 +1587,7 @@ class BackgroundUrlSessionDownloadRepository(
 
     private companion object {
         const val CANCELLED_BY_USER = "__cancelled_by_user__"
+        const val COMPLETION_REFRESH_TIMEOUT_MS = 2_000L
 
         /** Mirrors [me.manga.kira.domain.model.downloads.DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL].
          *  Written into `errorMsg` when a resolve fails on a Cloudflare/anti-bot challenge so the Details
