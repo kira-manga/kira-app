@@ -155,7 +155,8 @@ class ReaderViewModelReadingSessionTest {
         env.vm.submit(ReaderIntent.OnScreenResumed)
         env.vm.submit(ReaderIntent.OnEnter(readerManga(), readerChapter("1")))
         runCurrent()
-        env.vm.submit(ReaderIntent.OnEnter(readerManga(), readerChapter("2")))
+        // Same-manga OnEnter is a route replay, not an explicit chapter-navigation action.
+        env.vm.submit(ReaderIntent.OnNextChapter)
         runCurrent()
         assertEquals("ch/2", env.vm.state.value.chapter?.url)
         assertEquals(listOf("begin"), env.readingSession.calls)
