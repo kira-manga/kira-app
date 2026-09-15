@@ -1,0 +1,82 @@
+{
+  "schema": "app-seven-apple-native-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "6ee86ffbb3948eb910cc652dd00460573acdd3e2",
+    "tree": "831b401cfdf49c31ee2c1fd9cc3913fe6a1d1881"
+  },
+  "suites": [
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzCompletenessTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzCompletenessTest.kt",
+      "sourceSha256": "a3e48ca20bf55c5efd415bd071e56ccedbfaa8e758cfb117d9a236c26b038d63",
+      "methods": [
+        "cancellationAfterNativeEncodeCannotReachPublication"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.cbz.IosCbzReaderValidationTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/cbz/IosCbzReaderValidationTest.kt",
+      "sourceSha256": "61d469da94359bfa1b3ab0e8b9f6e614b79e3e208cfa6ba5091b7f43ca03b8cc",
+      "methods": [
+        "invalidMemberCannotBecomeAPartialChapterOrMakeAnExistingCacheAuthoritative"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.media.IosPageMediaInspectorTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/media/IosPageMediaInspectorTest.kt",
+      "sourceSha256": "08cf4fb0ed096a47a639a70ef50d6dad3a1fc16de6dcbe1229c4afcfdb8a327c",
+      "methods": [
+        "pngJpegWebpGifAndBmpUseRealImageIoValidation",
+        "htmlTruncationPngCrcAndCrcCorrectBrokenPixelsNeverValidate",
+        "injectedBytePixelAndAxisLimitsStayDistinct",
+        "mappedFileValidationIgnoresItsNameAndMissingFilesReportReadFailure"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.download.IosBackgroundTransportTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/download/IosBackgroundTransportTest.kt",
+      "sourceSha256": "0f27c28f5df610f2ddc16e68b436d4e5a12d8d6e6e1bf39bb7d1458a9f526761",
+      "methods": [
+        "exactUnknownAndUnderstatedLengthsPublishTheSameBytesWithTheirNativeSuffix",
+        "htmlTruncationBadCrcAndCrcCorrectCorruptPixelsCannotReplaceAGoodPage"
+      ]
+    },
+    {
+      "task": ":platform:iosSimulatorArm64Test",
+      "class": "me.manga.kira.platform.media.IosPngIntegrityTest",
+      "source": "platform/src/iosTest/kotlin/me/manga/kira/platform/media/IosPngIntegrityTest.kt",
+      "sourceSha256": "f29a44d99b1f0cd2c92455555f6b3645fc2e418e359e02880b1778f18e2bab60",
+      "methods": [
+        "packed16BitAndAdam7LayoutsRequireRealImageIoValidation",
+        "splitAndEmptyIdatChunksKeepOneContinuousStream",
+        "corruptStreamsRowsAndChunkOrderingNeverValidate",
+        "filteredWorkAndGeometryAreCheckedWithoutExpandedAllocation"
+      ]
+    },
+    {
+      "task": ":data:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.repository.IosCbzFinalizationTest",
+      "source": "data/src/iosTest/kotlin/me/manga/kira/data/repository/IosCbzFinalizationTest.kt",
+      "sourceSha256": "903c9a4f5657762d2f4fbdfc6e99a54a32c11e88c559c5167a72304bd34b56a2",
+      "methods": [
+        "budgetPreservationCompletesTheExpectedRosterAndReopensWithoutReencoding"
+      ]
+    },
+    {
+      "task": ":data:download:iosSimulatorArm64Test",
+      "class": "me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStoreTest",
+      "source": "data/download/src/commonTest/kotlin/me/manga/kira/presentation/features/download/domain/clean/DownloadManifestStoreTest.kt",
+      "sourceSha256": "591fa7bd6a043b8eff40b4a283606eeaee0f4510152c46e11f1156f8965abc4c",
+      "methods": [
+        "policyRejectionPersistsForRelaunchAndDoesNotMarkOtherPages",
+        "failedRefusalWriteIsReportedAndPreservesThePreviousAtomicManifest"
+      ]
+    }
+  ]
+}
