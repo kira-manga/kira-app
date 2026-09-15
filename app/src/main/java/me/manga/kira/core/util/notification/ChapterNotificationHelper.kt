@@ -1,6 +1,7 @@
 package me.manga.kira.core.util.notification
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -20,6 +21,8 @@ import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.platform.locale.localizedResourceSnapshot
+import me.manga.kira.platform.notification.ensureLocalizedChannel
 
 /**
  * Worker-owned Updates persistence followed by optional Android display. No independent scope:
@@ -77,25 +80,26 @@ class ChapterNotificationHelper(
     }
 
     private fun channelAvailable(manager: NotificationManager): Boolean {
-        val channel = manager.getNotificationChannel(CHANNEL_ID) ?: createChannel(manager)
+        val channel =
+            manager.getNotificationChannel(CHANNEL_ID) ?: createChannel(manager, context.localizedResourceSnapshot())
         val groupBlocked =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
                 channel.group?.let { manager.getNotificationChannelGroup(it)?.isBlocked } == true
         return channel.importance != NotificationManager.IMPORTANCE_NONE && !groupBlocked
     }
 
-    private fun createChannel(manager: NotificationManager): NotificationChannel {
+    private fun createChannel(manager: NotificationManager, resources: Context): NotificationChannel {
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
-                context.getString(R.string.new_chapters),
+                resources.getString(R.string.new_chapters),
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = context.getString(R.string.notifications_for_new_manga_chapters)
+                description = resources.getString(R.string.notifications_for_new_manga_chapters)
                 enableLights(true)
                 enableVibration(true)
             }
-        manager.createNotificationChannel(channel)
+        manager.ensureLocalizedChannel(channel)
         return checkNotNull(manager.getNotificationChannel(CHANNEL_ID))
     }
 
@@ -103,15 +107,27 @@ class ChapterNotificationHelper(
         notification: ChapterNotification,
         bitmap: Bitmap?,
     ) {
+        val built = buildChapterNotification(notification) { bitmap }
+        context.getSystemService<NotificationManager>()?.notify(notification.id.toInt(), built)
+    }
+
+    // Inline keeps posting synchronous inside NotificationCovers' bounded bitmap lifetime.
+    internal inline fun buildChapterNotification(
+        notification: ChapterNotification,
+        loadCover: () -> Bitmap?,
+    ): Notification {
+        val bitmap = loadCover()
+        val resources = context.localizedResourceSnapshot()
+        context.getSystemService<NotificationManager>()?.let { createChannel(it, resources) }
         val builder =
             NotificationCompat
-                .Builder(context, CHANNEL_ID)
+                .Builder(resources, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle(notification.mangaTitle)
-                .setContentText(context.getString(R.string.chapter_is_available, notification.chapterNumber))
+                .setContentText(resources.getString(R.string.chapter_is_available, notification.chapterNumber))
                 .setAutoCancel(true)
         if (bitmap != null) builder.setLargeIcon(bitmap)
-        context.getSystemService<NotificationManager>()?.notify(notification.id.toInt(), builder.build())
+        return builder.build()
     }
 
     private companion object {

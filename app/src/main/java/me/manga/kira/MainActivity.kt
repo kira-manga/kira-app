@@ -1,8 +1,11 @@
 package me.manga.kira
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.AssetManager
+import android.content.res.Resources
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -26,6 +29,8 @@ import me.manga.kira.core.storage.StorageKeys
 import me.manga.kira.navigation.push.NotificationRouter
 import me.manga.kira.navigation.push.PushPayloadParser
 import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
+import me.manga.kira.platform.locale.AndroidLocaleResources
+import me.manga.kira.platform.locale.androidLocaleState
 import me.manga.kira.platform.review.InAppReviewClient
 import me.manga.kira.platform.storage.SecureStorage
 import me.manga.kira.platform.update.AppUpdateClient
@@ -59,6 +64,16 @@ import org.koin.core.context.GlobalContext
  */
 class MainActivity : ComponentActivity() {
     private val log = Logger.withTag("MainActivity")
+    private var localeResources: AndroidLocaleResources? = null
+
+    override fun attachBaseContext(newBase: Context) {
+        localeResources = AndroidLocaleResources(newBase, newBase.androidLocaleState().resourceLocales)
+        super.attachBaseContext(newBase)
+    }
+
+    override fun getResources(): Resources = localeResources?.resources ?: super.getResources()
+
+    override fun getAssets(): AssetManager = resources.assets
 
     // Activity-scoped scope for the per-launch Play flows, cancelled in onDestroy — the same
     // shape native uses (`reviewScope = CoroutineScope(Dispatchers.IO + Job())`, cancelled in

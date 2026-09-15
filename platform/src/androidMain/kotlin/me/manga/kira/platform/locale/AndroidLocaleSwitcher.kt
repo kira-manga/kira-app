@@ -1,26 +1,12 @@
 package me.manga.kira.platform.locale
 
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
-
 /**
- * Android implementation of [LocaleSwitcher].
- *
- * Body mirrors the legacy `:shared` `LocaleSwitcher.android.kt` actual byte-for-byte; only
- * the type shape changed (top-level `actual fun` → `class : LocaleSwitcher`,
- * `actual fun` → `override`).
- *
- * Delegates to `AppCompatDelegate.setApplicationLocales(...)`, which Android's AppCompat
- * implements via a hidden `LocaleManagerCompat` bridge. The framework subsequently
- * recreates any visible Activity under the new locale.
+ * The preference has already been written when this hook runs. Android resource getters and
+ * notification snapshots read that same store, while Compose observes its language Flow.
+ * No AppCompat/framework locale write or Activity recreation is needed for this explicit strategy.
  */
 class AndroidLocaleSwitcher : LocaleSwitcher {
-
-    override fun applyApplicationLocale(languageTag: String) {
-        AppCompatDelegate.setApplicationLocales(
-            LocaleListCompat.forLanguageTags(languageTag)
-        )
-    }
+    override fun applyApplicationLocale(languageTag: String) = Unit
 }
 
 /*

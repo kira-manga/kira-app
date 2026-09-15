@@ -24,7 +24,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.runtime.SourceIconRegistry
@@ -76,7 +75,6 @@ import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.locale.LocalAppLocale
-import me.manga.kira.locale.isRtlLanguageTag
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.shouldShowBottomBar
 import me.manga.kira.navigation.push.NotificationRouter
@@ -508,25 +506,9 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
     // without delaying construction of the first visible screen.
     val initialLanguage = remember(coilHeaderStore) { coilHeaderStore.currentLanguage() }
     val language by remember { observeLanguage() }.collectAsState(initial = initialLanguage)
-    // RTL parity (GAP-LANG-RTL): on Android the LocalConfiguration locale override (LocalAppLocale)
-    // makes Compose derive layout direction from the chosen locale, so picking Arabic flips the UI to
-    // RTL there. iOS/Desktop have no such derivation, so also drive LocalLayoutDirection from the
-    // selected language → Arabic (and other RTL codes) mirror the layout on every platform. Override
-    // ONLY on an explicit selection; when blank (system default) keep the platform's current direction
-    // so an Arabic *device* on Android still gets RTL without an in-app pick.
-    //
-    // Gate on isLiveLocaleSwitchSupported: on a platform where the locale can't move mid-session,
-    // keep the platform's current direction so the layout doesn't flip ahead of the strings
-    // (mirroring to RTL while every string stays in the old language). All three targets are live
-    // today — iOS since PI2 (2026-07, AppleLanguages writes are process-visible; see
-    // LocalAppLocale.ios.kt) — so the guard is dormant, but it stays: if the pinned iOS behavior
-    // ever regresses, flipping the iOS actual back to false re-arms this without further changes.
-    val layoutDirection =
-        when {
-            language.isBlank() || !LocalAppLocale.isLiveLocaleSwitchSupported -> LocalLayoutDirection.current
-            isRtlLanguageTag(language) -> LayoutDirection.Rtl
-            else -> LayoutDirection.Ltr
-        }
+    // Android shares the host's resolved Configuration, including a live return to system locales.
+    // Other targets retain the existing explicit-language policy and live-switch guard.
+    val layoutDirection = LocalAppLocale.layoutDirection(language)
     CompositionLocalProvider(
         LocalAppLocale provides language.ifBlank { null },
         LocalLayoutDirection provides layoutDirection,
