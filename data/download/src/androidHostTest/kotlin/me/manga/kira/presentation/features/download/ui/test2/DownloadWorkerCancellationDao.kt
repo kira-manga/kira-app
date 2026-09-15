@@ -47,18 +47,20 @@ internal class DownloadWorkerCancellationDao(
             }
         }
 
-    override suspend fun getNextQueuedChapter(queuedState: DownloadingState): ChapterDownloadEntity? {
+    override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> {
         // Before entering Room: capture doWork's coroutineScope, not a nested Room/collector Job.
         worker.capture(currentCoroutineContext().job)
-        return rows.realDao.getNextQueuedChapter(queuedState)
+        return rows.realDao.getQueuedChaptersForWorker(queuedState)
     }
 
-    override suspend fun updateProgress(
-        id: Long,
+    override suspend fun updateProgressForArtifact(
+        chapterId: Long,
+        downloadId: Long,
+        token: String,
         progress: Int,
     ) {
-        rows.realDao.updateProgress(id, progress)
-        assertEquals(rows.original.saved.id, id)
+        rows.realDao.updateProgressForArtifact(chapterId, downloadId, token, progress)
+        assertEquals(rows.original.saved.id, chapterId)
         val count = progressCalls.incrementAndGet()
         if (count == 1) {
             firstProgressReturned.complete(Unit)

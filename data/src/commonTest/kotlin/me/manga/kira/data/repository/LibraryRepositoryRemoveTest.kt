@@ -148,6 +148,7 @@ class LibraryRepositoryRemoveTest {
             FileService(appFs),
             readProgress,
             testDispatchers,
+            fakeArtifactRuntime(appFs).ownership,
         )
 
         try {
@@ -187,6 +188,7 @@ class LibraryRepositoryRemoveTest {
             FileService(appFs),
             readProgress,
             testDispatchers,
+            fakeArtifactRuntime(appFs).ownership,
         )
 
         try {
@@ -231,6 +233,7 @@ class LibraryRepositoryRemoveTest {
             FileService(appFs),
             RecordingReadProgressRepository(),
             testDispatchers,
+            fakeArtifactRuntime(appFs).ownership,
         )
 
         try {

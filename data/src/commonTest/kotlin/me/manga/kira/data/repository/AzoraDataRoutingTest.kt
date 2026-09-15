@@ -122,6 +122,8 @@ class AzoraDataRoutingTest {
         cbz,
         registry,
         DownloadedPageFiles(appFs, RecoveryFixtureInspector(appFs.fileSystem())),
+        fakeArtifactRuntime(appFs, dao).ownership,
+        appFs,
     )
 
     @Test

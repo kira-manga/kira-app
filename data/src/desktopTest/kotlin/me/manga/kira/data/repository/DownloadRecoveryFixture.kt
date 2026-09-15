@@ -1,5 +1,4 @@
 package me.manga.kira.data.repository
-
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.Dispatchers
@@ -9,7 +8,6 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
-import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.presentation.features.download.data.DownloadingState
@@ -46,6 +44,8 @@ internal class DownloadRecoveryFixture {
     var db: MangaDatabase = openDatabase()
         private set
     val dao: ChapterDownloadDao get() = db.chapterDownloadingDao()
+    var artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
+        private set
     var restartCalls = 0
         private set
     private val legacy =
@@ -69,28 +69,31 @@ internal class DownloadRecoveryFixture {
     fun reopen() {
         db.close()
         db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
     }
 
     fun actions(
         downloadDao: ChapterDownloadDao = dao,
         fileSystem: AppFileSystem = appFileSystem,
+        engine: me.manga.kira.presentation.features.download.domain.clean.DownloadRepository = legacy,
     ) = DownloadsActionRepositoryImpl(
-        legacy = legacy,
+        legacy = engine,
         chapterDownloadDao = downloadDao,
         chapterDao = db.chapterDao(),
         appFileSystem = fileSystem,
-        fileService = FileService(fileSystem),
+        artifacts = artifactRuntime.ownership,
     )
 
     suspend fun seed(
         state: DownloadingState = DownloadingState.SUCCESS,
         sizeBytes: Long = 100L,
         isDownloaded: Boolean = false,
+        mangaId: Long? = null,
     ): RetainedDownload {
         val number = ++nextManga
         val chapter =
             SavedChapterEntity(
-                mangaId = seedManga(number),
+                mangaId = mangaId ?: seedManga(number),
                 name = "Chapter $number",
                 number = number.toString(),
                 url = "https://example.test/chapter/$number",

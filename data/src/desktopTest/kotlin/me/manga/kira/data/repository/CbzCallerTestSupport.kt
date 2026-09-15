@@ -1,5 +1,5 @@
 package me.manga.kira.data.repository
-
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.Dispatchers
 import me.manga.kira.core.cache.HttpCacheClearer
@@ -35,6 +35,8 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
                 manga = db.mangaDao(),
                 downloads = dao,
                 files = appFileSystem,
+                artifacts = artifactRuntime.ownership,
+                commits = artifactRuntime.commits,
             ),
         httpCache = HttpCacheClearer { },
     )
@@ -57,6 +59,7 @@ internal fun DownloadRecoveryFixture.finalizer(
                         fileService = FileService(appFileSystem),
                     ),
                 notifications = db.notificationDao(),
+                artifacts = chapterArtifactsForTest(),
             ),
         appFileSystem = appFileSystem,
         cbzWriter = writer,
@@ -132,3 +135,7 @@ private val CBZ_CALLER_PNG: ByteArray =
         "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAADsdIMmAAAAC0lEQVR42mNgQAUAABAAAaoZ+IIAAAAASUVORK5CYII="
             .decodeBase64(),
     ).toByteArray()
+
+internal fun DownloadRecoveryFixture.chapterArtifactsForTest(): ChapterDownloadArtifacts {
+    return artifactRuntime.downloads
+}

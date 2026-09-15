@@ -26,6 +26,8 @@ data class DownloadManifest(
     val chapterId: Long,
     val api: String,
     val pages: List<ManifestPage>,
+    /** Null identifies a pre-custody manifest; never adopt it as a current native attempt. */
+    val attemptToken: String? = null,
 )
 
 @Serializable
@@ -145,8 +147,10 @@ class DownloadManifestStore(
         chapterId: Long,
         pageIndex: Int,
         policyRejected: Boolean = false,
+        attemptToken: String? = null,
     ): Int {
         val manifest = read(mangaId, chapterId) ?: return 0
+        if (manifest.attemptToken != attemptToken) return 0
         var newCount = 0
         val updated =
             manifest.copy(

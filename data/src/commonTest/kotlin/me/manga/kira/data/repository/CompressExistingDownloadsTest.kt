@@ -23,6 +23,8 @@ import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.domain.model.settings.SettingsToggle
 import okio.FileSystem
+import okio.FileMetadata
+import okio.ForwardingFileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import kotlin.test.Test
@@ -156,7 +158,7 @@ class CompressExistingDownloadsTest {
             url: String,
         ): Flow<SavedChapterEntity?> = flowOf(null)
 
-        override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = error("unused")
+        override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = downloaded.firstOrNull { it.id == chapterId }
 
         override suspend fun markChaptersNotDownloaded(
             ids: List<Long>,
@@ -248,18 +250,14 @@ class CompressExistingDownloadsTest {
             localImagePaths = paths,
         )
 
-    /**
-     * Minimal [AppFileSystem] fake. The cache-walk plumbing is never invoked here, so
-     * [fileSystem] throws — which also exercises the ledger size-refresh guard for real: the
-     * post-convert `folderSize` walk fails, the write is skipped best-effort, and the conversion
-     * still counts as success (the disk-backed refresh itself is covered by
-     * `CompressExistingDownloadsSizeRefreshTest` in desktopTest).
-     */
+    /** Stub metadata for this unit-only writer. Real bytes/sizes are covered by desktop Room tests. */
     private object FakeAppFileSystem : AppFileSystem {
         override val filesDir: Path = "files".toPath()
         override val cacheDir: Path = "cache".toPath()
-
-        override fun fileSystem(): FileSystem = error("filesystem not used by compressExistingDownloads")
+        private val metadataOnly = object : ForwardingFileSystem(FileSystem.SYSTEM) {
+            override fun metadataOrNull(path: Path): FileMetadata = FileMetadata(isRegularFile = true, size = 1L)
+        }
+        override fun fileSystem(): FileSystem = metadataOnly
     }
 
     /**
@@ -281,8 +279,9 @@ class CompressExistingDownloadsTest {
         // row, so every loose chapter still converts (existing assertions unchanged).
         downloadDao: ChapterDownloadDao = FakeChapterDownloadDao(),
         dataStore: DataStoreHelper = DataStoreHelper(MapSettings()),
-    ): SettingsRepositoryImpl =
-        SettingsRepositoryImpl(
+    ): SettingsRepositoryImpl {
+        val artifacts = fakeArtifactRuntime(FakeAppFileSystem, dao, downloadDao)
+        return SettingsRepositoryImpl(
             legacy = legacySettings(),
             dispatchers = testDispatchers,
             dataStore = dataStore,
@@ -293,9 +292,12 @@ class CompressExistingDownloadsTest {
                     manga = FakeMangaDao,
                     downloads = downloadDao,
                     files = FakeAppFileSystem,
+                    artifacts = artifacts.ownership,
+                    commits = artifacts.commits,
                 ),
             httpCache = HttpCacheClearer { },
         )
+    }
 
     @Test
     fun lowPowerCompressionToggle_mapsThroughSettingsRepository() =

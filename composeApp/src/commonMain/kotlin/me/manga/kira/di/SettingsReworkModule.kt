@@ -128,6 +128,8 @@ val settingsReworkModule: Module =
                 manga = get(),
                 downloads = get(),
                 files = get(),
+                artifacts = get(),
+                commits = get(),
             )
         }
         single<SettingsRepository> {

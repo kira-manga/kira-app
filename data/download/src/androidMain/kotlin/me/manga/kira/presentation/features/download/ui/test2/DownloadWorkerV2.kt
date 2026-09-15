@@ -22,16 +22,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
-import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import me.manga.kira.platform.filesystem.AppFileSystem
-import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.platform.locale.localizedResourceSnapshot
 import me.manga.kira.platform.notification.ensureLocalizedChannel
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
@@ -88,7 +86,8 @@ class DownloadWorkerV2(
 
     // Routes downloads through the authoritative generic catalog. Missing sources fail closed.
     private val chapterPageProvider: ChapterPageProvider by lazy { koin.get() }
-    private val appFileSystem: AppFileSystem by lazy { koin.get() }
+    private val artifacts: ChapterDownloadArtifacts by lazy { koin.get() }
+    private var artifactClaim: ChapterArtifactClaim? = null
 
     private val koin get() = GlobalContext.get()
 
@@ -130,12 +129,13 @@ class DownloadWorkerV2(
 
             try {
                 while (true) {
-                    val chapter = chapterDownloadDao.getNextQueuedChapter() ?: break
+                    val admitted = artifacts.awaitNextQueued { chapterDownloadDao.getQueuedChaptersForWorker() } ?: break
+                    val chapter = admitted.chapter
 
                     currentChapter = chapter
 
                     try {
-                        processChapter(chapter)
+                        processChapter(chapter, admitted.claim)
                     } catch (ce: CancellationException) {
                         throw ce
                     } catch (e: Exception) {
@@ -161,17 +161,7 @@ class DownloadWorkerV2(
                 // app-launch reconcile. A USER cancel writes FAILED to the row, which the state-guarded
                 // update never matches, so a cancel is never undone. Rethrow so the stop is not
                 // mistaken for a crash.
-                currentChapter?.let {
-                    withContext(NonCancellable) {
-                        // collect/flowOn has unwound before this catch. The service delegates
-                        // cancellation cleanup here, so no producer-side cleanup races completion.
-                        // Read the committed row even if cancellation won the DAO return dispatch.
-                        if (ownsUnfinishedDownload(it)) {
-                            chapterDownloadService.deleteChapterFiles(it.mangaId, it.chapterId)
-                            chapterDownloadDao.requeueIfInFlight(it.chapterId)
-                        }
-                    }
-                }
+                // processChapter retains the original token and drains flowOn before settlement.
                 throw e
             } catch (e: Exception) {
                 // Last-resort guard: a failure OUTSIDE the per-chapter isolation above (e.g.
@@ -193,39 +183,53 @@ class DownloadWorkerV2(
      * notification updates → the missing-terminal-state guard. Extracted from [doWork]'s loop so
      * the per-chapter failure isolation there wraps exactly one chapter's work.
      */
-    private suspend fun processChapter(chapter: ChapterDownloadEntity) {
-        chapterDownloadDao.updateStateChId(chapter.chapterId, DownloadingState.RUNNING)
-
-        var sawTerminalState = false
-
-        downloadChapterFlowV2(chapter.toChapterEntity()).collect { state ->
-            if (isStopped) throw CancellationException()
-
-            when (state) {
-                is DownloadState.InProgress -> handleInProgressSafely(state, chapter)
-                is DownloadState.Compressing -> handleCompressingSafely(chapter)
-                is DownloadState.Complete -> {
-                    sawTerminalState = true
-                    handleCompleteSafely(chapter, state.localPaths)
+    private suspend fun processChapter(chapter: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
+        artifactClaim = claim
+        var stopped = false
+        try {
+            artifacts.ownership.producing(claim) {
+                artifacts.ownership.publish(claim) {
+                    chapterDownloadDao.updateStateChId(chapter.chapterId, DownloadingState.RUNNING)
                 }
-                is DownloadState.Error -> {
-                    sawTerminalState = true
-                    handleErrorSafely(chapter, state.exception)
+                var sawTerminalState = false
+                downloadChapterFlowV2(chapter.toChapterEntity(), claim).collect { state ->
+                    if (isStopped) throw CancellationException()
+                    when (state) {
+                        is DownloadState.InProgress -> handleInProgressSafely(state, chapter)
+                        is DownloadState.Compressing -> handleCompressingSafely(chapter)
+                        is DownloadState.Complete -> {
+                            sawTerminalState = true
+                            handleCompleteSafely(chapter, state.localPaths)
+                        }
+                        is DownloadState.Error -> {
+                            sawTerminalState = true
+                            handleErrorSafely(chapter, state.exception)
+                        }
+                    }
+                }
+                if (!sawTerminalState) handleErrorSafely(chapter, Throwable("No images for chapter"))
+            }
+        } catch (cancelled: CancellationException) {
+            stopped = true
+            withContext(NonCancellable) {
+                // The actual flowOn sender has unwound; native commit readback still wins over stop.
+                if (ownsUnfinishedDownload(chapter)) {
+                    artifacts.settle(claim, retainFailedPages = false, afterIncomplete = {
+                        chapterDownloadDao.requeueIfInFlight(chapter.chapterId)
+                    })
                 }
             }
-        }
-
-        // A source flow can complete after emitting only State.Loading (mapped to
-        // InProgress) with no Complete/Error — e.g. a chapter-parse failure that yields no
-        // images. Without this guard the row stays RUNNING forever and reconcile re-queues
-        // it on every launch. Mirrors the nonAndroid twin's "No images for chapter" failure.
-        if (!sawTerminalState) {
-            handleErrorSafely(chapter, Throwable("No images for chapter"))
+            throw cancelled
+        } catch (failure: Exception) {
+            handleErrorSafely(chapter, failure)
+        } finally {
+            artifacts.settle(claim, retainFailedPages = !stopped)
+            artifactClaim = null
         }
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private suspend fun downloadChapterFlowV2(chapter: SavedChapterEntity): Flow<DownloadState> {
+    private suspend fun downloadChapterFlowV2(chapter: SavedChapterEntity, claim: ChapterArtifactClaim): Flow<DownloadState> {
         val api =
             mangaDao.getApiByMangaId(chapter.mangaId)
                 ?: return flowOf(
@@ -249,16 +253,17 @@ class DownloadWorkerV2(
             chapterDownloadService.downloadChapterC(
                 chapter = chapter,
                 pages = providerPages,
+                claim = claim,
             )
         }
     }
 
     private suspend fun handleCompressingSafely(chapter: ChapterDownloadEntity) {
-        chapterDownloadDao.updateStateAndProgress(
-            chapter.chapterId,
-            DownloadingState.COMPRESSING,
-            100,
-        )
+        val claim = artifactClaim ?: return
+        artifacts.ownership.publish(claim) {
+            chapterDownloadDao.updateStateAndProgress(chapter.chapterId, DownloadingState.COMPRESSING, 100)
+        }
+
 
         notificationLock.withLock {
             try {
@@ -300,7 +305,8 @@ class DownloadWorkerV2(
 
         if (total > 0) {
             val percent = ((downloaded.toFloat() / total.toFloat()) * 100).toInt()
-            chapterDownloadDao.updateProgress(chapter.chapterId, percent)
+            val claim = artifactClaim ?: return
+            chapterDownloadDao.updateProgressForArtifact(chapter.chapterId, chapter.id, claim.token, percent)
         }
 
         notificationLock.withLock {
@@ -316,16 +322,12 @@ class DownloadWorkerV2(
         chapter: ChapterDownloadEntity,
         localPaths: List<String>,
     ) {
-        // Capture the final on-disk chapter size (the .cbz if compression ran, else the loose
-        // pages) BEFORE the terminal SUCCESS write, so the single observeAllDownloads emission that
-        // flips the row to SUCCESS already carries sizeBytes (native size-display parity). The
-        // worker writes pages under AppFileSystem.chapterDir(mangaId, chapterId), the same layout
-        // folderSize walks. Best-effort: a size-walk failure must not fail the download.
-        val sizeBytes =
-            runCatchingCancellable {
-                appFileSystem.folderSize(appFileSystem.chapterDir(chapter.mangaId, chapter.chapterId))
-            }.getOrDefault(0L)
-        if (!chapterDownloadDao.completeDownload(chapter, localPaths, sizeBytes)) return
+        val claim = artifactClaim ?: return
+        val sizeBytes = artifacts.exactSize(localPaths)
+        if (artifacts.ownership.publish(claim) {
+                chapterDownloadDao.completeDownload(chapter, localPaths, sizeBytes)
+            } != true
+        ) return
 
         notificationLock.withLock {
             try {
@@ -340,14 +342,10 @@ class DownloadWorkerV2(
         chapter: ChapterDownloadEntity,
         exception: Throwable,
     ) {
+        val claim = artifactClaim ?: return
         if (!ownsUnfinishedDownload(chapter)) return
-        chapterDownloadDao.updateStateAndProgress(
-            chapter.chapterId,
-            DownloadingState.FAILED,
-            0,
-            exception.message,
-        )
-        chapterDownloadService.deleteChapterFiles(chapter.mangaId, chapter.chapterId)
+        artifacts.fail(claim, exception.message)
+        // Files remain in custody until processChapter's producer scope has really unwound.
 
         notificationLock.withLock {
             try {

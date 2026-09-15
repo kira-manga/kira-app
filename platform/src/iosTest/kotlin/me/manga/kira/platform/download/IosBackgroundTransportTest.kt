@@ -30,6 +30,49 @@ import kotlin.test.assertTrue
  */
 class IosBackgroundTransportTest {
     @Test
+    fun callbackRetainsOutsideTheLiveTreeUntilTheOriginalAttemptAcceptsIt() {
+        withHarness { h ->
+            val prior = h.seedPage(0, "png", PageMediaTestImages.gif())
+            var staged: StagedDownloadPage? = null
+            h.transport.setListener(object : TransferListener {
+                override fun onPageComplete(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, page: StagedDownloadPage) {
+                    assertEquals(TEST_ATTEMPT_TOKEN, attemptToken)
+                    staged = page
+                }
+                override fun onPageFailed(mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String, message: String?) {
+                    error("Unexpected handoff failure: $message")
+                }
+            })
+            val task = h.task(0)
+            val source = h.sourceFile(PageMediaTestImages.png())
+            h.transport.handleFinishedDownload(task, source.url(), h.response())
+            h.transport.handleCompleted(task, error = null)
+            val retained = checkNotNull(staged)
+            assertTrue(retained.path.toString().contains("/.download-staging/"))
+            assertContentEquals(PageMediaTestImages.png(), h.system.read(retained.path) { readByteArray() })
+            assertContentEquals(PageMediaTestImages.gif(), h.system.read(prior) { readByteArray() })
+            // A stale listener rejects/disposes its own staging only, never a current live artifact.
+            retained.discard()
+            assertFalse(h.system.exists(retained.path))
+            assertTrue(h.system.exists(prior))
+        }
+    }
+
+    @Test
+    fun legacyTokenlessCallbackCannotBeAdoptedAsTheCurrentAttempt() {
+        withHarness { h ->
+            val prior = h.seedPage(0, "png", PageMediaTestImages.gif())
+            val task = h.task(0).apply { taskDescription = "1|2|0" }
+            val source = h.sourceFile(PageMediaTestImages.png())
+            h.transport.handleFinishedDownload(task, source.url(), h.response())
+            h.transport.handleCompleted(task, error = null)
+            assertTrue(h.events.isEmpty())
+            assertTrue(h.system.exists(source))
+            assertContentEquals(PageMediaTestImages.gif(), h.system.read(prior) { readByteArray() })
+        }
+    }
+
+    @Test
     fun exactUnknownAndUnderstatedLengthsPublishTheSameBytesWithTheirNativeSuffix() {
         val png = PageMediaTestImages.png()
         withHarness(PageBytePolicy(png.size.toLong())) { h ->

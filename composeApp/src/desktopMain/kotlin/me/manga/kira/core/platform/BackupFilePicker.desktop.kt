@@ -2,9 +2,14 @@ package me.manga.kira.core.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.core.result.appFailure
+import me.manga.kira.core.result.appSuccess
+import me.manga.kira.platform.backup.backupImportError
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Desktop actual: best-effort AWT [FileDialog] (compile-parity target, not shipping). */
 @Composable
@@ -35,11 +40,27 @@ private class DesktopBackupFilePicker : BackupFilePicker {
         onResult(delivered)
     }
 
-    override fun launchImport(onResult: (String?) -> Unit) {
+    override fun launchImport(onResult: (AppResult<String?>) -> Unit) {
+        val result = try {
+            appSuccess(selectImportPath())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            appFailure(backupImportError(failure))
+        }
+        onResult(result)
+    }
+
+    private fun selectImportPath(): String? {
         val dialog = FileDialog(null as Frame?, "Open backup", FileDialog.LOAD)
-        dialog.isVisible = true
-        val dir = dialog.directory
-        val name = dialog.file
-        onResult(if (dir != null && name != null) File(dir, name).absolutePath else null)
+        return try {
+            dialog.isVisible = true
+            val dir = dialog.directory
+            val name = dialog.file
+            // The repository takes its own bounded snapshot and never deletes this original.
+            if (dir != null && name != null) File(dir, name).absolutePath else null
+        } finally {
+            dialog.dispose()
+        }
     }
 }

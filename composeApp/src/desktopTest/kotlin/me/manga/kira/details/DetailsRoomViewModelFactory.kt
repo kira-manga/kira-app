@@ -1,5 +1,4 @@
 package me.manga.kira.details
-
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
@@ -16,7 +15,6 @@ import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
 import me.manga.kira.domain.repository.CompressionDeferralRepository
 import me.manga.kira.domain.repository.ConnectivityRepository
-import me.manga.kira.domain.service.FileService
 import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
 import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.details.ClearChapterNewUseCase
@@ -95,7 +93,7 @@ private fun roomDownloadActions(fixture: DetailsUrlOnlyRoomFixture): DownloadsAc
         chapterDownloadDao = fixture.db.chapterDownloadingDao(),
         chapterDao = fixture.db.chapterDao(),
         appFileSystem = fixture.fileSystem,
-        fileService = FileService(fixture.fileSystem),
+        artifacts = fixture.artifacts,
     )
 
 private object DetailsRoomDevicePorts :

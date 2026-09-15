@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.backup
 
+import me.manga.kira.core.error.AppError
 import me.manga.kira.presentation.mvi.MviIntent
 
 /** User actions on the Backup & restore screen. */
@@ -21,9 +22,14 @@ sealed interface BackupIntent : MviIntent {
     /** Ask for the platform open-picker (busy-guarded; unavailable in scoped mode). */
     data object OnImport : BackupIntent
 
-    /** Open-picker round-trip finished; [localPath] is an app-sandbox copy, null on cancel. */
+    /** Picker finished: mobile owns a bounded snapshot; Desktop passes an original; null cancels. */
     data class OnImportFilePicked(
         val localPath: String?,
+    ) : BackupIntent
+
+    /** Acquisition failed before an import existed; cancellation is not represented as failure. */
+    data class OnImportFilePickFailed(
+        val error: AppError,
     ) : BackupIntent
 
     /** Cooperatively stop the running export/import. */

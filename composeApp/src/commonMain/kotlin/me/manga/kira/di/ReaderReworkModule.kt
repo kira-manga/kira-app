@@ -107,6 +107,8 @@ val readerReworkModule: Module =
                 // Re-derive the live container's paths and require the entire loose roster to be valid.
                 // Uses the same platform inspector as downloads, CBZ writing, and archive recovery.
                 pageFiles = get(),
+                artifacts = get(),
+                appFileSystem = get(),
             )
         }
 

@@ -111,10 +111,12 @@ internal class IosPageTransferCallbacks(
     ) {
         val publication = pages.beginPublication()
         try {
-            publication.publish(location, d, response?.expectedContentLength)
+            val page = publication.stage(location, d, response?.expectedContentLength)
+            val receiver = listener() ?: return
+            receiver.onPageComplete(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, page)
+            publication.handOff()
             outcome.reported = true
             BgDownloadLog.log("file.move.success", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
-            listener()?.onPageComplete(d.mangaId, d.chapterId, d.pageIndex)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: PageByteLimitExceeded) {
@@ -166,7 +168,7 @@ internal class IosPageTransferCallbacks(
         outcome.failure = reason
         if (outcome.reported) return
         outcome.reported = true
-        listener()?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, reason)
+        listener()?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, reason)
     }
 
     private data class PageOutcome(

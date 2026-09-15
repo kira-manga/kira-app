@@ -1,16 +1,30 @@
 package me.manga.kira.di
 
 import me.manga.kira.core.platform.backupPlatformName
+import me.manga.kira.data.backup.BackupArchivePreflight
+import me.manga.kira.data.backup.BackupDownloadExporter
+import me.manga.kira.data.backup.BackupExportProvenance
+import me.manga.kira.data.backup.BackupExporter
+import me.manga.kira.data.backup.BackupImportArtifactRepositoryImpl
+import me.manga.kira.data.backup.BackupImporter
+import me.manga.kira.data.backup.FixedBackupExportProvenance
+import me.manga.kira.data.backup.RestoredDownloadPublisher
 import me.manga.kira.data.repository.BackupRepositoryImpl
 import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.repository.BackupImportArtifactRepository
 import me.manga.kira.domain.repository.BackupRepository
 import me.manga.kira.domain.usecase.backup.ClearBackupProgressUseCase
 import me.manga.kira.domain.usecase.backup.DiscardBackupArtifactUseCase
+import me.manga.kira.domain.usecase.backup.DiscardImportArtifactUseCase
 import me.manga.kira.domain.usecase.backup.ExportBackupUseCase
 import me.manga.kira.domain.usecase.backup.ImportBackupUseCase
 import me.manga.kira.domain.usecase.backup.ObserveBackupProgressUseCase
 import me.manga.kira.domain.usecase.backup.StopBackupUseCase
+import me.manga.kira.platform.backup.BackupImportPolicy
+import me.manga.kira.platform.backup.BackupImportStaging
 import me.manga.kira.platform.version.AppVersionProvider
+import me.manga.kira.presentation.backup.BackupFileOperations
+import me.manga.kira.presentation.backup.BackupProgressOperations
 import me.manga.kira.presentation.backup.BackupViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -25,34 +39,30 @@ import org.koin.dsl.module
  */
 val backupReworkModule: Module =
     module {
-        single<BackupRepository> {
-            BackupRepositoryImpl(
-                backupDao = get(),
-                readProgress = get(),
-                appFileSystem = get(),
-                dispatchers = get(),
-                cbzReader = get(),
-                chapterDownloadDao = get(),
-                notificationDao = get(),
-                appVersion = get<AppVersionProvider>().versionName,
-                platformName = backupPlatformName(),
-            )
-        }
+        single { BackupImportPolicy() }
+        single { BackupImportStaging(get(), get()) }
+        single { BackupArchivePreflight(get(), get(), get(), get()) }
+        single<BackupImportArtifactRepository> { BackupImportArtifactRepositoryImpl(get(), get()) }
+        single { RestoredDownloadPublisher(get(), get(), get(), get(), get()) }
+        single { BackupImporter(get(), get(), get(), get()) }
+        single { BackupDownloadExporter(get(), get(), get(), get(), get()) }
+        single<BackupExportProvenance> { FixedBackupExportProvenance(get<AppVersionProvider>().versionName, backupPlatformName()) }
+        single { BackupExporter(get(), get(), get(), get(), get()) }
+        single<BackupRepository> { BackupRepositoryImpl(get(), get(), get()) }
         factory { ExportBackupUseCase(get()) }
         factory { ImportBackupUseCase(get()) }
         factory { ObserveBackupProgressUseCase(get()) }
         factory { StopBackupUseCase(get()) }
         factory { ClearBackupProgressUseCase(get()) }
         factory { DiscardBackupArtifactUseCase(get()) }
+        factory { DiscardImportArtifactUseCase(get()) }
+        factory { BackupFileOperations(get(), get(), get(), get()) }
+        factory { BackupProgressOperations(get(), get(), get()) }
         viewModel { (scope: BackupScope) ->
             BackupViewModel(
                 scope = scope,
-                exportBackup = get(),
-                importBackup = get(),
-                observeBackupProgress = get(),
-                stopBackup = get(),
-                clearBackupProgress = get(),
-                discardBackupArtifact = get(),
+                files = get(),
+                progressActions = get(),
                 observeCbzConversion = get(),
             )
         }

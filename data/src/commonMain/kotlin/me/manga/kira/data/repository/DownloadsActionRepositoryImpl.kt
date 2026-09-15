@@ -2,13 +2,15 @@ package me.manga.kira.data.repository
 
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.core.util.runCatchingCancellable
+import me.manga.kira.data.download.artifacts.ChapterArtifactReference
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
+import me.manga.kira.data.local.entity.ChapterArtifactEntity
+import me.manga.kira.data.local.entity.ChapterArtifactOwner
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.repository.DownloadsActionRepository
-import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.filesystem.AppFileSystem
-import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -134,9 +136,7 @@ class DownloadsActionRepositoryImpl(
     // on-disk size of completed rows that pre-date the sizeBytes column. Reaches `:platform` — the
     // same `:data` -> `:platform` direction the layering contract permits.
     private val appFileSystem: AppFileSystem,
-    // #10 (native-wins): the full Details "delete downloaded" path deletes the on-disk chapter
-    // files through the legacy FileService (same cross-platform helper native uses).
-    private val fileService: FileService,
+    private val artifacts: ChapterArtifacts,
 ) : DownloadsActionRepository {
     override suspend fun enqueueDownload(
         chapterId: Long,
@@ -191,12 +191,11 @@ class DownloadsActionRepositoryImpl(
 
     override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> =
         runCatchingCancellable {
-            // #10 (native-wins): mirror LibraryRepository.deleteDownloadedChapters — clear isDownloaded,
-            // delete the on-disk files, and drop the queue row so the Details size header updates too.
             val saved = chapterDao.getChapterByIdSuspend(chapterId) ?: error("chapter row not found")
-            chapterDao.markChaptersNotDownloaded(listOf(chapterId))
-            fileService.deleteChapterFiles(saved.mangaId, chapterId)
-            legacy.deleteDownload(chapterId)
+            check(artifacts.removeChapter(ChapterArtifactOwner.of(saved)) {
+                // A signal accelerates the drain, but only the shared file-use fence proves it.
+                runCatchingCancellable { legacy.cancelARunningChapter(chapterId, saved.mangaId) }
+            }) { "Chapter artifact removal could not be settled" }
         }
 
     override suspend fun reconcileInterrupted(): Result<Unit> =
@@ -210,11 +209,20 @@ class DownloadsActionRepositoryImpl(
             //    one unreadable directory can't abort the whole reconcile.
             chapterDownloadDao.getCompletedWithoutSize().forEach { row ->
                 runCatchingCancellable {
-                    val size =
-                        appFileSystem.folderSize(
-                            appFileSystem.chapterDir(row.mangaId, row.chapterId),
-                        )
-                    if (size > 0L) chapterDownloadDao.updateSize(row.chapterId, size)
+                    artifacts.read(row.chapterId) { record ->
+                        if (record?.token != null) return@read
+                        val saved = chapterDao.getChapterByIdSuspend(row.chapterId) ?: return@read
+                        if (saved.mangaId != row.mangaId || saved.url != row.url) return@read
+                        val paths = referencedPaths(saved, record)
+                        if (paths.isEmpty()) return@read
+                        val size = paths.distinct().fold(0L) { total, raw ->
+                            val metadata = appFileSystem.fileSystem().metadata(raw.toPath())
+                            val bytes = checkNotNull(metadata.size)
+                            check(metadata.isRegularFile && bytes > 0 && total <= Long.MAX_VALUE - bytes)
+                            total + bytes
+                        }
+                        chapterDownloadDao.refreshCompletedSize(row, saved.localImagePaths, size)
+                    }
                 }
             }
             // 3) Repair the old separately committed SUCCESS/saved-false window, not an interrupted
@@ -225,15 +233,22 @@ class DownloadsActionRepositoryImpl(
     private suspend fun repairCompletedDownloadFlags() {
         chapterDownloadDao.getCompletedWithoutDownloadedFlag().forEach { row ->
             runCatchingCancellable {
-                val saved = chapterDao.getChapterByIdSuspend(row.chapterId) ?: return@runCatchingCancellable
-                if (saved.mangaId != row.mangaId || saved.url != row.url || saved.isDownloaded) {
-                    return@runCatchingCancellable
-                }
-                if (hasReadableDownloadPaths(saved.localImagePaths)) {
-                    chapterDownloadDao.repairCompletedDownloadFlag(row, saved.localImagePaths)
+                artifacts.read(row.chapterId) { record ->
+                    if (record?.token != null) return@read
+                    val saved = chapterDao.getChapterByIdSuspend(row.chapterId) ?: return@read
+                    if (saved.mangaId != row.mangaId || saved.url != row.url || saved.isDownloaded) return@read
+                    if (hasReadableDownloadPaths(referencedPaths(saved, record))) {
+                        chapterDownloadDao.repairCompletedDownloadFlag(row, saved.localImagePaths)
+                    }
                 }
             }
         }
+    }
+
+    private fun referencedPaths(saved: SavedChapterEntity, record: ChapterArtifactEntity?): List<String> {
+        if (record != null && (record.mangaId != saved.mangaId || record.chapterUrl != saved.url)) return emptyList()
+        val relative = record?.committedRelativePath ?: return saved.localImagePaths
+        return listOf(ChapterArtifactReference.resolve(appFileSystem, ChapterArtifactOwner.of(saved), relative).toString())
     }
 
     private fun hasReadableDownloadPaths(paths: List<String>): Boolean {

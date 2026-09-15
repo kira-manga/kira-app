@@ -2,10 +2,8 @@ package me.manga.kira.platform.download
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import me.manga.kira.platform.filesystem.AppFileSystem
-import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
-import me.manga.kira.platform.media.publishPageSnapshot
 import me.manga.kira.platform.media.requireValid
 import okio.FileSystem
 import okio.IOException
@@ -30,17 +28,20 @@ internal class IosDownloadedPageStore(
     ) {
         private var ownedTemporary: Path? = null
 
-        fun publish(
+        fun stage(
             location: NSURL,
             d: IosTransferIdentity,
             declaredLength: Long?,
-        ) {
+        ): StagedDownloadPage {
             pageBytePolicy.checkDeclaredLength(declaredLength)
             val temporary = retainDownloadedPage(location, d, system)
             ownedTemporary = temporary
             requireRegularPage(system, temporary, "Retained page is not a regular file")
             val metadata = mediaInspector.inspect(temporary).requireValid()
-            publishPageSnapshot(system, temporary, d.pageIndex, metadata)
+            return StagedDownloadPage(system, temporary, metadata)
+        }
+
+        fun handOff() {
             ownedTemporary = null
         }
 
@@ -56,7 +57,7 @@ internal class IosDownloadedPageStore(
     ): Path {
         val locationPath = location.path?.toPath() ?: throw IOException("Missing downloaded file")
         requireRegularPage(system, locationPath, "Downloaded page is not a regular file")
-        val directory = appFileSystem.chapterDir(d.mangaId, d.chapterId)
+        val directory = appFileSystem.filesDir / ".download-staging"
         system.createDirectories(directory)
         val temporary = directory / ".image_${d.pageIndex}-${NSUUID().UUIDString}.partial"
         // moveItem, unlike atomicMove, refuses an existing destination. Ownership begins only

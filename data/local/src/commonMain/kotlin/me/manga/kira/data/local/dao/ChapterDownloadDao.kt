@@ -7,6 +7,8 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.ChapterArtifactEntity
+import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.download.data.DownloadingState.SUCCESS
@@ -113,6 +115,11 @@ interface ChapterDownloadDao {
     @Query("SELECT * FROM chapter_downloads WHERE state = :queuedState LIMIT 1")
     suspend fun getNextQueuedChapter(queuedState: DownloadingState = DownloadingState.QUEUED): ChapterDownloadEntity?
 
+    // Same scan as getNextQueuedChapter, without LIMIT so a closing parent can be skipped.
+    // Do not reuse the iOS newest-first query below: Android/coroutine keep their existing order.
+    @Query("SELECT * FROM chapter_downloads WHERE state = :queuedState")
+    suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState = DownloadingState.QUEUED): List<ChapterDownloadEntity>
+
     @Query("SELECT * FROM chapter_downloads WHERE chapterId = :chapterId LIMIT 1")
     suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity?
 
@@ -180,11 +187,43 @@ interface ChapterDownloadDao {
                 ?: return false
         val saved = checkNotNull(getSavedChapterForDownload(expected.chapterId))
         check(saved.mangaId == expected.mangaId && saved.url == expected.url)
-        check(expectedPaths.isNotEmpty() && saved.localImagePaths == expectedPaths)
+        val artifact = getCompletionArtifact(expected.chapterId)
+        if (artifact != null && (artifact.token == null || artifact.retiring ||
+                artifact.operation != ChapterArtifactOperation.DOWNLOAD || artifact.downloadId != expected.id ||
+                artifact.mangaId != expected.mangaId || artifact.chapterUrl != expected.url)
+        ) return false
+        check(expectedPaths.isNotEmpty())
+        if (artifact?.committedRelativePath != null) {
+            check(writeCompletionPaths(ArtifactReadableUpdate(saved.id, true, expectedPaths)) == 1)
+            for (mirror in getCompletionNotifications(saved.id, saved.mangaId, saved.url, expected.api)) {
+                check(writeCompletionNotification(ArtifactReadableUpdate(mirror.id, true, expectedPaths)) == 1)
+            }
+        } else check(saved.localImagePaths == expectedPaths)
         check(writeCompletedDownload(current.id, current.chapterId, sizeBytes) == 1)
         check(markMatchingChapterDownloaded(saved.id, saved.mangaId, saved.url) == 1)
+        if (artifact != null) {
+            check(writeCompletionArtifact(artifact.copy(
+                committedToken = artifact.token, committedRelativePath = null,
+                retiredRelativePath = artifact.committedRelativePath ?: artifact.retiredRelativePath,
+            )) == 1)
+        }
         return true
     }
+
+    @Query("SELECT * FROM chapter_artifacts WHERE chapterId = :chapterId")
+    suspend fun getCompletionArtifact(chapterId: Long): ChapterArtifactEntity?
+
+    @androidx.room.Update
+    suspend fun writeCompletionArtifact(record: ChapterArtifactEntity): Int
+
+    @androidx.room.Update(entity = SavedChapterEntity::class)
+    suspend fun writeCompletionPaths(update: ArtifactReadableUpdate): Int
+
+    @Query("SELECT * FROM notifications WHERE chapterId = :chapterId AND mangaId = :mangaId AND chapterUrl = :url AND api = :api")
+    suspend fun getCompletionNotifications(chapterId: Long, mangaId: Long, url: String, api: String): List<me.manga.kira.data.local.entity.ChapterNotification>
+
+    @androidx.room.Update(entity = me.manga.kira.data.local.entity.ChapterNotification::class)
+    suspend fun writeCompletionNotification(update: ArtifactReadableUpdate): Int
 
     /** Saved-row identity and converted paths used by the completion/recovery transactions. */
     @Query("SELECT * FROM saved_chapters WHERE id = :chapterId LIMIT 1")
@@ -252,11 +291,39 @@ interface ChapterDownloadDao {
         }
     }
 
+    /** The caller pins the actual referenced files; a replaced history row cannot inherit size. */
+    @Transaction
+    suspend fun refreshCompletedSize(
+        expected: ChapterDownloadEntity,
+        expectedPaths: List<String>,
+        sizeBytes: Long,
+    ): Boolean {
+        if (expectedPaths.isEmpty() || sizeBytes <= 0) return false
+        val row = getDownloadByChapter(expected.chapterId) ?: return false
+        if (!row.isSameDownload(expected) || row.state != SUCCESS || row.sizeBytes != 0L) return false
+        val saved = getSavedChapterForDownload(expected.chapterId) ?: return false
+        if (saved.mangaId != expected.mangaId || saved.url != expected.url || saved.localImagePaths != expectedPaths) return false
+        updateSize(expected.chapterId, sizeBytes)
+        return true
+    }
+
     @Query("UPDATE chapter_downloads SET progress = :progress WHERE chapterId = :id")
     suspend fun updateProgress(
         id: Long,
         progress: Int,
     )
+
+    /** Single-statement progress fencing, without holding a file/transition lock across callbacks. */
+    @Query(
+        "UPDATE chapter_downloads SET progress = :progress WHERE id = :downloadId AND chapterId = :chapterId " +
+            "AND state IN ('QUEUED', 'RUNNING', 'DOWNLOADED', 'COMPRESSING') " +
+            "AND EXISTS (SELECT 1 FROM chapter_artifacts WHERE chapterId = :chapterId AND token = :token " +
+            "AND downloadId = :downloadId AND retiring = 0)",
+    )
+    suspend fun updateProgressForArtifact(chapterId: Long, downloadId: Long, token: String, progress: Int)
+
+    @Query("DELETE FROM chapter_downloads WHERE id = :downloadId AND chapterId = :chapterId")
+    suspend fun deleteHistoryAttempt(chapterId: Long, downloadId: Long)
 
     @Query("UPDATE chapter_downloads SET state = :state WHERE chapterId = :id")
     suspend fun updateState(

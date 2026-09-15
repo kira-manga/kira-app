@@ -9,9 +9,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.platform.backup.BackupImportStaging
+import org.koin.compose.koinInject
 import java.io.File
 
 /**
@@ -23,65 +27,67 @@ import java.io.File
 @Composable
 actual fun rememberBackupFilePicker(): BackupFilePicker {
     val context = LocalContext.current.applicationContext
+    val staging: BackupImportStaging = koinInject()
+    val session = rememberBackupImportPickerSession()
+    val exportAction = rememberBackupExportAction(context)
+    val importAction = rememberBackupImportAction(context, staging, session)
+    return remember(exportAction, importAction) { AndroidBackupFilePicker(exportAction, importAction) }
+}
+
+@Composable
+private fun rememberBackupExportAction(context: Context): (PendingExport, String) -> Unit {
     val scope = rememberCoroutineScope()
-
     val pendingExport = remember { mutableStateOf<PendingExport?>(null) }
-    val pendingImport = remember { mutableStateOf<((String?) -> Unit)?>(null) }
-
     val exportLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.CreateDocument("application/zip"),
         ) { uri ->
             val pending = pendingExport.value ?: return@rememberLauncherForActivityResult
             pendingExport.value = null
-            if (uri == null) {
-                pending.onResult(false)
-            } else {
-                scope.launch {
-                    val delivered =
-                        withContext(Dispatchers.IO) {
-                            copyFileToUri(context, pending.sourcePath, uri)
-                        }
-                    pending.onResult(delivered)
-                }
-            }
+            finishExport(context, scope, pending, uri)
         }
+    return remember(exportLauncher) {
+        { pending, suggestedName ->
+            pendingExport.value = pending
+            exportLauncher.launch(suggestedName)
+        }
+    }
+}
 
+@Composable
+private fun rememberBackupImportAction(
+    context: Context,
+    staging: BackupImportStaging,
+    session: BackupImportPickerSession,
+): ((AppResult<String?>) -> Unit) -> Unit {
     val importLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocument(),
         ) { uri ->
-            val callback = pendingImport.value ?: return@rememberLauncherForActivityResult
-            pendingImport.value = null
-            if (uri == null) {
-                callback(null)
-            } else {
-                scope.launch {
-                    val localPath = withContext(Dispatchers.IO) { copyUriToImportCache(context, uri) }
-                    callback(localPath)
+            if (uri == null) session.cancelPick()
+            else session.acquire { checkpoint -> acquireAndroidBackup(context, uri, staging, checkpoint) }
+        }
+    return remember(importLauncher, session) {
+        { onResult ->
+            if (session.begin(onResult)) {
+                try {
+                    importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                } catch (failure: Exception) {
+                    session.failPick(failure)
                 }
             }
         }
-
-    return remember(context, exportLauncher, importLauncher) {
-        object : BackupFilePicker {
-            override fun launchExport(
-                sourcePath: String,
-                suggestedName: String,
-                onResult: (Boolean) -> Unit,
-            ) {
-                pendingExport.value = PendingExport(sourcePath, onResult)
-                exportLauncher.launch(suggestedName)
-            }
-
-            override fun launchImport(onResult: (String?) -> Unit) {
-                pendingImport.value = onResult
-                // Backup archives are plain ZIPs; octet-stream covers providers that don't map
-                // the .zip extension to a MIME type.
-                importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
-            }
-        }
     }
+}
+
+private class AndroidBackupFilePicker(
+    private val exportAction: (PendingExport, String) -> Unit,
+    private val importAction: ((AppResult<String?>) -> Unit) -> Unit,
+) : BackupFilePicker {
+    override fun launchExport(sourcePath: String, suggestedName: String, onResult: (Boolean) -> Unit) =
+        exportAction(PendingExport(sourcePath, onResult), suggestedName)
+
+    override fun launchImport(onResult: (AppResult<String?>) -> Unit) = importAction(onResult)
 }
 
 actual fun backupPlatformName(): String = "android"
@@ -90,6 +96,17 @@ private class PendingExport(
     val sourcePath: String,
     val onResult: (Boolean) -> Unit,
 )
+
+private fun finishExport(context: Context, scope: CoroutineScope, pending: PendingExport, uri: Uri?) {
+    if (uri == null) {
+        pending.onResult(false)
+    } else {
+        scope.launch {
+            val delivered = withContext(Dispatchers.IO) { copyFileToUri(context, pending.sourcePath, uri) }
+            pending.onResult(delivered)
+        }
+    }
+}
 
 private fun copyFileToUri(
     context: Context,
@@ -103,24 +120,4 @@ private fun copyFileToUri(
         } ?: false
     } catch (ignored: Exception) {
         false
-    }
-
-/** Stale copies from a previous import are garbage — the staging dir is recreated per pick. */
-private fun copyUriToImportCache(
-    context: Context,
-    uri: Uri,
-): String? =
-    try {
-        val dir =
-            File(context.cacheDir, "backup_import").apply {
-                deleteRecursively()
-                mkdirs()
-            }
-        val target = File(dir, "import.kira.zip")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            target.outputStream().use { input.copyTo(it) }
-            target.absolutePath
-        }
-    } catch (ignored: Exception) {
-        null
     }

@@ -12,6 +12,8 @@ import me.manga.kira.data.local.converter.LocalDateTimeConverter
 import me.manga.kira.data.local.converter.StringListConverter
 import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.data.local.dao.ChapterArtifactDao
+import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
@@ -22,6 +24,7 @@ import me.manga.kira.data.local.dao.SourceCatalogDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.dao.StatisticsDeo
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SourceConfigCacheEntity
 import me.manga.kira.data.local.entity.ActiveSourceCatalogEntity
@@ -49,6 +52,7 @@ import me.manga.kira.data.local.entity.SourcesEntity
         HistoryItemD::class,
         ChapterNotification::class,
         ChapterDownloadEntity::class,
+        ChapterArtifactEntity::class,
         SourcesEntity::class,
         SourceConfigCacheEntity::class,
         SourceCatalogManifestEntity::class,
@@ -64,7 +68,8 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // cache; Sources Migration Phase 1). MIGRATION_10_11; schema regenerated to 11.json.
     // v12 -> v13: retain the source-supplied author on saved manga for complete offline details.
     // v14: one notification per discovered chapter, with repaired manga-scoped legacy bindings.
-    version = 14,
+    // v14 -> v15: durable artifact custody, independent of deletable download history.
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(
@@ -83,6 +88,8 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun mangaDao(): MangaDao
     abstract fun chapterDao(): ChapterDao
     abstract fun chapterDownloadingDao(): ChapterDownloadDao
+    abstract fun chapterArtifactDao(): ChapterArtifactDao
+    abstract fun chapterArtifactCommitDao(): ChapterArtifactCommitDao
     abstract fun sourcesDao(): SourcesDao
     abstract fun sourceConfigCacheDao(): SourceConfigCacheDao
     abstract fun sourceCatalogDao(): SourceCatalogDao

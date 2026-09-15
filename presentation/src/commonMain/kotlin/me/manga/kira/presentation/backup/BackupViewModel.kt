@@ -1,14 +1,10 @@
 package me.manga.kira.presentation.backup
 
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.backup.BackupScope
-import me.manga.kira.domain.usecase.backup.ClearBackupProgressUseCase
-import me.manga.kira.domain.usecase.backup.DiscardBackupArtifactUseCase
-import me.manga.kira.domain.usecase.backup.ExportBackupUseCase
-import me.manga.kira.domain.usecase.backup.ImportBackupUseCase
-import me.manga.kira.domain.usecase.backup.ObserveBackupProgressUseCase
-import me.manga.kira.domain.usecase.backup.StopBackupUseCase
 import me.manga.kira.domain.usecase.settings.ObserveCbzConversionUseCase
 import me.manga.kira.presentation.mvi.MviViewModel
 
@@ -20,8 +16,8 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * [BackupEffect.LaunchExportPicker] with the finished cache artifact; the route layer runs the
  * platform save-picker and reports back via [BackupIntent.OnExportDelivered] (the artifact is
  * discarded on every outcome). Import mirrors it: [BackupIntent.OnImport] emits
- * [BackupEffect.LaunchImportPicker]; the picked file comes back as an app-sandbox copy via
- * [BackupIntent.OnImportFilePicked].
+ * [BackupEffect.LaunchImportPicker]; [BackupIntent.OnImportFilePicked] returns a bounded mobile
+ * snapshot (or a Desktop original), while acquisition errors use [BackupIntent.OnImportFilePickFailed].
  *
  * Subscriptions start in `init` (pure-display posture): the progress dialog must reflect a run
  * that outlives a recreated screen, and the CBZ-conversion busy flag must be current before the
@@ -31,17 +27,13 @@ import me.manga.kira.presentation.mvi.MviViewModel
  */
 class BackupViewModel(
     scope: BackupScope,
-    private val exportBackup: ExportBackupUseCase,
-    private val importBackup: ImportBackupUseCase,
-    observeBackupProgress: ObserveBackupProgressUseCase,
-    private val stopBackup: StopBackupUseCase,
-    private val clearBackupProgress: ClearBackupProgressUseCase,
-    private val discardBackupArtifact: DiscardBackupArtifactUseCase,
+    private val files: BackupFileOperations,
+    private val progressActions: BackupProgressOperations,
     observeCbzConversion: ObserveCbzConversionUseCase,
 ) : MviViewModel<BackupState, BackupIntent, BackupEffect>(BackupState(scope = scope)) {
     init {
         launchSafely {
-            observeBackupProgress().collect { snapshot ->
+            progressActions.observe().collect { snapshot ->
                 updateState { it.copy(progress = snapshot) }
             }
         }
@@ -62,7 +54,8 @@ class BackupViewModel(
             is BackupIntent.OnExportDelivered -> finishExportHandoff(intent.success)
             BackupIntent.OnImport -> requestImportPicker()
             is BackupIntent.OnImportFilePicked -> startImport(intent.localPath)
-            BackupIntent.OnStop -> stopBackup()
+            is BackupIntent.OnImportFilePickFailed -> showFailure(intent.error)
+            BackupIntent.OnStop -> progressActions.stop()
             BackupIntent.OnDismissResult -> dismissResult()
             BackupIntent.OnBack -> emit(BackupEffect.NavigateBack)
         }
@@ -72,7 +65,7 @@ class BackupViewModel(
         val current = state.value
         if (!current.canStartRun) return
         updateState { it.copy(error = null) }
-        when (val result = exportBackup(current.scope, current.includeDownloads)) {
+        when (val result = files.exportBackup(current.scope, current.includeDownloads)) {
             is AppResult.Success ->
                 emit(
                     BackupEffect.LaunchExportPicker(
@@ -90,10 +83,10 @@ class BackupViewModel(
     private suspend fun finishExportHandoff(success: Boolean) {
         // The picker copied (or abandoned) the cache artifact — it is garbage on every outcome.
         state.value.progress.exportResult
-            ?.let { discardBackupArtifact(it.archivePath) }
+            ?.let { files.discardExport(it.archivePath) }
         if (!success) {
             // Save-picker dismissed: nothing was delivered, drop the terminal summary silently.
-            clearBackupProgress()
+            progressActions.clear()
         }
     }
 
@@ -105,17 +98,28 @@ class BackupViewModel(
 
     private suspend fun startImport(localPath: String?) {
         if (localPath == null) return // picker cancelled
-        if (!state.value.canStartRun) return
-        updateState { it.copy(error = null) }
-        val result = importBackup(localPath)
-        if (result is AppResult.Failure && result.error !is AppError.Cancelled) {
-            updateState { it.copy(error = result.error) }
+        try {
+            if (!state.value.canStartRun || state.value.isScoped) return
+            updateState { it.copy(error = null) }
+            val result = files.importBackup(localPath)
+            if (result is AppResult.Failure) showFailure(result.error)
+        } finally {
+            // If the importer claimed the snapshot this is a no-op. Otherwise the busy/error/
+            // cancellation path must not strand the picker capability or its acquisition slot.
+            withContext(NonCancellable) {
+                val cleanup = files.discardImport(localPath)
+                if (cleanup is AppResult.Failure && state.value.error == null) showFailure(cleanup.error)
+            }
         }
+    }
+
+    private fun showFailure(error: AppError) {
+        if (error !is AppError.Cancelled) updateState { it.copy(error = error) }
     }
 
     private fun dismissResult() {
         if (state.value.progress.isRunning) return
-        clearBackupProgress()
+        progressActions.clear()
         updateState { it.copy(error = null) }
     }
 }

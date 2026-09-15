@@ -42,6 +42,7 @@ internal fun fixtureDownloadService(
         persistence = ChapterDownloadPersistence(library, inputs.dao.notifications, inputs.dao, files),
         pageTransfer = PageDownloadTransfer(inputs.transport.client, AndroidPageMediaInspector()),
         archive = ChapterDownloadArchive(manager, inputs.storage.settings),
+        artifacts = inputs.rows.artifacts,
         downloadDispatcher = inputs.sender,
     )
 }

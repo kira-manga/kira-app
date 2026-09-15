@@ -3,14 +3,9 @@
 
 package me.manga.kira.data.backup
 
-import androidx.room.Room
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.BackupDao
@@ -21,19 +16,14 @@ import me.manga.kira.data.repository.BackupRepositoryImpl
 import me.manga.kira.data.repository.recoveryTestPng
 import me.manga.kira.domain.model.backup.BackupScope
 import me.manga.kira.domain.repository.MangaKey
-import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.platform.backup.BackupZipWriter
-import me.manga.kira.platform.cbz.DefaultCbzReader
-import me.manga.kira.platform.filesystem.AppFileSystem
-import me.manga.kira.platform.media.DesktopPageMediaInspector
-import okio.FileSystem
-import okio.Path
+import okio.Path.Companion.toPath
 import okio.buffer
-import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -46,23 +36,23 @@ import kotlin.test.assertTrue
 class BackupRepositoryEndToEndTest {
     private lateinit var sourceDb: MangaDatabase
     private lateinit var targetDb: MangaDatabase
-    private lateinit var sourceFs: TempAppFileSystem
-    private lateinit var targetFs: TempAppFileSystem
-    private lateinit var sourceProgress: MemoryReadProgress
-    private lateinit var targetProgress: MemoryReadProgress
+    private lateinit var sourceFs: BackupTestFileSystem
+    private lateinit var targetFs: BackupTestFileSystem
+    private lateinit var sourceProgress: BackupMemoryReadProgress
+    private lateinit var targetProgress: BackupMemoryReadProgress
     private lateinit var sourceRepository: BackupRepositoryImpl
     private lateinit var targetRepository: BackupRepositoryImpl
 
     @BeforeTest
     fun open() {
-        sourceDb = inMemoryDatabase()
-        targetDb = inMemoryDatabase()
-        sourceFs = TempAppFileSystem("source")
-        targetFs = TempAppFileSystem("target")
-        sourceProgress = MemoryReadProgress()
-        targetProgress = MemoryReadProgress()
-        sourceRepository = repository(sourceDb, sourceFs, sourceProgress)
-        targetRepository = repository(targetDb, targetFs, targetProgress)
+        sourceDb = backupTestDatabase()
+        targetDb = backupTestDatabase()
+        sourceFs = BackupTestFileSystem("source")
+        targetFs = BackupTestFileSystem("target")
+        sourceProgress = BackupMemoryReadProgress()
+        targetProgress = BackupMemoryReadProgress()
+        sourceRepository = backupTestRepository(sourceDb, sourceFs, sourceProgress)
+        targetRepository = backupTestRepository(targetDb, targetFs, targetProgress)
     }
 
     @AfterTest
@@ -115,9 +105,11 @@ class BackupRepositoryEndToEndTest {
             assertTrue(chapter.isDownloaded)
             assertEquals(7, targetProgress.load(chapter.url))
 
-            val targetCbz = DefaultCbzReader(targetFs, TestDispatchers, DesktopPageMediaInspector())
-            assertTrue(targetCbz.cbzExists(restored.id, chapter.id))
-            assertEquals(1, targetCbz.pageCount(targetCbz.cbzPath(restored.id, chapter.id)))
+            val targetCbz = backupTestCbzReader(targetFs)
+            val restoredPath = chapter.localImagePaths.single().toPath()
+            assertTrue(targetFs.fileSystem().exists(restoredPath))
+            assertFalse(targetCbz.cbzExists(restored.id, chapter.id), "restore never overwrites canonical bytes")
+            assertEquals(1, targetCbz.pageCount(restoredPath))
             val downloadRow = assertNotNull(targetDb.backupDao().getDownloadRowByChapter(chapter.id))
             assertEquals(100, downloadRow.progress)
             assertTrue(downloadRow.sizeBytes > 0)
@@ -166,6 +158,41 @@ class BackupRepositoryEndToEndTest {
             assertEquals(null, targetDb.backupDao().getMangaByUrl(excluded.manga.url))
             assertEquals(listOf(selected.manga.url), targetDb.backupDao().getAllHistoryOnce().map { it.mangaUrl })
         }
+
+    @Test
+    fun repeatedImportKeepsTheCommittedGenerationAndReexportsIt() = runTest {
+        val seeded = seedManga(sourceDb.backupDao(), "Round trip", "round-trip", withDownload = true)
+        val exported = sourceRepository.exportBackup(BackupScope.FullLibrary, includeDownloads = true).success()
+        assertEquals(1, targetRepository.importBackup(exported.archivePath).success().downloadsRestored)
+        val manga = assertNotNull(targetDb.backupDao().getMangaByUrl(seeded.manga.url))
+        val chapter = assertNotNull(targetDb.backupDao().getChapterByMangaAndUrl(manga.id, seeded.chapter.url))
+        val repeated = targetRepository.importBackup(exported.archivePath).success()
+        assertEquals(0, repeated.mangasAdded)
+        assertEquals(0, repeated.chaptersAdded)
+        assertEquals(0, repeated.downloadsRestored)
+        assertEquals(chapter, targetDb.backupDao().getChapterByMangaAndUrl(manga.id, seeded.chapter.url))
+        val reexported = targetRepository.exportBackup(BackupScope.FullLibrary, includeDownloads = true).success()
+        assertEquals(1, reexported.downloadCount)
+        assertEquals(0, targetRepository.importBackup(reexported.archivePath).success().downloadsRestored)
+    }
+
+    @Test
+    fun missingExplicitGenerationNeverExportsAnUnrelatedCanonicalFile() = runTest {
+        val seeded = seedManga(sourceDb.backupDao(), "Missing", "missing", withDownload = true)
+        val exported = sourceRepository.exportBackup(BackupScope.FullLibrary, includeDownloads = true).success()
+        targetRepository.importBackup(exported.archivePath).success()
+        val manga = assertNotNull(targetDb.backupDao().getMangaByUrl(seeded.manga.url))
+        val chapter = assertNotNull(targetDb.backupDao().getChapterByMangaAndUrl(manga.id, seeded.chapter.url))
+        val restored = chapter.localImagePaths.single().toPath()
+        val fs = targetFs.fileSystem()
+        val canonical = backupTestCbzReader(targetFs).cbzPath(manga.id, chapter.id)
+        fs.write(canonical) { write(fs.read(restored) { readByteArray() }) }
+        fs.delete(restored)
+        val reexported = targetRepository.exportBackup(BackupScope.FullLibrary, includeDownloads = true).success()
+        assertEquals(0, reexported.downloadCount)
+        assertEquals(1, reexported.skippedLooseDownloads)
+        assertTrue(fs.exists(canonical))
+    }
 
     private suspend fun seedManga(
         dao: BackupDao,
@@ -229,39 +256,16 @@ class BackupRepositoryEndToEndTest {
         mangaId: Long,
         chapterId: Long,
     ) {
-        val reader = DefaultCbzReader(sourceFs, TestDispatchers, DesktopPageMediaInspector())
+        val reader = backupTestCbzReader(sourceFs)
         val path = reader.cbzPath(mangaId, chapterId)
         sourceFs.fileSystem().createDirectories(checkNotNull(path.parent))
         sourceFs.fileSystem().sink(path).buffer().use { sink ->
             BackupZipWriter(sink).apply {
-                writeEntryBytes("001.jpg", recoveryTestPng())
+                writeEntryBytes("001.png", recoveryTestPng())
                 finish()
             }
         }
     }
-
-    private fun repository(
-        db: MangaDatabase,
-        fs: AppFileSystem,
-        progress: ReadProgressRepository,
-    ) = BackupRepositoryImpl(
-        backupDao = db.backupDao(),
-        readProgress = progress,
-        appFileSystem = fs,
-        dispatchers = TestDispatchers,
-        cbzReader = DefaultCbzReader(fs, TestDispatchers, DesktopPageMediaInspector()),
-        chapterDownloadDao = db.chapterDownloadingDao(),
-        notificationDao = db.notificationDao(),
-        appVersion = "1.0.0",
-        platformName = "test",
-    )
-
-    private fun inMemoryDatabase(): MangaDatabase =
-        Room
-            .inMemoryDatabaseBuilder<MangaDatabase>()
-            .setDriver(BundledSQLiteDriver())
-            .setQueryCoroutineContext(Dispatchers.Unconfined)
-            .build()
 
     private fun <T> AppResult<T>.success(): T =
         when (this) {
@@ -273,44 +277,4 @@ class BackupRepositoryEndToEndTest {
         val manga: SavedMangaEntity,
         val chapter: SavedChapterEntity,
     )
-
-    private class MemoryReadProgress : ReadProgressRepository {
-        private val values = mutableMapOf<String, Int>()
-
-        override suspend fun save(
-            chapterUrl: String,
-            pageIndex: Int,
-        ) {
-            values[chapterUrl] = pageIndex
-        }
-
-        override suspend fun load(chapterUrl: String): Int? = values[chapterUrl]
-
-        override suspend fun clear(chapterUrl: String) {
-            values.remove(chapterUrl)
-        }
-    }
-
-    private class TempAppFileSystem(
-        label: String,
-    ) : AppFileSystem {
-        private val root: Path =
-            FileSystem.SYSTEM_TEMPORARY_DIRECTORY /
-                "kira-backup-$label-${Random.nextLong().toString().trimStart('-')}"
-
-        override val filesDir: Path = root / "files"
-        override val cacheDir: Path = root / "cache"
-
-        override fun fileSystem(): FileSystem = FileSystem.SYSTEM
-
-        fun cleanUp() = fileSystem().deleteRecursively(root, mustExist = false)
-    }
-
-    private data object TestDispatchers : DispatcherProvider {
-        override val main: CoroutineDispatcher = Dispatchers.Unconfined
-        override val mainImmediate: CoroutineDispatcher = Dispatchers.Unconfined
-        override val default: CoroutineDispatcher = Dispatchers.Unconfined
-        override val io: CoroutineDispatcher = Dispatchers.Unconfined
-        override val unconfined: CoroutineDispatcher = Dispatchers.Unconfined
-    }
 }
