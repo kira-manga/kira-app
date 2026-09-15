@@ -42,7 +42,7 @@ class ResourceTestWorkManagerShadow {
 
 /** Implements the SDK contract without constructing WorkManagerImpl, its database or schedulers. */
 @Suppress("TooManyFunctions") // The third-party abstract SDK requires these fail-closed overrides.
-internal class RecordOnlyWorkManager(override val configuration: Configuration) : WorkManager() {
+internal class RecordOnlyWorkManager(override val configuration: Configuration) : WorkManagerConstructorBridge() {
     val periodicRequests = mutableListOf<PeriodicWorkRequest>()
 
     @SuppressLint("RestrictedApi")
