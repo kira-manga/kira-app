@@ -1,11 +1,11 @@
 package me.manga.kira.di
 
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.data.repository.DownloadedChapterConversion
 import me.manga.kira.data.repository.SettingsRepositoryImpl
 import me.manga.kira.domain.repository.SettingsRepository
 import me.manga.kira.domain.usecase.feedback.SubmitFeedbackUseCase
 import me.manga.kira.domain.usecase.reader.ObserveReadingModeUseCase
-import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.settings.ClearCacheUseCase
 import me.manga.kira.domain.usecase.settings.ClearCbzConversionUseCase
 import me.manga.kira.domain.usecase.settings.CompressExistingDownloadsUseCase
@@ -119,50 +119,46 @@ import org.koin.dsl.module
  * cross-screen-propagation smoke-test framing that was subsequently
  * fulfilled-then-collapsed as the legacy screen retired across §354.
  */
-val settingsReworkModule: Module = module {
-    single<SettingsRepository> {
-        SettingsRepositoryImpl(
-            legacy = get(),
-            dispatchers = get<DispatcherProvider>(),
-            // Phase 7.x.settings.cbz — DataStoreHelper (`:platform`) bound `single` by the legacy
-            // PlatformModule; the rework slice consumes the SAME instance so the Yami Compressor
-            // toggles round-trip through the same KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ
-            // cells the legacy CbzConversionViewModel wrote.
-            dataStore = get(),
-            // Phase 7.x.settings.cbz — the bulk convert-existing-downloads engine. ChapterDao
-            // (`:shared`, bound by SharedModule — same instance DownloadsActionRepositoryImpl
-            // consumes) walks the downloaded chapters; CbzWriter (`:platform`, bound `single` per
-            // platform by PlatformModule — Android Bitmap.compress(WEBP); Desktop + iOS both transcode
-            // to WebP via SkiaWebpEncoder, with an honest verbatim fallback only for skiko-undecodable
-            // formats, e.g. AVIF — #33/finding-11) repacks each into a `.cbz` and deletes the originals
-            // on success.
-            chapterDao = get(),
-            cbzWriter = get(),
-            // GAP-SET-16 — MangaDao (`:shared`, bound `single` by SharedModule — same instance
-            // LibraryRepositoryImpl consumes) supplies the manga title per chapter for the
-            // CbzConversionProgress "Current:" block during the bulk convert.
-            mangaDao = get(),
-            // B4 — same ChapterDownloadDao singleton the download engine uses; lets the manual compressor
-            // skip chapters with an active download row so the two never race on one chapter's CBZ.
-            chapterDownloadDao = get(),
-            // Re-walks each converted chapter dir so the ledger row's sizeBytes tracks the new archive.
-            appFileSystem = get(),
-        )
-    }
+val settingsReworkModule: Module =
+    module {
+        factory {
+            DownloadedChapterConversion(
+                chapters = get(),
+                archives = get(),
+                manga = get(),
+                downloads = get(),
+                files = get(),
+            )
+        }
+        single<SettingsRepository> {
+            SettingsRepositoryImpl(
+                legacy = get(),
+                dispatchers = get<DispatcherProvider>(),
+                // Phase 7.x.settings.cbz — DataStoreHelper (`:platform`) bound `single` by the legacy
+                // PlatformModule; the rework slice consumes the SAME instance so the Yami Compressor
+                // toggles round-trip through the same KEY_USE_CBZ_FORMAT / KEY_AUTO_CONVERT_TO_CBZ
+                // cells the legacy CbzConversionViewModel wrote.
+                dataStore = get(),
+                // Same chapter/manga/download DAOs, platform writer, and filesystem: active-download
+                // exclusion, progress titles, archive publication, and ledger-size refresh stay intact.
+                conversion = get(),
+                httpCache = get(),
+            )
+        }
 
-    factory { ObserveSettingsUseCase(get()) }
-    factory { UpdateSettingsToggleUseCase(get()) }
-    factory { ClearCacheUseCase(get()) }
-    factory { SubmitFeedbackUseCase(get()) }
-    factory { CompressExistingDownloadsUseCase(get()) }
-    // GAP-SET-16 — observe + stop the CBZ conversion progress stream; both thin pass-throughs over
-    // the same `single<SettingsRepository>` instance that drives the progress StateFlow.
-    factory { ObserveCbzConversionUseCase(get()) }
-    factory { StopCbzConversionUseCase(get()) }
-    // #14 — reset the CBZ progress flow to idle on dialog dismiss (native clearError()).
-    factory { ClearCbzConversionUseCase(get()) }
+        factory { ObserveSettingsUseCase(get()) }
+        factory { UpdateSettingsToggleUseCase(get()) }
+        factory { ClearCacheUseCase(get()) }
+        factory { SubmitFeedbackUseCase(get()) }
+        factory { CompressExistingDownloadsUseCase(get()) }
+        // GAP-SET-16 — observe + stop the CBZ conversion progress stream; both thin pass-throughs over
+        // the same `single<SettingsRepository>` instance that drives the progress StateFlow.
+        factory { ObserveCbzConversionUseCase(get()) }
+        factory { StopCbzConversionUseCase(get()) }
+        // #14 — reset the CBZ progress flow to idle on dialog dismiss (native clearError()).
+        factory { ClearCbzConversionUseCase(get()) }
 
-    viewModel {
-        SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        viewModel {
+            SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        }
     }
-}

@@ -12,7 +12,7 @@ import me.manga.kira.presentation.mvi.MviState
  * projection that the `:ui` composable renders directly.
  *
  * Phase 7.x.complaint.actions append: also holds the action-dialog substate
- * ([actionDialogMode], [activeComplaint], [isSubmittingAction]) so the dialog mount in `:ui`
+ * ([actionDialogMode], [activeComplaint], [isSubmittingAction], [actionFailed]) so the dialog mount in `:ui`
  * is a pure projection of state (no `remember { mutableStateOf(...) }` for dialog flow control
  * — that would split the source of truth and make the composable non-stateless).
  *
@@ -48,6 +48,8 @@ import me.manga.kira.presentation.mvi.MviState
  *  - [isSubmittingAction]: `true` while a Reply / Edit / Delete request is in-flight. Drives
  *    the dialog's submit buttons' `enabled = false` + loading spinner. Cleared on success
  *    (alongside dialog dismissal) or on failure (dialog stays open at current mode).
+ *  - [actionFailed]: a non-leaking failure flag rendered inside that retained dialog. Clears
+ *    on the next attempt, mode/target change, dismissal or success; editing preserves the error.
  *
  * **Mutually exclusive states**:
  *  - `isLoading == true` → "Loading…" indicator. [all] and [filtered] are empty, [error] is null.
@@ -114,6 +116,7 @@ data class ComplaintState(
     val actionDialogMode: ActionDialogMode = ActionDialogMode.NONE,
     val activeComplaint: ComplaintSummary? = null,
     val isSubmittingAction: Boolean = false,
+    val actionFailed: Boolean = false,
 ) : MviState
 
 /**

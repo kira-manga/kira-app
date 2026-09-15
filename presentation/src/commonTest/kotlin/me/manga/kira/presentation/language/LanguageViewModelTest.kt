@@ -32,8 +32,8 @@ import kotlin.test.assertTrue
  *    indicator then tracks the upstream re-emit),
  *  - the request flow pins the [FeedbackRepository] wire (type=LANGUAGES + "Languages" subject),
  *    success closes the dialog + emits [LanguageEffect.RequestSubmitted], failure keeps the
- *    dialog open (typed text preserved) + emits [LanguageEffect.RequestFailed], and the
- *    in-flight guard drops a double-tap.
+ *    dialog open with a non-leaking error flag and the draft preserved, and the in-flight guard
+ *    prevents duplicate requests or replacement of the pending draft.
  */
 class LanguageViewModelTest {
 
@@ -58,7 +58,7 @@ class LanguageViewModelTest {
 
     /** Feedback repo whose submit can be gated open (in-flight) and resolved on demand. */
     private class GatedFeedbackRepository(
-        private val result: Result<Unit> = Result.success(Unit),
+        var result: Result<Unit> = Result.success(Unit),
     ) : FeedbackRepository {
         val submissions = mutableListOf<Triple<ComplaintType, String, String>>()
         var gate: CompletableDeferred<Unit>? = null
@@ -126,12 +126,13 @@ class LanguageViewModelTest {
         assertFalse(vm.state.value.requestDialogVisible, "success closes the dialog")
         assertEquals("", vm.state.value.requestText, "success clears the buffer")
         assertFalse(vm.state.value.requestSubmitting)
+        assertFalse(vm.state.value.requestFailed)
         assertEquals(listOf<LanguageEffect>(LanguageEffect.RequestSubmitted), effects)
         collector.cancel()
     }
 
     @Test
-    fun submitRequest_failure_keepsDialogAndText_emitsFailed() = runTest {
+    fun submitRequest_failure_keepsDialogAndText_setsModalErrorWithoutEffect() = runTest {
         val feedback = GatedFeedbackRepository(result = Result.failure(RuntimeException("firestore boom")))
         val vm = viewModel(feedback = feedback)
         val effects = mutableListOf<LanguageEffect>()
@@ -144,24 +145,121 @@ class LanguageViewModelTest {
         assertTrue(vm.state.value.requestDialogVisible, "failure preserves the dialog")
         assertEquals("my typed request", vm.state.value.requestText, "typed text kept for retry")
         assertFalse(vm.state.value.requestSubmitting, "the guard flag resets so retry can run")
-        assertEquals(listOf<LanguageEffect>(LanguageEffect.RequestFailed), effects)
+        assertTrue(vm.state.value.requestFailed)
+        assertTrue(effects.isEmpty(), "failure must not enqueue a snackbar behind the modal")
         collector.cancel()
     }
 
     @Test
-    fun submitRequest_reEntryGuard_doubleTapCreatesOneSubmission() = runTest {
+    fun submitRequest_inFlight_blocksDuplicateDismissReopenAndEdits() = runTest {
         val feedback = GatedFeedbackRepository()
         feedback.gate = CompletableDeferred() // hold the first submit in flight
         val vm = viewModel(feedback = feedback)
 
-        vm.submit(LanguageIntent.OnRequestTextChange("b"))
+        vm.submit(LanguageIntent.OnOpenRequestDialog)
+        vm.submit(LanguageIntent.OnRequestTextChange("Please add Polish"))
         vm.submit(LanguageIntent.OnSubmitRequest)
         vm.submit(LanguageIntent.OnSubmitRequest) // double tap
+        vm.submit(LanguageIntent.OnDismissRequestDialog)
+        vm.submit(LanguageIntent.OnOpenRequestDialog)
+        vm.submit(LanguageIntent.OnRequestTextChange("replacement draft"))
 
         assertEquals(1, feedback.submissions.size, "the in-flight guard must drop the second tap")
         assertTrue(vm.state.value.requestSubmitting)
+        assertTrue(vm.state.value.requestDialogVisible, "pending request keeps its dialog")
+        assertEquals("Please add Polish", vm.state.value.requestText, "pending draft cannot be replaced")
+        assertFalse(vm.state.value.requestFailed)
 
         feedback.gate?.complete(Unit)
         assertFalse(vm.state.value.requestSubmitting)
+        assertFalse(vm.state.value.requestDialogVisible)
+    }
+
+    @Test
+    fun submitRequest_explicitRetries_clearErrorAndKeepDraft_untilSuccess() = runTest {
+        val feedback = GatedFeedbackRepository(result = Result.failure(RuntimeException("request failed")))
+        val vm = viewModel(feedback = feedback)
+        val effects = mutableListOf<LanguageEffect>()
+        val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+        val submission = Triple(ComplaintType.LANGUAGES, "Languages", "Please add Polish")
+
+        vm.submit(LanguageIntent.OnOpenRequestDialog)
+        vm.submit(LanguageIntent.OnRequestTextChange(submission.third))
+        vm.submit(LanguageIntent.OnSubmitRequest)
+
+        assertTrue(vm.state.value.requestFailed)
+        assertEquals(listOf(submission), feedback.submissions, "no automatic retry on failure")
+        assertTrue(effects.isEmpty())
+
+        feedback.gate = CompletableDeferred()
+        vm.submit(LanguageIntent.OnSubmitRequest) // same retained draft, explicit retry
+        vm.submit(LanguageIntent.OnSubmitRequest) // ignored while retry is in flight
+
+        assertTrue(vm.state.value.requestSubmitting)
+        assertFalse(vm.state.value.requestFailed, "a new attempt clears the old error")
+        assertEquals(submission.third, vm.state.value.requestText)
+        assertEquals(listOf(submission, submission), feedback.submissions)
+
+        feedback.gate?.complete(Unit) // a repeated failure remains local too
+        assertTrue(vm.state.value.requestFailed)
+        assertFalse(vm.state.value.requestSubmitting)
+        assertTrue(vm.state.value.requestDialogVisible)
+        assertEquals(submission.third, vm.state.value.requestText)
+        assertEquals(2, feedback.submissions.size, "failure never retries on its own")
+        assertTrue(effects.isEmpty())
+
+        feedback.result = Result.success(Unit)
+        feedback.gate = null
+        vm.submit(LanguageIntent.OnSubmitRequest)
+
+        assertEquals(listOf(submission, submission, submission), feedback.submissions)
+        assertFalse(vm.state.value.requestDialogVisible)
+        assertEquals("", vm.state.value.requestText)
+        assertFalse(vm.state.value.requestSubmitting)
+        assertFalse(vm.state.value.requestFailed)
+        assertEquals(listOf<LanguageEffect>(LanguageEffect.RequestSubmitted), effects)
+        collector.cancel()
+    }
+
+    @Test
+    fun requestFailure_preservesEditsAndRepeatedOpen_untilExplicitDismissal() = runTest {
+        val feedback = GatedFeedbackRepository(result = Result.failure(RuntimeException("request failed")))
+        val vm = viewModel(feedback = feedback)
+
+        vm.submit(LanguageIntent.OnOpenRequestDialog)
+        vm.submit(LanguageIntent.OnRequestTextChange("Please add Polish"))
+        vm.submit(LanguageIntent.OnSubmitRequest)
+        vm.submit(LanguageIntent.OnRequestTextChange("Please add Polish and Czech"))
+        vm.submit(LanguageIntent.OnOpenRequestDialog)
+
+        assertTrue(vm.state.value.requestDialogVisible)
+        assertTrue(vm.state.value.requestFailed, "editing is not a successful submission")
+        assertEquals("Please add Polish and Czech", vm.state.value.requestText)
+        assertEquals(1, feedback.submissions.size, "editing or opening is not resubmission")
+
+        vm.submit(LanguageIntent.OnDismissRequestDialog)
+        assertFalse(vm.state.value.requestDialogVisible)
+        assertFalse(vm.state.value.requestFailed)
+        assertEquals("", vm.state.value.requestText)
+
+        vm.submit(LanguageIntent.OnOpenRequestDialog)
+        assertTrue(vm.state.value.requestDialogVisible)
+        assertFalse(vm.state.value.requestFailed, "a fresh dialog has no stale error")
+        assertEquals("", vm.state.value.requestText)
+    }
+
+    @Test
+    fun hiddenRequestDialog_ignoresTextChangesAndSubmission() = runTest {
+        val feedback = GatedFeedbackRepository()
+        val vm = viewModel(feedback = feedback)
+
+        vm.submit(LanguageIntent.OnRequestTextChange("Please add Polish"))
+        vm.submit(LanguageIntent.OnSubmitRequest)
+
+        assertTrue(feedback.submissions.isEmpty())
+        assertFalse(vm.state.value.requestDialogVisible)
+        assertFalse(vm.state.value.requestSubmitting)
+        assertFalse(vm.state.value.requestFailed)
+        assertEquals("", vm.state.value.requestText)
     }
 }

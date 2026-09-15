@@ -36,7 +36,6 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.presentation.reader.ReaderIntent
 import me.manga.kira.presentation.reader.ReaderState
@@ -77,10 +76,10 @@ private val fixtureChapter = Chapter("Chapter 1", "1", "app97://chapter", null, 
 @OptIn(ExperimentalTestApi::class)
 internal fun runReaderChromeTest(block: ReaderChromeTestFixture.() -> Unit) {
     // runComposeUiTest disposes composition before use closes our loader and bitmap, even on failure.
-    ReaderChromeImages().use {
+    ReaderChromeImages().use { images ->
         runComposeUiTest {
             mainClock.autoAdvance = false
-            ReaderChromeTestFixture(this).apply {
+            ReaderChromeTestFixture(this, images.completed).apply {
                 install()
                 block()
             }
@@ -113,12 +112,12 @@ internal fun emptyReaderStates(): List<ReaderState> =
 @OptIn(ExperimentalTestApi::class)
 internal class ReaderChromeTestFixture(
     val test: ComposeUiTest,
+    private val completed: MutableSet<String>,
 ) {
     var state by mutableStateOf(ReaderState(isLoading = true, isUiVisible = false))
     private var generation by mutableStateOf(0)
     private var direction by mutableStateOf(LayoutDirection.Ltr)
     private var previousVisibility: Boolean? = null
-    private val completed = ConcurrentHashMap.newKeySet<String>()
     val intents = mutableListOf<ReaderIntent>()
     var visibleSince = 0L
         private set
@@ -224,9 +223,6 @@ internal class ReaderChromeTestFixture(
             onOpenInWebView = { _, _ -> },
             onSharePage = {},
             onSolveCloudflareChallenge = { _, _ -> },
-            onReportProgress = { url, progress ->
-                if (progress == PageDownloadProgress.Complete) completed += url
-            },
             modifier = Modifier.size(width = 400.dp, height = 640.dp).testTag(READER_CHROME_ROOT),
         )
     }
@@ -247,6 +243,7 @@ internal class ReaderChromeTestFixture(
 
 @OptIn(DelicateCoilApi::class)
 private class ReaderChromeImages : Closeable {
+    val completed: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val previous = SingletonImageLoader.get(PlatformContext.INSTANCE)
     private val bitmap = patternedBitmap()
     private val image = bitmap.asImage(shareable = true)
@@ -265,6 +262,7 @@ private class ReaderChromeImages : Closeable {
                                     .startsWith(PAGE_PREFIX),
                             )
                             // Successful real Coil rendering, not an error/loading placeholder or fake tap box.
+                            completed += chain.request.data.toString()
                             return SuccessResult(image, chain.request, DataSource.MEMORY)
                         }
                     },

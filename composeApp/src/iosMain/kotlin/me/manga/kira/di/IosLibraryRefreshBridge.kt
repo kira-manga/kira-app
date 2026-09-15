@@ -1,16 +1,13 @@
 package me.manga.kira.di
 
-import co.touchlab.kermit.Logger
-import kotlin.time.ExperimentalTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.LibraryPrefsRepository
 import me.manga.kira.domain.usecase.library.RefreshAllLibraryChaptersUseCase
 import org.koin.mp.KoinPlatform
 import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 /**
  * Swift-callable entry point for the iOS **background library refresh** (`BGAppRefreshTask`,
@@ -24,7 +21,7 @@ import kotlin.time.Clock
  *  - [run] launches the refresh on a background scope and returns a **cancel handle**. The
  *    handler wires it to `BGAppRefreshTask.expirationHandler` so an expiring window cancels the
  *    in-flight refresh promptly (partial per-manga progress is already committed row-by-row —
- *    cancellation loses only the un-fetched remainder).
+ *    already-committed writes are not rolled back by cancellation).
  *  - [onComplete] is invoked exactly once with `true` on a successful full pass, `false` on
  *    failure OR cancellation — Swift forwards it to `task.setTaskCompleted(success:)`.
  *
@@ -35,8 +32,6 @@ import kotlin.time.Clock
  * BGAppRefreshTask), so both mobile platforms carry periodic refresh; Desktop remains unwired.
  */
 object IosLibraryRefreshBridge {
-
-    private val log = Logger.withTag("LibraryBgRefresh")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
@@ -45,42 +40,16 @@ object IosLibraryRefreshBridge {
      */
     @OptIn(ExperimentalTime::class)
     fun run(onComplete: (Boolean) -> Unit): () -> Unit {
-        val koin = KoinPlatform.getKoin()
-        val refreshAllChapters = koin.get<RefreshAllLibraryChaptersUseCase>()
-        val libraryPrefs = koin.get<LibraryPrefsRepository>()
-
-        var completed = false
-        fun completeOnce(success: Boolean) {
-            if (completed) return
-            completed = true
-            onComplete(success)
-        }
-
-        val job = scope.launch {
-            log.i { "bg refresh started" }
-            val result = refreshAllChapters()
-            when (result) {
-                is AppResult.Success -> {
-                    // Same cell the inline manual path + the Android worker write, so the
-                    // Library "Last updated" header reflects background runs too.
-                    libraryPrefs.setLastUpdated(Clock.System.now())
-                    log.i { "bg refresh done: ${result.value} manga refreshed" }
-                    completeOnce(true)
-                }
-                is AppResult.Failure -> {
-                    log.w { "bg refresh failed: ${result.error}" }
-                    completeOnce(false)
-                }
-            }
-        }
-        job.invokeOnCompletion { cause ->
-            // Cancellation (BG window expired) or an unexpected throw both settle as failure so
-            // Swift always gets its setTaskCompleted call.
-            if (cause != null) {
-                log.w { "bg refresh ended without result: ${cause.message}" }
-                completeOnce(false)
-            }
-        }
+        val job =
+            launchLibraryRefreshCompletion(
+                scope = scope,
+                // Resolve within the owned job too: DI failure must settle the OS callback as false.
+                refresh = { KoinPlatform.getKoin().get<RefreshAllLibraryChaptersUseCase>()() },
+                stampLastSuccess = {
+                    KoinPlatform.getKoin().get<LibraryPrefsRepository>().setLastUpdated(Clock.System.now())
+                },
+                onComplete = onComplete,
+            )
         return { job.cancel() }
     }
 }

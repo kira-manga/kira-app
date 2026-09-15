@@ -13,6 +13,15 @@ import kotlin.test.assertTrue
  * a challenge so the engine stamps the solver sentinel instead of a dead-end raw error.
  */
 class TransferRetryRulesTest {
+    @Test
+    fun byteAndNativePolicyRejectionNeverConsumeARetryLoop() {
+        for (reason in listOf("ENCODED_BYTES", "SOURCE_PIXELS", "BOUNDED_DECODER_REJECTED", "DECODER_UNAVAILABLE")) {
+            assertEquals(
+                TransferRetryRules.Decision.FailChapter(false),
+                TransferRetryRules.decide(1, 3, "__page_policy_rejected__:$reason"),
+            )
+        }
+    }
 
     @Test
     fun underBudget_retries_withExponentialBackoff() {

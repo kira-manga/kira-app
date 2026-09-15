@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Chapter
@@ -44,12 +45,34 @@ class LibraryRepositoryPersistNewTest {
 
         override suspend fun getSavedChapterUrls(mangaId: Long): List<String> = savedUrls.toList()
 
-        override suspend fun insertChapters(chapters: List<SavedChapterEntity>) {
+        override suspend fun insertChapters(chapters: List<SavedChapterEntity>): List<Long> {
+            val firstId = inserted.size + 1L
             inserted += chapters
             savedUrls += chapters.map { it.url } // so a second call sees them as already-saved
+            return chapters.indices.map { firstId + it }
+        }
+
+        var discoveryRows = emptyList<ChapterNotification>()
+        var discoveryOwner: Pair<String, String>? = null
+        var discoveryCandidates = emptyList<SavedChapterEntity>()
+
+        override suspend fun persistChapterDiscoveries(
+            api: String,
+            mangaUrl: String,
+            chapters: List<SavedChapterEntity>,
+            expectedMangaId: Long?,
+        ): List<ChapterNotification> {
+            check(expectedMangaId == null)
+            discoveryOwner = api to mangaUrl
+            discoveryCandidates = chapters
+            return discoveryRows
         }
 
         override suspend fun insertManga(manga: SavedMangaEntity): Long = 0L
+
+        override suspend fun getDiscoveryManga(api: String, mangaUrl: String): SavedMangaEntity? = error("unused")
+
+        override suspend fun insertDiscoveryNotifications(notifications: List<ChapterNotification>): List<Long> = error("unused")
 
         override suspend fun getMangaIdByUrl(url: String): Long? = null
 
@@ -84,6 +107,11 @@ class LibraryRepositoryPersistNewTest {
     private class FakeMangaDao(
         private val id: Long?,
     ) : MangaDao {
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
+        ): Long? = if (api == "src" && mangaUrl == "m/naruto") id else null
+
         override suspend fun getIdByApiAndTitle(
             api: String,
             title: String,
@@ -92,6 +120,11 @@ class LibraryRepositoryPersistNewTest {
         override fun getAllChapterMetricsFlow(): Flow<List<MangaChapterMetrics>> = flowOf(emptyList())
 
         override suspend fun updateManga(manga: SavedMangaEntity): Int = 0
+        override suspend fun toggleLiked(mangaId: Long) = error("unused")
+        override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+        override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+        override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+        override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
 
         override suspend fun update(manga: SavedMangaEntity) {}
 
@@ -145,7 +178,7 @@ class LibraryRepositoryPersistNewTest {
             val deo = FakeLibraryDeo(seededUrls = listOf("c/1", "c/2"))
             val repo = repo(deo, mangaId = 7L)
             // Source ships newest-first: c/4 and c/3 are new, c/2/c/1 already saved.
-            val result = repo.persistNewChapters("src", "en", "Naruto", listOf(ch("4"), ch("3"), ch("2"), ch("1")))
+            val result = repo.persistNewChapters("src", "m/naruto", listOf(ch("4"), ch("3"), ch("2"), ch("1")))
 
             assertTrue(result.isSuccess)
             assertEquals(2, deo.inserted.size, "only the two not-yet-saved chapters are inserted")
@@ -157,100 +190,39 @@ class LibraryRepositoryPersistNewTest {
         }
 
     @Test
-    fun andNotify_writesNotificationRowPerNewChapter_andNoneOnRefresh() =
+    fun andNotify_delegatesExactParentAndCountsOnlyCommittedRows() =
         runTest {
-            val deo = FakeLibraryDeo(seededUrls = listOf("c/1"))
-            val chapterDao = FakeChapterDao(mapOf("c/2" to 102L, "c/3" to 103L))
-            val notif = RecordingNotificationDao()
-            val repo =
-                LibraryRepositoryImpl(
-                    FakeMangaDao(7L),
-                    deo,
-                    chapterDao,
-                    notif,
-                    RecordingHistoryDao(),
-                    FakeChapterDownloadDao(),
-                    FakeDownloadRepository(),
-                    fileService(),
-                    RecordingReadProgressRepository(),
-                    testDispatchers,
-                )
-            val manga =
-                Manga(
-                    api = "src",
-                    language = "en",
-                    title = "Naruto",
-                    url = "m/naruto",
-                    coverUrl = "cover.jpg",
-                    rating = null,
-                    genres = emptyList(),
-                )
-
+            // This is a boundary/delegation test. Real Room concurrency and ownership are covered
+            // in desktopTest, not by pretending these fake methods supply a transaction.
+            val deo = FakeLibraryDeo(seededUrls = emptyList())
+            val manga = Manga("src", "en", "Naruto", "m/naruto", "cover.jpg", null, emptyList())
+            deo.discoveryRows = listOf(
+                ChapterNotification(
+                    id = 9, api = manga.api, language = manga.language, mangaId = 7,
+                    mangaTitle = manga.title, mangaImageUrl = manga.coverUrl, mangaUrl = manga.url,
+                    chapterId = 103, chapterNumber = "3", chapterUrl = "c/3",
+                ),
+            )
+            // No api+title lookup is available; refresh must use the DAO's exact-parent boundary.
+            val repo = repo(deo, mangaId = null)
             val result = repo.persistNewChaptersAndNotify(manga, listOf(ch("3"), ch("2"), ch("1")))
 
-            assertTrue(result.isSuccess)
-            assertEquals(setOf("c/2", "c/3"), notif.inserted.map { it.chapterUrl }.toSet(), "one notification per genuinely-new chapter")
-            assertTrue(notif.inserted.all { it.mangaId == 7L }, "notifications carry the resolved mangaId")
-            assertTrue(notif.inserted.all { it.chapterId > 0L }, "notifications carry the resolved chapterId")
-            assertTrue(notif.inserted.all { it.mangaImageUrl == "cover.jpg" }, "cover maps to mangaImageUrl")
-
-            notif.inserted.clear()
-            // Re-refresh: c/2 + c/3 are now saved → nothing new → no duplicate notifications.
-            repo.persistNewChaptersAndNotify(manga, listOf(ch("3"), ch("2"), ch("1")))
-            assertTrue(notif.inserted.isEmpty(), "no duplicate notifications on a re-refresh")
+            assertEquals(me.manga.kira.core.result.AppResult.Success(1), result)
+            assertEquals(manga.api to manga.url, deo.discoveryOwner)
+            assertEquals(listOf("c/1", "c/2", "c/3"), deo.discoveryCandidates.map { it.url })
+            assertTrue(deo.inserted.isEmpty(), "repository must not perform a separate chapter insertion")
         }
 
     @Test
-    fun andNotify_neverAttachesToAnotherMangasChapterRow() =
+    fun andNotify_emptyCommittedOutcomeDoesNotCountStaleCandidates() =
         runTest {
-            // 2026-07 audit: the DAO's notify-pass resolution is mangaId-scoped (ChapterDao KDoc) so a
-            // chapter url legally reused under a DIFFERENT manga can't win and attach the notification
-            // to the wrong manga's row. Here c/2's only saved_chapters row (id 999) belongs to manga 8,
-            // while the refresh runs for manga 7: the scoped lookup must resolve nothing for c/2 (no
-            // wrong-row notification), while c/3 — owned by manga 7 — is notified normally.
-            val deo = FakeLibraryDeo(seededUrls = listOf("c/1"))
-            val chapterDao =
-                FakeChapterDao(
-                    idsByUrl = mapOf("c/2" to 999L, "c/3" to 103L),
-                    mangaIdByUrl = mapOf("c/2" to 8L, "c/3" to 7L),
-                )
-            val notif = RecordingNotificationDao()
-            val repo =
-                LibraryRepositoryImpl(
-                    FakeMangaDao(7L),
-                    deo,
-                    chapterDao,
-                    notif,
-                    RecordingHistoryDao(),
-                    FakeChapterDownloadDao(),
-                    FakeDownloadRepository(),
-                    fileService(),
-                    RecordingReadProgressRepository(),
-                    testDispatchers,
-                )
-            val manga =
-                Manga(
-                    api = "src",
-                    language = "en",
-                    title = "Naruto",
-                    url = "m/naruto",
-                    coverUrl = "cover.jpg",
-                    rating = null,
-                    genres = emptyList(),
-                )
+            val deo = FakeLibraryDeo(seededUrls = emptyList())
+            val manga = Manga("src", "en", "Naruto", "m/naruto", "cover.jpg", null, emptyList())
+            val result = repo(deo, mangaId = 7L).persistNewChaptersAndNotify(manga, listOf(ch("1")))
 
-            val result = repo.persistNewChaptersAndNotify(manga, listOf(ch("3"), ch("2"), ch("1")))
-
-            assertTrue(result.isSuccess)
-            assertEquals(
-                listOf("c/3"),
-                notif.inserted.map { it.chapterUrl },
-                "the foreign-manga url is skipped, not misattached",
-            )
-            assertTrue(
-                notif.inserted.none { it.chapterId == 999L },
-                "manga 8's chapter row never receives manga 7's notification",
-            )
+            assertEquals(me.manga.kira.core.result.AppResult.Success(0), result)
+            assertEquals(listOf("c/1"), deo.discoveryCandidates.map { it.url })
+            assertTrue(deo.inserted.isEmpty())
         }
 
     @Test
@@ -258,11 +230,11 @@ class LibraryRepositoryPersistNewTest {
         runTest {
             val deo = FakeLibraryDeo(seededUrls = listOf("c/1"))
             val repo = repo(deo, mangaId = 7L)
-            repo.persistNewChapters("src", "en", "Naruto", listOf(ch("2"), ch("1")))
+            repo.persistNewChapters("src", "m/naruto", listOf(ch("2"), ch("1")))
             deo.inserted.clear()
 
             // Second refresh with the same list: c/2 is now saved, nothing new.
-            val result = repo.persistNewChapters("src", "en", "Naruto", listOf(ch("2"), ch("1")))
+            val result = repo.persistNewChapters("src", "m/naruto", listOf(ch("2"), ch("1")))
 
             assertTrue(result.isSuccess)
             assertTrue(deo.inserted.isEmpty(), "a re-refresh inserts nothing (idempotent)")
@@ -272,9 +244,9 @@ class LibraryRepositoryPersistNewTest {
     fun no_op_when_not_in_library() =
         runTest {
             val deo = FakeLibraryDeo(seededUrls = emptyList())
-            val repo = repo(deo, mangaId = null) // getIdByApiAndTitle → null = not in library
+            val repo = repo(deo, mangaId = null) // exact api + URL lookup → null = not in library
 
-            val result = repo.persistNewChapters("src", "en", "Naruto", listOf(ch("1")))
+            val result = repo.persistNewChapters("src", "m/naruto", listOf(ch("1")))
 
             assertEquals(0, (result as me.manga.kira.core.result.AppResult.Success).value)
             assertTrue(deo.inserted.isEmpty())

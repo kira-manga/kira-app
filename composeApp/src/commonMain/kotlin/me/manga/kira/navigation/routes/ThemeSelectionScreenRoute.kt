@@ -41,8 +41,8 @@ import org.koin.compose.viewmodel.koinViewModel
  *  2. `hasNotificationPermission` ← `rememberNotificationPermissionRequester().hasPermission` —
  *     reactive Compose state from the platform requester facade.
  *  3. The requester's explicit onboarding policy decides whether the control is shown, whether
- *     it auto-requests, and whether Continue requires a grant. Android retains its required,
- *     automatic flow; iOS is optional and user-initiated; Desktop omits the control.
+ *     it auto-requests, and whether Continue requires a grant. Android and iOS are optional and
+ *     user-initiated during onboarding; Desktop omits the control.
  *
  * Theme state itself (selected `AppTheme`, `pureBlack` toggle) flows through the rework
  * `ThemeViewModel` → `:domain` `ObserveAppThemeUseCase` / `SetAppThemeUseCase` →
@@ -53,9 +53,9 @@ import org.koin.compose.viewmodel.koinViewModel
  * after the swap, sees their theme + pureBlack preference preserved).
  *
  * **Auto-request lifecycle**: a `LaunchedEffect(Unit)` fires the request only for a platform whose
- * policy enables automatic requests. This preserves Android behavior while ensuring iOS never
- * shows Apple's system prompt until the user taps "Grant Permission". An in-composition
- * `autoRequested` flag prevents repeat requests within the same composition.
+ * policy enables automatic requests. Android and iOS do not enable that policy and wait for the
+ * user to tap "Grant Permission". For an automatic policy, an in-composition `autoRequested` flag
+ * prevents repeat requests within the same composition.
  *
  * **Toast-on-denial** (native parity, `native-app ThemeSelectionScreen.kt:68-78`): a long toast
  * (via `ToastShower`) is surfaced ONLY when the permission request resolves with an actual user

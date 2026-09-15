@@ -129,9 +129,10 @@ interface LibraryRepository {
     suspend fun addToLibrary(details: MangaDetails): AppResult<Unit>
 
     /**
-     * Persist chapters discovered by a Details/library refresh that are not yet saved for this
-     * (in-library) manga, flagging each as NEW (native parity: `LibraryDetailsViewModel.refreshChapters`
-     * + `LibraryRefreshWorker` insert with `isNew = true`). Diffs [fetched] against the saved chapter
+     * Persist chapters discovered by Details for the exact requested parent ([api], [mangaUrl]),
+     * flagging each as NEW (native parity: `LibraryDetailsViewModel.refreshChapters` inserts with
+     * `isNew = true`). A title/language match is never a substitute for that saved parent URL.
+     * Diffs [fetched] against the saved chapter
      * URLs and inserts only the genuinely-new ones (idempotent: re-running inserts nothing). Returns
      * the count of newly-persisted chapters. No-op (returns 0) when the manga isn't in the library.
      *
@@ -140,26 +141,26 @@ interface LibraryRepository {
      */
     suspend fun persistNewChapters(
         api: String,
-        language: String,
-        title: String,
+        mangaUrl: String,
         fetched: List<Chapter>,
     ): AppResult<Int>
 
     /**
-     * Like [persistNewChapters] but ALSO writes a `notifications` row for each newly-persisted chapter
-     * so it appears in the Notifications/Updates screen (native parity: the Android `LibraryRefreshWorker`
-     * calls `addNewChapterNotification` after the insert). Used ONLY by the library refresh-all path
-     * (incl. the Desktop/iOS inline refresh) — NOT by the Details pull-to-refresh, which must stay
-     * notification-free to match native. De-dup is intrinsic: only genuinely-new chapters are notified.
-     * Returns the count newly persisted; 0 when the manga isn't in the library.
+     * Atomically persists chapter discoveries and their Updates for the exact saved `(api, manga.url)`
+     * parent. Overlapping refreshes notify/count only the chapters this call actually inserts, leaving
+     * existing chapter and notification user state intact. Returns that committed discovery count;
+     * 0 if no new chapters were inserted or the exact parent is no longer in the library.
+     * Used by refresh-all (including Desktop/iOS background/inline refresh), never the non-notifying
+     * Details pull-to-refresh path.
      */
     suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int>
 
     /**
      * Reconcile the saved cover URL for an in-library manga when a refresh discovers it changed.
-     * No-op (success) when the manga isn't in the library or [newCoverUrl] already matches the saved
-     * row. Mirrors the native `LibraryRefreshWorker`'s `updateMangaImageUrlEverywhere`: rewrites the
-     * cover in `saved_manga`, `history` and `notifications` so a rotated CDN URL doesn't leave a
+     * No-op (success) when the manga isn't in the library or [newCoverUrl] is blank. Atomically
+     * updates only cover fields in `saved_manga`, `history` and `notifications`, matching Android's
+     * `updateMangaImageUrlEverywhere`. An equal saved URL still repairs stale copies after an older
+     * partial fan-out. A rotated CDN URL must not leave a
      * permanently-stale cover on Desktop/iOS (which have no WorkManager worker and run only the
      * cross-platform inline refresh). Manga sites rotate cover/CDN URLs constantly, so without this
      * a cover that rots after add is never repaired on those platforms.
@@ -182,18 +183,11 @@ interface LibraryRepository {
     suspend fun removeAllFromLibrary(keys: List<MangaKey>): AppResult<Int>
 
     /**
-     * Flip the `isLiked` affinity flag for the manga identified by [key]. Idempotent in the
-     * sense that calling twice restores the original value — there is no separate "set" path.
+     * Atomically flip only the `isLiked` affinity flag for the manga identified by [key], leaving
+     * concurrent metadata updates intact. Calling twice restores the original value.
      *
      * No-ops (success) if the manga is not in the library; the action-row only renders for
      * in-library cards so the absent-key case is defensive rather than expected.
-     *
-     * Strangler-fig boundary: the `:data` impl reaches the legacy `MangaDao.updateManga`
-     * (via the existing `:shared` strangler-fig posture) to persist the flipped row,
-     * preserving the exact same wire format the legacy Details-screen heart toggle and
-     * legacy `LibraryViewModel.toggleLiked` already use. Same posture as the existing
-     * `addToLibrary` / `removeFromLibrary` methods on this interface — Phase 9.x retires
-     * the legacy DAO reach, not this slice.
      *
      * §179 (Task #345). Closes the `LibraryManga.isLiked` KDoc's "Mutation is still owned by
      * the legacy Details route until a later slice ports the toggle into `:domain`" comment.
@@ -201,9 +195,8 @@ interface LibraryRepository {
     suspend fun toggleLiked(key: MangaKey): AppResult<Unit>
 
     /**
-     * Flip the `isWatchingNow` affinity flag for the manga identified by [key]. Same shape
-     * and semantics as [toggleLiked] — see that method's KDoc for the strangler-fig boundary
-     * narrative.
+     * Atomically flip only the `isWatchingNow` flag for the manga identified by [key], with the
+     * same absent-parent and double-toggle semantics as [toggleLiked].
      *
      * §179 (Task #345). Closes the `LibraryManga.isWatchingNow` KDoc's "Mutation is still
      * owned by the legacy" comment.

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cbz_conversion_partial">Conversión parcialmente completada</string>
+    <string name="cbz_chapters_failed">No se pudieron convertir %1$d capítulos. Inténtalo de nuevo.</string>
+</resources>

@@ -38,7 +38,6 @@ import me.manga.kira.composeapp.generated.resources.reading_mode_webtoon
 import me.manga.kira.composeapp.generated.resources.retry
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.presentation.reader.ReaderViewModel
 import me.manga.kira.ui.reader.ReaderScreen
 import org.jetbrains.compose.resources.stringResource
@@ -47,9 +46,9 @@ import platform.UIKit.UIViewController
 /**
  * iOS: choose the native Swift reader (flag ON + Swift factory registered) or the Compose reader.
  *
- * Default falls through to [ReaderScreen] so the live behavior is unchanged until the native reader is
- * explicitly enabled and verified. The native path reuses the SAME route-scoped [ReaderViewModel] (so
- * all shared state/logic and lifecycle are identical) and embeds the Swift VC via `UIKitViewController`.
+ * The native path reuses the route-scoped [ReaderViewModel] and embeds Swift via `UIKitViewController`.
+ * Its attachment combines confirmed visibility with the owning scene's activation; the Compose
+ * fallback observes its lifecycle owner. Both dispatch the same idempotent VM session intents.
  */
 @Composable
 @Suppress("FunctionNaming", "LongParameterList", "ktlint:standard:function-naming")
@@ -59,9 +58,9 @@ internal actual fun ReaderHostSwitch(
     chapter: Chapter,
     onNavigateBack: () -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
-    onSharePage: (ImageBitmap) -> Unit,
+    onSharePage: (capture: suspend () -> ImageBitmap?) -> Unit,
+    isSharing: Boolean,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit,
-    onReportProgress: (url: String, status: PageDownloadProgress) -> Unit,
 ) {
     if (IosReaderFlags.NATIVE_READER_ENABLED && ReaderNativeBridge.hasFactory()) {
         NativeReaderHost(
@@ -80,8 +79,8 @@ internal actual fun ReaderHostSwitch(
             onNavigateBack = onNavigateBack,
             onOpenInWebView = onOpenInWebView,
             onSharePage = onSharePage,
+            isSharing = isSharing,
             onSolveCloudflareChallenge = onSolveCloudflareChallenge,
-            onReportProgress = onReportProgress,
         )
     }
 }
@@ -118,10 +117,13 @@ private fun NativeReaderHost(
     LaunchedEffect(session, manga, chapter) {
         session.onEnter(manga, chapter)
     }
-    DisposableEffect(session) {
-        onDispose { session.close() }
-    }
     if (webViewTransition.readerMounted) {
+        DisposableEffect(session) {
+            // Composition owns pause/close, including the temporary native unmount before WebView
+            // navigation. Do not wait for a delayed VC deinit. The remembered session is restartable;
+            // an old VC can only detach its own already-revoked attachment after a replacement starts.
+            onDispose { session.close() }
+        }
         UIKitViewController(
             factory = { ReaderNativeBridge.create(session) ?: UIViewController() },
             modifier = Modifier.fillMaxSize(),

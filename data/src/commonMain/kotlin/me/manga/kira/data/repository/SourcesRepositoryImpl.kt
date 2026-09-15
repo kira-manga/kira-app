@@ -1,8 +1,8 @@
 package me.manga.kira.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import me.manga.kira.data.mapper.toDomain
 import me.manga.kira.domain.model.sources.Source
 import me.manga.kira.domain.repository.SourcesRepository
@@ -155,13 +155,6 @@ class SourcesRepositoryImpl(
     // no longer takes the SourceUpdateManager directly.)
 ) : SourcesRepository {
 
-    /** apis whose active config stanza declares `lifecycle="disabled"` — hidden and never bulk-toggled. */
-    private fun lifecycleDisabledApis(): Set<String> =
-        sourceRegistry
-            .genericDescriptors()
-            .filter { it.lifecycle == "disabled" }
-            .mapTo(mutableSetOf()) { it.api }
-
     override fun observeHasNewSources(): Flow<Boolean> = dataStore.newSourcesFlow
 
     override suspend fun setHasNewSources(value: Boolean) {
@@ -169,15 +162,13 @@ class SourcesRepositoryImpl(
     }
 
     override fun observeSources(): Flow<List<Source>> =
-        legacy.allSources.map { entities ->
-            val hidden = lifecycleDisabledApis()
-            entities
-                .filter { sourceRegistry.isConfigBacked(it.name) && it.name !in hidden }
-                .map { entity ->
-                    // Join the row (user state) with the stanza's display metadata (MangaSource
-                    // decoupling, 2026-07): the config document owns the label; the api stays the key.
-                    entity.toDomain(displayName = sourceRegistry.descriptor(entity.name)?.displayName ?: entity.name)
-                }
+        combine(legacy.allSources, sourceRegistry.catalog) { entities, catalog ->
+            val rows = entities.associateBy { it.name }
+            // The atomic catalog store persists this order, not SourceConfig.priority. Keep every
+            // projected field on one accepted snapshot even when the Room emission arrives first.
+            catalog.descriptors.mapIndexedNotNull { order, descriptor ->
+                rows[descriptor.api]?.toDomain(descriptor, order)
+            }
         }
 
     override suspend fun setSourceEnabled(api: String, enabled: Boolean) {
@@ -185,11 +176,9 @@ class SourcesRepositoryImpl(
     }
 
     override suspend fun setLanguageEnabled(language: String, enabled: Boolean) {
-        val hidden = lifecycleDisabledApis()
-        val snapshot = legacy.allSources.first()
-        snapshot
-            .filter { it.language == language && sourceRegistry.isConfigBacked(it.name) && it.name !in hidden }
-            .forEach { legacy.enableDisAbleSource(it.name, enabled) }
+        observeSources().first()
+            .filter { it.language == language }
+            .forEach { legacy.enableDisAbleSource(it.api, enabled) }
     }
 
     override suspend fun setLanguageEnabledWithFallback(
@@ -197,13 +186,11 @@ class SourcesRepositoryImpl(
         fallback: String,
         enabled: Boolean,
     ) {
-        val hidden = lifecycleDisabledApis()
-        val snapshot =
-            legacy.allSources.first().filter { sourceRegistry.isConfigBacked(it.name) && it.name !in hidden }
+        val snapshot = observeSources().first()
         val primaryHits = snapshot.filter { it.language == primary }
         val targets = if (primaryHits.isNotEmpty()) primaryHits else {
             snapshot.filter { it.language == fallback }
         }
-        targets.forEach { legacy.enableDisAbleSource(it.name, enabled) }
+        targets.forEach { legacy.enableDisAbleSource(it.api, enabled) }
     }
 }

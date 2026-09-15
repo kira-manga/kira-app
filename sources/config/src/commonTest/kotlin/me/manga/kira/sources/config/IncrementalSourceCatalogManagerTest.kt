@@ -2,11 +2,15 @@ package me.manga.kira.sources.config
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -27,9 +31,38 @@ import me.manga.kira.sources.contracts.ValidationResult
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class IncrementalSourceCatalogManagerTest {
+    @Test
+    fun accepted_document_publishes_verified_cache_before_remote_finishes() = runTest {
+        listOf(SourceCatalogManifestResult.Unavailable, SourceCatalogManifestResult.NotModified).forEach { result ->
+            val store = FakeCatalogStore(storedCatalog(10, listOf(entry("a", 1) to artifact("a", 1))))
+            val releaseRemote = CompletableDeferred<Unit>()
+            val remote = FakeRemote(result).apply { beforeManifestFetch = { releaseRemote.await() } }
+            val manager = manager(store, remote)
+            val observed = mutableListOf<SourceConfigDocument>()
+            val observer = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                manager.acceptedDocument.toList(observed)
+            }
+            val refresh = launch { assertTrue(manager.refresh() is AppResult.Success) }
+            runCurrent()
+            assertEquals(listOf(BUNDLED_REVISION, 10L), observed.map { it.revision })
+            assertEquals(listOf("a"), observed.last().sources.map { it.api })
+            assertTrue(refresh.isActive)
+            assertEquals(UpdateState.Refreshing, manager.state.value)
+            assertEquals(0, store.bundleProjectionCount)
+            assertEquals(0, store.activationCount)
+            releaseRemote.complete(Unit)
+            refresh.join()
+            assertEquals(listOf(BUNDLED_REVISION, 10L), observed.map { it.revision })
+            assertSame(manager.activeDocument(), manager.acceptedDocument.value)
+            observer.cancel()
+        }
+    }
+
     @Test
     fun diagnostics_start_on_the_bundled_catalog_without_inventing_source_revisions() {
         val manager = manager(FakeCatalogStore(active = null), FakeRemote(SourceCatalogManifestResult.Unavailable))
@@ -532,9 +565,13 @@ class IncrementalSourceCatalogManagerTest {
         var sourceFetches = 0
             private set
         val fetchedApis = mutableListOf<String>()
+        var beforeManifestFetch: suspend () -> Unit = {}
         var beforeSourceFetch: suspend () -> Unit = {}
 
-        override suspend fun fetchManifest(etag: String?): SourceCatalogManifestResult = manifestResult
+        override suspend fun fetchManifest(etag: String?): SourceCatalogManifestResult {
+            beforeManifestFetch()
+            return manifestResult
+        }
 
         override suspend fun fetchSource(entry: SourceCatalogEntry): SourceRevisionArtifact {
             sourceFetches++

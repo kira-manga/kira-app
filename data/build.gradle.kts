@@ -21,6 +21,19 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Recovery tests use the real Skia media inspector, so their native must match Coil's JVM API.
+val skikoVersion = libs.versions.skiko.test.get()
+val skikoHostTarget: String = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    val arm = arch == "aarch64" || arch == "arm64"
+    when {
+        os.contains("mac") || os.contains("darwin") -> if (arm) "macos-arm64" else "macos-x64"
+        os.contains("win") -> "windows-x64"
+        else -> if (arm) "linux-arm64" else "linux-x64"
+    }
+}
+
 kotlin {
     android {
         namespace = "me.manga.kira.data"
@@ -131,6 +144,14 @@ kotlin {
         getByName("desktopTest").dependencies {
             // BackupRepository end-to-end tests use a real in-memory Room database and the same
             // bundled SQLite driver as production instead of mocking the persistence boundary.
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
+            // :platform's desktopTest native dependency is not inherited by this test source set.
+            runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-$skikoHostTarget:$skikoVersion")
+        }
+
+        iosTest.dependencies {
+            // CBZ finalization tests reopen real Room state using the production SQLite driver.
             implementation(libs.androidx.room.runtime)
             implementation(libs.androidx.sqlite.bundled)
         }

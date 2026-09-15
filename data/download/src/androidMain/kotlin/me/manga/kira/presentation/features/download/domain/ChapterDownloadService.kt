@@ -1,13 +1,7 @@
 package me.manga.kira.presentation.features.download.domain
 
 import android.content.Context
-import android.util.Log
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.client.request.headers
-import io.ktor.client.statement.HttpResponse
-import io.ktor.http.isSuccess
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -21,11 +15,17 @@ import kotlinx.coroutines.withContext
 import me.manga.kira.core.cbz.OptimizedCbzManager
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.storage.DataStoreHelper
+import me.manga.kira.platform.media.PageBytePolicy
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
-import java.io.BufferedOutputStream
+import me.manga.kira.presentation.features.download.domain.clean.PageDownloadRequest
+import me.manga.kira.presentation.features.download.domain.clean.PageDownloadTransfer
+import me.manga.kira.presentation.features.download.domain.clean.downloadValidatedPage
+import me.manga.kira.presentation.features.download.domain.clean.requireUncachedPageClient
 import java.io.File
-import java.io.FileOutputStream
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -43,11 +43,20 @@ import kotlin.coroutines.cancellation.CancellationException
 class ChapterDownloadService(
     private val context: Context,
     private val persistence: ChapterDownloadPersistence,
-    private val httpClient: HttpClient,
-    private val optimizedCbzManager: OptimizedCbzManager,
-    private val dataStoreHelper: DataStoreHelper,
+    pageTransfer: PageDownloadTransfer,
+    archive: ChapterDownloadArchive,
     private val downloadDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(DOWNLOAD_PARALLELISM),
 ) {
+    private val httpClient: HttpClient = pageTransfer.httpClient
+    private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
+    private val pageBytePolicy: PageBytePolicy = pageTransfer.pageBytePolicy
+    private val optimizedCbzManager: OptimizedCbzManager = archive.manager
+    private val dataStoreHelper: DataStoreHelper = archive.preferences
+
+    init {
+        requireUncachedPageClient(httpClient)
+    }
+
     fun downloadChapterC(
         chapter: SavedChapterEntity,
         pages: List<DownloadPage>,
@@ -61,40 +70,14 @@ class ChapterDownloadService(
         pageHeaders: Map<String, String>,
     ): String =
         withContext(Dispatchers.IO) {
-            Log.i("ChapterDownloadService", "downloadImage url=$imageUrl")
-
-            val response: HttpResponse =
-                httpClient.get(imageUrl) {
-                    headers {
-                        pageHeaders.forEach { (name, value) -> append(name, value) }
-                    }
-                }
-
-            if (!response.status.isSuccess()) {
-                throw IllegalStateException("Failed to download image: ${response.status.value}")
-            }
-
-            val contentType = response.headers["Content-Type"]
-            val extension = detectImageExtension(contentType, imageUrl)
-
-            val chapterDir =
-                File(context.filesDir, "manga/$mangaId/chapter_$chapterId").apply {
-                    mkdirs()
-                }
-
-            val imageFile = File(chapterDir, "image_$imageIndex.$extension")
-
-            // Ktor 3.x: `response.body<ByteArray>()` materialises the full payload. Manga page images
-            // are typically <1MB each so the memory ceiling is fine; this avoids the Ktor 3 channel
-            // API churn around `readRemaining` / `Source` / `Buffer` (still in flux as of 3.4.x). If
-            // page sizes ever grow we can revisit with `bodyAsChannel().copyAndClose(...)` against a
-            // file-backed write channel.
-            val bytes: ByteArray = response.body()
-            BufferedOutputStream(FileOutputStream(imageFile)).use { output ->
-                output.write(bytes)
-            }
-
-            imageFile.absolutePath
+            val directory = File(context.filesDir, "manga/$mangaId/chapter_$chapterId").absolutePath.toPath()
+            downloadValidatedPage(
+                httpClient,
+                PageDownloadRequest(imageUrl, pageHeaders, directory, imageIndex),
+                FileSystem.SYSTEM,
+                mediaInspector,
+                pageBytePolicy,
+            ).toString()
         }
 
     private fun downloadChapterBatch(
@@ -139,15 +122,11 @@ class ChapterDownloadService(
                     // This branch must precede Throwable: a system stop is not a compression error.
                     throw e
                 } catch (e: Throwable) {
-                    // OutOfMemoryError is an Error; preserve the loose-files fallback on real OOM.
-                    if (e is OutOfMemoryError || e.message?.contains("memory", ignoreCase = true) == true) {
-                        persistence.savePaths(chapter.id, paths)
-                        emit(DownloadState.Complete(paths))
-                    } else {
-                        paths.forEach { File(it).delete() }
-                        persistence.recordFailure(chapter.id, "Compression failed: ${e.message}")
-                        emit(DownloadState.Error(e, paths.size, total))
-                    }
+                    // A native fault or an exception mentioning "memory" is not permission to
+                    // report success. Preserve original pages/previous archive; the collector owns
+                    // cancellation cleanup, and only a typed preflight policy can allow fallback.
+                    persistence.recordFailure(chapter.id, "Compression failed: ${e.message}")
+                    emit(DownloadState.Error(e, paths.size, total))
                 }
             } else {
                 persistence.savePaths(chapter.id, paths)
@@ -158,28 +137,6 @@ class ChapterDownloadService(
             persistence.recordFailure(chapter.id, e.message)
             emit(DownloadState.Error(e, 0, pages.size))
         }
-
-    private fun detectImageExtension(
-        contentType: String?,
-        imageUrl: String,
-    ): String {
-        val urlExt = imageUrl.substringAfterLast('.', "").substringBefore('?').lowercase()
-        if (urlExt in listOf("avif", "jpg", "jpeg", "png", "gif", "webp", "bmp")) {
-            return urlExt
-        }
-
-        val ct = contentType?.lowercase().orEmpty()
-
-        return when {
-            "avif" in ct -> "avif"
-            "jpeg" in ct || "jpg" in ct -> "jpg"
-            "png" in ct -> "png"
-            "gif" in ct -> "gif"
-            "webp" in ct -> "webp"
-            "bmp" in ct -> "bmp"
-            else -> "jpg"
-        }
-    }
 
     fun deleteChapterFiles(
         mangaId: Long,
@@ -334,18 +291,10 @@ private const val DOWNLOAD_PARALLELISM = 6
  *     cancellation). PRESERVE — invariant of the WorkManager-backed
  *     cancel surface.
  *
- *   • OOM-FALLBACK-LIVE — both compression paths (streaming lines 210-
- *     216, batch lines 334-339) detect OOM via `e is OutOfMemoryError
- *     || e.message?.contains("memory", ignoreCase=true)` and fall back
- *     to writing the LOOSE PATHS (uncompressed) into
- *     `libraryRepository.updateChapterLocalPaths(chapter.id, paths)` +
- *     marking the chapter downloaded + emitting `DownloadState.Complete
- *     (paths)`. This means a chapter that OOM-fails compression still
- *     ships as a downloaded chapter, just without the CBZ
- *     consolidation. LIVE — load-bearing graceful-degradation behavior
- *     for low-RAM Android devices; PRESERVE — without it large multi-
- *     image chapters on low-tier hardware would fail to mark
- *     downloaded.
+ *   • HISTORICAL OOM-FALLBACK — removed by bounded-page remediation. A native
+ *     fault or message containing "memory" cannot authorize Complete. Inputs and
+ *     any previous archive remain for recovery; explicit typed budget preservation
+ *     belongs before codec work, never in this generic exception handler.
  *
  *   • DOWNLOAD-DISPATCHER-RESERVED-NONLIVE — field at line 65
  *     `DOWNLOAD_DISPATCHER = Dispatchers.IO.limitedParallelism(6)`

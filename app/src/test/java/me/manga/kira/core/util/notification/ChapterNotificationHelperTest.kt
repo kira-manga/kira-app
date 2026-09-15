@@ -8,7 +8,7 @@ import android.app.NotificationManager
 import android.database.sqlite.SQLiteException
 import kotlinx.coroutines.runBlocking
 import me.manga.kira.R
-import me.manga.kira.data.local.dao.NotificationDao
+import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.di.appKoinModule
 import org.junit.After
@@ -28,7 +28,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadow.api.Shadow
-import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, shadows = [NotificationPostingShadow::class])
@@ -53,16 +52,16 @@ class ChapterNotificationHelperTest {
     fun close() = room.close()
 
     @Test
-    fun persistsAllNineIncludingIgnoreRowsThenPostsNewestSixReversedWithOneCover() =
+    fun persistsOnlyDiscoveriesThenPostsNewestSixReversedWithOneCover() =
         runBlocking {
             val manga = room.manga()
             val chapters = room.chapters(manga, 9)
-            // Real IGNORE/-1 results must reconcile, not be mistaken for missing insert results.
+            // Already saved chapters are not discoveries, even if an older refresh never notified them.
             room.db.chapterDao().insertChapters(chapters.take(3))
             val cover = NotificationNativeCoverWitness()
             val helper = room.helper(cover.loader)
             val committed = helper.persistNewChapterNotifications(manga, chapters)
-            assertEquals(9, committed.size)
+            assertEquals(6, committed.size)
             assertEquals(setOf(manga.title), committed.map { it.mangaTitle }.toSet())
             assertEquals(setOf(manga.imageUrl), committed.map { it.mangaImageUrl }.toSet())
             room.assertStoredWithRealChapterIds(committed)
@@ -80,7 +79,7 @@ class ChapterNotificationHelperTest {
         }
 
     @Test
-    fun sharedChapterUrlIgnoreFallbackKeepsCapturedOwnerAcrossDelayedDisplay() =
+    fun sharedChapterUrlDiscoveryKeepsCapturedOwnerAcrossDelayedDisplay() =
         runBlocking {
             NotificationOwnerWitness(room).assertDelayedDisplay(posting, ::assertNotificationContent)
         }
@@ -107,118 +106,83 @@ class ChapterNotificationHelperTest {
         }
 
     @Test
-    fun swallowedRoomInsertErrorIsNotAnIgnoreFallbackOrCoverRequest() =
+    fun candidateIdsAndStateCannotRetargetDiscoveryToAnotherManga() =
+        runBlocking {
+            val other = room.manga("other")
+            val target = room.manga("target")
+            val otherChapter = room.chapters(other, 1).single()
+            val otherId = room.db.chapterDao().insertChapters(listOf(otherChapter)).single()
+            val stale = otherChapter.copy(id = otherId, isRead = true, isDownloaded = true, isBookmarked = true)
+            val covers = CountingCovers()
+            val helper = room.helper(covers)
+
+            val row = helper.persistNewChapterNotifications(target, listOf(stale)).single()
+
+            val saved = checkNotNull(room.db.chapterDao().getChapterByIdSuspend(row.chapterId))
+            assertEquals(target.id, saved.mangaId)
+            assertTrue(saved.id != otherId)
+            assertTrue(saved.isNew && saved.fetchedAt > 0)
+            assertFalse(saved.isRead || saved.isDownloaded || saved.isBookmarked)
+            assertEquals(otherChapter.copy(id = otherId), room.db.chapterDao().getChapterByIdSuspend(otherId))
+            assertEquals(0, covers.calls)
+            assertTrue(posting.posted.isEmpty())
+        }
+
+    @Test
+    fun duplicateCandidatesAndRepeatedRefreshProduceOnlyOneCommittedRow() =
         runBlocking {
             val manga = room.manga()
             val chapter = room.chapters(manga, 1).single()
-            room.db.chapterDao().insertChapters(listOf(chapter))
-            val attempts = AtomicInteger()
-            val chapters =
-                room.chapterInserts {
-                    attempts.incrementAndGet()
-                    room.db.chapterDao().insertChaptersSafely(it)
-                }
             val covers = CountingCovers()
-            val helper = room.helper(covers, room.repository(chapters))
-            // A real Room FK failure becomes [] in the repository. A URL-only fallback could
-            // find the seeded chapter and incorrectly turn the storage failure into a banner.
-            val error = persistenceFailure(helper, manga, listOf(chapter.copy(mangaId = manga.id + 1_000)))
-            assertTrue(error is IllegalStateException)
-            assertEquals("chapter_insert_result_count", error?.message)
-            assertEquals(1, attempts.get())
-            assertEquals(
-                1,
-                room.db
-                    .chapterDao()
-                    .getChaptersByMangaIdR(manga.id)
-                    .size,
-            )
-            assertTrue(room.updates().isEmpty())
+            val helper = room.helper(covers)
+
+            val rows = helper.persistNewChapterNotifications(manga, listOf(chapter, chapter))
+            assertEquals(1, rows.size)
+            assertTrue(helper.persistNewChapterNotifications(manga, listOf(chapter)).isEmpty())
+            room.assertStoredWithRealChapterIds(rows)
+            assertEquals(1, room.sql.chapterInserts.get())
+            assertEquals(1, room.sql.notificationInserts.get())
             assertEquals(0, covers.calls)
             assertTrue(posting.posted.isEmpty())
         }
 
     @Test
-    fun incompleteChapterInsertResultsFailBeforeNotificationsAndCover() =
+    fun notificationWriteFailureRollsBackChaptersWithoutCoverOrStorageRetry() =
         runBlocking {
             val manga = room.manga()
-            val chapters =
-                room.chapterInserts {
-                    room.db
-                        .chapterDao()
-                        .insertChaptersSafely(it)
-                        .dropLast(1)
-                }
+            room.sql.beforeNotificationInsert = { ordinal ->
+                if (ordinal == 2) throw SQLiteException("fixture_notification_write")
+            }
             val covers = CountingCovers()
-            val helper = room.helper(covers, room.repository(chapters))
-
-            val error = persistenceFailure(helper, manga, room.chapters(manga, 2))
-
-            assertEquals("chapter_insert_result_count", error?.message)
-            assertEquals(
-                2,
-                room.db
-                    .chapterDao()
-                    .getChaptersByMangaIdR(manga.id)
-                    .size,
-            )
-            assertTrue(room.updates().isEmpty())
-            assertEquals(0, covers.calls)
-            assertTrue(posting.posted.isEmpty())
-        }
-
-    @Test
-    fun notificationWriteFailureNeverStartsCoverOrRetriesStorage() =
-        runBlocking {
-            val attempts = AtomicInteger()
-            val notifications =
-                room.notificationInserts {
-                    attempts.incrementAndGet()
-                    throw SQLiteException("fixture_notification_write")
-                }
-            val covers = CountingCovers()
-            val helper = room.helper(covers, notifications = notifications)
-            val manga = room.manga()
+            val helper = room.helper(covers)
 
             val error = persistenceFailure(helper, manga, room.chapters(manga, 2))
 
             assertTrue(error is SQLiteException)
-            assertEquals(1, attempts.get())
-            assertEquals(
-                2,
-                room.db
-                    .chapterDao()
-                    .getChaptersByMangaIdR(manga.id)
-                    .size,
-            )
-            assertTrue(room.updates().isEmpty())
+            assertEquals(2, room.sql.chapterInserts.get())
+            assertEquals(2, room.sql.notificationInserts.get())
+            assertTrue(room.db.chapterDao().getChaptersByMangaIdR(manga.id).isEmpty())
+            assertTrue("the first notification must roll back too", room.updates().isEmpty())
             assertEquals(0, covers.calls)
             assertTrue(posting.posted.isEmpty())
         }
 
     @Test
-    fun incompleteOrNonpositiveNotificationIdsCannotDisplayCommittedRows() =
+    fun removedAndReaddedParentRejectsOldWorkerSnapshot() =
         runBlocking {
-            for (invalidCount in listOf(true, false)) {
-                val attempts = AtomicInteger()
-                val notifications =
-                    room.notificationInserts {
-                        attempts.incrementAndGet()
-                        val ids = room.db.notificationDao().insertNotificationsList(it)
-                        if (invalidCount) ids.dropLast(1) else listOf(-1L, ids.last())
-                    }
-                val covers = CountingCovers()
-                val helper = room.helper(covers, notifications = notifications)
-                val manga = room.manga("invalid-$invalidCount")
+            val old = room.manga()
+            room.db.libraryDeo().removeMangaWithChapters(old.id)
+            val replacement = room.manga()
+            assertTrue(replacement.id != old.id)
+            val covers = CountingCovers()
+            val helper = room.helper(covers)
 
-                val error = persistenceFailure(helper, manga, room.chapters(manga, 2))
-
-                assertEquals("notification_insert_result_ids", error?.message)
-                assertEquals(1, attempts.get())
-                assertEquals(2, room.updates().count { it.mangaId == manga.id })
-                assertEquals(0, covers.calls)
-                assertTrue(posting.posted.isEmpty())
-            }
+            assertTrue(helper.persistNewChapterNotifications(old, room.chapters(old, 2)).isEmpty())
+            assertTrue(room.db.chapterDao().getChaptersByMangaIdR(replacement.id).isEmpty())
+            assertTrue(room.updates().isEmpty())
+            assertEquals(0, room.sql.chapterInserts.get())
+            assertEquals(0, covers.calls)
+            assertTrue(posting.posted.isEmpty())
         }
 
     @Test
@@ -242,11 +206,9 @@ class ChapterNotificationHelperTest {
     @Test
     fun coldHostKoinInstantiationPostsTextWithoutComposingUi() =
         runBlocking {
-            val repository = room.repository()
             val dependencies =
                 module {
-                    single<NotificationDao> { room.db.notificationDao() }
-                    single { repository }
+                    single<LibraryDeo> { room.db.libraryDeo() }
                 }
             val app =
                 koinApplication {

@@ -27,10 +27,19 @@ internal class CbzModeledAvifCase(
     private val parent = AtomicReference<Bitmap>()
     private val crops = CopyOnWriteArrayList<Bitmap>()
     private val decodes = AtomicInteger()
+    private val inspector = CbzModeledAvifInspector(source, height)
     private val decoder =
         object : CbzImageDecoder() {
-            override suspend fun decodeAvif(file: File): Bitmap {
-                assertEquals(source, file)
+            override suspend fun decodeAvif(
+                file: File,
+                maxWorkingBytes: Long,
+            ): Bitmap {
+                assertEquals(
+                    MODELED_AVIF_MAX_WORKING_BYTES,
+                    maxWorkingBytes,
+                    "The manager must retain its injected cap",
+                )
+                inspector.assertDecoderSnapshot(file)
                 decodes.incrementAndGet()
                 return Bitmap.createBitmap(CBZ_AVIF_PAGE_WIDTH, height, Bitmap.Config.ARGB_8888).also(parent::set)
             }
@@ -65,7 +74,13 @@ internal class CbzModeledAvifCase(
     }
 
     private fun createManager(gate: CbzEncodeGate): OptimizedCbzManager =
-        OptimizedCbzManager(fixture.context, cbzTier(), decoder, archive) { bitmap, format, quality, stream ->
+        OptimizedCbzManager(
+            fixture.context,
+            cbzTier(),
+            decoder,
+            archive,
+            pagePolicy = CbzPagePolicy(inspector = inspector, maxMemoryBytes = MODELED_AVIF_MAX_WORKING_BYTES),
+        ) { bitmap, format, quality, stream ->
             assertFalse(assertNotNull(parent.get()).isRecycled)
             if (height <= CBZ_LOW_REGION_HEIGHT) assertSame(parent.get(), bitmap)
             if (encodes.incrementAndGet() == 1) gate.hold()
@@ -85,6 +100,9 @@ internal class CbzModeledAvifCase(
                 listOf(CBZ_AVIF_PAGE_WIDTH to height)
             }
         fixture.assertArchive(dimensions, chapter)
+        inspector.assertReleased()
         fixture.assertNoTemporary(chapter)
     }
 }
+
+private const val MODELED_AVIF_MAX_WORKING_BYTES = 20L * 1024 * 1024

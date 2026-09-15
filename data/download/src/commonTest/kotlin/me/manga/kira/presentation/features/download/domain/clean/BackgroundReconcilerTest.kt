@@ -110,22 +110,31 @@ class BackgroundReconcilerTest {
     }
 
     @Test
-    fun emptyManifestIsComplete() {
+    fun emptyManifestCannotAuthorizeComplete() {
         val plan = BackgroundReconciler.plan(manifest(), emptySet(), emptySet(), 3)
-        assertTrue(plan.isComplete)
+        assertFalse(plan.isComplete)
         assertTrue(plan.toEnqueue.isEmpty())
-        assertNull(plan.failedPageIndex)
+        assertEquals(0, plan.failedPageIndex)
+    }
+
+    @Test
+    fun persistedPolicyRejectionDoesNotRetryOrAdoptAnOldPageOnRelaunch() {
+        val plan = BackgroundReconciler.plan(manifest(page(0).copy(policyRejected = true)), setOf(0), setOf(0), 3)
+        assertFalse(plan.isComplete)
+        assertTrue(plan.toEnqueue.isEmpty())
+        assertEquals(0, plan.failedPageIndex)
     }
 
     @Test
     fun mixedOnDiskInFlightAndEnqueue() {
         // 0,1 on disk; 2 in-flight; 3,4 still to enqueue.
-        val plan = BackgroundReconciler.plan(
-            manifest(page(0), page(1), page(2), page(3), page(4)),
-            pagesOnDisk = setOf(0, 1),
-            inFlightPages = setOf(2),
-            maxAttempts = 3,
-        )
+        val plan =
+            BackgroundReconciler.plan(
+                manifest(page(0), page(1), page(2), page(3), page(4)),
+                pagesOnDisk = setOf(0, 1),
+                inFlightPages = setOf(2),
+                maxAttempts = 3,
+            )
         assertEquals(listOf(3, 4), plan.toEnqueue)
         assertFalse(plan.isComplete)
         assertNull(plan.failedPageIndex)

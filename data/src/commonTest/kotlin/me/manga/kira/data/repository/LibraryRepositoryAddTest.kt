@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Chapter
@@ -60,13 +61,19 @@ class LibraryRepositoryAddTest {
             return id
         }
 
+        override suspend fun getDiscoveryManga(api: String, mangaUrl: String): SavedMangaEntity? = error("unused")
+
+        override suspend fun insertDiscoveryNotifications(notifications: List<ChapterNotification>): List<Long> = error("unused")
+
         override suspend fun getMangaIdByUrl(url: String): Long? = mangaByUrl[url]
 
         override suspend fun getSavedChapterUrls(mangaId: Long): List<String> =
             chapters.filter { it.mangaId == mangaId }.map { it.url }
 
-        override suspend fun insertChapters(chapters: List<SavedChapterEntity>) {
+        override suspend fun insertChapters(chapters: List<SavedChapterEntity>): List<Long> {
+            val firstId = this.chapters.size + 1L
             this.chapters += chapters
+            return chapters.indices.map { firstId + it }
         }
 
         override fun getSavedMangaApiTitleFlow(): Flow<List<ApiTitle>> = flowOf(emptyList())
@@ -96,11 +103,22 @@ class LibraryRepositoryAddTest {
     private class FakeMangaDao : MangaDao {
         override fun getAllChapterMetricsFlow(): Flow<List<MangaChapterMetrics>> = flowOf(emptyList())
         override suspend fun updateManga(manga: SavedMangaEntity): Int = 0
+        override suspend fun toggleLiked(mangaId: Long) = error("unused")
+        override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+        override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+        override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+        override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
         override suspend fun update(manga: SavedMangaEntity) {}
         override fun getAllSavedMangaFlow(): Flow<List<SavedMangaEntity>> = flowOf(emptyList())
         override suspend fun getApiByMangaId(mangaId: Long): String? = null
         override suspend fun updateLastOpenTimestamp(mangaId: Long, timestamp: Long) {}
         override suspend fun getIdByApiAndTitle(api: String, title: String): Long? = null
+
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
+        ): Long? = null
+
         override suspend fun getMangaById(mangaId: Long): SavedMangaEntity? = null
         override suspend fun getMangaByApi(api: String): List<SavedMangaEntity> = emptyList()
         override suspend fun getMangaIdsByApi(api: String): List<Long> = emptyList()

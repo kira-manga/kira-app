@@ -169,6 +169,8 @@ import org.jetbrains.compose.resources.stringResource
  *  - `state.all.isNotEmpty()` → search box + filter rows + LazyColumn of cards.
  *  - `state.all.isNotEmpty() && state.filtered.isEmpty()` → "No matches" placeholder under the
  *    search + chips.
+ *  - [AdminComplaintState.actionFailed] → localized error inside the retained action dialog;
+ *    only [AdminComplaintEffect.ShowActionSuccess] posts a screen snackbar.
  *
  * **`onBack` callback**: the `:ui` module deliberately depends on `:presentation` but NOT
  * `androidx.navigation`. Back navigation is bridged by the `:composeApp` route adapter
@@ -222,7 +224,6 @@ fun AdminComplaintScreen(
     val deletedMessage = stringResource(Res.string.np_complaint_action_deleted)
     val updatedMessage = stringResource(Res.string.np_complaint_action_updated)
     val bodyCopiedMessage = stringResource(Res.string.np_complaint_body_copied)
-    val actionFailureMessage = stringResource(Res.string.error_occurred)
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collectLatest { effect ->
@@ -234,7 +235,6 @@ fun AdminComplaintScreen(
                     AdminComplaintAction.UPDATED -> updatedMessage
                     AdminComplaintAction.BODY_COPIED -> bodyCopiedMessage
                 }
-                AdminComplaintEffect.ShowActionFailure -> actionFailureMessage
             }
             scope.launch { snackbarHostState.showSnackbar(message) }
         }
@@ -360,6 +360,7 @@ internal fun AdminComplaintScreenContent(
                     complaint = activeComplaint,
                     mode = state.actionDialogMode,
                     isSubmitting = state.isSubmittingAction,
+                    actionFailed = state.actionFailed,
                     onIntent = onIntent,
                 )
             }

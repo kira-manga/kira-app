@@ -21,8 +21,7 @@ internal interface LibraryRefreshWorkPort {
         coverUrl: String,
     )
 
-    suspend fun insert(chapters: List<SavedChapterEntity>): List<Long>
-
+    /** One atomic discovery write; returns only this refresh's newly committed Updates rows. */
     suspend fun persistNotifications(
         manga: SavedMangaEntity,
         chapters: List<SavedChapterEntity>,

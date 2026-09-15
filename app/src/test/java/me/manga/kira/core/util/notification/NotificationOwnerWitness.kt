@@ -2,35 +2,19 @@ package me.manga.kira.core.util.notification
 
 import android.app.Notification
 import android.graphics.Bitmap
-import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 
-/** One real-DB cross-parent witness; delegates observe actual INSERT IGNORE and scoped lookup results. */
+/** Real Room cross-parent discovery and delayed-display witness; no URL-keyed DAO double. */
 internal class NotificationOwnerWitness(
     private val room: NotificationRoomFixture,
 ) {
     private val realChapters = room.db.chapterDao()
-    private val inserts = mutableListOf<List<Long>>()
-    private val lookups = mutableListOf<Pair<Long, List<String>>>()
     private val coverUrls = mutableListOf<String>()
     private val cover = NotificationNativeCoverWitness()
-    private val observedChapters =
-        object : ChapterDao by realChapters {
-            override suspend fun insertChaptersSafely(chapters: List<SavedChapterEntity>): List<Long> =
-                realChapters.insertChaptersSafely(chapters).also { inserts.add(it) }
-
-            override suspend fun getChapterIdsByUrlForManga(
-                mangaId: Long,
-                urls: List<String>,
-            ): Map<String, Long> {
-                val ids = realChapters.getChapterIdsByUrlForManga(mangaId, urls)
-                return ids.also { lookups.add(mangaId to urls.toList()) }
-            }
-        }
     private val observedCovers =
         object : NotificationCovers {
             override suspend fun withCover(
@@ -47,28 +31,27 @@ internal class NotificationOwnerWitness(
         posting: NotificationPostingShadow,
         assertContent: (Notification, ChapterNotification) -> Unit,
     ) {
-        // B is the first row for the shared URL; an ownerless fallback must not supply A's ID.
+        // B is the first row for the shared URL; it must never supply A's ID or display metadata.
         val b = seed("b")
         val a = seed("a")
         assertTrue(b.chapterId > 0L && a.chapterId > b.chapterId)
-        val helper = room.helper(observedCovers, room.repository(observedChapters))
-        val capturedA = helper.persistNewChapterNotifications(a.manga, listOf(a.chapter))
-        assertEquals(listOf(listOf(-1L)), inserts)
+        val helper = room.helper(observedCovers)
+        val capturedA = listOf(a.notification)
         assertStoredOwner(a, capturedA.single())
         assertTrue(posting.posted.isEmpty())
         cover.assertIdle()
 
-        val capturedB = helper.persistNewChapterNotifications(b.manga, listOf(b.chapter))
+        val capturedB = listOf(b.notification)
         assertStoredOwner(b, capturedB.single())
-        assertEquals(listOf(listOf(-1L), listOf(-1L)), inserts)
-        assertEquals(listOf(a.manga.id to listOf(SHARED_URL), b.manga.id to listOf(SHARED_URL)), lookups)
-        val lookupsBeforeDisplay = lookups.toList()
+        assertTrue(helper.persistNewChapterNotifications(a.manga, listOf(a.chapter)).isEmpty())
+        assertTrue(helper.persistNewChapterNotifications(b.manga, listOf(b.chapter)).isEmpty())
+        val writesBeforeDisplay = room.sql.notificationInserts.get()
         val stored = (capturedA + capturedB).sortedBy { it.id }
         assertEquals(stored, room.updates())
 
         helper.displayNotifications(capturedA)
 
-        assertEquals(lookupsBeforeDisplay, lookups)
+        assertEquals(writesBeforeDisplay, room.sql.notificationInserts.get())
         assertDisplayedOwner(capturedA.single(), posting, assertContent)
         assertEquals(stored, room.updates())
     }
@@ -87,9 +70,9 @@ internal class NotificationOwnerWitness(
     private suspend fun seed(label: String): Owner {
         val manga = room.manga("owner-$label", "https://cover.example/$label.png", title = "Same display title")
         val chapter = room.chapters(manga, 1).single().copy(url = SHARED_URL)
-        val chapterId = realChapters.insertChapters(listOf(chapter)).single()
-        assertEquals(chapter.copy(id = chapterId), realChapters.getChaptersByMangaIdR(manga.id).single())
-        return Owner(manga, chapter, chapterId)
+        val row = room.helper(observedCovers).persistNewChapterNotifications(manga, listOf(chapter)).single()
+        val saved = checkNotNull(realChapters.getChapterByIdSuspend(row.chapterId))
+        return Owner(manga, saved, row)
     }
 
     private suspend fun assertStoredOwner(
@@ -113,8 +96,10 @@ internal class NotificationOwnerWitness(
     private data class Owner(
         val manga: SavedMangaEntity,
         val chapter: SavedChapterEntity,
-        val chapterId: Long,
-    )
+        val notification: ChapterNotification,
+    ) {
+        val chapterId: Long get() = notification.chapterId
+    }
 
     private companion object {
         const val SHARED_URL = "https://chapter.example/shared-chapter"

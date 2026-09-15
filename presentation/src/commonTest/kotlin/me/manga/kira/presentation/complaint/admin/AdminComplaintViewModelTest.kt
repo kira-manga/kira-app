@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.complaint.admin
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -22,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -33,8 +35,8 @@ import kotlin.test.assertTrue
  *  - the four-axis filter (search/status/type/appVersion) + sort compose over `all`,
  *  - a moderation action reaches the repository with the right payload; success closes the
  *    dialog + reloads + recomputes statistics + emits
- *    [AdminComplaintEffect.ShowActionSuccess], failure keeps the dialog + emits
- *    [AdminComplaintEffect.ShowActionFailure],
+ *    [AdminComplaintEffect.ShowActionSuccess], failure keeps the dialog with a non-leaking
+ *    error flag and no screen effect, and explicit retries cannot overlap or replace the target,
  *  - [AdminComplaintIntent.OnToggleStatsCard] flips the card visibility.
  */
 class AdminComplaintViewModelTest {
@@ -77,28 +79,32 @@ class AdminComplaintViewModelTest {
         var result: Result<Unit> = Result.success(Unit),
     ) : AdminComplaintActionRepository {
         val calls = mutableListOf<String>()
-        override suspend fun changeStatus(complaint: ComplaintSummary, newStatus: ComplaintStatus): Result<Unit> {
-            calls += "status:${complaint.id}:$newStatus"
+        var gate: CompletableDeferred<Unit>? = null
+        private suspend fun record(call: String): Result<Unit> {
+            calls += call
+            gate?.await()
             return result
         }
-        override suspend fun addClosureReason(complaint: ComplaintSummary, reason: String): Result<Unit> {
-            calls += "closure:${complaint.id}:$reason"
-            return result
-        }
-        override suspend fun deleteComplaint(id: String): Result<Unit> {
-            calls += "delete:$id"
-            return result
-        }
+        override suspend fun changeStatus(complaint: ComplaintSummary, newStatus: ComplaintStatus): Result<Unit> =
+            record("status:${complaint.id}:$newStatus")
+        override suspend fun addClosureReason(complaint: ComplaintSummary, reason: String): Result<Unit> =
+            record("closure:${complaint.id}:$reason")
+        override suspend fun deleteComplaint(id: String): Result<Unit> =
+            record("delete:$id")
         override suspend fun editComplaint(
             original: ComplaintSummary,
             type: ComplaintType,
             subject: String,
             body: String,
-        ): Result<Unit> {
-            calls += "edit:${original.id}:$type:$subject:$body"
-            return result
-        }
+        ): Result<Unit> = record("edit:${original.id}:$type:$subject:$body")
     }
+
+    private data class RetryScenario(
+        val mode: AdminActionDialogMode,
+        val intent: AdminComplaintIntent,
+        val expectedCall: String,
+        val success: AdminComplaintAction,
+    )
 
     private fun viewModel(
         list: FakeAdminListRepository = FakeAdminListRepository({ Result.success(emptyList()) }),
@@ -178,6 +184,9 @@ class AdminComplaintViewModelTest {
 
         assertEquals(listOf("status:c9:RESOLVED"), actions.calls)
         assertEquals(AdminActionDialogMode.NONE, vm.state.value.actionDialogMode)
+        assertFalse(vm.state.value.actionFailed)
+        assertFalse(vm.state.value.isSubmittingAction)
+        assertNull(vm.state.value.activeComplaint)
         assertEquals(2, list.loads, "success reloads (init + post-action)")
         assertEquals(
             listOf<AdminComplaintEffect>(
@@ -189,7 +198,7 @@ class AdminComplaintViewModelTest {
     }
 
     @Test
-    fun closureReason_failure_keepsDialog_emitsFailure() = runTest {
+    fun closureReason_failure_keepsDialog_setsModalErrorWithoutEffect() = runTest {
         val target = complaint(id = "c9")
         val list = FakeAdminListRepository({ Result.success(listOf(target)) })
         val actions = RecordingAdminActionRepository(result = Result.failure(RuntimeException("firestore boom")))
@@ -203,10 +212,128 @@ class AdminComplaintViewModelTest {
 
         assertEquals(listOf("closure:c9:duplicate of c1"), actions.calls)
         assertEquals(AdminActionDialogMode.CLOSURE_REASON, vm.state.value.actionDialogMode, "failure keeps the dialog")
+        assertEquals(target, vm.state.value.activeComplaint)
         assertFalse(vm.state.value.isSubmittingAction)
+        assertTrue(vm.state.value.actionFailed)
         assertEquals(1, list.loads, "no reload on failure")
-        assertEquals(listOf<AdminComplaintEffect>(AdminComplaintEffect.ShowActionFailure), effects)
+        assertTrue(effects.isEmpty(), "failure must not enqueue a snackbar behind the modal")
         collector.cancel()
+    }
+
+    @Test
+    fun actionFailures_allowOneExplicitRetryWithSamePayload_andClearOnSuccess() = runTest {
+        val scenarios = listOf(
+            RetryScenario(
+                AdminActionDialogMode.STATUS_CHANGE,
+                AdminComplaintIntent.OnSubmitStatusChange(ComplaintStatus.RESOLVED),
+                "status:c9:RESOLVED",
+                AdminComplaintAction.STATUS_UPDATED,
+            ),
+            RetryScenario(
+                AdminActionDialogMode.CLOSURE_REASON,
+                AdminComplaintIntent.OnSubmitClosureReason("duplicate of c1"),
+                "closure:c9:duplicate of c1",
+                AdminComplaintAction.CLOSURE_REASON_ADDED,
+            ),
+            RetryScenario(
+                AdminActionDialogMode.DELETE_CONFIRM,
+                AdminComplaintIntent.OnConfirmDelete,
+                "delete:c9",
+                AdminComplaintAction.DELETED,
+            ),
+            RetryScenario(
+                AdminActionDialogMode.EDIT,
+                AdminComplaintIntent.OnSubmitEdit(ComplaintType.CUSTOM, "edited subject", "edited body"),
+                "edit:c9:CUSTOM:edited subject:edited body",
+                AdminComplaintAction.UPDATED,
+            ),
+        )
+
+        for (scenario in scenarios) {
+            val target = complaint(id = "c9")
+            val list = FakeAdminListRepository({ Result.success(listOf(target)) })
+            val actions = RecordingAdminActionRepository(result = Result.failure(RuntimeException("action failed")))
+            val vm = viewModel(list = list, actions = actions)
+            val effects = mutableListOf<AdminComplaintEffect>()
+            val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+
+            vm.submit(AdminComplaintIntent.OnRowClick(target))
+            vm.submit(AdminComplaintIntent.OnSelectAction(scenario.mode))
+            vm.submit(scenario.intent)
+
+            assertEquals(listOf(scenario.expectedCall), actions.calls)
+            assertEquals(scenario.mode, vm.state.value.actionDialogMode)
+            assertEquals(target, vm.state.value.activeComplaint)
+            assertTrue(vm.state.value.actionFailed)
+            assertFalse(vm.state.value.isSubmittingAction)
+            assertEquals(1, list.loads, "a failed mutation must not reload/reset the form")
+            assertTrue(effects.isEmpty())
+
+            actions.result = Result.success(Unit)
+            actions.gate = CompletableDeferred()
+            // Simulate the retained form sending its unchanged fields/selection explicitly.
+            // Actual rememberSaveable draft/focus retention belongs to the manual UI checklist.
+            vm.submit(scenario.intent)
+            assertTrue(vm.state.value.isSubmittingAction)
+            assertFalse(vm.state.value.actionFailed, "a new attempt clears the old error")
+
+            vm.submit(scenario.intent) // duplicate retry
+            vm.submit(AdminComplaintIntent.OnDismissActionDialog)
+            vm.submit(AdminComplaintIntent.OnSelectAction(AdminActionDialogMode.MENU))
+            vm.submit(AdminComplaintIntent.OnRowClick(complaint(id = "other")))
+
+            assertEquals(listOf(scenario.expectedCall, scenario.expectedCall), actions.calls)
+            assertEquals(scenario.mode, vm.state.value.actionDialogMode, "retry retains its mode")
+            assertEquals(target, vm.state.value.activeComplaint, "retry retains its target")
+
+            actions.gate?.complete(Unit)
+
+            assertFalse(vm.state.value.isSubmittingAction)
+            assertFalse(vm.state.value.actionFailed)
+            assertEquals(AdminActionDialogMode.NONE, vm.state.value.actionDialogMode)
+            assertNull(vm.state.value.activeComplaint)
+            assertEquals(2, list.loads, "only success reloads the list")
+            assertEquals(
+                listOf<AdminComplaintEffect>(AdminComplaintEffect.ShowActionSuccess(scenario.success)),
+                effects,
+            )
+            collector.cancel()
+        }
+    }
+
+    @Test
+    fun actionFailure_clearsOnModeChangeDismissalAndNewTarget() = runTest {
+        val target = complaint(id = "c9")
+        val other = complaint(id = "other")
+        val actions = RecordingAdminActionRepository(result = Result.failure(RuntimeException("action failed")))
+        val vm = viewModel(actions = actions)
+
+        vm.submit(AdminComplaintIntent.OnRowClick(target))
+        vm.submit(AdminComplaintIntent.OnSelectAction(AdminActionDialogMode.CLOSURE_REASON))
+        vm.submit(AdminComplaintIntent.OnSubmitClosureReason("duplicate of c1"))
+        assertTrue(vm.state.value.actionFailed)
+
+        vm.submit(AdminComplaintIntent.OnSelectAction(AdminActionDialogMode.STATUS_CHANGE))
+        assertFalse(vm.state.value.actionFailed)
+        assertEquals(target, vm.state.value.activeComplaint)
+
+        vm.submit(AdminComplaintIntent.OnSubmitStatusChange(ComplaintStatus.RESOLVED))
+        assertTrue(vm.state.value.actionFailed)
+        vm.submit(AdminComplaintIntent.OnDismissActionDialog)
+        assertFalse(vm.state.value.actionFailed)
+        assertEquals(AdminActionDialogMode.NONE, vm.state.value.actionDialogMode)
+        assertNull(vm.state.value.activeComplaint)
+
+        vm.submit(AdminComplaintIntent.OnRowClick(target))
+        assertFalse(vm.state.value.actionFailed, "reopening has no stale error")
+        vm.submit(AdminComplaintIntent.OnSelectAction(AdminActionDialogMode.EDIT))
+        vm.submit(AdminComplaintIntent.OnSubmitEdit(ComplaintType.CUSTOM, "edited subject", "edited body"))
+        assertTrue(vm.state.value.actionFailed)
+        vm.submit(AdminComplaintIntent.OnRowClick(other))
+        assertFalse(vm.state.value.actionFailed)
+        assertEquals(AdminActionDialogMode.MENU, vm.state.value.actionDialogMode)
+        assertEquals(other, vm.state.value.activeComplaint)
+        assertEquals(3, actions.calls.size, "navigation never retries a failed mutation")
     }
 
     @Test

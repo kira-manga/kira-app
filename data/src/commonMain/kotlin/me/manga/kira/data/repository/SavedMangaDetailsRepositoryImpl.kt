@@ -48,7 +48,9 @@ class SavedMangaDetailsRepositoryImpl(
                     flowOf(null)
                 } else {
                     chapterDao.getChaptersByMangaId(manga.id).map { chapters ->
-                        manga.toDomainDetails(chapters)
+                        // Save/discovery insert source chapters in reverse order (id ASC).
+                        // Restore the domain's source order for BOTH Details and Reader.
+                        manga.toDomainDetails(chapters.asReversed())
                     }
                 }
             }

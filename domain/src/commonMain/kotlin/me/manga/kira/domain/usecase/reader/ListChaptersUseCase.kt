@@ -117,8 +117,8 @@ class ListChaptersUseCase(
         //      yields index -1 → both nav disabled → a non-last chapter wrongly reads as the last);
         //  (b) we don't re-hit the network/source for a chapter list we already hold offline.
         // Network fetch is reserved for a NOT-in-library manga (opened from search/home) which has no
-        // saved list yet. Insertion order (`id ASC`) equals the source fetch order, so reading
-        // direction is preserved either way.
+        // saved list yet. SavedMangaDetailsRepository restores source order from the database's
+        // reversed insertion order, so library membership does not change navigation direction.
         val saved = try {
             savedDetails.observeSavedDetails(manga.api, manga.title).first()
         } catch (e: CancellationException) {

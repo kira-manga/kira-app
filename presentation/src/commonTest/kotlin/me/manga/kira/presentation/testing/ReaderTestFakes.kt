@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.testing
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import me.manga.kira.core.result.AppResult
@@ -8,14 +9,12 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.history.HistoryEntry
 import me.manga.kira.domain.model.reader.Page
-import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.domain.repository.HistoryRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.MarkChapterReadRepository
-import me.manga.kira.domain.repository.PageProgressRepository
 import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.domain.repository.ReadingModeRepository
 import me.manga.kira.domain.repository.ReadingSessionRepository
@@ -45,7 +44,16 @@ import me.manga.kira.presentation.reader.ReaderViewModel
 class FakeChapterPagesRepository : ChapterPagesRepository {
     /** The flow returned for the next fetch. Default: a single empty Success. */
     var result: Flow<AppResult<List<Page>>> = flowOf(AppResult.Success(emptyList()))
-    override fun fetchPages(manga: Manga, chapter: Chapter): Flow<AppResult<List<Page>>> = result
+    val fetched = mutableListOf<Pair<Manga, Chapter>>()
+
+    override fun fetchPages(
+        manga: Manga,
+        chapter: Chapter,
+    ): Flow<AppResult<List<Page>>> {
+        fetched += manga to chapter
+        return result
+    }
+
     val cleared = mutableListOf<Pair<Manga, Chapter>>()
 
     override fun clearExtractedPages(
@@ -77,22 +85,31 @@ private class FakeSavedDetailsRepository : SavedMangaDetailsRepository {
 
 /**
  * Counting [ReadingSessionRepository] (#7) — records begin/end calls so a test can assert the
- * reader brackets exactly one begin per resume and one end per pause. A single shared instance is
+ * reader coalesces duplicate lifecycle callbacks into begin/end edges. A single shared instance is
  * wired into BOTH the start and end use cases in [readerTestEnv] (mirrors the production single
  * binding), so the counts reflect the same session.
  */
 class RecordingReadingSessionRepository : ReadingSessionRepository {
+    val calls = mutableListOf<String>()
+    /** Optional persistence barrier; record the end before waiting, matching capture-before-write order. */
+    var endCompletion: CompletableDeferred<Unit>? = null
     var beginCount = 0
         private set
     var endCount = 0
         private set
+    var completedEndCount = 0
+        private set
 
     override fun begin() {
         beginCount++
+        calls += "begin"
     }
 
     override suspend fun end() {
         endCount++
+        calls += "end"
+        endCompletion?.await()
+        completedEndCount++
     }
 }
 
@@ -102,6 +119,7 @@ class RecordingReadProgressRepository : ReadProgressRepository {
 
     /** Value returned by [load] (the resume seed); a test can set it before OnEnter. */
     var loadValue: Int? = null
+    var loadGate: CompletableDeferred<Unit>? = null
 
     override suspend fun save(
         chapterUrl: String,
@@ -110,20 +128,12 @@ class RecordingReadProgressRepository : ReadProgressRepository {
         saved += chapterUrl to pageIndex
     }
 
-    override suspend fun load(chapterUrl: String): Int? = loadValue
+    override suspend fun load(chapterUrl: String): Int? {
+        loadGate?.await()
+        return loadValue
+    }
 
     override suspend fun clear(chapterUrl: String) = Unit
-}
-
-private class FakePageProgressRepository : PageProgressRepository {
-    override fun observe(url: String): Flow<PageDownloadProgress> = flowOf(PageDownloadProgress.Idle)
-
-    override fun report(
-        url: String,
-        status: PageDownloadProgress,
-    ) = Unit
-
-    override fun clear(url: String) = Unit
 }
 
 class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
@@ -205,34 +215,27 @@ class RecordingMarkChapterReadRepository : MarkChapterReadRepository {
     }
 }
 
-/** Bundle exposing the handles a test needs to drive/inspect the reader VM. */
-class ReaderTestEnv(
-    val vm: ReaderViewModel,
-    val pages: FakeChapterPagesRepository,
-    val markRead: RecordingMarkChapterReadRepository,
-    val readProgress: RecordingReadProgressRepository,
-    val bookmark: RecordingChapterBookmarkRepository,
-    val history: RecordingHistoryRepository,
-    val readingSession: RecordingReadingSessionRepository,
-)
-
 /**
- * Builds a [ReaderViewModel] over benign fakes. [chapterList] seeds the chapter list the VM lists
+ * Owns a [ReaderViewModel] and the fakes a test drives. [chapterList] seeds the chapter list the VM lists
  * on enter (used by Next/Prev/append tests); the manga details fetch returns those chapters.
  *
  * Resume/bookmark/history use RECORDING fakes (shared per concern) so tests can assert that those
  * actions follow the active visible chapter (#5). A single [RecordingChapterBookmarkRepository] backs
  * both the observe and toggle use cases so observed/toggled URLs line up.
  */
-fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
+class ReaderTestEnv(
+    chapterList: List<Chapter>,
+) {
     val pages = FakeChapterPagesRepository()
     val markRead = RecordingMarkChapterReadRepository()
     val readProgress = RecordingReadProgressRepository()
     val bookmark = RecordingChapterBookmarkRepository()
     val history = RecordingHistoryRepository()
+
     // #7: ONE shared reading-session recorder wired into both use cases (mirrors prod single binding).
     val readingSession = RecordingReadingSessionRepository()
-    val details =
+    val pageProgress = RecordingPageProgressRepository()
+    private val details =
         MangaDetails(
             api = "src",
             language = "en",
@@ -256,16 +259,17 @@ fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv {
             endReadingSession = EndReadingSessionUseCase(readingSession),
             loadPagePosition = LoadPagePositionUseCase(readProgress),
             savePagePosition = SavePagePositionUseCase(readProgress),
-            observePageProgress = ObservePageProgressUseCase(FakePageProgressRepository()),
+            observePageProgress = ObservePageProgressUseCase(pageProgress),
             observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
             recordHistory = RecordHistoryUseCase(history, FakeSettingsRepository()),
             markChapterRead = MarkChapterReadUseCase(markRead),
             clearExtractedPages = ClearExtractedPagesUseCase(pages),
-            clearPageProgress = ClearPageProgressUseCase(FakePageProgressRepository()),
+            clearPageProgress = ClearPageProgressUseCase(pageProgress),
         )
-    return ReaderTestEnv(vm, pages, markRead, readProgress, bookmark, history, readingSession)
 }
+
+fun readerTestEnv(chapterList: List<Chapter> = emptyList()): ReaderTestEnv = ReaderTestEnv(chapterList)
 
 fun readerChapter(n: String): Chapter =
     Chapter(number = n, name = "Ch $n", url = "ch/$n", date = null, isDownloaded = false, isBookmarked = false)

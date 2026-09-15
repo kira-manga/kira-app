@@ -1,0 +1,19 @@
+// Producer-only, NOT_RUN. No app Gradle file or upstream codec source is changed by this script.
+gradle.beforeProject { project ->
+    if (project.path == ':avifandroidjni') {
+        project.plugins.withId('com.android.library') {
+            def ninja = System.getenv('KIRA_AVIF_NINJA')
+            def sdk = System.getenv('ANDROID_HOME')
+            if (ninja == null || sdk == null || !new File(ninja).isAbsolute() || !new File(ninja).isFile() ||
+                new File(ninja).canonicalFile != new File(sdk, 'cmake/3.22.1/bin/ninja').canonicalFile) {
+                throw new GradleException('The genuine pinned SDK CMake Ninja path is required')
+            }
+            project.extensions.getByName('android').defaultConfig.externalNativeBuild.cmake.arguments(
+                '-DCMAKE_MAKE_PROGRAM=' + ninja,
+                '-DCMAKE_JOB_POOLS=kira_compile=2;kira_link=1',
+                '-DCMAKE_JOB_POOL_COMPILE=kira_compile',
+                '-DCMAKE_JOB_POOL_LINK=kira_link'
+            )
+        }
+    }
+}

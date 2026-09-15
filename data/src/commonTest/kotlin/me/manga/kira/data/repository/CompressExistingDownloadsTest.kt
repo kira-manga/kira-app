@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.ChapterDao
@@ -94,6 +95,7 @@ class CompressExistingDownloadsTest {
      */
     private class FakeChapterDao(
         private val downloaded: List<SavedChapterEntity>,
+        private val failRewriteFor: Set<Long> = emptySet(),
     ) : ChapterDao {
         val pathRewrites = mutableListOf<Pair<Long, List<String>>>()
 
@@ -103,6 +105,7 @@ class CompressExistingDownloadsTest {
             chapterId: Long,
             paths: List<String>,
         ) {
+            check(chapterId !in failRewriteFor) { "Synthetic path rewrite failure" }
             pathRewrites += chapterId to paths
         }
 
@@ -199,6 +202,12 @@ class CompressExistingDownloadsTest {
 
         override suspend fun updateManga(manga: SavedMangaEntity): Int = error("unused")
 
+        override suspend fun toggleLiked(mangaId: Long) = error("unused")
+        override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+        override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+        override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+        override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
+
         override suspend fun update(manga: SavedMangaEntity) = error("unused")
 
         override fun getAllSavedMangaFlow() = error("unused")
@@ -213,6 +222,11 @@ class CompressExistingDownloadsTest {
         override suspend fun getIdByApiAndTitle(
             api: String,
             title: String,
+        ): Long? = error("unused")
+
+        override suspend fun getIdByApiAndUrl(
+            api: String,
+            mangaUrl: String,
         ): Long? = error("unused")
 
         override suspend fun getMangaByApi(api: String): List<SavedMangaEntity> = error("unused")
@@ -272,11 +286,15 @@ class CompressExistingDownloadsTest {
             legacy = legacySettings(),
             dispatchers = testDispatchers,
             dataStore = dataStore,
-            chapterDao = dao,
-            cbzWriter = writer,
-            mangaDao = FakeMangaDao,
-            chapterDownloadDao = downloadDao,
-            appFileSystem = FakeAppFileSystem,
+            conversion =
+                DownloadedChapterConversion(
+                    chapters = dao,
+                    archives = writer,
+                    manga = FakeMangaDao,
+                    downloads = downloadDao,
+                    files = FakeAppFileSystem,
+                ),
+            httpCache = HttpCacheClearer { },
         )
 
     @Test
@@ -372,7 +390,8 @@ class CompressExistingDownloadsTest {
                 )
             val writer = FakeCbzWriter(throwFor = setOf(2L))
 
-            val result = repo(dao, writer).compressExistingDownloads()
+            val repository = repo(dao, writer)
+            val result = repository.compressExistingDownloads()
 
             // Batch still succeeds despite chapter 2 throwing (e.g. iOS NotImplementedError).
             assertTrue(result.isSuccess)
@@ -380,6 +399,46 @@ class CompressExistingDownloadsTest {
             assertEquals(listOf(1L, 3L), writer.packed)
             assertEquals(listOf(1L, 3L), dao.pathRewrites.map { it.first })
             assertFalse(dao.pathRewrites.any { it.first == 2L })
+            val terminal = repository.observeCbzConversion().first()
+            assertEquals(2, terminal.convertedChapters)
+            assertEquals(1, terminal.failedChapters)
+            assertEquals(3, terminal.totalChapters)
+        }
+
+    @Test
+    fun writerAndRewriteFailures_areCounted_withoutPreventingLaterChapters() =
+        runTest {
+            val chapters = (1L..3L).map { chapter(it, listOf("manga/$it/page.webp")) }
+            for (allFail in listOf(false, true)) {
+                val dao = FakeChapterDao(chapters, failRewriteFor = setOf(2L))
+                val writer = FakeCbzWriter(throwFor = if (allFail) setOf(1L, 3L) else setOf(1L))
+                val repository = repo(dao, writer)
+                assertTrue(repository.compressExistingDownloads().isSuccess)
+                val terminal = repository.observeCbzConversion().first()
+                assertEquals(if (allFail) 0 else 1, terminal.convertedChapters)
+                assertEquals(if (allFail) 3 else 2, terminal.failedChapters)
+                assertEquals(3, terminal.totalChapters)
+                assertFalse(terminal.isConverting)
+                assertFalse(terminal.wasStopped)
+                assertNotNull(terminal.successMessage) // Completion marker, not a success verdict.
+                assertEquals(if (allFail) emptyList() else listOf(3L), dao.pathRewrites.map { it.first })
+            }
+        }
+
+    @Test
+    fun stopAfterFailure_preservesFailuresAndUnattemptedRemainder() =
+        runTest {
+            val dao = FakeChapterDao((1L..3L).map { chapter(it, listOf("manga/$it/page.webp")) })
+            lateinit var repository: SettingsRepositoryImpl
+            val writer = FakeCbzWriter(throwFor = setOf(1L), afterPack = { repository.stopConversion() })
+            repository = repo(dao, writer)
+            assertTrue(repository.compressExistingDownloads().isSuccess)
+            val terminal = repository.observeCbzConversion().first()
+            assertTrue(terminal.wasStopped)
+            assertEquals(1, terminal.convertedChapters)
+            assertEquals(1, terminal.failedChapters)
+            assertEquals(3, terminal.totalChapters)
+            assertEquals(listOf(2L), dao.pathRewrites.map { it.first })
         }
 
     // GAP-SET-16 — after the run completes, the progress StateFlow holds a terminal Completed
@@ -403,6 +462,7 @@ class CompressExistingDownloadsTest {
             assertFalse(progress.wasStopped)
             assertEquals(2, progress.totalChapters)
             assertEquals(2, progress.convertedChapters)
+            assertEquals(0, progress.failedChapters)
             assertNotNull(progress.successMessage)
         }
 

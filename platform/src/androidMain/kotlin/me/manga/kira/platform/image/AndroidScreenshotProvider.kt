@@ -4,10 +4,16 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
 
 /**
  * Android actual for [ScreenshotProvider].
@@ -19,9 +25,14 @@ import java.io.FileOutputStream
  * Share uses `FileProvider` against the `${packageName}.fileprovider` authority — the host
  * `composeApp` (or `app/`) `AndroidManifest.xml` must declare the matching `<provider>` entry.
  * Both manifests currently do; this is the legacy contract carried forward unchanged.
+ *
+ * Each successful dispatch retains its own immutable cache file for a recipient's later read.
+ * [openOutput] opens a newly created private file; this provider owns closing the stream. Its
+ * default is a real [FileOutputStream], with injection limited to deterministic write-failure tests.
  */
 class AndroidScreenshotProvider(
     context: Context,
+    private val openOutput: (File) -> OutputStream = { FileOutputStream(it) },
 ) : ScreenshotProvider {
 
     private val context: Context = context.applicationContext
@@ -29,33 +40,60 @@ class AndroidScreenshotProvider(
     private val log = Logger.withTag(TAG)
 
     override suspend fun shareBitmapBytes(bytes: ByteArray, title: String) {
-        withContext(Dispatchers.IO) {
-            try {
-                val cacheImages = File(context.cacheDir, SHARE_CACHE_SUBDIR).apply { mkdirs() }
-                // Titles come from scraped sites and can contain '/', ':', '..' — sanitize to a
-                // safe file stem so the FileOutputStream can't fail on a missing subdirectory.
-                val stem = title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(64).ifBlank { DEFAULT_FILE_STEM }
-                val file = File(cacheImages, "$stem.png")
-                FileOutputStream(file).use { it.write(bytes) }
+        var file: File? = null
+        var handedOff = false
+        try {
+            withContext(Dispatchers.IO) {
+                // Retain the file here, not as withContext's result: prompt cancellation after a
+                // completed write must still leave finally able to remove an unhanded-off file.
+                val created = createShareFile(title)
+                file = created
+                openOutput(created).use { it.write(bytes) }
+            }
+            withContext(Dispatchers.Main) {
+                val chooser = createChooser(checkNotNull(file), title)
+                currentCoroutineContext().ensureActive()
+                context.startActivity(chooser)
+                handedOff = true
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            log.e(failure) { "shareBitmapBytes failed for $title" }
+        } finally {
+            if (!handedOff) removeUnsharedFile(file)
+        }
+    }
 
-                val uri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    file,
-                )
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = MIME_PNG
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(
-                    Intent.createChooser(shareIntent, title).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    },
-                )
-            } catch (e: Exception) {
-                log.e(e) { "shareBitmapBytes failed for $title" }
+    private fun createShareFile(title: String): File {
+        val directory = File(context.cacheDir, SHARE_CACHE_SUBDIR)
+        if (!directory.isDirectory && !directory.mkdirs() && !directory.isDirectory) {
+            throw IOException("Could not create the screenshot cache directory")
+        }
+        val stem = title
+            .replace(Regex("[^A-Za-z0-9._ -]"), "_")
+            .take(MAX_FILE_STEM_LENGTH)
+            .ifBlank { DEFAULT_FILE_STEM }
+        return File.createTempFile("$stem-share-", ".png", directory)
+    }
+
+    private fun createChooser(file: File, title: String): Intent {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = MIME_PNG
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return Intent.createChooser(share, title).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+    }
+
+    private suspend fun removeUnsharedFile(file: File?) {
+        if (file == null) return
+        withContext(NonCancellable + Dispatchers.IO) {
+            try {
+                if (!file.delete() && file.exists()) log.w { "Could not remove an unshared screenshot" }
+            } catch (failure: Exception) {
+                log.w(failure) { "Could not remove an unshared screenshot" }
             }
         }
     }
@@ -65,6 +103,7 @@ class AndroidScreenshotProvider(
         const val MIME_PNG = "image/png"
         const val SHARE_CACHE_SUBDIR = "images"
         const val DEFAULT_FILE_STEM = "screenshot"
+        const val MAX_FILE_STEM_LENGTH = 64
     }
 }
 

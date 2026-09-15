@@ -70,10 +70,12 @@ import me.manga.kira.presentation.mvi.MviState
  *    subset of [all] depending on [searchQuery] / [selectedStatus] / [selectedType].
  *
  * **Dialog substate fields** (Phase 7.x.complaint.admin.actions extension): [actionDialogMode]
- * / [activeComplaint] / [isSubmittingAction] mirror the user-side actions slice's posture
+ * / [activeComplaint] / [isSubmittingAction] / [actionFailed] mirror the user-side actions slice's posture
  * (see [me.manga.kira.presentation.complaint.ComplaintState]). The admin actions slice
  * uses STATUS_CHANGE / CLOSURE_REASON / DELETE_CONFIRM modes instead of user-side's
  * REPLY / EDIT / DELETE — the dialogs differ, the substate machinery is identical.
+ * [actionFailed] is a non-leaking flag for an error inside the retained dialog. It clears on
+ * the next attempt, mode/target change, dismissal or success; editing preserves the error.
  *
  * Contract §6 SRP: one rule — "the projection of one admin complaint dashboard screen". No
  * business logic; derivation lives in the VM's intent handlers; rendering lives in the `:ui`
@@ -149,6 +151,7 @@ data class AdminComplaintState(
     val actionDialogMode: AdminActionDialogMode = AdminActionDialogMode.NONE,
     val activeComplaint: ComplaintSummary? = null,
     val isSubmittingAction: Boolean = false,
+    val actionFailed: Boolean = false,
     val statistics: AdminComplaintStatistics = AdminComplaintStatistics(),
     /**
      * GAP-CMP-15 — whether the [StatisticsCard] is shown. Mirrors native
