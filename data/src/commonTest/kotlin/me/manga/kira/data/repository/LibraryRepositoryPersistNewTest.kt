@@ -92,6 +92,11 @@ class LibraryRepositoryPersistNewTest {
         override fun getAllChapterMetricsFlow(): Flow<List<MangaChapterMetrics>> = flowOf(emptyList())
 
         override suspend fun updateManga(manga: SavedMangaEntity): Int = 0
+        override suspend fun toggleLiked(mangaId: Long) = error("unused")
+        override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+        override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+        override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+        override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
 
         override suspend fun update(manga: SavedMangaEntity) {}
 

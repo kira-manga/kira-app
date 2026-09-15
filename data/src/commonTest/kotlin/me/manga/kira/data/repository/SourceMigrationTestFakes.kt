@@ -165,6 +165,12 @@ internal class StatefulMangaDao(
     }
 
     // --- unused surface ---------------------------------------------------------------------------
+    override suspend fun toggleLiked(mangaId: Long) = error("unused")
+    override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+    override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+    override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+    override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
+
     override fun getAllChapterMetricsFlow(): Flow<List<MangaChapterMetrics>> = flowOf(emptyList())
 
     override fun getAllSavedMangaFlow(): Flow<List<SavedMangaEntity>> = flowOf(rows.toList())

@@ -155,6 +155,12 @@ class CompressExistingDownloadsSizeRefreshTest {
 
         override suspend fun updateManga(manga: SavedMangaEntity): Int = error("unused")
 
+        override suspend fun toggleLiked(mangaId: Long) = error("unused")
+        override suspend fun toggleWatchingNow(mangaId: Long) = error("unused")
+        override suspend fun updateSavedCover(mangaId: Long, imageUrl: String) = error("unused")
+        override suspend fun updateHistoryCover(mangaId: Long, mangaUrl: String, imageUrl: String) = error("unused")
+        override suspend fun updateNotificationCover(mangaId: Long, imageUrl: String) = error("unused")
+
         override suspend fun update(manga: SavedMangaEntity) = error("unused")
 
         override fun getAllSavedMangaFlow() = error("unused")
