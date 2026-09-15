@@ -183,7 +183,7 @@ class LibraryRefreshWorkTest {
                 assertEquals(Result.success(), work(port, progress).run())
                 assertEquals(if (remoteCover.isBlank()) emptyList() else listOf(1L to "old"), port.coverCalls)
                 assertEquals(0, progress.last().newChapterCount)
-                assertTrue(port.inserts.isEmpty())
+                assertTrue(port.persistenceCalls.isEmpty())
                 assertEquals(1, port.stamps)
             }
         }
