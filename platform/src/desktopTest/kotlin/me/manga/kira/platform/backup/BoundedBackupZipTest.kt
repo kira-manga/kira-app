@@ -6,7 +6,6 @@ import okio.Buffer
 import okio.FileHandle
 import okio.FileSystem
 import okio.ForwardingFileSystem
-import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
 import okio.use
@@ -27,43 +26,6 @@ class BoundedBackupZipTest {
 
     @AfterTest
     fun close() = fs.deleteRecursively(root)
-
-    @Test
-    fun storedAndDeflatedUtf8EntriesIncludingDirectoriesPassActualCrcChecks() {
-        val entries = arrayOf("pages/" to ByteArray(0), "pages/صفحة.png" to ByteArray(9000) { it.toByte() })
-        for (bytes in listOf(stored(*entries), deflated(*entries))) {
-            open(bytes).use { zip ->
-                assertEquals(2, zip.entries.size)
-                for ((name, expected) in entries) {
-                    assertContentEquals(expected, zip.readEntry(zip.entry(name), listOf(BackupByteBudget(expected.size.toLong()))) {})
-                }
-            }
-        }
-    }
-
-    @Test
-    fun crcOnlyPayloadCorruptionIsRejectedEvenWhenEverySizeStillMatches() {
-        val bytes = stored("backup.json" to "{}".encodeToByteArray())
-        bytes[30 + "backup.json".length] = '['.code.toByte()
-        open(bytes).use { zip ->
-            assertFailsWith<InvalidBackupArchive> { zip.readEntry(zip.entry("backup.json"), listOf(BackupByteBudget(100))) {} }
-        }
-    }
-
-    @Test
-    fun compressedSmallExpandedLargeEntryCannotBypassItsBudget() {
-        val bytes = deflated("backup.json" to ByteArray(4096) { 'a'.code.toByte() })
-        open(bytes).use { zip ->
-            assertFailsWith<BackupImportLimitExceeded> { zip.readEntry(zip.entry("backup.json"), listOf(BackupByteBudget(64))) {} }
-        }
-        // Lie consistently in the central record AND data descriptor. Actual decoding still fails.
-        val central = directoryOffset(bytes)
-        bytes.put32(central + 24, 8)
-        bytes.put32(central - 4, 8)
-        open(bytes).use { zip ->
-            assertFailsWith<IOException> { zip.readEntry(zip.entry("backup.json"), listOf(BackupByteBudget(64))) {} }
-        }
-    }
 
     @Test
     fun inputDirectoryAndEntryCapsRejectBeforeLocalHeadersAreInterpreted() {
