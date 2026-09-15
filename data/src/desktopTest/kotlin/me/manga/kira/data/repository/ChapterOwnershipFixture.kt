@@ -41,6 +41,7 @@ open class ChapterOwnershipFixture {
     protected lateinit var root: Path
     protected lateinit var appFs: AppFileSystem
     protected lateinit var db: MangaDatabase
+    internal lateinit var artifactRuntime: ArtifactTestRuntime
     protected val fs = FileSystem.SYSTEM
     protected val mangaA = manga("a")
     protected val mangaB = manga("b")
@@ -65,6 +66,7 @@ open class ChapterOwnershipFixture {
             }
         fs.createDirectories(appFs.filesDir)
         db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, appFs)
     }
 
     @AfterTest

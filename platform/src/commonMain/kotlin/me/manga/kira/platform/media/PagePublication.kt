@@ -13,9 +13,10 @@ fun publishPageSnapshot(
     temporary: Path,
     index: Int,
     metadata: PageImageMetadata,
+    directory: Path = requireNotNull(temporary.parent),
 ): Path {
     require(index >= 0)
-    val directory = requireNotNull(temporary.parent)
+    system.createDirectories(directory)
     val target = directory / "image_$index.${metadata.format.extension}"
     require(temporary != target)
     system.atomicMove(temporary, target)

@@ -28,6 +28,8 @@ internal data class TestEvent(
     val failure: String? = null,
 )
 
+internal const val TEST_ATTEMPT_TOKEN = "4e9b782c-a343-4b0b-88ec-b5bd20330e70"
+
 internal class TransportHarness(
     bytePolicy: PageBytePolicy,
     fileSystem: FileSystem,
@@ -59,9 +61,15 @@ internal class TransportHarness(
                         mangaId: Long,
                         chapterId: Long,
                         pageIndex: Int,
+                        attemptToken: String,
+                        page: StagedDownloadPage,
                     ) {
                         assertEquals(1L, mangaId)
                         assertEquals(2L, chapterId)
+                        assertEquals(TEST_ATTEMPT_TOKEN, attemptToken)
+                        // Test consumer accepts the validated handoff. Production accepts it only
+                        // inside the data-layer original-token file gate, covered by custody tests.
+                        page.publish(files.chapterDir(mangaId, chapterId), pageIndex)
                         events += TestEvent(pageIndex, complete = true)
                     }
 
@@ -69,6 +77,7 @@ internal class TransportHarness(
                         mangaId: Long,
                         chapterId: Long,
                         pageIndex: Int,
+                        attemptToken: String,
                         message: String?,
                     ) {
                         assertEquals(1L, mangaId)
@@ -81,7 +90,7 @@ internal class TransportHarness(
 
     fun task(index: Int): NSURLSessionDownloadTask =
         session.downloadTaskWithRequest(NSMutableURLRequest.requestWithURL(requestUrl)).apply {
-            taskDescription = "1|2|$index"
+            taskDescription = IosTransferIdentity(1, 2, index, TEST_ATTEMPT_TOKEN).encode()
             assertEquals(NSURLSessionTaskStateSuspended, state)
             // No resume: callbacks are driven synchronously through the production handler seams.
         }

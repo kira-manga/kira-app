@@ -105,10 +105,11 @@ Run from `Kira manga/`; prefer the warm-cache/offline form when appropriate:
 ```
 
 The CI Android/JVM job runs those 12 `desktopTest` suites, app unit/DI tests, and a debug APK
-assembly. iOS CI compiles both Apple targets. `:app` debug tasks need
-[`app/google-services.json.example`](app/google-services.json.example) copied to
-`app/google-services.json`; release tasks reject the placeholder unless the explicit path-validation
-flag `-PallowPlaceholderGoogleServices=true` is supplied. Static analysis is CI-only standalone
+assembly. iOS CI compiles both Apple targets. Ordinary Android/iOS Debug uses `me.manga.kira.debug`
+and the label `Kira Manga Debug`; Firebase/APNs/production associations are disabled. Android Debug
+selects the committed inert `app/src/debug/google-services.json`; iOS Debug bundles no Firebase plist.
+Only Release needs the BYO Store configuration. Release tasks reject the example placeholder unless
+the explicit path-validation flag `-PallowPlaceholderGoogleServices=true` is supplied. Static analysis is CI-only standalone
 ktlint 1.5.0 and detekt 1.23.7 against committed baselines.
 
 ## Restricted paths

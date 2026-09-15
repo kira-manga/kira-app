@@ -83,12 +83,42 @@ class IosLibwebpArtifactsTest < Minitest::Test
     end
   end
 
+  def test_actual_entrypoint_refuses_debug_archive_identity_before_signature_or_successor
+    with_artifact_fixture do |environment|
+      rewrite_plist(File.join(environment.fetch("KIRA_ARCHIVE_PATH"), "Info.plist")) do |info|
+        info.fetch("ApplicationProperties")["CFBundleIdentifier"] = "me.manga.kira.debug"
+      end
+      assert_entrypoint_refuses(environment, reason: "Archive bundle ID is incorrect")
+      assert_empty command_calls(environment)
+    end
+  end
+
+  def test_actual_entrypoint_refuses_debug_ipa_identity_even_when_store_archive_passes
+    with_artifact_fixture do |environment|
+      path = File.join(environment.fetch("FAKE_IPA_ROOT"), "Payload/Kira.app/Info.plist")
+      rewrite_plist(path) { |info| info["CFBundleIdentifier"] = "me.manga.kira.debug" }
+      assert_entrypoint_refuses(environment, reason: "Artifact bundle ID is incorrect")
+      assert_equal 2, command_calls(environment).count("codesign")
+    end
+  end
+
+  def test_canonical_bundle_id_does_not_allow_debug_name_or_disabled_services
+    {"CFBundleDisplayName" => "Kira Manga Debug", "KiraFirebaseServicesEnabled" => false}.each do |key, value|
+      with_artifact_fixture do |environment|
+        rewrite_plist(File.join(archive_app(environment), "Info.plist")) { |info| info[key] = value }
+        reason = key == "CFBundleDisplayName" ? "Artifact display name" : "Artifact has development service configuration"
+        assert_entrypoint_refuses(environment, reason: reason)
+        assert_empty command_calls(environment)
+      end
+    end
+  end
+
   private
 
-  def assert_entrypoint_refuses(environment)
+  def assert_entrypoint_refuses(environment, reason: "libwebp notices:")
     output, error, status = run_entrypoint(environment)
     refute status.success?, "the actual validator entrypoint must exit nonzero"
-    assert_includes output + error, "libwebp notices:"
+    assert_includes output + error, reason
     refute File.exist?(environment.fetch("UPLOAD_SENTINEL"))
     refute File.exist?(environment.fetch("KIRA_ARTIFACT_STATUS_FILE"))
     assert_empty Dir.children(environment.fetch("TMPDIR"))
@@ -165,6 +195,7 @@ class IosLibwebpArtifactsTest < Minitest::Test
   def app_info
     {
       "CFBundleIdentifier" => "me.manga.kira", "CFBundleShortVersionString" => "1.0.5",
+      "CFBundleDisplayName" => "Kira Manga", "KiraFirebaseServicesEnabled" => true,
       "CFBundleVersion" => "7", "CFBundleExecutable" => "Kira", "KiraAppStoreID" => "6792232678",
       "KiraCrashDiagnosticsEnabled" => false, "ITSAppUsesNonExemptEncryption" => false
     }

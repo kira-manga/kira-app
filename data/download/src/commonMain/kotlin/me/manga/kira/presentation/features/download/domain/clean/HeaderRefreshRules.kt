@@ -1,5 +1,8 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
+import kotlinx.coroutines.CancellationException
+import me.manga.kira.domain.model.downloads.DownloadedChapter
+
 /**
  * Pure rules for the B3 stale-auth fix in the iOS background engine
  * (`BackgroundUrlSessionDownloadRepository`). No I/O — fully unit-tested.
@@ -31,6 +34,20 @@ object HeaderRefreshRules {
      * VM's CHALLENGE_STATUSES).
      */
     val CHALLENGE_STATUS_CODES: Set<Int> = setOf(403, 429, 503, 520, 521, 522, 523, 524)
+
+    /**
+     * Terminal Android resolve/transfer failures use the same sentinel as the Details recovery flow.
+     * A retained HTTP status is authoritative; a URL or diagnostic mentioning a different status
+     * cannot turn an ordinary HTTP failure into a challenge. Legacy untyped messages keep the
+     * existing classifier. Cancellation must never become a persisted failure.
+     */
+    fun persistedFailureMessage(failure: Throwable): String? {
+        if (failure is CancellationException) throw failure
+        val status = (failure as? DownloadHttpStatusFailure)?.httpStatusCode
+        val challenge =
+            if (status != null) status in CHALLENGE_STATUS_CODES else isCloudflareChallengeFailure(failure.message)
+        return if (challenge) DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL else failure.message
+    }
 
     /**
      * Classify a resolve **or transfer** failure as a WebView-solvable Cloudflare/anti-bot

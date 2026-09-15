@@ -170,6 +170,7 @@ class LibraryRepositoryPersistNewTest {
         fileService(),
         RecordingReadProgressRepository(),
         testDispatchers,
+        fakeArtifactRuntime().ownership,
     )
 
     @Test

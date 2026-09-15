@@ -13,12 +13,16 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.cbz.OptimizedCbzManager
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
+import me.manga.kira.platform.media.publishPageSnapshot
 import me.manga.kira.presentation.features.download.data.DownloadState
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
+import me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRules
 import me.manga.kira.presentation.features.download.domain.clean.PageDownloadRequest
 import me.manga.kira.presentation.features.download.domain.clean.PageDownloadTransfer
 import me.manga.kira.presentation.features.download.domain.clean.downloadValidatedPage
@@ -45,6 +49,7 @@ class ChapterDownloadService(
     private val persistence: ChapterDownloadPersistence,
     pageTransfer: PageDownloadTransfer,
     archive: ChapterDownloadArchive,
+    private val artifacts: ChapterDownloadArtifacts,
     private val downloadDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(DOWNLOAD_PARALLELISM),
 ) {
     private val httpClient: HttpClient = pageTransfer.httpClient
@@ -60,7 +65,12 @@ class ChapterDownloadService(
     fun downloadChapterC(
         chapter: SavedChapterEntity,
         pages: List<DownloadPage>,
-    ): Flow<DownloadState> = downloadChapterBatch(chapter, pages).flowOn(downloadDispatcher)
+        claim: ChapterArtifactClaim,
+    ): Flow<DownloadState> = flow {
+        artifacts.ownership.producing(claim) {
+            downloadChapterBatch(chapter, pages, claim).collect { emit(it) }
+        }
+    }.flowOn(downloadDispatcher)
 
     suspend fun downloadImage(
         imageUrl: String,
@@ -68,6 +78,7 @@ class ChapterDownloadService(
         chapterId: Long,
         imageIndex: Int,
         pageHeaders: Map<String, String>,
+        claim: ChapterArtifactClaim,
     ): String =
         withContext(Dispatchers.IO) {
             val directory = File(context.filesDir, "manga/$mangaId/chapter_$chapterId").absolutePath.toPath()
@@ -77,12 +88,18 @@ class ChapterDownloadService(
                 FileSystem.SYSTEM,
                 mediaInspector,
                 pageBytePolicy,
+                publish = { temporary, metadata ->
+                    artifacts.ownership.files(claim) {
+                        publishPageSnapshot(FileSystem.SYSTEM, temporary, imageIndex, metadata)
+                    } ?: throw CancellationException("Download attempt retired")
+                },
             ).toString()
         }
 
     private fun downloadChapterBatch(
         chapter: SavedChapterEntity,
         pages: List<DownloadPage>,
+        claim: ChapterArtifactClaim,
     ): Flow<DownloadState> =
         flow {
             require(pages.isNotEmpty()) { "No images to download" }
@@ -98,7 +115,7 @@ class ChapterDownloadService(
                 currentCoroutineContext().ensureActive()
                 emit(DownloadState.InProgress(total, index, url))
 
-                val path = downloadImage(url, chapter.mangaId, chapter.id, index, page.headers)
+                val path = downloadImage(url, chapter.mangaId, chapter.id, index, page.headers, claim)
                 paths += path
             }
 
@@ -109,14 +126,12 @@ class ChapterDownloadService(
                     currentCoroutineContext().ensureActive()
 
                     val cbzPath =
-                        optimizedCbzManager.createCbzParallel(
-                            paths,
-                            chapter.mangaId,
-                            chapter.id,
-                        )
+                        artifacts.ownership.files(claim) {
+                            optimizedCbzManager.createCbzParallel(paths, chapter.mangaId, chapter.id)
+                        } ?: throw CancellationException("Download attempt retired")
                     currentCoroutineContext().ensureActive()
 
-                    persistence.savePaths(chapter.id, listOf(cbzPath))
+                    artifacts.preparePaths(claim) { persistence.savePaths(chapter.id, listOf(cbzPath)) }
                     emit(DownloadState.Complete(listOf(cbzPath)))
                 } catch (e: CancellationException) {
                     // This branch must precede Throwable: a system stop is not a compression error.
@@ -125,16 +140,16 @@ class ChapterDownloadService(
                     // A native fault or an exception mentioning "memory" is not permission to
                     // report success. Preserve original pages/previous archive; the collector owns
                     // cancellation cleanup, and only a typed preflight policy can allow fallback.
-                    persistence.recordFailure(chapter.id, "Compression failed: ${e.message}")
+                    artifacts.fail(claim, "Compression failed: ${e.message}")
                     emit(DownloadState.Error(e, paths.size, total))
                 }
             } else {
-                persistence.savePaths(chapter.id, paths)
+                artifacts.preparePaths(claim) { persistence.savePaths(chapter.id, paths) }
                 emit(DownloadState.Complete(paths))
             }
         }.catch { e ->
             if (e is CancellationException) throw e
-            persistence.recordFailure(chapter.id, e.message)
+            artifacts.fail(claim, HeaderRefreshRules.persistedFailureMessage(e))
             emit(DownloadState.Error(e, 0, pages.size))
         }
 

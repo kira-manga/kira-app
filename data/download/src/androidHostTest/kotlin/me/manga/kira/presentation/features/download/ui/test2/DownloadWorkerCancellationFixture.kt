@@ -110,6 +110,7 @@ internal class DownloadWorkerCancellationFixture(
                         single<ChapterDownloadDao> { dao }
                         single<MangaDao> { rows.db.mangaDao() }
                         single { service }
+                        single { rows.artifacts }
                         single<ChapterPageProvider> { transport.provider }
                         single<AppFileSystem> { storage.fileSystem }
                     },
@@ -247,7 +248,7 @@ private fun closeFixtureResources(
     }
 }
 
-private class ImmediateFixtureForegroundUpdater(
+internal class ImmediateFixtureForegroundUpdater(
     private val calls: AtomicInteger,
 ) : ForegroundUpdater {
     override fun setForegroundAsync(

@@ -6,6 +6,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
@@ -52,6 +55,7 @@ class DownloadRepositoryImpl(
     private val workManager: WorkManager,
     private val dao: ChapterDownloadDao,
     private val chapterDownloadService: ChapterDownloadService,
+    private val artifacts: ChapterDownloadArtifacts,
 ) : DownloadRepository {
 
     private companion object {
@@ -75,50 +79,33 @@ class DownloadRepositoryImpl(
         title: String,
         mangaApi: String,
     ) {
-        // Dedup against an already-active row (2026-07 audit — mirrors the nonAndroid coroutine
-        // sibling): the DAO inserts with OnConflictStrategy.REPLACE on the unique chapterId index,
-        // so an unconditional re-insert of a chapter currently QUEUED / RUNNING / COMPRESSING
-        // rewrites its row to QUEUED/progress=0 mid-download. No-op in that case; only absent rows
-        // and terminal SUCCESS / FAILED rows proceed (the retry path).
-        val existing = dao.getDownloadByChapter(chapter.id)?.state
-        if (DownloadRecovery.isActiveDownloadState(existing)) {
-            return
-        }
-        val id = dao.insert(chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
-        // Source guards `?.let { enqueueRequest() }` against the entity not being inserted (Long?).
-        // The KMP DAO returns a non-nullable Long, so we always enqueue on success.
-        // APPEND_OR_REPLACE (not the KEEP default): a prior unique-work run that already passed its
-        // final getNextQueuedChapter()==null can be terminal-but-not-yet-cleared when this insert
-        // lands; with KEEP this enqueue would be DROPPED and the new row would sit QUEUED with no
-        // worker. Same race reconcileInterruptedDownloads() guards against.
-        if (id >= 0L) enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
+        val claim = artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
+        if (claim != null) enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
     override suspend fun deleteDownload(chapterId: Long) {
-        dao.deleteByChapterId(chapterId)
+        val row = dao.getDownloadByChapter(chapterId) ?: return
+        // Removing SUCCESS history remains row-only: its committed artifact has independent custody.
+        if (row.state != DownloadingState.SUCCESS) onCancel(chapterId)
+        dao.deleteHistoryAttempt(chapterId, row.id)
     }
 
     override suspend fun onCancel(chapterId: Long) {
-        // Sentinel, not the localized string (2026-07 audit): :ui renders its own localized
-        // "cancelled by user" label only when errorMsg matches
-        // DownloadedChapter.CANCELLED_BY_USER_SENTINEL — a resolved string was frozen at
-        // write-time locale and never matched, so the row showed raw text instead.
-        dao.updateFailure(chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL)
+        val claim = artifacts.cancel(chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) ?: return
+        workManager.cancelUniqueWork(WORK_NAME)
+        artifacts.settle(claim)
+        enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
     override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
-        workManager.cancelUniqueWork(WORK_NAME)
-        chapterDownloadService.deleteChapterFiles(mangaId, chapterId)
         onCancel(chapterId)
-        enqueueRequest()
     }
 
-    // Re-added (DOWNLOAD "cancel-all marks rows failed" backlog item, 2026-06-01). Mirrors the
-    // native DownloadRepositoryImpl.cancelAllDownloads() verbatim: mark every in-flight row
-    // FAILED in the DB, then cancel the unique WorkManager job.
     override suspend fun cancelAllDownloads() {
-        dao.markAllRunningOrQueuedAsFailed()
+        val active = dao.observeAllDownloads().first().filter { DownloadRecovery.isActiveDownloadState(it.state) }
+        val claims = active.mapNotNull { artifacts.cancel(it.chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) }
         workManager.cancelUniqueWork(WORK_NAME)
+        claims.forEach { artifacts.settle(it) }
     }
 
     // Restart-freeze fix (2026-06-02). Reset rows orphaned in RUNNING / COMPRESSING by a previous

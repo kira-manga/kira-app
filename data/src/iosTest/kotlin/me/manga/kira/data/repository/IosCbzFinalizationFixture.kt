@@ -1,5 +1,5 @@
 package me.manga.kira.data.repository
-
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.russhwolf.settings.MapSettings
@@ -51,14 +51,18 @@ internal class IosCbzFinalizationFixture {
     var db: MangaDatabase = openDatabase()
         private set
     val dao: ChapterDownloadDao get() = db.chapterDownloadingDao()
+    private var artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
+    val artifacts: ChapterDownloadArtifacts get() = artifactRuntime.downloads
+    private var nextChapter = 0
 
-    suspend fun seed(): IosCbzChapter {
-        val mangaId =
+    suspend fun seed(mangaId: Long? = null): IosCbzChapter {
+        val number = ++nextChapter
+        val ownerId = mangaId ?:
             db.backupDao().insertMangaRow(
                 SavedMangaEntity(
                     api = "test",
                     language = "en",
-                    url = "https://example.test/manga/cbz",
+                    url = "https://example.test/manga/cbz/$number",
                     imageUrl = "",
                     title = "CBZ",
                     description = "",
@@ -71,14 +75,14 @@ internal class IosCbzFinalizationFixture {
             )
         val chapter =
             SavedChapterEntity(
-                mangaId = mangaId,
+                mangaId = ownerId,
                 name = "Chapter",
-                number = "1",
-                url = "https://example.test/chapter/1",
+                number = number.toString(),
+                url = "https://example.test/chapter/$number",
                 date = null,
             )
         val chapterId = db.backupDao().insertChapterRow(chapter)
-        val directory = appFileSystem.chapterDir(mangaId, chapterId)
+        val directory = appFileSystem.chapterDir(ownerId, chapterId)
         system.createDirectories(directory)
         val pages =
             listOf(IOS_FINALIZE_LARGE_PNG, IOS_FINALIZE_SMALL_PNG)
@@ -91,9 +95,9 @@ internal class IosCbzFinalizationFixture {
         db.backupDao().updateChapterRow(saved)
         val download =
             ChapterDownloadEntity(
-                number = "1",
+                number = number.toString(),
                 chapterId = chapterId,
-                mangaId = mangaId,
+                mangaId = ownerId,
                 api = "test",
                 url = chapter.url,
                 state = DownloadingState.DOWNLOADED,
@@ -118,6 +122,7 @@ internal class IosCbzFinalizationFixture {
                             fileService = FileService(appFileSystem),
                         ),
                     notifications = db.notificationDao(),
+                    artifacts = artifacts,
                 ),
             appFileSystem = appFileSystem,
             cbzWriter = writer,
@@ -157,6 +162,7 @@ internal class IosCbzFinalizationFixture {
     fun reopen() {
         db.close()
         db = openDatabase()
+        artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
     }
 
     fun close() {

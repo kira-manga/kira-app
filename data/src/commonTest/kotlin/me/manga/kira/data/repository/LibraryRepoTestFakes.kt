@@ -216,9 +216,19 @@ open class FakeChapterDownloadDao(
 
     override suspend fun getNextQueuedChapter(queuedState: DownloadingState): ChapterDownloadEntity? = null
 
+    override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> = emptyList()
+
     override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? = null
 
     override suspend fun getSavedChapterForDownload(chapterId: Long): SavedChapterEntity? = null
+
+    override suspend fun getCompletionArtifact(chapterId: Long): me.manga.kira.data.local.entity.ChapterArtifactEntity? = null
+    override suspend fun writeCompletionArtifact(record: me.manga.kira.data.local.entity.ChapterArtifactEntity): Int = error("unused")
+    override suspend fun writeCompletionPaths(update: me.manga.kira.data.local.dao.ArtifactReadableUpdate): Int = error("unused")
+    override suspend fun getCompletionNotifications(chapterId: Long, mangaId: Long, url: String, api: String): List<ChapterNotification> = emptyList()
+    override suspend fun writeCompletionNotification(update: me.manga.kira.data.local.dao.ArtifactReadableUpdate): Int = error("unused")
+    override suspend fun updateProgressForArtifact(chapterId: Long, downloadId: Long, token: String, progress: Int) = Unit
+    override suspend fun deleteHistoryAttempt(chapterId: Long, downloadId: Long) = Unit
 
     override suspend fun writeCompletedDownload(
         downloadId: Long,

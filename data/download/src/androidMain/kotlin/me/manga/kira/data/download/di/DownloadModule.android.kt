@@ -16,6 +16,7 @@ import org.koin.dsl.module
 // stay bound in platformModule().android (general Android facilities) and resolve via get().
 actual fun downloadModule(): Module =
     module {
+        includes(chapterArtifactModule())
         single { ChapterDownloadPersistence(get(), get(), get(), get()) }
         factory { PageDownloadTransfer(get(named("chapter-download-http")), get()) }
         factory { ChapterDownloadArchive(get(), get()) }
@@ -25,6 +26,7 @@ actual fun downloadModule(): Module =
                 persistence = get(),
                 pageTransfer = get(),
                 archive = get(),
+                artifacts = get(),
             )
         }
         single<DownloadRepository> {
@@ -32,6 +34,7 @@ actual fun downloadModule(): Module =
                 workManager = get(),
                 dao = get(),
                 chapterDownloadService = get(),
+                artifacts = get(),
             )
         }
     }

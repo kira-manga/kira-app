@@ -15,6 +15,7 @@ import com.google.firebase.FirebaseOptions
 import java.util.concurrent.ExecutorService
 import me.manga.kira.MyApp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
@@ -61,9 +62,9 @@ internal object AppLocaleStartupGuards {
         val manager = checkNotNull(workManager) { "Real Koin must initialize the guarded WorkManager" }
         assertTrue(manager.configuration.workerFactory is DelegatingWorkerFactory)
         assertEquals("Record the actual startup request, never execute it", 1, manager.periodicRequests.size)
-        assertTrue("Guard explicit and any provider Firebase initialization", firebaseInitializations >= 1)
-        assertEquals("Guard the actual optional writer construction", 1, crashWriterConstructions)
-        assertTrue(Logger.config.logWriterList.any { it is CrashlyticsLogWriter })
+        assertEquals("Isolated Debug must not initialize Firebase, explicitly or through a provider", 0, firebaseInitializations)
+        assertEquals("Isolated Debug must not construct a Crashlytics writer", 0, crashWriterConstructions)
+        assertFalse(Logger.config.logWriterList.any { it is CrashlyticsLogWriter })
         assertEquals("Real AppUpdateClient must reach the guarded SDK factory", 1, updateManagerCreations)
         assertTrue("Do not advance the Activity's queued update flow", updateInfoRequests in 0..1)
         assertTrue("Activity destruction must release its update listener", updateListeners.isEmpty())

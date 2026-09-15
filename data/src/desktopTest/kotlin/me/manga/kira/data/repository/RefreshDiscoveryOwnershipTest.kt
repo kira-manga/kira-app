@@ -1,12 +1,10 @@
 package me.manga.kira.data.repository
-
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.updates.UpdateEntry
-import me.manga.kira.domain.service.FileService
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -58,7 +56,7 @@ class RefreshDiscoveryOwnershipTest {
             }
         }
         val actions = DownloadsActionRepositoryImpl(
-            downloads, fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.files, FileService(fixture.files),
+            downloads, fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.files, fixture.artifactRuntime.ownership,
         )
         assertTrue(actions.enqueueDownload(b.chapterId, b.mangaTitle, b.api).isSuccess)
         assertEquals(listOf(savedB), requested, "download engine receives B's actual saved row")

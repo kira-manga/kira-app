@@ -98,12 +98,15 @@ private class FailureListener(
         mangaId: Long,
         chapterId: Long,
         pageIndex: Int,
+        attemptToken: String,
+        page: StagedDownloadPage,
     ) = error("completion without a published page")
 
     override fun onPageFailed(
         mangaId: Long,
         chapterId: Long,
         pageIndex: Int,
+        attemptToken: String,
         message: String?,
     ) {
         failed(message)

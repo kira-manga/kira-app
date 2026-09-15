@@ -26,6 +26,11 @@ import me.manga.kira.platform.filesystem.AndroidAppFileSystem
 import me.manga.kira.platform.filesystem.AndroidFileSizeFormatter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.FileSizeFormatter
+import me.manga.kira.platform.firebase.DisabledAnalyticsClient
+import me.manga.kira.platform.firebase.DisabledCrashReporter
+import me.manga.kira.platform.firebase.DisabledPushTokenProvider
+import me.manga.kira.platform.firebase.DisabledRemoteDocStore
+import me.manga.kira.platform.firebase.firebaseServicesAvailable
 import me.manga.kira.platform.image.AndroidDominantColorExtractor
 import me.manga.kira.platform.image.AndroidImageDecoderRegistry
 import me.manga.kira.platform.image.AndroidScreenshotProvider
@@ -121,13 +126,20 @@ actual fun platformModule(): Module =
         single<SecureStorage> { AndroidSecureStorage(androidContext()) }
 
         // ---- Firebase facades (Phase 8.8) ----
-        single<AnalyticsClient> { AndroidAnalyticsClient(androidContext()) }
-        single<CrashReporter> { AndroidCrashReporter() }
-        single<PushTokenProvider> { AndroidPushTokenProvider() }
-        single<RemoteDocStore> { AndroidRemoteDocStore() }
-        // Firebase In-App Messaging needs no binding: the firebase-inappmessaging-display SDK (dep in
-        // :platform androidMain) auto-initialises from google-services.json and displays console-authored
-        // campaigns on every screen. The app intentionally does not suppress them anywhere.
+        single<AnalyticsClient> {
+            if (firebaseServicesAvailable(androidContext())) AndroidAnalyticsClient(androidContext()) else DisabledAnalyticsClient
+        }
+        single<CrashReporter> {
+            if (firebaseServicesAvailable(androidContext())) AndroidCrashReporter() else DisabledCrashReporter
+        }
+        single<PushTokenProvider> {
+            if (firebaseServicesAvailable(androidContext())) AndroidPushTokenProvider() else DisabledPushTokenProvider
+        }
+        single<RemoteDocStore> {
+            if (firebaseServicesAvailable(androidContext())) AndroidRemoteDocStore() else DisabledRemoteDocStore
+        }
+        // Release FIAM initializes with the default Firebase app. Debug removes FirebaseInitProvider
+        // and never constructs these SDK facades, so resolving lazy services cannot re-enable it.
 
         // ---- Play services (Phase 8.9) ----
         // activityProvider is now backed by ActivityHolder (:platform androidMain), kept current by

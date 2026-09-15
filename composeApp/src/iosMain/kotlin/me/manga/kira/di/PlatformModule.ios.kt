@@ -28,6 +28,11 @@ import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.FileSizeFormatter
 import me.manga.kira.platform.filesystem.IosAppFileSystem
 import me.manga.kira.platform.filesystem.IosFileSizeFormatter
+import me.manga.kira.platform.firebase.DisabledAnalyticsClient
+import me.manga.kira.platform.firebase.DisabledCrashReporter
+import me.manga.kira.platform.firebase.DisabledPushTokenProvider
+import me.manga.kira.platform.firebase.DisabledRemoteDocStore
+import me.manga.kira.platform.firebase.firebaseServicesAvailable
 import me.manga.kira.platform.image.DominantColorExtractor
 import me.manga.kira.platform.image.ImageDecoderRegistry
 import me.manga.kira.platform.image.IosDominantColorExtractor
@@ -114,10 +119,18 @@ actual fun platformModule(): Module =
         single<SecureStorage> { IosSecureStorage() }
 
         // ---- Analytics / crash / push / remote doc store (Phase 8.8 — iOS noops) ----
-        single<AnalyticsClient> { IosAnalyticsClient() }
-        single<CrashReporter> { IosCrashReporter() }
-        single<PushTokenProvider> { IosPushTokenProvider() }
-        single<RemoteDocStore> { IosRemoteDocStore() }
+        single<AnalyticsClient> {
+            if (firebaseServicesAvailable()) IosAnalyticsClient() else DisabledAnalyticsClient
+        }
+        single<CrashReporter> {
+            if (firebaseServicesAvailable()) IosCrashReporter() else DisabledCrashReporter
+        }
+        single<PushTokenProvider> {
+            if (firebaseServicesAvailable()) IosPushTokenProvider() else DisabledPushTokenProvider
+        }
+        single<RemoteDocStore> {
+            if (firebaseServicesAvailable()) IosRemoteDocStore() else DisabledRemoteDocStore
+        }
         // Firebase In-App Messaging needs no binding: the FirebaseInAppMessaging-Beta SPM product (linked
         // in the Swift host) auto-initialises after FirebaseApp.configure() and displays console-authored
         // campaigns on every screen. The app intentionally does not suppress them anywhere.

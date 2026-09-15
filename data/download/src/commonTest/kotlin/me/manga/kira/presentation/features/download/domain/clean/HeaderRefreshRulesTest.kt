@@ -1,7 +1,10 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
+import kotlinx.coroutines.CancellationException
+import me.manga.kira.domain.model.downloads.DownloadedChapter
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -138,4 +141,44 @@ class HeaderRefreshRulesTest {
             assertFalse(HeaderRefreshRules.isCloudflareChallengeFailure(msg), msg ?: "null")
         }
     }
+
+    @Test
+    fun typedChallengeStatusesDoNotDependOnExceptionWording() {
+        for (status in setOf(403, 429, 503, 520, 521, 522, 523, 524)) {
+            assertEquals(
+                DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL,
+                HeaderRefreshRules.persistedFailureMessage(StatusFailure(status, "source request rejected")),
+                "status=$status",
+            )
+        }
+    }
+
+    @Test
+    fun typedOrdinaryStatusesOverrideMisleadingChallengeText() {
+        for (status in listOf(0, 400, 401, 404, 500, 4030)) {
+            val message = "HTTP $status for /cloudflare/statusCode=403"
+            assertEquals(message, HeaderRefreshRules.persistedFailureMessage(StatusFailure(status, message)))
+        }
+    }
+
+    @Test
+    fun untypedFailuresKeepLegacyChallengeAndOrdinaryMessageSemantics() {
+        for (failure in listOf(Exception("HTTP 403"), StatusFailure(null, "Forbidden Click On Help To Fix It"))) {
+            assertEquals(DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL, HeaderRefreshRules.persistedFailureMessage(failure))
+        }
+        for (message in listOf(null, "No images for chapter", "Connection reset", "HTTP 404")) {
+            assertEquals(message, HeaderRefreshRules.persistedFailureMessage(Exception(message)))
+        }
+    }
+
+    @Test
+    fun cancellationWithChallengeTextIsRethrownUnchanged() {
+        val cancelled = CancellationException("HTTP 403 Cloudflare")
+        assertSame(cancelled, assertFailsWith<CancellationException> { HeaderRefreshRules.persistedFailureMessage(cancelled) })
+    }
 }
+
+private class StatusFailure(
+    override val httpStatusCode: Int?,
+    message: String?,
+) : Exception(message), DownloadHttpStatusFailure

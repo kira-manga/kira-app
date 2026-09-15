@@ -12,19 +12,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import me.manga.kira.platform.download.BgDownloadLog
+import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.dao.ChapterDownloadDao
-import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.filesystem.AppFileSystem
-import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.platform.filesystem.folderSize
 import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.platform.media.inspectPageArchive
 import me.manga.kira.platform.media.requireValid
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import okio.Path.Companion.toPath
 
 /**
@@ -45,10 +43,8 @@ class ChapterFinalizer(
     private val mediaInspector: PageMediaInspector,
 ) {
     private val dao: ChapterDownloadDao = records.downloads
-    private val libraryRepository: LibraryRepository = records.library
+    private val artifacts: ChapterDownloadArtifacts = records.artifacts
 
-    // Keep the notification-table copy consistent after the queue row is evicted.
-    private val notificationDao: NotificationDao = records.notifications
     private val log = Logger.withTag(TAG)
 
     /**
@@ -72,115 +68,56 @@ class ChapterFinalizer(
     suspend fun markReadable(
         entity: ChapterDownloadEntity,
         loosePaths: List<String>,
+        claim: ChapterArtifactClaim? = null,
     ): Boolean {
-        // A cancel/delete owns the row; validation adds an off-mutex window, so re-check ownership
-        // afterward as well as before it. Never resurrect readable bookkeeping over a user cancel.
-        if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable")) return false
-        requireReadablePages(loosePaths)
-        return if (abandonedByCancelOrDelete(entity.chapterId, phase = "markReadable.postValidation")) {
-            false
-        } else {
-            val sizeBytes =
-                runCatching {
-                    appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-                }.getOrDefault(0L)
-            dao.updateSize(entity.chapterId, sizeBytes)
-            libraryRepository.updateChapterLocalPaths(entity.chapterId, loosePaths)
-            libraryRepository.markChapterAsDownloaded(entity.chapterId)
-            notificationDao.addLocalImagePathByChapterId(entity.chapterId, loosePaths)
-            val compressionPending = dataStore.useCbzFormatFlow.first()
-            log.i {
-                "Chapter ${entity.chapterId} readable from ${loosePaths.size} loose page(s) " +
-                    "($sizeBytes bytes); cbzPending=$compressionPending"
-            }
-            compressionPending
-        }
+        val attempt = claim ?: artifacts.claim(entity) ?: return false
+        val published = artifacts.ownership.files(attempt) {
+            requireReadablePages(loosePaths)
+            artifacts.complete(attempt, entity, loosePaths, terminal = false)
+        } == true
+        return published && dataStore.useCbzFormatFlow.first()
     }
 
-    /**
-     * Reverts [markReadable]'s bookkeeping after a USER CANCEL landed inside the finalize window
-     * (2026-07-04 device smoke: the chapter is marked readable at transfer-complete — BEFORE
-     * "Finalizing…" even shows — so a cancel that only flips the queue row FAILED left it
-     * "Downloaded" and openable). Clears `isDownloaded` + `localImagePaths` on the saved chapter
-     * and the notification row. Idempotent; the caller decides WHEN this applies
-     * ([FinalizeRules.cancelMustRevertReadable] — only the finalize-owned states, so a cancel of a
-     * queued retry never clears a previous successful download's bookkeeping).
-     */
+    /** Existing callers must retain the attempt; cancellation never clears a replacement's paths. */
     suspend fun revertReadable(chapterId: Long) {
-        // markChapterNotDownloaded clears BOTH isDownloaded and localImagePaths (one DAO UPDATE).
-        libraryRepository.markChapterNotDownloaded(chapterId)
-        notificationDao.addLocalImagePathByChapterId(chapterId, emptyList(), downloaded = false)
-        log.i { "Chapter $chapterId readable bookkeeping reverted (cancel during finalize window)" }
+        artifacts.cancel(chapterId, "__cancelled_by_user__")
     }
 
     suspend fun finalize(
         entity: ChapterDownloadEntity,
         downloadedPaths: List<String>,
+        claim: ChapterArtifactClaim? = null,
     ) {
-        currentCoroutineContext().ensureActive()
-        if (abandonedByCancelOrDelete(entity.chapterId, phase = "finalize.entry")) return
-        require(downloadedPaths.isNotEmpty()) { "Cannot finalize an empty chapter" }
-        // Optionally archive the downloaded pages into a single CBZ, mirroring native Android's
-        // download-then-compress flow. The writer deletes the loose source pages on success and
-        // returns the archive path; we then point localImagePaths at that single .cbz instead of
-        // the loose page list. Copy the nullable preference into a local before branching.
-        val useCbz: Boolean = dataStore.useCbzFormatFlow.first()
-        val finalPaths: List<String> =
-            if (useCbz) {
-                dao.updateStateChId(entity.chapterId, DownloadingState.COMPRESSING)
-                // DLPERF (default-off, gated by BgDownloadLog.DLPERF): measure main-thread scheduling stalls
-                // WHILE the CBZ encode runs, to quantify COMPRESSING-stage scroll jank and distinguish CPU
-                // starvation from GC. Off by default → no Main heartbeat coroutine; flip DLPERF to profile.
+        val attempt = claim ?: artifacts.claim(entity) ?: return
+        artifacts.ownership.files(attempt) {
+            currentCoroutineContext().ensureActive()
+            require(downloadedPaths.isNotEmpty()) { "Cannot finalize an empty chapter" }
+            val finalPaths = if (dataStore.useCbzFormatFlow.first()) {
+                artifacts.ownership.publish(attempt) {
+                    dao.updateStateChId(entity.chapterId, DownloadingState.COMPRESSING)
+                }
                 val watchdog = if (BgDownloadLog.DLPERF) startMainThreadStallWatchdog(entity.chapterId) else null
-                val archived =
-                    try {
-                        // A returned path guarantees all requested inputs were represented. Validated
-                        // resource-policy preservation belongs inside the writer; arbitrary read/decode/
-                        // encode/IO failures must reach the caller, never become loose-page SUCCESS here.
-                        cbzWriter.createCbzWithSplitting(
-                            imagePaths = downloadedPaths.map { it.toPath() },
-                            mangaId = entity.mangaId,
-                            chapterId = entity.chapterId,
-                        )
-                    } finally {
-                        watchdog?.cancel()
-                    }
+                val archived = try {
+                    cbzWriter.createCbzWithSplitting(
+                        imagePaths = downloadedPaths.map { it.toPath() },
+                        mangaId = entity.mangaId,
+                        chapterId = entity.chapterId,
+                    )
+                } finally {
+                    watchdog?.cancel()
+                }
                 listOf(archived.toString())
             } else {
                 requireReadablePages(downloadedPaths)
                 downloadedPaths
             }
-
-        // Re-check AFTER the encode — the long window where a user cancel can land (2026-07
-        // audit): on the iOS background engine `cancelARunningChapter` writes FAILED + deletes the
-        // chapter's files while this encode runs off-mutex, and the unconditional SUCCESS write
-        // below silently undid the cancel, pointed localImagePaths at deleted files, and let the
-        // engine's "Download complete" banner fire (its guard reads the row this write clobbered).
-        currentCoroutineContext().ensureActive()
-        if (abandonedByCancelOrDelete(entity.chapterId, phase = "finalize.postEncode")) return
-
-        // Capture the final on-disk chapter size (the .cbz if archiving ran, else the loose pages)
-        // BEFORE the terminal SUCCESS write, so the single observeAllDownloads emission that flips
-        // the row to SUCCESS already carries sizeBytes — the Details/Library size shows the instant
-        // the row completes (native size-display parity). Best-effort: a size-walk failure must not
-        // fail the download.
-        val sizeBytes =
-            runCatching {
-                appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-            }.getOrDefault(0L)
-        dao.updateSize(entity.chapterId, sizeBytes)
-
-        libraryRepository.updateChapterLocalPaths(entity.chapterId, finalPaths)
-        libraryRepository.markChapterAsDownloaded(entity.chapterId)
-        // Notification-table parity with the Android engine: set localImagePaths + isDownloaded on the
-        // chapter's notification row (no-op when no such row exists). Without this, the Updates-screen
-        // download button reverts to "not downloaded" on iOS/Desktop once the downloads-queue row is gone.
-        notificationDao.addLocalImagePathByChapterId(entity.chapterId, finalPaths)
-        dao.updateStateAndProgress(entity.chapterId, DownloadingState.SUCCESS, 100)
-        log.i { "Chapter ${entity.chapterId} complete (${finalPaths.size} path(s), $sizeBytes bytes)" }
+            currentCoroutineContext().ensureActive()
+            if (artifacts.complete(attempt, entity, finalPaths)) {
+                log.i { "Chapter ${entity.chapterId} complete (${finalPaths.size} path(s))" }
+            }
+        }
     }
 
-    /** The caller binds the manifest roster; this checks every supplied file, never a filtered subset. */
     private suspend fun requireReadablePages(paths: List<String>) {
         require(paths.isNotEmpty()) { "Cannot finalize an empty chapter" }
         paths.forEach { path ->
@@ -190,58 +127,20 @@ class ChapterFinalizer(
         currentCoroutineContext().ensureActive()
     }
 
-    /**
-     * True when the row's CURRENT state says a cancel (FAILED) or delete (row gone) took ownership
-     * while this attempt's off-mutex work ran — see [FinalizeRules.shouldAbandonFinalize] for why
-     * the set is exactly {FAILED, null}. The read is best-effort: if it throws, proceed (the
-     * pre-audit behavior) rather than strand a finished chapter on a transient DB error.
-     */
-    private suspend fun abandonedByCancelOrDelete(
-        chapterId: Long,
-        phase: String,
-    ): Boolean {
-        val row = runCatching { dao.getDownloadByChapter(chapterId) }.getOrElse { return false }
-        val abandoned = FinalizeRules.shouldAbandonFinalize(row?.state)
-        if (abandoned) log.i { "Chapter $chapterId $phase abandoned — row re-purposed (state=${row?.state})" }
-        return abandoned
-    }
-
-    /**
-     * B2-durable recovery: adopt an already-published `.cbz` as the finished artifact. Used when a kill
-     * during [finalize] left the `.cbz` on disk (it is now renamed BEFORE the loose pages are deleted)
-     * but the loose pages gone and the row still COMPRESSING — re-running [finalize] would see no loose
-     * pages and wrongly fail. Repoints `localImagePaths` + the notification row at the archive and writes
-     * the terminal SUCCESS, exactly like [finalize]'s tail. Idempotent (re-writes the same rows).
-     */
     suspend fun adoptExistingArchive(
         entity: ChapterDownloadEntity,
         cbzPath: String,
+        claim: ChapterArtifactClaim? = null,
     ) {
-        currentCoroutineContext().ensureActive()
-        if (abandonedByCancelOrDelete(entity.chapterId, phase = "adopt.entry")) return
-        inspectPageArchive(appFileSystem.fileSystem(), cbzPath.toPath(), mediaInspector)
-        currentCoroutineContext().ensureActive()
-        if (abandonedByCancelOrDelete(entity.chapterId, phase = "adopt.postValidation")) return
-        val finalPaths = listOf(cbzPath)
-        val sizeBytes =
-            runCatching {
-                appFileSystem.folderSize(appFileSystem.chapterDir(entity.mangaId, entity.chapterId))
-            }.getOrDefault(0L)
-        dao.updateSize(entity.chapterId, sizeBytes)
-        libraryRepository.updateChapterLocalPaths(entity.chapterId, finalPaths)
-        libraryRepository.markChapterAsDownloaded(entity.chapterId)
-        notificationDao.addLocalImagePathByChapterId(entity.chapterId, finalPaths)
-        dao.updateStateAndProgress(entity.chapterId, DownloadingState.SUCCESS, 100)
-        log.i { "Chapter ${entity.chapterId} adopted existing CBZ archive ($sizeBytes bytes)" }
+        val attempt = claim ?: artifacts.claim(entity) ?: return
+        artifacts.ownership.files(attempt) {
+            currentCoroutineContext().ensureActive()
+            inspectPageArchive(appFileSystem.fileSystem(), cbzPath.toPath(), mediaInspector)
+            currentCoroutineContext().ensureActive()
+            artifacts.complete(attempt, entity, listOf(cbzPath))
+        }
     }
 
-    /**
-     * DLPERF (gated by `BgDownloadLog.DLPERF`, default off): heartbeat on the **main** dispatcher; whenever the gap between beats
-     * exceeds [STALL_MS] the main thread was stalled (couldn't service its run loop) — logged as
-     * `DLPERF.mainStall`. Run only for the duration of the CBZ encode. While the user scrolls the details
-     * screen during COMPRESSING: many/large stalls ⇒ the encode is starving/pausing the UI thread (CPU
-     * contention and/or Kotlin/Native GC); few/none ⇒ the lag originates elsewhere.
-     */
     private fun startMainThreadStallWatchdog(chapterId: Long): Job? =
         // runCatching guards platforms where Dispatchers.Main isn't installed (e.g. Desktop without the
         // swing coroutines module) — a missing Main dispatcher must never break finalize.

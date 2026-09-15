@@ -20,7 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Actual exported v13 -> production Room v14 validation, plus generated fresh-schema enforcement. */
+/** Notification identity from v14 remains enforced through the current generated Room schema. */
 class NotificationSchema14Test {
     @Test
     fun roomAcceptsMigratedExportedV13AndBothSchemasEnforceNotificationUniqueness() = runBlocking {
@@ -38,7 +38,7 @@ class NotificationSchema14Test {
     private suspend fun verifySchema(path: Path, migrated: Boolean) {
         if (migrated) createExportedV13(path)
         val db = Room.databaseBuilder<MangaDatabase>(name = path.toString())
-            .addMigrations(MIGRATION_13_14)
+            .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
@@ -56,7 +56,7 @@ class NotificationSchema14Test {
             db.close()
         }
         BundledSQLiteDriver().open(path.toString()).use { connection ->
-            assertEquals(14L, connection.number("PRAGMA user_version"))
+            assertEquals(15L, connection.number("PRAGMA user_version"))
             assertEquals(1L, connection.number("SELECT \"unique\" FROM pragma_index_list('notifications') WHERE name = 'index_notifications_chapterId'"))
         }
     }

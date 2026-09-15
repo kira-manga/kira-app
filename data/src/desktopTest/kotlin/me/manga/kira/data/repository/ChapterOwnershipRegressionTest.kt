@@ -67,6 +67,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
 
             db.close()
             db = openDatabase()
+            artifactRuntime = ArtifactTestRuntime(db, appFs)
             assertEquals(a, row(a.id))
             assertEquals(expected, row(b.id))
             assertEquals(b.id, ChapterIdResolverImpl(db.chapterDao()).resolveChapterId(mangaB, CHAPTER_OWNERSHIP_URL))
@@ -238,6 +239,8 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
                     cbz,
                     chapterOwnershipRegistry(source),
                     DownloadedPageFiles(appFs, inspector),
+                    artifactRuntime.ownership,
+                    appFs,
                 )
             val chapter = Chapter("1", "shared", CHAPTER_OWNERSHIP_URL, null, false, false)
 
