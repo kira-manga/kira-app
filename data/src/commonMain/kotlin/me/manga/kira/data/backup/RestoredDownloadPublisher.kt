@@ -20,6 +20,7 @@ import okio.Buffer
 import okio.IOException
 import okio.Path
 import okio.buffer
+import okio.use
 
 /** App9's privately owned, immutable, fully validated source; its owner must stay open throughout. */
 data class RestoredChapterArchive(val path: Path, val sizeBytes: Long)
