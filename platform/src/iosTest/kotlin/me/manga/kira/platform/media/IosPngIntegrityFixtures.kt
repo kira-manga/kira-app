@@ -18,8 +18,14 @@ internal data class IosPngFixture(
 
     fun header(): ByteArray =
         Buffer()
-            .writeInt(width).writeInt(height).writeByte(depth).writeByte(color)
-            .writeByte(0).writeByte(0).writeByte(interlace).readByteArray()
+            .writeInt(width)
+            .writeInt(height)
+            .writeByte(depth)
+            .writeByte(color)
+            .writeByte(0)
+            .writeByte(0)
+            .writeByte(interlace)
+            .readByteArray()
 
     fun image(idats: List<ByteArray> = listOf(stream())): ByteArray {
         val chunks = mutableListOf<Pair<String, ByteArray>>()
@@ -45,8 +51,14 @@ internal object IosPngIntegrityFixtures {
             IosPngFixture("adam7_rgb_16", 3, 2, 16, 2, 1, "78da6360200e000000280001"),
             IosPngFixture("all_filters", 8, 5, 1, 0, 0, "78da6360606460626066606100000032000b"),
             IosPngFixture(
-                "scratch_boundary", 1024, 33, 8, 0, 0,
-                "78daedc18100000000c3a0f9539fe00655010000000000000000000000000000000000000000000000000000000000000000d70084210001",
+                "scratch_boundary",
+                1024,
+                33,
+                8,
+                0,
+                0,
+                "78daedc18100000000c3a0f9539fe006550100000000000000000000" +
+                    "00000000000000000000000000000000000000000000d70084210001",
             ),
         )
 
@@ -81,6 +93,11 @@ internal object IosPngIntegrityFixtures {
                 update(type)
                 update(payload)
             }
-        return Buffer().writeInt(payload.size).write(type).write(payload).writeInt(crc.value).readByteArray()
+        return Buffer()
+            .writeInt(payload.size)
+            .write(type)
+            .write(payload)
+            .writeInt(crc.value)
+            .readByteArray()
     }
 }

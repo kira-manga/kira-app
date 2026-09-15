@@ -47,70 +47,11 @@ class IosPngIntegrityTest {
     @Test
     fun corruptStreamsRowsAndChunkOrderingNeverValidate() {
         val gray = fixture("packed_1")
-        val rgb = fixture("rgb_16")
-        val indexed = fixture("indexed_4")
-        val rgba = fixture("rgba_16")
-        val stream = gray.stream()
-        val idat = "IDAT" to stream
-        val end = "IEND" to byteArrayOf()
-        val text = "tEXt" to byteArrayOf(107, 0, 118)
-        val palette = "PLTE" to byteArrayOf(0, 0, 0, -1, -1, -1)
-        fun chunks(fixture: IosPngFixture, vararg chunks: Pair<String, ByteArray>): ByteArray =
-            IosPngIntegrityFixtures.assemble(fixture.header(), chunks.toList())
-
         val invalid =
-            listOf("short_rows", "long_rows", "bad_filter", "bad_deflate_valid_header", "preset_dictionary")
-                .map { name -> name to gray.image(listOf(IosPngIntegrityFixtures.special(name))) }
-                .toMutableList()
-        invalid +=
-            listOf(
-                "wrong_adler" to gray.image(listOf(stream.copyOf().apply { this[lastIndex] = 0 })),
-                "truncated_zlib" to gray.image(listOf(stream.copyOf(stream.size - 2))),
-                "header_only_zlib" to gray.image(listOf(stream.copyOf(2))),
-                "zero_zlib_header" to gray.image(listOf(ByteArray(stream.size))),
-                "extra_compressed_byte" to gray.image(listOf(stream + byteArrayOf(0))),
-                "concatenated_zlib_streams" to gray.image(listOf(stream + stream)),
-                "nonempty_idat_after_end" to gray.image(listOf(stream, byteArrayOf(), byteArrayOf(0))),
-                "missing_iend" to chunks(gray, idat),
-                "bad_iend_crc" to gray.image().apply { this[lastIndex] = 0 },
-                "trailing_after_iend" to (gray.image() + byteArrayOf(0)),
-                "nonempty_iend" to chunks(gray, idat, "IEND" to byteArrayOf(0)),
-                "duplicate_ihdr" to chunks(gray, "IHDR" to gray.header(), idat, end),
-                "separated_idat_run" to chunks(
-                    gray, "IDAT" to stream.copyOf(2), text, "IDAT" to stream.copyOfRange(2, stream.size), end,
-                ),
-                "separated_empty_idat" to chunks(gray, idat, text, "IDAT" to byteArrayOf(), end),
-                "unknown_critical_chunk" to chunks(gray, "ABCD" to byteArrayOf(), idat, end),
-                "reserved_chunk_name_bit" to chunks(gray, "abcD" to byteArrayOf(), idat, end),
-                "nonletter_chunk_name" to chunks(gray, "a1CD" to byteArrayOf(), idat, end),
-                "palette_on_grayscale" to chunks(gray, palette, idat, end),
-                "duplicate_palette" to chunks(rgb, palette, palette, "IDAT" to rgb.stream(), end),
-                "bad_palette_length" to chunks(rgb, "PLTE" to ByteArray(4), "IDAT" to rgb.stream(), end),
-                "palette_after_idat" to chunks(rgb, "IDAT" to rgb.stream(), palette, end),
-                "indexed_without_palette" to chunks(indexed, "IDAT" to indexed.stream(), end),
-                "palette_exceeds_index_depth" to chunks(
-                    indexed, "PLTE" to ByteArray(51), "IDAT" to indexed.stream(), end,
-                ),
-                "bad_gray_transparency_length" to chunks(gray, "tRNS" to byteArrayOf(0), idat, end),
-                "duplicate_transparency" to chunks(gray, "tRNS" to ByteArray(2), "tRNS" to ByteArray(2), idat, end),
-                "transparency_after_idat" to chunks(gray, idat, "tRNS" to ByteArray(2), end),
-                "palette_after_transparency" to chunks(
-                    rgb, "tRNS" to ByteArray(6), palette, "IDAT" to rgb.stream(), end,
-                ),
-                "indexed_transparency_without_palette" to chunks(
-                    indexed, "tRNS" to byteArrayOf(0), "IDAT" to indexed.stream(), end,
-                ),
-                "indexed_transparency_exceeds_palette" to chunks(
-                    indexed, palette, "tRNS" to ByteArray(3), "IDAT" to indexed.stream(), end,
-                ),
-                "transparency_on_alpha" to chunks(rgba, "tRNS" to ByteArray(2), "IDAT" to rgba.stream(), end),
-                "wrong_compression_method" to IosPngIntegrityFixtures.assemble(
-                    gray.header().apply { this[10] = 1 }, listOf(idat, end),
-                ),
-                "wrong_filter_method" to IosPngIntegrityFixtures.assemble(
-                    gray.header().apply { this[11] = 1 }, listOf(idat, end),
-                ),
-            )
+            invalidStreamCases(gray) +
+                invalidChunkCases(gray) +
+                invalidPaletteCases(gray) +
+                invalidTransparencyCases(gray)
         invalid.forEach { (name, bytes) -> assertIs<PageInspection.Invalid>(inspector.inspect(bytes), name) }
     }
 
@@ -150,9 +91,133 @@ class IosPngIntegrityTest {
         }
     }
 
+    private fun invalidStreamCases(gray: IosPngFixture): List<Pair<String, ByteArray>> {
+        val stream = gray.stream()
+        val invalid =
+            listOf("short_rows", "long_rows", "bad_filter", "bad_deflate_valid_header", "preset_dictionary")
+                .map { name -> name to gray.image(listOf(IosPngIntegrityFixtures.special(name))) }
+                .toMutableList()
+        invalid +=
+            listOf(
+                "wrong_adler" to gray.image(listOf(stream.copyOf().apply { this[lastIndex] = 0 })),
+                "truncated_zlib" to gray.image(listOf(stream.copyOf(stream.size - 2))),
+                "header_only_zlib" to gray.image(listOf(stream.copyOf(2))),
+                "zero_zlib_header" to gray.image(listOf(ByteArray(stream.size))),
+                "extra_compressed_byte" to gray.image(listOf(stream + byteArrayOf(0))),
+                "concatenated_zlib_streams" to gray.image(listOf(stream + stream)),
+                "nonempty_idat_after_end" to gray.image(listOf(stream, byteArrayOf(), byteArrayOf(0))),
+            )
+        return invalid
+    }
+
+    private fun invalidChunkCases(gray: IosPngFixture): List<Pair<String, ByteArray>> {
+        val stream = gray.stream()
+        val idat = "IDAT" to stream
+        val end = "IEND" to byteArrayOf()
+        val text = "tEXt" to byteArrayOf(107, 0, 118)
+        return listOf(
+            "missing_iend" to chunks(gray, idat),
+            "bad_iend_crc" to gray.image().apply { this[lastIndex] = 0 },
+            "trailing_after_iend" to (gray.image() + byteArrayOf(0)),
+            "nonempty_iend" to chunks(gray, idat, "IEND" to byteArrayOf(0)),
+            "duplicate_ihdr" to chunks(gray, "IHDR" to gray.header(), idat, end),
+            "separated_idat_run" to
+                chunks(
+                    gray,
+                    "IDAT" to stream.copyOf(2),
+                    text,
+                    "IDAT" to stream.copyOfRange(2, stream.size),
+                    end,
+                ),
+            "separated_empty_idat" to chunks(gray, idat, text, "IDAT" to byteArrayOf(), end),
+            "unknown_critical_chunk" to chunks(gray, "ABCD" to byteArrayOf(), idat, end),
+            "reserved_chunk_name_bit" to chunks(gray, "abcD" to byteArrayOf(), idat, end),
+            "nonletter_chunk_name" to chunks(gray, "a1CD" to byteArrayOf(), idat, end),
+        )
+    }
+
+    private fun invalidPaletteCases(gray: IosPngFixture): List<Pair<String, ByteArray>> {
+        val rgb = fixture("rgb_16")
+        val indexed = fixture("indexed_4")
+        val idat = "IDAT" to gray.stream()
+        val end = "IEND" to byteArrayOf()
+        val palette = "PLTE" to byteArrayOf(0, 0, 0, -1, -1, -1)
+        return listOf(
+            "palette_on_grayscale" to chunks(gray, palette, idat, end),
+            "duplicate_palette" to chunks(rgb, palette, palette, "IDAT" to rgb.stream(), end),
+            "bad_palette_length" to chunks(rgb, "PLTE" to ByteArray(4), "IDAT" to rgb.stream(), end),
+            "palette_after_idat" to chunks(rgb, "IDAT" to rgb.stream(), palette, end),
+            "indexed_without_palette" to chunks(indexed, "IDAT" to indexed.stream(), end),
+            "palette_exceeds_index_depth" to
+                chunks(
+                    indexed,
+                    "PLTE" to ByteArray(51),
+                    "IDAT" to indexed.stream(),
+                    end,
+                ),
+        )
+    }
+
+    private fun invalidTransparencyCases(gray: IosPngFixture): List<Pair<String, ByteArray>> {
+        val rgb = fixture("rgb_16")
+        val indexed = fixture("indexed_4")
+        val rgba = fixture("rgba_16")
+        val idat = "IDAT" to gray.stream()
+        val end = "IEND" to byteArrayOf()
+        val palette = "PLTE" to byteArrayOf(0, 0, 0, -1, -1, -1)
+        return listOf(
+            "bad_gray_transparency_length" to chunks(gray, "tRNS" to byteArrayOf(0), idat, end),
+            "duplicate_transparency" to chunks(gray, "tRNS" to ByteArray(2), "tRNS" to ByteArray(2), idat, end),
+            "transparency_after_idat" to chunks(gray, idat, "tRNS" to ByteArray(2), end),
+            "palette_after_transparency" to
+                chunks(
+                    rgb,
+                    "tRNS" to ByteArray(6),
+                    palette,
+                    "IDAT" to rgb.stream(),
+                    end,
+                ),
+            "indexed_transparency_without_palette" to
+                chunks(
+                    indexed,
+                    "tRNS" to byteArrayOf(0),
+                    "IDAT" to indexed.stream(),
+                    end,
+                ),
+            "indexed_transparency_exceeds_palette" to
+                chunks(
+                    indexed,
+                    palette,
+                    "tRNS" to ByteArray(3),
+                    "IDAT" to indexed.stream(),
+                    end,
+                ),
+            "transparency_on_alpha" to chunks(rgba, "tRNS" to ByteArray(2), "IDAT" to rgba.stream(), end),
+            "wrong_compression_method" to
+                IosPngIntegrityFixtures.assemble(
+                    gray.header().apply { this[10] = 1 },
+                    listOf(idat, end),
+                ),
+            "wrong_filter_method" to
+                IosPngIntegrityFixtures.assemble(
+                    gray.header().apply { this[11] = 1 },
+                    listOf(idat, end),
+                ),
+        )
+    }
+
+    private fun chunks(
+        fixture: IosPngFixture,
+        vararg chunks: Pair<String, ByteArray>,
+    ): ByteArray = IosPngIntegrityFixtures.assemble(fixture.header(), chunks.toList())
+
     private fun fixture(name: String): IosPngFixture = IosPngIntegrityFixtures.valid.single { it.name == name }
 
-    private fun assertValid(fixture: IosPngFixture, bytes: ByteArray, name: String) {
+    private fun assertValid(
+        fixture: IosPngFixture,
+        bytes: ByteArray,
+        name: String,
+    ) {
         val metadata = assertIs<PageInspection.Valid>(inspector.inspect(bytes), name).metadata
         assertEquals(PageImageMetadata(PageImageFormat.PNG, fixture.width, fixture.height), metadata, name)
     }
