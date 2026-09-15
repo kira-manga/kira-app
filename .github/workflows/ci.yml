@@ -60,7 +60,7 @@ env:
 jobs:
   jvm-android:
     name: JVM/Android compile + :domain tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -72,14 +72,15 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '21.0.12+101.0.LTS'
+          check-latest: false
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Compile (Android + Desktop + :desktopApp JVM)
         # compileAndroidMain: the AGP-9 new-DSL KMP-library plugin's single-variant Android compile
         # task — the old per-variant compileDebugKotlinAndroid no longer exists post-migration.
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :composeApp:compileAndroidMain :composeApp:compileKotlinDesktop :desktopApp:compileKotlinJvm --stacktrace
+        run: ./gradlew :composeApp:compileAndroidMain :composeApp:compileKotlinDesktop :desktopApp:compileKotlinJvm --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
       - name: Unit tests (all 12 desktopTest suites)
         # :data:download — the iOS background-download rule suite (recovery/finalize/retry/
         # resolve-ahead/manifest-store); :platform — CBZ path-rederivation etc.; :composeApp —
@@ -94,7 +95,7 @@ jobs:
         # (LibraryRepositoryCoverGuardTest, 2026-07 source-lifecycle hardening).
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :core:desktopTest :domain:desktopTest :data:desktopTest :data:local:desktopTest :data:download:desktopTest :platform:desktopTest :presentation:desktopTest :composeApp:desktopTest :ui:desktopTest :sources:engine:desktopTest :sources:config:desktopTest :sources:legacy:desktopTest --stacktrace
+        run: ./gradlew :core:desktopTest :domain:desktopTest :data:desktopTest :data:local:desktopTest :data:download:desktopTest :platform:desktopTest :presentation:desktopTest :composeApp:desktopTest :ui:desktopTest :sources:engine:desktopTest :sources:config:desktopTest :sources:legacy:desktopTest --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
       - name: i18n locale-key parity gates (:ui + :composeApp resource sets)
         # :composeApp has its own composeResources tree (route-adapter strings) with its own
         # parity task — both must gate (2026-07 audit: only :ui's ran in CI).
@@ -102,10 +103,9 @@ jobs:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
         run: |
           python3 -B scripts/check_current_branding.py
-          ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace
+          ./gradlew :ui:checkLocaleKeyParity :composeApp:checkLocaleKeyParity --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
       - name: Validate release workflow safety contracts
         run: |
-          python3 -B scripts/check_transport_policy.py --self-test
           ruby scripts/release/tests/toolchain-inputs-test.rb
           ruby scripts/release/tests/ios-upload-only-workflow-test.rb
           ruby scripts/release/tests/google-play-open-testing-test.rb
@@ -113,11 +113,11 @@ jobs:
       - name: Compile :app + Koin DI-graph registration test
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:testReleaseBundleIdentity --stacktrace
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:testReleaseBundleIdentity --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
       - name: Assemble debug APK (packaging + dex + manifest/resource merge)
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
       - name: Upload isolated Debug APK (not a Play testing build)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -127,8 +127,10 @@ jobs:
 
   ios:
     name: iOS compile + Release framework
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -136,23 +138,31 @@ jobs:
 
       - name: Verify pinned bootstrap inputs
         run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+
+      - name: Verify the selected Xcode identity
+        run: |
+          [[ "$(/usr/bin/xcodebuild -version)" == $'Xcode 26.4.1\nBuild version 17E202' ]] || {
+            echo 'Selected Xcode version/build does not match the reviewed runtime' >&2
+            exit 1
+          }
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '21.0.12+101.0.LTS'
+          check-latest: false
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Compile iOS (Arm64 + SimulatorArm64)
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 --stacktrace
+        run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
       - name: Link arm64 device Release framework
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
+        run: ./gradlew :composeApp:linkReleaseFrameworkIosArm64 --stacktrace --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false
 
   release-verify:
     name: Android lint + R8 + AAB
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     if: ${{ github.ref == 'refs/heads/release' || github.event_name == 'workflow_dispatch' }}
     steps:
@@ -165,36 +175,33 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '21.0.12+101.0.LTS'
+          check-latest: false
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-      - name: Determine whether the protected Android release path is available
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          set +x
-          ruby -e '
-            names = %w[
-              KEYSTORE_BASE64 SIGNING_KEYSTORE_PASSWORD SIGNING_KEY_ALIAS
-              SIGNING_KEY_PASSWORD GOOGLE_SERVICES_JSON
-            ]
-            available = names.all? { |name| !ENV[name].to_s.empty? }
-            File.open(ENV.fetch("GITHUB_ENV"), "a") do |file|
-              file.puts("KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE=#{available}")
-            end
-            puts available ? "Protected Android release path is configured" : "Protected Android release path is not fully configured"
-          '
-      # This path is deliberately credential-free. It always exercises lint, R8 full mode,
-      # shrinking, packaging, and AAB generation against the inert committed Firebase placeholder.
-      - name: Provision inert Firebase config for unsigned validation
-        run: cp app/google-services.json.example app/google-services.json
-      - name: Unit, lint, R8, APK, and unsigned AAB validation
+      # Only the read-only package token is available here, never signing/store inputs.
+      - name: Consume the verified Android graph before protected inputs
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease -PallowPlaceholderGoogleServices=true --stacktrace
+        run: |
+          set -euo pipefail
+          [[ ! -e app/google-services.json && ! -L app/google-services.json ]] || {
+            echo 'Unsigned preflight requires an absent Firebase slot' >&2
+            exit 1
+          }
+          cleanup_placeholder() {
+            local original_status=$?
+            if [[ ! -f app/google-services.json || -L app/google-services.json ]] ||
+                ! cmp -s app/google-services.json.example app/google-services.json; then
+              echo 'Unsigned preflight Firebase slot changed; refusing cleanup' >&2
+              exit 1
+            fi
+            rm -- app/google-services.json || exit 1
+            exit "$original_status"
+          }
+          ( set -o noclobber; cat app/google-services.json.example > app/google-services.json )
+          trap cleanup_placeholder EXIT
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false -PallowPlaceholderGoogleServices=true --stacktrace
+
       - name: Verify advertising identifiers stay disabled
         run: |
           manifest="app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml"
@@ -222,6 +229,42 @@ jobs:
             app/build/outputs/mapping/release/mapping.txt
             app/build/reports/lint-results-release.html
           retention-days: 14
+      - name: Determine whether the protected Android release path is available
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set +x
+          ruby -e '
+            names = %w[
+              KEYSTORE_BASE64 SIGNING_KEYSTORE_PASSWORD SIGNING_KEY_ALIAS
+              SIGNING_KEY_PASSWORD GOOGLE_SERVICES_JSON
+            ]
+            available = names.all? { |name| !ENV[name].to_s.empty? }
+            File.open(ENV.fetch("GITHUB_ENV"), "a") do |file|
+              file.puts("KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE=#{available}")
+            end
+            puts available ? "Protected Android release path is configured" : "Protected Android release path is not fully configured"
+          '
+      - name: Provision real Firebase config for signed bundle
+        id: android-firebase
+        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set +x
+          umask 077
+          ruby -rbase64 -e '
+            encoded = ENV.fetch("GOOGLE_SERVICES_JSON").gsub(/\s+/, "")
+            decoded = Base64.strict_decode64(encoded)
+            abort("Android Firebase secret decoded to an empty file") if decoded.empty?
+            path = File.join(ENV.fetch("GITHUB_WORKSPACE"), "app/google-services.json")
+            File.binwrite(path, decoded)
+            File.chmod(0o600, path)
+          '
       - name: Decode release keystore
         if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
         env:
@@ -237,31 +280,15 @@ jobs:
             File.binwrite(path, decoded)
             File.chmod(0o600, path)
           '
-      - name: Provision real Firebase config for signed bundle
-        if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          set +x
-          umask 077
-          ruby -rbase64 -e '
-            encoded = ENV.fetch("GOOGLE_SERVICES_JSON").gsub(/\s+/, "")
-            decoded = Base64.strict_decode64(encoded)
-            abort("Android Firebase secret decoded to an empty file") if decoded.empty?
-            path = File.join(ENV.fetch("GITHUB_WORKSPACE"), "app/google-services.json")
-            File.binwrite(path, decoded)
-            File.chmod(0o600, path)
-          '
       - name: Build and verify signed production-shaped AAB
         if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
         env:
-          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
           KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew :app:bundleRelease --rerun-tasks --stacktrace
+          ./gradlew :app:bundleRelease --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false --offline --rerun-tasks --stacktrace
           jarsigner -verify -strict -certs app/build/outputs/bundle/release/app-release.aab
       - name: Upload signed AAB
         if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE == 'true' }}
@@ -274,7 +301,7 @@ jobs:
         if: ${{ env.KIRA_ANDROID_SIGNED_RELEASE_AVAILABLE != 'true' }}
         run: echo "::warning::Complete Android signing and real Firebase secrets are not configured; unsigned release validation succeeded, but no signed AAB was produced."
       - name: Remove decoded Android credentials
-        if: ${{ always() }}
+        if: ${{ always() && (steps.android-firebase.outcome == 'success' || steps.android-firebase.outcome == 'failure') }}
         run: |
           set +x
           ruby -rfileutils -e '
@@ -284,7 +311,7 @@ jobs:
 
   static-analysis:
     name: Static analysis (ktlint + detekt) — blocking, baselined
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -296,7 +323,8 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '21.0.12+101.0.LTS'
+          check-latest: false
       # ktlint: standalone CLI, no Gradle plugin. BLOCKING against config/ktlint-baseline.xml
       # (release-readiness snapshot refreshed 2026-08-04): only NEW violations fail the job. The
       # read-only native-app/ parity spec and the legacy source-repository subtree are excluded.

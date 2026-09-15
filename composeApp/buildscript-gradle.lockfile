@@ -1,0 +1,7 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew dependencies --write-locks
+dev.whyoleg.cryptography:cryptography-gradle-plugin:0.6.0=classpath
+dev.whyoleg.cryptography:dev.whyoleg.cryptography.gradle.plugin:0.6.0=classpath
+empty=

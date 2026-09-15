@@ -16,6 +16,24 @@ pluginManagement {
     }
 }
 
+// Native Gradle verification owns artifact/descriptor checks; do not replace it with a cache scan.
+// The reviewed metadata and generated lock state are added only after the real release graph is
+// captured on its supported runtimes. Until then the release bootstrap deliberately fails closed.
+check(gradle.startParameter.dependencyVerificationMode.name == "STRICT") {
+    "Kira builds require strict Gradle dependency verification"
+}
+gradle.beforeProject {
+    dependencyLocking {
+        lockAllConfigurations()
+        lockMode.set(org.gradle.api.artifacts.dsl.LockMode.STRICT)
+    }
+    // Register before project evaluation, including the root plugin classpath. A late allprojects
+    // block would miss root buildscript resolution and give incomplete plugin lock coverage.
+    buildscript.configurations.configureEach {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}
+
 // Source-bound Android candidate only; this integrity check is not runtime qualification.
 // Check the exact AAR and its inspected POM before Gradle can resolve this local module.
 val avifCandidateDirectory =

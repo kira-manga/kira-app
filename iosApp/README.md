@@ -14,9 +14,8 @@ SwiftUI wrapper. The Kotlin/Native framework (`ComposeApp.framework`) is produce
 - `iosApp/NativeReader/` — the shipping native UIKit reader (see `docs/ENGINEERING_NOTES.md` §3).
 - `iosApp/Info.plist` — Bundle metadata. `CFBundleShortVersionString`/`CFBundleVersion` mirror
   Android's `1.0.5`. Includes `NSPhotoLibraryAddUsageDescription` (required by
-  `ScreenshotProvider.saveBitmapBytesToGallery`). The obsolete HTTP exception is removed;
-  no `NSAppTransportSecurity` override is present, so URL Loading System ATS defaults apply.
-  This source policy is not a universal socket firewall or signed-build validation.
+  `ScreenshotProvider.saveBitmapBytesToGallery`) and `NSAppTransportSecurity.NSAllowsArbitraryLoads`
+  (manga sources mix HTTP and HTTPS).
 - `project.yml` — [xcodegen](https://github.com/yonaskolb/XcodeGen) project spec. Run `xcodegen`
   on macOS to (re)generate `iosApp.xcodeproj`.
 - `iosApp/Info-Debug.plist` — isolated Debug metadata: **Kira Manga Debug**, no production URL
@@ -56,8 +55,8 @@ including when generation or an earlier step fails. Local generation above uses
 the same guarded cleanup on exit. Do not delete temporary directories by glob.
 The same metadata pins the four Gradle wrapper files, Action commits, and shipping
 SwiftPM lock. Update these inputs together through review; do not edit a digest just
-to silence a mismatch. Gradle dependency verification/locks and full runner/JDK/Xcode
-reproducibility remain separate requirements, not guarantees of this bootstrap check.
+to silence a mismatch. The native Gradle policy below requires separately captured
+graph inputs; full runtime-byte/runner reproducibility is not a bootstrap guarantee.
 
 ### Locked SwiftPM inputs for TestFlight
 
@@ -88,6 +87,59 @@ review every changed revision, and update the canonical bytes and manifest diges
 together. Do not reconstruct a lock from logs, reuse a UIKit-test lock, or add an
 automatic unlocked-resolution fallback. A checked-in lock alone is not evidence
 that the real clean-checkout pre-secret preflight or locked archive has passed.
+
+### Native Gradle graph: fail closed until real input capture
+
+The `gradle.dependency_graph.metadata_sha256` pin is deliberately **null** and its
+`lockfiles` map empty until an authorized real graph capture is reviewed. Bootstrap
+must fail in this state. No verification XML or generated lock state is invented by
+the source implementation. Do not integrate this incomplete input candidate into a
+validation/release branch or replace missing data with cache-wide checksum approval.
+
+Native Gradle strict verification authenticates artifacts **and POM/module metadata**;
+strict dependency locking is registered before project/plugin classpath evaluation.
+The manifest binds the build/settings/catalog inputs and exact generated per-project
+`gradle.lockfile` / `buildscript-gradle.lockfile` set. Update/generation flags, included
+builds, custom init/build/settings scripts and Maven-local substitution are forbidden
+in release workflow invocations. An intentional input update uses Gradle's native
+generation on the authorized unsigned Android/Apple graph, then reviews its real
+descriptors, checksums, selected versions/configurations and source identities.
+
+Existing Android tests/lint/unsigned bundle generation and Apple compile/Release link
+run before signing/store inputs, with only the step-scoped read-only package token.
+Android's temporary example Firebase slot must be absent beforehand and unchanged
+before its cleanup. Final credential cleanup is conditional on real Firebase decoding
+having been attempted; it cannot undo a preflight refusal by deleting that slot.
+Real Firebase decoding precedes keystore creation so failure still reaches cleanup.
+Real configuration/signing guards remain mandatory afterward.
+Signed Gradle consumption, including Xcode's Release embed, is strict and offline;
+it receives no package-read token and cannot auto-download Java/Android SDK tools.
+Debug embedding remains strict but may resolve reviewed inputs online.
+
+The fixture tests exercise guards/ownership, **not** actual Gradle verification.
+Required subsequent proof remains real Android and Apple graph consumption, absent/
+changed-artifact and changed-verification-entry rejection before signing, unchanged
+reviewed lock files, and confirmation that Release embed needs no unpreflighted graph.
+Batch that proof with the required compile; do not add discovery-only CI or replay
+unrelated accepted suites. Published Engine `0.1.0` authority remains unchanged.
+
+### Exact runtime selections are not complete runtime-byte authentication
+
+Workflows select the observed Temurin `21.0.12.1+1`, supported Ruby `3.3.12` within the
+existing `3.3` line, the already-locked Bundler `4.0.16`, and explicit Xcode
+`26.4.1` / `17E202`. The provider still ships that Xcode on `macos-26`; a mandatory
+pre-tool probe rejects another version/build or a changed developer directory.
+Ruby's pinned provider lists `3.3.12`; it satisfies the locked Fastlane/Bundler Ruby
+requirements. `Gemfile` and its existing checksummed lock remain unchanged and bound.
+
+These selectors/probes do **not** authenticate every downloaded runtime archive or
+freeze an entire hosted OS image. Provider archive checksums retained during source
+review are metadata observations, not installed-byte verification. The selected Java
+launcher does not pin project JDK 17 toolchains; Kotlin/Native tools and SDK contents
+also need their own byte authority. Gradle offline mode is not network isolation.
+That enforcement,
+actual supported-runtime consumption and clean locked SwiftPM proof remain required;
+neither this source slice nor a fixture pass closes App61.
 
 After this runs once, `iosApp/iosApp.xcodeproj` exists locally on the Mac, and the
 `.idea/runConfigurations/iosApp.xml` run configuration that's already checked in will work in
