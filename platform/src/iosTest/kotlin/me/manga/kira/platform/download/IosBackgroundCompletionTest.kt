@@ -38,7 +38,7 @@ class IosBackgroundCompletionTest {
             h.transport.setListener(FailureListener { reasons += it })
             // A fresh completion for this identifier must not find the old reported marker.
             h.transport.handleCompleted(task, null)
-            assertEquals(listOf("Download completed without a page"), reasons)
+            assertEquals(listOf<String?>("Download completed without a page"), reasons)
             assertTrue(h.inspector.paths.isEmpty())
         }
     }

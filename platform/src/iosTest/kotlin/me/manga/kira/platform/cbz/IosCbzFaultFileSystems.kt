@@ -3,7 +3,6 @@ package me.manga.kira.platform.cbz
 import okio.Buffer
 import okio.FileSystem
 import okio.ForwardingFileSystem
-import okio.ForwardingSink
 import okio.IOException
 import okio.Path
 import okio.Sink
@@ -19,19 +18,19 @@ internal class IosCbzWriteFaultFileSystem(
     ): Sink = FaultSink(super.sink(file, mustCreate), onClose)
 
     private class FaultSink(
-        delegate: Sink,
+        private val delegate: Sink,
         private val onClose: Boolean,
-    ) : ForwardingSink(delegate) {
+    ) : Sink by delegate {
         override fun write(
             source: Buffer,
             byteCount: Long,
         ) {
             if (!onClose) throw IOException("write denied")
-            super.write(source, byteCount)
+            delegate.write(source, byteCount)
         }
 
         override fun close() {
-            super.close()
+            delegate.close()
             if (onClose) throw IOException("close failed")
         }
     }
@@ -44,10 +43,11 @@ internal class IosCbzCorruptingZipFileSystem(
     override fun sink(
         file: Path,
         mustCreate: Boolean,
-    ): Sink =
-        object : ForwardingSink(super.sink(file, mustCreate)) {
+    ): Sink {
+        val delegate = super.sink(file, mustCreate)
+        return object : Sink by delegate {
             override fun close() {
-                super.close()
+                delegate.close()
                 val damaged = fixture.bytes(file)
                 // STORE local header + the first generated name; leave the ZIP directory intact.
                 val payloadStart = ZIP_LOCAL_HEADER_SIZE + "page_0000.webp".length
@@ -55,6 +55,7 @@ internal class IosCbzCorruptingZipFileSystem(
                 fixture.system.write(file) { write(damaged) }
             }
         }
+    }
 
     private companion object {
         const val ZIP_LOCAL_HEADER_SIZE = 30

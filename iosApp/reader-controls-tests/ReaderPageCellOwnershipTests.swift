@@ -56,7 +56,7 @@ final class ReaderPageCellOwnershipTests: XCTestCase {
         webtoon.imageLoader = next
         paged.imageLoader = next
         XCTAssertEqual(Set(old.cancelled), Set(old.requests.map { $0.token }))
-        XCTAssertTrue(next.cancelled.isEmpty())
+        XCTAssertTrue(next.cancelled.isEmpty)
         old.requests.forEach { $0.completion(readerTestImage(.red)) }
         XCTAssertNil(webtoon.imageView.image)
         XCTAssertNil(paged.imageView.image)
@@ -90,7 +90,7 @@ final class ReaderPageCellOwnershipTests: XCTestCase {
         cell.configure(url: "https://reader.test/old", headers: [:], widthPt: 100)
         old.onLoad = nil
         XCTAssertEqual(old.cancelled, [old.requests[0].token])
-        XCTAssertTrue(next.cancelled.isEmpty())
+        XCTAssertTrue(next.cancelled.isEmpty)
         cell.prepareForReuse()
         XCTAssertEqual(next.cancelled, [next.requests[0].token])
     }

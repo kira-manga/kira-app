@@ -91,7 +91,7 @@ internal class TransportHarness(
         declared: Long? = null,
     ): NSHTTPURLResponse =
         NSHTTPURLResponse(
-            URL = requestUrl,
+            uRL = requestUrl,
             statusCode = status.toLong(),
             HTTPVersion = "HTTP/1.1",
             headerFields =
