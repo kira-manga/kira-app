@@ -102,6 +102,9 @@ sealed interface DetailsIntent : MviIntent {
     /** User tapped retry on the error state. Re-runs the fetch for the in-state manga. */
     data object OnRetry : DetailsIntent
 
+    /** Healthy browser return for the captured operation, ignored after replacement or recovery. */
+    data class OnCloudflareSolverReturned(val requestId: String) : DetailsIntent
+
     /** User tapped a chapter row. View navigates to the Reader via the emitted Effect. */
     data class OnChapterClick(val chapter: Chapter) : DetailsIntent
 

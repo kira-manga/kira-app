@@ -20,8 +20,9 @@ import me.manga.kira.navigation.safeNavigate
  * On invocation it navigates to [Screen.WebView] for the source so the user can clear the
  * Cloudflare / anti-bot challenge (which primes the per-source cookie/header store the singleton
  * Coil `ImageLoader` + the source HTML fetch both read). It then arms a one-shot: when the nav
- * back-stack returns to the owning [ownerEntry] (the WebView popped), it fires [onRetry] exactly
- * once after a healthy browser close. An initialization-failed return consumes the one-shot
+ * back-stack returns to the owning [ownerEntry] (the WebView popped), it fires [onRetry] with the
+ * captured opaque recovery request exactly once after a healthy browser close. An initialization-
+ * failed return consumes the one-shot
  * without retrying. Header persistence remains asynchronous; this choreography does not guarantee
  * that a write has committed before retry (the separate persistence-ordering issue remains open).
  *
@@ -39,20 +40,26 @@ import me.manga.kira.navigation.safeNavigate
 internal fun rememberCloudflareChallengeSolver(
     navController: NavController,
     ownerEntry: NavBackStackEntry,
-    onRetry: () -> Unit,
+    onRetry: (requestId: String) -> Unit,
+    recoveryRequestId: (url: String, api: String) -> String?,
     isAvailable: () -> Boolean = ::isEmbeddedWebViewAvailable,
 ): (url: String, api: String) -> Unit {
     val currentRetry by rememberUpdatedState(onRetry)
+    val currentRequestId by rememberUpdatedState(recoveryRequestId)
     // The entry's SavedStateHandle survives the owner leaving composition while the browser is up.
     LaunchedEffect(navController, ownerEntry) {
         navController.currentBackStackEntryFlow
             .filter { it === ownerEntry && navController.currentBackStackEntry === ownerEntry }
             .collect {
-                if (WebViewSolverReturn(ownerEntry).consumeRetry()) currentRetry()
+                val result = WebViewSolverReturn(ownerEntry)
+                val requestId = result.recoveryRequestId
+                if (result.consumeRetry() && requestId != null) currentRetry(requestId)
             }
     }
     return { url, api ->
-        openCloudflareSolver(navController, ownerEntry, Screen.WebView(url, api), isAvailable)
+        currentRequestId(url, api)?.let { requestId ->
+            openCloudflareSolver(navController, ownerEntry, Screen.WebView(url, api), requestId, isAvailable)
+        }
     }
 }
 
@@ -60,6 +67,7 @@ private fun openCloudflareSolver(
     navController: NavController,
     owner: NavBackStackEntry,
     route: Screen.WebView,
+    requestId: String,
     isAvailable: () -> Boolean,
 ) {
     if (navController.currentBackStackEntry !== owner) return
@@ -74,7 +82,7 @@ private fun openCloudflareSolver(
             navController.previousBackStackEntry === owner &&
             browser.destination.hasRoute<Screen.WebView>()
         ) {
-            result.arm(browser)
+            result.arm(browser, requestId)
         }
     }
 }

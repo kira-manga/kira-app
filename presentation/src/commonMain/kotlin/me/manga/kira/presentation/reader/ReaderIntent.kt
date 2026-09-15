@@ -111,6 +111,9 @@ sealed interface ReaderIntent : MviIntent {
      */
     data object OnRetry : ReaderIntent
 
+    /** Retry only the challenged operation whose opaque request survived this browser round-trip. */
+    data class OnCloudflareSolverReturned(val requestId: String) : ReaderIntent
+
     /** User tapped the back affordance. View pops via the emitted Effect. */
     data object OnBackClick : ReaderIntent
 

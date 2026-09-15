@@ -88,6 +88,7 @@ internal class AndroidWebViewNavigationFixture {
                 controller,
                 entry,
                 onRetry = { retries++ },
+                recoveryRequestId = { _, _ -> "test-recovery" },
                 isAvailable = { true },
             )
         SideEffect {

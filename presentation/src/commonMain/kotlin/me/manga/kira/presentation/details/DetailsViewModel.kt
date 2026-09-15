@@ -40,6 +40,7 @@ import me.manga.kira.domain.usecase.library.ToggleInLibraryUseCase
 import me.manga.kira.domain.usecase.reader.MarkChaptersReadUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterReadUseCase
+import me.manga.kira.presentation.cloudflare.isCloudflareChallenge
 import me.manga.kira.presentation.mvi.MviViewModel
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -204,15 +205,7 @@ class DetailsViewModel(
     /** Successful local deletions stay hidden for this visit until a later fetch rediscovers them. */
     private val chapterRetractions = DetailsChapterRetractions()
 
-    /** Consecutive Cloudflare-solve round-trips for the current screen; bounded by
-     *  [MAX_CLOUDFLARE_ATTEMPTS] and reset on any successful fetch. */
-    private var cloudflareAttempts = 0
-
-    /** Chapter `url`s whose DOWNLOAD failed on a Cloudflare challenge (engine stamped the
-     *  [DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL]). Doubles as the solver-emit de-dup (one
-     *  WebView open per batch, not per chapter) and the pending-retry list that [onRetry] re-enqueues
-     *  once the WebView solve refreshed the source cookies. */
-    private val cloudflareFailedDownloadUrls = mutableSetOf<String>()
+    private val challengeRecovery = DetailsChallengeRecovery()
 
     init {
         // #4: track reachability into state so the download gates can block + give immediate
@@ -231,33 +224,19 @@ class DetailsViewModel(
             .launchIn(viewModelScope)
     }
 
-    private companion object {
-        /**
-         * HTTP statuses that a Cloudflare / anti-bot interstitial uses and that the user can clear
-         * in a WebView (bug #2). 403 is the classic Cloudflare challenge; 503 ("checking your
-         * browser"), 429 (rate-limit interstitial), and 520-524 (CF origin/edge errors) are also
-         * routinely transient WebView-solvable states. The `:data` layer additionally re-surfaces
-         * code-0 challenge-bodied throws as 403 (see MangaDetailsRepositoryImpl.isChallengeMessage),
-         * so genuine 404/500 app errors keep falling to the generic ShowError snackbar.
-         */
-        val CHALLENGE_STATUSES = setOf(403, 429, 503, 520, 521, 522, 523, 524)
-
-        /**
-         * Max consecutive Cloudflare-solve round-trips before we stop auto-routing to the WebView
-         * and surface the error normally. Inspired by native `Handle403Error`'s `maxDismissals`
-         * cap (native defaulted to 1 re-show); we deliberately allow 2 — an initial solve plus one
-         * retry — more forgiving while still bounded. Without this, an unsolvable/persistent
-         * challenge re-emits the solver effect on every retry, trapping the user in an infinite
-         * WebView re-route loop. Reset to 0 on any successful fetch (see [runFetch]).
-         */
-        const val MAX_CLOUDFLARE_ATTEMPTS = 2
-    }
+    /** Capture when opening the solver; only this opaque request may retry on browser return. */
+    fun cloudflareRecoveryRequestId(
+        url: String,
+        api: String,
+    ): String? =
+        challengeRecovery.requestId.takeIf { state.value.manga?.let { it.url == url && it.api == api } == true }
 
     override suspend fun handle(intent: DetailsIntent) {
         when (intent) {
             is DetailsIntent.OnEnter -> onEnter(intent.manga)
             is DetailsIntent.OnEnterByUrl -> onEnterByUrl(intent.api, intent.mangaUrl)
             DetailsIntent.OnRetry -> onRetry()
+            is DetailsIntent.OnCloudflareSolverReturned -> onCloudflareSolverReturned(intent.requestId)
             is DetailsIntent.OnChapterClick -> onChapterClick(intent)
             DetailsIntent.OnBackClick -> emit(DetailsEffect.NavigateBack)
             // P0-ADULT hard-block gate (native parity). Advance steps; every dismiss path
@@ -569,14 +548,15 @@ class DetailsViewModel(
         // right discriminator there.
         if (state.value.isLoading) return
         val manga = state.value.manga ?: return
-        // Cloudflare-solver return path: re-enqueue any downloads that failed on the challenge now that
-        // the WebView solve refreshed the source cookies. No-op for a plain fetch retry (empty set).
+        // Explicit refresh retains its existing download retry, but cannot reset that batch's budget.
         retryCloudflareFailedDownloads()
         updateState { it.copy(isLoading = true, error = null) }
         runFetch(manga)
     }
 
     private suspend fun runFetch(manga: Manga) {
+        challengeRecovery.begin(DetailsChallengeOperation.Metadata)
+        val generation = downloadsGeneration
         FlowLog.log("Details", "refresh", "title=${manga.title} api=${manga.api}")
         // Capture the stable identity this fetch was started for. `(api, url)` survives the
         // onSuccess enrichment (unlike language/title, which onEnterByUrl fills only afterwards),
@@ -589,7 +569,7 @@ class DetailsViewModel(
         fetchDetails(manga)
             .onSuccess { fetched ->
                 val active = state.value.manga
-                if (active == null || active.api != fetchApi || active.url != fetchUrl) {
+                if (generation != downloadsGeneration || active == null || active.api != fetchApi || active.url != fetchUrl) {
                     FlowLog.log("Details", "refreshStale", "dropped stale fetch for api=$fetchApi url=$fetchUrl")
                     return@onSuccess
                 }
@@ -639,39 +619,34 @@ class DetailsViewModel(
                 launchSafely {
                     persistNewChapters(fetchApi, fetchUrl, details.chapters)
                 }
-                // A successful fetch clears the Cloudflare-solve budget so a later genuine challenge
-                // gets its full allowance again (not starved by earlier attempts this session).
-                cloudflareAttempts = 0
+                challengeRecovery.metadataRecovered()
             }.onFailure { error ->
                 val active = state.value.manga
-                if (active == null || active.api != fetchApi || active.url != fetchUrl) {
+                if (generation != downloadsGeneration || active == null || active.api != fetchApi || active.url != fetchUrl) {
                     FlowLog.log("Details", "refreshStale", "dropped stale failure for api=$fetchApi url=$fetchUrl")
                     return@onFailure
                 }
                 FlowLog.log("Details", "refreshError", "title=${manga.title} error=${error::class.simpleName}")
                 updateState { it.copy(isLoading = false, error = error) }
-                // Legacy `Handle403Error` parity (bug #2): a 403 is a Cloudflare / anti-bot
-                // interstitial, not a hard failure. Route the user to the WebView to solve the
-                // challenge (which primes the per-source cookie/header store) instead of surfacing
-                // a dead-end "failed to load" snackbar. The `:ui` layer auto-retries the fetch when
-                // it returns from the WebView, mirroring the legacy auto-retry-on-dismiss. Any other
-                // error keeps the existing generic ShowError snackbar behaviour.
-                val manga = state.value.manga
-                if (error is AppError.Network.Http &&
-                    error.statusCode in CHALLENGE_STATUSES &&
-                    manga != null &&
-                    cloudflareAttempts < MAX_CLOUDFLARE_ATTEMPTS
-                ) {
-                    // Bounded auto-recovery: route to the WebView solver, but cap consecutive
-                    // round-trips so a persistent/unsolvable challenge can't loop forever.
-                    cloudflareAttempts++
+                if (error.isCloudflareChallenge() && challengeRecovery.request(DetailsChallengeOperation.Metadata)) {
                     emit(DetailsEffect.SolveCloudflareChallenge(url = manga.url, api = manga.api))
                 } else {
-                    // Either not a challenge, or the solve budget is exhausted — surface the error
-                    // (the user can still retry manually) instead of re-entering the WebView loop.
                     emit(DetailsEffect.ShowError(error))
                 }
             }
+    }
+
+    private suspend fun onCloudflareSolverReturned(requestId: String) {
+        when (challengeRecovery.consume(requestId)) {
+            DetailsChallengeOperation.Metadata -> {
+                if (state.value.isLoading) return
+                val manga = state.value.manga ?: return
+                updateState { it.copy(isLoading = true, error = null) }
+                runFetch(manga)
+            }
+            DetailsChallengeOperation.Downloads -> retryCloudflareFailedDownloads()
+            null -> Unit // An old owner, recovered operation or already-consumed return owns no work.
+        }
     }
 
     private suspend fun onChapterClick(intent: DetailsIntent.OnChapterClick) {
@@ -795,8 +770,7 @@ class DetailsViewModel(
         cloudflareRetryJob?.cancel()
         val generation = ++downloadsGeneration
         downloadRowsByUrl = emptyMap()
-        cloudflareFailedDownloadUrls.clear()
-        cloudflareAttempts = 0
+        challengeRecovery.clearOwner()
         // Scope in Room before forming a URL map. Chapter URLs can legally repeat under another
         // saved manga; neither progress nor the direct cancel IDs may come from the global queue.
         downloadsJob =
@@ -899,16 +873,7 @@ class DetailsViewModel(
         }
     }
 
-    /**
-     * Auto-route a Cloudflare-failed DOWNLOAD to the existing WebView solver (downloads parity with the
-     * reading path). The engine stamps [DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL] on a
-     * challenge-class resolve failure; here we collect those FAILED chapter urls (for the displayed
-     * manga) and emit the SAME [DetailsEffect.SolveCloudflareChallenge] effect, reusing the bounded
-     * [cloudflareAttempts] guard. One emit per batch (de-duped via [cloudflareFailedDownloadUrls]):
-     * solving once refreshes the source cookies, so the remaining queued chapters self-heal on their
-     * next resolve. The set self-prunes (retainAll) as rows leave FAILED, and [onRetry] re-enqueues it
-     * on WebView dismiss.
-     */
+    /** One bounded solver per unresolved owner-scoped batch; metadata success is not recovery. */
     private suspend fun maybeSolveCloudflareForFailedDownloads(
         manga: Manga,
         rows: List<DownloadedChapter>,
@@ -916,37 +881,27 @@ class DetailsViewModel(
         val current = state.value
         if (current.manga?.url != manga.url) return
         val displayed = current.details?.chapters?.mapTo(HashSet()) { it.url } ?: return
-        val failedUrls = cloudflareFailedUrls(rows, displayed)
-        // Self-prune: drop urls that recovered / are no longer Cloudflare-failed so a later genuine
-        // failure can re-trigger (and so a re-enqueued row isn't re-counted).
-        cloudflareFailedDownloadUrls.retainAll(failedUrls.toHashSet())
-        val fresh = failedUrls.filter { it !in cloudflareFailedDownloadUrls }
-        if (fresh.isEmpty()) return
-        val wasEmpty = cloudflareFailedDownloadUrls.isEmpty()
-        cloudflareFailedDownloadUrls.addAll(fresh)
-        // Open the solver once per batch, bounded exactly like the fetch path (no WebView loop on a
-        // persistent/unsolvable challenge); reset on a successful fetch via runFetch.
-        if (wasEmpty && cloudflareAttempts < MAX_CLOUDFLARE_ATTEMPTS) {
-            cloudflareAttempts++
+        if (!challengeRecovery.observeDownloads(rows, displayed)) return
+        if (challengeRecovery.request(DetailsChallengeOperation.Downloads)) {
             emit(DetailsEffect.SolveCloudflareChallenge(url = manga.url, api = manga.api))
+        } else {
+            emit(DetailsEffect.ShowError(DOWNLOAD_CHALLENGE_ERROR))
         }
     }
 
     /**
      * Re-enqueue the downloads that failed on a Cloudflare challenge, now that a WebView solve refreshed
-     * the source cookies (the download analogue of [onRetry]'s re-fetch). [enqueueDownload] is
-     * idempotent — it drops the stale manifest, resets attempt counts, and re-queues — and the engine
-     * then resolves with the fresh cookies. The pending set is NOT cleared here; it self-prunes via
-     * [maybeSolveCloudflareForFailedDownloads] once each row leaves FAILED, which avoids a re-emit race.
-     * No-op when nothing is pending, so calling it from the shared [onRetry] is safe for plain retries.
+     * the source cookies. Re-queueing is not proof of recovery: the batch budget survives until its
+     * unresolved chapters actually complete or leave this owner. Empty pending work is a no-op.
      * Recovered chapters are skipped against current state even if this retry captured an older list.
      */
     private fun retryCloudflareFailedDownloads() {
-        if (cloudflareFailedDownloadUrls.isEmpty()) return
+        val urls = challengeRecovery.failedDownloadUrls
+        if (urls.isEmpty()) return
         val current = state.value
         val manga = current.manga ?: return
         val title = current.details?.title ?: return
-        val urls = cloudflareFailedDownloadUrls.toList()
+        challengeRecovery.begin(DetailsChallengeOperation.Downloads)
         val generation = downloadsGeneration
         cloudflareRetryJob?.cancel()
         cloudflareRetryJob =
@@ -956,7 +911,10 @@ class DetailsViewModel(
                     val latest = state.value
                     if (generation != downloadsGeneration || latest.manga?.url != manga.url) return@launchSafely
                     val chapterId = idsByUrl[url] ?: return@forEach
-                    if (latest.isChapterDownloaded(url)) return@forEach
+                    if (latest.isChapterDownloaded(url)) {
+                        challengeRecovery.downloadRecovered(url)
+                        return@forEach
+                    }
                     enqueueDownload(chapterId = chapterId, mangaTitle = title, api = manga.api)
                         .onFailure { /* best-effort; the row stays FAILED (and pending) if it can't re-queue */ }
                 }
@@ -1285,17 +1243,6 @@ private fun chapterDownloadsFor(
                 chapter.url to progress
             }.toMap()
     }
-
-private fun cloudflareFailedUrls(
-    rows: List<DownloadedChapter>,
-    displayed: Set<String>,
-): List<String> =
-    rows
-        .asSequence()
-        .filter { it.state == DownloadState.FAILED && it.errorMsg == DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL }
-        .map { it.url }
-        .filter { it in displayed }
-        .toList()
 
 /**
  * Preserve the screen's metadata checks while also requiring the exact persisted parent URL.

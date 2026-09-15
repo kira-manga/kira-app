@@ -1,28 +1,27 @@
 package me.manga.kira.navigation.routes
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavBackStackEntry
 
 /** Private, failure-only handshake between two concrete back-stack entries, not destination types. */
 internal class WebViewSolverReturn(
     private val owner: NavBackStackEntry,
 ) {
-    fun clear() {
-        owner.savedStateHandle.remove<String>(PENDING_BROWSER)
-        owner.savedStateHandle.remove<String>(FAILED_BROWSER)
-    }
+    private val latch = WebViewSolverRetryLatch(owner.savedStateHandle)
 
-    fun arm(browser: NavBackStackEntry) {
-        clear()
+    val recoveryRequestId: String? get() = latch.recoveryRequestId
+
+    fun clear() = latch.clear()
+
+    fun arm(
+        browser: NavBackStackEntry,
+        requestId: String,
+    ) {
         browser.savedStateHandle[SOLVER_OWNER] = owner.id
-        owner.savedStateHandle[PENDING_BROWSER] = browser.id
+        latch.arm(browser.id, requestId)
     }
 
-    fun consumeRetry(): Boolean {
-        val pending = owner.savedStateHandle.remove<String>(PENDING_BROWSER)
-        val failed = owner.savedStateHandle.remove<String>(FAILED_BROWSER)
-        // Remove both before invoking application retry code, including a reentrant fresh solve.
-        return pending != null && failed != pending
-    }
+    fun consumeRetry(): Boolean = latch.consumeRetry()
 
     fun fail(browser: NavBackStackEntry): WebViewFailureMarker? {
         if (!owns(browser)) return null
@@ -50,6 +49,37 @@ internal class WebViewFailureMarker(
     }
 }
 
+/** Saved, one-shot retry data; testable without Compose, a browser or a navigation host. */
+internal class WebViewSolverRetryLatch(
+    private val state: SavedStateHandle,
+) {
+    val recoveryRequestId: String? get() = state[RECOVERY_REQUEST]
+
+    fun clear() {
+        state.remove<String>(PENDING_BROWSER)
+        state.remove<String>(FAILED_BROWSER)
+        state.remove<String>(RECOVERY_REQUEST)
+    }
+
+    fun arm(
+        browserId: String,
+        requestId: String,
+    ) {
+        clear()
+        state[PENDING_BROWSER] = browserId
+        state[RECOVERY_REQUEST] = requestId
+    }
+
+    fun consumeRetry(): Boolean {
+        val pending = state.get<String>(PENDING_BROWSER)
+        val failed = state.get<String>(FAILED_BROWSER)
+        // Clear before application code runs, including reentrant navigation to a fresh solver.
+        clear()
+        return pending != null && failed != pending
+    }
+}
+
 private const val SOLVER_OWNER = "webview.solver.owner"
 private const val PENDING_BROWSER = "webview.solver.pending_browser"
 private const val FAILED_BROWSER = "webview.solver.failed_browser"
+private const val RECOVERY_REQUEST = "webview.solver.recovery_request"

@@ -96,9 +96,9 @@ sealed interface DetailsEffect : MviEffect {
      * This effect restores that behaviour in domain terms: the VM emits it (instead of, not in
      * addition to, the generic `ShowError` snackbar) when the failure is a 403. The `:composeApp`
      * adapter maps it to `Screen.WebView(url, api)` — the rework's WebView solves the challenge and
-     * primes the same per-source header store the cover/HTML fetch uses. The `:ui` layer auto-
-     * re-dispatches [DetailsIntent.OnRetry] when the screen resumes from the WebView so the fetch
-     * re-runs with the freshly-minted cookies, mirroring the legacy auto-retry-on-dismiss.
+     * primes the same per-source header store the cover/HTML fetch uses. The adapter captures the
+     * VM's recovery request and returns [DetailsIntent.OnCloudflareSolverReturned], retrying only
+     * the challenged metadata or download batch without replenishing an unrelated failure streak.
      */
     data class SolveCloudflareChallenge(val url: String, val api: String) : DetailsEffect
 }

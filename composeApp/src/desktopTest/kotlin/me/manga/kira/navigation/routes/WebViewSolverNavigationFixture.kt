@@ -94,6 +94,7 @@ internal class WebViewSolverNavigationFixture {
                     retries[entry.id] = (retries[entry.id] ?: 0) + 1
                     afterRetry(entry)
                 },
+                recoveryRequestId = { _, _ -> "test-recovery" },
                 isAvailable = { available },
             )
         SideEffect {
