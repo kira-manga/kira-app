@@ -150,6 +150,11 @@ class HomeSearchDataTest {
         override suspend fun getAllSourcesOnce(): List<SourcesEntity> = rows
         override suspend fun insert(source: SourcesEntity): Long = 1L
         override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 1
+
+        override suspend fun setEnabledByNames(
+            names: List<String>,
+            enabled: Boolean,
+        ): Int = 0
         override suspend fun getBaseUrlFor(name: String): String? =
             rows.firstOrNull { it.name == name }?.baseUrl
         override fun getSiteStateByName(name: String): Flow<SourceState?> =

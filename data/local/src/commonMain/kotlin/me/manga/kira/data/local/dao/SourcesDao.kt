@@ -72,6 +72,13 @@ interface SourcesDao {
     @Query("UPDATE sources SET isEnabled = :enabled WHERE name = :name")
     suspend fun setEnabledByName(name: String, enabled: Boolean): Int
 
+    /** Atomically changes only selected enablement flags; returns affected rows, or zero for an empty selection. */
+    @Query("UPDATE sources SET isEnabled = :enabled WHERE name IN (:names)")
+    suspend fun setEnabledByNames(
+        names: List<String>,
+        enabled: Boolean,
+    ): Int
+
     @Query("SELECT baseUrl FROM sources WHERE name = :name LIMIT 1")
     suspend fun getBaseUrlFor(name: String): String?
 

@@ -252,6 +252,11 @@ class AzoraDataGenericOnlyIntegrationTest {
 
         override suspend fun setEnabledByName(name: String, enabled: Boolean): Int = 0
 
+        override suspend fun setEnabledByNames(
+            names: List<String>,
+            enabled: Boolean,
+        ): Int = 0
+
         override suspend fun getBaseUrlFor(name: String): String? = rows.firstOrNull { it.name == name }?.baseUrl
 
         override fun getSiteStateByName(name: String): Flow<SourceState?> =

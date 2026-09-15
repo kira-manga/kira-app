@@ -7,7 +7,7 @@ import me.manga.kira.domain.model.sources.Source
  * Reactive content-sources access — observe the per-source list, toggle a single source, toggle
  * every source in a language.
  *
- * Phase 7.x.sources rework. The `:data` impl strangler-fig delegates to the legacy `:shared`
+ * Phase 7.x.sources rework. The `:data` impl retains the read flow from the legacy
  * `me.manga.kira.presentation.features.repo_settings.domain.SourcesRepository` (which wraps
  * `SourcesDao` + the `sources` Room table + the in-memory `repos` set the Coil interceptor
  * routes against). The legacy facade remains the cell of truth for the routing surface
@@ -41,16 +41,18 @@ import me.manga.kira.domain.model.sources.Source
  * `SourcesViewModel`) depend on this interface, never on the legacy facade or the underlying
  * DAO. Koin binds the impl at the composition root in `sourcesReworkModule`.
  *
- * Lifecycle expectation: the impl is bound as a `single` (matching the upstream legacy
- * `SourcesRepository`'s `single` lifecycle from `SharedModule`). A `factory` would resubscribe
- * the upstream `allSources` flow on each resolution — wasteful for a read-mostly surface
- * shared across the app's lifetime.
+ * Lifecycle expectation: the impl is bound as a `single`, sharing one admission boundary for
+ * all three enablement methods. Commands are serialized before target selection through
+ * persistence; the last successful admitted conflicting command determines the selected flags.
+ * This is not a promise of wall-clock UI submission order or ordering with catalog publication.
  *
  * Load-bearing fixes preserved: the legacy `findRepoByHost` path the Coil image interceptor
  * uses to attach per-source Cookie / User-Agent / Referer headers (MEMORY:
  * `project_yami_okhttp_fetcher`) lives on the legacy facade and is UNTOUCHED by this rework.
- * The `:data` impl reaches into the legacy facade for ONLY `allSources` + `enableDisAbleSource`;
- * everything else on the legacy surface stays for its current consumers.
+ * The `:data` impl uses the legacy facade for `allSources` and writes enablement directly through
+ * persistence, so ordinary write failures and cancellation propagate to callers. A cancellation
+ * observed before persistence writes nothing; if it races a committed change, the complete change
+ * may remain. Neither failure nor cancellation retains admission. Legacy routing stays unchanged.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster141.staleKdocSweep.cascade,
  * Task #597, 2026-05-28): classified as follows after recursive symbol
@@ -176,13 +178,12 @@ interface SourcesRepository {
     fun observeSources(): Flow<List<Source>>
 
     /**
-     * Toggle a single source's enabled state. Fire-and-forget — the upstream [observeSources]
-     * flow re-emits with the source's `isEnabled` flipped once the Room transaction commits.
+     * Set one source's enabled state, sharing admission with both language operations.
      *
      * Takes the source's [Source.api] (the persistence-stable key) plus the target `enabled`
-     * value. The legacy facade method is `enableDisAbleSource(name, enabled)` — the rework
-     * forwards verbatim; the API name and the entity `name` column are the same string (the
-     * legacy `saveSources` seeds the row with `name = repo.API`).
+     * value. Matching is exact, without a catalog-eligibility filter; an absent name is a no-op.
+     * Only the enablement flag changes. Suspends for persistence; errors and cancellation propagate
+     * with the commit-race semantics documented on this interface.
      */
     suspend fun setSourceEnabled(api: String, enabled: Boolean)
 
@@ -198,22 +199,20 @@ interface SourcesRepository {
     suspend fun setHasNewSources(value: Boolean)
 
     /**
-     * Toggle every source in a given language together. Fire-and-forget — the upstream
-     * [observeSources] flow re-emits once each per-source Room write commits.
+     * Atomically set the enablement flags of all eligible sources in [language].
      *
-     * Implemented by snapshotting the current source set, filtering to the target [language],
-     * and forwarding each entry through [setSourceEnabled]. This mirrors the legacy onboarding
-     * `RepoSettingsViewModel.toggleLanguage` posture — Room serialises the per-source writes
-     * and the upstream flow coalesces emissions, so the screen sees the final language-bulk
-     * result after all writes settle.
+     * After admission, capture active catalog membership once, then read persisted rows and match
+     * their exact, case-sensitive language tags. Non-working active sources remain eligible;
+     * nonactive or absent catalog entries do not. No matches means no write, with no fallback.
+     * Only selected enablement flags change, all-or-none, rather than a sequence of row commits.
+     * Errors and cancellation propagate; a completed atomic change may survive cancellation.
      */
     suspend fun setLanguageEnabled(language: String, enabled: Boolean)
 
     /**
-     * Toggle every source in [primary] (or fall back to [fallback] when [primary] has zero
-     * matching sources) together. Fire-and-forget — the upstream [observeSources] flow
-     * re-emits after each per-source Room write commits, so the screen converges on the bulk
-     * result without VM-side imperative mutation.
+     * Atomically set every eligible source in [primary], or in [fallback] only when the admitted
+     * snapshot has no eligible primary rows. Uses the same admission, eligibility, atomicity and
+     * failure rules as [setLanguageEnabled]. Neither selection includes sources arriving afterward.
      *
      * Phase 7.x.sources.onboardingseed mechanism. Mirrors the legacy
      * `RepoSettingsViewModel.setLanguageEnabledDefault` semantic (which hard-codes the
@@ -228,7 +227,7 @@ interface SourcesRepository {
      * two methods separate makes the call site's intent explicit at the type level.
      *
      * **Why both [primary] and [fallback] are parameters (vs. a hard-coded EN fallback in
-     * the impl)** — DIP / SRP. The repository owns mechanism (snapshot, filter, fan out);
+     * the impl)** — DIP / SRP. The repository owns admission, snapshot selection and atomic persistence;
      * the policy ("default to EN") belongs in the use case. A future onboarding revision
      * (e.g. fall back to the device's region rather than EN) is a use-case-only change with
      * no impact on the data layer.
