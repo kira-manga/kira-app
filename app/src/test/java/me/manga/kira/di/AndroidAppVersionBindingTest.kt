@@ -15,7 +15,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [35], application = Application::class)
 class AndroidAppVersionBindingTest {
     @Test
     fun versionBindingReadsTheInstalledReleaseName() {
