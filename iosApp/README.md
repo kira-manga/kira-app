@@ -25,13 +25,33 @@ The `.xcodeproj` is intentionally NOT committed — its `project.pbxproj` is ful
 paths and per-machine UUIDs that make it hostile to source control. Generate it once on macOS:
 
 ```bash
-# Install xcodegen (one time, on macOS)
-brew install xcodegen
+# Verify the committed bootstrap pins and install that exact XcodeGen on macOS.
+cd "<repo-root>"
+(
+  set -e
+  repo_root="$PWD"
+  xcodegen=""
+  trap 'KIRA_XCODEGEN="$xcodegen" bash "$repo_root/scripts/release/cleanup-xcodegen.sh"' EXIT
+  xcodegen="$(bash scripts/release/install-xcodegen.sh)"
 
-# Generate iosApp.xcodeproj from project.yml
-cd "<repo-root>/iosApp"
-xcodegen generate
+  # Generate iosApp.xcodeproj; the trap removes the tool even if generation fails.
+  cd iosApp
+  "$xcodegen" generate
+)
 ```
+
+`release/verified-tools.json` pins XcodeGen 2.46.0's official ZIP and executable.
+The installer checks the archive before extraction and the binary checksum/version
+before returning its private temporary path; it never selects Homebrew or a PATH
+copy. Only the binary, required runtime presets, and license are extracted. CI
+installs it before protected inputs and uses that explicit path for generation;
+an always-run step immediately afterward removes the installer-owned directory,
+including when generation or an earlier step fails. Local generation above uses
+the same guarded cleanup on exit. Do not delete temporary directories by glob.
+The same metadata pins the four Gradle wrapper files and Action
+commits. Update these inputs together through review; do not edit a digest just
+to silence a mismatch. Gradle/SwiftPM dependency locks and full runner/JDK/Xcode
+reproducibility are separate requirements, not guarantees of this bootstrap check.
 
 After this runs once, `iosApp/iosApp.xcodeproj` exists locally on the Mac, and the
 `.idea/runConfigurations/iosApp.xml` run configuration that's already checked in will work in
