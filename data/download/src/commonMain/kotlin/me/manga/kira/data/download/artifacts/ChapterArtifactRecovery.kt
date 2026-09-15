@@ -1,10 +1,14 @@
 package me.manga.kira.data.download.artifacts
 
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterRestoreOutcome
 import me.manga.kira.data.local.dao.ChapterDownloadOutcome
+import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
@@ -12,6 +16,7 @@ import me.manga.kira.data.local.entity.claimOrNull
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
+import me.manga.kira.platform.media.PageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadingState
 
 /** Bounded per-chapter restore settlement. Unknown SQL/file outcomes keep both intent and bytes. */
@@ -19,7 +24,11 @@ class ChapterArtifactRecovery(
     private val dao: ChapterArtifactDao,
     private val commits: ChapterArtifactCommitDao,
     private val appFileSystem: AppFileSystem,
+    mediaInspector: PageMediaInspector,
 ) {
+    private val log = Logger.withTag("ChapterArtifactRecovery")
+
+    internal val conversionFiles = ChapterConversionFiles(appFileSystem, mediaInspector)
     /** Called once by the shared admission barrier, before any new producer/import can start. */
     suspend fun beforeAdmission(artifacts: ChapterArtifacts) {
         for (record in dao.getUnsettled()) {
@@ -33,28 +42,89 @@ class ChapterArtifactRecovery(
                         settleDownload(artifacts, claim, requeue = true)
                     }
                 } else if (record.operation == ChapterArtifactOperation.DELETE) {
-                    record.claimOrNull()?.let { claim -> artifacts.settle(claim) { clearAndDelete(claim) } }
+                    record.claimOrNull()?.let { claim ->
+                        if (!artifacts.settle(claim) { clearAndDelete(claim) }) {
+                            log.w { "Chapter cleanup retained for retry" }
+                        }
+                    }
+                } else if (record.operation == ChapterArtifactOperation.FAILED_CLEANUP) {
+                    record.claimOrNull()?.let { settleFailedCleanup(artifacts, it) }
                 } else if (record.operation == ChapterArtifactOperation.CONVERT) {
-                    // The old process's native codec is gone. Preserve whichever paths/bytes actually
-                    // committed; conversion atomicity/recovery is separate from shared file custody.
-                    record.claimOrNull()?.let { claim -> artifacts.settle(claim) { true } }
+                    record.claimOrNull()?.let { claim -> settleConversion(artifacts, claim) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 // Keep this chapter's durable custody without blocking unrelated chapters.
+                log.w { "Chapter cleanup retained for retry" }
             }
         }
     }
 
+    /** Exact retained-input settlement after the writer has unwound; no inference from its return. */
+    suspend fun settleConversion(artifacts: ChapterArtifacts, claim: ChapterArtifactClaim): ChapterConversionOutcome {
+        var outcome = ChapterConversionOutcome.UNKNOWN
+        try {
+            artifacts.settle(claim) { settleConversionFiles(claim) { outcome = it } }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Before proof this is UNKNOWN. After commit proof, cleanup/release can be retried.
+        }
+        return outcome
+    }
+
+    private suspend fun settleConversionFiles(claim: ChapterArtifactClaim, proved: (ChapterConversionOutcome) -> Unit): Boolean =
+        withContext(platformIoDispatcher) {
+            val path = conversionFiles.canonical(claim.owner)
+            val size = conversionFiles.archiveMetadata(claim)?.size
+            when (commits.readConversionOutcome(claim, path.toString(), size)) {
+                ChapterConversionOutcome.COMMITTED -> {
+                    conversionFiles.validateArchive(claim)
+                    if (claim.conversionSourceRoster != null) conversionFiles.sources(claim)
+                    proved(ChapterConversionOutcome.COMMITTED)
+                    // Pre-v16 committed receipts lack cleanup provenance: retain loose files.
+                    if (claim.conversionSourceRoster != null) conversionFiles.cleanSources(claim)
+                    true
+                }
+                ChapterConversionOutcome.NOT_COMMITTED -> {
+                    if (claim.conversionSourceRoster != null) conversionFiles.sources(claim) else {
+                        val legacy = dao.saved(claim.owner.chapterId) ?: return@withContext false
+                        if (!claim.owner.matches(legacy)) return@withContext false
+                        conversionFiles.capture(legacy) // Old receipts grant NO source deletion.
+                    }
+                    proved(ChapterConversionOutcome.NOT_COMMITTED)
+                    true // Retained-input writers have not reached any destructive cleanup.
+                }
+                ChapterConversionOutcome.UNKNOWN -> false
+            }
+        }
+
+    /** Explicit Delete never inherits ordinary failure's page-retention policy for Retry. */
+    suspend fun settleFailedCleanup(artifacts: ChapterArtifacts, claim: ChapterArtifactClaim): Boolean = try {
+        artifacts.settle(claim) {
+            if (!dao.canSettleFailedCleanup(claim) || !commits.settleIncompleteDownload(claim, requeue = false)) {
+                false
+            } else {
+                deleteUncommittedPages(claim)
+                true // The shared coordinator atomically removes the captured FAILED row + token.
+            }
+        }.also { settled -> if (!settled) log.w { "Chapter cleanup retained for retry" } }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        log.w { "Chapter cleanup retained for retry" }
+        false // Failed deletion or SQL release keeps both durable cleanup custody and the row.
+    }
+
     /** Caller holds this chapter's exclusive files/transition gates and its durable DELETE token. */
-    internal suspend fun clearAndDelete(claim: ChapterArtifactClaim): Boolean {
-        if (!commits.clearForRemoval(claim)) return false
+    internal suspend fun clearAndDelete(claim: ChapterArtifactClaim): Boolean = withContext(platformIoDispatcher) {
+        if (!commits.clearForRemoval(claim)) return@withContext false
         appFileSystem.fileSystem().deleteRecursively(
             appFileSystem.chapterDir(claim.owner.mangaId, claim.owner.chapterId),
             mustExist = false,
         )
-        return true
+        true
     }
 
     /** Call after the producer's actual finally, not merely after requesting Job cancellation. */
@@ -68,12 +138,14 @@ class ChapterArtifactRecovery(
         artifacts.settle(claim) { record ->
             when (commits.downloadOutcome(claim)) {
                 ChapterDownloadOutcome.COMPLETE -> {
-                    val manifest = appFileSystem.chapterDir(claim.owner.mangaId, claim.owner.chapterId) / "manifest.json"
-                    appFileSystem.fileSystem().delete(manifest, mustExist = false)
-                    record.retiredRelativePath?.let { retired ->
-                        val path = ChapterArtifactReference.resolve(appFileSystem, claim.owner, retired)
-                        appFileSystem.fileSystem().deleteRecursively(checkNotNull(path.parent), mustExist = false)
-                        check(dao.releaseRetiredPath(record.chapterId, claim.token, retired) == 1)
+                    withContext(platformIoDispatcher) {
+                        val manifest = appFileSystem.chapterDir(claim.owner.mangaId, claim.owner.chapterId) / "manifest.json"
+                        appFileSystem.fileSystem().delete(manifest, mustExist = false)
+                        record.retiredRelativePath?.let { retired ->
+                            val path = ChapterArtifactReference.resolve(appFileSystem, claim.owner, retired)
+                            appFileSystem.fileSystem().deleteRecursively(checkNotNull(path.parent), mustExist = false)
+                            check(dao.releaseRetiredPath(record.chapterId, claim.token, retired) == 1)
+                        }
                     }
                     true
                 }
@@ -92,18 +164,19 @@ class ChapterArtifactRecovery(
                 }
                 ChapterDownloadOutcome.UNKNOWN -> false
             }
-        }
+        }.also { settled -> if (!settled) log.w { "Chapter cleanup retained for retry" } }
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: Exception) {
+        log.w { "Chapter cleanup retained for retry" }
         false // Failed read/cleanup/release retains the exact token for recovery.
     }
 
     /** No recursive chapter deletion: a prior CBZ/restored generation is not this attempt's file. */
-    private fun deleteUncommittedPages(claim: ChapterArtifactClaim) {
+    private suspend fun deleteUncommittedPages(claim: ChapterArtifactClaim) = withContext(platformIoDispatcher) {
         val fs = appFileSystem.fileSystem()
         val directory = appFileSystem.chapterDir(claim.owner.mangaId, claim.owner.chapterId)
-        if (!fs.exists(directory)) return
+        if (!fs.exists(directory)) return@withContext
         fs.list(directory).filter { path ->
             path.name.startsWith("image_") || path.name.startsWith(".image_") ||
                 path.name.startsWith(".manifest-") || path.name == "manifest.json" || path.name.endsWith(".cbz.part")
@@ -125,7 +198,9 @@ class ChapterArtifactRecovery(
                 outcome = commits.readRestoreOutcome(claim, target.toString(), pending.sizeBytes)
                 when (outcome) {
                     ChapterRestoreOutcome.COMMITTED -> {
-                        val file = appFileSystem.fileSystem().metadataOrNull(target)
+                        val file = withContext(platformIoDispatcher) {
+                            appFileSystem.fileSystem().metadataOrNull(target)
+                        }
                         if (file?.isRegularFile != true || file.size != pending.sizeBytes) {
                             outcome = ChapterRestoreOutcome.UNKNOWN
                             false
@@ -140,23 +215,25 @@ class ChapterArtifactRecovery(
         } catch (_: Exception) {
             // A release failure cannot undo a commit already proved above. Before that proof,
             // the default remains UNKNOWN and the operation's durable token is retained.
+            log.w { "Chapter cleanup retained for retry" }
         }
+        if (outcome == ChapterRestoreOutcome.UNKNOWN) log.w { "Chapter cleanup retained for retry" }
         return outcome
     }
 
-    private fun cleanUncommitted(
+    private suspend fun cleanUncommitted(
         record: ChapterArtifactEntity,
         claim: ChapterArtifactClaim,
         createdLocally: Boolean,
-    ): Boolean {
+    ): Boolean = withContext(platformIoDispatcher) {
         val target = ChapterArtifactReference.resolve(appFileSystem, claim.owner, checkNotNull(claim.relativePath))
         val directory = checkNotNull(target.parent)
         val fs = appFileSystem.fileSystem()
         when {
             record.ownsPendingPath -> fs.deleteRecursively(directory, mustExist = false)
             createdLocally -> fs.delete(directory, mustExist = false) // No bytes preceded the ownership receipt.
-            fs.exists(directory) -> return false // Creation outcome/collision is not deletion authority.
+            fs.exists(directory) -> return@withContext false // Creation outcome/collision is not deletion authority.
         }
-        return true
+        true
     }
 }

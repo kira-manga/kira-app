@@ -68,19 +68,6 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>raijinscan.co</key>
-            <dict>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                <true/>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-            </dict>
-        </dict>
-    </dict>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Kira saves manga page screenshots to your Photos library when you choose to export a page.</string>
     <key>CFBundleDisplayName</key>

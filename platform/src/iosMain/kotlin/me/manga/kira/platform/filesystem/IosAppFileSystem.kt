@@ -14,8 +14,9 @@ import platform.Foundation.NSUserDomainMask
 /**
  * iOS implementation of [AppFileSystem].
  *
- * Body mirrors the legacy `:shared` `AppFileSystem.ios.kt` actual byte-for-byte; only the type
- * shape changed (`actual class` → `class : AppFileSystem`, `actual val` → `override val`).
+ * Preserves the Documents / Caches layout. Only Documents/manga is excluded from device backups;
+ * Room and other user-authored state remain outside that media root. Reapply the policy at every
+ * construction so existing installations are repaired without moving or deleting their files.
  *
  * Uses `NSFileManager.URLForDirectory(...)` with `create = true` so the Documents / Caches
  * directories are guaranteed to exist on first access. If the resolution fails (extremely
@@ -23,10 +24,16 @@ import platform.Foundation.NSUserDomainMask
  * throws because there's nothing useful the caller can do at that point.
  */
 @OptIn(ExperimentalForeignApi::class)
-class IosAppFileSystem : AppFileSystem {
+class IosAppFileSystem internal constructor(
+    override val filesDir: Path,
+    override val cacheDir: Path,
+) : AppFileSystem {
 
-    override val filesDir: Path = resolveDir(NSDocumentDirectory)
-    override val cacheDir: Path = resolveDir(NSCachesDirectory)
+    constructor() : this(resolveDir(NSDocumentDirectory), resolveDir(NSCachesDirectory))
+
+    init {
+        prepareIosMangaBackupExclusion(filesDir)
+    }
 
     override fun fileSystem(): FileSystem = FileSystem.SYSTEM
 

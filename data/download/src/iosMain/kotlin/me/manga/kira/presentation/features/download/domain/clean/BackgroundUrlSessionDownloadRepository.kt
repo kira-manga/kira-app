@@ -19,10 +19,12 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
@@ -52,6 +54,7 @@ import platform.Foundation.NSNotificationCenter
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import okio.Path.Companion.toPath
+import okio.IOException
 
 /**
  * iOS [DownloadRepository] backed by a background `NSURLSession` (background-downloads M2–M5).
@@ -255,27 +258,55 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
-    override suspend fun deleteDownload(chapterId: Long) {
-        val (row, claim) = mutex.withLock {
-            val current = dao.getDownloadByChapter(chapterId) ?: return
-            if (current.state == DownloadingState.SUCCESS) {
-                // SUCCESS eviction is history-only, including a restored archive with no queue row.
-                dao.deleteHistoryAttempt(chapterId, current.id)
-                return
-            }
-            current to cancelLocked(chapterId)
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = withContext(platformIoDispatcher) {
+        mutex.withLock {
+            val claim = artifacts.retry(expected) { token ->
+                // Atomic file publication precedes QUEUED visibility under the shared file pin.
+                // Failure/rollback leaves idle FAILED history; a committed retry always has its
+                // new-token roster, including durable media-policy refusals, even across restart.
+                manifestStore.cleanOrphanedStaging(expected.mangaId, expected.chapterId)
+                if (manifestStore.exists(expected.mangaId, expected.chapterId)) {
+                    val retained = checkNotNull(manifestStore.read(expected.mangaId, expected.chapterId)) {
+                        "Retained download manifest is unreadable"
+                    }
+                    check(retained.api == expected.api) { "Retained download manifest source changed" }
+                    manifestStore.write(retained.copy(
+                        attemptToken = token,
+                        pages = retained.pages.map { if (it.policyRejected) it else it.copy(attempts = 0) },
+                    ))
+                }
+            } ?: return@withLock false
+            attempts[expected.chapterId] = claim
+            clearChapterCaches(expected.chapterId)
+            transport.ensureReady()
+            fillWindowLocked()
+            true
         }
-        if (claim != null && !artifacts.settle(claim)) return
-        dao.deleteHistoryAttempt(chapterId, row.id)
-        mutex.withLock { fillWindowLocked() }
+    }
+
+    override suspend fun deleteDownload(chapterId: Long) {
+        val row = mutex.withLock { dao.getDownloadByChapter(chapterId) } ?: return
+        try {
+            check(artifacts.deleteAttempt(row) { claim ->
+                mutex.withLock {
+                    transport.cancelChapter(chapterId, claim.token)
+                    clearChapterCaches(chapterId)
+                    runCatching { downloadNotifier.clear(chapterId.toInt()) }
+                }
+            }) { "Download cleanup could not be settled" }
+        } finally {
+            mutex.withLock { fillWindowLocked() }
+        }
     }
 
     override suspend fun onCancel(chapterId: Long) {
-        val claim = mutex.withLock {
-            cancelLocked(chapterId).also { fillWindowLocked() }
+        val claim = mutex.withLock { cancelLocked(chapterId) }
+        try {
+            // Revoke is synchronous; observe cleanup outside the engine mutex after real users drain.
+            if (claim != null) check(artifacts.settleCancelled(claim)) { "Download cleanup could not be settled" }
+        } finally {
+            mutex.withLock { fillWindowLocked() }
         }
-        // Revoke is synchronous; cleanup waits outside the engine mutex for actual file users.
-        if (claim != null) applicationScope.launch { artifacts.settle(claim) }
     }
 
     private suspend fun cancelLocked(chapterId: Long): ChapterArtifactClaim? {
@@ -293,7 +324,9 @@ class BackgroundUrlSessionDownloadRepository(
             dao.observeAllDownloads().first().filter { it.state in WorkSignalRules.ACTIVE_STATES }
                 .mapNotNull { cancelLocked(it.chapterId) }
         }
-        claims.forEach { claim -> applicationScope.launch { artifacts.settle(claim) } }
+        var settled = true
+        claims.forEach { if (!artifacts.settleCancelled(it)) settled = false }
+        check(settled) { "Download cleanup could not be settled" }
     }
 
     override suspend fun reconcileInterruptedDownloads() {
@@ -301,6 +334,42 @@ class BackgroundUrlSessionDownloadRepository(
             BgDownloadLog.log("reconcile.requested")
             transport.ensureReady()
             pumpLocked("reconcileInterrupted")
+        }
+    }
+
+    /**
+     * Called only after the transport's admitted event window drains. Refreshes durable pending work
+     * independently of the advisory collector, then requests continuation before completing on main.
+     * Only the fresh query has a short timeout; its expiry keeps work unknown, unlike parent cancellation.
+     * [requestProcessing] directly submits the host's BGProcessing request, without another async hop.
+     * No reconciliation, retry delay, producer drain or CBZ encode is joined by this completion tail.
+     */
+    suspend fun completeBackgroundEventWindow(requestProcessing: () -> Unit, completionHandler: () -> Unit) {
+        var pendingOrUnknown = true
+        try {
+            val rows = withTimeoutOrNull(COMPLETION_REFRESH_TIMEOUT_MS) { dao.observeAllDownloads().first() }
+            if (rows == null) {
+                BgDownloadLog.warn("session.pendingWork.refreshTimedOut")
+                return
+            }
+            val snapshot = WorkSignalRules.compute(rows)
+            workSignal.update(
+                snapshot.pending, snapshot.progressPercent, snapshot.chapterProgress,
+                snapshot.leadChapterId, snapshot.hasTransferWork,
+            )
+            pendingOrUnknown = snapshot.pending
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            BgDownloadLog.error(failure, "session.pendingWork.refreshFailed")
+        } finally {
+            withContext(NonCancellable + Dispatchers.Main) {
+                try {
+                    if (pendingOrUnknown) requestProcessing()
+                } finally {
+                    completionHandler()
+                }
+            }
         }
     }
 
@@ -312,20 +381,13 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         attemptToken: String,
         page: StagedDownloadPage,
+        acknowledge: () -> Unit,
     ) {
         // Enter finally before the first suspension, including an already-cancelled application scope.
         applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 mutex.withLock {
-                    val claim = callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return@withLock
-                    artifacts.ownership.producing(claim) {
-                        val manifest = cachedManifest(mangaId, chapterId) ?: return@producing
-                        if (manifest.pages.none { it.index == pageIndex && !it.policyRejected }) return@producing
-                        artifacts.ownership.files(claim) {
-                            page.publish(appFileSystem.chapterDir(mangaId, chapterId), pageIndex)
-                        } ?: return@producing
-                        handlePageCompleteLocked(mangaId, chapterId, pageIndex)
-                    }
+                    acceptReceivedPageLocked(mangaId, chapterId, pageIndex, attemptToken, page)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -333,12 +395,39 @@ class BackgroundUrlSessionDownloadRepository(
                 BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
                 recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
             } finally {
-                try {
-                    page.discard() // Never deletes another attempt's live chapter directory.
-                } catch (failure: Exception) {
-                    BgDownloadLog.error(failure, "page.staging.retained", "chapterId" to chapterId)
-                }
+                disposeReceivedPage(chapterId, page, acknowledge)
             }
+        }
+    }
+
+    private suspend fun acceptReceivedPageLocked(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        attemptToken: String,
+        page: StagedDownloadPage,
+    ) {
+        val claim = callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return
+        artifacts.ownership.producing(claim) {
+            val manifest = cachedManifest(mangaId, chapterId) ?: return@producing
+            if (manifest.pages.none { it.index == pageIndex && !it.policyRejected }) return@producing
+            artifacts.ownership.files(claim) {
+                page.publish(appFileSystem.chapterDir(mangaId, chapterId), pageIndex)
+            } ?: return@producing
+            handlePageCompleteLocked(mangaId, chapterId, pageIndex)
+        }
+    }
+
+    private fun disposeReceivedPage(chapterId: Long, page: StagedDownloadPage, acknowledge: () -> Unit) {
+        try {
+            page.discard() // Never deletes another attempt's live chapter directory.
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // An undeletable private stage remains owned by the existing next-startup staging prune.
+            BgDownloadLog.error(failure, "page.staging.retained", "chapterId" to chapterId)
+        } finally {
+            acknowledge()
         }
     }
 
@@ -348,8 +437,15 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         attemptToken: String,
         message: String?,
+        acknowledge: () -> Unit,
     ) {
-        applicationScope.launch { recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message) }
+        applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message)
+            } finally {
+                acknowledge()
+            }
+        }
     }
 
     /** Receiver-side publication failures use the same bounded retry path as native transfer failures. */
@@ -369,6 +465,20 @@ class BackgroundUrlSessionDownloadRepository(
             throw cancelled
         } catch (failure: Exception) {
             BgDownloadLog.error(failure, "page.failed.persistence", "chapterId" to chapterId)
+            try {
+                mutex.withLock {
+                    callbackClaimLocked(mangaId, chapterId, attemptToken)?.let { claim ->
+                        currentAttempt(claim)?.let { failChapterLocked(it, "Download retry state could not be read") }
+                        fillWindowLocked()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (recoveryFailure: Exception) {
+                // A second storage/transport failure must not escape the delegate's launched job.
+                // Keep the retained state for a later pump; acknowledgement remains in its finally.
+                BgDownloadLog.error(recoveryFailure, "page.failed.recovery", "chapterId" to chapterId)
+            }
         }
     }
 
@@ -383,16 +493,31 @@ class BackgroundUrlSessionDownloadRepository(
 
     private suspend fun claimLocked(entity: ChapterDownloadEntity, admitted: ChapterArtifactClaim? = null): ChapterArtifactClaim? {
         val retained = attempts[entity.chapterId]
-        if (admitted == null && retained != null && retained.downloadId == entity.id && currentAttempt(retained) != null) return retained
-        val claim = admitted ?: artifacts.claim(entity) ?: return null
+        val claim = admitted ?: retained?.takeIf { it.downloadId == entity.id && currentAttempt(it) != null }
+            ?: artifacts.claim(entity) ?: return null
         if (retained?.token != claim.token) clearChapterCaches(entity.chapterId)
         attempts[entity.chapterId] = claim
-        artifacts.ownership.files(claim) {
-            val legacy = manifestStore.read(entity.mangaId, entity.chapterId)
-            if (legacy != null && legacy.attemptToken == null && legacy.api == entity.api) {
-                // Upgrade owns the legacy on-disk roster, never tokenless URLSession callbacks.
-                manifestStore.write(legacy.copy(attemptToken = claim.token))
+        try {
+            val inspected = artifacts.ownership.files(claim) {
+                withContext(platformIoDispatcher) {
+                    // Every manifest writer holds this same pin. A live stage cannot be reclaimed.
+                    manifestStore.cleanOrphanedStaging(entity.mangaId, entity.chapterId)
+                    val legacy = manifestStore.read(entity.mangaId, entity.chapterId)
+                    if (legacy != null) {
+                        check(legacy.api == entity.api && (legacy.attemptToken == null || legacy.attemptToken == claim.token)) {
+                            "Download manifest custody changed"
+                        }
+                        // Upgrade a readable pre-custody roster without resetting its page attempts.
+                        if (legacy.attemptToken == null) manifestStore.write(legacy.copy(attemptToken = claim.token))
+                    }
+                }
             }
+            if (inspected == null) return null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failChapterLocked(entity, "Download manifest could not be read")
+            return null
         }
         return claim
     }
@@ -429,8 +554,13 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
-    private fun readManifest(mangaId: Long, chapterId: Long): DownloadManifest? =
-        manifestStore.read(mangaId, chapterId)?.takeIf { it.attemptToken != null && it.attemptToken == attempts[chapterId]?.token }
+    private fun readManifest(mangaId: Long, chapterId: Long): DownloadManifest? {
+        val manifest = manifestStore.read(mangaId, chapterId) ?: return null
+        if (manifest.attemptToken == null || manifest.attemptToken != attempts[chapterId]?.token) {
+            throw IOException("Download manifest custody changed")
+        }
+        return manifest
+    }
 
     // ---- locked internals (callers hold [mutex]) ----
 
@@ -688,7 +818,9 @@ class BackgroundUrlSessionDownloadRepository(
                 window = RESOLVE_AHEAD_WINDOW,
                 resolving = resolving,
                 prefetching = prefetching,
-                hasManifest = { id -> byId.getValue(id).let { readManifest(it.mangaId, it.chapterId) != null } },
+                // This is only a resolve-ahead selection hint. Admission validates the retained
+                // roster under its file pin; unreadable bytes are not permission to scrape again.
+                hasManifest = { id -> byId.getValue(id).let { manifestStore.exists(it.mangaId, it.chapterId) } },
             ) ?: return
         val entity = byId.getValue(targetId)
         val claim = claimLocked(entity) ?: return
@@ -1523,6 +1655,7 @@ class BackgroundUrlSessionDownloadRepository(
 
     private companion object {
         const val CANCELLED_BY_USER = "__cancelled_by_user__"
+        const val COMPLETION_REFRESH_TIMEOUT_MS = 2_000L
 
         /** Mirrors [me.manga.kira.domain.model.downloads.DownloadedChapter.CLOUDFLARE_CHALLENGE_SENTINEL].
          *  Written into `errorMsg` when a resolve fails on a Cloudflare/anti-bot challenge so the Details

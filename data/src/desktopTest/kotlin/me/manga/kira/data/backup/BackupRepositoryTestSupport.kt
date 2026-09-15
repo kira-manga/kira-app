@@ -28,7 +28,8 @@ internal fun backupTestRepository(
     inspector: PageMediaInspector = DesktopPageMediaInspector(),
     policy: BackupImportPolicy = BackupImportPolicy(),
 ): BackupRepositoryImpl {
-    val recovery = ChapterArtifactRecovery(db.chapterArtifactDao(), db.chapterArtifactCommitDao(), files)
+    val recovery = ChapterArtifactRecovery(db.chapterArtifactDao(), db.chapterArtifactCommitDao(), files,
+        me.manga.kira.platform.media.DesktopPageMediaInspector())
     val artifacts = ChapterArtifacts(db.chapterArtifactDao(), recovery)
     val publisher = RestoredDownloadPublisher(artifacts, db.chapterArtifactDao(), db.chapterArtifactCommitDao(), files, recovery)
     val preflight = BackupArchivePreflight(files, BackupImportStaging(files, policy), inspector, policy)

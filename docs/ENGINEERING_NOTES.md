@@ -119,6 +119,33 @@ in-flight transfers and does not relaunch — **OS rule, not a bug**; next manua
 (pages on disk kept, missing re-enqueued). Best-effort only: background scraping of further
 chapters, BG task grant timing.
 
+**iOS backup scope (App26 partial remediation):** launch eagerly creates or re-marks only the
+stable `Documents/manga` directory with `NSURLIsExcludedFromBackupKey`. This covers chapter
+pages, CBZs (including imported copies), manifests, and their temporary files without moving
+existing data. Documents itself, Room/SQLite sidecars, settings, and credentials are unchanged.
+A failed directory/flag operation is logged and retried next launch, never treated as success
+or allowed to crash startup. Future replacement of the manga root must reapply the policy.
+Unlike Android's whole-persistence-graph backup exclusion, this is **not** a complete iOS restore
+policy: metadata-only restore can retain stale SUCCESS/downloaded/size state. App26 remains open
+for that reconciliation and physical-device backup-footprint/restore checks; native resource-value
+tests alone do not prove either. Keep an external Kira ZIP for deliberate transfer of chapter copies.
+
+**Terminal offline-metadata repair (authored; validation pending):** after the existing engine
+reconcile, missing-media maintenance pins chapter files and conditionally clears only derived
+saved/notification/history offline fields. A matching settled SUCCESS row keeps its ID but becomes
+FAILED with zero progress/size and the existing generic failure presentation; absent history is not
+recreated and an existing FAILED reason is preserved. The exact proven-missing committed generation
+reference is cleared too, so explicit re-import is not blocked by an excluded generation.
+The Room transaction rechecks owner, parent API/URL, saved paths, exact ledger and all custody.
+An incomplete loose roster is negative evidence only when its canonical/stored fallback is also
+absent. Present CBZ candidates and complete extant loose rosters are preserved without decoding;
+I/O ambiguity, foreign paths and symlinks defer. This is not a corruption audit or proof of an old
+CBZ's original page count. Only a known iOS container-UUID move is accepted as a prior-container
+path. No files, library preferences or reading positions are removed.
+Active queue/resume policy above is unchanged, not solved by this terminal repair. Physical iPhone
+backup size, OS restore/SQLite-WAL consistency, upgrade and background/offline acceptance remain
+device requirements; a Room fixture reopen does not establish them.
+
 **Notification rule (load-bearing UX)**: user-facing "complete" means the CBZ exists. Silent
 per-page progress → silent "Finalizing chapter…" at `RUNNING→DOWNLOADED` → banner+sound only at
 `finalize.success`. Foreground presentation via `willPresent`: `DOWNLOAD_PROGRESS` silent,

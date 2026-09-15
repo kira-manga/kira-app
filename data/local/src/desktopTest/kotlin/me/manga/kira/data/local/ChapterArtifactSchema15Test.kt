@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -31,7 +32,7 @@ class ChapterArtifactSchema15Test {
         try {
             createExported14(path)
             val db = Room.databaseBuilder<MangaDatabase>(path.toString())
-                .addMigrations(MIGRATION_14_15)
+                .addMigrations(MIGRATION_14_15, MIGRATION_15_16)
                 .setDriver(BundledSQLiteDriver())
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build()
@@ -63,7 +64,7 @@ class ChapterArtifactSchema15Test {
             BundledSQLiteDriver().open(path.toString()).use { connection ->
                 connection.prepare("PRAGMA user_version").use { statement ->
                     assertTrue(statement.step())
-                    assertEquals(15L, statement.getLong(0))
+                    assertEquals(16L, statement.getLong(0))
                 }
                 connection.prepare("PRAGMA foreign_key_list('chapter_artifacts')").use { assertFalse(it.step()) }
             }
@@ -85,8 +86,52 @@ class ChapterArtifactSchema15Test {
         assertEquals(1, artifact.getValue("indices").jsonArray.size)
     }
 
-    private fun createExported14(path: Path) {
-        val database = exported(14)
+    @Test
+    fun roomMigratesExported15RetainingLegacyReceiptWithoutInventingSourceCleanupAuthority() = runBlocking {
+        val root = Files.createTempDirectory("kira-conversion-schema-")
+        val path = root.resolve("migrated.db")
+        try {
+            createExported14(path, version = 15)
+            BundledSQLiteDriver().open(path.toString()).use { connection ->
+                connection.execSQL("""INSERT INTO chapter_artifacts
+                    (chapterId,mangaId,chapterUrl,token,operation,retiring,downloadId,ownsPendingPath)
+                    VALUES (11,7,'chapter','$TOKEN','convert',1,21,0)""")
+            }
+            val db = Room.databaseBuilder<MangaDatabase>(path.toString())
+                .addMigrations(MIGRATION_15_16).setDriver(BundledSQLiteDriver())
+                .setQueryCoroutineContext(Dispatchers.IO).build()
+            try {
+                val receipt = assertNotNull(db.chapterArtifactDao().get(11))
+                assertEquals(TOKEN, receipt.token)
+                assertTrue(receipt.retiring)
+                assertNull(receipt.conversionSourceRoster)
+                assertEquals(123L, db.chapterDownloadingDao().getDownloadByChapter(11)?.sizeBytes)
+            } finally { db.close() }
+        } finally { check(root.toFile().deleteRecursively()) }
+    }
+
+    @Test
+    fun compilerExport16AddsOnlyTheNullableConversionRosterToHistorical15() {
+        val before = exported(15).getValue("entities").jsonArray.associate { it.jsonObject.tableEntry() }
+        val after = exported(16).getValue("entities").jsonArray.associate { it.jsonObject.tableEntry() }
+        assertEquals(before.keys, after.keys)
+        before.filterKeys { it != "chapter_artifacts" }.forEach { (table, entity) -> assertEquals(entity, after[table]) }
+        val prior = assertNotNull(before["chapter_artifacts"])
+        val next = assertNotNull(after["chapter_artifacts"])
+        val fields = next.getValue("fields").jsonArray
+        assertEquals(prior.getValue("fields").jsonArray.toList(), fields.dropLast(1))
+        val roster = fields.last().jsonObject
+        assertEquals("conversionSourceRoster", roster.getValue("columnName").jsonPrimitive.content)
+        assertEquals("TEXT", roster.getValue("affinity").jsonPrimitive.content)
+        // Genuine Room exports omit this key when its default value is false.
+        assertFalse(roster["notNull"]?.jsonPrimitive?.boolean ?: false)
+        assertEquals(prior["primaryKey"], next["primaryKey"])
+        assertEquals(prior["indices"], next["indices"])
+        assertEquals(prior["foreignKeys"], next["foreignKeys"])
+    }
+
+    private fun createExported14(path: Path, version: Int = 14) {
+        val database = exported(version)
         BundledSQLiteDriver().open(path.toString()).use { connection ->
             database.getValue("entities").jsonArray.forEach { element ->
                 val entity = element.jsonObject
@@ -98,7 +143,7 @@ class ChapterArtifactSchema15Test {
                 }
             }
             database.getValue("setupQueries").jsonArray.forEach { connection.execSQL(it.jsonPrimitive.content) }
-            connection.execSQL("PRAGMA user_version = 14")
+            connection.execSQL("PRAGMA user_version = $version")
             connection.execSQL("""
                 INSERT INTO saved_manga
                     (id, api, language, url, imageUrl, title, description, status, rating, genres,

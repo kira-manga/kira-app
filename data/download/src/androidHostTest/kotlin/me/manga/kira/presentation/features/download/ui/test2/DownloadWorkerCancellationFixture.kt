@@ -6,7 +6,9 @@ import androidx.work.ForegroundInfo
 import androidx.work.ForegroundUpdater
 import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
+import androidx.work.impl.WorkManagerImpl
 import androidx.work.testing.TestListenableWorkerBuilder
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
@@ -16,7 +18,9 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
+import me.manga.kira.presentation.features.download.domain.clean.DownloadRepositoryImpl
 import org.koin.core.KoinApplication
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
@@ -25,6 +29,7 @@ import org.koin.dsl.module
 import org.robolectric.RuntimeEnvironment
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +46,7 @@ internal const val FIXTURE_API = "app75-host-fixture"
 internal const val USER_CANCELLED = "__cancelled_by_user__"
 
 internal enum class CancellationSeam {
+    PRECLAIM_CANCEL,
     DELIVERED_SEND,
     COMMITTED_RETURN,
     PARTIAL_SYSTEM,
@@ -98,6 +104,27 @@ internal class DownloadWorkerCancellationFixture(
     private var instance: DownloadWorkerV2? = null
     private var future: ListenableFuture<ListenableWorker.Result>? = null
     private val foregroundCalls = AtomicInteger()
+    private var previousWorkManager: WorkManagerImpl? = null
+    private val workManagerHolder = lazy {
+        previousWorkManager = WorkManagerImpl.getInstance()
+        // Installed Work2.11.2 helper uses synchronous task/worker executors and an in-memory DB.
+        // Do not satisfy CONNECTED: adapter requests must be observable without starting transfers.
+        WorkManagerTestInitHelper.initializeTestWorkManager(storage.context)
+        WorkManagerImpl.getInstance(storage.context)
+    }
+
+    fun androidRepository(downloads: ChapterDownloadDao = dao): DownloadRepositoryImpl =
+        DownloadRepositoryImpl(
+            workManagerHolder.value,
+            downloads,
+            checkNotNull(koin).koin.get<ChapterDownloadService>(),
+            rows.artifacts,
+        )
+
+    fun uniqueDownloadWork(): List<WorkInfo> =
+        // Completed query after the adapter's enqueue/cancel on the same synchronous serial executor.
+        workManagerHolder.value.getWorkInfosForUniqueWork("mangaDownloadv2")
+            .get(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 
     suspend fun prepare() {
         rows.seed()
@@ -148,6 +175,16 @@ internal class DownloadWorkerCancellationFixture(
         assertTrue(checkNotNull(future).isCancelled)
     }
 
+    suspend fun joinSuccessfulWorker() {
+        worker.join()
+        if (producer.job != null) producer.join()
+        assertEquals(
+            ListenableWorker.Result.success(),
+            checkNotNull(future).get(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+        )
+        assertFalse(checkNotNull(worker.job).isCancelled)
+    }
+
     suspend fun partialCheckpoint() {
         withTimeout(GATE_TIMEOUT_MILLIS) {
             transport.secondResponseEntered.await()
@@ -191,7 +228,10 @@ internal class DownloadWorkerCancellationFixture(
     }
 
     suspend fun close() {
-        if (daoHolder.isInitialized()) dao.releaseProgress.complete(Unit)
+        if (daoHolder.isInitialized()) {
+            dao.releaseQueuedSnapshot.complete(Unit)
+            dao.releaseProgress.complete(Unit)
+        }
         if (transportHolder.isInitialized()) transport.releaseSecondResponse.complete(Unit)
         commit.release()
         sender.release()
@@ -217,6 +257,7 @@ internal class DownloadWorkerCancellationFixture(
 
     internal fun resourceClosers(): List<() -> Unit> =
         listOf(
+            { closeOwnedWorkManager() },
             { if (transportHolder.isInitialized()) transport.close() },
             { rows.close() },
             { sender.close() },
@@ -228,6 +269,21 @@ internal class DownloadWorkerCancellationFixture(
             },
             { storage.restoreProperties() },
         )
+
+    private fun closeOwnedWorkManager() {
+        if (!workManagerHolder.isInitialized()) return
+        val owned = workManagerHolder.value
+        check(WorkManagerImpl.getInstance() === owned) { "WorkManager ownership changed" }
+        try {
+            owned.cancelAllWork().result.get(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } finally {
+            try {
+                WorkManagerTestInitHelper.closeWorkDatabase()
+            } finally {
+                WorkManagerImpl.setDelegate(previousWorkManager)
+            }
+        }
+    }
 }
 
 private fun closeFixtureResources(

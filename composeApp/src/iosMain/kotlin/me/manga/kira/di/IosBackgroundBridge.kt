@@ -1,19 +1,25 @@
 package me.manga.kira.di
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.manga.kira.platform.download.BackgroundScheduler
 import me.manga.kira.platform.download.BackgroundTransport
 import me.manga.kira.platform.download.BackgroundWorkSignal
 import me.manga.kira.platform.download.BgDownloadLog
 import me.manga.kira.platform.download.IosBackgroundScheduler
 import me.manga.kira.presentation.features.download.DownloadEngineFlags
+import me.manga.kira.presentation.features.download.domain.clean.BackgroundUrlSessionDownloadRepository
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import org.koin.mp.KoinPlatform
 
@@ -55,7 +61,7 @@ fun setBgDownloadVerboseLogging(enabled: Boolean) {
     BgDownloadLog.log("bridge.verboseLogging", "enabled" to enabled) // emits only when enabling
 }
 
-fun handleBackgroundUrlSessionEvents(identifier: String, completionHandler: () -> Unit) {
+fun handleBackgroundUrlSessionEvents(identifier: String, requestProcessing: () -> Unit, completionHandler: () -> Unit) {
     if (!DownloadEngineFlags.IOS_BACKGROUND_ENGINE_ENABLED) {
         BgDownloadLog.log("bridge.handleEvents.flagOff", "identifier" to identifier)
         completionHandler()
@@ -63,8 +69,36 @@ fun handleBackgroundUrlSessionEvents(identifier: String, completionHandler: () -
     }
     BgDownloadLog.log("bridge.handleEvents", "identifier" to identifier)
     val koin = KoinPlatform.getKoin()
+    // Repository construction launches ensureReady: install before it can reattach the session.
+    koin.get<BackgroundTransport>().setSystemCompletionHandler {
+        completeBackgroundEventWindow(requestProcessing, completionHandler)
+    }
     koin.get<DownloadRepository>() // ensure engine + transport listener are wired
-    koin.get<BackgroundTransport>().setSystemCompletionHandler(completionHandler)
+}
+
+private fun completeBackgroundEventWindow(requestProcessing: () -> Unit, completionHandler: () -> Unit) {
+    val completed = CompletableDeferred<Unit>()
+    val completeOnce: () -> Unit = { if (completed.complete(Unit)) completionHandler() }
+    bridgeScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            val repository = KoinPlatform.getKoin().get<DownloadRepository>() as? BackgroundUrlSessionDownloadRepository
+            repository?.completeBackgroundEventWindow(requestProcessing, completeOnce)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            BgDownloadLog.error(failure, "session.completion.refreshFailed")
+        } finally {
+            withContext(NonCancellable + Dispatchers.Main) {
+                if (!completed.isCompleted) {
+                    try {
+                        requestProcessing()
+                    } finally {
+                        completeOnce()
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ---- M4: BG-task CPU scheduling (BGProcessingTask / BGContinuedProcessingTask) ----

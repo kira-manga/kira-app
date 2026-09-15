@@ -17,7 +17,8 @@ import okio.Path
  *
  * Shipping mobile implementations validate every requested input before encoding or preservation;
  * any missing/read/invalid/decode/encode failure aborts without publishing a page-short archive.
- * Originals are removed only after a complete staged archive has atomically replaced the final.
+ * Destructive entrypoints remove originals only after a complete staged archive has atomically
+ * replaced the final. The explicit retained-input entrypoint leaves source cleanup to its caller.
  *
  * Per-platform notes:
  *  - **Android**: `Bitmap.CompressFormat.WEBP_LOSSY` on API ≥ 30, the deprecated `WEBP` on older
@@ -117,6 +118,27 @@ interface CbzWriter {
         maxHeight: Int = DEFAULT_MAX_HEIGHT,
         maxMemoryBytes: Long = DEFAULT_MAX_MEMORY_BYTES,
     ): Path
+
+    /**
+     * The same complete-input splitting/publication contract, without deleting any source file.
+     * Manual conversion must retain its recorded inputs until its metadata commit is proven; this
+     * method supplies no Room receipt, cleanup authority or restart reconciliation by itself.
+     * The caller supplies stable, chapter-owned loose inputs distinct from the archive destination
+     * and coordinates conflicting file operations. This method performs no source cleanup on
+     * success, failure or cancellation. A failed/cancelled suspend return may still follow archive
+     * publication, so callers must not infer that the archive is absent.
+     *
+     * Unsupported adapters refuse before any I/O. Never fall back to a destructive entrypoint to
+     * implement this contract. Existing download/finalizer entrypoints keep their cleanup behavior.
+     */
+    suspend fun createCbzWithSplittingRetainingSources(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        quality: Int = DEFAULT_QUALITY,
+        maxHeight: Int = DEFAULT_MAX_HEIGHT,
+        maxMemoryBytes: Long = DEFAULT_MAX_MEMORY_BYTES,
+    ): Path = throw UnsupportedOperationException("Source-retaining CBZ conversion is not supported.")
 
     companion object {
         /** Default WebP encode quality (0..100). 75 matches legacy. */

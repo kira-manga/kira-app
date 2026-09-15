@@ -1,46 +1,26 @@
 package me.manga.kira.data.repository
 
-import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
-import me.manga.kira.data.local.entity.ChapterArtifactClaim
-import me.manga.kira.platform.cbz.CbzWriter
-import me.manga.kira.platform.download.BackgroundScheduler
-import me.manga.kira.platform.download.BackgroundTransport
-import me.manga.kira.platform.download.BackgroundWorkSignal
-import me.manga.kira.platform.download.StagedDownloadPage
-import me.manga.kira.platform.download.TransferListener
-import me.manga.kira.platform.download.TransferRequest
+import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.platform.media.IosPageMediaInspector
-import me.manga.kira.platform.media.requireValid
-import me.manga.kira.platform.notification.DownloadNotifier
-import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
-import me.manga.kira.presentation.features.download.domain.clean.BackgroundDownloadHost
-import me.manga.kira.presentation.features.download.domain.clean.BackgroundDownloadStorage
-import me.manga.kira.presentation.features.download.domain.clean.BackgroundPageTransfer
-import me.manga.kira.presentation.features.download.domain.clean.BackgroundUrlSessionDownloadRepository
-import me.manga.kira.presentation.features.download.domain.clean.ChapterDownloadStages
-import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
-import me.manga.kira.presentation.features.download.domain.clean.ChapterPageResolver
-import me.manga.kira.presentation.features.download.domain.clean.DownloadManifest
-import me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStore
-import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
+import me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStore
 import me.manga.kira.presentation.features.download.domain.clean.ManifestPage
 import okio.ForwardingFileSystem
 import okio.IOException
 import okio.Path
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -50,6 +30,115 @@ import kotlin.test.assertTrue
 
 /** Actual iOS receiver/window over the existing file-backed Room fixture; no OS scheduling claim. */
 class IosBackgroundArtifactTest {
+    @Test
+    fun retryRefusesUnreadableMismatchedOrUnwritableRetainedManifestBeforeQueueAdmission() = runTest {
+        for (failure in listOf("unreadable", "source", "write")) {
+            val fixture = IosCbzFinalizationFixture()
+            val hostJob = SupervisorJob(coroutineContext[Job])
+            try {
+                val original = fixture.seed()
+                val prior = fixture.prepareAttempt(original, DownloadingState.RUNNING)
+                assertTrue(fixture.artifacts.fail(prior, "ordinary failure"))
+                assertTrue(fixture.artifacts.settle(prior))
+                val captured = fixture.download(original)
+                val path = fixture.appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "manifest.json"
+                when (failure) {
+                    "unreadable" -> fixture.system.write(path) { writeUtf8("{broken") }
+                    "source" -> DownloadManifestStore(fixture.appFileSystem).write(fixture.manifest(original).copy(api = "other"))
+                }
+                val before = fixture.system.read(path) { readByteArray() }
+                val system = object : ForwardingFileSystem(fixture.system) {
+                    override fun atomicMove(source: Path, target: Path) {
+                        if (failure == "write" && target == path) throw IOException("retry manifest publication failed")
+                        super.atomicMove(source, target)
+                    }
+                }
+                val files = object : AppFileSystem by fixture.appFileSystem {
+                    override fun fileSystem() = system
+                }
+                val transport = ArtifactTestTransport(ready = true)
+                val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport, files = files)
+                assertFailsWith<Exception> { engine.retryChapterDownload(captured) }
+                assertEquals(captured, fixture.download(original))
+                assertNull(fixture.artifacts.ownership.currentClaim(original.saved.id))
+                assertTrue(transport.enqueued.isEmpty())
+                assertContentEquals(before, fixture.system.read(path) { readByteArray() })
+            } finally {
+                hostJob.cancelAndJoin()
+                fixture.close()
+            }
+        }
+    }
+
+    @Test
+    fun retryRebindsRetainedRosterWithoutRedownloadingVerifiedPageOrAcceptingOldCapture() = runTest {
+        val fixture = IosCbzFinalizationFixture()
+        val hostJob = SupervisorJob(coroutineContext[Job])
+        try {
+            val original = fixture.seed()
+            val prior = fixture.prepareAttempt(original, DownloadingState.RUNNING)
+            val store = DownloadManifestStore(fixture.appFileSystem)
+            val retained = ReceiverPage(fixture, original, "retry-retained", failPublication = false)
+            val retainedPath = assertNotNull(fixture.artifacts.ownership.files(prior) {
+                store.write(fixture.manifest(original).copy(pages = listOf(
+                    ManifestPage(0, "https://example.test/page0.png", emptyMap()),
+                    ManifestPage(1, "https://example.test/page1.png", emptyMap(), attempts = 3),
+                )))
+                // CBZ fixture inputs are not download filenames; use the actual page publisher.
+                original.pages.keys.forEach { fixture.system.delete(it) }
+                retained.page.publish(fixture.appFileSystem.chapterDir(original.saved.mangaId, original.saved.id), 0)
+            })
+            assertEquals("image_0.png", retainedPath.name)
+            assertTrue(fixture.artifacts.fail(prior, "ordinary failure"))
+            assertTrue(fixture.artifacts.settle(prior))
+            val captured = fixture.download(original)
+            val transport = ArtifactTestTransport(ready = true)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
+            assertTrue(engine.retryChapterDownload(captured))
+            val request = transport.requests.receive()
+            assertEquals(1, request.pageIndex)
+            assertNotEquals(prior.token, request.attemptToken)
+            assertNotEquals(captured.id, fixture.download(original).id)
+            assertEquals(listOf(1), transport.enqueued.map { it.pageIndex })
+            assertEquals(request.attemptToken, fixture.manifest(original).attemptToken)
+            assertEquals(0, fixture.manifest(original).pages[1].attempts)
+            assertContentEquals(original.pages.values.last(), fixture.system.read(retainedPath) { readByteArray() })
+            assertFalse(engine.retryChapterDownload(captured))
+            assertEquals(listOf(1), transport.enqueued.map { it.pageIndex })
+        } finally {
+            hostJob.cancelAndJoin()
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun retryNeverResetsDurablePagePolicyRefusal() = runTest {
+        val fixture = IosCbzFinalizationFixture()
+        val hostJob = SupervisorJob(coroutineContext[Job])
+        try {
+            val original = fixture.seed()
+            val prior = fixture.prepareAttempt(original, DownloadingState.RUNNING)
+            assertNotNull(fixture.artifacts.ownership.files(prior) {
+                DownloadManifestStore(fixture.appFileSystem).write(fixture.manifest(original).copy(
+                    pages = listOf(ManifestPage(0, "https://example.test/page.png", emptyMap(), attempts = 3, policyRejected = true)),
+                ))
+            })
+            assertTrue(fixture.artifacts.fail(prior, "__page_policy_rejected__:ENCODED_OR_NATIVE_POLICY"))
+            assertTrue(fixture.artifacts.settle(prior))
+            val captured = fixture.download(original)
+            val transport = ArtifactTestTransport(ready = true)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
+            assertTrue(engine.retryChapterDownload(captured))
+            assertTrue(transport.enqueued.isEmpty())
+            assertEquals(DownloadingState.FAILED, fixture.download(original).state)
+            assertTrue(fixture.manifest(original).pages.single().policyRejected)
+            assertEquals(3, fixture.manifest(original).pages.single().attempts)
+        } finally {
+            hostJob.cancelAndJoin()
+            fixture.close()
+        }
+    }
+
     @Test
     fun receiverPublicationFailureExhaustsOriginalAttemptAndCannotChargeReplacementOrCancellation() = runTest {
         val fixture = IosCbzFinalizationFixture()
@@ -62,8 +151,8 @@ class IosBackgroundArtifactTest {
             val transport = ArtifactTestTransport()
             val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
             val failed = ReceiverPage(fixture, original, "failed")
-            transport.receiver.onPageComplete(original.saved.mangaId, original.saved.id, 0, claim.token, failed.page)
-            failed.discarded.await() // Includes the asynchronous receiver's failure handling/finally.
+            transport.deliverPage(original, claim.token, failed.page).await()
+            assertTrue(failed.discarded.isCompleted, "Receipt includes receiver failure handling and staging disposal")
 
             assertEquals(1, failed.publications)
             assertFalse(fixture.system.exists(failed.path))
@@ -89,16 +178,16 @@ class IosBackgroundArtifactTest {
             })
             fixture.writeManifest(original, replacement)
             val stale = ReceiverPage(fixture, original, "stale")
-            transport.receiver.onPageComplete(original.saved.mangaId, original.saved.id, 0, claim.token, stale.page)
-            stale.discarded.await()
+            transport.deliverPage(original, claim.token, stale.page).await()
+            assertTrue(stale.discarded.isCompleted)
             assertEquals(0, stale.publications)
             assertEquals(0, fixture.manifest(original).pages.single().attempts)
             assertEquals(DownloadingState.RUNNING, fixture.download(original).state)
 
             assertNotNull(fixture.artifacts.cancel(original.saved.id, "__cancelled_by_user__"))
             val cancelled = ReceiverPage(fixture, original, "cancelled")
-            transport.receiver.onPageComplete(original.saved.mangaId, original.saved.id, 0, replacement.token, cancelled.page)
-            cancelled.discarded.await()
+            transport.deliverPage(original, replacement.token, cancelled.page).await()
+            assertTrue(cancelled.discarded.isCompleted)
             assertEquals(0, cancelled.publications)
             assertEquals(0, fixture.manifest(original).pages.single().attempts)
             assertEquals("__cancelled_by_user__", fixture.download(original).errorMsg)
@@ -132,10 +221,10 @@ class IosBackgroundArtifactTest {
                         closed.complete(Unit) // Actual onCancel filled the window while parent M was closed.
                     }
                 },
-                chapterDownloadDao = fixture.dao,
-                chapterDao = fixture.db.chapterDao(),
-                appFileSystem = fixture.appFileSystem,
-                artifacts = fixture.artifacts.ownership,
+                storage = DownloadsActionStorage(
+                    fixture.dao, fixture.db.chapterDao(), fixture.appFileSystem,
+                    fixture.artifacts.ownership, fixture.db.chapterArtifactRepairDao(),
+                ),
             )
             coroutineScope {
                 val pin = launch {
@@ -171,102 +260,4 @@ class IosBackgroundArtifactTest {
             fixture.close()
         }
     }
-}
-
-private suspend fun IosCbzFinalizationFixture.prepareAttempt(
-    chapter: IosCbzChapter,
-    state: DownloadingState,
-    failures: Int = 0,
-): ChapterArtifactClaim {
-    dao.updateStateChId(chapter.saved.id, state)
-    val claim = assertNotNull(artifacts.claim(download(chapter)))
-    writeManifest(chapter, claim, failures)
-    return claim
-}
-
-private suspend fun IosCbzFinalizationFixture.writeManifest(chapter: IosCbzChapter, claim: ChapterArtifactClaim, failures: Int = 0) {
-    assertNotNull(artifacts.ownership.files(claim) {
-        DownloadManifestStore(appFileSystem).write(DownloadManifest(
-            mangaId = chapter.saved.mangaId,
-            chapterId = chapter.saved.id,
-            api = "test",
-            pages = listOf(ManifestPage(0, "https://example.test/page.png", emptyMap(), attempts = failures)),
-            attemptToken = claim.token,
-        ))
-    })
-}
-
-private fun IosCbzFinalizationFixture.manifest(chapter: IosCbzChapter): DownloadManifest =
-    assertNotNull(DownloadManifestStore(appFileSystem).read(chapter.saved.mangaId, chapter.saved.id))
-
-private fun IosCbzFinalizationFixture.engine(scope: CoroutineScope, transport: ArtifactTestTransport) =
-    BackgroundUrlSessionDownloadRepository(
-        storage = BackgroundDownloadStorage(dao, DownloadManifestStore(appFileSystem), appFileSystem),
-        stages = ChapterDownloadStages(
-            ChapterPageResolver(db.mangaDao(), object : ChapterPageProvider {
-                override suspend fun pagesOrNull(api: String, mangaUrl: String, mangaLanguage: String, chapterUrl: String): List<DownloadPage> =
-                    error("Persisted manifests must avoid a new resolve")
-            }),
-            finalizer(UnusedReceiverCbzWriter),
-        ),
-        pageTransfer = BackgroundPageTransfer(transport, IosPageMediaInspector(system = system)),
-        host = BackgroundDownloadHost(scope, BackgroundScheduler.NoOp, BackgroundWorkSignal(), DownloadNotifier.NoOp),
-        dataStoreHelper = DataStoreHelper(MapSettings()),
-        artifacts = artifacts,
-    )
-
-/** Hold startup reconciliation independently so only the callback/reopen under test can pump. */
-private class ArtifactTestTransport : BackgroundTransport {
-    lateinit var receiver: TransferListener
-    private val startup = CompletableDeferred<Unit>()
-    val requests = Channel<TransferRequest>(Channel.UNLIMITED)
-    val enqueued = mutableListOf<TransferRequest>()
-    val cancelled = mutableListOf<Pair<Long, String>>()
-    override fun setListener(listener: TransferListener) { receiver = listener }
-    override suspend fun ensureReady() { startup.await() }
-    override suspend fun enqueue(requests: List<TransferRequest>) {
-        enqueued += requests
-        requests.forEach { this.requests.send(it) }
-    }
-    override suspend fun cancelChapter(chapterId: Long, attemptToken: String) { cancelled += chapterId to attemptToken }
-    override suspend fun cancelAll() = Unit
-    override suspend fun inFlightPages(chapterId: Long, attemptToken: String): Set<Int> =
-        enqueued.filter { it.chapterId == chapterId && it.attemptToken == attemptToken }.map { it.pageIndex }.toSet()
-    override fun setSystemCompletionHandler(handler: () -> Unit) = Unit
-}
-
-/** Only the final live move fails; manifests and native inspection use the normal filesystem. */
-private class ReceiverPage(fixture: IosCbzFinalizationFixture, chapter: IosCbzChapter, name: String) {
-    val discarded = CompletableDeferred<Unit>()
-    var publications = 0
-        private set
-    val path = fixture.appFileSystem.cacheDir / "$name.png"
-    val page: StagedDownloadPage
-    init {
-        val bytes = chapter.pages.values.last()
-        fixture.system.createDirectories(fixture.appFileSystem.cacheDir)
-        fixture.system.write(path) { write(bytes) }
-        val forwarding = object : ForwardingFileSystem(fixture.system) {
-            override fun atomicMove(source: Path, target: Path) {
-                if (source == path) {
-                    publications++
-                    throw IOException("Injected receiver publication failure")
-                }
-                super.atomicMove(source, target)
-            }
-            override fun delete(path: Path, mustExist: Boolean) {
-                super.delete(path, mustExist)
-                if (path == this@ReceiverPage.path) discarded.complete(Unit)
-            }
-        }
-        page = StagedDownloadPage(forwarding, path, IosPageMediaInspector(system = fixture.system).inspect(bytes).requireValid())
-    }
-}
-
-private object UnusedReceiverCbzWriter : CbzWriter {
-    override suspend fun createCbz(imagePaths: List<Path>, mangaId: Long, chapterId: Long, quality: Int): Path =
-        error("No complete page roster in this receiver test")
-    override suspend fun createCbzWithSplitting(
-        imagePaths: List<Path>, mangaId: Long, chapterId: Long, quality: Int, maxHeight: Int, maxMemoryBytes: Long,
-    ): Path = error("No complete page roster in this receiver test")
 }

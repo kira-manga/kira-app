@@ -1,16 +1,17 @@
 package me.manga.kira.data.repository
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.filesystem.AppFileSystem
-import okio.Path.Companion.toPath
 
 /**
  * The I/O dependencies of Settings' existing-download conversion, separate from preferences/cache.
@@ -27,31 +28,32 @@ class DownloadedChapterConversion(
     private val artifacts: ChapterArtifacts,
     private val commits: ChapterArtifactCommitDao,
 ) {
-    /** Recheck admission, then pin the existing codec and its checked metadata publication. */
+    /** Retry only drained/retiring receipts, before Settings reads its eligible chapter snapshot. */
+    suspend fun recover() = artifacts.recoverConversions()
+
+    /** Retain both copies until the actual Room outcome is proved after all writer/file use. */
     suspend fun convert(chapter: SavedChapterEntity): Boolean {
         val claim = artifacts.beginConversion(chapter) ?: return false
+        var outcome = ChapterConversionOutcome.UNKNOWN
         try {
-            return artifacts.files(claim) {
-                val archive = archives.createCbzWithSplitting(
-                    imagePaths = chapter.localImagePaths.map { it.toPath() },
-                    mangaId = chapter.mangaId,
-                    chapterId = chapter.id,
-                )
-                val metadata = files.fileSystem().metadata(archive)
-                val size = checkNotNull(metadata.size)
-                check(metadata.isRegularFile && size > 0)
-                artifacts.publish(claim) { commits.commitConversion(claim, chapter, listOf(archive.toString()), size) } == true
-            } == true
+            artifacts.convertFiles(
+                claim,
+                write = { paths -> archives.createCbzWithSplittingRetainingSources(paths, chapter.mangaId, chapter.id) },
+                commit = { archive, size -> commits.commitConversion(claim, chapter, listOf(archive.toString()), size) },
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A thrown Room/dispatcher return can follow a real commit. Readback below decides.
         } finally {
             withContext(NonCancellable) {
                 try {
-                    // Never infer rollback from a thrown/cancelled Room return or delete output.
-                    // App57's codec/metadata atomicity is intentionally not redesigned here.
-                    artifacts.settle(claim) { true }
+                    outcome = artifacts.settleConversion(claim)
                 } catch (_: Exception) {
-                    // Retained custody is settled at startup; no speculative compensation.
+                    // Preserve the original cancellation and both copies/custody on unknown proof.
                 }
             }
         }
+        return outcome == ChapterConversionOutcome.COMMITTED
     }
 }

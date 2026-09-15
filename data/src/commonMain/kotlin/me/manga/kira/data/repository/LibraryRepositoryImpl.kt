@@ -282,9 +282,9 @@ class LibraryRepositoryImpl(
     /**
      * Fully erase a manga's data on library removal. Reads the url + chapter urls BEFORE deleting
      * the rows (they're needed to clear the url-keyed stores), then:
+     *  - deleteMangaFiles: finish the on-disk manga/$id directory while the original key exists;
      *  - removeMangaWithChapters: saved_manga + saved_chapters + chapter_downloads + notifications
-     *    (by mangaId) + history (by mangaId), in one transaction;
-     *  - deleteMangaFiles: the on-disk manga/$id directory;
+     *    (by mangaId) + history (by mangaId), in one transaction, only after files are removed;
      *  - removeHistoryByUrl + removeNotificationsByUrl: belt-and-braces clear of any history /
      *    notification rows the rework wrote with mangaId=0 (history) or a divergent id;
      *  - readProgress.clear: the per-chapter resume positions in settings (url-keyed, no FK).
@@ -302,8 +302,10 @@ class LibraryRepositoryImpl(
             owners.forEach { owner ->
                 check(artifacts.removeChapterUnderParent(owner)) { "Manga artifact removal could not be settled" }
             }
-            libraryDeo.removeMangaWithChapters(id)
+            // Keep the original lookup key retryable if final root/stray-file cleanup fails.
+            // The App33 parent barrier remains closed through both files and graph removal.
             fileService.deleteMangaFiles(id)
+            libraryDeo.removeMangaWithChapters(id)
         }
         mangaUrl?.let {
             libraryDeo.removeHistoryByUrl(it)

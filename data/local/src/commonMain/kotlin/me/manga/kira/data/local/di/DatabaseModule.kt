@@ -7,6 +7,7 @@ import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
 import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
@@ -42,6 +43,7 @@ fun databaseModule(): Module = module {
     single<ChapterDownloadDao> { get<MangaDatabase>().chapterDownloadingDao() }
     single<ChapterArtifactDao> { get<MangaDatabase>().chapterArtifactDao() }
     single<ChapterArtifactCommitDao> { get<MangaDatabase>().chapterArtifactCommitDao() }
+    single<ChapterArtifactRepairDao> { get<MangaDatabase>().chapterArtifactRepairDao() }
     single<SourcesDao> { get<MangaDatabase>().sourcesDao() }
     single<SourceCatalogDao> { get<MangaDatabase>().sourceCatalogDao() }
     single<BackupDao> { get<MangaDatabase>().backupDao() }

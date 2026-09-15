@@ -4,9 +4,12 @@ import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDownloadDao
+import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.service.FileService
@@ -51,9 +54,45 @@ internal class IosCbzFinalizationFixture {
     var db: MangaDatabase = openDatabase()
         private set
     val dao: ChapterDownloadDao get() = db.chapterDownloadingDao()
-    private var artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
+    private var artifactRuntime = ArtifactTestRuntime(db, appFileSystem, IosPageMediaInspector(system = system))
     val artifacts: ChapterDownloadArtifacts get() = artifactRuntime.downloads
     private var nextChapter = 0
+
+    /** Manual-conversion source snapshot uses genuine old-container paths, not the writer's output. */
+    suspend fun seedConversion(): IosCbzChapter {
+        val original = seed()
+        val saved = original.saved.copy(isDownloaded = true, isBookmarked = true, lastReadPage = 3,
+            localImagePaths = original.pages.keys.map {
+                "/old-container/manga/${original.saved.mangaId}/chapter_${original.saved.id}/${it.name}"
+            })
+        val row = original.download.copy(state = DownloadingState.SUCCESS)
+        db.backupDao().updateChapterRow(saved)
+        dao.insert(row)
+        db.notificationDao().insertNotificationsList(listOf(ChapterNotification(
+            api = row.api, language = "en", mangaId = saved.mangaId, mangaTitle = "CBZ", mangaImageUrl = "cover",
+            mangaUrl = "manga", chapterId = saved.id, chapterNumber = saved.number, chapterUrl = saved.url,
+            isRead = true, isDownloaded = true, localImagePaths = saved.localImagePaths,
+        )))
+        return original.copy(saved = saved, download = row)
+    }
+
+    suspend fun conversionMirror(original: IosCbzChapter): ChapterNotification =
+        db.notificationDao().getAllNotifications().first().single { it.chapterId == original.saved.id }
+
+    /** Install only before a producer starts, or after reopen; never a concurrent artifact owner. */
+    fun conversionFaults(commits: ChapterArtifactCommitDao) {
+        artifactRuntime = ArtifactTestRuntime(db.chapterArtifactDao(), commits, appFileSystem, IosPageMediaInspector(system = system))
+    }
+
+    fun settingsConverter(writer: CbzWriter): SettingsRepositoryImpl = SettingsRepositoryImpl(
+        legacy = me.manga.kira.presentation.features.settings.domain.SettingsRepository(
+            me.manga.kira.core.storage.SharedPrefsHelper(MapSettings()), DataStoreHelper(MapSettings()), appFileSystem),
+        dispatchers = CbzCallerDispatchers,
+        dataStore = DataStoreHelper(MapSettings()),
+        conversion = DownloadedChapterConversion(db.chapterDao(), writer, db.mangaDao(), dao,
+            appFileSystem, artifactRuntime.ownership, artifactRuntime.commits),
+        httpCache = me.manga.kira.core.cache.HttpCacheClearer { },
+    )
 
     suspend fun seed(mangaId: Long? = null): IosCbzChapter {
         val number = ++nextChapter
@@ -162,7 +201,7 @@ internal class IosCbzFinalizationFixture {
     fun reopen() {
         db.close()
         db = openDatabase()
-        artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
+        artifactRuntime = ArtifactTestRuntime(db, appFileSystem, IosPageMediaInspector(system = system))
     }
 
     fun close() {

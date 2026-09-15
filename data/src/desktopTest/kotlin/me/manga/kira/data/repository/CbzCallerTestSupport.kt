@@ -1,9 +1,7 @@
 package me.manga.kira.data.repository
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import com.russhwolf.settings.MapSettings
-import kotlinx.coroutines.Dispatchers
 import me.manga.kira.core.cache.HttpCacheClearer
-import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.cbz.CbzWriter
@@ -13,12 +11,8 @@ import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.domain.clean.ChapterCompletionRecords
 import me.manga.kira.presentation.features.download.domain.clean.ChapterFinalizer
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
-import okio.ByteString.Companion.decodeBase64
 import okio.Path
 import okio.Path.Companion.toPath
-import java.io.ByteArrayOutputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import me.manga.kira.presentation.features.settings.domain.SettingsRepository as LegacySettingsRepository
 
 /** JVM-host proof of the shared mobile callers/real Room writes, not a Desktop writer test. */
@@ -79,17 +73,7 @@ internal fun DownloadRecoveryFixture.installPreviousArchive(
     pages: List<ByteArray> = listOf(CBZ_CALLER_PNG),
 ): Pair<Path, ByteArray> {
     val path = appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"
-    val bytes =
-        ByteArrayOutputStream().use { buffer ->
-            ZipOutputStream(buffer).use { zip ->
-                pages.forEachIndexed { index, page ->
-                    zip.putNextEntry(ZipEntry("page_${index.toString().padStart(CBZ_ENTRY_INDEX_DIGITS, '0')}.png"))
-                    zip.write(page)
-                    zip.closeEntry()
-                }
-            }
-            buffer.toByteArray()
-        }
+    val bytes = cbzCallerArchiveBytes(pages)
     fs.write(path) { write(bytes) }
     return path to bytes
 }
@@ -118,23 +102,20 @@ internal class CbzCallerWriter(
         requests += chapterId to imagePaths.toList()
         return convert(imagePaths, chapterId)
     }
+
+    override suspend fun createCbzWithSplittingRetainingSources(
+        imagePaths: List<Path>,
+        mangaId: Long,
+        chapterId: Long,
+        quality: Int,
+        maxHeight: Int,
+        maxMemoryBytes: Long,
+    ): Path {
+        requests += chapterId to imagePaths.toList()
+        return convert(imagePaths, chapterId)
+    }
 }
 
-private object CbzCallerDispatchers : DispatcherProvider {
-    override val main get() = Dispatchers.Unconfined
-    override val mainImmediate get() = Dispatchers.Unconfined
-    override val default get() = Dispatchers.Unconfined
-    override val io get() = Dispatchers.Unconfined
-    override val unconfined get() = Dispatchers.Unconfined
-}
-
-private const val CBZ_ENTRY_INDEX_DIGITS = 4
-
-private val CBZ_CALLER_PNG: ByteArray =
-    checkNotNull(
-        "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAADsdIMmAAAAC0lEQVR42mNgQAUAABAAAaoZ+IIAAAAASUVORK5CYII="
-            .decodeBase64(),
-    ).toByteArray()
 
 internal fun DownloadRecoveryFixture.chapterArtifactsForTest(): ChapterDownloadArtifacts {
     return artifactRuntime.downloads

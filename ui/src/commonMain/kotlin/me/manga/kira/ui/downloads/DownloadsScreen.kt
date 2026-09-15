@@ -323,16 +323,19 @@ internal fun DownloadsScreenContent(
                 when (state.selectedTab) {
                     0 -> DownloadBucketList(
                         items = state.active,
+                        pendingChapterIds = state.pendingChapterIds,
                         emptyLabel = stringResource(Res.string.no_active_downloads),
                         onIntent = onIntent,
                     )
                     1 -> DownloadBucketList(
                         items = state.failed,
+                        pendingChapterIds = state.pendingChapterIds,
                         emptyLabel = stringResource(Res.string.no_failed_downloads),
                         onIntent = onIntent,
                     )
                     else -> DownloadBucketList(
                         items = state.completed,
+                        pendingChapterIds = state.pendingChapterIds,
                         emptyLabel = stringResource(Res.string.no_completed_downloads),
                         onIntent = onIntent,
                     )
@@ -345,6 +348,7 @@ internal fun DownloadsScreenContent(
 @Composable
 private fun DownloadBucketList(
     items: List<DownloadedChapter>,
+    pendingChapterIds: Set<Long>,
     emptyLabel: String,
     onIntent: (DownloadsIntent) -> Unit,
 ) {
@@ -362,10 +366,11 @@ private fun DownloadBucketList(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         items(items = items, key = { it.chapterId }) { item ->
+            val actionsEnabled = item.chapterId !in pendingChapterIds
             if (item.state == DownloadState.RUNNING) {
-                RunningDownloadCard(item = item, onIntent = onIntent)
+                RunningDownloadCard(item = item, actionsEnabled = actionsEnabled, onIntent = onIntent)
             } else {
-                DownloadCard(item = item, onIntent = onIntent)
+                DownloadCard(item = item, actionsEnabled = actionsEnabled, onIntent = onIntent)
             }
         }
     }
@@ -464,6 +469,7 @@ private fun DownloadStatusChip(
 @Composable
 private fun DownloadCard(
     item: DownloadedChapter,
+    actionsEnabled: Boolean,
     onIntent: (DownloadsIntent) -> Unit,
 ) {
     val spacing = LocalSpacing.current
@@ -500,7 +506,7 @@ private fun DownloadCard(
                 DownloadStatusChipFor(item)
             }
         },
-        trailing = { DownloadRowAction(item = item, onIntent = onIntent) },
+        trailing = { DownloadRowAction(item = item, actionsEnabled = actionsEnabled, onIntent = onIntent) },
     )
 }
 
@@ -550,6 +556,7 @@ private fun DownloadStatusChipFor(item: DownloadedChapter) {
 @Composable
 private fun DownloadRowAction(
     item: DownloadedChapter,
+    actionsEnabled: Boolean,
     onIntent: (DownloadsIntent) -> Unit,
 ) {
     when (item.state) {
@@ -558,6 +565,7 @@ private fun DownloadRowAction(
                 icon = KiraIcons.Close,
                 contentDescription = stringResource(Res.string.cancel),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                enabled = actionsEnabled,
                 onClick = { onIntent(DownloadsIntent.OnCancel(item)) },
             )
         }
@@ -578,12 +586,14 @@ private fun DownloadRowAction(
                     contentDescription = stringResource(Res.string.retry),
                     tint = MaterialTheme.colorScheme.primary,
                     accented = true,
+                    enabled = actionsEnabled,
                     onClick = { onIntent(DownloadsIntent.OnRetry(item)) },
                 )
                 DownloadIconButton(
                     icon = KiraIcons.Delete,
                     contentDescription = stringResource(Res.string.np_delete_download),
                     tint = MaterialTheme.colorScheme.error,
+                    enabled = actionsEnabled,
                     onClick = { onIntent(DownloadsIntent.OnDelete(item)) },
                 )
             }
@@ -603,6 +613,7 @@ private fun DownloadRowAction(
                     icon = KiraIcons.Delete,
                     contentDescription = stringResource(Res.string.np_delete_download),
                     tint = MaterialTheme.colorScheme.error,
+                    enabled = actionsEnabled,
                     onClick = { onIntent(DownloadsIntent.OnDelete(item)) },
                 )
             }
@@ -625,6 +636,7 @@ private fun DownloadIconButton(
     tint: Color,
     onClick: () -> Unit,
     accented: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val container = if (accented) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
@@ -638,6 +650,7 @@ private fun DownloadIconButton(
     }
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .size(42.dp)
             .clip(RoundedCornerShape(13.dp))
@@ -647,7 +660,7 @@ private fun DownloadIconButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = tint,
+            tint = if (enabled) tint else tint.copy(alpha = tint.alpha * 0.38f),
             modifier = Modifier.size(19.dp),
         )
     }
@@ -656,6 +669,7 @@ private fun DownloadIconButton(
 @Composable
 private fun RunningDownloadCard(
     item: DownloadedChapter,
+    actionsEnabled: Boolean,
     onIntent: (DownloadsIntent) -> Unit,
 ) {
     val spacing = LocalSpacing.current
@@ -723,6 +737,7 @@ private fun RunningDownloadCard(
                 contentDescription = stringResource(Res.string.np_cancel_download),
                 tint = MaterialTheme.colorScheme.error,
                 accented = true,
+                enabled = actionsEnabled,
                 onClick = { onIntent(DownloadsIntent.OnCancelRunning(item)) },
             )
         },

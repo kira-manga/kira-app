@@ -23,11 +23,12 @@ import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.domain.model.settings.SettingsToggle
 import okio.FileSystem
-import okio.FileMetadata
-import okio.ForwardingFileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import kotlin.test.Test
+import kotlin.test.AfterTest
+import kotlin.random.Random
+import me.manga.kira.platform.filesystem.chapterDir
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -50,6 +51,11 @@ import me.manga.kira.presentation.features.settings.domain.SettingsRepository as
  *    convert normally).
  */
 class CompressExistingDownloadsTest {
+    private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kira-conversion-progress-${Random.nextLong().toULong()}"
+
+    @AfterTest
+    fun closeFiles() { FileSystem.SYSTEM.deleteRecursively(root, mustExist = false) }
+
     private val testDispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher get() = Dispatchers.Unconfined
@@ -60,7 +66,7 @@ class CompressExistingDownloadsTest {
         }
 
     /** Records each [createCbzWithSplitting] call; returns a deterministic archive path per chapter. */
-    private class FakeCbzWriter(
+    private inner class FakeCbzWriter(
         /** chapterIds the writer should throw for (simulates iOS NotImplementedError / a bad page). */
         private val throwFor: Set<Long> = emptySet(),
         /** Invoked after each successful pack — lets a test request a mid-run stop deterministically. */
@@ -76,6 +82,10 @@ class CompressExistingDownloadsTest {
         ): Path = error("not used by compressExistingDownloads")
 
         override suspend fun createCbzWithSplitting(
+            imagePaths: List<Path>, mangaId: Long, chapterId: Long, quality: Int, maxHeight: Int, maxMemoryBytes: Long,
+        ): Path = error("Manual conversion must retain its sources")
+
+        override suspend fun createCbzWithSplittingRetainingSources(
             imagePaths: List<Path>,
             mangaId: Long,
             chapterId: Long,
@@ -86,7 +96,9 @@ class CompressExistingDownloadsTest {
             if (chapterId in throwFor) throw NotImplementedError("CbzWriter unsupported on this platform")
             packed += chapterId
             afterPack(chapterId)
-            return "manga/$mangaId/chapter_$chapterId/chapter_$chapterId.cbz".toPath()
+            val archive = appFileSystem.chapterDir(mangaId, chapterId) / "chapter_$chapterId.cbz"
+            FileSystem.SYSTEM.write(archive) { write(cbzCallerArchiveBytes()) }
+            return archive
         }
     }
 
@@ -236,28 +248,27 @@ class CompressExistingDownloadsTest {
         override suspend fun getMangaIdsByApi(api: String): List<Long> = error("unused")
     }
 
-    private fun chapter(
-        id: Long,
-        paths: List<String>,
-    ): SavedChapterEntity =
-        SavedChapterEntity(
-            id = id,
-            mangaId = id * 10,
-            name = "ch$id",
-            number = "$id",
-            url = "https://example/$id",
-            isDownloaded = true,
-            localImagePaths = paths,
-        )
-
-    /** Stub metadata for this unit-only writer. Real bytes/sizes are covered by desktop Room tests. */
-    private object FakeAppFileSystem : AppFileSystem {
-        override val filesDir: Path = "files".toPath()
-        override val cacheDir: Path = "cache".toPath()
-        private val metadataOnly = object : ForwardingFileSystem(FileSystem.SYSTEM) {
-            override fun metadataOrNull(path: Path): FileMetadata = FileMetadata(isRegularFile = true, size = 1L)
+    private fun chapter(id: Long, paths: List<String>): SavedChapterEntity {
+        val directory = appFileSystem.chapterDir(id * 10, id)
+        FileSystem.SYSTEM.createDirectories(directory)
+        val normalized = paths.map { stored ->
+            (directory / stored.toPath().name).also { path ->
+                FileSystem.SYSTEM.write(path) {
+                    write(if (path.name.endsWith(".cbz")) cbzCallerArchiveBytes() else CBZ_CALLER_PNG)
+                }
+            }.toString()
         }
-        override fun fileSystem(): FileSystem = metadataOnly
+        return SavedChapterEntity(
+            id = id, mangaId = id * 10, name = "ch$id", number = "$id", url = "https://example/$id",
+            isDownloaded = true, localImagePaths = normalized,
+        )
+    }
+
+    /** Owned fixture files; progress fakes now return a structurally valid archive, not a stat lie. */
+    private val appFileSystem = object : AppFileSystem {
+        override val filesDir: Path = root / "files"
+        override val cacheDir: Path = root / "cache"
+        override fun fileSystem(): FileSystem = FileSystem.SYSTEM
     }
 
     /**
@@ -269,7 +280,7 @@ class CompressExistingDownloadsTest {
         LegacySettingsRepository(
             prefsHelper = SharedPrefsHelper(MapSettings()),
             ds = DataStoreHelper(MapSettings()),
-            fs = FakeAppFileSystem,
+            fs = appFileSystem,
         )
 
     private fun repo(
@@ -280,7 +291,7 @@ class CompressExistingDownloadsTest {
         downloadDao: ChapterDownloadDao = FakeChapterDownloadDao(),
         dataStore: DataStoreHelper = DataStoreHelper(MapSettings()),
     ): SettingsRepositoryImpl {
-        val artifacts = fakeArtifactRuntime(FakeAppFileSystem, dao, downloadDao)
+        val artifacts = fakeArtifactRuntime(appFileSystem, dao, downloadDao, CbzCallerKnownPngInspector)
         return SettingsRepositoryImpl(
             legacy = legacySettings(),
             dispatchers = testDispatchers,
@@ -291,7 +302,7 @@ class CompressExistingDownloadsTest {
                     archives = writer,
                     manga = FakeMangaDao,
                     downloads = downloadDao,
-                    files = FakeAppFileSystem,
+                    files = appFileSystem,
                     artifacts = artifacts.ownership,
                     commits = artifacts.commits,
                 ),
@@ -351,9 +362,9 @@ class CompressExistingDownloadsTest {
             assertEquals(listOf(1L, 2L), writer.packed)
             assertEquals(2, dao.pathRewrites.size)
             assertEquals(1L, dao.pathRewrites[0].first)
-            assertEquals(listOf("manga/10/chapter_1/chapter_1.cbz"), dao.pathRewrites[0].second)
+            assertEquals(listOf((appFileSystem.chapterDir(10, 1) / "chapter_1.cbz").toString()), dao.pathRewrites[0].second)
             assertEquals(2L, dao.pathRewrites[1].first)
-            assertEquals(listOf("manga/20/chapter_2/chapter_2.cbz"), dao.pathRewrites[1].second)
+            assertEquals(listOf((appFileSystem.chapterDir(20, 2) / "chapter_2.cbz").toString()), dao.pathRewrites[1].second)
         }
 
     @Test
@@ -410,8 +421,8 @@ class CompressExistingDownloadsTest {
     @Test
     fun writerAndRewriteFailures_areCounted_withoutPreventingLaterChapters() =
         runTest {
-            val chapters = (1L..3L).map { chapter(it, listOf("manga/$it/page.webp")) }
             for (allFail in listOf(false, true)) {
+                val chapters = (1L..3L).map { chapter(it, listOf("manga/$it/page.webp")) }
                 val dao = FakeChapterDao(chapters, failRewriteFor = setOf(2L))
                 val writer = FakeCbzWriter(throwFor = if (allFail) setOf(1L, 3L) else setOf(1L))
                 val repository = repo(dao, writer)

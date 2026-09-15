@@ -162,23 +162,10 @@ interface DownloadsActionRepository {
     suspend fun enqueueDownload(chapterId: Long, mangaTitle: String, api: String): Result<Unit>
 
     /**
-     * Retry the FAILED download identified by [chapterId] by re-enqueuing the same chapter.
-     *
-     * The impl looks up the legacy `ChapterDownloadEntity` row for [chapterId] via the DAO
-     * (carries `url` / `api` / `mangaTitle` which the rework `DownloadedChapter` does not
-     * expose to `:domain`), converts to a `SavedChapterEntity` via the existing
-     * `HandelDataClasses.toChapterEntity()` extension, then calls
-     * `DownloadRepository.enqueueChapterDownload(savedChapter, title, api)`. Same semantics
-     * as the legacy `DownloadViewModelv2.downloadChapter(...)` path.
-     *
-     * If the row has already been deleted between the user tapping retry and the call
-     * reaching this method (race vs `cancelAllDownloads`), the impl returns
-     * `Result.failure(...)` — the caller surfaces an error snackbar. (The legacy
-     * `clearFailedAndQueued()` race vector was retired in Phase 9.x.downloadrepository.
-     * componentprune, Task #398; `cancelAllDownloads` remains the sole bulk race vector.)
-     *
-     * Concurrency: `suspend` — the legacy `enqueueChapterDownload` is suspend
-     * (WorkManager enqueue on Android / coroutine queue on iOS+Desktop).
+     * Retry the FAILED download identified by [chapterId]. The implementation captures its row,
+     * then atomically checks that original generation/owner/state and reserves a fresh attempt.
+     * Deletion, replacement, non-FAILED state or unsettled file custody returns failure rather
+     * than resurrecting history. Platform work starts only after successful admission.
      */
     suspend fun retryDownload(chapterId: Long): Result<Unit>
 

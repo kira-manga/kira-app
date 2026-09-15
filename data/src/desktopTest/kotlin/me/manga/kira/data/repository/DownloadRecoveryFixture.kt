@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDownloadDao
+import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
@@ -44,7 +46,7 @@ internal class DownloadRecoveryFixture {
     var db: MangaDatabase = openDatabase()
         private set
     val dao: ChapterDownloadDao get() = db.chapterDownloadingDao()
-    var artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
+    var artifactRuntime = ArtifactTestRuntime(db, appFileSystem, me.manga.kira.platform.media.DesktopPageMediaInspector(system = fs))
         private set
     var restartCalls = 0
         private set
@@ -69,19 +71,27 @@ internal class DownloadRecoveryFixture {
     fun reopen() {
         db.close()
         db = openDatabase()
-        artifactRuntime = ArtifactTestRuntime(db, appFileSystem)
+        artifactRuntime = ArtifactTestRuntime(db, appFileSystem, me.manga.kira.platform.media.DesktopPageMediaInspector(system = fs))
+    }
+
+    /** Replace the unused runtime before a fault case; never create a second live chapter owner. */
+    fun conversionFaults(commits: ChapterArtifactCommitDao = db.chapterArtifactCommitDao(), storage: FileSystem = fs) {
+        val files = object : AppFileSystem by appFileSystem {
+            override fun fileSystem(): FileSystem = storage
+        }
+        artifactRuntime = ArtifactTestRuntime(
+            db.chapterArtifactDao(), commits, files, me.manga.kira.platform.media.DesktopPageMediaInspector(system = storage),
+        )
     }
 
     fun actions(
         downloadDao: ChapterDownloadDao = dao,
         fileSystem: AppFileSystem = appFileSystem,
         engine: me.manga.kira.presentation.features.download.domain.clean.DownloadRepository = legacy,
+        repairDao: ChapterArtifactRepairDao = db.chapterArtifactRepairDao(),
     ) = DownloadsActionRepositoryImpl(
         legacy = engine,
-        chapterDownloadDao = downloadDao,
-        chapterDao = db.chapterDao(),
-        appFileSystem = fileSystem,
-        artifacts = artifactRuntime.ownership,
+        storage = DownloadsActionStorage(downloadDao, db.chapterDao(), fileSystem, artifactRuntime.ownership, repairDao),
     )
 
     suspend fun seed(

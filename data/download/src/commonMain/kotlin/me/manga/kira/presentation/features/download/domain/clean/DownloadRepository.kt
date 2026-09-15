@@ -78,6 +78,8 @@ interface DownloadRepository {
 
     fun observeAllDownloads(): Flow<List<ChapterDownloadEntity>>
     suspend fun enqueueChapterDownload(chapter: SavedChapterEntity, title: String, mangaApi: String)
+    /** Only the captured FAILED attempt may retry; unsupported engines fail closed. */
+    suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = false
     suspend fun deleteDownload(chapterId: Long)
 
     suspend fun onCancel(chapterId: Long)

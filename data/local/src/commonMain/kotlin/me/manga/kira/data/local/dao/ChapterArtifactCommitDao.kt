@@ -10,6 +10,7 @@ import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.ChapterConversionRoster
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.isOwnedBy
@@ -75,7 +76,7 @@ interface ChapterArtifactCommitDao {
         return true
     }
 
-    /** Minimal manual-conversion join: no speculative filesystem compensation on a failed return. */
+    /** Complete retained-input publication; cleanup waits for authoritative post-producer readback. */
     @Transaction
     suspend fun commitConversion(
         claim: ChapterArtifactClaim,
@@ -86,13 +87,16 @@ interface ChapterArtifactCommitDao {
         require(paths.isNotEmpty() && sizeBytes > 0)
         val record = artifact(expected.id) ?: return false
         if (!record.isOwnedBy(claim) || record.retiring || claim.operation != ChapterArtifactOperation.CONVERT ||
-            record.committedRelativePath != null
+            record.committedRelativePath != null || record.retiredRelativePath != null ||
+            claim.pending != null || record.ownsPendingPath
         ) return false
+        val sources = claim.conversionSourceRoster?.let(ChapterConversionRoster::decode) ?: return false
+        if (sources.map { it.storedPath } != expected.localImagePaths) return false
         val chapter = saved(expected.id) ?: return false
         if (!sameDownloadSnapshot(chapter, expected) || !chapter.isDownloaded || !claim.owner.matches(chapter)) return false
         val api = mangaApi(chapter.mangaId) ?: return false
         val row = download(chapter.id)
-        if (row != null && (row.id != claim.downloadId || !row.matches(chapter) || row.isActiveArtifactDownload())) return false
+        if (row != null && (row.id != claim.downloadId || !row.matches(chapter) || row.isActiveArtifactDownload() || row.api != api)) return false
         check(writeSaved(ArtifactReadableUpdate(chapter.id, true, paths)) == 1)
         for (mirror in notifications(chapter.id, chapter.mangaId, chapter.url, api)) {
             check(writeNotification(ArtifactReadableUpdate(mirror.id, true, paths)) == 1)
@@ -101,6 +105,14 @@ interface ChapterArtifactCommitDao {
         check(writeArtifact(record.copy(committedToken = claim.token)) == 1)
         return true
     }
+
+    /** All metadata/ledger/mirror checks run in one actual Room read transaction. */
+    @Transaction
+    suspend fun readConversionOutcome(
+        claim: ChapterArtifactClaim,
+        canonicalPath: String,
+        sizeBytes: Long?,
+    ): ChapterConversionOutcome = conversionOutcome(claim, canonicalPath, sizeBytes)
 
     /** Original-token terminal publication, including retirement of an older restored generation. */
     @Transaction

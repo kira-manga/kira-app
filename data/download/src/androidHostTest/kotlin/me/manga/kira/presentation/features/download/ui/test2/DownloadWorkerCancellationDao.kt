@@ -19,6 +19,8 @@ internal class DownloadWorkerCancellationDao(
     private val sender: CompleteSendDispatcher,
     private val commit: NativeCommitGate,
 ) : ChapterDownloadDao by rows.realDao {
+    val queuedSnapshot = CompletableDeferred<List<ChapterDownloadEntity>>()
+    val releaseQueuedSnapshot = CompletableDeferred<Unit>()
     val firstProgressReturned = CompletableDeferred<Unit>()
     val lastProgressReturned = CompletableDeferred<Unit>()
     val releaseProgress = CompletableDeferred<Unit>()
@@ -26,8 +28,10 @@ internal class DownloadWorkerCancellationDao(
     val completionReturned = CompletableDeferred<Boolean>()
     val completionCancelled = CompletableDeferred<CancellationException>()
     val ownershipReadAfterCancellation = CompletableDeferred<ChapterDownloadEntity?>()
+    val runningCalls = AtomicInteger()
     val progressCalls = AtomicInteger()
     val completionCalls = AtomicInteger()
+    val ownershipReadCalls = AtomicInteger()
     val requeueCalls = AtomicInteger()
 
     val notifications: NotificationDao =
@@ -50,7 +54,20 @@ internal class DownloadWorkerCancellationDao(
     override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> {
         // Before entering Room: capture doWork's coroutineScope, not a nested Room/collector Job.
         worker.capture(currentCoroutineContext().job)
-        return rows.realDao.getQueuedChaptersForWorker(queuedState)
+        val selected = rows.realDao.getQueuedChaptersForWorker(queuedState)
+        if (seam == CancellationSeam.PRECLAIM_CANCEL && queuedSnapshot.complete(selected)) {
+            // Return the actual captured Room rows after cancellation, not a new queue query.
+            releaseQueuedSnapshot.await()
+        }
+        return selected
+    }
+
+    override suspend fun updateStateChId(
+        id: Long,
+        state: DownloadingState,
+    ) {
+        if (state == DownloadingState.RUNNING) runningCalls.incrementAndGet()
+        rows.realDao.updateStateChId(id, state)
     }
 
     override suspend fun updateProgressForArtifact(
@@ -92,6 +109,7 @@ internal class DownloadWorkerCancellationDao(
     }
 
     override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? {
+        ownershipReadCalls.incrementAndGet()
         val row = rows.realDao.getDownloadByChapter(chapterId)
         if (worker.job?.isCancelled == true) ownershipReadAfterCancellation.complete(row)
         return row

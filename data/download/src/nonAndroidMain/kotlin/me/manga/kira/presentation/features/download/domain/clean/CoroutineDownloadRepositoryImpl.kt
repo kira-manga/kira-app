@@ -163,10 +163,22 @@ class CoroutineDownloadRepositoryImpl(
         }
     }
 
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean {
+        if (artifacts.retry(expected) == null) return false
+        wakeups.trySend(Unit)
+        return true
+    }
+
     override suspend fun deleteDownload(chapterId: Long) {
         val row = dao.getDownloadByChapter(chapterId) ?: return
-        if (row.state != DownloadingState.SUCCESS) onCancel(chapterId)
-        dao.deleteHistoryAttempt(chapterId, row.id)
+        try {
+            check(artifacts.deleteAttempt(row) { claim ->
+                val job = activeJobMutex.withLock { activeJob.takeIf { activeClaim?.token == claim.token } }
+                job?.cancelAndJoin()
+            }) { "Download cleanup could not be settled" }
+        } finally {
+            wakeups.trySend(Unit)
+        }
     }
 
     override suspend fun onCancel(chapterId: Long) {
@@ -174,9 +186,12 @@ class CoroutineDownloadRepositoryImpl(
         val job = activeJobMutex.withLock {
             activeJob.takeIf { activeClaim?.token == claim.token }
         }
-        job?.cancelAndJoin()
-        artifacts.settle(claim)
-        wakeups.trySend(Unit)
+        try {
+            job?.cancelAndJoin()
+            check(artifacts.settleCancelled(claim)) { "Download cleanup could not be settled" }
+        } finally {
+            wakeups.trySend(Unit)
+        }
     }
 
     override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
@@ -188,7 +203,9 @@ class CoroutineDownloadRepositoryImpl(
         val claims = active.mapNotNull { artifacts.cancel(it.chapterId, CANCELLED_BY_USER) }
         val job = activeJobMutex.withLock { activeJob.takeIf { activeClaim?.token in claims.map { it.token } } }
         job?.cancelAndJoin()
-        claims.forEach { artifacts.settle(it) }
+        var settled = true
+        claims.forEach { if (!artifacts.settleCancelled(it)) settled = false }
+        check(settled) { "Download cleanup could not be settled" }
     }
 
     // Restart-freeze fix (2026-06-02). Reset rows orphaned in RUNNING / COMPRESSING by a previous

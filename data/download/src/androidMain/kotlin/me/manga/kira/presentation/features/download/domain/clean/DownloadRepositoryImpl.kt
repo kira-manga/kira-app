@@ -8,7 +8,6 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
-import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadEntity
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
@@ -83,18 +82,36 @@ class DownloadRepositoryImpl(
         if (claim != null) enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean {
+        if (artifacts.retry(expected) == null) return false
+        enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
+        return true
+    }
+
     override suspend fun deleteDownload(chapterId: Long) {
         val row = dao.getDownloadByChapter(chapterId) ?: return
-        // Removing SUCCESS history remains row-only: its committed artifact has independent custody.
-        if (row.state != DownloadingState.SUCCESS) onCancel(chapterId)
-        dao.deleteHistoryAttempt(chapterId, row.id)
+        var stopped = false
+        try {
+            check(artifacts.deleteAttempt(row) { claim ->
+                artifacts.ownership.requestStopIfProducing(claim) {
+                    stopped = true
+                    workManager.cancelUniqueWork(WORK_NAME)
+                }
+            }) { "Download cleanup could not be settled" }
+        } finally {
+            // One failed chapter must not strand other queued chapters after the shared worker stops.
+            if (stopped) enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
     }
 
     override suspend fun onCancel(chapterId: Long) {
         val claim = artifacts.cancel(chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) ?: return
-        workManager.cancelUniqueWork(WORK_NAME)
-        artifacts.settle(claim)
-        enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
+        try {
+            workManager.cancelUniqueWork(WORK_NAME)
+            check(artifacts.settleCancelled(claim)) { "Download cleanup could not be settled" }
+        } finally {
+            enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
     }
 
     override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
@@ -105,7 +122,9 @@ class DownloadRepositoryImpl(
         val active = dao.observeAllDownloads().first().filter { DownloadRecovery.isActiveDownloadState(it.state) }
         val claims = active.mapNotNull { artifacts.cancel(it.chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) }
         workManager.cancelUniqueWork(WORK_NAME)
-        claims.forEach { artifacts.settle(it) }
+        var settled = true
+        claims.forEach { if (!artifacts.settleCancelled(it)) settled = false }
+        check(settled) { "Download cleanup could not be settled" }
     }
 
     // Restart-freeze fix (2026-06-02). Reset rows orphaned in RUNNING / COMPRESSING by a previous
@@ -230,4 +249,3 @@ class DownloadRepositoryImpl(
  *     coverage; cluster257+ would scout the androidMain-only utility solo-leaves
  *     (CbzManager + OptimizedCbzManager) which are NOT structurally fan-shaped.
  */
-

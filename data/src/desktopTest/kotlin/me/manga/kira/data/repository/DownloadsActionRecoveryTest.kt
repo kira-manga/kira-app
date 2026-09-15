@@ -97,7 +97,8 @@ class DownloadsActionRecoveryTest {
             db.backupDao().updateChapterRow(blankSaved)
             val valid = seed()
             assertTrue(actions().reconcileInterrupted().isSuccess)
-            for (original in listOf(missingFile, emptyFile, directory)) {
+            assertMissingMetadata(missingFile)
+            for (original in listOf(emptyFile, directory)) {
                 assertEquals(original.saved, saved(original))
                 assertEquals(original.download, download(original))
             }
@@ -159,7 +160,9 @@ class DownloadsActionRecoveryTest {
                 }
 
             // Fault only the open of one real nonempty file; permission tests are unreliable as root.
-            assertTrue(actions(fileSystem = appFs).reconcileInterrupted().isSuccess)
+            val result = actions(fileSystem = appFs).reconcileInterrupted()
+            assertTrue(result.isFailure)
+            assertEquals("Download maintenance could not be completed", result.exceptionOrNull()?.message)
             assertEquals(1, attemptedReads)
             assertEquals(unreadable.saved, saved(unreadable))
             assertEquals(unreadable.download, download(unreadable))

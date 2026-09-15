@@ -8,7 +8,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.data.local.dao.ChapterArtifactDao
+import me.manga.kira.data.local.dao.ChapterConversionOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactFile
@@ -18,6 +20,7 @@ import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.claimOrNull
 import me.manga.kira.data.local.entity.isOwnedBy
+import okio.Path
 
 /**
  * One singleton per database, shared by download producers, backup, readers and destructive users.
@@ -33,6 +36,15 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     suspend fun enqueue(expected: SavedChapterEntity, requested: ChapterDownloadEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.id) { token -> dao.enqueue(expected, requested, token) }
 
+    /** Prepare idle retry files before queue visibility; callback must not re-enter this coordinator. */
+    suspend fun retry(expected: ChapterDownloadEntity, prepare: (String) -> Unit = {}): ChapterArtifactClaim? =
+        admission(expected.mangaId, expected.chapterId, pinFiles = true) { token ->
+            if (dao.retryCandidate(expected) == null) null else {
+                prepare(token)
+                dao.retry(expected, token)
+            }
+        }
+
     /** Restores reserve custody before creating even their private generation under chapterDir. */
     suspend fun beginRestore(expected: SavedChapterEntity, sizeBytes: Long): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.id) { token ->
@@ -42,6 +54,19 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     /** Bind a queue snapshot once. A newer ledger id cannot inherit this producer's authority. */
     suspend fun downloadClaim(expected: ChapterDownloadEntity): ChapterArtifactClaim? =
         admission(expected.mangaId, expected.chapterId) { token -> dao.claimExistingDownload(expected, token) }
+
+    /** Current FAILED generation only; same gates as Retry, never producer authority. */
+    suspend fun beginFailedCleanup(expected: ChapterDownloadEntity): ChapterArtifactClaim? =
+        admission(expected.mangaId, expected.chapterId) { token -> dao.claimFailedCleanup(expected, token) }
+
+    /** Capture, revoke and failure bookkeeping share the existing short publication fence. */
+    internal suspend fun cancelCapturedDownload(
+        expected: ChapterDownloadEntity,
+        cancelled: suspend (ChapterArtifactClaim) -> Boolean,
+    ): ChapterArtifactClaim? = admission(expected.mangaId, expected.chapterId) { token ->
+        val claim = dao.claimCapturedCancellation(expected, token) ?: return@admission null
+        if (cancelled(claim)) claim else null
+    }
 
     /** Queue drains may await this exact refusal outside producer/file/engine locks. */
     internal suspend fun downloadAdmission(expected: ChapterDownloadEntity): ChapterArtifactAdmission {
@@ -53,7 +78,34 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
     }
 
     suspend fun beginConversion(expected: SavedChapterEntity): ChapterArtifactClaim? =
-        admission(expected.mangaId, expected.id) { token -> dao.claimConversion(expected, token) }
+        admission(expected.mangaId, expected.id, pinFiles = true) { token ->
+            // Dispatch before Room reservation, never add a prompt-cancellable return after it.
+            val roster = withContext(platformIoDispatcher) { recovery.conversionFiles.capture(expected) }
+            dao.claimConversion(expected, token, roster)
+        }
+
+    /** The exact captured inputs, retained writer, archive validation and Room write share one pin. */
+    suspend fun convertFiles(
+        claim: ChapterArtifactClaim,
+        write: suspend (List<Path>) -> Path,
+        commit: suspend (Path, Long) -> Boolean,
+    ): Boolean? = files(claim) {
+        val archive = withContext(platformIoDispatcher) { recovery.conversionFiles.prepare(claim, write) }
+        publish(claim) { commit(archive.path, archive.sizeBytes) }
+    }
+
+    suspend fun settleConversion(claim: ChapterArtifactClaim): ChapterConversionOutcome =
+        recovery.settleConversion(this, claim)
+
+    /** Explicit retry is bounded to retiring conversions; never revoke or wait on a live writer. */
+    suspend fun recoverConversions() {
+        ensureReady()
+        for (record in dao.getUnsettled()) {
+            if (record.retiring && record.operation == ChapterArtifactOperation.CONVERT) {
+                record.claimOrNull()?.let { recovery.settleConversion(this, it) }
+            }
+        }
+    }
 
     /** Read current custody without manufacturing authority for an asynchronous producer. */
     suspend fun currentClaim(chapterId: Long): ChapterArtifactClaim? = dao.get(chapterId)?.claimOrNull()
@@ -106,6 +158,24 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
         }
     }
 
+    /**
+     * Request a stop only for actual users of this retiring token, not historical cleanup custody.
+     * The signal is synchronous under the existing transition fence: do not await or re-enter here.
+     * In particular, Android's shared worker must not stop for an unrelated settled FAILED row.
+     */
+    suspend fun requestStopIfProducing(claim: ChapterArtifactClaim, stop: () -> Unit): Boolean {
+        val gate = gates.chapter(claim.owner.chapterId)
+        return gate.transition.withLock {
+            val record = dao.get(claim.owner.chapterId) ?: return@withLock false
+            if (!record.isOwnedBy(claim) || !record.retiring || gate.drained(claim.token) == null) {
+                false
+            } else {
+                stop()
+                true
+            }
+        }
+    }
+
     /** Revocation and cancellation bookkeeping share the same publication fence. */
     suspend fun <T> invalidate(claim: ChapterArtifactClaim, action: suspend () -> T): T? {
         val gate = gates.chapter(claim.owner.chapterId)
@@ -131,6 +201,8 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
                     ?: return@transition false
                 if (!cleanup(record)) false else if (claim.operation == ChapterArtifactOperation.DELETE) {
                     dao.finishRemoval(claim.owner.chapterId, claim.token) == 1
+                } else if (claim.operation == ChapterArtifactOperation.FAILED_CLEANUP) {
+                    dao.finishFailedCleanup(claim)
                 } else dao.release(claim.owner.chapterId, claim.token) == 1
             }
         }
@@ -181,25 +253,26 @@ class ChapterArtifacts(private val dao: ChapterArtifactDao, private val recovery
         mangaId: Long,
         chapterId: Long,
         onParentClosed: (Deferred<Unit>) -> Unit = {},
+        pinFiles: Boolean = false,
         action: suspend (String) -> ChapterArtifactClaim?,
     ): ChapterArtifactClaim? {
         ensureReady()
         return gates.parent(mangaId).admit(onClosed = onParentClosed) {
             val gate = gates.chapter(chapterId)
-            gate.transition.withLock {
-                val token = newToken()
-                withContext(NonCancellable) {
-                    try {
-                        action(token)
-                    } catch (cancelled: CancellationException) {
-                        // Any possibly committed custody remains durable for later settlement.
-                        throw cancelled
-                    } catch (failure: Exception) {
-                        // A native commit can precede a failing return. Only this token's receipt
-                        // may recover admission; a failed read propagates and leaves custody intact.
-                        dao.get(chapterId)?.claimOrNull()?.takeIf { it.token == token } ?: throw failure
-                    }
-                }
+            val reserve = suspend { gate.transition.withLock { reserveToken(chapterId, action) } }
+            if (pinFiles) gate.files.withLock { reserve() } else reserve()
+        }
+    }
+
+    private suspend fun reserveToken(chapterId: Long, action: suspend (String) -> ChapterArtifactClaim?): ChapterArtifactClaim? {
+        val token = newToken()
+        return withContext(NonCancellable) {
+            try {
+                action(token)
+            } catch (cancelled: CancellationException) {
+                throw cancelled // Possibly committed custody stays durable.
+            } catch (failure: Exception) {
+                dao.get(chapterId)?.claimOrNull()?.takeIf { it.token == token } ?: throw failure
             }
         }
     }

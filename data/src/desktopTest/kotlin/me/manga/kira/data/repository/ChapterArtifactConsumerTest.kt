@@ -1,4 +1,5 @@
 package me.manga.kira.data.repository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -12,6 +13,7 @@ import me.manga.kira.data.local.dao.ChapterRestoreOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -22,6 +24,53 @@ import kotlin.test.assertTrue
 
 /** Real shared runtime/Room/file joins. Writer bytes are synthetic; native codecs have separate gates. */
 class ChapterArtifactConsumerTest {
+    @Test
+    fun retryPreparationFailureCannotExposeQueueAndIdlePreparedFilesCanRebindAfterReopen() = downloadRecoveryTest {
+        val original = seed(DownloadingState.FAILED)
+        val prepared = appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "retry-token.txt"
+        assertFailsWith<CancellationException> {
+            artifactRuntime.downloads.retry(original.download) { token ->
+                fs.write(prepared) { writeUtf8(token) }
+                throw CancellationException("after atomic preparation, before queue insertion")
+            }
+        }
+        reopen()
+        assertEquals(original.download, download(original))
+        assertNull(artifactRuntime.ownership.currentClaim(original.saved.id))
+        val abandonedToken = fs.read(prepared) { readUtf8() }
+        val claim = assertNotNull(artifactRuntime.downloads.retry(original.download) { token ->
+            fs.write(prepared) { writeUtf8(token) }
+        })
+        assertTrue(claim.token != abandonedToken)
+        assertEquals(claim.token, fs.read(prepared) { readUtf8() })
+        reopen()
+        assertEquals(claim.downloadId, download(original).id)
+        assertEquals(claim, artifactRuntime.ownership.currentClaim(original.saved.id))
+        assertEquals(claim.token, fs.read(prepared) { readUtf8() })
+        assertRetainedFiles(original)
+    }
+
+    @Test
+    fun rejectedRetryNeverRunsFilePreparationOrReportsSuccessThroughActionAdapter() = downloadRecoveryTest {
+        val original = seed(DownloadingState.FAILED)
+        var prepared = false
+        dao.deleteHistoryAttempt(original.saved.id, original.download.id)
+        assertNull(artifactRuntime.downloads.retry(original.download) { prepared = true })
+        assertFalse(prepared)
+        assertNull(dao.getDownloadByChapter(original.saved.id))
+        dao.insert(original.download)
+        val engine = object : FakeDownloadRepository() {
+            override suspend fun retryChapterDownload(expected: me.manga.kira.data.local.entity.ChapterDownloadEntity): Boolean {
+                dao.deleteHistoryAttempt(expected.chapterId, expected.id)
+                return artifactRuntime.downloads.retry(expected) { prepared = true } != null
+            }
+        }
+        assertTrue(actions(engine = engine).retryDownload(original.saved.id).isFailure)
+        assertFalse(prepared)
+        assertNull(dao.getDownloadByChapter(original.saved.id))
+        assertRetainedFiles(original)
+    }
+
     @Test
     fun deleteDownloadedChapterDrainsActualProducerAndLatePublicationCannotRecreateFiles() = downloadRecoveryTest {
         val original = seed(DownloadingState.FAILED)
@@ -68,13 +117,14 @@ class ChapterArtifactConsumerTest {
     @Test
     fun manualConversionPinsWriterAndHistoryOnlyDeletionDoesNotRecreateLedger() = downloadRecoveryTest {
         val original = seed(isDownloaded = true)
+        installValidPages(original)
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val archive = appFileSystem.chapterDir(original.saved.mangaId, original.saved.id) / "chapter_${original.saved.id}.cbz"
         val converter = settingsConverter(CbzCallerWriter { _, _ ->
             entered.complete(Unit)
             release.await()
-            fs.write(archive) { writeUtf8("converted-archive") }
+            installPreviousArchive(original, List(2) { recoveryTestPng() })
             archive
         })
         coroutineScope {

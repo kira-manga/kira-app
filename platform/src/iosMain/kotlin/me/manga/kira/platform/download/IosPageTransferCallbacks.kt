@@ -21,6 +21,7 @@ internal class IosPageTransferCallbacks(
     mediaInspector: PageMediaInspector,
     private val pageBytePolicy: PageBytePolicy,
     private val listener: () -> TransferListener?,
+    private val admitEvent: () -> (() -> Unit),
 ) {
     private val pages = IosDownloadedPageStore(appFileSystem, mediaInspector, pageBytePolicy)
     private val outcomes = mutableMapOf<ULong, PageOutcome>()
@@ -40,8 +41,10 @@ internal class IosPageTransferCallbacks(
             // when the terminal NSError is only NSURLErrorCancelled.
             outcome.failure =
                 PageByteLimitExceeded(pageBytePolicy.maxEncodedBytes, maxOf(totalBytesWritten, totalExpected)).message
-            reportFailureOnce(task, d, requireNotNull(outcome.failure))
-            task.cancel()
+            withEvent { event ->
+                reportFailureOnce(task, d, requireNotNull(outcome.failure), event)
+                task.cancel()
+            }
         } else if (totalBytesWritten == bytesWritten) {
             BgDownloadLog.log(
                 "task.didWriteData.started",
@@ -60,11 +63,13 @@ internal class IosPageTransferCallbacks(
         val d = IosTransferIdentity.decode(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         if (outcome.reported) return
-        val failure = outcome.failure
-        if (failure == null) {
-            finishUnreportedDownload(task, location, response, d, outcome)
-        } else {
-            reportFailureOnce(task, d, failure)
+        withEvent { event ->
+            val failure = outcome.failure
+            if (failure == null) {
+                finishUnreportedDownload(task, location, response, d, outcome, event)
+            } else {
+                reportFailureOnce(task, d, failure, event)
+            }
         }
     }
 
@@ -74,6 +79,7 @@ internal class IosPageTransferCallbacks(
         response: NSHTTPURLResponse?,
         d: IosTransferIdentity,
         outcome: PageOutcome,
+        event: IosTransferEvent,
     ) {
         val status = response?.statusCode?.toInt()
         BgDownloadLog.log(
@@ -84,9 +90,9 @@ internal class IosPageTransferCallbacks(
             "httpStatus" to status,
         )
         if (status == null || status !in HTTP_SUCCESS_MIN..HTTP_SUCCESS_MAX) {
-            reportHttpFailure(task, d, status)
+            reportHttpFailure(task, d, status, event)
         } else {
-            publishAndReport(task, location, response, d, outcome)
+            publishAndReport(task, location, response, d, outcome, event)
         }
     }
 
@@ -94,6 +100,7 @@ internal class IosPageTransferCallbacks(
         task: NSURLSessionTask,
         d: IosTransferIdentity,
         status: Int?,
+        event: IosTransferEvent,
     ) {
         BgDownloadLog.warn(
             "task.httpError",
@@ -101,7 +108,7 @@ internal class IosPageTransferCallbacks(
             "pageIndex" to d.pageIndex,
             "httpStatus" to status,
         )
-        reportFailureOnce(task, d, if (status == null) "Missing HTTP response" else "HTTP $status")
+        reportFailureOnce(task, d, if (status == null) "Missing HTTP response" else "HTTP $status", event)
     }
 
     private fun publishAndReport(
@@ -110,38 +117,50 @@ internal class IosPageTransferCallbacks(
         response: NSHTTPURLResponse?,
         d: IosTransferIdentity,
         outcome: PageOutcome,
+        event: IosTransferEvent,
     ) {
         val publication = pages.beginPublication()
         try {
             val page = publication.stage(location, d, response?.expectedContentLength)
-            val receiver = listener() ?: return
-            receiver.onPageComplete(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, page)
+            if (!deliverPage(d, page, event)) return
             publication.handOff()
             outcome.reported = true
             BgDownloadLog.log("file.move.success", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: PageByteLimitExceeded) {
-            reportFailureOnce(task, d, failure.message ?: "Page validation failed")
-        } catch (failure: PageMediaException) {
-            reportFailureOnce(task, d, failure.message ?: "Page validation failed")
-        } catch (_: Exception) {
-            reportFailureOnce(task, d, "Downloaded page could not be saved")
+        } catch (failure: Exception) {
+            reportFailureOnce(task, d, pageFailureReason(failure), event)
         } finally {
             publication.discardTemporary()
         }
     }
+
+    private fun deliverPage(d: IosTransferIdentity, page: StagedDownloadPage, event: IosTransferEvent): Boolean {
+        val receiver = listener() ?: return false
+        event.deliver { acknowledge ->
+            receiver.onPageComplete(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, page, acknowledge)
+        }
+        return true
+    }
+
+    private fun pageFailureReason(failure: Exception): String =
+        when (failure) {
+            is PageByteLimitExceeded, is PageMediaException -> failure.message ?: "Page validation failed"
+            else -> "Downloaded page could not be saved"
+        }
 
     fun handleCompleted(
         task: NSURLSessionTask,
         error: NSError?,
     ) {
         val d = IosTransferIdentity.decode(task.taskDescription) ?: return
-        try {
-            val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
-            if (!outcome.reported) completeUnreported(task, d, outcome, error)
-        } finally {
-            outcomes.remove(task.taskIdentifier)
+        withEvent { event ->
+            try {
+                val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
+                if (!outcome.reported) completeUnreported(task, d, outcome, error, event)
+            } finally {
+                outcomes.remove(task.taskIdentifier)
+            }
         }
     }
 
@@ -150,14 +169,15 @@ internal class IosPageTransferCallbacks(
         d: IosTransferIdentity,
         outcome: PageOutcome,
         error: NSError?,
+        event: IosTransferEvent,
     ) {
         val failure = outcome.failure
         when {
-            failure != null -> reportFailureOnce(task, d, failure)
+            failure != null -> reportFailureOnce(task, d, failure, event)
             error?.code == NSURLErrorCancelled ->
                 // User/engine cancellation is silent; an earlier policy failure takes precedence.
                 BgDownloadLog.log("task.didComplete.cancelled", "chapterId" to d.chapterId, "pageIndex" to d.pageIndex)
-            else -> reportFailureOnce(task, d, error?.localizedDescription ?: "Download completed without a page")
+            else -> reportFailureOnce(task, d, error?.localizedDescription ?: "Download completed without a page", event)
         }
     }
 
@@ -165,12 +185,25 @@ internal class IosPageTransferCallbacks(
         task: NSURLSessionTask,
         d: IosTransferIdentity,
         reason: String,
+        event: IosTransferEvent,
     ) {
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         outcome.failure = reason
         if (outcome.reported) return
         outcome.reported = true
-        listener()?.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, reason)
+        val receiver = listener() ?: return
+        event.deliver { acknowledge ->
+            receiver.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, reason, acknowledge)
+        }
+    }
+
+    private inline fun withEvent(action: (IosTransferEvent) -> Unit) {
+        val event = IosTransferEvent(admitEvent())
+        try {
+            action(event)
+        } finally {
+            event.finishDelivery()
+        }
     }
 
     private data class PageOutcome(

@@ -10,12 +10,9 @@ import me.manga.kira.domain.repository.DownloadsActionRepository
  * is identity-based and the `:data` impl reconstructs the remaining metadata `url` / `api`
  * / `mangaTitle` from the legacy DAO row).
  *
- * **Caller obligation**: the rework `:ui` shows the retry button only on rows whose
- * `state == DownloadState.FAILED`. The use case itself does NOT validate — if a caller
- * passes a chapterId whose row is not FAILED, the legacy `enqueueChapterDownload` happily
- * re-enqueues anyway (Room replaces the row by chapterId primary key). The state guard is
- * a UI rule (parity with the legacy `DownloadItemCard(showRetry = item.state == FAILED)`
- * gating), not a domain rule.
+ * The UI shows Retry only for FAILED rows, but persistence enforces that rule too:
+ * the captured attempt must still be FAILED and exclusively eligible for new file custody.
+ * This pass-through does not bypass that transactional guard.
  *
  * Contract §6 SRP: one rule — "issue a retry intent to the repository".
  *
