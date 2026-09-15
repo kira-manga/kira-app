@@ -1,5 +1,8 @@
 package me.manga.kira.data.repository
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterArtifactReference
@@ -192,10 +195,17 @@ class DownloadsActionRepositoryImpl(
     override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> =
         runCatchingCancellable {
             val saved = chapterDao.getChapterByIdSuspend(chapterId) ?: error("chapter row not found")
-            check(artifacts.removeChapter(ChapterArtifactOwner.of(saved)) {
-                // A signal accelerates the drain, but only the shared file-use fence proves it.
-                runCatchingCancellable { legacy.cancelARunningChapter(chapterId, saved.mangaId) }
-            }) { "Chapter artifact removal could not be settled" }
+            val removed = try {
+                artifacts.removeChapter(ChapterArtifactOwner.of(saved)) {
+                    // A signal accelerates the drain, but only the shared file-use fence proves it.
+                    runCatchingCancellable { legacy.cancelARunningChapter(chapterId, saved.mangaId) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false // Durable custody remains; do not expose filesystem paths in the UI error.
+            }
+            check(removed) { "Chapter artifact removal could not be settled" }
         }
 
     override suspend fun reconcileInterrupted(): Result<Unit> =
@@ -204,35 +214,40 @@ class DownloadsActionRepositoryImpl(
             //    engine (WorkManager re-enqueue on Android; worker-loop wake-up on iOS/Desktop).
             legacy.reconcileInterruptedDownloads()
             // 2) Back-fill the on-disk size of completed rows that pre-date the sizeBytes column (rows
-            //    migrated up from schema v8). Each is a one-time walk; once written the row no longer
-            //    matches getCompletedWithoutSize, so this self-limits. Per-row failures are swallowed so
-            //    one unreadable directory can't abort the whole reconcile.
+            //    migrated up from schema v8). Read only exact referenced files, never a recursive
+            //    directory walk. Finish unrelated rows, then report a sanitized aggregate failure.
+            var failures = 0
             chapterDownloadDao.getCompletedWithoutSize().forEach { row ->
-                runCatchingCancellable {
+                val result = runCatchingCancellable {
                     artifacts.read(row.chapterId) { record ->
                         if (record?.token != null) return@read
                         val saved = chapterDao.getChapterByIdSuspend(row.chapterId) ?: return@read
                         if (saved.mangaId != row.mangaId || saved.url != row.url) return@read
                         val paths = referencedPaths(saved, record)
                         if (paths.isEmpty()) return@read
-                        val size = paths.distinct().fold(0L) { total, raw ->
-                            val metadata = appFileSystem.fileSystem().metadata(raw.toPath())
-                            val bytes = checkNotNull(metadata.size)
-                            check(metadata.isRegularFile && bytes > 0 && total <= Long.MAX_VALUE - bytes)
-                            total + bytes
+                        val size = withContext(platformIoDispatcher) {
+                            paths.distinct().fold(0L) { total, raw ->
+                                val metadata = appFileSystem.fileSystem().metadata(raw.toPath())
+                                val bytes = checkNotNull(metadata.size)
+                                check(metadata.isRegularFile && bytes > 0 && total <= Long.MAX_VALUE - bytes)
+                                total + bytes
+                            }
                         }
                         chapterDownloadDao.refreshCompletedSize(row, saved.localImagePaths, size)
                     }
                 }
+                if (result.isFailure) failures++
             }
             // 3) Repair the old separately committed SUCCESS/saved-false window, not an interrupted
             //    full deletion (which clears paths first) or intentional history-only deletion.
-            repairCompletedDownloadFlags()
+            failures += repairCompletedDownloadFlags()
+            check(failures == 0) { "Download maintenance could not be completed" }
         }
 
-    private suspend fun repairCompletedDownloadFlags() {
+    private suspend fun repairCompletedDownloadFlags(): Int {
+        var failures = 0
         chapterDownloadDao.getCompletedWithoutDownloadedFlag().forEach { row ->
-            runCatchingCancellable {
+            val result = runCatchingCancellable {
                 artifacts.read(row.chapterId) { record ->
                     if (record?.token != null) return@read
                     val saved = chapterDao.getChapterByIdSuspend(row.chapterId) ?: return@read
@@ -242,7 +257,9 @@ class DownloadsActionRepositoryImpl(
                     }
                 }
             }
+            if (result.isFailure) failures++
         }
+        return failures
     }
 
     private fun referencedPaths(saved: SavedChapterEntity, record: ChapterArtifactEntity?): List<String> {
@@ -251,12 +268,12 @@ class DownloadsActionRepositoryImpl(
         return listOf(ChapterArtifactReference.resolve(appFileSystem, ChapterArtifactOwner.of(saved), relative).toString())
     }
 
-    private fun hasReadableDownloadPaths(paths: List<String>): Boolean {
-        if (paths.isEmpty()) return false
+    private suspend fun hasReadableDownloadPaths(paths: List<String>): Boolean = withContext(platformIoDispatcher) {
+        if (paths.isEmpty()) return@withContext false
         val fs = appFileSystem.fileSystem()
         // Open the actual retained files, not merely their directory. This is a point-in-time
         // check outside SQL; the transaction separately rechecks the expected paths and state.
-        return paths.all { raw ->
+        paths.all { raw ->
             if (raw.isBlank()) return@all false
             val path = raw.toPath()
             val metadata = fs.metadataOrNull(path) ?: return@all false

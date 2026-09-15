@@ -159,7 +159,9 @@ class DownloadsActionRecoveryTest {
                 }
 
             // Fault only the open of one real nonempty file; permission tests are unreliable as root.
-            assertTrue(actions(fileSystem = appFs).reconcileInterrupted().isSuccess)
+            val result = actions(fileSystem = appFs).reconcileInterrupted()
+            assertTrue(result.isFailure)
+            assertEquals("Download maintenance could not be completed", result.exceptionOrNull()?.message)
             assertEquals(1, attemptedReads)
             assertEquals(unreadable.saved, saved(unreadable))
             assertEquals(unreadable.download, download(unreadable))

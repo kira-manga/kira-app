@@ -4,6 +4,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
+import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
@@ -92,13 +93,15 @@ class ChapterDownloadArtifacts(
         recovery.settleDownload(ownership, claim, requeue, retainFailedPages, afterIncomplete)
     }
 
-    fun exactSize(paths: List<String>): Long = paths.distinct().fold(0L) { total, path ->
-        val metadata = files.fileSystem().metadata(path.toPath())
-        val size = metadata.size ?: throw IOException("Missing artifact size")
-        if (!metadata.isRegularFile || size < 0 || total > Long.MAX_VALUE - size) {
-            throw IOException("Invalid artifact size")
+    suspend fun exactSize(paths: List<String>): Long = withContext(platformIoDispatcher) {
+        paths.distinct().fold(0L) { total, path ->
+            val metadata = files.fileSystem().metadata(path.toPath())
+            val size = metadata.size ?: throw IOException("Missing artifact size")
+            if (!metadata.isRegularFile || size < 0 || total > Long.MAX_VALUE - size) {
+                throw IOException("Invalid artifact size")
+            }
+            total + size
         }
-        total + size
     }
 }
 
