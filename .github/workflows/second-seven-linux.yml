@@ -1,0 +1,299 @@
+name: Second-seven Linux (42 classes)
+
+# One primary-reviewed push carrier, a direct child of the pinned final product source.
+# Only these four public controls may differ. Never main, manual dispatch, PRs or tags.
+on:
+  push:
+    branches: [remediation/app-two-batch-linux-20260914-02]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: second-seven-linux
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/remediation/app-two-batch-linux-20260914-02' &&
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.created == true && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Primary binds these final product-source pins BEFORE creating the carrier.
+      KIRA_SEVEN_APP_SHA: 5ec7018be422877f0d8b58d46e82a76c0bd7b672
+      KIRA_SEVEN_APP_TREE: 0674b9900eeab7f3e9cf29a95e0551ab8b23e168
+      KIRA_SEVEN_CARRIER_SHA: ${{ github.sha }}
+      KIRA_SEVEN_BRANCH_CREATED: ${{ github.event.created }}
+      REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+      GIT_TERMINAL_PROMPT: '0'
+      KIRA_SEVEN_ENGINE_SHA: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+      KIRA_SEVEN_ENGINE_TREE: 14e46a1ead24b5757d612fd55031e440f5304661
+      KIRA_SEVEN_APP_ROOT: ${{ github.workspace }}/app-source
+      KIRA_SEVEN_ENGINE_ROOT: ${{ github.workspace }}/original-engine
+      JAVA_OPTS: -Xmx512m -XX:ActiveProcessorCount=2
+    steps:
+      - name: Require the sole reviewed public push and exact source pins
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REPOSITORY" == kira-manga/kira-app ]]
+          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == remediation/app-two-batch-linux-20260914-02 ]]
+          [[ "$KIRA_SEVEN_BRANCH_CREATED" == true && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$REPOSITORY_VISIBILITY" == public ]]
+          [[ "$KIRA_SEVEN_CARRIER_SHA" =~ ^[0-9a-f]{40}$ && "$KIRA_SEVEN_CARRIER_SHA" == "$GITHUB_SHA" ]]
+          [[ "$KIRA_SEVEN_APP_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$KIRA_SEVEN_APP_TREE" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUNNER_OS" == Linux && "$RUNNER_ARCH" == X64 ]]
+          # runner context is not available in job-level env; bind runtime paths here.
+          printf '%s\n' \
+            "KIRA_SEVEN_SCRATCH=$RUNNER_TEMP/second-seven-linux-scratch" \
+            "KIRA_SEVEN_EVIDENCE=$RUNNER_TEMP/second-seven-linux-evidence" \
+            "GRADLE_USER_HOME=$RUNNER_TEMP/second-seven-linux-scratch/gradle" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: app-source
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kira-manga/kira-source-engine
+          ref: ed184165ebd3ee7f0d1db533cc40ca5a0868fdda
+          path: original-engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Bind fresh source and admit hosted capacity
+        id: bind
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$KIRA_SEVEN_SCRATCH" "$KIRA_SEVEN_EVIDENCE"
+          mkdir "$KIRA_SEVEN_SCRATCH"/{home,tmp,konan,gradle,project-cache}
+          python3 -B - <<'PYCODE'
+          import hashlib, json, os, re, shutil, subprocess
+          from pathlib import Path
+          out = Path(os.environ['KIRA_SEVEN_EVIDENCE'])
+          sources = {}
+          for role in ('APP', 'ENGINE'):
+              root = Path(os.environ[f'KIRA_SEVEN_{role}_ROOT'])
+              def git(*args):
+                  return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
+              sources[role.lower()] = dict(head=git('rev-parse', 'HEAD'), tree=git('rev-parse', 'HEAD^{tree}'),
+                  tracked_dirty=bool(git('status', '--porcelain', '--untracked-files=no')))
+              if git('status', '--porcelain', '--untracked-files=all'):
+                  raise SystemExit('Exact clean checkout required: ' + role)
+              if role == 'APP':
+                  parents = git('rev-list', '--parents', '-n', '1', 'HEAD').split()
+                  if parents != [os.environ['KIRA_SEVEN_CARRIER_SHA'], os.environ['KIRA_SEVEN_APP_SHA']] or \
+                      git('rev-parse', 'HEAD^1^{tree}') != os.environ['KIRA_SEVEN_APP_TREE']:
+                      raise SystemExit('Carrier must have exactly the pinned final-source parent/tree')
+                  controls = {'.github/workflows/second-seven-linux.yml',
+                      'scripts/ci/second-seven-linux.init.gradle', 'scripts/ci/second-seven-linux-scope.json',
+                      'scripts/ci/verify_second_seven_linux.py'}
+                  changes = git('diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', 'HEAD^1', 'HEAD').splitlines()
+                  if len(changes) != 4 or set(changes) != {'A\t' + path for path in controls}:
+                      raise SystemExit('Carrier may add only the four reviewed public controls')
+                  (out / 'carrier-binding.json').write_text(json.dumps(dict(
+                      repository=os.environ['GITHUB_REPOSITORY'], ref=os.environ['GITHUB_REF'],
+                      attempt=os.environ['GITHUB_RUN_ATTEMPT'], carrier_head=parents[0],
+                      carrier_tree=sources['app']['tree'], source_head=parents[1],
+                      source_tree=os.environ['KIRA_SEVEN_APP_TREE'], additions=sorted(controls)), indent=2) + '\n')
+              elif sources[role.lower()]['head'] != os.environ[f'KIRA_SEVEN_{role}_SHA'] or \
+                  sources[role.lower()]['tree'] != os.environ[f'KIRA_SEVEN_{role}_TREE']:
+                  raise SystemExit('Exact original Engine checkout required')
+          (out / 'source-before.json').write_text(json.dumps(sources, indent=2) + '\n')
+          # Reuse the ordinary gate's finite generated-path inventory; every path must be absent.
+          generated = []
+          for role, count in (('APP', 16), ('ENGINE', 3)):
+              root = Path(os.environ[f'KIRA_SEVEN_{role}_ROOT'])
+              modules = re.findall(r'^include\("(:[\w:-]+)"\)', (root / 'settings.gradle.kts').read_text(), re.M)
+              if len(modules) != count or len(set(modules)) != count:
+                  raise SystemExit('Normal module inventory changed; cleanup paths not admitted')
+              generated.extend(root / suffix for suffix in ['build', '.gradle', '.kotlin'] +
+                  [module.lstrip(':').replace(':', '/') + '/build' for module in modules])
+          if any(path.exists() or path.is_symlink() or path.resolve() != path for path in generated):
+              raise SystemExit('Preserve preexisting or ambiguous build/cache paths')
+          scratch = Path(os.environ['KIRA_SEVEN_SCRATCH'])
+          identity = scratch.stat()
+          if scratch != Path(os.environ['RUNNER_TEMP']) / 'second-seven-linux-scratch' or scratch.resolve() != scratch:
+              raise SystemExit('Unexpected private scratch identity')
+          (out / 'cleanup-before.json').write_text(json.dumps(dict(build_roots=[str(path) for path in generated],
+              absent_before=True, scratch=dict(path=str(scratch), device=identity.st_dev, inode=identity.st_ino)), indent=2) + '\n')
+          scope_file = Path(os.environ['KIRA_SEVEN_APP_ROOT']) / 'scripts/ci/second-seven-linux-scope.json'
+          scope = json.loads(scope_file.read_text())
+          if len(scope['tests']) != 5 or sum(map(len, scope['tests'].values())) != 42 or \
+              any(not (scope_file.parents[2] / p).is_file() for p in scope['test_sources'].values()):
+              raise SystemExit('The adopted five-task / 42-class source roster is incomplete')
+          free = shutil.disk_usage(os.environ['KIRA_SEVEN_APP_ROOT']).free
+          memory = int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines()
+              if line.startswith('MemAvailable:'))) * 1024
+          (out / 'resources.json').write_text(json.dumps(dict(disk_free_bytes=free, memory_available_bytes=memory,
+              minimum_disk_bytes=16 * 2**30, minimum_memory_bytes=6 * 2**30), indent=2) + '\n')
+          if free < 16 * 2**30 or memory < 6 * 2**30:
+              raise SystemExit('Hosted capacity not admitted; do not reclaim shared runner images/caches')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('KIRA_SEVEN_SCOPE_SHA=' + hashlib.sha256(scope_file.read_bytes()).hexdigest() + '\n')
+          PYCODE
+
+      - name: One ordinary five-task invocation (42 whole classes)
+        id: gate
+        working-directory: app-source
+        run: |
+          set -uo pipefail
+          umask 077
+          export HOME="$KIRA_SEVEN_SCRATCH/home" TMPDIR="$KIRA_SEVEN_SCRATCH/tmp"
+          export KONAN_DATA_DIR="$KIRA_SEVEN_SCRATCH/konan"
+          python3 -B - <<'PYCODE' 2>&1 | tee "$KIRA_SEVEN_EVIDENCE/gradle.log"
+          import json, os, subprocess, sys
+          from pathlib import Path
+          scope = json.loads(Path('scripts/ci/second-seven-linux-scope.json').read_text())
+          command = ['timeout', '--signal=TERM', '--kill-after=30s', '1200s', './gradlew']
+          for task, classes in scope['tests'].items():
+              command.append(task)
+              for klass in classes:
+                  command.extend(['--tests', klass])
+          command.extend(['--continue', '--no-daemon', '--no-parallel', '--max-workers=1', '--no-build-cache',
+              '--no-configuration-cache', '--console=plain', '--stacktrace',
+              '-Pkotlin.compiler.execution.strategy=in-process', '-Porg.gradle.java.installations.auto-download=false',
+              '-Pandroid.builder.sdkDownload=false', '-PkiraUseMavenLocal=false', '-Dorg.gradle.vfs.watch=false',
+              '-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -XX:ActiveProcessorCount=2 -Djava.io.tmpdir=' + os.environ['TMPDIR'],
+              '--project-cache-dir', os.environ['KIRA_SEVEN_SCRATCH'] + '/project-cache',
+              '-I', 'scripts/ci/second-seven-linux.init.gradle'])
+          (Path(os.environ['KIRA_SEVEN_EVIDENCE']) / 'command.json').write_text(json.dumps(command, indent=2) + '\n')
+          sys.exit(subprocess.call(command))
+          PYCODE
+          status=("${PIPESTATUS[@]}")
+          printf '%s\n' "${status[*]}" > "$KIRA_SEVEN_EVIDENCE/command-exits.txt"
+          (( status[0] == 0 && status[1] == 0 ))
+
+      - name: Stop only this job's Gradle runtime (no download or retry)
+        id: stop
+        if: ${{ always() && steps.gate.outcome != 'skipped' }}
+        working-directory: app-source
+        run: |
+          set -uo pipefail
+          umask 077
+          export HOME="$KIRA_SEVEN_SCRATCH/home" TMPDIR="$KIRA_SEVEN_SCRATCH/tmp"
+          mapfile -t distributions < <(find "$GRADLE_USER_HOME/wrapper/dists" -type f -path '*/gradle-9.6.1/bin/gradle' 2>/dev/null)
+          if [[ ${#distributions[@]} != 1 ]]; then
+            echo 'No unique downloaded Gradle runtime; stop unavailable, runner disposal required.' | tee "$KIRA_SEVEN_EVIDENCE/stop.log"
+            printf '1 0\n' > "$KIRA_SEVEN_EVIDENCE/stop-exits.txt"
+            exit 1
+          fi
+          timeout --signal=TERM --kill-after=10s 90s "${distributions[0]}" --offline --stop --console=plain 2>&1 | tee "$KIRA_SEVEN_EVIDENCE/stop.log"
+          status=("${PIPESTATUS[@]}")
+          printf '%s\n' "${status[*]}" > "$KIRA_SEVEN_EVIDENCE/stop-exits.txt"
+          (( status[0] == 0 && status[1] == 0 ))
+
+      - name: Preserve raw XML and inspect actual completions
+        if: ${{ always() && steps.gate.outcome != 'skipped' }}
+        working-directory: app-source
+        run: python3 -B scripts/ci/verify_second_seven_linux.py
+
+      - name: Remove only admitted fresh outputs after stop and evidence preservation
+        if: ${{ always() && steps.gate.outcome != 'skipped' }}
+        timeout-minutes: 2
+        working-directory: app-source
+        run: |
+          set -euo pipefail
+          umask 077
+          timeout --signal=TERM --kill-after=10s 90s python3 -B - <<'PYCODE'
+          import json, os, shutil, subprocess
+          from pathlib import Path
+          out = Path(os.environ['KIRA_SEVEN_EVIDENCE'])
+          receipt = dict(status='INCOMPLETE', removed=[], errors=[], process_absence_independently_proven=False)
+          def save():
+              (out / 'cleanup.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          save()
+          try:
+              stop = (out / 'stop-exits.txt').read_text().split()
+              work = (out / 'command-exits.txt').read_text().split()
+              result = json.loads((out / 'result.json').read_text())
+              if stop != ['0', '0'] or work not in (['0', '0'], ['1', '0']):
+                  raise RuntimeError('Stop/work/log-copy did not close normally; retain all inputs for VM teardown')
+              if not result['source_unchanged'] or any(error['operation'] in ('preserve-xml', 'source-readback')
+                  for error in result['errors']):
+                  raise RuntimeError('Raw XML/source preservation is incomplete; retain all inputs')
+              for name in ('carrier-binding.json', 'source-before.json', 'source-after.json', 'gradle.log', 'stop.log'):
+                  if not (out / name).is_file():
+                      raise RuntimeError('Required evidence missing; retain all inputs: ' + name)
+              owned = json.loads((out / 'cleanup-before.json').read_text())
+              scratch = Path(os.environ['KIRA_SEVEN_SCRATCH'])
+              identity = scratch.stat()
+              if not owned['absent_before'] or owned['scratch'] != dict(path=str(scratch),
+                  device=identity.st_dev, inode=identity.st_ino):
+                  raise RuntimeError('Fresh scratch identity changed; retain inputs')
+              targets = [Path(path) for path in owned['build_roots']] + [scratch]
+              roots = [Path(os.environ[f'KIRA_SEVEN_{role}_ROOT']) for role in ('APP', 'ENGINE')]
+              for path in targets:
+                  if path != scratch and not any(path.is_relative_to(root) and path != root for root in roots):
+                      raise RuntimeError('Deletion target outside the admitted source-build roots')
+                  if path.is_symlink() or path.resolve() != path or (path.exists() and
+                      (not path.is_dir() or path.stat().st_uid != os.getuid() or path.is_mount())):
+                      raise RuntimeError('Ambiguous generated path; retain inputs: ' + str(path))
+              for path in targets:
+                  if path.exists():
+                      shutil.rmtree(path)
+                      receipt['removed'].append(str(path))
+                      save()
+              after = {}
+              for role in ('APP', 'ENGINE'):
+                  root = os.environ[f'KIRA_SEVEN_{role}_ROOT']
+                  def git(*args):
+                      return subprocess.check_output(['git', '-C', root, *args], text=True).strip()
+                  after[role.lower()] = dict(head=git('rev-parse', 'HEAD'), tree=git('rev-parse', 'HEAD^{tree}'),
+                      tracked_dirty=bool(git('status', '--porcelain', '--untracked-files=no')))
+              (out / 'source-after-cleanup.json').write_text(json.dumps(after, indent=2) + '\n')
+              if after != json.loads((out / 'source-before.json').read_text()) or \
+                  any(path.exists() or path.is_symlink() for path in targets):
+                  raise RuntimeError('Source changed or generated paths remain after cleanup')
+              receipt['status'] = 'KNOWN_FRESH_OUTPUTS_REMOVED'
+          except Exception as error:
+              receipt['status'] = 'FAIL_RETAIN_REMAINDER_FOR_VM_TEARDOWN'
+              receipt['errors'].append(str(error))
+          finally:
+              save()
+          print(json.dumps(receipt))
+          raise SystemExit(0 if receipt['status'] == 'KNOWN_FRESH_OUTPUTS_REMOVED' else 1)
+          PYCODE
+
+      - name: Retain only this gate's public-source evidence
+        if: ${{ always() && steps.bind.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: second-seven-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/second-seven-linux-evidence/cleanup-before.json
+            ${{ runner.temp }}/second-seven-linux-evidence/cleanup.json
+            ${{ runner.temp }}/second-seven-linux-evidence/source-after-cleanup.json
+            ${{ runner.temp }}/second-seven-linux-evidence/carrier-binding.json
+            ${{ runner.temp }}/second-seven-linux-evidence/source-before.json
+            ${{ runner.temp }}/second-seven-linux-evidence/source-after.json
+            ${{ runner.temp }}/second-seven-linux-evidence/resources.json
+            ${{ runner.temp }}/second-seven-linux-evidence/command.json
+            ${{ runner.temp }}/second-seven-linux-evidence/command-exits.txt
+            ${{ runner.temp }}/second-seven-linux-evidence/gradle.log
+            ${{ runner.temp }}/second-seven-linux-evidence/stop-exits.txt
+            ${{ runner.temp }}/second-seven-linux-evidence/stop.log
+            ${{ runner.temp }}/second-seven-linux-evidence/observed-tests.json
+            ${{ runner.temp }}/second-seven-linux-evidence/task-completions.json
+            ${{ runner.temp }}/second-seven-linux-evidence/producer-inputs.json
+            ${{ runner.temp }}/second-seven-linux-evidence/image-runtime-selection.json
+            ${{ runner.temp }}/second-seven-linux-evidence/result.json
+            ${{ runner.temp }}/second-seven-linux-evidence/reports/**/*.xml
