@@ -34,7 +34,7 @@ import org.koin.dsl.module
 val appKoinModule: Module =
     module {
         single<NotificationCovers> { NotificationCoverLoader() }
-        single { ChapterNotificationHelper(androidContext(), get(), get(), get()) }
+        single { ChapterNotificationHelper(androidContext(), get(), get()) }
 
         workerOf(::CbzMigrationWorker)
         workerOf(::LibraryRefreshWorker)

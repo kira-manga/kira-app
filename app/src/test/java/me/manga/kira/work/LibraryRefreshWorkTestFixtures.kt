@@ -28,7 +28,6 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     var missingSource = false
     var fetch: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(refreshDetails(it)) }
     var cover: suspend () -> Unit = {}
-    var write: suspend (List<SavedChapterEntity>) -> List<Long> = { rows -> rows.indices.map { it + 1L } }
     var persist: suspend (SavedMangaEntity, List<SavedChapterEntity>) -> List<ChapterNotification> =
         ::refreshNotifications
     var display: suspend (List<ChapterNotification>) -> Unit = {}
@@ -38,7 +37,6 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
         lastSuccess = "new success"
         stamps++
     }
-    val inserts = mutableListOf<List<SavedChapterEntity>>()
     val persistenceCalls = mutableListOf<List<SavedChapterEntity>>()
     val persistedNotifications = mutableListOf<List<ChapterNotification>>()
     val displayCalls = mutableListOf<List<ChapterNotification>>()
@@ -51,11 +49,6 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
         mangaId: Long,
         coverUrl: String,
     ) = cover()
-
-    override suspend fun insert(chapters: List<SavedChapterEntity>): List<Long> {
-        inserts += chapters
-        return write(chapters)
-    }
 
     override suspend fun persistNotifications(
         manga: SavedMangaEntity,
@@ -159,7 +152,7 @@ internal fun cancellingRefreshWork(
 ) = LibraryRefreshWorkTestFixtures().apply {
     when (stage) {
         0 -> libraryFlow = flow { pause() }
-        1 -> write = { pause() }
+        1 -> persist = { _, _ -> pause() }
         2 ->
             stamp = {
                 lastSuccess = "committed"
@@ -174,11 +167,8 @@ internal fun failingUpdatesRefreshWork(
     expires: Boolean,
     settled: CompletableDeferred<Unit>,
 ) = LibraryRefreshWorkTestFixtures().apply {
-    write = {
-        delay(25_000)
-        listOf(9L)
-    }
     persist = { _, _ ->
+        delay(25_000)
         try {
             if (expires) awaitCancellation() else error("fixture_updates_rejected")
         } finally {

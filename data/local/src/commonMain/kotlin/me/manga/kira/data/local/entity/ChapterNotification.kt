@@ -1,6 +1,7 @@
 package me.manga.kira.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -13,7 +14,10 @@ import kotlinx.datetime.todayIn
 //   - java.time.LocalDate -> kotlinx.datetime.LocalDate.
 //   - LocalDate.now() -> Clock.System.todayIn(currentTZ).
 @OptIn(ExperimentalTime::class)
-@Entity(tableName = "notifications")
+@Entity(
+    tableName = "notifications",
+    indices = [Index(value = ["chapterId"], unique = true)],
+)
 data class ChapterNotification(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

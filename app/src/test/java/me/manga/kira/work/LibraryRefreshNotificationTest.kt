@@ -87,6 +87,7 @@ class LibraryRefreshNotificationTest {
                 assertFinishedCancellation(run, covers, item)
                 assertEquals(committed, room.updates())
                 assertTrue(chapterPosts().isEmpty())
+                RefreshReplacementWitness(context, room, posting).assertNoRepeat(committed) { activeWork = it }
                 assertFollowingMangaCanPost(covers.requests)
             } finally {
                 covers.release()
@@ -128,7 +129,7 @@ class LibraryRefreshNotificationTest {
             room.db.chapterDao().insertChapters(chapters)
             val repository = room.repository()
             val covers = NoCoverExpected()
-            val helper = room.helper(covers, repository)
+            val helper = room.helper(covers)
             val worker = notificationRefreshWorker(context, repository, helper, chapters.asReversed())
             assertTrue(worker.refreshWork.refreshManga(manga))
             assertEquals(
@@ -144,22 +145,19 @@ class LibraryRefreshNotificationTest {
         }
 
     @Test
-    fun firstWorkerInsertSwallowedErrorIsFailureWithoutRetryOrCover() =
+    fun atomicWorkerInsertErrorIsFailureWithoutRetryOrCover() =
         runBlocking {
             val manga = room.manga()
-            val attempts = AtomicInteger()
-            val chapters =
-                room.chapterInserts {
-                    if (attempts.incrementAndGet() == 1) throw SQLiteException("fixture_first_worker_insert")
-                    room.db.chapterDao().insertChaptersSafely(it)
-                }
-            val repository = room.repository(chapters)
+            room.sql.beforeChapterInsert = { ordinal ->
+                if (ordinal == 1) throw SQLiteException("fixture_atomic_worker_insert")
+            }
+            val repository = room.repository()
             val covers = NoCoverExpected()
-            val helper = room.helper(covers, repository)
+            val helper = room.helper(covers)
             val worker =
                 notificationRefreshWorker(context, repository, helper, room.chapters(manga, 2).asReversed())
             assertFalse(worker.refreshWork.refreshManga(manga))
-            assertEquals(1, attempts.get())
+            assertEquals(1, room.sql.chapterInserts.get())
             assertTrue(
                 room.db
                     .chapterDao()
@@ -176,8 +174,8 @@ class LibraryRefreshNotificationTest {
         runBlocking {
             val deadline = RefreshDeadlineWitness(room)
             val manga = room.manga()
-            val repository = room.repository(deadline.chapters)
-            val helper = room.helper(deadline.covers, repository)
+            val repository = room.repository()
+            val helper = room.helper(deadline.covers, deadline.discoveries)
             val worker =
                 notificationRefreshWorker(context, repository, helper, room.chapters(manga, 2).asReversed())
             val item = async(deadline.dispatcher) { worker.refreshWork.refreshManga(manga) }
@@ -198,7 +196,7 @@ class LibraryRefreshNotificationTest {
     ) {
         val manga = room.manga()
         val repository = room.repository()
-        val helper = room.helper(covers, repository)
+        val helper = room.helper(covers)
         val worker =
             notificationRefreshWorker(
                 context,
@@ -279,7 +277,7 @@ class LibraryRefreshNotificationTest {
         assertTrue(item.await())
         assertEquals(35_000L, scheduler.currentTime)
         assertEquals(committed, room.updates())
-        assertEquals(2, deadline.attempts.get()) // Existing worker insert + helper IGNORE pass, not a retry.
+        assertEquals(1, deadline.attempts.get()) // Exactly one atomic chapter/Updates persistence call.
         assertEquals(committed.asReversed().map { it.id.toInt() }, chapterPosts().map { it.first })
         chapterPosts().forEach { assertNull(it.second.getLargeIcon()) }
     }

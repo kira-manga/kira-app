@@ -147,8 +147,8 @@ class UpdatesRepositoryImpl(
     }
 
     override suspend fun restoreEntry(entry: UpdateEntry) {
-        // Re-insert the same row (REPLACE on conflict). toEntity() preserves the primary key (the
-        // delete path above relies on it), so the restored row keeps its id, date, and position.
+        // Preserve the original ID/date/position unless a newer row already owns this chapter.
+        // IGNORE prevents repeated Undo from resetting that row's read/download state.
         notificationDao.insertNotificationsList(listOf(entry.toEntity()))
     }
 

@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
+import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.repository.MangaKey
@@ -52,10 +53,14 @@ class LibraryRepositoryRemoveTest {
         val notificationUrlsRemoved = mutableListOf<String>()
 
         override suspend fun insertManga(manga: SavedMangaEntity): Long = 0L
+        override suspend fun getDiscoveryManga(api: String, mangaUrl: String): SavedMangaEntity? = error("unused")
+
+        override suspend fun insertDiscoveryNotifications(notifications: List<ChapterNotification>): List<Long> = error("unused")
+
         override suspend fun getMangaIdByUrl(url: String): Long? = null
         override suspend fun getSavedChapterUrls(mangaId: Long): List<String> =
             chapters.filter { it.mangaId == mangaId }.map { it.url }
-        override suspend fun insertChapters(chapters: List<SavedChapterEntity>) { this.chapters += chapters }
+        override suspend fun insertChapters(chapters: List<SavedChapterEntity>): List<Long> = error("unused")
         override fun getSavedMangaApiTitleFlow(): Flow<List<ApiTitle>> = flowOf(emptyList())
         override suspend fun getMangaIdByTitle(title: String): Long? = null
         override suspend fun getMangaIdByApiAndTitle(api: String, title: String): Long? = null

@@ -20,7 +20,6 @@ import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.dao.NotificationDao
-import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.data.mapper.toLibraryManga
 import me.manga.kira.data.mapper.toNewSavedChapterEntity
@@ -200,56 +199,20 @@ class LibraryRepositoryImpl(
     }
 
     /**
-     * Refresh-all variant (native `LibraryRefreshWorker` parity): persist the new chapters AND write a
-     * `notifications` row per genuinely-new chapter so it surfaces in the Notifications/Updates screen.
-     * `chapterId` is the freshly-inserted `saved_chapters` row id (resolved by url); rows are inserted
-     * with the entity defaults (autogen id, `notificationDate` = today, `isRead`/`isDownloaded` = false).
-     * De-dup is intrinsic — only the [newOnes] just inserted are notified.
+     * Refresh-all variant: the local transaction resolves the exact parent URL, discovers chapters
+     * and writes Updates atomically. Its committed rows, not a pre-insert URL snapshot, determine
+     * the count. Overlapping inline/background refreshes cannot both notify the same discovery.
      */
     override suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int> =
         runCatchingStorage {
             withContext(dispatchers.io) {
-                val (mangaId, newOnes) = insertNewChapters(manga.api, manga.title, fetched)
-                if (mangaId > 0L && newOnes.isNotEmpty()) {
-                    // Resolve all new chapter ids in ONE query scoped by mangaId (was N+1 url-only
-                    // LIMIT-1 reads): mangaId-scoping also prevents a chapter url legally reused under
-                    // a DIFFERENT manga from attaching the notification to the wrong manga's row.
-                    val idByUrl = chapterDao.getChapterIdsByUrlForManga(mangaId, newOnes.map { it.url })
-                    val notifications = newOnes.mapNotNull { ch ->
-                        val chapterId = idByUrl[ch.url] ?: return@mapNotNull null
-                        ChapterNotification(
-                            api = manga.api,
-                            language = manga.language,
-                            mangaId = mangaId,
-                            mangaTitle = manga.title,
-                            mangaImageUrl = manga.coverUrl,
-                            mangaUrl = manga.url,
-                            chapterId = chapterId,
-                            chapterNumber = ch.number,
-                            chapterUrl = ch.url,
-                        )
-                    }
-                    if (notifications.isNotEmpty()) notificationDao.insertNotificationsList(notifications)
-                }
-                newOnes.size
+                libraryDeo.persistChapterDiscoveries(
+                    api = manga.api,
+                    mangaUrl = manga.url,
+                    chapters = fetched.reversed().map { it.toSavedChapterEntity() },
+                ).size
             }
         }
-
-    /**
-     * Preserve the notifying library-refresh path's legacy parent lookup. Details uses the exact
-     * api + URL lookup above instead. Both paths share only the already-resolved id-based insert.
-     */
-    private suspend fun insertNewChapters(
-        api: String,
-        title: String,
-        fetched: List<Chapter>,
-    ): Pair<Long, List<Chapter>> {
-        val mangaId = mangaDao.getIdByApiAndTitle(api, title) ?: run {
-            FlowLog.log("Details", "persistNew", "title=$title skipped=not-in-library")
-            return 0L to emptyList()
-        }
-        return mangaId to insertNewChapters(mangaId, fetched)
-    }
 
     /** Diff/dedup and NEW stamping under the parent id already resolved by the caller. */
     private suspend fun insertNewChapters(
