@@ -18,12 +18,12 @@
       "gradle/wrapper/gradle-wrapper.properties": "556f4aa5f360e35fca77b010b306307765d4f4915a82a612035cd5cfb7a587cb"
     },
     "dependency_graph": {
-      "metadata_sha256": "a38af911f458daa9a4ab1481f6c7592f33265cf3152bb28a9c01eb492e3ff8e6",
+      "metadata_sha256": "5f1292f11a6152b63ebddf621e9ab83d07ac16a23eeb7ca3b70fab396aa7a47c",
       "lockfiles": {
         "buildscript-gradle.lockfile": "261af2bcc177126189c15dfe94833c1d33394017a6e6a24e96d782105306b358",
-        "app/gradle.lockfile": "ec6e08f9c664f1c2cc2dc61eed0165542226ee1eba1b07f10ed869b2ceeb081f",
+        "app/gradle.lockfile": "173f1ebd6e664027fd3e7ee8372cdf23ad91e88affc42346c4a791ca8cf4450c",
         "app/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
-        "composeApp/gradle.lockfile": "97ff27fad36cb0588465cb0cf42dab2fd2417de312e68c86e01a9658a49ad43b",
+        "composeApp/gradle.lockfile": "7c1b95a2ff3097df649c93a5431b0a9c00a2bd9fad64263f24e96dc19d528863",
         "composeApp/buildscript-gradle.lockfile": "107daa9ce65695caf0db7a98dcba721a7c6917bc086324cec7f7ae1578749f67",
         "core/gradle.lockfile": "43488a0b99e4260e57c276f7f3b7772c0b5deb479c5a1cc041773a074bdb3246",
         "core/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
@@ -35,7 +35,7 @@
         "data/local/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "data/remote/gradle.lockfile": "79615b501cfcb4f7258a895047e446f6286f67c5702409feb89ade8bb9aafd29",
         "data/remote/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
-        "desktopApp/gradle.lockfile": "28719c155b02817a82c37bdcc7aac09dab84ee2462cc1cb968cbe1c300060997",
+        "desktopApp/gradle.lockfile": "4bb3845cafd759c39cca6c6126f644cb87c4aa57b49d5aaf39428694aefc8f8a",
         "desktopApp/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "domain/gradle.lockfile": "9cc117736795012cc871d56373b5de31fb767827b7f96ba92d57f4bb37724d06",
         "domain/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
@@ -47,15 +47,17 @@
         "sources/config/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "sources/contracts/gradle.lockfile": "ac1a68489fedb37ddfff0ae4b2782bfcb3b2247d8f7080aa7cdfe9d04c7df1df",
         "sources/contracts/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
-        "sources/engine/gradle.lockfile": "8773682016ea628e5730d931088f2368500fc84cfda8d5e2c4a4163bfaa81cc7",
+        "sources/engine/gradle.lockfile": "bd0013a4bd0a4babe81be64ad8ed37c8f47e43b6a4d9435cdceb94eb63f4be46",
         "sources/engine/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "sources/legacy/gradle.lockfile": "5926984ce46be5aaf065c0cb036d875d0dc525c5cbf5a645f9a72fb52d10828d",
         "sources/legacy/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "ui/gradle.lockfile": "9df86bf5183e51f06ff7e3db2cd45db19f22ec103faa127e644eb4156a92b9af",
-        "ui/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110"
+        "ui/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
+        "settings-gradle.lockfile": "5e2d075903b5cd264613e7538c7c51b1484fe2ed489d4ead3e6b4ba0cf3911c4",
+        "sources/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110"
       },
       "files": {
-        "app/build.gradle.kts": "aa1606b64784191ef4ab01c4b275b938707132aeb119506e5bd8784f3a88be8c",
+        "app/build.gradle.kts": "18102c5e9d353a57f0a6a55d4e46768d5c2338d3e2d2a5f61390105306bfb89a",
         "build.gradle.kts": "b22544870c22bf616c4f072ad415513c7b346524e3b9a2b4001a6514424f24dd",
         "composeApp/build.gradle.kts": "e9c70fdecd14f1bf7678e2d58d0141d73e09ca42b5b88082ade338d835ba35f3",
         "core/build.gradle.kts": "0f6a9398471461c285e82d0e1a9147a13790fef382eb10b687766c57d0b9de54",
@@ -72,7 +74,7 @@
         "settings.gradle.kts": "7a342edcd1c99ffedb8528f3aece72372aba670c375c30a27f36c9ec1e20917d",
         "sources/config/build.gradle.kts": "63db5f2564a6fdf21ccb7bdfa9bbafc8cdb395d08606a6f77417a1ae35ba203c",
         "sources/contracts/build.gradle.kts": "cd0ead53d56a2072fec38d047f0a6d2a8972e205ba15b005df2060907232597b",
-        "sources/engine/build.gradle.kts": "d71d385ce90d99ac3b7a2a17d7f5cd44fa01fd529f35868c87df9476f49d1954",
+        "sources/engine/build.gradle.kts": "47f8f73acbac272ed4e55b2525b88f23f33ffaf65499a8bdd863b045ffa2dd00",
         "sources/legacy/build.gradle.kts": "ca9b5ecaa8294db0eda6f2ce3cced2a16d80089b4a723c4eeddf707d6e359e7f",
         "ui/build.gradle.kts": "83c84f6f1d0cd94df6cde744804d7e8abd3c2bfe7fe26184255ab3ade8792838"
       }
@@ -116,7 +118,7 @@
     }
   },
   "runtime_archives": {
-    "installer_sha256": "8f2bc35a3a159ba0f9d2db7693529032fbed0d3c91f7b9cf7e423d65cc02b173",
+    "installer_sha256": "283b66f85596e91e1443e061445d92981410a30692072e48087c2c5ca7290b99",
     "java": {
       "linux-x64": {
         "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",

@@ -283,6 +283,8 @@ class ToolchainInputVerifier
     possible_locks = GRADLE_PROJECT_DIRS.flat_map do |directory|
       %w[gradle.lockfile buildscript-gradle.lockfile].map { |name| [directory, name].reject(&:empty?).join("/") }
     end
+    # Native settings/catalog and implicit parent-project locks do not add graph build scripts.
+    possible_locks += %w[settings-gradle.lockfile sources/buildscript-gradle.lockfile]
     present = possible_locks.select { |relative| File.exist?(File.join(@root, relative)) || File.symlink?(File.join(@root, relative)) }
     check!(locks.is_a?(Hash) && locks.key?("buildscript-gradle.lockfile") &&
       (locks.keys - possible_locks).empty? && locks.keys.sort == present.sort,

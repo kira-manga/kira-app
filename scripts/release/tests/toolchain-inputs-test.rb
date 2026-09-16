@@ -396,6 +396,43 @@ class ToolchainInputsTest < Minitest::Test
     end
   end
 
+  def test_settings_and_implicit_sources_native_lockfiles_are_finite_and_pinned
+    with_checkout do |root|
+      stdout, stderr, status = verify(root)
+      assert status.success?, stderr
+      assert_includes stdout, "pre-credential ordering checks passed"
+    end
+    %w[settings-gradle.lockfile sources/buildscript-gradle.lockfile].each do |relative|
+      %i[unbound missing changed symlink].each do |mutation|
+        with_checkout do |root|
+          path = File.join(root, relative)
+          case mutation
+          when :unbound then mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph").fetch("lockfiles").delete(relative) }
+          when :missing then File.unlink(path)
+          when :changed then File.open(path, "ab") { |file| file.write("changed") }
+          when :symlink
+            FileUtils.mv(path, path + ".retained")
+            File.symlink(path + ".retained", path)
+          end
+          message = case mutation
+          when :unbound, :missing then "reviewed native Gradle lockfile set is missing or changed"
+          when :changed then "Gradle input digest mismatch"
+          else "Gradle input is missing or symlinked"
+          end
+          assert_rejected(verify(root), message)
+        end
+      end
+    end
+    with_checkout do |root|
+      relative = "sources/gradle.lockfile" # Not one of the two reviewed additional native paths.
+      File.write(File.join(root, relative), "# Synthetic policy fixture, NOT generated release state\nempty=\n")
+      mutate_pins(root) do |pins|
+        pins.fetch("gradle").fetch("dependency_graph").fetch("lockfiles")[relative] = Digest::SHA256.file(File.join(root, relative)).hexdigest
+      end
+      assert_rejected(verify(root), "reviewed native Gradle lockfile set is missing or changed")
+    end
+  end
+
   def test_native_lock_policy_and_dependency_inputs_are_not_silently_changed
     %i[late_or_missing_locking weakened_lock_mode changed_catalog].each do |mutation|
       with_checkout do |root|
@@ -824,11 +861,18 @@ class ToolchainInputsTest < Minitest::Test
     files = {
       "gradle/verification-metadata.xml" => metadata,
       "buildscript-gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\ntest.fixture:tool:1.0=classpath\nempty=\n",
-      "app/gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\ntest.fixture:tool:1.0=releaseRuntimeClasspath\nempty=\n"
+      "app/gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\ntest.fixture:tool:1.0=releaseRuntimeClasspath\nempty=\n",
+      "settings-gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\nempty=incomingCatalogForLibs0\n",
+      "sources/buildscript-gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\nempty=classpath\n"
     }
     files.each { |relative, contents| File.write(File.join(root, relative), contents) }
     mutate_pins(root) do |pins|
       graph = pins.fetch("gradle").fetch("dependency_graph")
+      # Synthetic mutation fixtures bind their copied source; the genuine graph_fixture:false
+      # path still uses committed pins unchanged and cannot hide pending real-input adoption.
+      graph["files"] = graph.fetch("files").keys.to_h do |relative|
+        [relative, Digest::SHA256.file(File.join(root, relative)).hexdigest]
+      end
       graph["metadata_sha256"] = Digest::SHA256.file(File.join(root, "gradle/verification-metadata.xml")).hexdigest
       graph["lockfiles"] = files.keys.grep(/lockfile\z/).to_h do |relative|
         [relative, Digest::SHA256.file(File.join(root, relative)).hexdigest]

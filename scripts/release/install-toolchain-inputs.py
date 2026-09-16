@@ -78,23 +78,90 @@ def archive_name(name):
     return str(path)
 
 
-def tree_snapshot(root):
+def tree_snapshot(root, *, directory_modes=None):
     require(root.is_dir() and root.resolve() == root, "invalid installed root")
+    modes = {".": root.lstat().st_mode & 0o7777}
     result = {}
     for path in root.rglob("*"):
         name = path.relative_to(root).as_posix()
         info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            require(not info.st_mode & 0o7000, "privileged installed runtime mode")
         if stat.S_ISLNK(info.st_mode):
             # Lexical containment alone misses '..' after an intermediate symlink.
             target = path.resolve()
             require(target == root or root in target.parents, "installed symlink escapes authenticated tree")
             result[name] = ["link", os.readlink(path)]
         elif stat.S_ISDIR(info.st_mode):
+            modes[name] = info.st_mode & 0o7777
             result[name] = ["directory"]
         else:
             require(stat.S_ISREG(info.st_mode), "unexpected installed file type")
             result[name] = ["file", info.st_size, info.st_mode & 0o777, digest(path)]
+    if directory_modes is None:
+        require(all(not mode & 0o7000 for mode in modes.values()), "privileged installed directory mode")
+    else:
+        directory_modes.update(modes)
     return result
+
+
+def ruby_cache_difference(expected, actual, canonical, prefix_status):
+    counts = dict.fromkeys(("missing", "extra", "type", "mode", "size", "hash", "link"))
+    names, omitted = [], None
+    if actual is not None:
+        counts = dict.fromkeys(counts, 0)
+        counts["missing"], counts["extra"] = len(expected.keys() - actual.keys()), len(actual.keys() - expected.keys())
+        changed = expected.keys() ^ actual.keys()
+        for name in expected.keys() & actual.keys():
+            before, after = expected[name], actual[name]
+            if before[0] != after[0]:
+                counts["type"] += 1
+            elif before[0] == "file":
+                for kind, index in (("size", 1), ("mode", 2), ("hash", 3)):
+                    counts[kind] += before[index] != after[index]
+            elif before[0] == "link":
+                counts["link"] += before[1] != after[1]
+            if before != after:
+                changed.add(name)
+        # Only public archive-known names may be shown, never arbitrary extra cache names.
+        names = [name for name in sorted(changed & expected.keys()) if len(name) <= 160 and
+                 re.fullmatch(r"[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(?:/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*", name)][:8]
+        omitted = len(changed) - len(names)
+    return {"canonical": canonical, "prefix": prefix_status,
+            "comparison": "complete" if actual is not None else "unavailable",
+            "mismatches": counts, "names": names, "namesOmitted": omitted}
+
+
+def verify_existing_ruby(prefix, expected, current_host):
+    canonical, actual, prefix_status = None, None, "unavailable"
+    directory_modes = {}
+    try:
+        mode = prefix.lstat().st_mode
+        prefix_status = "directory" if stat.S_ISDIR(mode) else "symlink" if stat.S_ISLNK(mode) else "other"
+        canonical = prefix.resolve() == prefix
+        if canonical:
+            actual = tree_snapshot(prefix, directory_modes=directory_modes)
+        ordinary_directories = all(not mode & 0o7000 for mode in directory_modes.values())
+        hosted_directories = (canonical and current_host == "linux-x64" and prefix == RUBY_PREFIXES["linux-x64"] and
+                              os.environ.get("GITHUB_ACTIONS") == "true" and
+                              os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+                              all(mode == 0o1777 for mode in directory_modes.values()))
+        require(ordinary_directories or hosted_directories, "preinstalled Ruby directory modes differ from supported policies")
+        matches = ordinary_directories and actual == expected
+        policy = "archive"
+        if not matches and hosted_directories:
+            # Reviewed Ubuntu image provisioning: chmod -R 777 /opt, then +t on Ruby directories.
+            # Compare the entire authenticated inventory; do not alter any borrowed cache entry.
+            hosted_expected = {name: ["file", entry[1], 0o777, entry[3]] if entry[0] == "file" else entry
+                               for name, entry in expected.items()}
+            matches = actual == hosted_expected
+            policy = "ubuntu-hosted-permissions"
+        require(canonical and matches, "preinstalled Ruby differs from supported authenticated tree policies")
+        return policy
+    except (OSError, RuntimeError):
+        print("Preinstalled Ruby cache diagnostic: " +
+              json.dumps(ruby_cache_difference(expected, actual, canonical, prefix_status), sort_keys=True), file=sys.stderr)
+        raise
 
 
 def extract_verified(archive, destination, pin):
@@ -119,6 +186,8 @@ def extract_verified(archive, destination, pin):
             require(name not in by_name and (name == root_name or name.startswith(root_name + "/")),
                     "duplicate or foreign archive root")
             require(member.isdir() or member.isfile() or member.issym() or member.islnk(), "unsupported archive member")
+            if member.isdir():
+                member.mode &= ~stat.S_ISGID  # Provider directory SGID is never installed.
             require(not member.mode & 0o7000, "privileged runtime archive mode")
             by_name[name] = member
             if member.issym():
@@ -154,9 +223,9 @@ def extract_verified(archive, destination, pin):
                     expected[relative] = ["file", content.size, content.mode & 0o777, stream_digest(stream)]
         # The complete member/link inventory was checked above; no downloaded installer is run.
         if hasattr(tarfile, "fully_trusted_filter"):
-            source.extractall(destination, filter="fully_trusted")
+            source.extractall(destination, members=members, filter="fully_trusted")
         else:  # Apple's system Python also supports the reviewed pre-filter tarfile API.
-            source.extractall(destination)
+            source.extractall(destination, members=members)
     installed = destination / root_name
     require(tree_snapshot(installed) == expected, "extracted runtime tree differs from authenticated archive")
     return installed, expected
@@ -253,7 +322,7 @@ def install(role, current_host, temporary, pins):
             require(Path(os.environ["RUNNER_TOOL_CACHE"]).resolve() == prefix.parents[2], "wrong embedded Ruby tool-cache prefix")
             marker = Path(str(prefix) + ".complete")
             if prefix.exists() or prefix.is_symlink():
-                require(prefix.resolve() == prefix and tree_snapshot(prefix) == inventories[0], "preinstalled Ruby differs from authenticated archive")
+                receipt["rubyCachePolicy"] = verify_existing_ruby(prefix, inventories[0], current_host)
                 require(marker.is_file() and not marker.is_symlink() and marker.stat().st_size == 0, "preinstalled Ruby has no valid cache marker")
             else:
                 require(not marker.exists() and not marker.is_symlink(), "preexisting incomplete Ruby marker")

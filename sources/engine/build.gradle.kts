@@ -47,7 +47,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":sources:contracts"))
-            implementation("me.manga.kira.source:source-engine:0.1.0")
+            implementation("me.manga.kira.source:source-engine:0.1.0-engine234-8cb9ead84983-macos-35018546402-1")
             // JSON config parsing + JSON-API response extraction.
             implementation(libs.kotlinx.serialization.json)
             // HTML response extraction (CSS selectors) — KMP, same parser the legacy sources use.
@@ -60,7 +60,7 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
-            implementation("me.manga.kira.source:source-testkit:0.1.0")
+            implementation("me.manga.kira.source:source-testkit:0.1.0-engine234-8cb9ead84983-macos-35018546402-1")
         }
     }
 }
