@@ -129,7 +129,6 @@ import me.manga.kira.ui.generated.resources.crash_diagnostics_title
 import me.manga.kira.ui.generated.resources.chapters_converted_successfully
 import me.manga.kira.ui.generated.resources.chapters_remaining
 import me.manga.kira.ui.generated.resources.cbz_chapters_failed
-import me.manga.kira.ui.generated.resources.cbz_conversion_partial
 import me.manga.kira.ui.generated.resources.clear_chapter_cache
 import me.manga.kira.ui.generated.resources.close
 import me.manga.kira.ui.generated.resources.closure_reason_done
@@ -143,12 +142,8 @@ import me.manga.kira.ui.generated.resources.complaint_site_error
 import me.manga.kira.ui.generated.resources.complaint_sites_add
 import me.manga.kira.ui.generated.resources.complaint_technical
 import me.manga.kira.ui.generated.resources.connect_with_us_in_social_media
-import me.manga.kira.ui.generated.resources.conversion_complete_
-import me.manga.kira.ui.generated.resources.conversion_failed
-import me.manga.kira.ui.generated.resources.conversion_stopped
 import me.manga.kira.ui.generated.resources.conversion_stopped_by_user
 import me.manga.kira.ui.generated.resources.converting
-import me.manga.kira.ui.generated.resources.converting_to_cbz
 import me.manga.kira.ui.generated.resources.current
 import me.manga.kira.ui.generated.resources.default_reading_mode
 import me.manga.kira.ui.generated.resources.describe_issue_or_feature
@@ -1853,19 +1848,8 @@ private fun CbzConversionDialog(
             }
         },
         title = {
-            val title = when {
-                progress.error != null -> stringResource(Res.string.conversion_failed)
-                progress.successMessage != null -> when {
-                    progress.wasStopped -> stringResource(Res.string.conversion_stopped)
-                    progress.failedChapters > 0 && progress.convertedChapters == 0 ->
-                        stringResource(Res.string.conversion_failed)
-                    progress.failedChapters > 0 -> stringResource(Res.string.cbz_conversion_partial)
-                    else -> stringResource(Res.string.conversion_complete_)
-                }
-                else -> stringResource(Res.string.converting_to_cbz)
-            }
             Text(
-                text = title,
+                text = stringResource(cbzConversionTitle(progress)),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,

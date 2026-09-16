@@ -1,14 +1,21 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
+import android.content.Context
 import androidx.work.WorkInfo
+import com.russhwolf.settings.SharedPreferencesSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import me.manga.kira.core.dispatchers.DefaultDispatcherProvider
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.repository.LibraryRepositoryImpl
+import me.manga.kira.data.repository.ReadProgressRepositoryImpl
+import me.manga.kira.domain.service.FileService
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -243,6 +250,83 @@ class DownloadWorkerCancellationTest {
         }
 
     @Test
+    fun libraryRemovalWaitsForRealWorkerDrainAndFencesLateCompletion() =
+        cancellationFixture(CancellationSeam.DELIVERED_SEND) {
+            val readProgress = ReadProgressRepositoryImpl(
+                SharedPreferencesSettings(storage.context.getSharedPreferences(storage.root.name, Context.MODE_PRIVATE)),
+            )
+            readProgress.save(rows.original.saved.url, rows.original.saved.lastReadPage)
+            val library = libraryRemovalRepository(readProgress)
+            start()
+            awaitSuspendedCompleteSender()
+            val claim = assertNotNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+
+            coroutineScope {
+                val removal = async(start = CoroutineStart.UNDISPATCHED) {
+                    library.removeFromLibrary(rows.manga.api, rows.manga.language, rows.manga.title).also {
+                        assertTrue(checkNotNull(producer.job).isCompleted, "Library removal returned before the real producer drained")
+                    }
+                }
+                try {
+                    val cancelled = withTimeout(GATE_TIMEOUT_MILLIS) {
+                        rows.realDao.observeAllDownloads().first { downloads ->
+                            downloads.singleOrNull()?.state == DownloadingState.FAILED
+                        }.single()
+                    }
+                    assertEquals(
+                        rows.original.download.copy(state = DownloadingState.FAILED, errorMsg = USER_CANCELLED),
+                        cancelled,
+                    )
+                    assertFalse(rows.db.chapterArtifactDao().canPublish(claim))
+                    assertFalse(removal.isCompleted)
+                    assertEquals(rows.manga, rows.db.mangaDao().getMangaById(rows.manga.id))
+                    assertEquals(rows.original.saved, rows.saved())
+                    assertEquals(rows.original.saved.lastReadPage, readProgress.load(rows.original.saved.url))
+                    storage.assertImages(paths)
+
+                    // The real adapter requests WorkManager cancellation. Keep the independently
+                    // started worker alive: a stop request is not evidence that its callbacks drained.
+                    dao.releaseProgress.complete(Unit)
+                    withTimeout(GATE_TIMEOUT_MILLIS) {
+                        dao.lastProgressReturned.await()
+                        sender.queuedResume.await()
+                    }
+                    assertEquals(FULL_BUFFER_PAGES, dao.progressCalls.get())
+                    assertEquals(cancelled, rows.download())
+                    assertFalse(removal.isCompleted, "Library removal must retain file custody until the real sender exits")
+                    assertFalse(checkNotNull(worker.job).isCompleted)
+                    assertFalse(checkNotNull(producer.job).isCompleted)
+                    storage.assertImages(paths)
+
+                    sender.release()
+                    assertTrue(withTimeout(GATE_TIMEOUT_MILLIS) { removal.await() }.isSuccess)
+                    assertFalse(storage.mangaDirectory.exists())
+                    joinSuccessfulWorker()
+                } finally {
+                    dao.releaseProgress.complete(Unit)
+                    sender.release()
+                }
+            }
+
+            assertEquals(1, dao.runningCalls.get())
+            assertEquals(0, dao.completionCalls.get(), "Late COMPLETE must never write SUCCESS")
+            assertEquals(0, dao.ownershipReadCalls.get(), "A swallowed worker failure must not stand in for the completion fence")
+            assertEquals(0, dao.requeueCalls.get())
+            assertEquals(FULL_BUFFER_PAGES, transport.requests.get())
+            assertEquals(1, sender.retainedResumeCount.get())
+            assertFalse(checkNotNull(producer.job).isCancelled)
+            assertNull(rows.db.mangaDao().getIdByApiAndTitle(rows.manga.api, rows.manga.title))
+            assertNull(rows.db.chapterDao().getChapterByIdSuspend(rows.original.saved.id))
+            assertNull(rows.realDao.getDownloadByChapter(rows.original.saved.id))
+            assertNull(rows.db.chapterArtifactDao().get(rows.original.saved.id))
+            assertNull(rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id))
+            assertNull(readProgress.load(rows.original.saved.url))
+            assertTrue(paths.none { File(it).exists() })
+            assertFalse(storage.mangaDirectory.exists(), "No chapter or manga directory may reappear after both actual Jobs join")
+            receipt("real-Library-removal-retained-parent-until-drain; late-COMPLETE-fenced; actual-jobs-joined; no-rows-or-root-recreated")
+        }
+
+    @Test
     fun deliveredCompleteSurvivesCancelledSender() =
         cancellationFixture(CancellationSeam.DELIVERED_SEND) {
             start()
@@ -318,6 +402,21 @@ class DownloadWorkerCancellationTest {
             receipt("partial-file-deleted; existing-FAILED-preserved; no-queued-resurrection")
         }
 }
+
+private fun DownloadWorkerCancellationFixture.libraryRemovalRepository(readProgress: ReadProgressRepositoryImpl) =
+    LibraryRepositoryImpl(
+        mangaDao = rows.db.mangaDao(),
+        libraryDeo = rows.db.libraryDeo(),
+        chapterDao = rows.db.chapterDao(),
+        notificationDao = rows.db.notificationDao(),
+        historyDao = rows.db.historyDao(),
+        chapterDownloadDao = rows.realDao,
+        downloadRepository = androidRepository(),
+        fileService = FileService(storage.fileSystem),
+        readProgress = readProgress,
+        dispatchers = DefaultDispatcherProvider(),
+        artifacts = rows.artifacts.ownership,
+    )
 
 private suspend fun DownloadWorkerCancellationFixture.awaitSuspendedCompleteSender() {
     assertNull(System.getProperty("kotlinx.coroutines.channels.defaultBuffer"))
