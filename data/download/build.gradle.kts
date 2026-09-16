@@ -114,6 +114,9 @@ kotlin {
 
         val androidHostTest = getByName("androidHostTest") {
             dependencies {
+                // APP #21 joins the real LibraryRepositoryImpl to this module's worker fixture.
+                // Test-only: :data consumes download main; neither main artifact depends on tests.
+                implementation(project(":data"))
                 implementation(libs.junit)
                 implementation(libs.robolectric.runner)
                 implementation(libs.androidx.work.testing)
