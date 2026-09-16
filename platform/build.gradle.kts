@@ -45,6 +45,7 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        withHostTestBuilder {}
     }
 
     jvm("desktop") {
@@ -129,6 +130,10 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        val androidHostTest = getByName("androidHostTest") {
+            dependencies { implementation(libs.junit) }
         }
 
         // SkiaWebpEncoderTest exercises real skiko encoding on the Desktop/JVM target; pull the
