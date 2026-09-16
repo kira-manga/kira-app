@@ -113,6 +113,30 @@ class BackupArchivePreflightTest {
     }
 
     @Test
+    fun compressedDownloadEntryIsBoundedAfterEarlierValidEntriesAndCleansAllSnapshots() = downloadRecoveryTest {
+        val page = recoveryTestPng()
+        val first = archive("1.png" to page)
+        val expanded = archive("1.png" to page, "notes.txt" to ByteArray(32_768))
+        val selected = writeBackup(
+            document("downloads/0.cbz", "downloads/1.cbz"),
+            "downloads/0.cbz" to first, "downloads/1.cbz" to expanded, compressed = true,
+        )
+        assertTrue(requireNotNull(fs.metadata(selected).size) < expanded.size.toLong())
+        val exact = BackupImportPolicy(downloads = BackupDownloadLimits(maxCbzBytes = expanded.size.toLong()))
+        preflight(exact).prepare(selected.toString()) {}.use { assertEquals(2, it.downloads.size) }
+        assertNoSnapshots()
+        val retained = seed(isDownloaded = true)
+        val before = db.backupDao().getAllSavedManga()
+        val exceeded = exact.copy(downloads = exact.downloads.copy(maxCbzBytes = expanded.size.toLong() - 1))
+        assertFailsWith<BackupImportLimitExceeded> { preflight(exceeded).prepare(selected.toString()) {} }
+        assertEquals(before, db.backupDao().getAllSavedManga())
+        assertEquals(retained.saved, saved(retained))
+        assertEquals(retained.download, download(retained))
+        assertRetainedFiles(retained)
+        assertNoSnapshots()
+    }
+
+    @Test
     fun innerEntryLimitsAlsoCoverMetadataAndImplicitDirectories() = downloadRecoveryTest {
         val policy = BackupImportPolicy(downloads = BackupDownloadLimits(maxInnerEntries = 1))
         for (cbz in listOf(archive("1.png" to recoveryTestPng(), "metadata.txt" to byteArrayOf(1)), archive("pages/1.png" to recoveryTestPng()))) {
@@ -220,10 +244,15 @@ class BackupArchivePreflightTest {
         inspector: PageMediaInspector = native,
     ): BackupArchivePreflight = BackupArchivePreflight(appFileSystem, BackupImportStaging(appFileSystem, policy), inspector, policy)
 
-    private fun DownloadRecoveryFixture.writeBackup(document: BackupFile, vararg entries: Pair<String, ByteArray>): Path {
+    private fun DownloadRecoveryFixture.writeBackup(
+        document: BackupFile,
+        vararg entries: Pair<String, ByteArray>,
+        compressed: Boolean = false,
+    ): Path {
         fs.createDirectories(appFileSystem.cacheDir)
         val path = appFileSystem.cacheDir / "user-selection.zip"
-        fs.write(path) { write(archive("backup.json" to backupJson.encodeToString(document).encodeToByteArray(), *entries)) }
+        val contents = arrayOf("backup.json" to backupJson.encodeToString(document).encodeToByteArray(), *entries)
+        fs.write(path) { write(if (compressed) deflatedBackupArchive(*contents) else archive(*contents)) }
         return path
     }
 
