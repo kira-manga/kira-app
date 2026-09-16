@@ -286,10 +286,31 @@ kotlin {
             implementation(libs.androidx.sqlite.bundled)
         }
 
-        getByName("androidHostTest").dependencies {
-            implementation(libs.junit)
-            implementation(libs.robolectric.runner)
-            implementation(libs.compose.ui.test.junit4)
+        getByName("androidHostTest") {
+            // Recompile only existing helper sources here, never another module's test methods.
+            // The joined worker → Room → Details witness belongs at the composition root.
+            kotlin.source(
+                objects.sourceDirectorySet("app87DownloadHostFixtures", "Shared Android download test helpers").apply {
+                    srcDir(project(":data:download").file("src/androidHostTest/kotlin"))
+                    include(
+                        "**/AndroidDownloadChallengeFixture.kt",
+                        "**/CancellationFixtureStorage.kt",
+                        "**/DownloadWorkerCancellationRows.kt",
+                        "**/NativeCommitGate.kt",
+                        "**/CommittedDownloadReader.kt",
+                        "**/DownloadHostTestSupport.kt",
+                        "**/DownloadNotificationTestFixtures.kt",
+                    )
+                },
+            )
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.robolectric.runner)
+                implementation(libs.compose.ui.test.junit4)
+                implementation(libs.androidx.work.testing)
+                implementation(libs.androidx.concurrent.futures)
+                implementation(libs.androidx.sqlite.bundled)
+            }
         }
 
         androidMain.dependencies {
@@ -359,6 +380,7 @@ val prepareApp13AndroidHostSdk by tasks.registering(Sync::class) {
 }
 tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
     dependsOn(prepareApp13AndroidHostSdk)
+    dependsOn(":data:download:prepareApp75AndroidHostRuntime")
     maxParallelForks = 1
     forkEvery = 0
     maxHeapSize = "1g"
@@ -366,6 +388,10 @@ tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEa
     // Bind Robolectric before its fork; Gradle --offline alone does not constrain its resolver.
     systemProperty("robolectric.offline", "true")
     systemProperty("robolectric.dependency.dir", app13HostSdkDirectory.get().asFile.absolutePath)
+    systemProperty(
+        "kira.app75.sqlite.native",
+        project(":data:download").layout.buildDirectory.file("app75-android-host-runtime/native/libsqliteJni.so").get().asFile.absolutePath,
+    )
     doFirst {
         val forbidden = classpath.files.filter {
             it.name.startsWith("sqlite-bundled-jvm-") || it.name.startsWith("room-runtime-jvm-")

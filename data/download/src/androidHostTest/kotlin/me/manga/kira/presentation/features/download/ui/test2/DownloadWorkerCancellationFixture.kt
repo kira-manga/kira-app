@@ -1,9 +1,5 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
-import android.content.Context
-import androidx.concurrent.futures.CallbackToFutureAdapter
-import androidx.work.ForegroundInfo
-import androidx.work.ForegroundUpdater
 import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
 import androidx.work.impl.WorkManagerImpl
@@ -28,21 +24,17 @@ import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.robolectric.RuntimeEnvironment
 import java.io.File
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-internal const val GATE_TIMEOUT_SECONDS = 15L
 internal const val GATE_TIMEOUT_MILLIS = GATE_TIMEOUT_SECONDS * 1_000L
 private const val CASE_TIMEOUT_MILLIS = 60_000L
 internal const val FULL_BUFFER_PAGES = 65
 internal const val PARTIAL_PAGES = 2
-internal const val DOWNLOAD_COMPLETION_PROGRESS = 100
 private const val PARTIAL_PROGRESS = 50
-internal const val FIXTURE_API = "app75-host-fixture"
 internal const val USER_CANCELLED = "__cancelled_by_user__"
 
 internal enum class CancellationSeam {
@@ -302,19 +294,4 @@ private fun closeFixtureResources(
         failures.drop(1).forEach(first::addSuppressed)
         throw first
     }
-}
-
-internal class ImmediateFixtureForegroundUpdater(
-    private val calls: AtomicInteger,
-) : ForegroundUpdater {
-    override fun setForegroundAsync(
-        context: Context,
-        id: UUID,
-        foregroundInfo: ForegroundInfo,
-    ): ListenableFuture<Void> =
-        CallbackToFutureAdapter.getFuture { completer ->
-            calls.incrementAndGet()
-            completer.set(null)
-            "App75 test foreground updater (not an Android foreground service)"
-        }
 }
