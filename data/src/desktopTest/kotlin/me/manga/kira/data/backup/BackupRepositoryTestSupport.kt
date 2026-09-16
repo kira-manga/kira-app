@@ -18,6 +18,9 @@ import me.manga.kira.platform.media.DesktopPageMediaInspector
 import me.manga.kira.platform.media.PageMediaInspector
 import okio.FileSystem
 import okio.Path
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.random.Random
 
 /** Existing end-to-end Room/filesystem fixture, shared with production admission assertions. */
@@ -40,6 +43,19 @@ internal fun backupTestRepository(
 
 internal fun backupTestCbzReader(files: AppFileSystem): DefaultCbzReader =
     DefaultCbzReader(files, BackupTestDispatchers, DesktopPageMediaInspector())
+
+/** Same JVM ZIP writer used by the existing bounded-reader fixtures, without replacing admission. */
+internal fun deflatedBackupArchive(vararg entries: Pair<String, ByteArray>): ByteArray {
+    val buffer = ByteArrayOutputStream()
+    ZipOutputStream(buffer).use { zip ->
+        for ((name, bytes) in entries) {
+            zip.putNextEntry(ZipEntry(name))
+            zip.write(bytes)
+            zip.closeEntry()
+        }
+    }
+    return buffer.toByteArray()
+}
 
 internal fun backupTestDatabase(): MangaDatabase = Room.inMemoryDatabaseBuilder<MangaDatabase>()
     .setDriver(BundledSQLiteDriver())

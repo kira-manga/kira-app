@@ -286,10 +286,36 @@ kotlin {
             implementation(libs.androidx.sqlite.bundled)
         }
 
-        getByName("androidHostTest").dependencies {
-            implementation(libs.junit)
-            implementation(libs.robolectric.runner)
-            implementation(libs.compose.ui.test.junit4)
+        getByName("androidHostTest") {
+            // Android consumes source roots without nested SourceDirectorySet filters. Materialize
+            // only the existing helpers in an isolated root, never another module's test methods.
+            val downloadHostFixtures = tasks.register<Sync>("syncAndroidDownloadHostFixtures") {
+                from(project(":data:download").file("src/androidHostTest/kotlin")) {
+                    val helperPackage = "me/manga/kira/presentation/features/download/ui/test2"
+                    include(
+                        "$helperPackage/AndroidDownloadChallengeFixture.kt",
+                        "$helperPackage/CancellationFixtureStorage.kt",
+                        "$helperPackage/DownloadWorkerCancellationRows.kt",
+                        "$helperPackage/NativeCommitGate.kt",
+                        "$helperPackage/CommittedDownloadReader.kt",
+                        "$helperPackage/DownloadHostTestSupport.kt",
+                        "$helperPackage/DownloadNotificationTestFixtures.kt",
+                    )
+                }
+                into(layout.buildDirectory.dir("generated/androidDownloadHostFixtures/kotlin"))
+            }
+            kotlin.srcDir(downloadHostFixtures)
+            tasks.matching { it.name == "compileAndroidHostTest" }.configureEach {
+                dependsOn(downloadHostFixtures)
+            }
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.robolectric.runner)
+                implementation(libs.compose.ui.test.junit4)
+                implementation(libs.androidx.work.testing)
+                implementation(libs.androidx.concurrent.futures)
+                implementation(libs.androidx.sqlite.bundled)
+            }
         }
 
         androidMain.dependencies {
@@ -359,6 +385,7 @@ val prepareApp13AndroidHostSdk by tasks.registering(Sync::class) {
 }
 tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
     dependsOn(prepareApp13AndroidHostSdk)
+    dependsOn(":data:download:prepareApp75AndroidHostRuntime")
     maxParallelForks = 1
     forkEvery = 0
     maxHeapSize = "1g"
@@ -366,6 +393,10 @@ tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEa
     // Bind Robolectric before its fork; Gradle --offline alone does not constrain its resolver.
     systemProperty("robolectric.offline", "true")
     systemProperty("robolectric.dependency.dir", app13HostSdkDirectory.get().asFile.absolutePath)
+    systemProperty(
+        "kira.app75.sqlite.native",
+        project(":data:download").layout.buildDirectory.file("app75-android-host-runtime/native/libsqliteJni.so").get().asFile.absolutePath,
+    )
     doFirst {
         val forbidden = classpath.files.filter {
             it.name.startsWith("sqlite-bundled-jvm-") || it.name.startsWith("room-runtime-jvm-")
