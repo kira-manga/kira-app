@@ -78,7 +78,9 @@ internal class DetailsUrlOnlyRoomFixture(
             ),
         )
     val source = DetailsRoomSource()
-    val vm = createDetailsRoomViewModel(this).also { store.put("details", it) }
+    val vm = createDetailsRoomViewModel(
+        DetailsRoomEnvironment(db, fileSystem, artifacts, dispatchers), library, source,
+    ).also { store.put("details", it) }
 
     suspend fun seed(
         manga: Manga,

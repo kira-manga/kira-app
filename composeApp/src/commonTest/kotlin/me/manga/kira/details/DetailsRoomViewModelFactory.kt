@@ -1,6 +1,10 @@
 package me.manga.kira.details
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
+import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.repository.ChapterBookmarkRepositoryImpl
@@ -16,6 +20,8 @@ import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
 import me.manga.kira.domain.repository.CompressionDeferralRepository
 import me.manga.kira.domain.repository.ConnectivityRepository
+import me.manga.kira.domain.repository.LibraryRepository
+import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
 import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.details.ClearChapterNewUseCase
@@ -40,34 +46,48 @@ import me.manga.kira.domain.usecase.library.ToggleInLibraryUseCase
 import me.manga.kira.domain.usecase.reader.MarkChaptersReadUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterReadUseCase
+import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.details.DetailsViewModel
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 
 /** Composition-root test wiring: real VM/use cases and Room adapters, without starting platform services. */
-internal fun createDetailsRoomViewModel(fixture: DetailsUrlOnlyRoomFixture): DetailsViewModel =
-    DetailsRoomViewModelFactory(fixture).create()
+internal fun createDetailsRoomViewModel(
+    room: DetailsRoomEnvironment,
+    library: LibraryRepository,
+    source: MangaDetailsRepository,
+    engine: DownloadRepository = UnusedDetailsDownloadEngine,
+): DetailsViewModel = DetailsRoomViewModelFactory(room, library, source, engine).create()
+
+internal class DetailsRoomEnvironment(
+    val db: MangaDatabase,
+    val fileSystem: AppFileSystem,
+    val artifacts: ChapterArtifacts,
+    val dispatchers: DispatcherProvider,
+)
 
 private class DetailsRoomViewModelFactory(
-    private val fixture: DetailsUrlOnlyRoomFixture,
+    private val room: DetailsRoomEnvironment,
+    private val library: LibraryRepository,
+    private val source: MangaDetailsRepository,
+    private val engine: DownloadRepository,
 ) {
-    private val dao = fixture.db.chapterDao()
-    private val library = fixture.library
+    private val dao = room.db.chapterDao()
     private val resolver = ChapterIdResolverImpl(dao)
     private val reads = MarkChapterReadRepositoryImpl(dao)
-    private val downloads = roomDownloadActions(fixture)
+    private val downloads = roomDownloadActions(room, engine)
     private val enqueue = EnqueueDownloadUseCase(downloads)
-    private val saved = SavedMangaDetailsRepositoryImpl(fixture.db.mangaDao(), dao, fixture.dispatchers)
+    private val saved = SavedMangaDetailsRepositoryImpl(room.db.mangaDao(), dao, room.dispatchers)
     private val observedDownloads =
-        DownloadsRepositoryImpl(UnusedDetailsDownloadEngine, fixture.db.chapterDownloadingDao())
+        DownloadsRepositoryImpl(engine, room.db.chapterDownloadingDao())
 
     fun create(): DetailsViewModel =
         DetailsViewModel(
-            fetchDetails = FetchMangaDetailsUseCase(fixture.source),
+            fetchDetails = FetchMangaDetailsUseCase(source),
             isAdultContent = IsAdultContentUseCase(DetailsRoomDevicePorts),
             observeInLibrary = ObserveInLibraryUseCase(library),
             observeSavedDetails = ObserveSavedMangaDetailsUseCase(saved),
             toggleInLibrary = ToggleInLibraryUseCase(library),
-            enqueueAllChaptersDownload = EnqueueAllChaptersDownloadUseCase(resolver, enqueue, fixture.dispatchers),
+            enqueueAllChaptersDownload = EnqueueAllChaptersDownloadUseCase(resolver, enqueue, room.dispatchers),
             toggleChapterRead = ToggleChapterReadUseCase(reads),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(ChapterBookmarkRepositoryImpl(dao)),
             markChaptersRead = MarkChaptersReadUseCase(reads),
@@ -88,12 +108,15 @@ private class DetailsRoomViewModelFactory(
         )
 }
 
-private fun roomDownloadActions(fixture: DetailsUrlOnlyRoomFixture): DownloadsActionRepositoryImpl =
+private fun roomDownloadActions(
+    room: DetailsRoomEnvironment,
+    engine: DownloadRepository,
+): DownloadsActionRepositoryImpl =
     DownloadsActionRepositoryImpl(
-        legacy = UnusedDetailsDownloadEngine,
+        legacy = engine,
         storage = DownloadsActionStorage(
-            fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.fileSystem,
-            fixture.artifacts, fixture.db.chapterArtifactRepairDao(),
+            room.db.chapterDownloadingDao(), room.db.chapterDao(), room.fileSystem,
+            room.artifacts, room.db.chapterArtifactRepairDao(),
         ),
     )
 
