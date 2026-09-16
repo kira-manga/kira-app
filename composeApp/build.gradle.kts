@@ -287,22 +287,27 @@ kotlin {
         }
 
         getByName("androidHostTest") {
-            // Recompile only existing helper sources here, never another module's test methods.
-            // The joined worker → Room → Details witness belongs at the composition root.
-            kotlin.source(
-                objects.sourceDirectorySet("app87DownloadHostFixtures", "Shared Android download test helpers").apply {
-                    srcDir(project(":data:download").file("src/androidHostTest/kotlin"))
+            // Android consumes source roots without nested SourceDirectorySet filters. Materialize
+            // only the existing helpers in an isolated root, never another module's test methods.
+            val downloadHostFixtures = tasks.register<Sync>("syncAndroidDownloadHostFixtures") {
+                from(project(":data:download").file("src/androidHostTest/kotlin")) {
+                    val helperPackage = "me/manga/kira/presentation/features/download/ui/test2"
                     include(
-                        "**/AndroidDownloadChallengeFixture.kt",
-                        "**/CancellationFixtureStorage.kt",
-                        "**/DownloadWorkerCancellationRows.kt",
-                        "**/NativeCommitGate.kt",
-                        "**/CommittedDownloadReader.kt",
-                        "**/DownloadHostTestSupport.kt",
-                        "**/DownloadNotificationTestFixtures.kt",
+                        "$helperPackage/AndroidDownloadChallengeFixture.kt",
+                        "$helperPackage/CancellationFixtureStorage.kt",
+                        "$helperPackage/DownloadWorkerCancellationRows.kt",
+                        "$helperPackage/NativeCommitGate.kt",
+                        "$helperPackage/CommittedDownloadReader.kt",
+                        "$helperPackage/DownloadHostTestSupport.kt",
+                        "$helperPackage/DownloadNotificationTestFixtures.kt",
                     )
-                },
-            )
+                }
+                into(layout.buildDirectory.dir("generated/androidDownloadHostFixtures/kotlin"))
+            }
+            kotlin.srcDir(downloadHostFixtures)
+            tasks.matching { it.name == "compileAndroidHostTest" }.configureEach {
+                dependsOn(downloadHostFixtures)
+            }
             dependencies {
                 implementation(libs.junit)
                 implementation(libs.robolectric.runner)
