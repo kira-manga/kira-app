@@ -12,10 +12,11 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.toList
 import me.manga.kira.core.cbz.OptimizedCbzManager
-import me.manga.kira.core.cbz.cbzTier
+import me.manga.kira.core.util.heap.DeviceTier
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.domain.service.FileService
+import me.manga.kira.platform.device.DeviceTierProbe
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.media.AndroidPageMediaInspector
 import me.manga.kira.presentation.features.download.data.DownloadState
@@ -63,6 +64,9 @@ internal class AndroidChallengeCase(
         },
     )
     private val files = FileService(storage.fileSystem)
+    private val deviceTierProbe = object : DeviceTierProbe {
+        override fun detect(): DeviceTier = DeviceTier.LOW
+    }
     private val library = LibraryRepository(
         rows.db.mangaDao(),
         rows.db.chapterDao(),
@@ -75,7 +79,7 @@ internal class AndroidChallengeCase(
         storage.context,
         ChapterDownloadPersistence(library, rows.db.notificationDao(), rows.realDao, files),
         PageDownloadTransfer(client, AndroidPageMediaInspector()),
-        ChapterDownloadArchive(OptimizedCbzManager(storage.context, cbzTier()), storage.settings),
+        ChapterDownloadArchive(OptimizedCbzManager(storage.context, deviceTierProbe), storage.settings),
         artifacts = rows.artifacts,
     )
 
