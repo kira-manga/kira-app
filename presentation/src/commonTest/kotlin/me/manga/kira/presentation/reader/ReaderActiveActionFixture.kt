@@ -48,13 +48,14 @@ import me.manga.kira.presentation.testing.readerPage
 internal class ReaderActiveActionFixture(
     private val scheduler: TestCoroutineScheduler,
     mode: ReadingMode = ReadingMode.WEBTOON,
+    val chapters: List<Chapter> = listOf(readerChapter("1"), readerChapter("2"), readerChapter("3")),
 ) {
     val manga = readerManga()
-    val chapters = listOf(readerChapter("1"), readerChapter("2"), readerChapter("3"))
     val pages = ActiveActionPages(chapters)
     val progress = ActiveActionProgress()
     val resume = ActiveActionResume()
     val details = ActiveActionDetails(manga, chapters)
+    val savedDetails = MutableStateFlow<MangaDetails?>(null)
     val bookmark = RecordingChapterBookmarkRepository()
     val history = RecordingHistoryRepository()
     val markRead = RecordingMarkChapterReadRepository()
@@ -66,7 +67,7 @@ internal class ReaderActiveActionFixture(
             fetchPages = FetchChapterPagesUseCase(pages),
             observeReadingMode = ObserveReadingModeUseCase(readingMode),
             setReadingMode = SetReadingModeUseCase(readingMode),
-            listChapters = ListChaptersUseCase(details, ActiveActionSavedDetails()),
+            listChapters = ListChaptersUseCase(details, ActiveActionSavedDetails(savedDetails)),
             startReadingSession = StartReadingSessionUseCase(sessions),
             endReadingSession = EndReadingSessionUseCase(sessions),
             loadPagePosition = LoadPagePositionUseCase(resume),
@@ -178,29 +179,35 @@ internal class ActiveActionDetails(
     override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
         requested += manga
         gates[manga]?.await()
-        return AppResult.Success(
-            MangaDetails(
-                api = manga.api,
-                language = manga.language,
-                title = manga.title,
-                url = manga.url,
-                coverUrl = "",
-                description = "",
-                author = "",
-                rating = "",
-                status = "",
-                genres = emptyList(),
-                chapters = lists.getValue(manga),
-            ),
-        )
+        return AppResult.Success(activeActionDetails(manga, lists.getValue(manga)))
     }
 }
 
-private class ActiveActionSavedDetails : SavedMangaDetailsRepository {
+internal fun activeActionDetails(
+    manga: Manga,
+    chapters: List<Chapter>,
+): MangaDetails =
+    MangaDetails(
+        api = manga.api,
+        language = manga.language,
+        title = manga.title,
+        url = manga.url,
+        coverUrl = "",
+        description = "",
+        author = "",
+        rating = "",
+        status = "",
+        genres = emptyList(),
+        chapters = chapters,
+    )
+
+private class ActiveActionSavedDetails(
+    private val details: Flow<MangaDetails?>,
+) : SavedMangaDetailsRepository {
     override fun observeSavedDetails(
         api: String,
         title: String,
-    ): Flow<MangaDetails?> = flowOf(null)
+    ): Flow<MangaDetails?> = details
 }
 
 private class ActiveActionReadingMode(
