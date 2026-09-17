@@ -4,8 +4,8 @@ import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
@@ -14,20 +14,23 @@ import me.manga.kira.platform.storage.PendingComplaintActionStore
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
-/** Owns borrowing clients and separate history/report work lanes. Engines stay with the composition root. */
+/** Owns borrowing clients and separate history/report/deletion lanes. Engines stay with the composition root. */
 @OptIn(ExperimentalAtomicApi::class)
 class ComplaintBackendOwner private constructor(
     val history: ComplaintListRepository,
     internal val feedback: BackendFeedbackRepository?,
     /** Present only when this owner has both a distinct mutation engine and inert report input suppliers. */
     val reports: ComplaintReportRepository?,
-    /** Same concrete report consumer and issuer; no second coordinator or credential authority. */
-    val installationRecovery: ComplaintInstallationRecoveryRepository?,
-    /** Explicit delete-all producer, absent unless a separate fixed-route engine was supplied. */
-    val deletion: ComplaintInstallationDeletionRepository?,
+    private val installationPorts: ComplaintInstallationPorts,
     private val closeActions: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
+
+    /** Same concrete report consumer and issuer; no second coordinator or credential authority. */
+    val installationRecovery: ComplaintInstallationRecoveryRepository? get() = installationPorts.recovery
+
+    /** Explicit delete-all producer, absent unless a separate fixed-route engine was supplied. */
+    val deletion: ComplaintInstallationDeletionRepository? get() = installationPorts.deletion
 
     /** No credential/pending writes or deletion, and no synchronous native-drain assertion. */
     fun close() {
@@ -76,8 +79,7 @@ class ComplaintBackendOwner private constructor(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
                         reports,
-                        reports,
-                        deletion,
+                        ComplaintInstallationPorts(reports, deletion),
                         close.toList(),
                     ),
                 )
@@ -97,6 +99,11 @@ class ComplaintBackendOwner private constructor(
         }
     }
 }
+
+private class ComplaintInstallationPorts(
+    val recovery: ComplaintInstallationRecoveryRepository?,
+    val deletion: ComplaintInstallationDeletionRepository?,
+)
 
 /** Construct and register the optional consumer together; failure still unwinds through the owner. */
 private fun createReports(
