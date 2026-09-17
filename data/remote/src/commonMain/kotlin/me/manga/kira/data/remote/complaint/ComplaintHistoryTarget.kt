@@ -19,6 +19,8 @@ internal class ComplaintHistoryTarget private constructor(
         return requested == page(responseUrl)
     }
 
+    // Explicit fail-closed guards keep malformed authenticated targets out of later parsing.
+    @Suppress("ReturnCount")
     private fun page(value: String): ComplaintHistoryQuery? {
         if (value.length > MAX_TARGET_CHARACTERS + 1 + ComplaintHistoryQuery.maxCharacters || !rawSafe(value)) {
             return null
@@ -42,18 +44,16 @@ internal class ComplaintHistoryTarget private constructor(
         private const val HISTORY_PATH = "/api/v1/complaints"
         private val MAX_TARGET_CHARACTERS = MAX_BASE_CHARACTERS + HISTORY_PATH.length
 
-        fun checked(url: Url): ComplaintHistoryTarget? =
-            if (url.toString().length <= MAX_TARGET_CHARACTERS &&
-                rawSafe(url.toString()) &&
-                validOrigin(url) &&
-                url.parameters.isEmpty() &&
-                !url.trailingQuery &&
-                validPath(url.encodedPath)
-            ) {
-                ComplaintHistoryTarget(url)
-            } else {
-                null
-            }
+        fun checked(url: Url): ComplaintHistoryTarget? {
+            val permitted =
+                url.toString().length <= MAX_TARGET_CHARACTERS &&
+                    rawSafe(url.toString()) &&
+                    validOrigin(url) &&
+                    url.parameters.isEmpty() &&
+                    !url.trailingQuery &&
+                    validPath(url.encodedPath)
+            return if (permitted) ComplaintHistoryTarget(url) else null
+        }
 
         private fun parse(value: String): Url? =
             try {

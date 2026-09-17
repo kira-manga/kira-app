@@ -1,7 +1,7 @@
 package me.manga.kira.data.remote.complaint
 
 import io.ktor.client.request.HttpRequestBuilder
-import io.ktor.client.request.prepareGet
+import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.http.ContentType
@@ -23,10 +23,12 @@ class AndroidComplaintHistoryRequestTest {
         runBlocking {
             AndroidHistoryEngineFixture(basePath = "/base_1/v2").use { fixture ->
                 fixture.server.enqueue(
-                    MockResponse.Builder()
+                    MockResponse
+                        .Builder()
                         .addHeader("Cache-Control", "public, max-age=3600")
                         .addHeader("Set-Cookie", "history=synthetic; Path=/; Secure")
-                        .body("first").build(),
+                        .body("first")
+                        .build(),
                 )
                 fixture.server.enqueue(MockResponse(body = "second"))
                 fixture.server.enqueue(MockResponse(body = "fresh"))
@@ -36,7 +38,7 @@ class AndroidComplaintHistoryRequestTest {
                 listOf("limit=50", "limit=50&cursor=v1.a.b", "limit=50").forEach { query ->
                     assertRequest(fixture, query)
                 }
-                assertEquals(3, fixture.server.requestCount)
+                assertEquals(EXPECTED_PAGE_REQUESTS, fixture.server.requestCount)
             }
         }
 
@@ -73,9 +75,13 @@ class AndroidComplaintHistoryRequestTest {
             AndroidHistoryEngineFixture().use { fixture ->
                 fixture.server.enqueue(MockResponse(body = "allowed"))
                 listOf(
-                    "Cookie" to "synthetic=value", "Cookie2" to "synthetic=value",
-                    "Proxy-Authorization" to "Basic synthetic", "Authorization" to HISTORY_TEST_AUTHORIZATION,
-                    "Accept-Encoding" to "gzip", "Content-Type" to "application/json", "Content-Encoding" to "gzip",
+                    "Cookie" to "synthetic=value",
+                    "Cookie2" to "synthetic=value",
+                    "Proxy-Authorization" to "Basic synthetic",
+                    "Authorization" to HISTORY_TEST_AUTHORIZATION,
+                    "Accept-Encoding" to "gzip",
+                    "Content-Type" to "application/json",
+                    "Content-Encoding" to "gzip",
                     "Transfer-Encoding" to "chunked",
                 ).forEach { (name, value) -> fixture.reject { headers.append(name, value) } }
                 fixture.reject { headers.remove("Authorization") }
@@ -98,11 +104,17 @@ class AndroidComplaintHistoryRequestTest {
         vector: String = "request",
         change: HttpRequestBuilder.() -> Unit,
     ) {
-        val statement =
-            client.prepareGet(firstPage.toString()) {
+        val request =
+            HttpRequestBuilder().apply {
+                url(firstPage.toString())
+                method = HttpMethod.Get
                 historyTestHeaders()
                 change()
             }
+        // prepareGet overwrites the configured method; generic preparation preserves this vector.
+        if (vector == "method_post") assertEquals(HttpMethod.Post, request.method)
+        if (vector == "method_head") assertEquals(HttpMethod.Head, request.method)
+        val statement = client.prepareRequest(request)
         assertFails(vector) { statement.execute { } }
         assertEquals(0, server.requestCount, vector)
     }
@@ -118,7 +130,16 @@ class AndroidComplaintHistoryRequestTest {
         assertEquals("identity", request.headers["Accept-Encoding"])
         assertEquals("no-store, no-transform", request.headers["Cache-Control"])
         assertEquals(0L, request.bodySize)
-        listOf("Cookie", "Cookie2", "Proxy-Authorization", "Content-Type", "Content-Length", "Transfer-Encoding", "Content-Encoding")
-            .forEach { assertNull(request.headers[it]) }
+        listOf(
+            "Cookie",
+            "Cookie2",
+            "Proxy-Authorization",
+            "Content-Type",
+            "Content-Length",
+            "Transfer-Encoding",
+            "Content-Encoding",
+        ).forEach { assertNull(request.headers[it]) }
     }
 }
+
+private const val EXPECTED_PAGE_REQUESTS = 3

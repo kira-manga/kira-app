@@ -28,7 +28,15 @@ internal class AndroidComplaintHistoryInterceptor(
     private companion object {
         // Ktor drops GET content during conversion; its surviving media/framing must also fail.
         val FORBIDDEN_HEADERS =
-            listOf("Cookie", "Cookie2", "Proxy-Authorization", "Content-Type", "Content-Length", "Transfer-Encoding", "Content-Encoding")
+            listOf(
+                "Cookie",
+                "Cookie2",
+                "Proxy-Authorization",
+                "Content-Type",
+                "Content-Length",
+                "Transfer-Encoding",
+                "Content-Encoding",
+            )
     }
 }
 

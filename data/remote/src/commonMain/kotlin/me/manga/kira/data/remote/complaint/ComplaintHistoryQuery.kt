@@ -15,7 +15,11 @@ internal data class ComplaintHistoryQuery private constructor(
         private val CURSOR_ENVELOPE = Regex("v1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
         val maxCharacters = "limit=50&cursor=".length + MAX_CURSOR_CHARACTERS
 
-        /** Raw, unescaped query grammar prevents encoded aliases and duplicate parameter names. */
+        /**
+         * Raw, unescaped query grammar prevents encoded aliases and duplicate parameter names.
+         * Guard returns preserve exact parsing order without accumulating partial query authority.
+         */
+        @Suppress("ReturnCount")
         fun checked(value: String): ComplaintHistoryQuery? {
             if (value.length !in LIMIT_PREFIX.length + 1..maxCharacters) return null
             val parts = value.split('&')
@@ -35,7 +39,9 @@ internal data class ComplaintHistoryQuery private constructor(
         }
 
         private fun checkedLimit(value: String): Int? =
-            value.toIntOrNull()?.takeIf { it in 1..MAX_LIMIT && it.toString() == value }
+            value
+                .toIntOrNull()
+                ?.takeIf { it in 1..MAX_LIMIT && it.toString() == value }
 
         private fun checkedCursor(value: String): String? =
             value.takeIf { it.length <= MAX_CURSOR_CHARACTERS && CURSOR_ENVELOPE.matches(it) }

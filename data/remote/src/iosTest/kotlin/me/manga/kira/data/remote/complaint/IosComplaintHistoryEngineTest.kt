@@ -50,12 +50,17 @@ class IosComplaintHistoryEngineTest {
             assertEquals(NSURLRequestReloadIgnoringLocalCacheData, request.cachePolicy)
             fixture.guard.prepare(iosHistoryTestRequest("$IOS_HISTORY_FIRST_PAGE&cursor=v1.a.b"))
             listOf(
-                IOS_HISTORY_TEST_URL, IOS_SESSION_TEST_URL, "$IOS_HISTORY_TEST_URL/other?limit=50",
+                IOS_HISTORY_TEST_URL,
+                IOS_SESSION_TEST_URL,
+                "$IOS_HISTORY_TEST_URL/other?limit=50",
                 IOS_HISTORY_FIRST_PAGE.replace("example.invalid", "elsewhere.invalid"),
                 IOS_HISTORY_FIRST_PAGE.replace("example.invalid", "example.invalid:9443"),
-                "$IOS_HISTORY_FIRST_PAGE&limit=50", "$IOS_HISTORY_FIRST_PAGE&extra=1",
-                "$IOS_HISTORY_FIRST_PAGE&cursor=", "$IOS_HISTORY_FIRST_PAGE&cursor=v1.a.b&cursor=v1.a.c",
-                "$IOS_HISTORY_TEST_URL?%6cimit=50", "$IOS_HISTORY_FIRST_PAGE&cursor=v1.%61.b",
+                "$IOS_HISTORY_FIRST_PAGE&limit=50",
+                "$IOS_HISTORY_FIRST_PAGE&extra=1",
+                "$IOS_HISTORY_FIRST_PAGE&cursor=",
+                "$IOS_HISTORY_FIRST_PAGE&cursor=v1.a.b&cursor=v1.a.c",
+                "$IOS_HISTORY_TEST_URL?%6cimit=50",
+                "$IOS_HISTORY_FIRST_PAGE&cursor=v1.%61.b",
             ).forEach { value -> assertFails { fixture.guard.prepare(iosHistoryTestRequest(value)) } }
             listOf("POST", "HEAD", "PUT").forEach { method ->
                 assertFails { fixture.guard.prepare(iosHistoryTestRequest().apply { setHTTPMethod(method) }) }
@@ -88,10 +93,14 @@ class IosComplaintHistoryEngineTest {
             }
             listOf(null, "Basic synthetic", "$IOS_HISTORY_TEST_AUTHORIZATION, $IOS_HISTORY_TEST_AUTHORIZATION")
                 .forEach { value ->
-                    assertFails { fixture.guard.prepare(iosHistoryTestRequest().apply { setValue(value, "Authorization") }) }
+                    assertFails {
+                        fixture.guard.prepare(iosHistoryTestRequest().apply { setValue(value, "Authorization") })
+                    }
                 }
             listOf(null, "gzip", "identity, identity").forEach { value ->
-                assertFails { fixture.guard.prepare(iosHistoryTestRequest().apply { setValue(value, "Accept-Encoding") }) }
+                assertFails {
+                    fixture.guard.prepare(iosHistoryTestRequest().apply { setValue(value, "Accept-Encoding") })
+                }
             }
         }
 

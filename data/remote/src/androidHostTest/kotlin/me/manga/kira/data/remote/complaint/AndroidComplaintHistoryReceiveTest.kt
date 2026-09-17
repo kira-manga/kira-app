@@ -24,17 +24,19 @@ class AndroidComplaintHistoryReceiveTest {
     fun only200AcceptsTwoMibibytesWhileErrorsStopAtSixteenKibibytes() =
         runBlocking {
             AndroidHistoryEngineFixture().use { fixture ->
-                listOf(SUCCESS_STATUS to ComplaintHistoryReceiveBudget.MAX_BYTES, UNAUTHORIZED to ComplaintSessionReceiveBudget.MAX_BYTES)
-                    .forEach { (status, cap) ->
-                        val exact = "x".repeat(cap)
-                        fixture.enqueueChunked(status, exact)
-                        assertEquals(exact, fixture.get().body)
-                        fixture.enqueueChunked(status, exact + "y")
-                        assertFails { fixture.get() }
-                        fixture.server.enqueue(MockResponse(body = "recovered"))
-                        assertEquals("recovered", fixture.get().body)
-                    }
-                assertEquals(6, fixture.server.requestCount)
+                listOf(
+                    SUCCESS_STATUS to ComplaintHistoryReceiveBudget.MAX_BYTES,
+                    UNAUTHORIZED to ComplaintSessionReceiveBudget.MAX_BYTES,
+                ).forEach { (status, cap) ->
+                    val exact = "x".repeat(cap)
+                    fixture.enqueueChunked(status, exact)
+                    assertEquals(exact, fixture.get().body)
+                    fixture.enqueueChunked(status, exact + "y")
+                    assertFails { fixture.get() }
+                    fixture.server.enqueue(MockResponse(body = "recovered"))
+                    assertEquals("recovered", fixture.get().body)
+                }
+                assertEquals(EXPECTED_BOUNDARY_REQUESTS, fixture.server.requestCount)
             }
         }
 
@@ -43,14 +45,22 @@ class AndroidComplaintHistoryReceiveTest {
         runBlocking {
             assertFailedChannelCauseIsPreserved()
             AndroidHistoryEngineFixture().use { fixture ->
-                listOf(SUCCESS_STATUS to ComplaintHistoryReceiveBudget.MAX_BYTES, UNAUTHORIZED to ComplaintSessionReceiveBudget.MAX_BYTES)
-                    .forEach { (status, cap) ->
-                        fixture.enqueueDeclared(status, cap + 1)
-                        assertFails("declared_overflow_$status") { fixture.get() }
-                        fixture.enqueueDeclared(status, FALSE_LENGTH)
-                        assertFails("declared_short_$status") { fixture.get() }
-                    }
-                fixture.server.enqueue(MockResponse.Builder().addHeader("Content-Encoding", "gzip").body("plain").build())
+                listOf(
+                    SUCCESS_STATUS to ComplaintHistoryReceiveBudget.MAX_BYTES,
+                    UNAUTHORIZED to ComplaintSessionReceiveBudget.MAX_BYTES,
+                ).forEach { (status, cap) ->
+                    fixture.enqueueDeclared(status, cap + 1)
+                    assertFails("declared_overflow_$status") { fixture.get() }
+                    fixture.enqueueDeclared(status, FALSE_LENGTH)
+                    assertFails("declared_short_$status") { fixture.get() }
+                }
+                fixture.server.enqueue(
+                    MockResponse
+                        .Builder()
+                        .addHeader("Content-Encoding", "gzip")
+                        .body("plain")
+                        .build(),
+                )
                 assertFails("unexpected_encoding_gzip") { fixture.get() }
                 fixture.server.enqueue(MockResponse(body = "recovered"))
                 assertEquals("recovered", fixture.get().body)
@@ -108,7 +118,10 @@ class AndroidComplaintHistoryReceiveTest {
         val channel = ByteChannel()
         channel.cancel(cause)
         val failure = assertFails("already_failed_channel") { historyResponseBytes(channel) }
-        assertTrue(generateSequence(failure) { it.cause }.any { it === cause }, "already_failed_channel_preserves_cause")
+        assertTrue(
+            generateSequence(failure) { it.cause }.any { it === cause },
+            "already_failed_channel_preserves_cause",
+        )
     }
 
     private suspend fun pausedOverflow(
@@ -128,7 +141,13 @@ class AndroidComplaintHistoryReceiveTest {
         status: Int,
         body: String,
     ) {
-        server.enqueue(MockResponse.Builder().code(status).chunkedBody(body, CHUNK_BYTES).build())
+        server.enqueue(
+            MockResponse
+                .Builder()
+                .code(status)
+                .chunkedBody(body, CHUNK_BYTES)
+                .build(),
+        )
     }
 
     private fun AndroidHistoryEngineFixture.enqueueDeclared(
@@ -136,8 +155,13 @@ class AndroidComplaintHistoryReceiveTest {
         length: Int,
     ) {
         server.enqueue(
-            MockResponse.Builder().code(status).body("short").setHeader("Content-Length", length)
-                .onResponseEnd(SocketEffect.CloseSocket()).build(),
+            MockResponse
+                .Builder()
+                .code(status)
+                .body("short")
+                .setHeader("Content-Length", length)
+                .onResponseEnd(SocketEffect.CloseSocket())
+                .build(),
         )
     }
 
@@ -146,5 +170,6 @@ class AndroidComplaintHistoryReceiveTest {
         const val UNAUTHORIZED = 401
         const val CHUNK_BYTES = 8_192
         const val FALSE_LENGTH = 100
+        const val EXPECTED_BOUNDARY_REQUESTS = 6
     }
 }

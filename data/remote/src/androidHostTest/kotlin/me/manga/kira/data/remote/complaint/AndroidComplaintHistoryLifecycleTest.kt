@@ -75,16 +75,23 @@ class AndroidComplaintHistoryLifecycleTest {
 
     private fun assertReleased(fixture: AndroidHistoryEngineFixture) {
         assertFalse(fixture.owner.engine.coroutineContext.job.isActive)
-        assertTrue(fixture.resources.dispatcher.executorService.awaitTermination(SESSION_TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        assertTrue(
+            fixture.resources.dispatcher.executorService
+                .awaitTermination(SESSION_TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+        )
         assertEquals(0, fixture.resources.pool.connectionCount())
     }
 
     private fun AndroidHistoryEngineFixture.enqueueTerminalAndNext(status: Int) {
         server.enqueue(
-            MockResponse.Builder().code(status).addHeader("Retry-After", "0")
+            MockResponse
+                .Builder()
+                .code(status)
+                .addHeader("Retry-After", "0")
                 .addHeader("WWW-Authenticate", "Basic realm=\"test\"")
                 .addHeader("Location", server.url("/forbidden"))
-                .body("terminal").build(),
+                .body("terminal")
+                .build(),
         )
         server.enqueue(MockResponse(body = "next"))
     }

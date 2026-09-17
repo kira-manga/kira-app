@@ -22,6 +22,8 @@ internal fun NSURLRequest.isComplaintHistoryRequest(target: ComplaintHistoryTarg
             listOfNotNull(valueForHTTPHeaderField("Accept-Encoding")),
         )
 
+// Each missing native URL is an immediate refusal; retain explicit guard ordering.
+@Suppress("ReturnCount")
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 internal fun NSHTTPURLResponse.isComplaintHistoryResponse(
     target: ComplaintHistoryTarget,
@@ -40,4 +42,12 @@ private const val SERVICE_UNAVAILABLE = 503L
 private const val MISDIRECTED_REQUEST = 421L
 private val FOLLOW_UP_STATUSES = setOf(SERVICE_UNAVAILABLE, MISDIRECTED_REQUEST)
 private val FORBIDDEN_HEADERS =
-    listOf("Cookie", "Cookie2", "Proxy-Authorization", "Content-Type", "Content-Length", "Transfer-Encoding", "Content-Encoding")
+    listOf(
+        "Cookie",
+        "Cookie2",
+        "Proxy-Authorization",
+        "Content-Type",
+        "Content-Length",
+        "Transfer-Encoding",
+        "Content-Encoding",
+    )

@@ -31,7 +31,12 @@ class IosComplaintHistoryReceiveGuardTest {
     fun aDeclaredExactTwoMibibyte200CompletesButEveryOtherStatusHasTheSmallerBudget() {
         withIosHistoryGuard { fixture ->
             val task = fixture.task(iosHistoryTestRequest())
-            assertTrue(fixture.admitHistory(task, mapOf("Content-Length" to ComplaintHistoryReceiveBudget.MAX_BYTES.toString())))
+            assertTrue(
+                fixture.admitHistory(
+                    task,
+                    mapOf("Content-Length" to ComplaintHistoryReceiveBudget.MAX_BYTES.toString()),
+                ),
+            )
             fixture.receive(task, ComplaintHistoryReceiveBudget.MAX_BYTES)
             fixture.complete(task)
             assertNull(fixture.callbacks.errors.single())

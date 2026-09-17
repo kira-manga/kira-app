@@ -38,7 +38,8 @@ class AndroidComplaintHistoryEngineTest {
         try {
             val target = assertNotNull(androidComplaintHistoryTarget(Url(ANDROID_HISTORY_TEST_URL)))
             val native =
-                OkHttpClient.Builder()
+                OkHttpClient
+                    .Builder()
                     .retryOnConnectionFailure(true)
                     .followRedirects(true)
                     .addInterceptor { error("Unexpected inherited interceptor") }

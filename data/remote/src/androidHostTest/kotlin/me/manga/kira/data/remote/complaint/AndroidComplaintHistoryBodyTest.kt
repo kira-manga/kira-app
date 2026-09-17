@@ -11,13 +11,16 @@ class AndroidComplaintHistoryBodyTest {
     @Test
     fun sharedNativeSourceNeverForwardsTheHistoryOverrunByteAndCancelsOnce() {
         val cap = ComplaintHistoryReceiveBudget.MAX_BYTES
-        val budget = assertNotNull(ComplaintHistoryReceiveBudget.checked(SUCCESS_STATUS, emptyList(), emptyList(), emptyList()))
+        val budget =
+            assertNotNull(ComplaintHistoryReceiveBudget.checked(SUCCESS_STATUS, emptyList(), emptyList(), emptyList()))
         val upstream = ByteArray(cap + 1).toResponseBody()
         var cancellations = 0
         val body = AndroidComplaintSessionResponseBody(upstream, budget) { cancellations++ }
         val sink = Buffer()
         try {
-            repeat(cap / READ_BYTES) { assertEquals(READ_BYTES.toLong(), body.source().read(sink, READ_BYTES.toLong())) }
+            repeat(cap / READ_BYTES) {
+                assertEquals(READ_BYTES.toLong(), body.source().read(sink, READ_BYTES.toLong()))
+            }
             assertFails { body.source().read(sink, 1) }
             assertEquals(cap.toLong(), sink.size)
             assertEquals(cap, budget.receivedBytes)

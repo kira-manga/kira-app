@@ -10,9 +10,16 @@ class ComplaintHistoryRequestHeadersTest {
         val valid = "Bearer synthetic.header.signature"
         assertTrue(ComplaintHistoryRequestHeaders.accepts(listOf(valid), listOf("identity")))
         listOf(
-            emptyList(), listOf(valid, valid), listOf("Basic synthetic"), listOf("bearer a.b.c"),
-            listOf("Bearer a.b"), listOf("Bearer a.b.c.d"), listOf("Bearer a.b.c, Bearer a.b.c"),
-            listOf("Bearer a.b.c="), listOf("Bearer a.b.c\n"), listOf("Bearer a.b.é"),
+            emptyList(),
+            listOf(valid, valid),
+            listOf("Basic synthetic"),
+            listOf("bearer a.b.c"),
+            listOf("Bearer a.b"),
+            listOf("Bearer a.b.c.d"),
+            listOf("Bearer a.b.c, Bearer a.b.c"),
+            listOf("Bearer a.b.c="),
+            listOf("Bearer a.b.c\n"),
+            listOf("Bearer a.b.é"),
         ).forEach { assertFalse(ComplaintHistoryRequestHeaders.accepts(it, listOf("identity"))) }
         listOf(emptyList(), listOf("gzip"), listOf("identity", "identity"), listOf("identity, identity"))
             .forEach { assertFalse(ComplaintHistoryRequestHeaders.accepts(listOf(valid), it)) }

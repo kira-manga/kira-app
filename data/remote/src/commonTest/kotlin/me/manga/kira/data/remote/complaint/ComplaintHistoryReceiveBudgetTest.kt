@@ -36,7 +36,8 @@ class ComplaintHistoryReceiveBudgetTest {
 
     @Test
     fun exactDeclaredListLengthIsCheckedAtCompletionAndOneOverIsRefusedEarly() {
-        val exact = assertNotNull(budget(SUCCESS_STATUS, length = listOf(ComplaintHistoryReceiveBudget.MAX_BYTES.toString())))
+        val exact =
+            assertNotNull(budget(SUCCESS_STATUS, length = listOf(ComplaintHistoryReceiveBudget.MAX_BYTES.toString())))
         assertFalse(exact.isComplete())
         assertTrue(exact.accept((ComplaintHistoryReceiveBudget.MAX_BYTES - 1).toULong()))
         assertFalse(exact.isComplete())
