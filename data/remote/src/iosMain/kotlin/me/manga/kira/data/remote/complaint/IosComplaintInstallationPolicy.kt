@@ -25,6 +25,7 @@ internal sealed class IosComplaintInstallationPolicy {
             is Session, is Enrollment -> response.complaintSessionBudget()
             is History -> response.complaintHistoryBudget()
             is IosComplaintMutationPolicy -> mutationReceiveBudget(response)
+            is IosComplaintDeletionPolicy -> deletionReceiveBudget(response)
         }
 
     class Session(
