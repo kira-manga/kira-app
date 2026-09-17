@@ -16,6 +16,7 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.P
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.RecoveryIntent
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ServerTerminalFact
+import me.manga.kira.data.complaint.backend.InstallationSessionManager.ReportSessionPublication
 import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
@@ -47,6 +48,7 @@ class InstallationCredentialCoordinator(
     private var reconciliationIssuer = ReconciliationIssuer()
     private var confirmation: Confirmation? = null
     private val historyReads = mutableSetOf<ComplaintHistoryWork>()
+    private val reports = ComplaintReportActionBindings(pending)
 
     /** Only an explicit initial candidate may fill a proven-empty store; an existing winner is reread. */
     suspend fun admit(candidate: InstallationCredentialRecord? = null): Outcome<Permit> =
@@ -136,6 +138,177 @@ class InstallationCredentialCoordinator(
             historyWorkAdmission(work)
         }
 
+    /** Existing ACTIVE identity only. This registers the whole report/status work before session I/O. */
+    internal suspend fun reportInventory(work: ReportWork): Outcome<ReconciliationPermit> =
+        mutex.serialized {
+            currentCoroutineContext().ensureActive()
+            noConsent()
+            credentials.requireNoCleanupMarker()
+            val record = credentials.coordinationRecord().also(::active)
+            val permit = ReconciliationPermit(record, pending.reconciliationSnapshot(record), reconciliationIssuer)
+            currentCoroutineContext().ensureActive()
+            reports.observe(permit, work)
+            permit
+        }
+
+    /** Captures no unexpected inventory into an already registered work's exact batch anchor. */
+    internal suspend fun beginReportAction(
+        work: ReportWork,
+        start: ReportStart,
+    ): Outcome<ReportActionBinding> =
+        mutex.serialized {
+            currentCoroutineContext().ensureActive()
+            noConsent()
+            credentials.requireNoCleanupMarker()
+            val record = credentials.coordinationRecord().also(::active)
+            val permit = ReconciliationPermit(record, pending.reconciliationSnapshot(record), reconciliationIssuer)
+            currentCoroutineContext().ensureActive()
+            reports.begin(permit, work, start)
+        }
+
+    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> =
+        mutex.serialized { reportAdmission(binding) }
+
+    /** Named, no-I/O token publication only; never a generic authenticated action callback. */
+    internal suspend fun publishReportSession(
+        binding: ReportActionBinding,
+        publication: ReportSessionPublication,
+    ): Outcome<ReportSessionResult> =
+        mutex.serialized {
+            reportAdmission(binding)
+            publication.publish(binding)
+        }
+
+    internal suspend fun prepareReport(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+    ): Outcome<ReportActionBinding> =
+        mutex.serialized {
+            reportAdmission(binding)
+            reportSessionAdmission(binding, session, sessions)
+            reports.prepare(binding, session).also {
+                reportAdmission(it)
+                reportSessionAdmission(it, session, sessions)
+            }
+        }
+
+    /** Both CAS/readbacks and final checks precede CREATE construction; the HTTP exchange is outside the mutex. */
+    internal suspend fun dispatchReport(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+        http: ComplaintMutationHttp,
+    ): Outcome<ReportExchange.Create> {
+        val dispatch =
+            when (val admitted = mutex.serialized {
+                prepareReportDispatch(binding, session, sessions)
+            }) {
+                is Outcome.Success -> admitted.value
+                is Outcome.Refused -> return admitted
+                is Outcome.StorageFailure -> return admitted
+                is Outcome.Invalid -> return admitted
+            }
+        currentCoroutineContext().ensureActive()
+        val result = http.create(dispatch.request, session.response)
+        return mutex.serialized {
+            reportAdmission(dispatch.binding)
+            reportSessionAdmission(dispatch.binding, session, sessions)
+            reports.receivedCreate(dispatch.binding, session, dispatch.request, result)
+        }
+    }
+
+    /** Runs only under the existing credential mutex; no transport or session refresh occurs here. */
+    private suspend fun prepareReportDispatch(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+    ): ReportCreateDispatch {
+        reportAdmission(binding)
+        reportSessionAdmission(binding, session, sessions)
+        val rebased = reports.rebasePrepared(binding, session)
+        reportAdmission(rebased)
+        reportSessionAdmission(rebased, session, sessions)
+        val dispatched = reports.markDispatch(rebased)
+        reportAdmission(dispatched)
+        reportSessionAdmission(dispatched, session, sessions)
+        return ReportCreateDispatch(dispatched, reports.createRequest(dispatched, session))
+    }
+
+    internal suspend fun readReportStatus(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+        http: ComplaintMutationHttp,
+    ): Outcome<ReportExchange.Status> {
+        val request =
+            when (val admitted = mutex.serialized {
+                reportAdmission(binding)
+                reportSessionAdmission(binding, session, sessions)
+                reports.statusRequest(binding)
+            }) {
+                is Outcome.Success -> admitted.value
+                is Outcome.Refused -> return admitted
+                is Outcome.StorageFailure -> return admitted
+                is Outcome.Invalid -> return admitted
+            }
+        currentCoroutineContext().ensureActive()
+        val result = http.status(request, session.response)
+        return mutex.serialized {
+            reportAdmission(binding)
+            reportSessionAdmission(binding, session, sessions)
+            reports.receivedStatus(binding, session, request, result)
+        }
+    }
+
+    /** Authorizes one matching 401 refresh only; the session mutex and HTTP stay outside this lock. */
+    internal suspend fun authorizeReportRefresh(
+        exchange: ReportExchange,
+        sessions: InstallationSessionManager,
+    ): Outcome<Unit> =
+        mutex.serialized {
+            reportAdmission(exchange.binding)
+            reportSessionAdmission(exchange.binding, exchange.session, sessions)
+            reports.authorizeRefresh(exchange)
+        }
+
+    /** Typed request-bound terminal application is atomically fenced before the exact slot deletion. */
+    internal suspend fun applyReportOutcome(
+        exchange: ReportExchange,
+        sessions: InstallationSessionManager,
+    ): Outcome<ReportCompletion> =
+        mutex.serialized {
+            reportAdmission(exchange.binding)
+            reportSessionAdmission(exchange.binding, exchange.session, sessions)
+            reports.apply(exchange).also { reportAdmission(it.binding) }
+        }
+
+    /** Explicit unsent cancellation from an active caller, not unconditional cleanup in a canceled finally. */
+    internal suspend fun cancelPreparedReport(binding: ReportActionBinding): Outcome<ReportActionBinding> =
+        mutex.serialized {
+            reportAdmission(binding, unsentCancellation = true)
+            reports.cancelPrepared(binding).also { reportAdmission(it, unsentCancellation = true) }
+        }
+
+    internal suspend fun requestReportRecovery(binding: ReportActionBinding): Outcome<Confirmation> =
+        mutex.serialized {
+            reportAdmission(binding, unsentCancellation = true)
+            if (binding.permit.snapshot.isEmpty) refuse(Block.RECONCILIATION_REQUIRED)
+            requestRecoveryLocked(RecoveryIntent.Reset(Permit(binding.permit.record)))
+        }
+
+    /** Advance to another action in the same work only after its HTTP/response tail returned. */
+    internal suspend fun releaseReportAction(binding: ReportActionBinding): Outcome<Unit> =
+        mutex.serialized {
+            reportAdmission(binding)
+            reports.release(binding)
+        }
+
+    /** Caller invokes only after the HTTP execute/finally tail; no pending deletion or drain assertion. */
+    internal suspend fun finishReport(work: ReportWork) {
+        withContext(NonCancellable) { mutex.withLock { reports.finish(work) } }
+    }
+
     /** Caller must later establish fresh-session/dispatch prerequisites; this only persists local intent. */
     suspend fun beginDeletion(
         permit: Permit,
@@ -143,7 +316,7 @@ class InstallationCredentialCoordinator(
     ): Outcome<PendingDeletion> =
         mutex.serialized {
             admission(permit)
-            cancelHistoryReads()
+            cancelBoundWork()
             PendingDeletion(credentials.replaceCoordinated(permit.record, checked(permit.record.beginDeletion(key))))
         }
 
@@ -161,11 +334,7 @@ class InstallationCredentialCoordinator(
         mutex.serialized {
             noConsent()
             credentials.requireNoCleanupMarker()
-            Confirmation(intent, validateIntent(intent)).also {
-                cancelHistoryReads()
-                confirmation = it
-                reconciliationIssuer = ReconciliationIssuer()
-            }
+            requestRecoveryLocked(intent)
         }
 
     /** A stale prompt cannot cancel a newer one or undo a durable pending state. */
@@ -381,15 +550,45 @@ class InstallationCredentialCoordinator(
         if (!samePending(permit.snapshot, pending.reconciliationSnapshot(record))) refuse(Block.STALE_BINDING)
     }
 
-    private fun cancelHistoryReads() {
+    private suspend fun reportAdmission(
+        binding: ReportActionBinding,
+        unsentCancellation: Boolean = false,
+    ) {
+        currentCoroutineContext().ensureActive()
+        reconciliationAdmission(binding.permit)
+        currentCoroutineContext().ensureActive()
+        reports.requireCurrent(binding, unsentCancellation)
+    }
+
+    private fun reportSessionAdmission(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+    ) {
+        if (!session.entry.matches(binding.permit.record, binding.permit.issuer) ||
+            !sessions.reportSessionIsCurrent(session)
+        ) {
+            refuse(Block.STALE_BINDING)
+        }
+    }
+
+    private suspend fun requestRecoveryLocked(intent: RecoveryIntent): Confirmation =
+        Confirmation(intent, validateIntent(intent)).also {
+            cancelBoundWork()
+            confirmation = it
+            reconciliationIssuer = ReconciliationIssuer()
+        }
+
+    private fun cancelBoundWork() {
         historyReads.forEach { it.cancel() }
+        reports.cancel()
     }
 
     private suspend fun resumeCleanupLocked() {
         noConsent()
         when (val marker = credentials.readCleanupMarker()) {
             is CleanupMarkerReadResult.Present -> {
-                cancelHistoryReads()
+                cancelBoundWork()
                 finish(marker.marker)
             }
             is InstallationStorageFailure -> fail(marker)
@@ -399,8 +598,10 @@ class InstallationCredentialCoordinator(
                     is InstallationStorageFailure -> fail(read)
                     is CredentialReadResult.Present ->
                         when (read.record.state) {
-                            InstallationCredentialState.LOCAL_RESET_PENDING ->
+                            InstallationCredentialState.LOCAL_RESET_PENDING -> {
+                                cancelBoundWork()
                                 authorizedCleanup(read.record, CredentialCleanupReason.USER_RESET_CONFIRMED)
+                            }
                             InstallationCredentialState.DELETION_PENDING -> refuse(Block.REMOTE_DELETION_PENDING)
                             InstallationCredentialState.ACTIVE -> Unit
                         }
@@ -504,3 +705,8 @@ class InstallationCredentialCoordinator(
         }
     }
 }
+
+private class ReportCreateDispatch(
+    val binding: ReportActionBinding,
+    val request: ComplaintCreateHttpRequest,
+)

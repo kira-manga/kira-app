@@ -1,20 +1,15 @@
 package me.manga.kira.data.complaint.backend
 
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeMark
 
 /** An exact cache instance and binding, not authority for an unregistered HTTP request. */
 internal class ComplaintHistorySession(
     val permit: ReconciliationPermit,
-    val response: ComplaintSessionResponse,
-    private val started: TimeMark,
+    val entry: InstallationSessionEntry,
 ) {
-    fun isFresh(): Boolean {
-        val elapsed = started.elapsedNow()
-        return elapsed >= Duration.ZERO && elapsed < response.expiresInSeconds.seconds
-    }
+    val response: ComplaintSessionResponse get() = entry.response
+
+    fun isFresh(): Boolean = entry.isFresh()
 
     override fun toString(): String = "ComplaintHistorySession(redacted)"
 }
