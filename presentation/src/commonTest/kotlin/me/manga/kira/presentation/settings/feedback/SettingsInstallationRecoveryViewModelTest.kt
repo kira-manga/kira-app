@@ -186,7 +186,8 @@ private fun assertRecoveryCompleted(
     assertSame(expected, vm.state.value.result)
     assertSame(entry, vm.state.value.entry)
     assertEquals(entry.initialDraft(), vm.state.value.draft)
-    assertTrue(vm.state.value.canStartNewDraft)
+    assertFalse(vm.state.value.canStartNewDraft)
+    assertIs<SettingsFeedbackDeletionState.Uncertain>(vm.state.value.deletion)
     assertFalse(vm.state.value.confirmationPending)
 }
 

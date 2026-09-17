@@ -5,6 +5,7 @@ import me.manga.kira.data.complaint.backend.ComplaintReportIdentifiers
 import me.manga.kira.data.complaint.backend.ComplaintReportInputs
 import me.manga.kira.data.complaint.backend.ComplaintReportMetadataInput
 import me.manga.kira.data.remote.complaint.createIosComplaintEnrollmentEngineOwner
+import me.manga.kira.data.remote.complaint.createIosComplaintDeletionEngineOwner
 import me.manga.kira.data.remote.complaint.createIosComplaintHistoryEngineOwner
 import me.manga.kira.data.remote.complaint.createIosComplaintMutationEngineOwner
 import me.manga.kira.data.remote.complaint.createIosComplaintSessionEngineOwner
@@ -35,8 +36,13 @@ internal fun unselectedIosComplaintHistoryGraph(expectedDefaultAccessGroup: Stri
                             session = ::createIosComplaintSessionEngineOwner,
                             history = ::createIosComplaintHistoryEngineOwner,
                             mutation = ::createIosComplaintMutationEngineOwner,
+                            deletion = ::createIosComplaintDeletionEngineOwner,
                         ),
-                    reportInputs = ::iosComplaintReportInputs,
+                    inputs =
+                        ComplaintBackendInputFactories(
+                            reports = ::iosComplaintReportInputs,
+                            deletionKey = { NSUUID().UUIDString.lowercase() },
+                        ),
                 ),
         )
     }

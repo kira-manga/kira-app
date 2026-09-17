@@ -132,7 +132,7 @@ class ComplaintBackendGraphTest {
                 Dispatchers.resetMain()
             }
             assertEquals(
-                listOf("close:mutation", "close:history", "close:session", "close:enrollment"),
+                listOf("close:deletion", "close:mutation", "close:history", "close:session", "close:enrollment"),
                 fixture.events.filter { it.startsWith("close:") },
             )
             assertTrue(fixture.owners.values.all { it.closed })
@@ -237,7 +237,8 @@ class ComplaintBackendGraphTest {
                 listOf(
                     "history" to listOf("session", "enrollment"),
                     "mutation" to listOf("history", "session", "enrollment"),
-                    "report-inputs" to listOf("mutation", "history", "session", "enrollment"),
+                    "deletion" to listOf("mutation", "history", "session", "enrollment"),
+                    "report-inputs" to listOf("deletion", "mutation", "history", "session", "enrollment"),
                 )
             for ((stage, closed) in failures) {
                 val fixture = ComplaintBackendGraphFixture(this)
@@ -257,13 +258,13 @@ class ComplaintBackendGraphTest {
     @Test
     fun borrowedEngineGetterFailureClosesAllAlreadyCreatedOwnersWithoutLeakingCause() =
         runTest {
-            for (stage in listOf("session", "mutation")) {
+            for (stage in listOf("session", "mutation", "deletion")) {
                 val fixture = ComplaintBackendGraphFixture(this)
                 fixture.failEngineAccess = stage
                 val result = createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources())
                 assertNull(assertIs<AppResult.Failure>(result).error.cause)
                 assertEquals(
-                    listOf("close:mutation", "close:history", "close:session", "close:enrollment"),
+                    listOf("close:deletion", "close:mutation", "close:history", "close:session", "close:enrollment"),
                     fixture.events.filter { it.startsWith("close:") },
                 )
                 assertTrue(fixture.owners.values.all { it.closed })
@@ -288,7 +289,7 @@ class ComplaintBackendGraphTest {
             assertEquals("Complaint backend graph close failed", failure.message)
             assertNull(failure.cause)
             assertEquals(
-                listOf("close:mutation", "close:history", "close:session", "close:enrollment"),
+                listOf("close:deletion", "close:mutation", "close:history", "close:session", "close:enrollment"),
                 fixture.events.filter { it.startsWith("close:") },
             )
             graph.close()

@@ -63,10 +63,15 @@ internal class ComplaintBackendGraphFixture(
     var historyCalls = 0
     var sessionCalls = 0
     var mutationCalls = 0
+    var deletionCalls = 0
+    var deletionKeyGenerations = 0
     var reportIdentifierGenerations = 0
     var reportMetadataReads = 0
     var historyHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
         respond(graphHistoryResponse(), HttpStatusCode.OK, graphHeaders())
+    }
+    var deletionHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
+        error("Unexpected deletion without explicit confirmation")
     }
 
     fun resources(): ComplaintBackendResources =
@@ -112,8 +117,22 @@ internal class ComplaintBackendGraphFixture(
                             error("Unexpected report dispatch from read-only fixture")
                         }
                     },
+                    deletion = { target ->
+                        assertEquals("$GRAPH_BASE/api/v1/installations/delete-all", target.toString())
+                        newOwner("deletion") { request ->
+                            deletionCalls++
+                            deletionHandler(request)
+                        }
+                    },
                 ),
-            reportInputs = ::newReportInputs,
+            inputs =
+                ComplaintBackendInputFactories(
+                    reports = ::newReportInputs,
+                    deletionKey = {
+                        deletionKeyGenerations++
+                        GRAPH_DELETION_KEY
+                    },
+                ),
         )
 
     private fun newReportInputs(): ComplaintReportInputs {
@@ -162,7 +181,7 @@ internal class ComplaintBackendGraphFixture(
 
 /** Mutation SPIs fail closed and are counted; these fixtures support existing-identity reads only. */
 internal class GraphCredentials : InstallationCredentialStore {
-    val record: InstallationCredentialRecord =
+    var record: InstallationCredentialRecord =
         InstallationCredentialRecord.candidate(
             assertIs<InstallationValueResult.Valid<InstallationCredentialMaterial>>(
                 InstallationCredentialMaterial.checked(
@@ -173,9 +192,11 @@ internal class GraphCredentials : InstallationCredentialStore {
                 ),
             ).value,
         )
+        private set
     var writes = 0
         private set
     var missing = false
+    var allowDeletionReplacement = false
 
     override suspend fun read(): CredentialReadResult =
         if (missing) {
@@ -196,7 +217,14 @@ internal class GraphCredentials : InstallationCredentialStore {
     override suspend fun replace(
         expectedGeneration: Long,
         record: InstallationCredentialRecord,
-    ): CredentialReplaceResult = mutation()
+    ): CredentialReplaceResult {
+        if (!allowDeletionReplacement) return mutation()
+        writes++
+        if (missing) return CredentialReplaceResult.Missing
+        if (this.record.localGeneration != expectedGeneration) return CredentialReplaceResult.Stale
+        this.record = record
+        return CredentialReplaceResult.Stored
+    }
 
     override suspend fun delete(
         expectedGeneration: Long,
@@ -240,6 +268,7 @@ internal class GraphPending : PendingComplaintActionStore {
 }
 
 internal const val GRAPH_BASE = "https://complaints.example.invalid/gateway"
+internal const val GRAPH_DELETION_KEY = "55555555-5555-4555-8555-555555555555"
 private const val GRAPH_INSTALLATION_ID = "11111111-1111-4111-8111-111111111111"
 private const val GRAPH_SCOPE = "00000000-0000-0000-0000-000000000000"
 private const val GRAPH_ROW_ID = "22222222-2222-4222-a222-222222222222"

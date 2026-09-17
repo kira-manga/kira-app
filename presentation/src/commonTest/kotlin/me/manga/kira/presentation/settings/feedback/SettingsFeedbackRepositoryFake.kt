@@ -24,6 +24,7 @@ import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.CancelPreparedComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
+import me.manga.kira.domain.usecase.feedback.ComplaintInstallationActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ConfirmComplaintReportRecoveryUseCase
@@ -154,6 +155,7 @@ internal class SettingsFeedbackRepositoryFake :
 internal fun SettingsFeedbackRepositoryFake.viewModel(
     entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
     history: ComplaintListRepository = SettingsFeedbackHistoryFake(),
+    deletion: SettingsInstallationDeletionFake = SettingsInstallationDeletionFake(),
 ): SettingsFeedbackViewModel =
     SettingsFeedbackViewModel(
         ComplaintReportActions(
@@ -169,10 +171,13 @@ internal fun SettingsFeedbackRepositoryFake.viewModel(
             ConfirmComplaintReportRecoveryUseCase(this),
         ),
         ObserveUserComplaintsUseCase(history),
-        ComplaintInstallationRecoveryActions(
-            RequestUnreadableComplaintRecoveryUseCase(this),
-            RequestComplaintDeletionAbandonmentUseCase(this),
-            ResumeComplaintInstallationCleanupUseCase(this),
+        ComplaintInstallationActions(
+            ComplaintInstallationRecoveryActions(
+                RequestUnreadableComplaintRecoveryUseCase(this),
+                RequestComplaintDeletionAbandonmentUseCase(this),
+                ResumeComplaintInstallationCleanupUseCase(this),
+            ),
+            deletion.actions(),
         ),
         entry,
     )

@@ -157,7 +157,8 @@ class SettingsFeedbackViewModelTest {
             vm.submit(SettingsFeedbackIntent.ConfirmRecovery)
             assertSame(fake.nextPrompt, fake.confirmed.single())
             assertIs<SettingsFeedbackResult.LocalResetCompleted>(vm.state.value.result)
-            assertTrue(vm.state.value.canStartNewDraft)
+            assertFalse(vm.state.value.canStartNewDraft)
+            assertIs<SettingsFeedbackDeletionState.Uncertain>(vm.state.value.deletion)
             assertFalse(vm.state.value.editable)
             assertTrue(fake.submitted.isEmpty())
         }

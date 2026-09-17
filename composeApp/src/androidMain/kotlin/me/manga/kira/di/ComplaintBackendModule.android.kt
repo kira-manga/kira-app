@@ -7,6 +7,7 @@ import me.manga.kira.data.complaint.backend.ComplaintReportIdentifiers
 import me.manga.kira.data.complaint.backend.ComplaintReportInputs
 import me.manga.kira.data.complaint.backend.ComplaintReportMetadataInput
 import me.manga.kira.data.remote.complaint.createAndroidComplaintEnrollmentEngineOwner
+import me.manga.kira.data.remote.complaint.createAndroidComplaintDeletionEngineOwner
 import me.manga.kira.data.remote.complaint.createAndroidComplaintHistoryEngineOwner
 import me.manga.kira.data.remote.complaint.createAndroidComplaintMutationEngineOwner
 import me.manga.kira.data.remote.complaint.createAndroidComplaintSessionEngineOwner
@@ -33,8 +34,13 @@ internal fun unselectedAndroidComplaintHistoryGraph(context: Context): AppResult
                             session = ::createAndroidComplaintSessionEngineOwner,
                             history = ::createAndroidComplaintHistoryEngineOwner,
                             mutation = ::createAndroidComplaintMutationEngineOwner,
+                            deletion = ::createAndroidComplaintDeletionEngineOwner,
                         ),
-                    reportInputs = { androidComplaintReportInputs(context) },
+                    inputs =
+                        ComplaintBackendInputFactories(
+                            reports = { androidComplaintReportInputs(context) },
+                            deletionKey = { UUID.randomUUID().toString() },
+                        ),
                 ),
         )
     }

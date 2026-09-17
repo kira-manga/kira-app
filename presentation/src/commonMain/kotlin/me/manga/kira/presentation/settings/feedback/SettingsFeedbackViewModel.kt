@@ -18,8 +18,10 @@ import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportDraft
 import me.manga.kira.domain.model.feedback.ComplaintReportFailure
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt
 import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
-import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
+import me.manga.kira.domain.usecase.feedback.ComplaintInstallationActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.presentation.mvi.MviViewModel
@@ -30,12 +32,12 @@ class SettingsFeedbackViewModel(
     private val actions: ComplaintReportActions,
     private val recoveryActions: ComplaintReportRecoveryActions,
     private val observeUserComplaints: ObserveUserComplaintsUseCase,
-    private val installationRecoveryActions: ComplaintInstallationRecoveryActions,
+    private val installationActions: ComplaintInstallationActions,
     private val entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
 ) : MviViewModel<SettingsFeedbackState, SettingsFeedbackIntent, SettingsFeedbackEffect>(entry.initialState()) {
     private var live: ComplaintLiveReport? = null
     private var latestAttempt: ComplaintReportAttempt? = null
-    private var prompt: ComplaintRecoveryPrompt? = null
+    private var prompt: SettingsFeedbackPrompt? = null
     private var operation: Job? = null
     private var terminal = false
     private var closed = false
@@ -55,7 +57,7 @@ class SettingsFeedbackViewModel(
                 }
             }
         }
-        launchSafely { refreshRecovery() }
+        launchSafely { checkInstallation() }
     }
 
     @Suppress("CyclomaticComplexMethod") // Flat exhaustive intent dispatch; each action retains its own guard.
@@ -70,6 +72,11 @@ class SettingsFeedbackViewModel(
             SettingsFeedbackIntent.RefreshRecovery -> refreshRecovery()
             SettingsFeedbackIntent.SetupHistory -> setupHistory()
             SettingsFeedbackIntent.ResumeCleanup -> resumeCleanup()
+            SettingsFeedbackIntent.CheckInstallation -> checkInstallation()
+            SettingsFeedbackIntent.RequestRemoteDeletion -> requestRemoteDeletion()
+            SettingsFeedbackIntent.CancelRemoteDeletion -> resolveRemotePrompt(confirm = false)
+            SettingsFeedbackIntent.ConfirmRemoteDeletion -> resolveRemotePrompt(confirm = true)
+            SettingsFeedbackIntent.ContinueRemoteDeletion -> continueRemoteDeletion()
             is SettingsFeedbackIntent.CancelPrepared -> cancelPrepared(intent.report)
             is SettingsFeedbackIntent.RequestRecovery ->
                 requestRecovery(SettingsFeedbackRecoveryKind.REPORT, intent.report)
@@ -93,7 +100,7 @@ class SettingsFeedbackViewModel(
     }
 
     private suspend fun submitReport() {
-        if (!state.value.editable) return
+        if (!state.value.editable || !state.value.normalActionsAllowed) return
         work {
             val prepared = active(actions.prepare(state.value.draft)).preparationResult()
             updateState { it.withPreparation(prepared) }
@@ -126,10 +133,35 @@ class SettingsFeedbackViewModel(
     }
 
     private suspend fun refreshRecovery() {
-        if (live != null || terminal) return
+        if (live != null || terminal || !state.value.normalActionsAllowed) return
         work {
-            val result = active(recoveryActions.reconcile())
-            updateState { it.withRecovery(result) }
+            reconcileReports()
+        }
+    }
+
+    private suspend fun reconcileReports() {
+        val result = active(recoveryActions.reconcile())
+        updateState { it.withRecovery(result) }
+    }
+
+    /** Every opening begins with local reads, before any report reconciliation or history enrollment. */
+    private suspend fun checkInstallation() {
+        work { observeInstallation() }
+    }
+
+    private suspend fun observeInstallation(reconcile: Boolean = true) {
+        updateState { it.withDeletion(SettingsFeedbackDeletionState.Checking) }
+        when (val result = active(installationActions.deletion.observe())) {
+            is AppResult.Failure -> {
+                updateState { it.withDeletion(SettingsFeedbackDeletionState.Uncertain) }
+                showFailure(ComplaintReportFailure(result.error))
+            }
+            is AppResult.Success -> {
+                val observed = result.value.presentationState()
+                if (observed != SettingsFeedbackDeletionState.Active) retireLiveReport()
+                updateState { it.withDeletion(observed) }
+                if (reconcile && observed == SettingsFeedbackDeletionState.Active && live == null && !terminal) reconcileReports()
+            }
         }
     }
 
@@ -137,16 +169,20 @@ class SettingsFeedbackViewModel(
     private suspend fun setupHistory() {
         if (live != null || prompt != null || !state.value.canSetupHistory) return
         work {
+            updateState { it.withDeletion(SettingsFeedbackDeletionState.Uncertain) }
             when (val result = active(observeUserComplaints())) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
-                is AppResult.Success -> updateState { it.afterHistorySetup() }
+                is AppResult.Success -> {
+                    updateState { it.afterHistorySetup() }
+                    observeInstallation(reconcile = false)
+                }
             }
         }
     }
 
     private suspend fun resumeCleanup() {
         work {
-            when (val result = active(installationRecoveryActions.resumeCleanup())) {
+            when (val result = active(installationActions.recovery.resumeCleanup())) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
                 is AppResult.Success -> updateState { it.copy(result = SettingsFeedbackResult.CleanupCheckCompleted) }
             }
@@ -154,6 +190,7 @@ class SettingsFeedbackViewModel(
     }
 
     private suspend fun cancelPrepared(report: ComplaintPendingReport) {
+        if (!state.value.canUsePendingActions) return
         if (!isPreparedReport(report, live, latestAttempt, state.value.recovery)) return
         work {
             when (val result = active(recoveryActions.cancelPrepared(report))) {
@@ -172,40 +209,50 @@ class SettingsFeedbackViewModel(
         kind: SettingsFeedbackRecoveryKind,
         report: ComplaintPendingReport? = null,
     ) {
+        if (kind == SettingsFeedbackRecoveryKind.REPORT && !state.value.canUsePendingActions) return
         if (report != null && findReportObservation(report, live, latestAttempt, state.value.recovery) == null) return
         work {
-            val result =
-                when (kind) {
-                    SettingsFeedbackRecoveryKind.REPORT -> recoveryActions.requestRecovery(report ?: return@work)
-                    SettingsFeedbackRecoveryKind.UNREADABLE -> installationRecoveryActions.requestUnreadable()
-                    SettingsFeedbackRecoveryKind.ABANDON_DELETION ->
-                        installationRecoveryActions.requestDeletionAbandonment()
+            var displayed = false
+            try {
+                val result =
+                    when (kind) {
+                        SettingsFeedbackRecoveryKind.REPORT -> recoveryActions.requestRecovery(report ?: return@work)
+                        SettingsFeedbackRecoveryKind.UNREADABLE -> installationActions.recovery.requestUnreadable()
+                        SettingsFeedbackRecoveryKind.ABANDON_DELETION ->
+                            installationActions.recovery.requestDeletionAbandonment()
+                    }
+                // Capture before cancellation so a late/undelivered prompt is dismissed exactly once.
+                if (result is AppResult.Success) prompt = SettingsFeedbackPrompt.Local(result.value, kind)
+                currentCoroutineContext().ensureActive()
+                when (result) {
+                    is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
+                    is AppResult.Success -> {
+                        updateState { it.withRecoveryKind(kind) }
+                        displayed = true
+                        emit(SettingsFeedbackEffect.ConfirmLocalReset)
+                    }
                 }
-            // Capture before checking cancellation so close/VM teardown can dismiss this exact prompt.
-            if (result is AppResult.Success) prompt = result.value
-            currentCoroutineContext().ensureActive()
-            when (result) {
-                is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
-                is AppResult.Success -> {
-                    updateState { it.withRecoveryKind(kind) }
-                    emit(SettingsFeedbackEffect.ConfirmLocalReset)
-                }
+            } finally {
+                if (!displayed) withContext(NonCancellable) { dismissOwnedPrompt() }
             }
         }
     }
 
     private suspend fun resolvePrompt(confirm: Boolean) {
-        val expected = prompt ?: return
-        val kind = state.value.recoveryKind ?: return
+        val expected = prompt as? SettingsFeedbackPrompt.Local ?: return
         work(allowPrompt = true) {
             try {
                 val result =
-                    if (confirm) recoveryActions.confirmRecovery(expected) else recoveryActions.cancelRecovery(expected)
+                    if (confirm) {
+                        recoveryActions.confirmRecovery(expected.token)
+                    } else {
+                        recoveryActions.cancelRecovery(expected.token)
+                    }
                 if (result is AppResult.Success) prompt = null
                 currentCoroutineContext().ensureActive()
                 when (result) {
                     is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
-                    is AppResult.Success -> if (confirm) localResetCompleted(kind)
+                    is AppResult.Success -> if (confirm) localResetCompleted(expected.kind)
                 }
             } finally {
                 // Confirmation may have been consumed before cleanup failed; never offer this token again.
@@ -213,6 +260,94 @@ class SettingsFeedbackViewModel(
                 if (!closed) updateState { it.withRecoveryKind(null) }
             }
         }
+    }
+
+    private suspend fun requestRemoteDeletion() {
+        if (!state.value.canRequestRemoteDeletion) return
+        work {
+            var displayed = false
+            try {
+                val result = installationActions.deletion.request()
+                if (result is AppResult.Success) prompt = SettingsFeedbackPrompt.Remote(result.value)
+                currentCoroutineContext().ensureActive()
+                when (result) {
+                    is AppResult.Failure -> {
+                        updateState { it.withDeletion(SettingsFeedbackDeletionState.Uncertain) }
+                        showFailure(ComplaintReportFailure(result.error))
+                    }
+                    is AppResult.Success -> {
+                        updateState { it.withRemotePrompt() }
+                        displayed = true
+                    }
+                }
+            } finally {
+                if (!displayed) withContext(NonCancellable) { dismissOwnedPrompt() }
+            }
+        }
+    }
+
+    /** Never route a remote warning through local reset, or dismiss it then start an unbound deletion. */
+    private suspend fun resolveRemotePrompt(confirm: Boolean) {
+        val expected = prompt as? SettingsFeedbackPrompt.Remote ?: return
+        work(allowPrompt = true) {
+            if (confirm) beginRemoteAttempt()
+            try {
+                if (confirm) {
+                    showDeletionOutcome(active(installationActions.deletion.confirm(expected.token)))
+                } else {
+                    when (val result = active(installationActions.deletion.cancel(expected.token))) {
+                        is AppResult.Failure -> {
+                            updateState { it.withDeletion(SettingsFeedbackDeletionState.Uncertain) }
+                            showFailure(ComplaintReportFailure(result.error))
+                        }
+                        is AppResult.Success -> prompt = null
+                    }
+                }
+            } finally {
+                // Only dismiss the warning; cancellation/close must not abandon durable deletion.
+                withContext(NonCancellable) { dismissOwnedPrompt() }
+                if (!closed) updateState { it.withRecoveryKind(null) }
+            }
+        }
+    }
+
+    private suspend fun continueRemoteDeletion() {
+        if (!state.value.canContinueRemoteDeletion) return
+        work {
+            beginRemoteAttempt()
+            showDeletionOutcome(active(installationActions.deletion.continueDeletion()))
+        }
+    }
+
+    /** Retire old epoch-bound actions before the first suspension, including a failed/canceled confirm. */
+    private fun beginRemoteAttempt() {
+        retireLiveReport()
+        terminal = false
+        updateState { it.withDeletion(SettingsFeedbackDeletionState.Uncertain).copy(recovery = null, result = null) }
+    }
+
+    private fun showDeletionOutcome(result: AppResult<ComplaintInstallationDeletionOutcome>) {
+        when (result) {
+            is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
+            is AppResult.Success ->
+                when (val outcome = result.value) {
+                    ComplaintInstallationDeletionOutcome.Completed -> {
+                        terminal = true
+                        updateState {
+                            it.withDeletion(SettingsFeedbackDeletionState.Completed).copy(draft = entry.initialDraft())
+                        }
+                    }
+                    is ComplaintInstallationDeletionOutcome.Pending ->
+                        updateState {
+                            it.withDeletion(SettingsFeedbackDeletionState.Pending(outcome.retryAfterSeconds, outcome.error))
+                        }
+                }
+        }
+    }
+
+    private fun retireLiveReport() {
+        live = null
+        latestAttempt = null
     }
 
     private fun localResetCompleted(kind: SettingsFeedbackRecoveryKind) {
@@ -230,6 +365,9 @@ class SettingsFeedbackViewModel(
     }
 
     private fun showFailure(failure: ComplaintReportFailure) {
+        if (state.value.deletion == SettingsFeedbackDeletionState.Checking) {
+            updateState { it.withDeletion(SettingsFeedbackDeletionState.Uncertain) }
+        }
         if (live == null) {
             updateState { it.copy(result = SettingsFeedbackResult.Failure(failure)) }
         } else {
@@ -269,7 +407,7 @@ class SettingsFeedbackViewModel(
         latestAttempt = null
         terminal = false
         updateState { entry.initialState() }
-        launchSafely { refreshRecovery() }
+        launchSafely { checkInstallation() }
     }
 
     private suspend fun closeReport() {
@@ -285,8 +423,14 @@ class SettingsFeedbackViewModel(
 
     private suspend fun dismissOwnedPrompt() {
         val expected = prompt ?: return
-        recoveryActions.cancelRecovery(expected)
-        if (prompt === expected) prompt = null
+        try {
+            when (expected) {
+                is SettingsFeedbackPrompt.Local -> recoveryActions.cancelRecovery(expected.token)
+                is SettingsFeedbackPrompt.Remote -> installationActions.deletion.cancel(expected.token)
+            }
+        } finally {
+            if (prompt === expected) prompt = null
+        }
     }
 
     override fun onUnhandledError(
@@ -295,4 +439,16 @@ class SettingsFeedbackViewModel(
     ) {
         if (!closed) showFailure(ComplaintReportFailure(AppError.Unexpected("complaint_report_failed")))
     }
+}
+
+/** One per-opening prompt slot; a remote prompt can never become a local reset capability. */
+private sealed interface SettingsFeedbackPrompt {
+    class Local(
+        val token: ComplaintRecoveryPrompt,
+        val kind: SettingsFeedbackRecoveryKind,
+    ) : SettingsFeedbackPrompt
+
+    class Remote(
+        val token: ComplaintInstallationDeletionPrompt,
+    ) : SettingsFeedbackPrompt
 }

@@ -43,6 +43,18 @@ sealed interface SettingsFeedbackIntent : MviIntent {
     /** Explicitly continue existing durable cleanup authority without enrolling or submitting. */
     data object ResumeCleanup : SettingsFeedbackIntent
 
+    /** Read local deletion state only; never a Continue, enrollment or cleanup shortcut. */
+    data object CheckInstallation : SettingsFeedbackIntent
+
+    data object RequestRemoteDeletion : SettingsFeedbackIntent
+
+    data object CancelRemoteDeletion : SettingsFeedbackIntent
+
+    data object ConfirmRemoteDeletion : SettingsFeedbackIntent
+
+    /** Retry only an existing durable deletion, explicitly; no polling or timer starts this action. */
+    data object ContinueRemoteDeletion : SettingsFeedbackIntent
+
     class CancelPrepared(
         val report: ComplaintPendingReport,
     ) : SettingsFeedbackIntent {

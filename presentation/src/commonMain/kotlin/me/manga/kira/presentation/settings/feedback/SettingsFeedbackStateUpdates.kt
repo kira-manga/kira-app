@@ -19,8 +19,23 @@ internal fun SettingsFeedbackState.withMissingObservation(missing: Boolean): Set
 
 internal fun SettingsFeedbackState.withRecoveryKind(kind: SettingsFeedbackRecoveryKind?): SettingsFeedbackState =
     copy(
-        context = context.copy(recoveryKind = kind),
+        context =
+            context.copy(
+                promptKind =
+                    when (kind) {
+                        SettingsFeedbackRecoveryKind.REPORT -> SettingsFeedbackPromptKind.REPORT
+                        SettingsFeedbackRecoveryKind.UNREADABLE -> SettingsFeedbackPromptKind.UNREADABLE
+                        SettingsFeedbackRecoveryKind.ABANDON_DELETION -> SettingsFeedbackPromptKind.ABANDON_DELETION
+                        null -> null
+                    },
+            ),
     )
+
+internal fun SettingsFeedbackState.withDeletion(deletion: SettingsFeedbackDeletionState): SettingsFeedbackState =
+    copy(context = context.copy(deletion = deletion, missingInstallationObserved = false))
+
+internal fun SettingsFeedbackState.withRemotePrompt(): SettingsFeedbackState =
+    copy(context = context.copy(promptKind = SettingsFeedbackPromptKind.REMOTE_DELETION))
 
 internal fun SettingsFeedbackState.withPreparation(prepared: ComplaintReportPreparation): SettingsFeedbackState =
     withMissingObservation(prepared.isMissingPreparation()).copy(
@@ -50,6 +65,7 @@ internal fun SettingsFeedbackState.afterWork(
         activity =
             when {
                 terminal -> SettingsFeedbackActivity.TERMINAL
+                !normalActionsAllowed && deletion != SettingsFeedbackDeletionState.Missing -> SettingsFeedbackActivity.BLOCKED
                 hasLiveReport -> SettingsFeedbackActivity.LIVE
                 else -> SettingsFeedbackActivity.EDITING
             },
@@ -87,5 +103,5 @@ internal fun SettingsFeedbackState.afterLocalReset(kind: SettingsFeedbackRecover
                 SettingsFeedbackResult.LocalResetCompleted
             },
         recovery = null,
-        context = SettingsFeedbackContext(entry),
+        context = SettingsFeedbackContext(entry, deletion = SettingsFeedbackDeletionState.Uncertain),
     )

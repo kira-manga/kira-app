@@ -9,10 +9,13 @@ import me.manga.kira.domain.model.feedback.ComplaintReportRejection
 import me.manga.kira.presentation.mvi.MviState
 
 /** A live request cannot be edited/replaced; terminal results require an explicit new draft. */
-enum class SettingsFeedbackActivity { EDITING, WORKING, LIVE, TERMINAL }
+enum class SettingsFeedbackActivity { BLOCKED, EDITING, WORKING, LIVE, TERMINAL }
 
 /** Content-free warning copy; the matching exact consent token remains private to the ViewModel. */
 enum class SettingsFeedbackRecoveryKind { REPORT, UNREADABLE, ABANDON_DELETION }
+
+/** Rendering-only discriminator. Exact local and remote tokens never enter state. */
+enum class SettingsFeedbackPromptKind { REPORT, UNREADABLE, ABANDON_DELETION, REMOTE_DELETION }
 
 /** Typed rendering results. Local reset is deliberately not represented as remote deletion success. */
 sealed interface SettingsFeedbackResult {
@@ -51,18 +54,31 @@ sealed interface SettingsFeedbackResult {
 data class SettingsFeedbackState(
     val context: SettingsFeedbackContext = SettingsFeedbackContext(),
     val draft: ComplaintReportDraft = context.entry.initialDraft(),
-    val activity: SettingsFeedbackActivity = SettingsFeedbackActivity.EDITING,
+    val activity: SettingsFeedbackActivity = SettingsFeedbackActivity.BLOCKED,
     val result: SettingsFeedbackResult? = null,
     val recovery: ComplaintReportRecovery? = null,
 ) : MviState {
     val entry: SettingsFeedbackEntry get() = context.entry
-    val recoveryKind: SettingsFeedbackRecoveryKind? get() = context.recoveryKind
-    val confirmationPending: Boolean get() = recoveryKind != null
+    val recoveryKind: SettingsFeedbackRecoveryKind? get() = context.promptKind.localRecoveryKind()
+    val confirmationPending: Boolean get() = context.promptKind != null
+    val remoteConfirmationPending: Boolean get() = context.promptKind == SettingsFeedbackPromptKind.REMOTE_DELETION
+    val deletion: SettingsFeedbackDeletionState get() = context.deletion
     val busy: Boolean get() = activity == SettingsFeedbackActivity.WORKING
-    val editable: Boolean get() = activity == SettingsFeedbackActivity.EDITING && !confirmationPending
-    val canRetry: Boolean get() = activity == SettingsFeedbackActivity.LIVE && !confirmationPending
-    val canStartNewDraft: Boolean get() = activity == SettingsFeedbackActivity.TERMINAL && !confirmationPending
-    val canSetupHistory: Boolean get() = editable && context.missingInstallationObserved
+    val normalActionsAllowed: Boolean get() = deletion == SettingsFeedbackDeletionState.Active
+    val canUsePendingActions: Boolean get() = normalActionsAllowed && !busy && !confirmationPending
+    val editable: Boolean
+        get() = (normalActionsAllowed || deletion == SettingsFeedbackDeletionState.Missing) &&
+            activity == SettingsFeedbackActivity.EDITING && !confirmationPending
+    val canRetry: Boolean
+        get() = normalActionsAllowed && activity == SettingsFeedbackActivity.LIVE && !confirmationPending
+    val canStartNewDraft: Boolean
+        get() = activity == SettingsFeedbackActivity.TERMINAL && !confirmationPending && deletion.canStartNewDraft()
+    val canSetupHistory: Boolean
+        get() = !busy && !confirmationPending && activity != SettingsFeedbackActivity.TERMINAL &&
+            (deletion == SettingsFeedbackDeletionState.Missing || (normalActionsAllowed && context.missingInstallationObserved))
+    val canRequestRemoteDeletion: Boolean get() = normalActionsAllowed && !busy && !confirmationPending
+    val canContinueRemoteDeletion: Boolean
+        get() = deletion is SettingsFeedbackDeletionState.Pending && !busy && !confirmationPending
 
     override fun toString(): String = "SettingsFeedbackState(redacted)"
 }
@@ -72,7 +88,16 @@ data class SettingsFeedbackContext(
     val entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
     /** Last report-side MISSING observation; only gates the explicit safe history read. */
     val missingInstallationObserved: Boolean = false,
-    val recoveryKind: SettingsFeedbackRecoveryKind? = null,
+    val promptKind: SettingsFeedbackPromptKind? = null,
+    val deletion: SettingsFeedbackDeletionState = SettingsFeedbackDeletionState.Checking,
 ) {
     override fun toString(): String = "SettingsFeedbackContext(redacted)"
 }
+
+private fun SettingsFeedbackPromptKind?.localRecoveryKind(): SettingsFeedbackRecoveryKind? =
+    when (this) {
+        SettingsFeedbackPromptKind.REPORT -> SettingsFeedbackRecoveryKind.REPORT
+        SettingsFeedbackPromptKind.UNREADABLE -> SettingsFeedbackRecoveryKind.UNREADABLE
+        SettingsFeedbackPromptKind.ABANDON_DELETION -> SettingsFeedbackRecoveryKind.ABANDON_DELETION
+        SettingsFeedbackPromptKind.REMOTE_DELETION, null -> null
+    }

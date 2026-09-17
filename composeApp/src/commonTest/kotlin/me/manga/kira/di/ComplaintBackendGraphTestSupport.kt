@@ -83,9 +83,20 @@ internal fun trapGraphResources(onAllocation: () -> Unit): ComplaintBackendResou
                     onAllocation()
                     error("Mutation engine allocation must not occur")
                 },
+                deletion = {
+                    onAllocation()
+                    error("Deletion engine allocation must not occur")
+                },
             ),
-        reportInputs = {
-            onAllocation()
-            error("Report input allocation must not occur")
-        },
+        inputs =
+            ComplaintBackendInputFactories(
+                reports = {
+                    onAllocation()
+                    error("Report input allocation must not occur")
+                },
+                deletionKey = {
+                    onAllocation()
+                    error("Deletion key allocation must not occur")
+                },
+            ),
     )
