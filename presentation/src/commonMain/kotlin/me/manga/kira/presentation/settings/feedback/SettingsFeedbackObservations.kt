@@ -28,9 +28,7 @@ internal fun isPreparedReport(
     recovery: ComplaintReportRecovery?,
 ): Boolean = findReportObservation(report, live, latest, recovery)?.phase == ComplaintReportPhase.PREPARED
 
-internal fun ComplaintReportFailure.afterAttempt(
-    previous: ComplaintReportAttempt?,
-): ComplaintReportAttempt.Unresolved {
+internal fun ComplaintReportFailure.afterAttempt(previous: ComplaintReportAttempt?): ComplaintReportAttempt.Unresolved {
     val unresolved = previous as? ComplaintReportAttempt.Unresolved
     return ComplaintReportAttempt.Unresolved(this, unresolved?.knownApplication, unresolved?.pending)
 }

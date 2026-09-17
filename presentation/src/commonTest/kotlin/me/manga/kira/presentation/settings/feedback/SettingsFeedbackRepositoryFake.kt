@@ -38,7 +38,8 @@ import me.manga.kira.domain.usecase.feedback.SubmitComplaintReportUseCase
 
 /** Ordinary domain-port fake; both recovery request sources deliberately share the same prompt fixture. */
 @Suppress("TooManyFunctions")
-internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository,
+internal class SettingsFeedbackRepositoryFake :
+    ComplaintReportRepository,
     ComplaintInstallationRecoveryRepository {
     val live = SettingsTestLiveReport()
     val pending = SettingsTestPendingReport()

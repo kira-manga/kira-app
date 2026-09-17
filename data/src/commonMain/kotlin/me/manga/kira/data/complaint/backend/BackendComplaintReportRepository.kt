@@ -110,9 +110,7 @@ internal class BackendComplaintReportRepository(
             coordinator.resumeCleanup().localRecoveryResult()
         }
 
-    private suspend fun requestPrompt(
-        request: suspend () -> AppResult<Confirmation>,
-    ): AppResult<ComplaintRecoveryPrompt> {
+    private suspend fun requestPrompt(request: suspend () -> AppResult<Confirmation>): AppResult<ComplaintRecoveryPrompt> {
         var issued: ReportPromptHandle? = null
         var delivered = false
         return try {
