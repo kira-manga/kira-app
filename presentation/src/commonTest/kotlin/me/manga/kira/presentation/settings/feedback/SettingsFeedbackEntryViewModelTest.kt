@@ -64,6 +64,7 @@ class SettingsFeedbackEntryViewModelTest {
                 fake.recovery = fake.preparedRecovery()
                 vm.submit(SettingsFeedbackIntent.NewDraft)
                 assertFixedReset(vm, entry, expected)
+                vm.submit(SettingsFeedbackIntent.ChangeBody("discard on reset"))
                 vm.submit(SettingsFeedbackIntent.RequestRecovery(fake.pending))
                 vm.submit(SettingsFeedbackIntent.ConfirmRecovery)
                 assertIs<SettingsFeedbackResult.LocalResetCompleted>(vm.state.value.result)
@@ -233,6 +234,7 @@ private fun assertSetupKeepsDraftWithoutSending(
     assertFalse(vm.state.value.canSetupHistory)
     assertEquals(1, fake.drafts.size)
     assertTrue(fake.submitted.isEmpty())
+    assertEquals(1, fake.reconciliations)
     vm.submit(SettingsFeedbackIntent.SetupHistory)
     assertEquals(1, history.calls)
 }
