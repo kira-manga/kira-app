@@ -16,7 +16,7 @@ internal class ComplaintMutationTarget private constructor(
             return null
         }
         val candidate = parse(value) ?: return null
-        if (!sameOrigin(candidate) || candidate.parameters.isNotEmpty() || candidate.trailingQuery) return null
+        if (!sameOrigin(candidate) || !candidate.parameters.isEmpty() || candidate.trailingQuery) return null
         return when (candidate.encodedPath) {
             createUrl.encodedPath -> ComplaintMutationRoute.CREATE
             statusPath -> ComplaintMutationRoute.STATUS

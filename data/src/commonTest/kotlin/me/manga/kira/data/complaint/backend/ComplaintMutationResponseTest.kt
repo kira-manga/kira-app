@@ -31,7 +31,12 @@ class ComplaintMutationResponseTest {
         val applied = assertIs<ComplaintCreateHttpResult.Applied>(ComplaintMutationResponse.create(valid, request))
         assertSame(request, applied.request)
         val maximum =
-            ComplaintMutationDocument(201, mutationAck(Long.MAX_VALUE), location, "\"complaint-$id-v${Long.MAX_VALUE}\"")
+            ComplaintMutationDocument(
+                201,
+                mutationAck(Long.MAX_VALUE),
+                location,
+                "\"complaint-$id-v${Long.MAX_VALUE}\"",
+            )
         val maximumResult =
             assertIs<ComplaintCreateHttpResult.Applied>(ComplaintMutationResponse.create(maximum, request))
         assertEquals(Long.MAX_VALUE, maximumResult.acknowledgement.version)
@@ -50,6 +55,7 @@ class ComplaintMutationResponseTest {
         val request = assertNotNull(ComplaintCreateStatusRequest.checked(mutationPending()))
         val otherPending = mutationPending(mutationReport(key = MUTATION_OTHER_KEY))
         val other = assertNotNull(ComplaintCreateStatusRequest.checked(otherPending))
+
         fun decode(text: String): ComplaintCreateStatusHttpResult =
             ComplaintMutationResponse.status(ComplaintMutationDocument(200, text, null, null), request)
 
@@ -105,9 +111,10 @@ private fun invalidAcknowledgementBodies(id: String): List<String> =
         mutationAck() + " null",
         "[${mutationAck()}]",
         "\ufeff${mutationAck()}",
-    ) + listOf("0", "-1", "1.0", "1e0", "01", "9223372036854775808", "\"1\"", "null").map { version ->
-        """{"id":"$id","version":$version}"""
-    }
+    ) +
+        listOf("0", "-1", "1.0", "1e0", "01", "9223372036854775808", "\"1\"", "null").map { version ->
+            """{"id":"$id","version":$version}"""
+        }
 
 private fun invalidAcknowledgementHeaders(
     location: String,
@@ -147,9 +154,15 @@ private fun invalidStatusBodies(
 private fun replyPending(pending: PendingComplaintRecord): PendingComplaintRecord {
     val reply =
         assertNotNull(
-            PendingComplaintAction.checked(PendingComplaintOperation.CREATE_REPLY, Fixtures.OTHER_ID, Fixtures.ID, null),
+            PendingComplaintAction.checked(
+                PendingComplaintOperation.CREATE_REPLY,
+                Fixtures.OTHER_ID,
+                Fixtures.ID,
+                null,
+            ),
         )
-    val request = assertNotNull(PendingComplaintRequest.checked(reply, pending.request.key, pending.request.fingerprint))
+    val request =
+        assertNotNull(PendingComplaintRequest.checked(reply, pending.request.key, pending.request.fingerprint))
     return assertNotNull(PendingComplaintRecord.prepared(pending.binding, request, pending.times).markedDispatched())
 }
 

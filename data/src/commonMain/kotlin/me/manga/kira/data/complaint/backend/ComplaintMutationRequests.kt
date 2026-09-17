@@ -34,8 +34,8 @@ internal class ComplaintCreateHttpRequest private constructor(
             report: ComplaintReportRequest,
             pending: PendingComplaintRecord,
         ): ComplaintCreateHttpRequest? {
-            if (!pending.isDispatchedCreate() ||
-                pending.binding.dataScopeId != report.identity.dataScopeId ||
+            if (!pending.isDispatchedCreate()) return null
+            if (pending.binding.dataScopeId != report.identity.dataScopeId ||
                 pending.request.action.targetId != report.identity.clientId.canonical ||
                 pending.request.key != report.identity.key.canonical
             ) {

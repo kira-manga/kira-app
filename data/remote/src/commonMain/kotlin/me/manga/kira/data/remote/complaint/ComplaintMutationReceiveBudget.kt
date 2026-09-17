@@ -27,15 +27,12 @@ internal class ComplaintMutationReceiveBudget private constructor(
         fun checked(
             route: ComplaintMutationRoute,
             status: Long,
-            media: List<String>,
-            encoding: List<String>,
-            length: List<String>,
-            transfer: List<String>,
+            headers: ComplaintMutationResponseHeaders,
         ): ComplaintReceiveBudget? =
-            if (route == ComplaintMutationRoute.CREATE && status == CREATED && isJson(media)) {
-                acknowledgementBudget(encoding, length, transfer)
+            if (route == ComplaintMutationRoute.CREATE && status == CREATED && isJson(headers.media)) {
+                acknowledgementBudget(headers.encoding, headers.length, headers.transfer)
             } else {
-                ComplaintSessionReceiveBudget.checked(encoding, length, transfer)
+                ComplaintSessionReceiveBudget.checked(headers.encoding, headers.length, headers.transfer)
             }
 
         private fun isJson(media: List<String>): Boolean =
@@ -65,4 +62,14 @@ internal class ComplaintMutationReceiveBudget private constructor(
         private fun singleBoundedHeader(values: List<String>): Boolean =
             values.size <= 1 && values.all { it.length <= MAX_HEADER_CHARACTERS }
     }
+}
+
+/** Selected response fields remain separate lists; grouping never combines or normalizes duplicate values. */
+internal class ComplaintMutationResponseHeaders(
+    val media: List<String>,
+    val encoding: List<String>,
+    val length: List<String>,
+    val transfer: List<String>,
+) {
+    override fun toString(): String = "ComplaintMutationResponseHeaders(redacted)"
 }

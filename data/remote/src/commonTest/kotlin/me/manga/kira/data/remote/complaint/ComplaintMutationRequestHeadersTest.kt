@@ -39,8 +39,7 @@ class ComplaintMutationRequestHeadersTest {
             "Content-Encoding",
             "Transfer-Encoding",
             "X-Other",
-        )
-            .forEach { name -> assertFalse(accepts(route, headers + (name to "synthetic"))) }
+        ).forEach { name -> assertFalse(accepts(route, headers + (name to "synthetic"))) }
         headers.forEach { header -> assertFalse(accepts(route, headers + header)) }
         listOf("Authorization", "Accept-Encoding", "Content-Type").forEach { name ->
             assertFalse(accepts(route, headers.filterNot { it.first == name }))

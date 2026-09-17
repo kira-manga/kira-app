@@ -44,10 +44,12 @@ internal class IosComplaintMutationPolicy(
         return ComplaintMutationReceiveBudget.checked(
             route,
             response.statusCode,
-            response.mutationHeader("Content-Type"),
-            response.mutationHeader("Content-Encoding"),
-            response.mutationHeader("Content-Length"),
-            response.mutationHeader("Transfer-Encoding"),
+            ComplaintMutationResponseHeaders(
+                media = response.mutationHeader("Content-Type"),
+                encoding = response.mutationHeader("Content-Encoding"),
+                length = response.mutationHeader("Content-Length"),
+                transfer = response.mutationHeader("Transfer-Encoding"),
+            ),
         )
     }
 }

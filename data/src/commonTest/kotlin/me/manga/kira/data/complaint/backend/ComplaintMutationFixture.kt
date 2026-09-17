@@ -13,6 +13,7 @@ import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import me.manga.kira.data.complaint.backend.ComplaintCreateRejection.COMPLAINT_CAPACITY_REACHED
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.platform.storage.InstallationCredentialRecord
 import kotlin.test.assertEquals
@@ -157,7 +158,7 @@ internal fun mutationApplied(
         )
     }.toString()
 
-internal fun mutationRejected(code: ComplaintCreateRejection = ComplaintCreateRejection.COMPLAINT_CAPACITY_REACHED): String =
+internal fun mutationRejected(code: ComplaintCreateRejection = COMPLAINT_CAPACITY_REACHED): String =
     """{"outcome":"REJECTED","originalStatus":409,"problemCode":"${code.name}"}"""
 
 internal fun mutationProblem(
@@ -220,18 +221,26 @@ internal suspend fun TestScope.assertMutationBoundary(
             if (extra != 0) {
                 assertMutationFailure(ComplaintMutationFailure.RESPONSE, result)
             } else {
-                when {
-                    status == HttpStatusCode.Created -> assertIs<ComplaintCreateHttpResult.Applied>(result)
-                    status == HttpStatusCode.OK -> assertIs<ComplaintCreateStatusHttpResult.Rejected>(result)
-                    route == ComplaintMutationRoute.CREATE -> assertIs<ComplaintCreateHttpResult.HttpFailure>(result)
-                    else -> assertIs<ComplaintCreateStatusHttpResult.HttpFailure>(result)
-                }
+                assertWithinMutationBoundary(result, status, route)
             }
             assertEquals(1, f.requests.size)
             assertTrue(channel.cancelled)
         } finally {
             f.close()
         }
+    }
+}
+
+private fun assertWithinMutationBoundary(
+    result: Any,
+    status: HttpStatusCode,
+    route: ComplaintMutationRoute,
+) {
+    when {
+        status == HttpStatusCode.Created -> assertIs<ComplaintCreateHttpResult.Applied>(result)
+        status == HttpStatusCode.OK -> assertIs<ComplaintCreateStatusHttpResult.Rejected>(result)
+        route == ComplaintMutationRoute.CREATE -> assertIs<ComplaintCreateHttpResult.HttpFailure>(result)
+        else -> assertIs<ComplaintCreateStatusHttpResult.HttpFailure>(result)
     }
 }
 

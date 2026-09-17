@@ -80,7 +80,12 @@ internal object ComplaintMutationBody {
     ): Int? {
         val headers = response.headers
         if (headers.single(ComplaintBoundedResponse.CONTRACT_HEADER) != "1") invalidHistory()
-        val cache = headers.single(HttpHeaders.CacheControl)?.lowercase()?.split(',')?.map { it.trim(' ', '\t') }
+        val cache =
+            headers
+                .single(HttpHeaders.CacheControl)
+                ?.lowercase()
+                ?.split(',')
+                ?.map { it.trim(' ', '\t') }
         if (cache == null || cache.size != CACHE.size || cache.toSet() != CACHE) invalidHistory()
         val encoding = headers.single(HttpHeaders.ContentEncoding)
         if (encoding != null && !encoding.equals("identity", ignoreCase = true)) invalidHistory()

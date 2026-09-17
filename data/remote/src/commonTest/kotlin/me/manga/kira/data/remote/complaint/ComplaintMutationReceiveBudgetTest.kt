@@ -27,7 +27,7 @@ class ComplaintMutationReceiveBudgetTest {
         listOf(emptyList(), listOf("application/problem+json"), listOf("application/json", "application/json"))
             .forEach { media ->
                 assertIs<ComplaintSessionReceiveBudget>(
-                    assertNotNull(budget(ComplaintMutationRoute.CREATE, CREATED, media)),
+                    assertNotNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(media = media))),
                 )
             }
     }
@@ -35,27 +35,33 @@ class ComplaintMutationReceiveBudgetTest {
     @Test
     fun declaredBoundaryIsRouteSpecificAndTheLargerBudgetStillChecksExactCompletion() {
         val cap = Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES
-        val create = assertNotNull(budget(ComplaintMutationRoute.CREATE, CREATED, length = listOf("$cap")))
+        val create =
+            assertNotNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(length = listOf("$cap"))))
         assertTrue(create.accept((cap - 1).toULong()))
         assertFalse(create.isComplete())
         assertTrue(create.accept(1uL))
         assertTrue(create.isComplete())
         assertFalse(create.accept(ULong.MAX_VALUE))
         assertEquals(cap, create.receivedBytes)
-        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, length = listOf("${cap + 1}")))
-        assertNull(budget(ComplaintMutationRoute.STATUS, CREATED, length = listOf("$cap")))
-        assertNull(budget(ComplaintMutationRoute.CREATE, CONFLICT, length = listOf("$cap")))
+        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(length = listOf("${cap + 1}"))))
+        assertNull(budget(ComplaintMutationRoute.STATUS, CREATED, responseHeaders(length = listOf("$cap"))))
+        assertNull(budget(ComplaintMutationRoute.CREATE, CONFLICT, responseHeaders(length = listOf("$cap"))))
     }
 
     @Test
     fun largerBudgetPreservesIdentityAndUnambiguousFraming() {
-        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, encoding = listOf("gzip")))
-        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, length = listOf("1", "1")))
-        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, length = listOf("1, 1")))
+        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(encoding = listOf("gzip"))))
+        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(length = listOf("1", "1"))))
+        assertNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(length = listOf("1, 1"))))
         assertNull(
-            budget(ComplaintMutationRoute.CREATE, CREATED, length = listOf("1"), transfer = listOf("chunked")),
+            budget(
+                ComplaintMutationRoute.CREATE,
+                CREATED,
+                responseHeaders(length = listOf("1"), transfer = listOf("chunked")),
+            ),
         )
-        val chunked = assertNotNull(budget(ComplaintMutationRoute.CREATE, CREATED, transfer = listOf("chunked")))
+        val chunked =
+            assertNotNull(budget(ComplaintMutationRoute.CREATE, CREATED, responseHeaders(transfer = listOf("chunked"))))
         assertTrue(chunked.accept(Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES.toULong()))
         assertFalse(chunked.accept(1uL))
     }
@@ -63,12 +69,15 @@ class ComplaintMutationReceiveBudgetTest {
     private fun budget(
         route: ComplaintMutationRoute,
         status: Long,
+        headers: ComplaintMutationResponseHeaders = responseHeaders(),
+    ): ComplaintReceiveBudget? = ComplaintMutationReceiveBudget.checked(route, status, headers)
+
+    private fun responseHeaders(
         media: List<String> = listOf("application/json"),
         encoding: List<String> = emptyList(),
         length: List<String> = emptyList(),
         transfer: List<String> = emptyList(),
-    ): ComplaintReceiveBudget? =
-        ComplaintMutationReceiveBudget.checked(route, status, media, encoding, length, transfer)
+    ): ComplaintMutationResponseHeaders = ComplaintMutationResponseHeaders(media, encoding, length, transfer)
 
     private companion object {
         const val CREATED = 201L

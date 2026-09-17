@@ -47,8 +47,9 @@ internal class ComplaintMutationHttp(
     ): ComplaintCreateHttpResult {
         currentCoroutineContext().ensureActive()
         refusal(request.pending, session)?.let { return ComplaintCreateHttpResult.Failed(request, it) }
+        val exchange = exchange(ComplaintMutationRoute.CREATE, session, request.pending, request.bodyBytes())
         val result =
-            when (val exchange = exchange(ComplaintMutationRoute.CREATE, session, request.pending, request.bodyBytes())) {
+            when (exchange) {
                 is MutationExchange.Received -> ComplaintMutationResponse.create(exchange.document, request)
                 is MutationExchange.Failed -> ComplaintCreateHttpResult.Failed(request, exchange.reason)
             }
@@ -62,13 +63,18 @@ internal class ComplaintMutationHttp(
     ): ComplaintCreateStatusHttpResult {
         currentCoroutineContext().ensureActive()
         refusal(request.pending, session)?.let { return ComplaintCreateStatusHttpResult.Failed(request, it) }
+        val exchange = exchange(ComplaintMutationRoute.STATUS, session, request.pending, request.bodyBytes())
         val result =
-            when (val exchange = exchange(ComplaintMutationRoute.STATUS, session, request.pending, request.bodyBytes())) {
+            when (exchange) {
                 is MutationExchange.Received -> ComplaintMutationResponse.status(exchange.document, request)
                 is MutationExchange.Failed -> ComplaintCreateStatusHttpResult.Failed(request, exchange.reason)
             }
         currentCoroutineContext().ensureActive()
-        return if (isClosed) ComplaintCreateStatusHttpResult.Failed(request, ComplaintMutationFailure.CLOSED) else result
+        return if (isClosed) {
+            ComplaintCreateStatusHttpResult.Failed(request, ComplaintMutationFailure.CLOSED)
+        } else {
+            result
+        }
     }
 
     /** Cancels this client's work only. The composition root retains engine ownership. */
@@ -118,7 +124,8 @@ internal class ComplaintMutationHttp(
         } catch (_: CharacterCodingException) {
             MutationExchange.Failed(ComplaintMutationFailure.RESPONSE)
         } catch (_: Exception) {
-            MutationExchange.Failed(if (isClosed) ComplaintMutationFailure.CLOSED else ComplaintMutationFailure.TRANSPORT)
+            val reason = if (isClosed) ComplaintMutationFailure.CLOSED else ComplaintMutationFailure.TRANSPORT
+            MutationExchange.Failed(reason)
         } finally {
             bytes.fill(0)
         }

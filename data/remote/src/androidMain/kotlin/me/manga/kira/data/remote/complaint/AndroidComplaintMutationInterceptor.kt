@@ -13,9 +13,10 @@ internal class AndroidComplaintMutationInterceptor(
         val request = chain.request()
         val route = target.route(request.url.toString())
         val body = request.body
-        if (request.method != "POST" || route == null || body == null || chain.call().isCanceled()) {
+        if (request.method != "POST" || route == null || body == null) {
             throw IOException("Complaint mutation request rejected")
         }
+        if (chain.call().isCanceled()) throw IOException("Complaint mutation request rejected")
         val headers = request.headers.toList().toMutableList()
         val media = body.contentType()?.toString()
         if (request.headers.values("Content-Type").isEmpty() && media != null) headers += "Content-Type" to media
@@ -44,14 +45,7 @@ internal class AndroidComplaintMutationInterceptor(
                 throw IOException("Complaint mutation response target rejected")
             }
             val budget =
-                ComplaintMutationReceiveBudget.checked(
-                    route,
-                    response.code.toLong(),
-                    response.headers.values("Content-Type"),
-                    response.headers.values("Content-Encoding"),
-                    response.headers.values("Content-Length"),
-                    response.headers.values("Transfer-Encoding"),
-                ) ?: throw IOException("Complaint mutation response headers rejected")
+                response.mutationBudget(route) ?: throw IOException("Complaint mutation response headers rejected")
             response
                 .newBuilder()
                 .body(AndroidComplaintSessionResponseBody(response.body, budget, call()::cancel))
@@ -67,4 +61,16 @@ internal class AndroidComplaintMutationInterceptor(
             }
         }
     }
+
+    private fun Response.mutationBudget(route: ComplaintMutationRoute): ComplaintReceiveBudget? =
+        ComplaintMutationReceiveBudget.checked(
+            route,
+            code.toLong(),
+            ComplaintMutationResponseHeaders(
+                media = headers.values("Content-Type"),
+                encoding = headers.values("Content-Encoding"),
+                length = headers.values("Content-Length"),
+                transfer = headers.values("Transfer-Encoding"),
+            ),
+        )
 }

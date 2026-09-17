@@ -94,7 +94,12 @@ internal class AndroidMutationEngineFixture(
 }
 
 private fun startMutationServer(server: MockWebServer): HandshakeCertificates {
-    val certificate = HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").build()
+    val certificate =
+        HeldCertificate
+            .Builder()
+            .commonName("localhost")
+            .addSubjectAlternativeName("localhost")
+            .build()
     val serverTrust = HandshakeCertificates.Builder().heldCertificate(certificate).build()
     val clientTrust = HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
     server.protocols = listOf(Protocol.HTTP_1_1)
