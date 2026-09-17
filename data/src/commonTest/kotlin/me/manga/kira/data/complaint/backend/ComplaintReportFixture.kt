@@ -9,6 +9,10 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.feedback.ComplaintLiveReport
+import me.manga.kira.domain.model.feedback.ComplaintReportDraft
+import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
+import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.PendingComplaintSlot
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -150,3 +154,18 @@ internal fun directProblem(status: HttpStatusCode): String =
     } else {
         historyProblem(status)
     }
+
+/** The same real report fixture with only the new consumer boundary added; no alternate executor. */
+internal fun ComplaintReportFixture.consumer(
+    inputs: ComplaintReportInputs = consumerInputs(),
+): BackendComplaintReportRepository = BackendComplaintReportRepository(coordinator, repository, inputs)
+
+internal fun consumerInputs(): ComplaintReportInputs =
+    ComplaintReportInputs(
+        { ComplaintReportIdentifiers(Fixtures.OTHER_ID, Fixtures.KEY) },
+        { ComplaintReportMetadataInput(null, "", "", "") },
+    )
+
+internal suspend fun ComplaintReportRepository.preparedConsumerReport(
+    draft: ComplaintReportDraft = ComplaintReportDraft(subject = "Subject", body = "Report body"),
+): ComplaintLiveReport = assertIs<ComplaintReportPreparation.Ready>(prepare(draft).reportSuccess()).report

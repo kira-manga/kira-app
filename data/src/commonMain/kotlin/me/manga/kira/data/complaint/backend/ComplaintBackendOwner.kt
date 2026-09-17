@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.ComplaintListRepository
+import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
 import me.manga.kira.platform.storage.InstallationCredentialStore
 import me.manga.kira.platform.storage.PendingComplaintActionStore
@@ -16,6 +17,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 class ComplaintBackendOwner private constructor(
     val history: ComplaintListRepository,
     internal val feedback: BackendFeedbackRepository?,
+    /** Present only when this owner has both a distinct mutation engine and inert report input suppliers. */
+    val reports: ComplaintReportRepository?,
     private val closeActions: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
@@ -39,6 +42,7 @@ class ComplaintBackendOwner private constructor(
             sessionEngine: HttpClientEngine,
             historyEngine: HttpClientEngine,
             mutationEngine: HttpClientEngine? = null,
+            reportInputs: ComplaintReportInputs? = null,
         ): AppResult<ComplaintBackendOwner> {
             if (!distinctBorrowedEngines(enrollmentEngine, sessionEngine, historyEngine, mutationEngine)) {
                 return historyUnavailable()
@@ -51,17 +55,24 @@ class ComplaintBackendOwner private constructor(
                     InstallationSessionManager(coordinator, endpoint, sessionEngine).also { close.add(0, it::close) }
                 val http = ComplaintHistoryHttp(endpoint, historyEngine).also { close.add(0, it::close) }
                 val loads = ComplaintHistoryLoads().also { close.add(0, it::close) }
-                // Existing composition supplies no mutation engine; this optional graph stays unselected.
+                // Production selection remains outside this optional report graph.
                 val feedback =
                     mutationEngine?.let { engine ->
                         val mutation = ComplaintMutationHttp(endpoint, engine).also { close.add(1, it::close) }
                         val works = ReportWorkOwner().also { close.add(0, it::close) }
                         BackendFeedbackRepository(coordinator, sessions, mutation, works)
                     }
+                val reports =
+                    if (feedback != null && reportInputs != null) {
+                        BackendComplaintReportRepository(coordinator, feedback, reportInputs).also { close.add(0, it::close) }
+                    } else {
+                        null
+                    }
                 AppResult.Success(
                     ComplaintBackendOwner(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
+                        reports,
                         close.toList(),
                     ),
                 )

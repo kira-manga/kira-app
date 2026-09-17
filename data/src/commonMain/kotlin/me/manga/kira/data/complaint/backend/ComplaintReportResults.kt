@@ -3,6 +3,7 @@ package me.manga.kira.data.complaint.backend
 import me.manga.kira.core.error.AppError
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
+import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import me.manga.kira.platform.storage.PendingComplaintSlot
 import me.manga.kira.platform.storage.PendingComplaintSnapshot
 
@@ -22,6 +23,7 @@ internal sealed interface ReportAttempt {
         override val liveReport: ComplaintReportRequest?,
         val failure: ReportFailure,
         val application: ReportActionState? = null,
+        val pending: ReportPendingObservation? = null,
     ) : ReportAttempt {
         override fun toString(): String = "ReportAttempt.Unresolved(redacted)"
     }
@@ -35,8 +37,17 @@ internal class ReportFailure(
 internal class ReportRecoveryItem(
     val slot: PendingComplaintSlot,
     val attempt: ReportAttempt,
+    val permit: ReconciliationPermit,
 ) {
     override fun toString(): String = "ReportRecoveryItem(redacted)"
+}
+
+/** Exact read-only observation, containing no live prose, worker or independent action authority. */
+internal class ReportPendingObservation(
+    val slot: PendingComplaintSlot,
+    val permit: ReconciliationPermit,
+) {
+    override fun toString(): String = "ReportPendingObservation(redacted)"
 }
 
 /** At most the initial sixteen metadata-only observations, not an authoritative inventory or permission. */
@@ -104,4 +115,7 @@ internal fun reportMutationFailure(reason: ComplaintMutationFailure): ReportFail
     }
 
 internal fun ReportActionBinding.unresolved(failure: ReportFailure): ReportExecution =
-    ReportExecution(this, ReportAttempt.Unresolved(liveReport, failure, work.application()))
+    ReportExecution(
+        this,
+        ReportAttempt.Unresolved(liveReport, failure, work.application(), slot?.let { ReportPendingObservation(it, permit) }),
+    )

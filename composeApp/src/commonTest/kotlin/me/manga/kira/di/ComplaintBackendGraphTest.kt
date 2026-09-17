@@ -16,16 +16,21 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.repository.ReadOnlyComplaintActionRepository
 import me.manga.kira.domain.model.complaint.ComplaintHistory
-import me.manga.kira.domain.model.complaint.ComplaintOwnerRow
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
 import me.manga.kira.domain.model.complaint.ComplaintType
+import me.manga.kira.domain.model.feedback.ComplaintReportDraft
+import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.repository.ComplaintActionRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
+import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
+import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
+import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.presentation.complaint.ActionDialogMode
 import me.manga.kira.presentation.complaint.ComplaintIntent
 import me.manga.kira.presentation.complaint.ComplaintViewModel
+import me.manga.kira.presentation.settings.feedback.SettingsFeedbackViewModel
 import org.koin.dsl.koinApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,7 +132,7 @@ class ComplaintBackendGraphTest {
                 Dispatchers.resetMain()
             }
             assertEquals(
-                listOf("close:history", "close:session", "close:enrollment"),
+                listOf("close:mutation", "close:history", "close:session", "close:enrollment"),
                 fixture.events.filter { it.startsWith("close:") },
             )
             assertTrue(fixture.owners.values.all { it.closed })
@@ -184,34 +189,84 @@ class ComplaintBackendGraphTest {
         }
 
     @Test
+    fun candidateReportBindingsPrepareOnlyThroughExplicitActionAndNeverPersistOrDispatchDraft() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val fixture = ComplaintBackendGraphFixture(this)
+            val graph =
+                assertIs<AppResult.Success<ComplaintBackendGraph>>(
+                    createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources()),
+                ).value
+            val app = koinApplication { modules(graph.module()) }
+            val vm = app.koin.get<SettingsFeedbackViewModel>()
+            try {
+                runCurrent()
+                assertSame(graph.reports, app.koin.get<ComplaintReportRepository>())
+                assertIs<ReadOnlyComplaintActionRepository>(app.koin.get<ComplaintActionRepository>())
+                assertEquals(0, fixture.reportIdentifierGenerations + fixture.reportMetadataReads)
+                val actions = app.koin.get<ComplaintReportActions>()
+                val prepared =
+                    assertIs<AppResult.Success<ComplaintReportPreparation>>(
+                        actions.prepare(
+                            ComplaintReportDraft(ComplaintType.TECHNICAL, "Synthetic subject", "Synthetic report body"),
+                        ),
+                    ).value
+                assertIs<ComplaintReportPreparation.Ready>(prepared)
+                assertIs<AppResult.Success<*>>(app.koin.get<ComplaintReportRecoveryActions>().reconcile())
+                assertEquals(1, fixture.reportIdentifierGenerations)
+                assertEquals(1, fixture.reportMetadataReads)
+                assertEquals(0, fixture.credentials.writes + fixture.pending.writes)
+                assertEquals(0, fixture.generations + fixture.mutationCalls + fixture.historyCalls + fixture.sessionCalls)
+                assertFalse(fixture.events.any { it == "request:enrollment" })
+            } finally {
+                vm.viewModelScope.cancel()
+                app.close()
+                graph.close()
+                Dispatchers.resetMain()
+            }
+            assertTrue(fixture.owners.values.all { it.closed })
+        }
+
+    @Test
     fun partialConstructionRetainsEveryOwnerAndUnwindsAllEvenIfOneCloseFails() =
         runTest {
-            val fixture = ComplaintBackendGraphFixture(this)
-            fixture.failAllocation = "history"
-            fixture.failClose = "session"
-            val result = createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources())
-            val error = assertIs<AppResult.Failure>(result).error
-            assertEquals("complaint_backend_cleanup_failed", assertIs<AppError.Unexpected>(error).message)
-            assertNull(error.cause)
-            assertEquals(listOf("close:session", "close:enrollment"), fixture.events.filter { it.startsWith("close:") })
-            assertTrue(fixture.owners.values.all { it.closed })
-            assertEquals(0, fixture.credentials.writes)
-            assertEquals(0, fixture.pending.writes)
+            val failures =
+                listOf(
+                    "history" to listOf("session", "enrollment"),
+                    "mutation" to listOf("history", "session", "enrollment"),
+                    "report-inputs" to listOf("mutation", "history", "session", "enrollment"),
+                )
+            for ((stage, closed) in failures) {
+                val fixture = ComplaintBackendGraphFixture(this)
+                fixture.failAllocation = stage
+                fixture.failClose = "session"
+                val result = createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources())
+                val error = assertIs<AppResult.Failure>(result).error
+                assertEquals("complaint_backend_cleanup_failed", assertIs<AppError.Unexpected>(error).message)
+                assertNull(error.cause)
+                assertEquals(closed.map { "close:$it" }, fixture.events.filter { it.startsWith("close:") })
+                assertTrue(fixture.owners.values.all { it.closed })
+                assertEquals(0, fixture.credentials.writes + fixture.pending.writes)
+                assertEquals(0, fixture.reportIdentifierGenerations + fixture.reportMetadataReads)
+            }
         }
 
     @Test
     fun borrowedEngineGetterFailureClosesAllAlreadyCreatedOwnersWithoutLeakingCause() =
         runTest {
-            val fixture = ComplaintBackendGraphFixture(this)
-            fixture.failEngineAccess = "session"
-            val result = createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources())
-            assertNull(assertIs<AppResult.Failure>(result).error.cause)
-            assertEquals(
-                listOf("close:history", "close:session", "close:enrollment"),
-                fixture.events.filter { it.startsWith("close:") },
-            )
-            assertTrue(fixture.owners.values.all { it.closed })
-            assertEquals(0, fixture.historyCalls + fixture.sessionCalls + fixture.generations)
+            for (stage in listOf("session", "mutation")) {
+                val fixture = ComplaintBackendGraphFixture(this)
+                fixture.failEngineAccess = stage
+                val result = createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources())
+                assertNull(assertIs<AppResult.Failure>(result).error.cause)
+                assertEquals(
+                    listOf("close:mutation", "close:history", "close:session", "close:enrollment"),
+                    fixture.events.filter { it.startsWith("close:") },
+                )
+                assertTrue(fixture.owners.values.all { it.closed })
+                assertEquals(0, fixture.historyCalls + fixture.sessionCalls + fixture.generations + fixture.mutationCalls)
+                assertEquals(0, fixture.reportIdentifierGenerations + fixture.reportMetadataReads)
+            }
         }
 
     @Test
@@ -222,12 +277,12 @@ class ComplaintBackendGraphTest {
                 assertIs<AppResult.Success<ComplaintBackendGraph>>(
                     createComplaintBackendGraph({ GRAPH_BASE }, fixture.resources()),
                 ).value
-            fixture.failClose = "history"
+            fixture.failClose = "mutation"
             val failure = assertFailsWith<IllegalStateException> { graph.close() }
             assertEquals("Complaint backend graph close failed", failure.message)
             assertNull(failure.cause)
             assertEquals(
-                listOf("close:history", "close:session", "close:enrollment"),
+                listOf("close:mutation", "close:history", "close:session", "close:enrollment"),
                 fixture.events.filter { it.startsWith("close:") },
             )
             graph.close()
@@ -236,44 +291,3 @@ class ComplaintBackendGraphTest {
             assertTrue(fixture.owners.values.all { it.closed })
         }
 }
-
-private fun ComplaintViewModel.assertLoadedReadOnlyHistory(): ComplaintHistory.Backend {
-    val history = assertIs<ComplaintHistory.Backend>(state.value.history)
-    assertEquals(
-        "Synthetic connected subject",
-        assertIs<ComplaintOwnerRow.Report>(history.items.single()).subject,
-    )
-    assertFalse(state.value.isLoading)
-    assertTrue(state.value.all.isEmpty())
-    assertFalse(state.value.legacyActionsAllowed)
-    return history
-}
-
-/** No fake stores or engines exist before admission; every resource factory is a counted trap. */
-private fun trapGraphResources(onAllocation: () -> Unit): ComplaintBackendResources =
-    ComplaintBackendResources(
-        credentials = {
-            onAllocation()
-            error("Credential allocation must not occur")
-        },
-        pending = {
-            onAllocation()
-            error("Pending allocation must not occur")
-        },
-        generator = {
-            onAllocation()
-            error("Generator allocation must not occur")
-        },
-        enrollmentEngine = {
-            onAllocation()
-            error("Enrollment engine allocation must not occur")
-        },
-        sessionEngine = {
-            onAllocation()
-            error("Session engine allocation must not occur")
-        },
-        historyEngine = {
-            onAllocation()
-            error("History engine allocation must not occur")
-        },
-    )

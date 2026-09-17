@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">La bozza resta solo in memoria. Mantieni aperta questa finestra per riprovare la stessa segnalazione se il risultato è incerto.</string>
+    <string name="settings_report_retry_same">Riprova la stessa segnalazione</string>
+    <string name="settings_report_new_draft">Nuova segnalazione</string>
+    <string name="settings_report_recovery_title">Operazioni conservate</string>
+    <string name="settings_report_refresh">Controlla le operazioni conservate</string>
+    <string name="settings_report_recovery_empty">Questo controllo non ha rilevato operazioni conservate.</string>
+    <string name="settings_report_pending_title">Segnalazione conservata %1$d</string>
+    <string name="settings_report_prepared">Preparata localmente; non inviata.</string>
+    <string name="settings_report_may_have_sent">Potrebbe aver raggiunto il server.</string>
+    <string name="settings_report_cancel_prepared">Annulla la segnalazione non inviata</string>
+    <string name="settings_report_request_reset">Esamina il ripristino locale</string>
+    <string name="settings_report_reset_title">Ripristinare l’identità delle segnalazioni di questo dispositivo?</string>
+    <string name="settings_report_reset_warning">Questa azione dimentica l’intera identità locale delle segnalazioni e TUTTE le operazioni conservate. Le segnalazioni sul server NON vengono cancellate né annullate. Potresti perdere l’accesso alla loro cronologia e la possibilità di riprovarle in sicurezza.</string>
+    <string name="settings_report_reset_confirm">Ripristina i dati locali delle segnalazioni</string>
+    <string name="settings_report_prepared_cancelled">La segnalazione non inviata è stata annullata.</string>
+    <string name="settings_report_reset_completed">L’identità locale delle segnalazioni e le operazioni conservate sono state cancellate. Le segnalazioni sul server non sono state eliminate.</string>
+    <string name="settings_report_applied">Il server ha accettato questa segnalazione.</string>
+    <string name="settings_report_capacity_rejected">Il server ha rifiutato questa segnalazione perché è stato raggiunto il limite di segnalazioni.</string>
+    <string name="settings_report_id_rejected">Il server ha rifiutato questa segnalazione perché il suo identificativo era già stato usato.</string>
+    <string name="settings_report_unresolved">Il risultato non è ancora confermato. Non creare una segnalazione sostitutiva.</string>
+    <string name="settings_report_cleanup_pending">Il risultato del server è noto, ma la conferma locale è incompleta.</string>
+    <string name="settings_report_invalid_subject">Controlla la lunghezza e i caratteri dell’oggetto.</string>
+    <string name="settings_report_invalid_body">Controlla la lunghezza e i caratteri del testo.</string>
+    <string name="settings_report_invalid_metadata">I dati del dispositivo non sono stati accettati. L’invio di segnalazioni non è disponibile.</string>
+    <string name="settings_report_pending_capacity">È stato raggiunto il limite locale di operazioni in sospeso. Risolvi le operazioni conservate prima di una nuova segnalazione.</string>
+    <string name="settings_report_receipt_expired">Il periodo sicuro della ricevuta è terminato. Questa segnalazione non sarà inviata di nuovo.</string>
+    <string name="settings_report_live_required">La segnalazione originale in memoria non è più disponibile. I metadati conservati non consentono di inviarla di nuovo.</string>
+    <string name="settings_report_unavailable">L’invio o il recupero non sono disponibili per questa identità locale. Le operazioni conservate non sono state sostituite.</string>
+</resources>

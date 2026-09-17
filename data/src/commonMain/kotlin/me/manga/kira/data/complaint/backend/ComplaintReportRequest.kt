@@ -6,7 +6,7 @@ import me.manga.kira.domain.model.complaint.ComplaintType
 internal enum class ComplaintReportOperation { OWNER_CREATE, }
 
 /** All four members are required. Null appVersion is not an empty string or a missing-key default. */
-internal class ComplaintReportMetadataInput(
+class ComplaintReportMetadataInput(
     val appVersion: String?,
     val osVersion: String,
     val manufacturer: String,

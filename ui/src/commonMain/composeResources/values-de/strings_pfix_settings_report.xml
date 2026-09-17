@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">Der Entwurf bleibt nur im Arbeitsspeicher. Lassen Sie diesen Dialog offen, um dieselbe Meldung bei ungewissem Ergebnis erneut zu versuchen.</string>
+    <string name="settings_report_retry_same">Dieselbe Meldung erneut versuchen</string>
+    <string name="settings_report_new_draft">Neue Meldung</string>
+    <string name="settings_report_recovery_title">Aufbewahrte Vorgänge</string>
+    <string name="settings_report_refresh">Aufbewahrte Vorgänge prüfen</string>
+    <string name="settings_report_recovery_empty">Diese Prüfung hat keine aufbewahrten Vorgänge gemeldet.</string>
+    <string name="settings_report_pending_title">Aufbewahrte Meldung %1$d</string>
+    <string name="settings_report_prepared">Lokal vorbereitet; nicht versendet.</string>
+    <string name="settings_report_may_have_sent">Hat den Server möglicherweise erreicht.</string>
+    <string name="settings_report_cancel_prepared">Ungesendete Meldung abbrechen</string>
+    <string name="settings_report_request_reset">Lokales Zurücksetzen prüfen</string>
+    <string name="settings_report_reset_title">Meldeidentität dieses Geräts zurücksetzen?</string>
+    <string name="settings_report_reset_warning">Dadurch werden die gesamte lokale Meldeidentität und ALLE aufbewahrten Meldevorgänge vergessen. Meldungen auf dem Server werden NICHT gelöscht oder rückgängig gemacht. Der Zugriff auf ihren Verlauf und sichere Wiederholungsversuche können verloren gehen.</string>
+    <string name="settings_report_reset_confirm">Lokale Meldedaten zurücksetzen</string>
+    <string name="settings_report_prepared_cancelled">Die ungesendete Meldung wurde abgebrochen.</string>
+    <string name="settings_report_reset_completed">Lokale Meldeidentität und aufbewahrte Vorgänge wurden gelöscht. Servermeldungen wurden nicht gelöscht.</string>
+    <string name="settings_report_applied">Der Server hat diese Meldung angenommen.</string>
+    <string name="settings_report_capacity_rejected">Der Server hat diese Meldung wegen des erreichten Meldelimits abgelehnt.</string>
+    <string name="settings_report_id_rejected">Der Server hat diese Meldung abgelehnt, weil ihre Meldungs-ID bereits verwendet wurde.</string>
+    <string name="settings_report_unresolved">Das Ergebnis ist noch unbestätigt. Erstellen Sie keine Ersatzmeldung.</string>
+    <string name="settings_report_cleanup_pending">Das Serverergebnis ist bekannt, aber die lokale Bestätigung ist unvollständig.</string>
+    <string name="settings_report_invalid_subject">Prüfen Sie Länge und Zeichen des Betreffs.</string>
+    <string name="settings_report_invalid_body">Prüfen Sie Länge und Zeichen des Texts.</string>
+    <string name="settings_report_invalid_metadata">Die Gerätedaten konnten nicht angenommen werden. Meldungen sind nicht verfügbar.</string>
+    <string name="settings_report_pending_capacity">Das lokale Limit ausstehender Vorgänge wurde erreicht. Klären Sie aufbewahrte Vorgänge vor einer neuen Meldung.</string>
+    <string name="settings_report_receipt_expired">Der sichere Belegzeitraum ist abgelaufen. Diese Meldung wird nicht erneut gesendet.</string>
+    <string name="settings_report_live_required">Die ursprüngliche Meldung im Arbeitsspeicher ist nicht mehr verfügbar. Aufbewahrte Metadaten erlauben kein erneutes Senden.</string>
+    <string name="settings_report_unavailable">Meldung oder Wiederherstellung ist für diese lokale Identität nicht verfügbar. Aufbewahrte Vorgänge wurden nicht ersetzt.</string>
+</resources>

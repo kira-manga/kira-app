@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">El borrador solo se conserva en memoria. Mantén abierto este diálogo para reintentar el mismo informe si el resultado es incierto.</string>
+    <string name="settings_report_retry_same">Reintentar el mismo informe</string>
+    <string name="settings_report_new_draft">Nuevo informe</string>
+    <string name="settings_report_recovery_title">Operaciones conservadas</string>
+    <string name="settings_report_refresh">Comprobar operaciones conservadas</string>
+    <string name="settings_report_recovery_empty">Esta comprobación no mostró operaciones conservadas.</string>
+    <string name="settings_report_pending_title">Informe conservado %1$d</string>
+    <string name="settings_report_prepared">Preparado localmente; no enviado.</string>
+    <string name="settings_report_may_have_sent">Puede haber llegado al servidor.</string>
+    <string name="settings_report_cancel_prepared">Cancelar informe no enviado</string>
+    <string name="settings_report_request_reset">Revisar restablecimiento local</string>
+    <string name="settings_report_reset_title">¿Restablecer la identidad de informes de este dispositivo?</string>
+    <string name="settings_report_reset_warning">Esto olvidará toda la identidad local de informes y TODAS las operaciones de informes conservadas. Los informes del servidor NO se borrarán ni se desharán. Puedes perder acceso a su historial y la posibilidad de reintentarlos de forma segura.</string>
+    <string name="settings_report_reset_confirm">Restablecer datos locales de informes</string>
+    <string name="settings_report_prepared_cancelled">Se canceló el informe no enviado.</string>
+    <string name="settings_report_reset_completed">Se borraron la identidad local de informes y las operaciones conservadas. No se eliminaron informes del servidor.</string>
+    <string name="settings_report_applied">El servidor aceptó este informe.</string>
+    <string name="settings_report_capacity_rejected">El servidor rechazó este informe porque se alcanzó el límite de informes.</string>
+    <string name="settings_report_id_rejected">El servidor rechazó este informe porque su identificador ya se había utilizado.</string>
+    <string name="settings_report_unresolved">El resultado aún no está confirmado. No inicies un informe de reemplazo.</string>
+    <string name="settings_report_cleanup_pending">Se conoce el resultado del servidor, pero la confirmación local está incompleta.</string>
+    <string name="settings_report_invalid_subject">Revisa la longitud y los caracteres del asunto.</string>
+    <string name="settings_report_invalid_body">Revisa la longitud y los caracteres del texto.</string>
+    <string name="settings_report_invalid_metadata">No se pudieron aceptar los datos del dispositivo. El envío de informes no está disponible.</string>
+    <string name="settings_report_pending_capacity">Se alcanzó el límite local de operaciones pendientes. Resuelve el trabajo conservado antes de enviar otro informe.</string>
+    <string name="settings_report_receipt_expired">Finalizó el período seguro del recibo. Este informe no se enviará de nuevo.</string>
+    <string name="settings_report_live_required">El informe original en memoria ya no está disponible. Los metadatos conservados no permiten reenviarlo.</string>
+    <string name="settings_report_unavailable">El envío o la recuperación no están disponibles para esta identidad local. No se ha reemplazado el trabajo conservado.</string>
+</resources>

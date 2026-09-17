@@ -1,6 +1,5 @@
 package me.manga.kira.di
 
-import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockEngineConfig
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -17,7 +16,9 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import me.manga.kira.data.remote.complaint.ComplaintSessionEngineOwner
+import me.manga.kira.data.complaint.backend.ComplaintReportIdentifiers
+import me.manga.kira.data.complaint.backend.ComplaintReportInputs
+import me.manga.kira.data.complaint.backend.ComplaintReportMetadataInput
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
 import me.manga.kira.platform.storage.CleanupMarkerRemoveResult
@@ -42,6 +43,7 @@ import me.manga.kira.platform.storage.PendingCreateResult
 import me.manga.kira.platform.storage.PendingDeleteResult
 import me.manga.kira.platform.storage.PendingReadResult
 import me.manga.kira.platform.storage.PendingReplaceResult
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import me.manga.kira.platform.storage.CredentialCleanupMarker as Marker
 
@@ -60,6 +62,9 @@ internal class ComplaintBackendGraphFixture(
     var generations = 0
     var historyCalls = 0
     var sessionCalls = 0
+    var mutationCalls = 0
+    var reportIdentifierGenerations = 0
+    var reportMetadataReads = 0
     var historyHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
         respond(graphHistoryResponse(), HttpStatusCode.OK, graphHeaders())
     }
@@ -83,22 +88,51 @@ internal class ComplaintBackendGraphFixture(
                     }
                 }
             },
-            enrollmentEngine = {
-                newOwner("enrollment") { error("Unexpected enrollment for existing fixture identity") }
+            engines =
+                ComplaintBackendEngineFactories(
+                    enrollment = {
+                        newOwner("enrollment") { error("Unexpected enrollment for existing fixture identity") }
+                    },
+                    session = {
+                        newOwner("session") {
+                            sessionCalls++
+                            respond(graphSessionResponse(), HttpStatusCode.OK, graphHeaders())
+                        }
+                    },
+                    history = {
+                        newOwner("history") { request ->
+                            historyCalls++
+                            historyHandler(request)
+                        }
+                    },
+                    mutation = { target ->
+                        assertEquals("$GRAPH_BASE/api/v1/complaints", target.toString())
+                        newOwner("mutation") {
+                            mutationCalls++
+                            error("Unexpected report dispatch from read-only fixture")
+                        }
+                    },
+                ),
+            reportInputs = ::newReportInputs,
+        )
+
+    private fun newReportInputs(): ComplaintReportInputs {
+        if (failAllocation == "report-inputs") error("Synthetic report input allocation failure")
+        events += "allocate:report-inputs"
+        return ComplaintReportInputs(
+            identifiers = {
+                reportIdentifierGenerations++
+                ComplaintReportIdentifiers(
+                    clientId = "33333333-3333-4333-8333-333333333333",
+                    idempotencyKey = "44444444-4444-4444-8444-444444444444",
+                )
             },
-            sessionEngine = {
-                newOwner("session") {
-                    sessionCalls++
-                    respond(graphSessionResponse(), HttpStatusCode.OK, graphHeaders())
-                }
-            },
-            historyEngine = {
-                newOwner("history") { request ->
-                    historyCalls++
-                    historyHandler(request)
-                }
+            metadata = {
+                reportMetadataReads++
+                ComplaintReportMetadataInput("1.0.0", "Synthetic OS", "Synthetic vendor", "Synthetic model")
             },
         )
+    }
 
     private fun newOwner(
         name: String,
@@ -123,30 +157,6 @@ internal class ComplaintBackendGraphFixture(
             { failEngineAccess == name },
             { failClose == name },
         ).also { owners[name] = it }
-    }
-}
-
-internal class GraphEngineOwner(
-    private val name: String,
-    private val delegate: HttpClientEngine,
-    private val events: MutableList<String>,
-    private val failAccess: () -> Boolean,
-    private val failClose: () -> Boolean,
-) : ComplaintSessionEngineOwner {
-    var closed: Boolean = false
-        private set
-    override val engine: HttpClientEngine
-        get() {
-            if (failAccess()) error("Synthetic borrowed engine getter failure")
-            return delegate
-        }
-
-    override fun close() {
-        if (closed) return
-        closed = true
-        events += "close:$name"
-        delegate.close()
-        if (failClose()) error("Synthetic native close details")
     }
 }
 

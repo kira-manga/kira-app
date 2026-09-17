@@ -139,12 +139,15 @@ class InstallationCredentialCoordinator(
         }
 
     /** Existing ACTIVE identity only. This registers the whole report/status work before session I/O. */
-    internal suspend fun reportInventory(work: ReportWork): Outcome<ReconciliationPermit> =
+    internal suspend fun reportInventory(
+        work: ReportWork,
+        expected: ReconciliationPermit? = null,
+    ): Outcome<ReconciliationPermit> =
         mutex.serialized {
             currentCoroutineContext().ensureActive()
             noConsent()
             credentials.requireNoCleanupMarker()
-            val record = credentials.coordinationRecord().also(::active)
+            val record = reportOriginRecord(expected)
             val permit = ReconciliationPermit(record, pending.reconciliationSnapshot(record), reconciliationIssuer)
             currentCoroutineContext().ensureActive()
             reports.observe(permit, work)
@@ -155,12 +158,13 @@ class InstallationCredentialCoordinator(
     internal suspend fun beginReportAction(
         work: ReportWork,
         start: ReportStart,
+        expected: ReconciliationPermit? = null,
     ): Outcome<ReportActionBinding> =
         mutex.serialized {
             currentCoroutineContext().ensureActive()
             noConsent()
             credentials.requireNoCleanupMarker()
-            val record = credentials.coordinationRecord().also(::active)
+            val record = reportOriginRecord(expected)
             val permit = ReconciliationPermit(record, pending.reconciliationSnapshot(record), reconciliationIssuer)
             currentCoroutineContext().ensureActive()
             reports.begin(permit, work, start)
@@ -549,6 +553,13 @@ class InstallationCredentialCoordinator(
         credentials.requireNoCleanupMarker()
         val record = credentials.exactRecord(permit.record).also(::active)
         if (!samePending(permit.snapshot, pending.reconciliationSnapshot(record))) refuse(Block.STALE_BINDING)
+    }
+
+    /** Original identity/epoch only: normal pending transitions must use the freshly read inventory. */
+    private suspend fun reportOriginRecord(expected: ReconciliationPermit?): InstallationCredentialRecord {
+        if (expected != null && expected.issuer !== reconciliationIssuer) refuse(Block.STALE_BINDING)
+        val record = if (expected == null) credentials.coordinationRecord() else credentials.exactRecord(expected.record)
+        return record.also(::active)
     }
 
     private suspend fun reportAdmission(
