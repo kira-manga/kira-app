@@ -59,7 +59,7 @@ class ComplaintDeletionRequestHeadersTest {
         assertFalse(accepts(native + ("user-agent" to "ktor-client")))
     }
 
-    private fun accepts(headers: List<Pair<String, String>>): Boolean = ComplaintDeletionRequestHeaders.accepts(headers, 1)
+    private fun accepts(headers: List<Pair<String, String>>) = ComplaintDeletionRequestHeaders.accepts(headers, 1)
 }
 
 internal fun deletionTestHeaders(): List<Pair<String, String>> =

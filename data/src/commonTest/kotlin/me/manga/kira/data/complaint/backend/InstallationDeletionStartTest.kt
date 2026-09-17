@@ -199,7 +199,8 @@ private fun deletionStartInvalidStores(): List<(InstallationCoordinatorFixture) 
         { it.pending.slots += Fixtures.slot(1) },
         { it.pending.slots += sessionPendingSlot(Fixtures.record(generation = 2)) },
         {
-            it.pending.slots += sessionPendingSlot(Fixtures.record(material = Fixtures.material(id = Fixtures.OTHER_ID)))
+            val foreignMaterial = Fixtures.material(id = Fixtures.OTHER_ID)
+            it.pending.slots += sessionPendingSlot(Fixtures.record(material = foreignMaterial))
         },
         {
             it.pending.readFailure =

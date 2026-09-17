@@ -108,7 +108,8 @@ internal class InstallationDeletionHttp(
                 }
                 setBody(ByteArrayContent(bytes, ContentType.Application.Json))
             }.execute { response ->
-                InstallationDeletionResponse.read(InstallationDeletionBody.read(response, endpoint.deletionUrl), request)
+                val document = InstallationDeletionBody.read(response, endpoint.deletionUrl)
+                InstallationDeletionResponse.read(document, request)
             }
     }
 
