@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Recuperación de la identidad local de informes</string>
+    <string name="settings_installation_review_unreadable">Comprobar si se puede recuperar una identidad ilegible</string>
+    <string name="settings_installation_review_abandonment">Revisar el abandono local de la eliminación</string>
+    <string name="settings_installation_continue_cleanup">Comprobar o continuar la limpieza local autorizada</string>
+    <string name="settings_installation_abandon_title">¿Abandonar la continuación local de la eliminación?</string>
+    <string name="settings_installation_abandon_warning">Esto abandona la continuación local de una solicitud de eliminación existente. Puedes perder la posibilidad de reintentar o comprobar su resultado. No revierte una solicitud ya enviada ni confirma la eliminación en el servidor.</string>
+    <string name="settings_installation_abandon_confirm">Abandonar la continuación local de la eliminación</string>
+    <string name="settings_installation_abandon_completed">Se abandonó la continuación local de la eliminación. Esto no confirma la eliminación en el servidor.</string>
+    <string name="settings_installation_cleanup_checked">Se completó la comprobación de limpieza local. Puede que no se haya cambiado nada. Esto no confirma la eliminación de la identidad ni de datos en el servidor.</string>
+</resources>

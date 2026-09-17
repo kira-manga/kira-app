@@ -10,6 +10,7 @@ import me.manga.kira.data.complaint.backend.ComplaintReportInputs
 import me.manga.kira.data.remote.complaint.ComplaintSessionEngineOwner
 import me.manga.kira.data.repository.ReadOnlyComplaintActionRepository
 import me.manga.kira.domain.repository.ComplaintActionRepository
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.DeleteComplaintUseCase
@@ -18,12 +19,16 @@ import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.complaint.ReplyToComplaintUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.CancelPreparedComplaintReportUseCase
+import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ConfirmComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.PrepareComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.ReconcileComplaintReportsUseCase
+import me.manga.kira.domain.usecase.feedback.RequestComplaintDeletionAbandonmentUseCase
 import me.manga.kira.domain.usecase.feedback.RequestComplaintReportRecoveryUseCase
+import me.manga.kira.domain.usecase.feedback.RequestUnreadableComplaintRecoveryUseCase
+import me.manga.kira.domain.usecase.feedback.ResumeComplaintInstallationCleanupUseCase
 import me.manga.kira.domain.usecase.feedback.RetryComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.SubmitComplaintReportUseCase
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
@@ -129,7 +134,10 @@ private fun assembleComplaintBackendGraph(
         is AppResult.Success -> {
             cleanup.add(0, made.value::close)
             val reports = made.value.reports ?: return backendGraphUnavailable()
-            AppResult.Success(ComplaintBackendGraph(made.value, reports, cleanup.toList()))
+            val installationRecovery = made.value.installationRecovery ?: return backendGraphUnavailable()
+            AppResult.Success(
+                ComplaintBackendGraph(made.value, reports, installationRecovery, cleanup.toList()),
+            )
         }
     }
 }
@@ -139,6 +147,7 @@ private fun assembleComplaintBackendGraph(
 internal class ComplaintBackendGraph(
     private val owner: ComplaintBackendOwner,
     val reports: ComplaintReportRepository,
+    val installationRecovery: ComplaintInstallationRecoveryRepository,
     private val cleanup: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
@@ -151,6 +160,7 @@ internal class ComplaintBackendGraph(
             single<ComplaintListRepository> { get<ComplaintBackendGraph>().history }
             single<ComplaintActionRepository> { ReadOnlyComplaintActionRepository() }
             single<ComplaintReportRepository> { get<ComplaintBackendGraph>().reports }
+            single<ComplaintInstallationRecoveryRepository> { get<ComplaintBackendGraph>().installationRecovery }
             factory { ObserveUserComplaintsUseCase(get()) }
             factory { ReplyToComplaintUseCase(get()) }
             factory { EditComplaintUseCase(get()) }
@@ -163,6 +173,9 @@ internal class ComplaintBackendGraph(
             factory { RequestComplaintReportRecoveryUseCase(get()) }
             factory { CancelComplaintReportRecoveryUseCase(get()) }
             factory { ConfirmComplaintReportRecoveryUseCase(get()) }
+            factory { RequestUnreadableComplaintRecoveryUseCase(get()) }
+            factory { RequestComplaintDeletionAbandonmentUseCase(get()) }
+            factory { ResumeComplaintInstallationCleanupUseCase(get()) }
             factory { ComplaintReportActions(prepare = get(), submit = get(), retry = get()) }
             factory {
                 ComplaintReportRecoveryActions(
@@ -173,11 +186,19 @@ internal class ComplaintBackendGraph(
                     confirmRecovery = get(),
                 )
             }
+            factory {
+                ComplaintInstallationRecoveryActions(
+                    requestUnreadable = get(),
+                    requestDeletionAbandonment = get(),
+                    resumeCleanup = get(),
+                )
+            }
             viewModel { parameters ->
                 SettingsFeedbackViewModel(
                     actions = get(),
                     recoveryActions = get(),
                     observeUserComplaints = get(),
+                    installationRecoveryActions = get(),
                     entry = parameters.getOrNull<SettingsFeedbackEntry>() ?: SettingsFeedbackEntry.General,
                 )
             }

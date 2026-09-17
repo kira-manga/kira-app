@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Local complaint identity recovery</string>
+    <string name="settings_installation_review_unreadable">Check unreadable identity recovery eligibility</string>
+    <string name="settings_installation_review_abandonment">Review local deletion abandonment</string>
+    <string name="settings_installation_continue_cleanup">Check or continue authorized local cleanup</string>
+    <string name="settings_installation_abandon_title">Abandon local deletion continuation?</string>
+    <string name="settings_installation_abandon_warning">This gives up local continuation of an existing deletion request. You may lose the ability to retry or check its outcome. It cannot undo a request already sent and does not confirm deletion on the server.</string>
+    <string name="settings_installation_abandon_confirm">Abandon local deletion continuation</string>
+    <string name="settings_installation_abandon_completed">Local deletion continuation was abandoned. This does not confirm deletion on the server.</string>
+    <string name="settings_installation_cleanup_checked">Local cleanup check completed. It may have made no changes. This does not confirm identity removal or server deletion.</string>
+</resources>

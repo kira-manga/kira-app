@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Yerel bildirim kimliğini kurtarma</string>
+    <string name="settings_installation_review_unreadable">Okunamayan kimliğin kurtarılabilirliğini denetle</string>
+    <string name="settings_installation_review_abandonment">Silmeyi yerel olarak sürdürmekten vazgeçmeyi incele</string>
+    <string name="settings_installation_continue_cleanup">İzin verilmiş yerel temizliği denetle veya sürdür</string>
+    <string name="settings_installation_abandon_title">Silmeyi yerel olarak sürdürmekten vazgeçilsin mi?</string>
+    <string name="settings_installation_abandon_warning">Bu işlem, mevcut bir silme isteğini yerel olarak sürdürmekten vazgeçer. Yeniden deneme veya sonucu denetleme olanağını kaybedebilirsiniz. Daha önce gönderilmiş bir isteği geri alamaz ve sunucuda silme yapıldığını doğrulamaz.</string>
+    <string name="settings_installation_abandon_confirm">Silmeyi yerel olarak sürdürmekten vazgeç</string>
+    <string name="settings_installation_abandon_completed">Silme işlemini yerel olarak sürdürmekten vazgeçildi. Bu, sunucuda silme yapıldığını doğrulamaz.</string>
+    <string name="settings_installation_cleanup_checked">Yerel temizlik denetimi tamamlandı. Hiçbir değişiklik yapılmamış olabilir. Bu, kimliğin kaldırıldığını veya sunucuda silme yapıldığını doğrulamaz.</string>
+</resources>

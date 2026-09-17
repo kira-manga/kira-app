@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Восстановление локального идентификатора обращений</string>
+    <string name="settings_installation_review_unreadable">Проверить возможность восстановления нечитаемого идентификатора</string>
+    <string name="settings_installation_review_abandonment">Проверить локальный отказ от продолжения удаления</string>
+    <string name="settings_installation_continue_cleanup">Проверить или продолжить разрешённую локальную очистку</string>
+    <string name="settings_installation_abandon_title">Отказаться от локального продолжения удаления?</string>
+    <string name="settings_installation_abandon_warning">Это означает отказ от локального продолжения существующего запроса на удаление. Вы можете потерять возможность повторить запрос или проверить его результат. Это не отменяет уже отправленный запрос и не подтверждает удаление на сервере.</string>
+    <string name="settings_installation_abandon_confirm">Отказаться от локального продолжения удаления</string>
+    <string name="settings_installation_abandon_completed">Локальное продолжение удаления прекращено. Это не подтверждает удаление на сервере.</string>
+    <string name="settings_installation_cleanup_checked">Проверка локальной очистки завершена. Возможно, ничего не изменилось. Это не подтверждает удаление идентификатора или данных на сервере.</string>
+</resources>
