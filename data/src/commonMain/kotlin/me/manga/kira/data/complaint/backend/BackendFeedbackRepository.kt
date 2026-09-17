@@ -64,9 +64,7 @@ internal class BackendFeedbackRepository(
         }
 
     /** Startup and manual reads remain usable with sixteen retained records; no CREATE is constructed. */
-    suspend fun reconcile(): AppResult<ReportRecovery> {
-        return withWork { work -> AppResult.Success(reconciler.reconcile(work)) }
-    }
+    suspend fun reconcile(): AppResult<ReportRecovery> = withWork { work -> AppResult.Success(reconciler.reconcile(work)) }
 
     /** Explicit unsent cancellation alone may delete PREPARED; cancelCurrent/finally never do so. */
     suspend fun cancelPrepared(slot: PendingComplaintSlot): AppResult<Unit> =
@@ -77,13 +75,9 @@ internal class BackendFeedbackRepository(
             }
         }
 
-    suspend fun cancelRecovery(expected: Confirmation): AppResult<Unit> {
-        return withWork { coordinator.cancelRecovery(expected).unitResult() }
-    }
+    suspend fun cancelRecovery(expected: Confirmation): AppResult<Unit> = withWork { coordinator.cancelRecovery(expected).unitResult() }
 
-    suspend fun confirmRecovery(expected: Confirmation): AppResult<Unit> {
-        return withWork { coordinator.confirmRecovery(expected).unitResult() }
-    }
+    suspend fun confirmRecovery(expected: Confirmation): AppResult<Unit> = withWork { coordinator.confirmRecovery(expected).unitResult() }
 
     /** The prompt caller survives cancellation of its registered, no-HTTP worker by consent issuance. */
     suspend fun requestRecovery(slot: PendingComplaintSlot): AppResult<Confirmation> =

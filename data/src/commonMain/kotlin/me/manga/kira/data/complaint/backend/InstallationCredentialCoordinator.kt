@@ -166,9 +166,7 @@ class InstallationCredentialCoordinator(
             reports.begin(permit, work, start)
         }
 
-    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> {
-        return mutex.serialized { reportAdmission(binding) }
-    }
+    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> = mutex.serialized { reportAdmission(binding) }
 
     /** Named, no-I/O token publication only; never a generic authenticated action callback. */
     internal suspend fun publishReportSession(
