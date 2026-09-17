@@ -34,13 +34,7 @@ internal class ComplaintCreateHttpRequest private constructor(
             report: ComplaintReportRequest,
             pending: PendingComplaintRecord,
         ): ComplaintCreateHttpRequest? {
-            if (!pending.isDispatchedCreate()) return null
-            if (pending.binding.dataScopeId != report.identity.dataScopeId ||
-                pending.request.action.targetId != report.identity.clientId.canonical ||
-                pending.request.key != report.identity.key.canonical
-            ) {
-                return null
-            }
+            if (!pending.isDispatchedCreate() || !pending.matchesReportIdentity(report)) return null
             val fingerprint = ComplaintReportFingerprint.of(report)
             return if (pending.request.fingerprint.version == fingerprint.version &&
                 pending.request.fingerprint.encoded == fingerprint.encoded
@@ -79,6 +73,11 @@ private fun PendingComplaintRecord.isDispatchedCreate(): Boolean =
         request.action.parentId == null &&
         request.action.expectedVersion == null &&
         request.fingerprint.version == 1
+
+private fun PendingComplaintRecord.matchesReportIdentity(report: ComplaintReportRequest): Boolean =
+    binding.dataScopeId == report.identity.dataScopeId &&
+        request.action.targetId == report.identity.clientId.canonical &&
+        request.key == report.identity.key.canonical
 
 /** This is equality, not freshness, authenticated authority, or durable-slot admission. */
 internal fun PendingComplaintBinding.matchesMutationSession(session: ComplaintSessionResponse): Boolean =
