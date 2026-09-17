@@ -34,7 +34,10 @@ internal fun SettingsFeedbackState.afterWork(
 internal fun SettingsFeedbackState.withRecovery(observation: ComplaintReportRecovery): SettingsFeedbackState =
     copy(
         recovery = observation,
-        context = context.copy(missingInstallationObserved = observation.stopped?.block == ComplaintReportBlock.MISSING),
+        context =
+            context.copy(
+                missingInstallationObserved = observation.stopped?.block == ComplaintReportBlock.MISSING,
+            ),
     )
 
 internal fun SettingsFeedbackState.afterHistorySetup(): SettingsFeedbackState =

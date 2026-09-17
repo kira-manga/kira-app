@@ -291,7 +291,6 @@ import org.jetbrains.compose.resources.stringResource
  * When present, it replaces every legacy request dialog, submission and retry path; null keeps
  * the existing shipping flow.
  */
-// Preserve the existing shipping screen API; the only added argument is an optional candidate request hook.
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList")
 @Composable
@@ -325,8 +324,16 @@ fun SourcesScreen(
 }
 
 // Existing screen/layout debt stays local; candidate routing must not restructure unrelated source controls.
+// Keep explicit ownership guards around both callbacks and suspended effects rather than weakening them
+// to lower this established screen's branch count. This exception is local, not a baseline/file suppression.
 @OptIn(ExperimentalMaterial3Api::class)
-@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList", "LongMethod")
+@Suppress(
+    "ktlint:standard:function-naming",
+    "FunctionNaming",
+    "LongParameterList",
+    "LongMethod",
+    "CyclomaticComplexMethod",
+)
 @Composable
 internal fun SourcesScreenContent(
     state: SourcesState,
@@ -352,11 +359,12 @@ internal fun SourcesScreenContent(
     // "Sources". The in-settings (RepoSettings) entry — the SourcesReworkScreenRoute, which passes
     // a null tag and null onFinish — reads "Sources Settings" (legacy title_sources_settings),
     // matching legacy RepoSettingsScreen.kt:70-84. Standalone entries keep "Sources".
-    val topBarTitle = if (!isOnboarding && onFinish == null) {
-        stringResource(Res.string.title_sources_settings)
-    } else {
-        stringResource(Res.string.sources_title)
-    }
+    val topBarTitle =
+        if (!isOnboarding && onFinish == null) {
+            stringResource(Res.string.title_sources_settings)
+        } else {
+            stringResource(Res.string.sources_title)
+        }
     // Snackbar copy resolved in composable scope — stringResource can't be called inside the
     // effect-collector coroutine below. NP Phase 2 (GAP-SRC-02): replaces the former English
     // literals built VM-side with localized en+ar resources.
@@ -391,25 +399,27 @@ internal fun SourcesScreenContent(
                     launch {
                         if (candidateRequest == null) snackbarHostState.showSnackbar(submittedMessage)
                     }
-                is SourcesEffect.RequestFailed -> launch {
-                    if (candidateRequest != null) return@launch
-                    // NP Phase 2 (GAP-SRC-03): failure snackbar offers a "Retry" action (Long
-                    // duration) that re-submits the preserved body, matching the legacy
-                    // RepoSettingsScreen.kt:178-209 onError posture.
-                    val result = snackbarHostState.showSnackbar(
-                        message = failedMessage,
-                        actionLabel = retryLabel,
-                        duration = SnackbarDuration.Long,
-                    )
-                    if (result == SnackbarResult.ActionPerformed && candidateRequest == null) {
-                        currentOnIntent(
-                            SourcesIntent.OnSubmitComplaint(
-                                body = effect.body,
-                                subject = complaintSubject,
-                            ),
-                        )
+                is SourcesEffect.RequestFailed ->
+                    launch {
+                        if (candidateRequest != null) return@launch
+                        // NP Phase 2 (GAP-SRC-03): failure snackbar offers a "Retry" action (Long
+                        // duration) that re-submits the preserved body, matching the legacy
+                        // RepoSettingsScreen.kt:178-209 onError posture.
+                        val result =
+                            snackbarHostState.showSnackbar(
+                                message = failedMessage,
+                                actionLabel = retryLabel,
+                                duration = SnackbarDuration.Long,
+                            )
+                        if (result == SnackbarResult.ActionPerformed && candidateRequest == null) {
+                            currentOnIntent(
+                                SourcesIntent.OnSubmitComplaint(
+                                    body = effect.body,
+                                    subject = complaintSubject,
+                                ),
+                            )
+                        }
                     }
-                }
             }
         }
     }
@@ -469,15 +479,16 @@ internal fun SourcesScreenContent(
                 state.isLoading -> LoadingBox(innerPadding)
                 // Keep the list surface when the catalog is empty so its recovery actions remain
                 // reachable. SourcesList adds Import from storage only for that empty snapshot.
-                else -> SourcesList(
-                    groups = state.groupedByLanguage,
-                    onIntent = dispatchIntent,
-                    onImportFromStorage = onImportFromStorage,
-                    contentPadding = innerPadding,
-                    spacingMd = spacing.md,
-                    spacingLg = spacing.lg,
-                    showOnboardingHeadline = isOnboarding,
-                )
+                else ->
+                    SourcesList(
+                        groups = state.groupedByLanguage,
+                        onIntent = dispatchIntent,
+                        onImportFromStorage = onImportFromStorage,
+                        contentPadding = innerPadding,
+                        spacingMd = spacing.md,
+                        spacingLg = spacing.lg,
+                        showOnboardingHeadline = isOnboarding,
+                    )
             }
         }
     }

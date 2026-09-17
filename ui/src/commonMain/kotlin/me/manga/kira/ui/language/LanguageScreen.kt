@@ -183,7 +183,6 @@ import org.jetbrains.compose.resources.stringResource
  * When present, request dialogs and outcomes no longer reach the legacy writer; locale selection
  * remains unchanged. Null keeps the existing shipping request flow.
  */
-// Preserve the existing shipping screen API; the candidate request hook is opt-in and defaults to absent.
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList")
 @Composable
@@ -327,9 +326,10 @@ internal fun LanguageScreenContent(
                     }
                 },
                 // Native `TopAppBarCom.kt:29-31` sets the container color to background.
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
