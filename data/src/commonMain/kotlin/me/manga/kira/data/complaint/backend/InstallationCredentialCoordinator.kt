@@ -18,6 +18,7 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.R
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ServerTerminalFact
 import me.manga.kira.data.complaint.backend.InstallationSessionManager.ReportSessionPublication
 import me.manga.kira.domain.model.complaint.ComplaintHistory
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
@@ -47,7 +48,7 @@ class InstallationCredentialCoordinator(
 ) {
     private val mutex = Mutex()
     private var reconciliationIssuer = ReconciliationIssuer()
-    private var confirmation: Confirmation? = null
+    private var confirmation: InstallationConsent? = null
     private val historyReads = mutableSetOf<ComplaintHistoryWork>()
     private val reports = ComplaintReportActionBindings(pending)
     private val deletions = InstallationDeletionBindings(credentials, pending)
@@ -104,20 +105,7 @@ class InstallationCredentialCoordinator(
             currentCoroutineContext().ensureActive()
             noConsent()
             credentials.requireNoCleanupMarker()
-            val binding =
-                when (val read = credentials.read()) {
-                    CredentialReadResult.Missing -> {
-                        pending.requireEmptyPending()
-                        ComplaintHistoryAdmission.Missing(reconciliationIssuer)
-                    }
-                    is CredentialReadResult.Present -> {
-                        val record = read.record.also(::active)
-                        ComplaintHistoryAdmission.Existing(
-                            ReconciliationPermit(record, pending.reconciliationSnapshot(record), reconciliationIssuer),
-                        )
-                    }
-                    is InstallationStorageFailure -> fail(read)
-                }
+            val binding = readHistoryAdmission(credentials, pending, reconciliationIssuer)
             currentCoroutineContext().ensureActive()
             if (!work.isCurrent()) refuse(Block.STALE_BINDING)
             historyReads += work
@@ -340,6 +328,36 @@ class InstallationCredentialCoordinator(
             PendingDeletion(record)
         }
 
+    internal suspend fun observeDeletion(): Outcome<ComplaintInstallationDeletionObservation> =
+        mutex.serialized { deletions.observe() }
+
+    /** A warning occupies the SAME slot as local recovery, without canceling work or rotating its epoch. */
+    internal suspend fun requestDeletion(): Outcome<InstallationDeletionConfirmation> =
+        mutex.serialized {
+            deletionGuards()
+            deletions.captureConfirmation().also { confirmation = InstallationConsent.Remote(it) }
+        }
+
+    internal suspend fun cancelDeletion(expected: InstallationDeletionConfirmation): Outcome<Unit> =
+        mutex.serialized {
+            if ((confirmation as? InstallationConsent.Remote)?.token !== expected) refuse(Block.STALE_CONSENT)
+            confirmation = null
+        }
+
+    /** Exact comparison, work invalidation, epoch rotation and token transfer are one locked operation. */
+    internal suspend fun confirmDeletion(
+        expected: InstallationDeletionConfirmation,
+        work: InstallationDeletionWork,
+    ): Outcome<InstallationDeletionStart> =
+        mutex.serialized {
+            if ((confirmation as? InstallationConsent.Remote)?.token !== expected) refuse(Block.STALE_CONSENT)
+            credentials.requireNoCleanupMarker()
+            deletions.checkConfirmation(expected, work)
+            cancelBoundWork()
+            reconciliationIssuer = ReconciliationIssuer()
+            deletions.confirmedStart(expected, work, reconciliationIssuer).also { confirmation = null }
+        }
+
     internal suspend fun beginDeletionStart(work: InstallationDeletionWork): Outcome<InstallationDeletionStart> =
         mutex.serialized {
             deletionGuards()
@@ -449,14 +467,14 @@ class InstallationCredentialCoordinator(
     /** A stale prompt cannot cancel a newer one or undo a durable pending state. */
     suspend fun cancelRecovery(expected: Confirmation): Outcome<Unit> =
         mutex.serialized {
-            if (confirmation !== expected) refuse(Block.STALE_CONSENT)
+            if ((confirmation as? InstallationConsent.Local)?.token !== expected) refuse(Block.STALE_CONSENT)
             confirmation = null
         }
 
     /** A confirmed warning is not server erasure; authorization is persisted in reason-specific order. */
     suspend fun confirmRecovery(expected: Confirmation): Outcome<Unit> =
         mutex.serialized {
-            if (confirmation !== expected) refuse(Block.STALE_CONSENT)
+            if ((confirmation as? InstallationConsent.Local)?.token !== expected) refuse(Block.STALE_CONSENT)
             credentials.requireNoCleanupMarker()
             val observed = cleanup.validateIntent(expected.intent)
             if (!sameObservation(observed, expected.observed)) refuse(Block.STALE_BINDING)
@@ -683,7 +701,7 @@ class InstallationCredentialCoordinator(
     private suspend fun requestRecoveryLocked(intent: RecoveryIntent): Confirmation =
         Confirmation(intent, cleanup.validateIntent(intent)).also {
             cancelBoundWork()
-            confirmation = it
+            confirmation = InstallationConsent.Local(it)
             reconciliationIssuer = ReconciliationIssuer()
         }
 
@@ -699,26 +717,16 @@ class InstallationCredentialCoordinator(
 
     private suspend fun resumeCleanupLocked() {
         noConsent()
-        when (val marker = credentials.readCleanupMarker()) {
-            is CleanupMarkerReadResult.Present -> {
+        when (val observed = cleanup.observeResume()) {
+            CleanupResume.None -> Unit
+            is CleanupResume.Marked -> {
                 cancelBoundWork()
-                cleanup.finish(marker.marker)
+                cleanup.finish(observed.marker)
             }
-            is InstallationStorageFailure -> fail(marker)
-            CleanupMarkerReadResult.Missing ->
-                when (val read = credentials.read()) {
-                    CredentialReadResult.Missing -> pending.requireEmptyPending()
-                    is InstallationStorageFailure -> fail(read)
-                    is CredentialReadResult.Present ->
-                        when (read.record.state) {
-                            InstallationCredentialState.LOCAL_RESET_PENDING -> {
-                                cancelBoundWork()
-                                cleanup.authorized(read.record, CredentialCleanupReason.USER_RESET_CONFIRMED)
-                            }
-                            InstallationCredentialState.DELETION_PENDING -> refuse(Block.REMOTE_DELETION_PENDING)
-                            InstallationCredentialState.ACTIVE -> Unit
-                        }
-                }
+            is CleanupResume.Reset -> {
+                cancelBoundWork()
+                cleanup.authorized(observed.record, CredentialCleanupReason.USER_RESET_CONFIRMED)
+            }
         }
     }
 
@@ -739,6 +747,27 @@ private class CleanupSteps(
     private val credentials: InstallationCredentialStore,
     private val pending: PendingComplaintActionStore,
 ) {
+    /** The same checked reads as resumeCleanup; only the coordinator chooses work cancellation. */
+    suspend fun observeResume(): CleanupResume =
+        when (val marker = credentials.readCleanupMarker()) {
+            is CleanupMarkerReadResult.Present -> CleanupResume.Marked(marker.marker)
+            is InstallationStorageFailure -> fail(marker)
+            CleanupMarkerReadResult.Missing ->
+                when (val read = credentials.read()) {
+                    CredentialReadResult.Missing -> {
+                        pending.requireEmptyPending()
+                        CleanupResume.None
+                    }
+                    is InstallationStorageFailure -> fail(read)
+                    is CredentialReadResult.Present ->
+                        when (read.record.state) {
+                            InstallationCredentialState.LOCAL_RESET_PENDING -> CleanupResume.Reset(read.record)
+                            InstallationCredentialState.DELETION_PENDING -> refuse(Block.REMOTE_DELETION_PENDING)
+                            InstallationCredentialState.ACTIVE -> CleanupResume.None
+                        }
+                }
+        }
+
     suspend fun finishConfirmedIntent(intent: RecoveryIntent) {
         when (intent) {
             is RecoveryIntent.Reset -> {
@@ -843,6 +872,21 @@ private class CleanupSteps(
             is InstallationStorageFailure -> fail(read)
         }
     }
+}
+
+/** One coordinator slot; the public local confirmation type retains its existing API and identity. */
+private sealed interface InstallationConsent {
+    class Local(val token: Confirmation) : InstallationConsent
+
+    class Remote(val token: InstallationDeletionConfirmation) : InstallationConsent
+}
+
+private sealed interface CleanupResume {
+    data object None : CleanupResume
+
+    class Marked(val marker: CredentialCleanupMarker) : CleanupResume
+
+    class Reset(val record: InstallationCredentialRecord) : CleanupResume
 }
 
 private class ReportCreateDispatch(

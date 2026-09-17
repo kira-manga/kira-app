@@ -4,15 +4,40 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 
 /**
- * Explicit delete-all intent only, never an observation or graph-construction side effect.
+ * Local observation and explicit, warned delete-all intent; construction is inert.
  * A failure never authorizes a new identity, local reset, or abandonment of an existing deletion.
  */
 interface ComplaintInstallationDeletionRepository {
-    /** Starts from an existing active identity, after a real fresh session and durable local intent. */
-    suspend fun startDeletion(): AppResult<ComplaintInstallationDeletionOutcome>
+    /** Checked local reads only: never HTTP, enrollment, cleanup, key generation or a completion receipt. */
+    suspend fun observeDeletion(): AppResult<ComplaintInstallationDeletionObservation>
+
+    /** Capture one exact ACTIVE identity and pending inventory for a read-only, process-local warning. */
+    suspend fun requestDeletion(): AppResult<ComplaintInstallationDeletionPrompt>
+
+    /** Dismiss only this owner's exact outstanding warning; never cancel or remove a durable deletion. */
+    suspend fun cancelDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<Unit>
+
+    /** Consume exact consent before a real fresh session, durable intent and the fixed delete-all request. */
+    suspend fun confirmDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<ComplaintInstallationDeletionOutcome>
 
     /** Retries only the already durable request; never enrolls, refreshes a session or allocates a key. */
     suspend fun continueDeletion(): AppResult<ComplaintInstallationDeletionOutcome>
+}
+
+/** Opaque, owner-bound, process-local consent. Implementing this interface does not create authority. */
+interface ComplaintInstallationDeletionPrompt
+
+/** Content-free local state, not cleanup authority or evidence of server erasure. Failure means unknown. */
+sealed interface ComplaintInstallationDeletionObservation {
+    data object Active : ComplaintInstallationDeletionObservation
+
+    /** Both the credential and pending inventory were checked empty; not a remote-completion result. */
+    data object Missing : ComplaintInstallationDeletionObservation
+
+    /** Durable intent or a server-terminal cleanup marker remains; explicit continuation is required. */
+    data object RemoteDeletionPending : ComplaintInstallationDeletionObservation
+
+    data object LocalCleanupRequired : ComplaintInstallationDeletionObservation
 }
 
 /** Content-free observations, not input capabilities for credential or pending-store deletion. */

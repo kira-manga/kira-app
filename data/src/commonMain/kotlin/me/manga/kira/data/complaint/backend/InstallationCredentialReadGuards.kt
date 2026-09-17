@@ -1,6 +1,7 @@
 package me.manga.kira.data.complaint.backend
 
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
+import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
 import me.manga.kira.platform.storage.CredentialReadResult
 import me.manga.kira.platform.storage.InstallationCredentialStore
@@ -12,6 +13,23 @@ import me.manga.kira.platform.storage.PendingReadResult
 import me.manga.kira.platform.storage.InstallationCredentialRecord as Credential
 
 // These read-only guards retain the caller's coordinator mutex; no independent lifecycle is introduced.
+internal suspend fun readHistoryAdmission(
+    credentials: InstallationCredentialStore,
+    pending: PendingComplaintActionStore,
+    issuer: ReconciliationIssuer,
+): ComplaintHistoryAdmission =
+    when (val read = credentials.read()) {
+        CredentialReadResult.Missing -> {
+            pending.requireEmptyPending()
+            ComplaintHistoryAdmission.Missing(issuer)
+        }
+        is CredentialReadResult.Present -> {
+            val record = read.record.also(::active)
+            ComplaintHistoryAdmission.Existing(ReconciliationPermit(record, pending.reconciliationSnapshot(record), issuer))
+        }
+        is InstallationStorageFailure -> fail(read)
+    }
+
 internal suspend fun InstallationCredentialStore.coordinationRecord(): Credential =
     when (val read = read()) {
         is CredentialReadResult.Present -> read.record

@@ -50,7 +50,8 @@ class ComplaintBackendDeletionOwnerTest {
             val fixture = DeletionOwnerFixture(this)
             val deletion = assertNotNull(fixture.owner.deletion)
             try {
-                val caller = async { deletion.startDeletion() }
+                val prompt = deletion.requestDeletion().reportSuccess()
+                val caller = async { deletion.confirmDeletion(prompt) }
                 fixture.entered.await()
                 fixture.owner.close()
                 fixture.release.complete(Unit)

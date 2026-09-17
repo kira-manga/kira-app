@@ -10,6 +10,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 internal class InstallationDeletionWorks {
     private val state = AtomicReference<DeletionWorkState>(DeletionWorkState.Idle)
 
+    val isClosed: Boolean get() = state.load() === DeletionWorkState.Closed
+
     fun begin(job: Job): InstallationDeletionWork? {
         if (!job.isActive) return null
         val work = InstallationDeletionWork(job, this)

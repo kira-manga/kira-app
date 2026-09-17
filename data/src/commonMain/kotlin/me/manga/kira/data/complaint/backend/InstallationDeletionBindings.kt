@@ -3,8 +3,14 @@ package me.manga.kira.data.complaint.backend
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
+import me.manga.kira.platform.storage.CleanupMarkerReadResult
+import me.manga.kira.platform.storage.CredentialCleanupReason
+import me.manga.kira.platform.storage.CredentialReadResult
 import me.manga.kira.platform.storage.InstallationCredentialRecord
+import me.manga.kira.platform.storage.InstallationCredentialState
 import me.manga.kira.platform.storage.InstallationCredentialStore
+import me.manga.kira.platform.storage.InstallationStorageFailure
 import me.manga.kira.platform.storage.PendingComplaintActionStore
 import me.manga.kira.platform.storage.PendingComplaintSnapshot
 
@@ -14,6 +20,64 @@ internal class InstallationDeletionBindings(
     private val pending: PendingComplaintActionStore,
 ) {
     private val works = mutableSetOf<InstallationDeletionWork>()
+
+    /** Read-only classification, never a cleanup capability. The coordinator retains its mutex. */
+    suspend fun observe(): ComplaintInstallationDeletionObservation =
+        when (val marker = credentials.readCleanupMarker()) {
+            is InstallationStorageFailure -> fail(marker)
+            is CleanupMarkerReadResult.Present ->
+                if (marker.marker.reason == CredentialCleanupReason.SERVER_TERMINAL_CONFIRMED) {
+                    ComplaintInstallationDeletionObservation.RemoteDeletionPending
+                } else {
+                    ComplaintInstallationDeletionObservation.LocalCleanupRequired
+                }
+            CleanupMarkerReadResult.Missing -> observeRecord()
+        }
+
+    private suspend fun observeRecord(): ComplaintInstallationDeletionObservation =
+        when (val read = credentials.read()) {
+            is InstallationStorageFailure -> fail(read)
+            CredentialReadResult.Missing -> {
+                pending.requireEmptyPending()
+                ComplaintInstallationDeletionObservation.Missing
+            }
+            is CredentialReadResult.Present ->
+                when (read.record.state) {
+                    InstallationCredentialState.ACTIVE -> {
+                        pending.reconciliationSnapshot(read.record)
+                        ComplaintInstallationDeletionObservation.Active
+                    }
+                    InstallationCredentialState.DELETION_PENDING ->
+                        ComplaintInstallationDeletionObservation.RemoteDeletionPending
+                    InstallationCredentialState.LOCAL_RESET_PENDING ->
+                        ComplaintInstallationDeletionObservation.LocalCleanupRequired
+                }
+        }
+
+    suspend fun captureConfirmation(): InstallationDeletionConfirmation {
+        val record = credentials.coordinationRecord().also(::active)
+        return InstallationDeletionConfirmation(record, pending.reconciliationSnapshot(record))
+    }
+
+    suspend fun checkConfirmation(
+        expected: InstallationDeletionConfirmation,
+        work: InstallationDeletionWork,
+    ) {
+        requireLive(work)
+        val record = credentials.exactRecord(expected.record).also(::active)
+        if (!samePending(expected.snapshot, pending.reconciliationSnapshot(record))) refuse(Block.STALE_BINDING)
+        requireLive(work)
+    }
+
+    /** Register the captured consent, never recapture a replacement identity after the warning. */
+    fun confirmedStart(
+        expected: InstallationDeletionConfirmation,
+        work: InstallationDeletionWork,
+        issuer: ReconciliationIssuer,
+    ): InstallationDeletionStart {
+        works += work
+        return InstallationDeletionStart(expected.record, expected.snapshot, issuer, work)
+    }
 
     suspend fun start(
         work: InstallationDeletionWork,
@@ -85,6 +149,14 @@ internal class InstallationDeletionBindings(
         currentCoroutineContext().ensureActive()
         if (!work.isCurrent()) refuse(Block.STALE_BINDING)
     }
+}
+
+/** Exact immutable warning observation; neither a session nor durable delete-all authority. */
+internal class InstallationDeletionConfirmation(
+    val record: InstallationCredentialRecord,
+    val snapshot: PendingComplaintSnapshot,
+) {
+    override fun toString(): String = "InstallationDeletionConfirmation(redacted)"
 }
 
 internal class InstallationDeletionStart(
