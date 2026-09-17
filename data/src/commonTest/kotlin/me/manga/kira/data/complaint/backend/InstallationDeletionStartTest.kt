@@ -185,14 +185,19 @@ private fun deletionStartInvalidStores(): List<(InstallationCoordinatorFixture) 
         { it.credentials.removePieces() },
         { it.pending.slots += Fixtures.slot(1) },
         { it.pending.slots += sessionPendingSlot(Fixtures.record(generation = 2)) },
-        { it.pending.slots += sessionPendingSlot(Fixtures.record(material = Fixtures.material(id = Fixtures.OTHER_ID))) },
         {
-            it.pending.readFailure = InstallationStorageFailure.TemporarilyUnavailable(InstallationTemporaryFailure.LOCKED)
+            it.pending.slots += sessionPendingSlot(Fixtures.record(material = Fixtures.material(id = Fixtures.OTHER_ID)))
         },
         {
-            it.credentials.readFailure = InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.CORRUPT)
+            it.pending.readFailure =
+                InstallationStorageFailure.TemporarilyUnavailable(InstallationTemporaryFailure.LOCKED)
         },
         {
-            it.pending.readFailure = InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.UNSUPPORTED)
+            it.credentials.readFailure =
+                InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.CORRUPT)
+        },
+        {
+            it.pending.readFailure =
+                InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.UNSUPPORTED)
         },
     )

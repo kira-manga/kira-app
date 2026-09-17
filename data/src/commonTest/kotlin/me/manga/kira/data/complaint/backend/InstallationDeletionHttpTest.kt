@@ -46,11 +46,17 @@ class InstallationDeletionHttpTest {
                     InstallationDeletionFixture(
                         this,
                         InstallationCoordinatorFixture(deletingRecord()),
-                        deletionHandler = { if (timeout) awaitCancellation() else error("Synthetic transport failure") },
+                        deletionHandler = {
+                            if (timeout) awaitCancellation() else error("Synthetic transport failure")
+                        },
                     )
                 try {
                     val error = assertDeletionPending(fixture.repository.continueDeletion()).error
-                    if (timeout) assertIs<AppError.Network.Timeout>(error) else assertIs<AppError.Network.NoConnectivity>(error)
+                    if (timeout) {
+                        assertIs<AppError.Network.Timeout>(error)
+                    } else {
+                        assertIs<AppError.Network.NoConnectivity>(error)
+                    }
                     fixture.assertRetained(deletingRecord())
                     fixture.assertNoNewIdentity()
                     assertEquals(1, fixture.requests.size)
@@ -88,7 +94,9 @@ class InstallationDeletionHttpTest {
             val fixture = InstallationDeletionFixture(this, InstallationCoordinatorFixture(deletingRecord()))
             try {
                 fixture.http.close()
-                assertIs<AppError.Platform.FeatureUnavailable>(assertDeletionPending(fixture.repository.continueDeletion()).error)
+                assertIs<AppError.Platform.FeatureUnavailable>(
+                    assertDeletionPending(fixture.repository.continueDeletion()).error,
+                )
                 fixture.assertRetained(deletingRecord())
                 fixture.assertNoNewIdentity()
                 assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())

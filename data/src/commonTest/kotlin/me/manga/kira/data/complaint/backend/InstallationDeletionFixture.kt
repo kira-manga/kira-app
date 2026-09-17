@@ -140,7 +140,10 @@ internal fun TestScope.deletionRestart(
     InstallationDeletionFixture(
         this,
         storage,
-        DeletionFixtureSettings(nextKey = { error("Restart must not allocate a key") }, coordinator = storage.restart()),
+        DeletionFixtureSettings(
+            nextKey = { error("Restart must not allocate a key") },
+            coordinator = storage.restart(),
+        ),
         sessionHandler = { error("Restart must not request a session") },
         deletionHandler = deletionHandler,
     )

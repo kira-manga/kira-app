@@ -70,7 +70,9 @@ class InstallationDeletionLifecycleTest {
     @Test
     fun lateTerminalCannotEraseChangedIdSecretScopeVersionGenerationOrDeletionKey() =
         runTest {
-            for (record in deletionReplacementRecords().map { deletingRecord(it) } + deletingRecord(key = historyId(90))) {
+            val replacements =
+                deletionReplacementRecords().map { deletingRecord(it) } + deletingRecord(key = historyId(90))
+            for (record in replacements) {
                 assertDeletionTerminalReplacement(record)
             }
         }

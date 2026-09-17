@@ -47,7 +47,9 @@ class InstallationDeletionResponseTest {
                 )
             }
             listOf(HttpStatusCode.Accepted, HttpStatusCode.NoContent).forEach { status ->
-                assertIs<AppError.Network.Serialization>(deletionResponseRetains(status, ByteReadChannel(byteArrayOf(32))))
+                assertIs<AppError.Network.Serialization>(
+                    deletionResponseRetains(status, ByteReadChannel(byteArrayOf(32))),
+                )
             }
         }
 
@@ -80,22 +82,35 @@ class InstallationDeletionResponseTest {
             val status = HttpStatusCode.ServiceUnavailable
             val problem = mutationProblem(status, "SERVICE_UNAVAILABLE")
             for (extra in 0..1) {
-                val bytes = (problem + " ".repeat(Policy.MAX_PROBLEM_BYTES + extra - problem.length)).encodeToByteArray()
+                val bytes =
+                    (problem + " ".repeat(Policy.MAX_PROBLEM_BYTES + extra - problem.length)).encodeToByteArray()
                 val channel = HistoryTrackedChannel(ByteReadChannel(bytes))
                 val error = deletionResponseRetains(status, channel)
-                if (extra == 0) assertIs<AppError.Network.Http>(error) else assertIs<AppError.Network.Serialization>(error)
+                if (extra == 0) {
+                    assertIs<AppError.Network.Http>(error)
+                } else {
+                    assertIs<AppError.Network.Serialization>(error)
+                }
                 assertTrue(channel.cancelled)
             }
-            assertIs<AppError.Network.Serialization>(deletionResponseRetains(status, ByteReadChannel(byteArrayOf(-61, 40))))
+            assertIs<AppError.Network.Serialization>(
+                deletionResponseRetains(status, ByteReadChannel(byteArrayOf(-61, 40))),
+            )
         }
 
     @Test
     fun redirectsAndUndeclaredSuccessfulShapesAreNotFollowedOrTreatedAsCompletion() =
         runTest {
-            listOf(HttpStatusCode.MovedPermanently, HttpStatusCode.TemporaryRedirect, HttpStatusCode.OK, HttpStatusCode.Created)
-                .forEach { status ->
-                    assertIs<AppError.Network.Serialization>(deletionResponseRetains(status, ByteReadChannel(byteArrayOf())))
-                }
+            listOf(
+                HttpStatusCode.MovedPermanently,
+                HttpStatusCode.TemporaryRedirect,
+                HttpStatusCode.OK,
+                HttpStatusCode.Created,
+            ).forEach { status ->
+                assertIs<AppError.Network.Serialization>(
+                    deletionResponseRetains(status, ByteReadChannel(byteArrayOf())),
+                )
+            }
         }
 }
 
