@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
@@ -22,6 +23,8 @@ class ComplaintBackendOwner private constructor(
     val reports: ComplaintReportRepository?,
     /** Same concrete report consumer and issuer; no second coordinator or credential authority. */
     val installationRecovery: ComplaintInstallationRecoveryRepository?,
+    /** Explicit delete-all producer, absent unless a separate fixed-route engine was supplied. */
+    val deletion: ComplaintInstallationDeletionRepository?,
     private val closeActions: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
@@ -46,8 +49,9 @@ class ComplaintBackendOwner private constructor(
             historyEngine: HttpClientEngine,
             mutationEngine: HttpClientEngine? = null,
             reportInputs: ComplaintReportInputs? = null,
+            deletionResources: ComplaintInstallationDeletionResources? = null,
         ): AppResult<ComplaintBackendOwner> {
-            if (!distinctBorrowedEngines(enrollmentEngine, sessionEngine, historyEngine, mutationEngine)) {
+            if (!distinctBorrowedEngines(enrollmentEngine, sessionEngine, historyEngine, mutationEngine, deletionResources?.engine)) {
                 return historyUnavailable()
             }
             val close = mutableListOf<() -> Unit>()
@@ -66,12 +70,14 @@ class ComplaintBackendOwner private constructor(
                         BackendFeedbackRepository(coordinator, sessions, mutation, works)
                     }
                 val reports = createReports(coordinator, feedback, reportInputs, close)
+                val deletion = createInstallationDeletion(endpoint, coordinator, sessions, deletionResources, close)
                 AppResult.Success(
                     ComplaintBackendOwner(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
                         reports,
                         reports,
+                        deletion,
                         close.toList(),
                     ),
                 )
@@ -108,9 +114,13 @@ private fun distinctBorrowedEngines(
     session: HttpClientEngine,
     history: HttpClientEngine,
     mutation: HttpClientEngine?,
+    deletion: HttpClientEngine?,
 ): Boolean {
     val readsDistinct = enrollment !== session && enrollment !== history && session !== history
-    return readsDistinct && mutation !== enrollment && mutation !== session && mutation !== history
+    val mutationDistinct = mutation !== enrollment && mutation !== session && mutation !== history
+    val deletionDistinct = deletion == null ||
+        (deletion !== enrollment && deletion !== session && deletion !== history && deletion !== mutation)
+    return readsDistinct && mutationDistinct && deletionDistinct
 }
 
 /** Attempt every owned close even after failure; exceptions never escape with platform/content diagnostics. */

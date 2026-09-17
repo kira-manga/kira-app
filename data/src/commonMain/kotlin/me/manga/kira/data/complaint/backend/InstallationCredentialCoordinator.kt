@@ -18,6 +18,7 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.R
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ServerTerminalFact
 import me.manga.kira.data.complaint.backend.InstallationSessionManager.ReportSessionPublication
 import me.manga.kira.domain.model.complaint.ComplaintHistory
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
 import me.manga.kira.platform.storage.CleanupMarkerRemoveResult
@@ -49,6 +50,7 @@ class InstallationCredentialCoordinator(
     private var confirmation: Confirmation? = null
     private val historyReads = mutableSetOf<ComplaintHistoryWork>()
     private val reports = ComplaintReportActionBindings(pending)
+    private val deletions = InstallationDeletionBindings(credentials, pending)
 
     /** Only an explicit initial candidate may fill a proven-empty store; an existing winner is reread. */
     suspend fun admit(candidate: InstallationCredentialRecord? = null): Outcome<Permit> =
@@ -337,6 +339,103 @@ class InstallationCredentialCoordinator(
             PendingDeletion(record)
         }
 
+    internal suspend fun beginDeletionStart(work: InstallationDeletionWork): Outcome<InstallationDeletionStart> =
+        mutex.serialized {
+            deletionGuards()
+            deletions.start(work, reconciliationIssuer)
+        }
+
+    internal suspend fun checkDeletionStart(start: InstallationDeletionStart): Outcome<Unit> =
+        mutex.serialized {
+            deletionGuards()
+            deletions.check(start, reconciliationIssuer)
+        }
+
+    internal suspend fun commitDeletionStart(
+        start: InstallationDeletionStart,
+        ticket: InstallationDeletionSession,
+        sessions: InstallationSessionManager,
+        key: String,
+    ): Outcome<InstallationDeletionBinding> =
+        mutex.serialized {
+            deletionGuards()
+            deletions.check(start, reconciliationIssuer)
+            checked(start.record.beginDeletion(key))
+            if (!sessions.claimDeletionSession(start, ticket)) refuse(Block.STALE_BINDING)
+            cancelNormalWork()
+            deletions.commit(start, key)
+        }
+
+    internal suspend fun continueDeletion(work: InstallationDeletionWork): Outcome<InstallationDeletionBinding> =
+        mutex.serialized {
+            deletionGuards()
+            deletions.continuation(work, reconciliationIssuer)
+        }
+
+    /** No caller-supplied result enters here: the fixed HTTP producer runs outside this mutex. */
+    internal suspend fun dispatchDeletion(
+        binding: InstallationDeletionBinding,
+        http: InstallationDeletionHttp,
+    ): Outcome<ComplaintInstallationDeletionOutcome> {
+        val request = when (val admitted = prepareDeletionDispatch(binding)) {
+            is Outcome.Success -> admitted.value
+            is Outcome.Refused -> return admitted
+            is Outcome.StorageFailure -> return admitted
+            is Outcome.Invalid -> return admitted
+        }
+        currentCoroutineContext().ensureActive()
+        val result = http.delete(request)
+        return mutex.serialized {
+            deletionGuards()
+            deletions.check(binding, reconciliationIssuer)
+            if (http.isClosed || result.request !== request) refuse(Block.STALE_BINDING)
+            if (result is InstallationDeletionHttpResult.Terminal) {
+                if (!binding.work.claimTerminal(request)) refuse(Block.STALE_BINDING)
+                authorizedCleanup(binding.record, CredentialCleanupReason.SERVER_TERMINAL_CONFIRMED)
+                ComplaintInstallationDeletionOutcome.Completed
+            } else {
+                deletionPending(result)
+            }
+        }
+    }
+
+    private suspend fun prepareDeletionDispatch(binding: InstallationDeletionBinding): Outcome<InstallationDeletionRequest> =
+        mutex.serialized {
+            deletionGuards()
+            deletions.check(binding, reconciliationIssuer)
+            InstallationDeletionRequest(binding)
+        }
+
+    /** Only a durable SERVER_TERMINAL marker resumes here; local abandonment is never remote completion. */
+    internal suspend fun resumeDeletionCleanup(work: InstallationDeletionWork): Outcome<InstallationDeletionCleanup> =
+        mutex.serialized {
+            noConsent()
+            currentCoroutineContext().ensureActive()
+            if (!work.isCurrent()) refuse(Block.STALE_BINDING)
+            when (val read = credentials.readCleanupMarker()) {
+                CleanupMarkerReadResult.Missing -> InstallationDeletionCleanup.NONE
+                is InstallationStorageFailure -> fail(read)
+                is CleanupMarkerReadResult.Present -> {
+                    if (read.marker.reason != CredentialCleanupReason.SERVER_TERMINAL_CONFIRMED) {
+                        refuse(Block.CLEANUP_REQUIRED)
+                    }
+                    if (!work.claimMarkedCleanup(read.marker)) refuse(Block.STALE_BINDING)
+                    cancelNormalWork()
+                    finish(read.marker)
+                    InstallationDeletionCleanup.COMPLETED
+                }
+            }
+        }
+
+    internal suspend fun finishDeletion(work: InstallationDeletionWork) {
+        withContext(NonCancellable) { mutex.withLock { deletions.finish(work) } }
+    }
+
+    private suspend fun deletionGuards() {
+        noConsent()
+        credentials.requireNoCleanupMarker()
+    }
+
     /** Blocks local admission/application until this precise prompt is confirmed or canceled. */
     suspend fun requestRecovery(intent: RecoveryIntent): Outcome<Confirmation> =
         mutex.serialized {
@@ -596,6 +695,11 @@ class InstallationCredentialCoordinator(
         }
 
     private fun cancelBoundWork() {
+        cancelNormalWork()
+        deletions.cancel()
+    }
+
+    private fun cancelNormalWork() {
         historyReads.forEach { it.cancel() }
         reports.cancel()
     }

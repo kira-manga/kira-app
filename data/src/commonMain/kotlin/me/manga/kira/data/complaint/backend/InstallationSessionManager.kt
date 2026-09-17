@@ -26,6 +26,21 @@ internal class InstallationSessionManager(
     private val mutex = Mutex()
     private val state = AtomicReference<SessionCacheState>(SessionCacheState.Empty)
     private val http = ComplaintSessionHttp(endpoint, engine)
+    private val deletionSessions = InstallationDeletionSessions(coordinator, http, timeSource)
+
+    /** An explicit deletion start always POSTs; neither normal cache nor enrollment can satisfy it. */
+    suspend fun freshDeletionSession(start: InstallationDeletionStart): InstallationDeletionSessionResult =
+        mutex.withLock {
+            val previous = state.load()
+            if (previous === SessionCacheState.Closed || !state.compareAndSet(previous, SessionCacheState.Empty)) {
+                InstallationDeletionSessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
+            } else {
+                deletionSessions.fetch(start)
+            }
+        }
+
+    fun claimDeletionSession(start: InstallationDeletionStart, ticket: InstallationDeletionSession): Boolean =
+        state.load() !== SessionCacheState.Closed && deletionSessions.claim(start, ticket)
 
     suspend fun session(): ComplaintSessionResult =
         mutex.withLock {
@@ -153,6 +168,7 @@ internal class InstallationSessionManager(
     /** Atomically drops the cache and prevents late publication, even if close races a refresh. */
     fun close() {
         state.exchange(SessionCacheState.Closed)
+        deletionSessions.close()
         http.close()
     }
 
