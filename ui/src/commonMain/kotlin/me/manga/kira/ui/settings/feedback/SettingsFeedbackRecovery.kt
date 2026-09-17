@@ -46,7 +46,7 @@ internal fun SettingsReportRecoveryContent(
         Text(stringResource(Res.string.settings_report_recovery_title), style = MaterialTheme.typography.titleSmall)
         TextButton(
             onClick = { onIntent(SettingsFeedbackIntent.RefreshRecovery) },
-            enabled = state.editable,
+            enabled = state.editable && state.normalActionsAllowed,
         ) {
             Text(stringResource(Res.string.settings_report_refresh))
         }
@@ -74,7 +74,7 @@ private fun SettingsReportRecoveryObservations(
         if (observation.attempt is ComplaintReportAttempt.Unresolved) {
             SettingsReportPendingActions(
                 observation.pending,
-                !state.busy && !state.confirmationPending,
+                state.canUsePendingActions,
                 onIntent,
             )
         }

@@ -80,21 +80,31 @@ internal fun SettingsFeedbackDialogContent(
             }
         }
     }
-    if (state.confirmationPending) {
-        SettingsReportResetDialog(state, onIntent)
-    } else {
-        AlertDialog(
-            onDismissRequest = { onIntent(SettingsFeedbackIntent.Close) },
-            title = { SettingsFeedbackTitle(state.entry) },
-            text = { SettingsFeedbackBody(state, onIntent, onOpenUrl) },
-            confirmButton = { SettingsFeedbackPrimaryAction(state, onIntent) },
-            dismissButton = {
-                TextButton(onClick = { onIntent(SettingsFeedbackIntent.Close) }) {
-                    Text(stringResource(Res.string.close))
-                }
-            },
-        )
+    when {
+        state.remoteConfirmationPending -> SettingsInstallationDeletionDialog(state, onIntent)
+        state.confirmationPending -> SettingsReportResetDialog(state, onIntent)
+        else -> SettingsFeedbackMainDialog(state, onIntent, onOpenUrl)
     }
+}
+
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
+@Composable
+private fun SettingsFeedbackMainDialog(
+    state: SettingsFeedbackState,
+    onIntent: (SettingsFeedbackIntent) -> Unit,
+    onOpenUrl: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { onIntent(SettingsFeedbackIntent.Close) },
+        title = { SettingsFeedbackTitle(state.entry) },
+        text = { SettingsFeedbackBody(state, onIntent, onOpenUrl) },
+        confirmButton = { SettingsFeedbackPrimaryAction(state, onIntent) },
+        dismissButton = {
+            TextButton(onClick = { onIntent(SettingsFeedbackIntent.Close) }) {
+                Text(stringResource(Res.string.close))
+            }
+        },
+    )
 }
 
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
@@ -110,9 +120,10 @@ private fun SettingsFeedbackBody(
     ) {
         Text(stringResource(Res.string.settings_report_memory_only), style = MaterialTheme.typography.bodySmall)
         SettingsFeedbackRequestIntroduction(state.entry)
+        SettingsInstallationDeletionContent(state, onIntent)
+        if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         SettingsFeedbackDraftFields(state, onIntent)
         SettingsFeedbackResultContent(state, onIntent)
-        if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         SettingsReportRecoveryContent(state, onIntent)
         if (state.entry != SettingsFeedbackEntry.General) SettingsFeedbackSocialFooter(onOpenUrl)
     }
@@ -214,7 +225,7 @@ private fun SettingsFeedbackResultContent(
             SettingsReportAttemptSummary(result.attempt)
             val unresolved = result.attempt as? ComplaintReportAttempt.Unresolved
             unresolved?.pending?.let { pending ->
-                SettingsReportPendingActions(pending, !state.busy, onIntent)
+                SettingsReportPendingActions(pending, state.canUsePendingActions, onIntent)
             }
         }
         SettingsFeedbackResult.PreparedCancelled -> Text(stringResource(Res.string.settings_report_prepared_cancelled))

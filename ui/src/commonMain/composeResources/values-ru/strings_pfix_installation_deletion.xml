@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Удалить данные обращений</string>
+    <string name="settings_installation_deletion_active">Вы можете запросить удаление с сервера всех данных обращений, связанных с этой установкой приложения.</string>
+    <string name="settings_installation_deletion_checking">Проверка локального состояния обращений этой установки…</string>
+    <string name="settings_installation_deletion_missing">Локальный идентификатор обращений и сохранённые операции не найдены. Это не подтверждает удаление на сервере.</string>
+    <string name="settings_installation_deletion_cleanup">Локальная очистка обращений требует внимания. Используйте действия локального восстановления ниже, затем снова проверьте локальное состояние. Это не подтверждает удаление на сервере.</string>
+    <string name="settings_installation_deletion_uncertain">Состояние удаления неизвестно. Запрос мог быть уже отправлен. Проверьте локальное состояние перед другим действием.</string>
+    <string name="settings_installation_deletion_pending">Запрос на удаление или его локальная очистка ещё ожидает завершения. Завершение не подтверждено. Продолжите существующий запрос, не создавая замену.</string>
+    <string name="settings_installation_deletion_completed">Запрос на удаление на сервере завершён. Локальный идентификатор обращений и сохранённые операции этой установки удалены.</string>
+    <string name="settings_installation_deletion_request">Просмотреть предупреждение об удалении с сервера</string>
+    <string name="settings_installation_deletion_check">Проверить локальное состояние</string>
+    <string name="settings_installation_deletion_continue">Продолжить существующее удаление</string>
+    <string name="settings_installation_deletion_warning_title">Удалить данные обращений этой установки?</string>
+    <string name="settings_installation_deletion_warning">Это запрос на удаление с сервера всех данных обращений, связанных с этой установкой. После завершения также удаляются локальный идентификатор обращений и сохранённые операции. Вы можете потерять доступ к истории обращений. Удаление на сервере нельзя отменить.</string>
+    <string name="settings_installation_deletion_confirm">Удалить данные обращений</string>
+    <string name="settings_installation_deletion_close_notice">Запрос, принятый сервером, может выполняться и после закрытия этого диалога или приложения.</string>
+    <string name="settings_installation_deletion_uninstall">Удаление приложения не удаляет данные обращений на сервере.</string>
+    <string name="settings_installation_deletion_local_only">Локальное восстановление или отказ от продолжения не стирает данные сервера, не подтверждает удаление на сервере и не отменяет уже отправленный запрос.</string>
+    <string name="settings_installation_deletion_retry_after">Рекомендуемое сервером ожидание: %1$d с. Продолжите вручную; автоматических повторов нет.</string>
+    <string name="settings_installation_deletion_retry_failed">Последнюю попытку не удалось завершить. Тот же запрос на удаление по-прежнему сохранён.</string>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Excluir dados dos relatos</string>
+    <string name="settings_installation_deletion_active">Você pode solicitar a exclusão do servidor de todos os dados dos relatos vinculados a esta instalação do aplicativo.</string>
+    <string name="settings_installation_deletion_checking">Verificando o estado local dos relatos desta instalação…</string>
+    <string name="settings_installation_deletion_missing">Não foi encontrada nenhuma identidade local de relatos nem operações mantidas. Isso não confirma a exclusão no servidor.</string>
+    <string name="settings_installation_deletion_cleanup">A limpeza local dos relatos precisa de atenção. Use as ações de recuperação local abaixo e verifique o estado local novamente. Isso não confirma a exclusão no servidor.</string>
+    <string name="settings_installation_deletion_uncertain">O estado da exclusão é incerto. Uma solicitação pode já ter sido enviada. Verifique o estado local antes de realizar outra ação.</string>
+    <string name="settings_installation_deletion_pending">A solicitação de exclusão ou sua limpeza local ainda está pendente. A conclusão não foi confirmada. Continue a solicitação existente; não crie outra para substituí-la.</string>
+    <string name="settings_installation_deletion_completed">A solicitação de exclusão no servidor foi concluída. A identidade local de relatos e as operações mantidas desta instalação foram removidas.</string>
+    <string name="settings_installation_deletion_request">Revisar exclusão no servidor</string>
+    <string name="settings_installation_deletion_check">Verificar estado local</string>
+    <string name="settings_installation_deletion_continue">Continuar a exclusão existente</string>
+    <string name="settings_installation_deletion_warning_title">Excluir os dados dos relatos desta instalação?</string>
+    <string name="settings_installation_deletion_warning">Isso solicita a exclusão do servidor de todos os dados dos relatos vinculados a esta instalação. Ao concluir, a identidade local de relatos e as operações mantidas também são removidas. Você pode perder o acesso ao histórico de relatos. A exclusão no servidor não pode ser desfeita.</string>
+    <string name="settings_installation_deletion_confirm">Excluir dados dos relatos</string>
+    <string name="settings_installation_deletion_close_notice">Uma solicitação aceita pelo servidor pode continuar após você fechar esta janela ou o aplicativo.</string>
+    <string name="settings_installation_deletion_uninstall">Desinstalar o aplicativo não exclui os dados dos relatos no servidor.</string>
+    <string name="settings_installation_deletion_local_only">A recuperação ou o abandono local não apaga dados do servidor, não confirma a exclusão no servidor nem desfaz uma solicitação já enviada.</string>
+    <string name="settings_installation_deletion_retry_after">Espera sugerida pelo servidor: %1$d s. Continue manualmente; não há nova tentativa automática.</string>
+    <string name="settings_installation_deletion_retry_failed">Não foi possível concluir a última tentativa. A mesma solicitação de exclusão continua mantida.</string>
+</resources>

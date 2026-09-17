@@ -1,5 +1,6 @@
 package me.manga.kira.ui.settings.feedback
 
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,6 +13,7 @@ import me.manga.kira.ui.generated.resources.settings_installation_abandon_confir
 import me.manga.kira.ui.generated.resources.settings_installation_abandon_title
 import me.manga.kira.ui.generated.resources.settings_installation_abandon_warning
 import me.manga.kira.ui.generated.resources.settings_installation_continue_cleanup
+import me.manga.kira.ui.generated.resources.settings_installation_deletion_local_only
 import me.manga.kira.ui.generated.resources.settings_installation_recovery_title
 import me.manga.kira.ui.generated.resources.settings_installation_review_abandonment
 import me.manga.kira.ui.generated.resources.settings_installation_review_unreadable
@@ -28,10 +30,12 @@ internal fun SettingsInstallationRecoveryActions(
     onIntent: (SettingsFeedbackIntent) -> Unit,
 ) {
     val enabled = !state.busy && !state.confirmationPending
+    HorizontalDivider()
     Text(
         stringResource(Res.string.settings_installation_recovery_title),
         style = MaterialTheme.typography.titleSmall,
     )
+    Text(stringResource(Res.string.settings_installation_deletion_local_only))
     TextButton(onClick = { onIntent(SettingsFeedbackIntent.RequestUnreadableRecovery) }, enabled = enabled) {
         Text(stringResource(Res.string.settings_installation_review_unreadable))
     }

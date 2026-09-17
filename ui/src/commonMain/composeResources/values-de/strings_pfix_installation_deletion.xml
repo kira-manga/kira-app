@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Meldungsdaten löschen</string>
+    <string name="settings_installation_deletion_active">Sie können die Löschung aller mit dieser App-Installation verknüpften Meldungsdaten auf dem Server beantragen.</string>
+    <string name="settings_installation_deletion_checking">Der lokale Meldungsstatus dieser Installation wird geprüft…</string>
+    <string name="settings_installation_deletion_missing">Es wurden keine lokale Meldungsidentität und keine gespeicherten Vorgänge gefunden. Dies bestätigt keine Löschung auf dem Server.</string>
+    <string name="settings_installation_deletion_cleanup">Die lokale Bereinigung der Meldungen erfordert Ihre Aufmerksamkeit. Verwenden Sie die lokalen Wiederherstellungsaktionen unten und prüfen Sie dann den lokalen Status erneut. Dies bestätigt keine Löschung auf dem Server.</string>
+    <string name="settings_installation_deletion_uncertain">Der Löschstatus ist ungewiss. Möglicherweise wurde bereits ein Antrag gesendet. Prüfen Sie den lokalen Status, bevor Sie eine weitere Aktion ausführen.</string>
+    <string name="settings_installation_deletion_pending">Der Löschantrag oder seine lokale Bereinigung steht noch aus. Der Abschluss ist nicht bestätigt. Setzen Sie den bestehenden Antrag fort, statt einen Ersatz zu erstellen.</string>
+    <string name="settings_installation_deletion_completed">Der Löschantrag auf dem Server wurde abgeschlossen. Die lokale Meldungsidentität und die gespeicherten Vorgänge dieser Installation wurden entfernt.</string>
+    <string name="settings_installation_deletion_request">Serverlöschung prüfen</string>
+    <string name="settings_installation_deletion_check">Lokalen Status prüfen</string>
+    <string name="settings_installation_deletion_continue">Bestehende Löschung fortsetzen</string>
+    <string name="settings_installation_deletion_warning_title">Meldungsdaten dieser Installation löschen?</string>
+    <string name="settings_installation_deletion_warning">Dies beantragt die Löschung aller mit dieser Installation verknüpften Meldungsdaten auf dem Server. Nach Abschluss werden auch die lokale Meldungsidentität und gespeicherte Vorgänge entfernt. Sie verlieren möglicherweise den Zugriff auf den Meldungsverlauf. Die Serverlöschung kann nicht rückgängig gemacht werden.</string>
+    <string name="settings_installation_deletion_confirm">Meldungsdaten löschen</string>
+    <string name="settings_installation_deletion_close_notice">Ein vom Server angenommener Antrag kann nach dem Schließen dieses Dialogs oder der App weiterlaufen.</string>
+    <string name="settings_installation_deletion_uninstall">Die Deinstallation der App löscht keine Meldungsdaten auf dem Server.</string>
+    <string name="settings_installation_deletion_local_only">Lokale Wiederherstellung oder lokaler Verzicht löscht keine Serverdaten, bestätigt keine Serverlöschung und macht keinen bereits gesendeten Antrag rückgängig.</string>
+    <string name="settings_installation_deletion_retry_after">Vom Server empfohlene Wartezeit: %1$d s. Setzen Sie manuell fort; es erfolgt kein automatischer Wiederholungsversuch.</string>
+    <string name="settings_installation_deletion_retry_failed">Der letzte Versuch konnte nicht abgeschlossen werden. Derselbe Löschantrag bleibt gespeichert.</string>
+</resources>
