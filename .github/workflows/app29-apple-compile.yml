@@ -1,0 +1,83 @@
+# One exact-source full-composition ARM main compile; preparation is NOT dispatch authority.
+name: Consumer Apple main compile only
+on:
+  push:
+    branches: [candidate/app29-consumer-apple-compile-20260917-01]
+    paths: [ci/app29-apple-compile.request.json]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: app29-apple-compile-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compile:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/candidate/app29-consumer-apple-compile-20260917-01' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Exact control carrier and genuine original26 dependency files
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Admit primary-bound one-attempt compile request
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app29-apple-compile.py request
+      - name: Exact unmodified App source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Authenticated exact original4 intake then one ordinary ARM main compile
+        id: host
+        timeout-minutes: 30
+        env:
+          APP29_RUN: ${{ runner.temp }}/app29-apple-compile-${{ github.run_id }}-${{ github.run_attempt }}
+          # Own read-only job token only. Cross-repository access is NOT presumed.
+          # Unavailable/expired/unauthorized intake fails closed before any Gradle invocation.
+          APP29_ARTIFACT_TOKEN: ${{ github.token }}
+        run: python3 -B control/ci/app29-apple-compile.py host
+      - name: Bounded compile and cleanup evidence only
+        if: ${{ always() && steps.host.outputs.retention_ready == 'true' }}
+        env:
+          APP29_RUN: ${{ runner.temp }}/app29-apple-compile-${{ github.run_id }}-${{ github.run_attempt }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app29-consumer-apple-compile-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ env.APP29_RUN }}/reports/commands.json
+            ${{ env.APP29_RUN }}/reports/compile-proof.json
+            ${{ env.APP29_RUN }}/reports/compile-tasks.json
+            ${{ env.APP29_RUN }}/reports/dependencies-after.json
+            ${{ env.APP29_RUN }}/reports/dependencies-before.json
+            ${{ env.APP29_RUN }}/reports/gradle-stop-cleanup.log
+            ${{ env.APP29_RUN }}/reports/gradle-stop-compile.log
+            ${{ env.APP29_RUN }}/reports/gradle-stop-final.log
+            ${{ env.APP29_RUN }}/reports/host-build.log
+            ${{ env.APP29_RUN }}/reports/identity.json
+            ${{ env.APP29_RUN }}/reports/intake.json
+            ${{ env.APP29_RUN }}/reports/original4-intake.log
+            ${{ env.APP29_RUN }}/reports/request.json
+            ${{ env.APP29_RUN }}/reports/result.json
+            ${{ env.APP29_RUN }}/reports/source.json
+            ${{ env.APP29_RUN }}/reports/tools.json

@@ -1,0 +1,169 @@
+{
+  "artifact": {
+    "headSha": "c4a7c20ceede12838e59e1fa67ed6cd89566bfb3",
+    "id": 10477132083,
+    "name": "app29-history-original-inputs-35172224404",
+    "receipt": {
+      "bytes": 661,
+      "file": "receipt.json",
+      "sha256": "2081c8d9fb01b6981e663a93f2cf04b411447d161c6f68cef611cd5c9b5b48e9"
+    },
+    "repository": "kira-manga/kira-source-engine",
+    "runId": 35172224404,
+    "zipSha256": "4e05f8ddbb6945364967034cc084667773e5d1f1f55cfd7239bcc05c42bbdce6"
+  },
+  "files": [
+    {
+      "bytes": 128977,
+      "path": "me/manga/kira/source/source-contract-android/0.1.0/source-contract-android-0.1.0.aar",
+      "sha256": "00e18971d896a537afb6485b2919352848a028e7bfaca8e8ce9e955d9b8d1185"
+    },
+    {
+      "bytes": 4160,
+      "path": "me/manga/kira/source/source-contract-android/0.1.0/source-contract-android-0.1.0.module",
+      "sha256": "c65e2ac3d09a164eafd3ecce0541abe6bee7328a2f33f151e9bd71ea236b9db9"
+    },
+    {
+      "bytes": 1419,
+      "path": "me/manga/kira/source/source-contract-android/0.1.0/source-contract-android-0.1.0.pom",
+      "sha256": "7b834d92ceb05a91e4238c4073636dc61a6447c89ea942d5c43c3c4f40b53730"
+    },
+    {
+      "bytes": 111167,
+      "path": "me/manga/kira/source/source-contract-iossimulatorarm64/0.1.0/source-contract-iossimulatorarm64-0.1.0.klib",
+      "sha256": "9ca9b3a488199079f88979814b34bbf49564f202bffb4fb886f5aba914d6c260"
+    },
+    {
+      "bytes": 4473,
+      "path": "me/manga/kira/source/source-contract-iossimulatorarm64/0.1.0/source-contract-iossimulatorarm64-0.1.0.module",
+      "sha256": "336c19cd2763b8d9e7c05627108771b5bce6f084e0f63c5a09d8b976b198af3d"
+    },
+    {
+      "bytes": 1458,
+      "path": "me/manga/kira/source/source-contract-iossimulatorarm64/0.1.0/source-contract-iossimulatorarm64-0.1.0.pom",
+      "sha256": "5f4f3e15b8a258e8f4964503e4e97492843ced0e161c4ce5a60a7918634b4904"
+    },
+    {
+      "bytes": 12555,
+      "path": "me/manga/kira/source/source-contract-jvm/0.1.0/source-contract-jvm-0.1.0-sources.jar",
+      "sha256": "ff2332dbd8addbbc69b2c8c3e9c7e6d5e7d1f94e676d532be593a92cd9fafa5b"
+    },
+    {
+      "bytes": 139555,
+      "path": "me/manga/kira/source/source-contract-jvm/0.1.0/source-contract-jvm-0.1.0.jar",
+      "sha256": "9eeb54df5d09f14ebe612b1255721fa536c2517502b05cbd815e8b98370e0b7d"
+    },
+    {
+      "bytes": 4146,
+      "path": "me/manga/kira/source/source-contract-jvm/0.1.0/source-contract-jvm-0.1.0.module",
+      "sha256": "d9a8995bc42cd2aab74c7909baf0570ec948afa58365d96e785269a3c963c749"
+    },
+    {
+      "bytes": 1386,
+      "path": "me/manga/kira/source/source-contract-jvm/0.1.0/source-contract-jvm-0.1.0.pom",
+      "sha256": "00ce4dabc53c33736b7527fd541fe7cdc1d80243bbf67244d28a114a84c58a1c"
+    },
+    {
+      "bytes": 1480,
+      "path": "me/manga/kira/source/source-contract/0.1.0/source-contract-0.1.0-kotlin-tooling-metadata.json",
+      "sha256": "c62d1b05a013e5f1b0e0b72f56b17bee28a4955b1111ab5a52e5e3e57e273817"
+    },
+    {
+      "bytes": 12555,
+      "path": "me/manga/kira/source/source-contract/0.1.0/source-contract-0.1.0-sources.jar",
+      "sha256": "ff2332dbd8addbbc69b2c8c3e9c7e6d5e7d1f94e676d532be593a92cd9fafa5b"
+    },
+    {
+      "bytes": 10929,
+      "path": "me/manga/kira/source/source-contract/0.1.0/source-contract-0.1.0.jar",
+      "sha256": "94d4c352233c4677b8e8ff9c691f63e89bcb272c690df7ab5af3904329154f2d"
+    },
+    {
+      "bytes": 10171,
+      "path": "me/manga/kira/source/source-contract/0.1.0/source-contract-0.1.0.module",
+      "sha256": "7ef1411f69e4e10b5e3f824c6ca7f4fce075215d1a746c0c60c1c69df07090be"
+    },
+    {
+      "bytes": 1378,
+      "path": "me/manga/kira/source/source-contract/0.1.0/source-contract-0.1.0.pom",
+      "sha256": "846fdfb2d251e513128a6bad62d70f21ac728d28eec699b1ec7bba6ca9604b70"
+    },
+    {
+      "bytes": 104261,
+      "path": "me/manga/kira/source/source-engine-android/0.1.0/source-engine-android-0.1.0.aar",
+      "sha256": "94316feb00f9c4acb3c8268faa957f8609e04a85f9beecb59a4b1d99fb5fa651"
+    },
+    {
+      "bytes": 4467,
+      "path": "me/manga/kira/source/source-engine-android/0.1.0/source-engine-android-0.1.0.module",
+      "sha256": "1d83301926ba726f306ed4fff6ea8cf9ce18a4c9c3ff67d1430d6716a8795202"
+    },
+    {
+      "bytes": 2000,
+      "path": "me/manga/kira/source/source-engine-android/0.1.0/source-engine-android-0.1.0.pom",
+      "sha256": "c8dcb9c08959778fca5b1933c786f3bfa3183801b6d99985a8cdc7578a3063f0"
+    },
+    {
+      "bytes": 147672,
+      "path": "me/manga/kira/source/source-engine-iossimulatorarm64/0.1.0/source-engine-iossimulatorarm64-0.1.0.klib",
+      "sha256": "073d8306be3d9b478819ed3efd0330fe988d214a8ba3a2d13347c4778eb924ba"
+    },
+    {
+      "bytes": 5473,
+      "path": "me/manga/kira/source/source-engine-iossimulatorarm64/0.1.0/source-engine-iossimulatorarm64-0.1.0.module",
+      "sha256": "dee33fde3ff334d2dc9d3a61f2c31458d2724a7c4ec917da9770470ee8757685"
+    },
+    {
+      "bytes": 2073,
+      "path": "me/manga/kira/source/source-engine-iossimulatorarm64/0.1.0/source-engine-iossimulatorarm64-0.1.0.pom",
+      "sha256": "e3be238f789383caa52829487991c3b408cbe46b520e138f0326ebd8d4e07be1"
+    },
+    {
+      "bytes": 33681,
+      "path": "me/manga/kira/source/source-engine-jvm/0.1.0/source-engine-jvm-0.1.0-sources.jar",
+      "sha256": "84b4b25e9dd952a99c32618bd217571177feabe80801a6a5466e2afbe71e448d"
+    },
+    {
+      "bytes": 109359,
+      "path": "me/manga/kira/source/source-engine-jvm/0.1.0/source-engine-jvm-0.1.0.jar",
+      "sha256": "e2a20c63ab115dabfc75fc6a0ea33a36fd6c272c6ee22ed17ef2aa9cab840a2d"
+    },
+    {
+      "bytes": 4453,
+      "path": "me/manga/kira/source/source-engine-jvm/0.1.0/source-engine-jvm-0.1.0.module",
+      "sha256": "322aebab1cd9bcd6dbae3d83dd3e6635f9e65cf6a23b428cad44e62b4e4036c7"
+    },
+    {
+      "bytes": 1959,
+      "path": "me/manga/kira/source/source-engine-jvm/0.1.0/source-engine-jvm-0.1.0.pom",
+      "sha256": "97c9eba44ff26ae6a72441c6748a590bd9f3c85fc6ac1d6b4fbe44f3fc7c4dd9"
+    },
+    {
+      "bytes": 1480,
+      "path": "me/manga/kira/source/source-engine/0.1.0/source-engine-0.1.0-kotlin-tooling-metadata.json",
+      "sha256": "c62d1b05a013e5f1b0e0b72f56b17bee28a4955b1111ab5a52e5e3e57e273817"
+    },
+    {
+      "bytes": 33681,
+      "path": "me/manga/kira/source/source-engine/0.1.0/source-engine-0.1.0-sources.jar",
+      "sha256": "84b4b25e9dd952a99c32618bd217571177feabe80801a6a5466e2afbe71e448d"
+    },
+    {
+      "bytes": 12305,
+      "path": "me/manga/kira/source/source-engine/0.1.0/source-engine-0.1.0.jar",
+      "sha256": "3a2fd051891c305bdc01537fec623070b83426c39cfd8ffac872eb8026ca4a03"
+    },
+    {
+      "bytes": 10598,
+      "path": "me/manga/kira/source/source-engine/0.1.0/source-engine-0.1.0.module",
+      "sha256": "4a11051300075778a2a6a95275c33a826886a50f111d0a6dbc046e5ab118e8ae"
+    },
+    {
+      "bytes": 1939,
+      "path": "me/manga/kira/source/source-engine/0.1.0/source-engine-0.1.0.pom",
+      "sha256": "d8daeded7727ee0e349e9edf4a1f206e0a722f499610840e247d40eacda59e9d"
+    }
+  ],
+  "schema": "app-29-original-dependencies-v1",
+  "sealedUnionManifestSha256": "5ee80453ca5ee8c5167d8672f2401efd04e00ec37d1e16bae5ff8b8a36b200d6"
+}
