@@ -1,7 +1,7 @@
 {
   "schema": "app-29-apple-native8-v1",
-  "status": "UNBOUND_REQUIRES_PRIMARY_REVIEW",
-  "authorization": "UNBOUND",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "authorization": "APP_29_APPLE_NATIVE8_ONE_ATTEMPT_AUTHORIZED",
   "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_ONLY",
   "app": {
     "repository": "kira-manga/kira-app",
