@@ -57,8 +57,10 @@ internal class InstallationDeletionSessions(
         ticket: InstallationDeletionSession,
     ): Boolean {
         val current = state.load() as? DeletionSessionState.Ready ?: return false
-        return current.ticket === ticket && ticket.start === start &&
-            ticket.entry.matches(start.record, start.issuer) && ticket.entry.isFresh() &&
+        return current.ticket === ticket &&
+            ticket.start === start &&
+            ticket.entry.matches(start.record, start.issuer) &&
+            ticket.entry.isFresh() &&
             state.compareAndSet(current, DeletionSessionState.Empty)
     }
 
@@ -89,9 +91,13 @@ internal class InstallationDeletionSession(
 }
 
 internal sealed interface InstallationDeletionSessionResult {
-    class Ready(val ticket: InstallationDeletionSession) : InstallationDeletionSessionResult
+    class Ready(
+        val ticket: InstallationDeletionSession,
+    ) : InstallationDeletionSessionResult
 
-    class Failed(val result: ComplaintSessionResult) : InstallationDeletionSessionResult
+    class Failed(
+        val result: ComplaintSessionResult,
+    ) : InstallationDeletionSessionResult
 }
 
 private sealed interface DeletionSessionState {
@@ -99,5 +105,7 @@ private sealed interface DeletionSessionState {
 
     data object Closed : DeletionSessionState
 
-    class Ready(val ticket: InstallationDeletionSession) : DeletionSessionState
+    class Ready(
+        val ticket: InstallationDeletionSession,
+    ) : DeletionSessionState
 }

@@ -100,7 +100,10 @@ class InstallationDeletionContinuationTest {
                 fixture.assertRetained(deletingRecord())
                 fixture.assertNoNewIdentity()
                 assertTrue(fixture.requests.isEmpty())
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
             } finally {
                 fixture.close()
             }

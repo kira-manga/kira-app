@@ -35,7 +35,10 @@ class ComplaintBackendDeletionOwnerTest {
                 assertNotNull(fixture.owner.deletion)
                 assertEquals(0, fixture.keyCalls)
                 assertTrue(fixture.engines.all { it.requestHistory.isEmpty() && it.coroutineContext.job.isActive })
-                assertTrue(fixture.storage.faults.trace.isEmpty())
+                assertTrue(
+                    fixture.storage.faults.trace
+                        .isEmpty(),
+                )
             } finally {
                 fixture.close()
             }
@@ -63,7 +66,9 @@ class ComplaintBackendDeletionOwnerTest {
         }
 }
 
-private class DeletionOwnerFixture(scope: TestScope) {
+private class DeletionOwnerFixture(
+    scope: TestScope,
+) {
     val storage = InstallationCoordinatorFixture(Fixtures.record())
     val entered = CompletableDeferred<Unit>()
     val release = CompletableDeferred<Unit>()

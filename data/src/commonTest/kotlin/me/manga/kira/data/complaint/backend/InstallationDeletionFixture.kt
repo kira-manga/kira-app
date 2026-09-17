@@ -121,9 +121,7 @@ internal fun deletionHeaders(
         change()
     }
 
-internal fun assertDeletionPending(
-    result: AppResult<ComplaintInstallationDeletionOutcome>,
-): ComplaintInstallationDeletionOutcome.Pending =
+internal fun assertDeletionPending(result: AppResult<ComplaintInstallationDeletionOutcome>): ComplaintInstallationDeletionOutcome.Pending =
     assertIs<ComplaintInstallationDeletionOutcome.Pending>(assertIs<AppResult.Success<*>>(result).value)
 
 internal fun assertDeletionCompleted(result: AppResult<ComplaintInstallationDeletionOutcome>) {

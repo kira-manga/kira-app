@@ -60,7 +60,10 @@ class InstallationDeletionHttpTest {
                     fixture.assertRetained(deletingRecord())
                     fixture.assertNoNewIdentity()
                     assertEquals(1, fixture.requests.size)
-                    assertTrue(fixture.storage.faults.mutations.isEmpty())
+                    assertTrue(
+                        fixture.storage.faults.mutations
+                            .isEmpty(),
+                    )
                 } finally {
                     fixture.close()
                 }
@@ -82,7 +85,10 @@ class InstallationDeletionHttpTest {
                 assertCancellationIdentity(cancellation, caught)
                 fixture.assertRetained(deletingRecord())
                 fixture.assertNoNewIdentity()
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
             } finally {
                 fixture.close()
             }
@@ -99,7 +105,11 @@ class InstallationDeletionHttpTest {
                 )
                 fixture.assertRetained(deletingRecord())
                 fixture.assertNoNewIdentity()
-                assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.requests.isEmpty() &&
+                        fixture.storage.faults.mutations
+                            .isEmpty(),
+                )
             } finally {
                 fixture.close()
             }

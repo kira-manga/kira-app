@@ -44,7 +44,11 @@ class InstallationDeletionLifecycleTest {
                 assertFailsWith<CancellationException> { caller.await() }
                 fixture.assertRetained(Fixtures.record())
                 assertEquals(0, fixture.keyCalls)
-                assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.requests.isEmpty() &&
+                        fixture.storage.faults.mutations
+                            .isEmpty(),
+                )
             } finally {
                 barrier.release.complete(Unit)
                 fixture.close()
@@ -92,7 +96,11 @@ private suspend fun TestScope.assertDeletionSessionReplacement(replacement: Inst
         barrier.release.complete(Unit)
         assertIs<AppResult.Failure>(caller.await())
         assertEquals(0, fixture.keyCalls)
-        assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())
+        assertTrue(
+            fixture.requests.isEmpty() &&
+                fixture.storage.faults.mutations
+                    .isEmpty(),
+        )
         assertTrue(assertNotNull(fixture.storage.credentials.payloadRecord).sameAs(replacement ?: Fixtures.record()))
     } finally {
         barrier.release.complete(Unit)

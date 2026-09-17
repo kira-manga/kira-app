@@ -56,8 +56,11 @@ internal class ComplaintDeletionReceiveBudget private constructor(
             with(headers) {
                 listOf(media, encoding, length, transfer).all(::singleBoundedHeader) &&
                     (encoding.isEmpty() || encoding.single().equals("identity", ignoreCase = true)) &&
-                    (transfer.isEmpty() ||
-                        length.isEmpty() && transfer.single().equals("chunked", ignoreCase = true)) &&
+                    (
+                        transfer.isEmpty() ||
+                            length.isEmpty() &&
+                            transfer.single().equals("chunked", ignoreCase = true)
+                    ) &&
                     validMedia(media, empty)
             }
 

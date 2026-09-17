@@ -25,7 +25,9 @@ internal class InstallationDeletionRequest(
 internal sealed interface InstallationDeletionHttpResult {
     val request: InstallationDeletionRequest
 
-    class Terminal(override val request: InstallationDeletionRequest) : InstallationDeletionHttpResult
+    class Terminal(
+        override val request: InstallationDeletionRequest,
+    ) : InstallationDeletionHttpResult
 
     class Accepted(
         override val request: InstallationDeletionRequest,

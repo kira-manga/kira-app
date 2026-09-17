@@ -98,17 +98,18 @@ internal class InstallationDeletionHttp(
     ): InstallationDeletionHttpResult {
         currentCoroutineContext().ensureActive()
         if (isClosed || !request.binding.work.isCurrent()) return request.failed(Failure.CLOSED)
-        return client.preparePost(endpoint.deletionUrl.toString()) {
-            headers {
-                append(HttpHeaders.Accept, "application/json, application/problem+json")
-                append(HttpHeaders.AcceptEncoding, "identity")
-                append(HttpHeaders.CacheControl, "no-store, no-transform")
-                append(Policy.IDEMPOTENCY_HEADER, request.key)
+        return client
+            .preparePost(endpoint.deletionUrl.toString()) {
+                headers {
+                    append(HttpHeaders.Accept, "application/json, application/problem+json")
+                    append(HttpHeaders.AcceptEncoding, "identity")
+                    append(HttpHeaders.CacheControl, "no-store, no-transform")
+                    append(Policy.IDEMPOTENCY_HEADER, request.key)
+                }
+                setBody(ByteArrayContent(bytes, ContentType.Application.Json))
+            }.execute { response ->
+                InstallationDeletionResponse.read(InstallationDeletionBody.read(response, endpoint.deletionUrl), request)
             }
-            setBody(ByteArrayContent(bytes, ContentType.Application.Json))
-        }.execute { response ->
-            InstallationDeletionResponse.read(InstallationDeletionBody.read(response, endpoint.deletionUrl), request)
-        }
     }
 
     private companion object {

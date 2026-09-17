@@ -158,7 +158,10 @@ private fun assertDeletionCleanupOrder(storage: InstallationCoordinatorFixture) 
     assertDeletionReadback(storage, Step.PENDING_CLEARED, Step.MARKER_CREATE_BEFORE, Step.PENDING_READ)
     assertDeletionReadback(storage, Step.MARKER_STORED, Step.CLEANUP_BEFORE, Step.MARKER_READ)
     assertDeletionReadback(storage, Step.PAYLOAD_REMOVED, Step.MARKER_REMOVE_BEFORE, Step.CREDENTIAL_READ)
-    val tail = storage.faults.trace.dropWhile { it != Step.MARKER_REMOVED }.drop(1)
+    val tail =
+        storage.faults.trace
+            .dropWhile { it != Step.MARKER_REMOVED }
+            .drop(1)
     assertEquals(listOf(Step.MARKER_READ, Step.CREDENTIAL_READ, Step.PENDING_READ), tail)
     assertNull(storage.credentials.marker)
 }

@@ -27,7 +27,9 @@ internal class InstallationDeletionWorks {
         request: InstallationDeletionRequest,
     ): Boolean {
         val current = state.load() as? DeletionWorkState.Active ?: return false
-        return current.work === work && !current.applying && work.job.isActive &&
+        return current.work === work &&
+            !current.applying &&
+            work.job.isActive &&
             request.binding.work === work &&
             state.compareAndSet(current, DeletionWorkState.Active(work, applying = true))
     }
@@ -37,7 +39,9 @@ internal class InstallationDeletionWorks {
         marker: CredentialCleanupMarker,
     ): Boolean {
         val current = state.load() as? DeletionWorkState.Active ?: return false
-        return current.work === work && !current.applying && work.job.isActive &&
+        return current.work === work &&
+            !current.applying &&
+            work.job.isActive &&
             marker.expectedGeneration != null &&
             state.compareAndSet(current, DeletionWorkState.Active(work, applying = true))
     }
@@ -103,5 +107,7 @@ private sealed interface DeletionWorkState {
         val applying: Boolean = false,
     ) : DeletionWorkState
 
-    class Cancelled(val work: InstallationDeletionWork) : DeletionWorkState
+    class Cancelled(
+        val work: InstallationDeletionWork,
+    ) : DeletionWorkState
 }

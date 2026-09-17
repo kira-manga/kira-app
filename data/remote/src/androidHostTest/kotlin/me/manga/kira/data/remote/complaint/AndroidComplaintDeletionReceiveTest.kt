@@ -15,10 +15,22 @@ class AndroidComplaintDeletionReceiveTest {
                 for (status in listOf(ACCEPTED, NO_CONTENT)) {
                     fixture.server.enqueue(MockResponse.Builder().code(status).build())
                     assertEquals("", fixture.exchange().body)
-                    fixture.server.enqueue(MockResponse.Builder().code(status).body("x").build())
+                    fixture.server.enqueue(
+                        MockResponse
+                            .Builder()
+                            .code(status)
+                            .body("x")
+                            .build(),
+                    )
                     assertFails { fixture.exchange() }
                 }
-                fixture.server.enqueue(MockResponse.Builder().code(ACCEPTED).chunkedBody("x", 1).build())
+                fixture.server.enqueue(
+                    MockResponse
+                        .Builder()
+                        .code(ACCEPTED)
+                        .chunkedBody("x", 1)
+                        .build(),
+                )
                 assertFails { fixture.exchange() }
             }
         }
@@ -33,7 +45,8 @@ class AndroidComplaintDeletionReceiveTest {
                 fixture.enqueueProblem(Policy.MAX_PROBLEM_BYTES + 1)
                 assertFails { fixture.exchange() }
                 fixture.server.enqueue(
-                    MockResponse.Builder()
+                    MockResponse
+                        .Builder()
                         .code(SERVICE_UNAVAILABLE)
                         .addHeader("Content-Type", "application/problem+json")
                         .addHeader("Content-Encoding", "gzip")
@@ -49,7 +62,8 @@ class AndroidComplaintDeletionReceiveTest {
 
     private fun AndroidDeletionEngineFixture.enqueueProblem(size: Int) {
         server.enqueue(
-            MockResponse.Builder()
+            MockResponse
+                .Builder()
                 .code(SERVICE_UNAVAILABLE)
                 .addHeader("Content-Type", "application/problem+json")
                 .chunkedBody("x".repeat(size), CHUNK_BYTES)

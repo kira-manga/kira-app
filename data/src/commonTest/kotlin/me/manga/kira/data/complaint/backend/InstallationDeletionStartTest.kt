@@ -69,7 +69,10 @@ class InstallationDeletionStartTest {
                 try {
                     assertIs<AppResult.Failure>(fixture.repository.startDeletion())
                     fixture.assertRetained(Fixtures.record())
-                    assertTrue(fixture.storage.faults.mutations.isEmpty())
+                    assertTrue(
+                        fixture.storage.faults.mutations
+                            .isEmpty(),
+                    )
                     assertEquals(1, fixture.sessionRequests.size)
                     assertTrue(fixture.requests.isEmpty())
                     assertEquals(0, fixture.keyCalls)
@@ -89,7 +92,10 @@ class InstallationDeletionStartTest {
                     assertIs<AppResult.Failure>(fixture.repository.startDeletion())
                     assertTrue(fixture.sessionRequests.isEmpty() && fixture.requests.isEmpty())
                     assertEquals(0, fixture.keyCalls)
-                    assertTrue(fixture.storage.faults.mutations.isEmpty())
+                    assertTrue(
+                        fixture.storage.faults.mutations
+                            .isEmpty(),
+                    )
                 } finally {
                     fixture.close()
                 }
@@ -130,7 +136,11 @@ class InstallationDeletionStartTest {
                 try {
                     assertIs<AppResult.Failure>(fixture.repository.startDeletion())
                     fixture.assertRetained(active)
-                    assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())
+                    assertTrue(
+                        fixture.requests.isEmpty() &&
+                            fixture.storage.faults.mutations
+                                .isEmpty(),
+                    )
                     assertEquals(if (scenario == "expired") 0 else 1, fixture.keyCalls)
                 } finally {
                     fixture.close()
@@ -149,7 +159,10 @@ private fun TestScope.retainedDeletionStart(
         deletionHandler = {
             assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(deletingRecord()))
             assertEquals(slots, storage.pending.slots)
-            val afterCommit = storage.faults.trace.dropWhile { it != Step.REPLACE_STORED }.drop(1)
+            val afterCommit =
+                storage.faults.trace
+                    .dropWhile { it != Step.REPLACE_STORED }
+                    .drop(1)
             assertTrue(Step.CREDENTIAL_READ in afterCommit)
             assertTrue(Step.PENDING_CLEAR_BEFORE !in storage.faults.trace)
             respond("", HttpStatusCode.NoContent, deletionHeaders())

@@ -37,7 +37,9 @@ class InstallationDeletionNormalWorkTest {
         }
 }
 
-private class DeletionNormalWorkFixture(scope: TestScope) {
+private class DeletionNormalWorkFixture(
+    scope: TestScope,
+) {
     val entered = CompletableDeferred<Unit>()
     val release = CompletableDeferred<Unit>()
     val deletion =

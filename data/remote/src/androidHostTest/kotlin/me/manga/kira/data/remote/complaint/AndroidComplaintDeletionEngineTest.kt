@@ -89,7 +89,8 @@ class AndroidComplaintDeletionEngineTest {
                 assertEquals(1, fixture.server.requestCount)
                 assertEquals(NO_CONTENT, fixture.exchange().status)
                 fixture.server.enqueue(
-                    MockResponse.Builder()
+                    MockResponse
+                        .Builder()
                         .code(TEMPORARY_REDIRECT)
                         .addHeader("Location", fixture.server.url("/other"))
                         .build(),
@@ -118,7 +119,8 @@ class AndroidComplaintDeletionEngineTest {
 private const val SERVICE_UNAVAILABLE = 503
 
 private fun retryableDeletionResponse(): MockResponse =
-    MockResponse.Builder()
+    MockResponse
+        .Builder()
         .code(SERVICE_UNAVAILABLE)
         .addHeader("Retry-After", "0")
         .addHeader("Content-Type", "application/problem+json")
