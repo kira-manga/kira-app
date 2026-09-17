@@ -61,6 +61,7 @@ class SettingsFeedbackViewModel(
         launchSafely { refreshRecovery() }
     }
 
+    @Suppress("CyclomaticComplexMethod") // Flat exhaustive intent dispatch; each action retains its own guard.
     override suspend fun handle(intent: SettingsFeedbackIntent) {
         when (intent) {
             is SettingsFeedbackIntent.ChangeCategory ->

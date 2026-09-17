@@ -94,7 +94,7 @@ class ComplaintBackendRequestOwnershipTest {
             val entry = SettingsFeedbackEntry.SourceRequest("Synthetic source request")
             val opening = ComplaintBackendRequestOpening(app.koin, entry)
             try {
-                assertSame(graph.reports, graph.installationRecovery)
+                assertSame<Any>(graph.reports, graph.installationRecovery)
                 assertSame(graph.installationRecovery, app.koin.get<ComplaintInstallationRecoveryRepository>())
                 assertNeutralActiveCleanup(opening.viewModel, fixture)
             } finally {
