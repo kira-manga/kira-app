@@ -18,7 +18,9 @@ import me.manga.kira.platform.storage.PendingComplaintSlot
 /**
  * Dormant typed report port, deliberately not the legacy Result<Unit> adapter. The caller allocates
  * and normalizes a live request once; this owner neither invents keys nor persists/reconstructs prose.
+ * Keep the producer/recovery verbs and admission helpers together on their single shared work lane.
  */
+@Suppress("TooManyFunctions")
 internal class BackendFeedbackRepository(
     private val coordinator: InstallationCredentialCoordinator,
     sessions: InstallationSessionManager,
@@ -65,7 +67,9 @@ internal class BackendFeedbackRepository(
                 return@withWork AppResult.Success(ReportAttempt.Unresolved(report, reportUnavailable(Block.MISSING)))
             }
             val attempt =
-                when (val admitted = coordinator.beginReportAction(work, ReportStart.Retained(slot, report), expected)) {
+                when (
+                    val admitted = coordinator.beginReportAction(work, ReportStart.Retained(slot, report), expected)
+                ) {
                     is Outcome.Success -> execution.status(admitted.value, retryLive = true).attempt
                     else -> ReportAttempt.Unresolved(report, reportLocalFailure(admitted))
                 }
@@ -73,7 +77,10 @@ internal class BackendFeedbackRepository(
         }
 
     /** Startup and manual reads remain usable with sixteen retained records; no CREATE is constructed. */
-    suspend fun reconcile(): AppResult<ReportRecovery> = withWork { work -> AppResult.Success(reconciler.reconcile(work)) }
+    suspend fun reconcile(): AppResult<ReportRecovery> =
+        withWork { work ->
+            AppResult.Success(reconciler.reconcile(work))
+        }
 
     /** Explicit unsent cancellation alone may delete PREPARED; cancelCurrent/finally never do so. */
     suspend fun cancelPrepared(
@@ -97,7 +104,10 @@ internal class BackendFeedbackRepository(
             AppResult.Failure(AppError.Unexpected("complaint_report_failed"))
         }
 
-    suspend fun confirmRecovery(expected: Confirmation): AppResult<Unit> = withWork { coordinator.confirmRecovery(expected).unitResult() }
+    suspend fun confirmRecovery(expected: Confirmation): AppResult<Unit> =
+        withWork {
+            coordinator.confirmRecovery(expected).unitResult()
+        }
 
     /** The prompt caller survives cancellation of its registered, no-HTTP worker by consent issuance. */
     suspend fun requestRecovery(

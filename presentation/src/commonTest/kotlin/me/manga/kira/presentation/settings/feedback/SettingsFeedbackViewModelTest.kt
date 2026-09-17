@@ -94,9 +94,22 @@ class SettingsFeedbackViewModelTest {
             assertSame(known, assertIs<ComplaintReportAttempt.Unresolved>(attempt).knownApplication)
             assertTrue(vm.state.value.canRetry)
             assertFalse(vm.state.value.canStartNewDraft)
-            assertFalse(vm.state.value.toString().contains("private"))
-            assertFalse(vm.state.value.draft.toString().contains("private"))
-            assertFalse(SettingsFeedbackIntent.ChangeCategory(ComplaintType.CUSTOM, "private subject").toString().contains("private"))
+            assertFalse(
+                vm.state.value
+                    .toString()
+                    .contains("private"),
+            )
+            assertFalse(
+                vm.state.value.draft
+                    .toString()
+                    .contains("private"),
+            )
+            assertFalse(
+                SettingsFeedbackIntent
+                    .ChangeCategory(ComplaintType.CUSTOM, "private subject")
+                    .toString()
+                    .contains("private"),
+            )
             assertFalse(SettingsFeedbackIntent.ChangeBody("private body").toString().contains("private"))
         }
 
@@ -135,7 +148,7 @@ class SettingsFeedbackViewModelTest {
             vm.submit(SettingsFeedbackIntent.RequestRecovery(fake.pending))
             val first = fake.nextPrompt
             assertTrue(vm.state.value.confirmationPending)
-            assertEquals(listOf(SettingsFeedbackEffect.ConfirmLocalReset), effects)
+            assertEquals(listOf<SettingsFeedbackEffect>(SettingsFeedbackEffect.ConfirmLocalReset), effects)
             vm.submit(SettingsFeedbackIntent.CancelRecovery)
             assertSame(first, fake.dismissed.single())
             assertTrue(fake.confirmed.isEmpty())
@@ -202,7 +215,10 @@ class SettingsFeedbackViewModelTest {
             }
         }
 
-    private fun model(fake: SettingsFeedbackRepositoryFake): SettingsFeedbackViewModel = fake.viewModel().also { models += it }
+    private fun model(fake: SettingsFeedbackRepositoryFake): SettingsFeedbackViewModel =
+        fake.viewModel().also {
+            models += it
+        }
 }
 
 private fun SettingsFeedbackViewModel.fillDraft() {

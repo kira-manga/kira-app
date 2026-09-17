@@ -62,12 +62,7 @@ class ComplaintBackendOwner private constructor(
                         val works = ReportWorkOwner().also { close.add(0, it::close) }
                         BackendFeedbackRepository(coordinator, sessions, mutation, works)
                     }
-                val reports =
-                    if (feedback != null && reportInputs != null) {
-                        BackendComplaintReportRepository(coordinator, feedback, reportInputs).also { close.add(0, it::close) }
-                    } else {
-                        null
-                    }
+                val reports = createReports(coordinator, feedback, reportInputs, close)
                 AppResult.Success(
                     ComplaintBackendOwner(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
@@ -91,6 +86,17 @@ class ComplaintBackendOwner private constructor(
             }
         }
     }
+}
+
+/** Construct and register the optional consumer together; failure still unwinds through the owner. */
+private fun createReports(
+    coordinator: InstallationCredentialCoordinator,
+    feedback: BackendFeedbackRepository?,
+    inputs: ComplaintReportInputs?,
+    close: MutableList<() -> Unit>,
+): BackendComplaintReportRepository? {
+    if (feedback == null || inputs == null) return null
+    return BackendComplaintReportRepository(coordinator, feedback, inputs).also { close.add(0, it::close) }
 }
 
 private fun distinctBorrowedEngines(

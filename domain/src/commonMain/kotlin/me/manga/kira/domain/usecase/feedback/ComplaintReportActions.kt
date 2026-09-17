@@ -19,19 +19,28 @@ class ComplaintReportActions(
 class PrepareComplaintReportUseCase(
     private val repository: ComplaintReportRepository,
 ) {
-    suspend operator fun invoke(draft: ComplaintReportDraft): AppResult<ComplaintReportPreparation> = repository.prepare(draft)
+    suspend operator fun invoke(draft: ComplaintReportDraft): AppResult<ComplaintReportPreparation> =
+        repository.prepare(
+            draft,
+        )
 }
 
 /** Submit the exact already-prepared live request. */
 class SubmitComplaintReportUseCase(
     private val repository: ComplaintReportRepository,
 ) {
-    suspend operator fun invoke(report: ComplaintLiveReport): AppResult<ComplaintReportSubmission> = repository.submit(report)
+    suspend operator fun invoke(report: ComplaintLiveReport): AppResult<ComplaintReportSubmission> =
+        repository.submit(
+            report,
+        )
 }
 
 /** Retry an ambiguous live action without reallocating IDs or normalizing again. */
 class RetryComplaintReportUseCase(
     private val repository: ComplaintReportRepository,
 ) {
-    suspend operator fun invoke(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt> = repository.retry(report)
+    suspend operator fun invoke(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt> =
+        repository.retry(
+            report,
+        )
 }

@@ -63,6 +63,7 @@ internal fun settingsReportFailureText(failure: ComplaintReportFailure): String 
         else -> stringResource(Res.string.settings_report_unavailable)
     }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun SettingsReportAttemptSummary(attempt: ComplaintReportAttempt) {
     when (attempt) {

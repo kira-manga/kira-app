@@ -1,3 +1,6 @@
+// Group the existing graph fixture's engine owner, read assertion, and counted allocation traps.
+@file:Suppress("MatchingDeclarationName")
+
 package me.manga.kira.di
 
 import io.ktor.client.engine.HttpClientEngine

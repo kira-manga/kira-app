@@ -17,7 +17,10 @@ internal fun ReportFailure.consumerResult(): ComplaintReportFailure =
     ComplaintReportFailure(error, block?.let { ComplaintReportBlock.valueOf(it.name) })
 
 internal fun ComplaintReportRequestResult.Rejected.consumerResult(): ComplaintReportPreparation.Invalid =
-    ComplaintReportPreparation.Invalid(DomainReportField.valueOf(field.name), DomainReportRejection.valueOf(reason.name))
+    ComplaintReportPreparation.Invalid(
+        DomainReportField.valueOf(field.name),
+        DomainReportRejection.valueOf(reason.name),
+    )
 
 internal fun ReportActionState.consumerResult(): ComplaintReportApplication =
     when (this) {

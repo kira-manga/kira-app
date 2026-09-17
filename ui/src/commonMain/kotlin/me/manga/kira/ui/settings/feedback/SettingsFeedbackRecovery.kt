@@ -37,6 +37,7 @@ import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
 /** Bounded observations only; an empty result never enables a replacement for a live request. */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun SettingsReportRecoveryContent(
     state: SettingsFeedbackState,
@@ -62,7 +63,11 @@ internal fun SettingsReportRecoveryContent(
                 )
                 SettingsReportAttemptSummary(observation.attempt)
                 if (observation.attempt is ComplaintReportAttempt.Unresolved) {
-                    SettingsReportPendingActions(observation.pending, !state.busy && !state.confirmationPending, onIntent)
+                    SettingsReportPendingActions(
+                        observation.pending,
+                        !state.busy && !state.confirmationPending,
+                        onIntent,
+                    )
                 }
             }
         }
@@ -70,6 +75,7 @@ internal fun SettingsReportRecoveryContent(
 }
 
 /** Buttons carry the exact observed handle; the repository rechecks whether the action is allowed. */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun SettingsReportPendingActions(
     pending: ComplaintReportPending,
@@ -79,13 +85,19 @@ internal fun SettingsReportPendingActions(
     when (pending.phase) {
         ComplaintReportPhase.PREPARED -> {
             Text(stringResource(Res.string.settings_report_prepared))
-            TextButton(onClick = { onIntent(SettingsFeedbackIntent.CancelPrepared(pending.handle)) }, enabled = enabled) {
+            TextButton(
+                onClick = { onIntent(SettingsFeedbackIntent.CancelPrepared(pending.handle)) },
+                enabled = enabled,
+            ) {
                 Text(stringResource(Res.string.settings_report_cancel_prepared))
             }
         }
         ComplaintReportPhase.MAY_HAVE_DISPATCHED -> {
             Text(stringResource(Res.string.settings_report_may_have_sent))
-            TextButton(onClick = { onIntent(SettingsFeedbackIntent.RequestRecovery(pending.handle)) }, enabled = enabled) {
+            TextButton(
+                onClick = { onIntent(SettingsFeedbackIntent.RequestRecovery(pending.handle)) },
+                enabled = enabled,
+            ) {
                 Text(stringResource(Res.string.settings_report_request_reset))
             }
         }
@@ -93,6 +105,7 @@ internal fun SettingsReportPendingActions(
 }
 
 /** A reset always requires this explicit warning; dismissal is not confirmation or pending deletion. */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun SettingsReportResetDialog(
     state: SettingsFeedbackState,
@@ -116,6 +129,7 @@ internal fun SettingsReportResetDialog(
     )
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun SettingsReportResetWarning(state: SettingsFeedbackState) {
     Column(

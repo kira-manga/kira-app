@@ -117,5 +117,10 @@ internal fun reportMutationFailure(reason: ComplaintMutationFailure): ReportFail
 internal fun ReportActionBinding.unresolved(failure: ReportFailure): ReportExecution =
     ReportExecution(
         this,
-        ReportAttempt.Unresolved(liveReport, failure, work.application(), slot?.let { ReportPendingObservation(it, permit) }),
+        ReportAttempt.Unresolved(
+            liveReport,
+            failure,
+            work.application(),
+            slot?.let { ReportPendingObservation(it, permit) },
+        ),
     )

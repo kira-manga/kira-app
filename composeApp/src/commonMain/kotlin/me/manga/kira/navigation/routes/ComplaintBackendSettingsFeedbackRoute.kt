@@ -8,6 +8,7 @@ import me.manga.kira.ui.settings.feedback.SettingsFeedbackDialog
  * Unselected Settings candidate. Its caller must supply the isolated candidate graph's ViewModel;
  * there is no global Koin lookup, shipping navigation registration, or legacy feedback fallback.
  */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun ComplaintBackendSettingsFeedbackRoute(
     viewModel: SettingsFeedbackViewModel,

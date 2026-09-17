@@ -26,7 +26,9 @@ import me.manga.kira.presentation.mvi.MviViewModel
 /**
  * Candidate Settings report subfeature. Input/handles live only in this VM; one guarded caller action
  * at a time, with exact manual retry and no legacy writer, SavedStateHandle or global cancellation.
+ * Reducer transitions deliberately share this screen's caller/live/prompt state and teardown ownership.
  */
+@Suppress("TooManyFunctions")
 class SettingsFeedbackViewModel(
     private val actions: ComplaintReportActions,
     private val recoveryActions: ComplaintReportRecoveryActions,
@@ -129,7 +131,12 @@ class SettingsFeedbackViewModel(
     }
 
     private suspend fun cancelPrepared(report: ComplaintPendingReport) {
-        if (findReportObservation(report, live, latestAttempt, state.value.recovery)?.phase != ComplaintReportPhase.PREPARED) return
+        if (
+            findReportObservation(report, live, latestAttempt, state.value.recovery)?.phase !=
+            ComplaintReportPhase.PREPARED
+        ) {
+            return
+        }
         work {
             when (val result = active(recoveryActions.cancelPrepared(report))) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
@@ -138,7 +145,10 @@ class SettingsFeedbackViewModel(
                     live = null
                     latestAttempt = null
                     updateState {
-                        it.copy(result = SettingsFeedbackResult.PreparedCancelled, recovery = it.recovery?.without(report))
+                        it.copy(
+                            result = SettingsFeedbackResult.PreparedCancelled,
+                            recovery = it.recovery?.without(report),
+                        )
                     }
                 }
             }
@@ -165,7 +175,8 @@ class SettingsFeedbackViewModel(
     private suspend fun resolvePrompt(confirm: Boolean) {
         val expected = prompt ?: return
         work(allowPrompt = true) {
-            val result = if (confirm) recoveryActions.confirmRecovery(expected) else recoveryActions.cancelRecovery(expected)
+            val result =
+                if (confirm) recoveryActions.confirmRecovery(expected) else recoveryActions.cancelRecovery(expected)
             currentCoroutineContext().ensureActive()
             when (result) {
                 is AppResult.Failure -> {
@@ -215,7 +226,8 @@ class SettingsFeedbackViewModel(
         allowPrompt: Boolean = false,
         action: suspend () -> Unit,
     ) {
-        if (closed || state.value.busy || (!allowPrompt && prompt != null)) return
+        if (closed || state.value.busy) return
+        if (!allowPrompt && prompt != null) return
         updateState { it.copy(activity = SettingsFeedbackActivity.WORKING) }
         val caller = currentCoroutineContext().job
         operation = caller
@@ -268,7 +280,10 @@ class SettingsFeedbackViewModel(
         if (prompt === expected) prompt = null
     }
 
-    override fun onUnhandledError(throwable: Throwable, intent: SettingsFeedbackIntent?) {
+    override fun onUnhandledError(
+        throwable: Throwable,
+        intent: SettingsFeedbackIntent?,
+    ) {
         if (!closed) showFailure(ComplaintReportFailure(AppError.Unexpected("complaint_report_failed")))
     }
 }

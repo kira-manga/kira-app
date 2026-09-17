@@ -33,7 +33,10 @@ class CancelPreparedComplaintReportUseCase(
 class RequestComplaintReportRecoveryUseCase(
     private val repository: ComplaintReportRepository,
 ) {
-    suspend operator fun invoke(report: ComplaintPendingReport): AppResult<ComplaintRecoveryPrompt> = repository.requestRecovery(report)
+    suspend operator fun invoke(report: ComplaintPendingReport): AppResult<ComplaintRecoveryPrompt> =
+        repository.requestRecovery(
+            report,
+        )
 }
 
 /** Dismiss this exact process-local warning, without resetting anything. */

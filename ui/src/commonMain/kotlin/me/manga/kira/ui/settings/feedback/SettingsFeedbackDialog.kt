@@ -47,6 +47,7 @@ import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
 /** Candidate-only feedback surface. Drafts and action handles stay in the memory-only ViewModel. */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 fun SettingsFeedbackDialog(
     viewModel: SettingsFeedbackViewModel,
@@ -56,6 +57,7 @@ fun SettingsFeedbackDialog(
     SettingsFeedbackDialogContent(state, viewModel.effects, viewModel::submit, onClosed)
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun SettingsFeedbackDialogContent(
     state: SettingsFeedbackState,
@@ -90,6 +92,7 @@ internal fun SettingsFeedbackDialogContent(
     }
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun SettingsFeedbackBody(
     state: SettingsFeedbackState,
@@ -107,6 +110,7 @@ private fun SettingsFeedbackBody(
     }
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun SettingsFeedbackDraftFields(
     state: SettingsFeedbackState,
@@ -134,6 +138,7 @@ private fun SettingsFeedbackDraftFields(
     }
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun SettingsFeedbackCategory(
     state: SettingsFeedbackState,
@@ -159,6 +164,7 @@ private fun SettingsFeedbackCategory(
     }
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun SettingsFeedbackPrimaryAction(
     state: SettingsFeedbackState,
@@ -180,6 +186,7 @@ private fun SettingsFeedbackPrimaryAction(
     }
 }
 
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun SettingsFeedbackResultContent(
     state: SettingsFeedbackState,

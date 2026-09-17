@@ -21,7 +21,11 @@ import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 import me.manga.kira.domain.repository.ComplaintReportRepository
 
-/** Thin in-memory consumer of the existing report producer, not a second transport or action registry. */
+/**
+ * Thin in-memory consumer of the existing report producer, not a second transport or action registry.
+ * All verbs and their guards share one issuer/coordinator; splitting them would fragment handle ownership.
+ */
+@Suppress("TooManyFunctions")
 internal class BackendComplaintReportRepository(
     private val coordinator: InstallationCredentialCoordinator,
     private val backend: BackendFeedbackRepository,
@@ -33,10 +37,15 @@ internal class BackendComplaintReportRepository(
         access {
             val observed = coordinator.beginReconciliation()
             if (observed !is Outcome.Success) {
-                return@access AppResult.Success(ComplaintReportPreparation.Blocked(reportLocalFailure(observed).consumerResult()))
+                return@access AppResult.Success(
+                    ComplaintReportPreparation.Blocked(reportLocalFailure(observed).consumerResult()),
+                )
             }
             when (val captured = capture(draft, observed.value)) {
-                null -> AppResult.Success(ComplaintReportPreparation.Blocked(reportUnavailable(Block.INVALID_CANDIDATE).consumerResult()))
+                null ->
+                    AppResult.Success(
+                        ComplaintReportPreparation.Blocked(reportUnavailable(Block.INVALID_CANDIDATE).consumerResult()),
+                    )
                 is ComplaintReportRequestResult.Rejected -> AppResult.Success(captured.consumerResult())
                 is ComplaintReportRequestResult.Accepted -> publishPrepared(captured.request, observed.value)
             }
@@ -47,7 +56,10 @@ internal class BackendComplaintReportRepository(
             val live = liveHandle(report) ?: return@access invalidHandle()
             if (!live.claimSubmission()) return@access invalidHandle()
             backend.submit(live.request, live.origin).map {
-                ComplaintReportSubmission(live.remember(it.attempt.consumerResult(issuer)), it.recovery.consumerResult(issuer))
+                ComplaintReportSubmission(
+                    live.remember(it.attempt.consumerResult(issuer)),
+                    it.recovery.consumerResult(issuer),
+                )
             }
         }
 
@@ -58,7 +70,10 @@ internal class BackendComplaintReportRepository(
             backend.retry(live.request, live.origin).map { live.remember(it.consumerResult(issuer)) }
         }
 
-    override suspend fun reconcile(): AppResult<ComplaintReportRecovery> = access { backend.reconcile().map { it.consumerResult(issuer) } }
+    override suspend fun reconcile(): AppResult<ComplaintReportRecovery> =
+        access {
+            backend.reconcile().map { it.consumerResult(issuer) }
+        }
 
     override suspend fun cancelPrepared(report: ComplaintPendingReport): AppResult<Unit> =
         access {
@@ -108,8 +123,9 @@ internal class BackendComplaintReportRepository(
         if (ids.clientId == ids.idempotencyKey) return null
         val identity =
             ComplaintReportIdentity.checked(ids.clientId, ids.idempotencyKey, origin.record.material.dataScopeId)
-                ?: return null
-        return ComplaintReportRequest.normalize(identity, draft.type, draft.subject, draft.body, inputs.metadata())
+        return identity?.let {
+            ComplaintReportRequest.normalize(it, draft.type, draft.subject, draft.body, inputs.metadata())
+        }
     }
 
     private suspend fun publishPrepared(
@@ -117,12 +133,15 @@ internal class BackendComplaintReportRepository(
         origin: ReconciliationPermit,
     ): AppResult<ComplaintReportPreparation> =
         when (val checked = coordinator.applyReconciliationIfCurrent(origin) {}) {
-            is Outcome.Success -> AppResult.Success(ComplaintReportPreparation.Ready(ReportLiveHandle(issuer, request, origin)))
+            is Outcome.Success ->
+                AppResult.Success(ComplaintReportPreparation.Ready(ReportLiveHandle(issuer, request, origin)))
             else -> AppResult.Success(ComplaintReportPreparation.Blocked(reportLocalFailure(checked).consumerResult()))
         }
 
     private fun liveHandle(report: ComplaintLiveReport): ReportLiveHandle? =
-        (report as? ReportLiveHandle)?.takeIf { it.issuer === issuer }
+        (report as? ReportLiveHandle)?.takeIf {
+            it.issuer === issuer
+        }
 
     private fun pendingHandle(report: ComplaintPendingReport): ReportPendingHandle? =
         (report as? ReportPendingHandle)?.takeIf { it.issuer === issuer }

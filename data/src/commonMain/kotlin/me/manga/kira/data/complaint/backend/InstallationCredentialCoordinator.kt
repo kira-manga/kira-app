@@ -170,7 +170,10 @@ class InstallationCredentialCoordinator(
             reports.begin(permit, work, start)
         }
 
-    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> = mutex.serialized { reportAdmission(binding) }
+    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> =
+        mutex.serialized {
+            reportAdmission(binding)
+        }
 
     /** Named, no-I/O token publication only; never a generic authenticated action callback. */
     internal suspend fun publishReportSession(
@@ -558,7 +561,8 @@ class InstallationCredentialCoordinator(
     /** Original identity/epoch only: normal pending transitions must use the freshly read inventory. */
     private suspend fun reportOriginRecord(expected: ReconciliationPermit?): InstallationCredentialRecord {
         if (expected != null && expected.issuer !== reconciliationIssuer) refuse(Block.STALE_BINDING)
-        val record = if (expected == null) credentials.coordinationRecord() else credentials.exactRecord(expected.record)
+        val record =
+            if (expected == null) credentials.coordinationRecord() else credentials.exactRecord(expected.record)
         return record.also(::active)
     }
 

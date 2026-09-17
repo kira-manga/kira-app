@@ -156,9 +156,8 @@ internal fun directProblem(status: HttpStatusCode): String =
     }
 
 /** The same real report fixture with only the new consumer boundary added; no alternate executor. */
-internal fun ComplaintReportFixture.consumer(
-    inputs: ComplaintReportInputs = consumerInputs(),
-): BackendComplaintReportRepository = BackendComplaintReportRepository(coordinator, repository, inputs)
+internal fun ComplaintReportFixture.consumer(inputs: ComplaintReportInputs = consumerInputs()) =
+    BackendComplaintReportRepository(coordinator, repository, inputs)
 
 internal fun consumerInputs(): ComplaintReportInputs =
     ComplaintReportInputs(

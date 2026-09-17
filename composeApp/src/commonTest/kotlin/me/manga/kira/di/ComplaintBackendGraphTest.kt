@@ -216,7 +216,10 @@ class ComplaintBackendGraphTest {
                 assertEquals(1, fixture.reportIdentifierGenerations)
                 assertEquals(1, fixture.reportMetadataReads)
                 assertEquals(0, fixture.credentials.writes + fixture.pending.writes)
-                assertEquals(0, fixture.generations + fixture.mutationCalls + fixture.historyCalls + fixture.sessionCalls)
+                assertEquals(
+                    0,
+                    fixture.generations + fixture.mutationCalls + fixture.historyCalls + fixture.sessionCalls,
+                )
                 assertFalse(fixture.events.any { it == "request:enrollment" })
             } finally {
                 vm.viewModelScope.cancel()
@@ -264,7 +267,10 @@ class ComplaintBackendGraphTest {
                     fixture.events.filter { it.startsWith("close:") },
                 )
                 assertTrue(fixture.owners.values.all { it.closed })
-                assertEquals(0, fixture.historyCalls + fixture.sessionCalls + fixture.generations + fixture.mutationCalls)
+                assertEquals(
+                    0,
+                    fixture.historyCalls + fixture.sessionCalls + fixture.generations + fixture.mutationCalls,
+                )
                 assertEquals(0, fixture.reportIdentifierGenerations + fixture.reportMetadataReads)
             }
         }

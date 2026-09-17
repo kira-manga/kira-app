@@ -30,10 +30,11 @@ class BackendComplaintReportRepositoryTest {
         runTest {
             val fixture = ComplaintReportFixture(this)
             val captures = mutableListOf<String>()
-            val inputs = probeInputs { stage ->
-                assertUnlocked(fixture)
-                captures += stage
-            }
+            val inputs =
+                probeInputs { stage ->
+                    assertUnlocked(fixture)
+                    captures += stage
+                }
             val consumer = fixture.consumer(inputs)
             try {
                 val draft = ComplaintReportDraft(subject = "  private subject  ", body = "  private\r\nbody  ")
@@ -42,10 +43,22 @@ class BackendComplaintReportRepositoryTest {
                 assertEquals("private\nbody", handle.request.body)
                 assertEquals("version", handle.request.metadata.appVersion)
                 assertEquals(listOf("identifiers", "metadata"), captures)
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
                 assertTrue(fixture.sessionRequests.isEmpty() && fixture.requests.isEmpty())
-                for (rendered in listOf(draft.toString(), handle.toString(), inputs.toString(), handle.request.metadata.toString())) {
-                    assertFalse(rendered.contains("private") || rendered.contains("version") || rendered.contains("maker"))
+                for (
+                rendered in listOf(
+                    draft.toString(),
+                    handle.toString(),
+                    inputs.toString(),
+                    handle.request.metadata.toString(),
+                )
+                ) {
+                    assertFalse(
+                        rendered.contains("private") || rendered.contains("version") || rendered.contains("maker"),
+                    )
                 }
             } finally {
                 consumer.close()
@@ -57,11 +70,23 @@ class BackendComplaintReportRepositoryTest {
     fun missingInstallationCannotAllocateInputsOrBootstrapThroughPreparation() =
         runTest {
             val fixture = ComplaintReportFixture(this, storage = InstallationCoordinatorFixture())
-            val consumer = fixture.consumer(ComplaintReportInputs({ error("unexpected IDs") }, { error("unexpected metadata") }))
+            val consumer =
+                fixture.consumer(
+                    ComplaintReportInputs({ error("unexpected IDs") }, { error("unexpected metadata") }),
+                )
             try {
-                val result = consumer.prepare(ComplaintReportDraft(subject = "Subject", body = "Report body")).reportSuccess()
-                assertEquals(ComplaintReportBlock.MISSING, assertIs<ComplaintReportPreparation.Blocked>(result).failure.block)
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                val result =
+                    consumer
+                        .prepare(ComplaintReportDraft(subject = "Subject", body = "Report body"))
+                        .reportSuccess()
+                assertEquals(
+                    ComplaintReportBlock.MISSING,
+                    assertIs<ComplaintReportPreparation.Blocked>(result).failure.block,
+                )
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
                 assertTrue(fixture.sessionRequests.isEmpty() && fixture.requests.isEmpty())
             } finally {
                 consumer.close()
@@ -76,7 +101,9 @@ class BackendComplaintReportRepositoryTest {
             val captures = mutableListOf<String>()
             var version = "captured"
             val inputs =
-                probeInputs(metadata = { ComplaintReportMetadataInput(version, "os", "maker", "model") }) { captures += it }
+                probeInputs(
+                    metadata = { ComplaintReportMetadataInput(version, "os", "maker", "model") },
+                ) { captures += it }
             val consumer = fixture.consumer(inputs)
             try {
                 val handle = assertIs<ReportLiveHandle>(consumer.preparedConsumerReport())
@@ -88,7 +115,10 @@ class BackendComplaintReportRepositoryTest {
                 assertEquals(listOf("identifiers", "metadata"), captures)
                 assertEquals("captured", request.metadata.appVersion)
                 assertEquals(fixture.sentBodies.first(), fixture.sentBodies.last())
-                assertEquals(listOf(Fixtures.KEY, null, Fixtures.KEY), fixture.requests.map { it.headers[Policy.IDEMPOTENCY_HEADER] })
+                assertEquals(
+                    listOf(Fixtures.KEY, null, Fixtures.KEY),
+                    fixture.requests.map { it.headers[Policy.IDEMPOTENCY_HEADER] },
+                )
                 assertTrue(fixture.sentBodies[1].contains(Fixtures.KEY))
                 assertEquals(3, fixture.requests.size)
             } finally {
@@ -148,7 +178,9 @@ class BackendComplaintReportRepositoryTest {
 }
 
 private fun probeInputs(
-    metadata: () -> ComplaintReportMetadataInput = { ComplaintReportMetadataInput("  version  ", "os", "maker", "model") },
+    metadata: () -> ComplaintReportMetadataInput = {
+        ComplaintReportMetadataInput("  version  ", "os", "maker", "model")
+    },
     probe: (String) -> Unit,
 ): ComplaintReportInputs =
     ComplaintReportInputs(

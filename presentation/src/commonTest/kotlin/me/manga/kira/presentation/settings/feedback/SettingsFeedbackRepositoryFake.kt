@@ -48,7 +48,9 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
     var onRetry: suspend (ComplaintLiveReport) -> AppResult<ComplaintReportAttempt> = {
         AppResult.Success(ComplaintReportAttempt.Completed(ComplaintReportApplication.Applied("synthetic-id", 1)))
     }
-    var onRequest: suspend (ComplaintPendingReport) -> AppResult<ComplaintRecoveryPrompt> = { AppResult.Success(nextPrompt) }
+    var onRequest: suspend (ComplaintPendingReport) -> AppResult<ComplaintRecoveryPrompt> = {
+        AppResult.Success(nextPrompt)
+    }
 
     override suspend fun prepare(draft: ComplaintReportDraft): AppResult<ComplaintReportPreparation> {
         drafts += draft
@@ -115,7 +117,11 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
 
 internal fun SettingsFeedbackRepositoryFake.viewModel(): SettingsFeedbackViewModel =
     SettingsFeedbackViewModel(
-        ComplaintReportActions(PrepareComplaintReportUseCase(this), SubmitComplaintReportUseCase(this), RetryComplaintReportUseCase(this)),
+        ComplaintReportActions(
+            PrepareComplaintReportUseCase(this),
+            SubmitComplaintReportUseCase(this),
+            RetryComplaintReportUseCase(this),
+        ),
         ComplaintReportRecoveryActions(
             ReconcileComplaintReportsUseCase(this),
             CancelPreparedComplaintReportUseCase(this),

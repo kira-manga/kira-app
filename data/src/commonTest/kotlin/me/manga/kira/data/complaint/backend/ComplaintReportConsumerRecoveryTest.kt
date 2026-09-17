@@ -27,14 +27,29 @@ class ComplaintReportConsumerRecoveryTest {
             storage.pending.slots += reportSlot(dispatched = false)
             val original = ComplaintReportFixture(this, storage)
             val oldConsumer = original.consumer()
-            val old = oldConsumer.reconcile().reportSuccess().entries().single().pending.handle
+            val old =
+                oldConsumer
+                    .reconcile()
+                    .reportSuccess()
+                    .entries()
+                    .single()
+                    .pending
+                    .handle
             oldConsumer.close()
             original.close()
             val restarted = ComplaintReportFixture(this, storage, storage.restart())
-            val consumer = restarted.consumer(ComplaintReportInputs({ error("no recovered IDs") }, { error("no recovered metadata") }))
+            val consumer =
+                restarted.consumer(
+                    ComplaintReportInputs({ error("no recovered IDs") }, { error("no recovered metadata") }),
+                )
             try {
                 assertIs<AppResult.Failure>(consumer.cancelPrepared(old))
-                val observation = consumer.reconcile().reportSuccess().entries().single()
+                val observation =
+                    consumer
+                        .reconcile()
+                        .reportSuccess()
+                        .entries()
+                        .single()
                 assertEquals(ComplaintReportPhase.PREPARED, observation.pending.phase)
                 val unresolved = assertIs<ComplaintReportAttempt.Unresolved>(observation.attempt)
                 assertEquals(ComplaintReportBlock.LIVE_REQUEST_REQUIRED, unresolved.failure.block)
@@ -57,18 +72,35 @@ class ComplaintReportConsumerRecoveryTest {
             val consumer = fixture.consumer()
             val foreign = fixture.consumer()
             try {
-                val pending = consumer.reconcile().reportSuccess().entries().single().pending.handle
+                val pending =
+                    consumer
+                        .reconcile()
+                        .reportSuccess()
+                        .entries()
+                        .single()
+                        .pending
+                        .handle
                 assertIs<AppResult.Failure>(foreign.cancelPrepared(pending))
                 val first = consumer.requestRecovery(pending).reportSuccess()
                 assertIs<AppResult.Failure>(foreign.cancelRecovery(first))
                 assertIs<AppResult.Failure>(foreign.confirmRecovery(first))
                 consumer.cancelRecovery(first).reportSuccess()
                 assertIs<AppResult.Failure>(consumer.requestRecovery(pending))
-                val current = consumer.reconcile().reportSuccess().entries().single().pending.handle
+                val current =
+                    consumer
+                        .reconcile()
+                        .reportSuccess()
+                        .entries()
+                        .single()
+                        .pending
+                        .handle
                 val second = consumer.requestRecovery(current).reportSuccess()
                 assertIs<AppResult.Failure>(consumer.cancelRecovery(first))
                 assertIs<AppResult.Failure>(consumer.confirmRecovery(first))
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
                 consumer.confirmRecovery(second).reportSuccess()
                 fixture.storage.assertAbsent()
                 assertTrue(fixture.sessionRequests.isEmpty() && fixture.requests.isEmpty())
@@ -87,7 +119,14 @@ class ComplaintReportConsumerRecoveryTest {
             fixture.storage.pending.slots += slot
             val consumer = fixture.consumer()
             try {
-                val pending = consumer.reconcile().reportSuccess().entries().single().pending.handle
+                val pending =
+                    consumer
+                        .reconcile()
+                        .reportSuccess()
+                        .entries()
+                        .single()
+                        .pending
+                        .handle
                 var reads = 0
                 fixture.storage.faults.onStep = { step ->
                     // Begin binding, independent admission, then final reset-intent validation.
@@ -98,8 +137,16 @@ class ComplaintReportConsumerRecoveryTest {
                 fixture.storage.faults.clearFaults()
                 assertEquals(3, reads)
                 fixture.coordinator.beginReconciliation().success()
-                assertTrue(slot.sameAs(fixture.storage.pending.slots.single()))
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    slot.sameAs(
+                        fixture.storage.pending.slots
+                            .single(),
+                    ),
+                )
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
                 assertTrue(fixture.sessionRequests.isEmpty() && fixture.requests.isEmpty())
             } finally {
                 consumer.close()
@@ -114,14 +161,24 @@ class ComplaintReportConsumerRecoveryTest {
             fixture.storage.pending.slots += reportSlot(dispatched = false)
             val consumer = fixture.consumer()
             try {
-                val pending = consumer.reconcile().reportSuccess().entries().single().pending.handle
+                val pending =
+                    consumer
+                        .reconcile()
+                        .reportSuccess()
+                        .entries()
+                        .single()
+                        .pending
+                        .handle
                 val prompt = consumer.requestRecovery(pending).reportSuccess()
                 val other = assertNotNull(fixture.works.begin(Job()))
                 try {
                     consumer.cancelRecovery(prompt).reportSuccess()
                     assertTrue(other.job.isActive)
                     fixture.coordinator.beginReconciliation().success()
-                    assertTrue(fixture.storage.faults.mutations.isEmpty())
+                    assertTrue(
+                        fixture.storage.faults.mutations
+                            .isEmpty(),
+                    )
                 } finally {
                     fixture.coordinator.finishReport(other)
                     other.job.cancel()
