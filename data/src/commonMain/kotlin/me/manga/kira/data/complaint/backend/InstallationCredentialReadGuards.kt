@@ -25,7 +25,9 @@ internal suspend fun readHistoryAdmission(
         }
         is CredentialReadResult.Present -> {
             val record = read.record.also(::active)
-            ComplaintHistoryAdmission.Existing(ReconciliationPermit(record, pending.reconciliationSnapshot(record), issuer))
+            ComplaintHistoryAdmission.Existing(
+                ReconciliationPermit(record, pending.reconciliationSnapshot(record), issuer),
+            )
         }
         is InstallationStorageFailure -> fail(read)
     }

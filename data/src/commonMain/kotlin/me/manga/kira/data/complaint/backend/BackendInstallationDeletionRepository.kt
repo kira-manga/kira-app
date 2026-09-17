@@ -11,10 +11,10 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
-import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
-import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import kotlin.time.TimeSource
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome as DeletionOutcome
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt as DeletionPrompt
 
 /** One owner-bound consumer of the explicit producer. Continuation cannot reach session/key suppliers. */
 internal class BackendInstallationDeletionRepository(
@@ -29,7 +29,7 @@ internal class BackendInstallationDeletionRepository(
     override suspend fun observeDeletion(): AppResult<ComplaintInstallationDeletionObservation> =
         access { coordinator.observeDeletion().deletionResult() }
 
-    override suspend fun requestDeletion(): AppResult<ComplaintInstallationDeletionPrompt> {
+    override suspend fun requestDeletion(): AppResult<DeletionPrompt> {
         var issued: DeletionPromptHandle? = null
         var delivered = false
         return try {
@@ -53,52 +53,56 @@ internal class BackendInstallationDeletionRepository(
     }
 
     /** Dismissal remains safe after owner close; it can only clear this exact still-outstanding slot. */
-    override suspend fun cancelDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<Unit> =
+    override suspend fun cancelDeletion(prompt: DeletionPrompt): AppResult<Unit> =
         try {
             val expected = ownedPrompt(prompt)
-            if (expected == null) invalidDeletionPrompt() else coordinator.cancelDeletion(expected.confirmation).deletionResult()
+            if (expected == null) {
+                invalidDeletionPrompt()
+            } else {
+                coordinator.cancelDeletion(expected.confirmation).deletionResult()
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             AppResult.Failure(deletionUnexpected())
         }
 
-    override suspend fun confirmDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<ComplaintInstallationDeletionOutcome> {
+    override suspend fun confirmDeletion(prompt: DeletionPrompt): AppResult<DeletionOutcome> {
         val expected = ownedPrompt(prompt) ?: return invalidDeletionPrompt()
         return withWork { work -> start(coordinator.confirmDeletion(expected.confirmation, work)) }
     }
 
     /** Internal producer-fixture entry only. Consumers have no unbound start on the domain port. */
-    internal suspend fun startDeletion(): AppResult<ComplaintInstallationDeletionOutcome> =
+    internal suspend fun startDeletion(): AppResult<DeletionOutcome> =
         withWork { work ->
             start(coordinator.beginDeletionStart(work))
         }
 
     /** Both paths use their already-bound start, never reread arbitrary state to create another binding. */
-    private suspend fun start(admitted: Outcome<InstallationDeletionStart>): AppResult<ComplaintInstallationDeletionOutcome> {
+    private suspend fun start(admitted: Outcome<InstallationDeletionStart>): AppResult<DeletionOutcome> {
         if (admitted !is Outcome.Success) return AppResult.Failure(deletionLocalError(admitted))
         val start = admitted.value
-        val ticket =
-            when (val fresh = sessions.freshDeletionSession(start)) {
-                is InstallationDeletionSessionResult.Ready -> fresh.ticket
-                is InstallationDeletionSessionResult.Failed ->
-                    return AppResult.Failure(deletionSessionError(fresh.result))
+        return when (val fresh = sessions.freshDeletionSession(start)) {
+            is InstallationDeletionSessionResult.Failed -> AppResult.Failure(deletionSessionError(fresh.result))
+            is InstallationDeletionSessionResult.Ready -> {
+                val ticket = fresh.ticket
+                currentCoroutineContext().ensureActive()
+                val key = inputs.nextKey()
+                when (val committed = coordinator.commitDeletionStart(start, ticket, sessions, key)) {
+                    is Outcome.Success -> send(committed.value)
+                    else -> AppResult.Failure(deletionLocalError(committed))
+                }
             }
-        currentCoroutineContext().ensureActive()
-        val key = inputs.nextKey()
-        return when (val committed = coordinator.commitDeletionStart(start, ticket, sessions, key)) {
-            is Outcome.Success -> send(committed.value)
-            else -> AppResult.Failure(deletionLocalError(committed))
         }
     }
 
-    override suspend fun continueDeletion(): AppResult<ComplaintInstallationDeletionOutcome> =
+    override suspend fun continueDeletion(): AppResult<DeletionOutcome> =
         withWork { work ->
             when (val cleanup = coordinator.resumeDeletionCleanup(work)) {
                 is Outcome.Success ->
                     if (cleanup.value == InstallationDeletionCleanup.COMPLETED) {
                         retry = null
-                        return@withWork AppResult.Success(ComplaintInstallationDeletionOutcome.Completed)
+                        return@withWork AppResult.Success(DeletionOutcome.Completed)
                     }
                 else -> return@withWork AppResult.Failure(deletionLocalError(cleanup))
             }
@@ -108,30 +112,27 @@ internal class BackendInstallationDeletionRepository(
             }
         }
 
-    private suspend fun send(binding: InstallationDeletionBinding): AppResult<ComplaintInstallationDeletionOutcome> {
+    private suspend fun send(binding: InstallationDeletionBinding): AppResult<DeletionOutcome> {
         retry?.remaining(binding)?.let { seconds ->
-            return AppResult.Success(ComplaintInstallationDeletionOutcome.Pending(retryAfterSeconds = seconds))
+            return AppResult.Success(DeletionOutcome.Pending(retryAfterSeconds = seconds))
         }
         return try {
             when (val outcome = coordinator.dispatchDeletion(binding, http)) {
                 is Outcome.Success -> {
-                    val pending = outcome.value as? ComplaintInstallationDeletionOutcome.Pending
+                    val pending = outcome.value as? DeletionOutcome.Pending
                     retry =
                         pending?.retryAfterSeconds?.let { InstallationDeletionRetry(binding.record, it, inputs.clock) }
                     AppResult.Success(outcome.value)
                 }
                 else ->
-                    AppResult.Success(ComplaintInstallationDeletionOutcome.Pending(error = deletionLocalError(outcome)))
+                    AppResult.Success(DeletionOutcome.Pending(error = deletionLocalError(outcome)))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            AppResult.Success(ComplaintInstallationDeletionOutcome.Pending(error = deletionUnexpected()))
+            AppResult.Success(DeletionOutcome.Pending(error = deletionUnexpected()))
         }
     }
-
-    private fun ownedPrompt(prompt: ComplaintInstallationDeletionPrompt): DeletionPromptHandle? =
-        (prompt as? DeletionPromptHandle)?.takeIf { it.owner === this }
 
     /** Observation/warning reads have no work lane of their own, but retain the existing owner's close fence. */
     private suspend fun <T> access(action: suspend () -> AppResult<T>): AppResult<T> =
@@ -151,9 +152,7 @@ internal class BackendInstallationDeletionRepository(
         }
 
     /** Lifetime serialization only; never a public authenticated callback or destructive finally block. */
-    private suspend fun withWork(
-        action: suspend (InstallationDeletionWork) -> AppResult<ComplaintInstallationDeletionOutcome>,
-    ): AppResult<ComplaintInstallationDeletionOutcome> =
+    private suspend fun withWork(action: suspend (InstallationDeletionWork) -> AppResult<DeletionOutcome>) =
         try {
             coroutineScope {
                 val work =
@@ -172,11 +171,15 @@ internal class BackendInstallationDeletionRepository(
         }
 }
 
+/** Pure provenance comparison, retaining the exact same repository owner and opaque handle. */
+private fun BackendInstallationDeletionRepository.ownedPrompt(prompt: DeletionPrompt): DeletionPromptHandle? =
+    (prompt as? DeletionPromptHandle)?.takeIf { it.owner === this }
+
 /** The concrete repository supplies provenance; the coordinator's single slot supplies exact consent. */
 private class DeletionPromptHandle(
     val owner: BackendInstallationDeletionRepository,
     val confirmation: InstallationDeletionConfirmation,
-) : ComplaintInstallationDeletionPrompt {
+) : DeletionPrompt {
     override fun toString(): String = "ComplaintInstallationDeletionPrompt(redacted)"
 }
 

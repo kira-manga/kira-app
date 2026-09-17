@@ -14,7 +14,11 @@ import me.manga.kira.platform.storage.InstallationStorageFailure
 import me.manga.kira.platform.storage.PendingComplaintActionStore
 import me.manga.kira.platform.storage.PendingComplaintSnapshot
 
-/** Coordinator-owned helper. Every method runs under its existing mutex and consent/marker guards. */
+/**
+ * Coordinator-owned helper. Every method runs under its existing mutex and consent/marker guards.
+ * Keep the binding lifecycle beside its one work registry; splitting it would divide fencing ownership.
+ */
+@Suppress("TooManyFunctions")
 internal class InstallationDeletionBindings(
     private val credentials: InstallationCredentialStore,
     private val pending: PendingComplaintActionStore,

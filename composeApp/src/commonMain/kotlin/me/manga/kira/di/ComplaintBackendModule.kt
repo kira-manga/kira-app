@@ -156,7 +156,13 @@ private fun assembleComplaintBackendGraph(
             val installationRecovery = made.value.installationRecovery ?: return backendGraphUnavailable()
             val installationDeletion = made.value.deletion ?: return backendGraphUnavailable()
             AppResult.Success(
-                ComplaintBackendGraph(made.value, reports, installationRecovery, installationDeletion, cleanup.toList()),
+                ComplaintBackendGraph(
+                    made.value,
+                    reports,
+                    installationRecovery,
+                    installationDeletion,
+                    cleanup.toList(),
+                ),
             )
         }
     }
@@ -213,23 +219,7 @@ internal class ComplaintBackendGraph(
                     confirmRecovery = get(),
                 )
             }
-            factory {
-                ComplaintInstallationRecoveryActions(
-                    requestUnreadable = get(),
-                    requestDeletionAbandonment = get(),
-                    resumeCleanup = get(),
-                )
-            }
-            factory {
-                ComplaintInstallationDeletionActions(
-                    observe = get(),
-                    request = get(),
-                    cancel = get(),
-                    confirm = get(),
-                    continueDeletion = get(),
-                )
-            }
-            factory { ComplaintInstallationActions(recovery = get(), deletion = get()) }
+            registerInstallationActionGroups()
             viewModel { parameters ->
                 SettingsFeedbackViewModel(
                     actions = get(),
@@ -254,6 +244,27 @@ internal class ComplaintBackendGraph(
             check(closeBackendGraphResources(cleanup)) { "Complaint backend graph close failed" }
         }
     }
+}
+
+/** Factory declarations only; resolution stays lazy in this same isolated owner graph. */
+private fun Module.registerInstallationActionGroups() {
+    factory {
+        ComplaintInstallationRecoveryActions(
+            requestUnreadable = get(),
+            requestDeletionAbandonment = get(),
+            resumeCleanup = get(),
+        )
+    }
+    factory {
+        ComplaintInstallationDeletionActions(
+            observe = get(),
+            request = get(),
+            cancel = get(),
+            confirm = get(),
+            continueDeletion = get(),
+        )
+    }
+    factory { ComplaintInstallationActions(recovery = get(), deletion = get()) }
 }
 
 /** All owned cleanup runs, even if one owner fails; never attach platform exceptions as causes. */

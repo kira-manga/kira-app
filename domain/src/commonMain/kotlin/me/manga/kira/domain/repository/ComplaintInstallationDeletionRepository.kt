@@ -2,6 +2,7 @@ package me.manga.kira.domain.repository
 
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome as DeletionOutcome
 
 /**
  * Local observation and explicit, warned delete-all intent; construction is inert.
@@ -18,10 +19,10 @@ interface ComplaintInstallationDeletionRepository {
     suspend fun cancelDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<Unit>
 
     /** Consume exact consent before a real fresh session, durable intent and the fixed delete-all request. */
-    suspend fun confirmDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<ComplaintInstallationDeletionOutcome>
+    suspend fun confirmDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<DeletionOutcome>
 
     /** Retries only the already durable request; never enrolls, refreshes a session or allocates a key. */
-    suspend fun continueDeletion(): AppResult<ComplaintInstallationDeletionOutcome>
+    suspend fun continueDeletion(): AppResult<DeletionOutcome>
 }
 
 /** Opaque, owner-bound, process-local consent. Implementing this interface does not create authority. */

@@ -31,10 +31,18 @@ internal fun ComplaintInstallationDeletionObservation.presentationState(): Setti
     when (this) {
         ComplaintInstallationDeletionObservation.Active -> SettingsFeedbackDeletionState.Active
         ComplaintInstallationDeletionObservation.Missing -> SettingsFeedbackDeletionState.Missing
-        ComplaintInstallationDeletionObservation.LocalCleanupRequired -> SettingsFeedbackDeletionState.LocalCleanupRequired
+        ComplaintInstallationDeletionObservation.LocalCleanupRequired ->
+            SettingsFeedbackDeletionState.LocalCleanupRequired
         ComplaintInstallationDeletionObservation.RemoteDeletionPending -> SettingsFeedbackDeletionState.Pending()
     }
 
 internal fun SettingsFeedbackDeletionState.canStartNewDraft(): Boolean =
-    this == SettingsFeedbackDeletionState.Active || this == SettingsFeedbackDeletionState.Missing ||
+    this == SettingsFeedbackDeletionState.Active ||
+        this == SettingsFeedbackDeletionState.Missing ||
         this == SettingsFeedbackDeletionState.Completed
+
+internal fun SettingsFeedbackState.withDeletion(deletion: SettingsFeedbackDeletionState): SettingsFeedbackState =
+    copy(context = context.copy(deletion = deletion, missingInstallationObserved = false))
+
+internal fun SettingsFeedbackState.withRemotePrompt(): SettingsFeedbackState =
+    copy(context = context.copy(promptKind = SettingsFeedbackPromptKind.REMOTE_DELETION))

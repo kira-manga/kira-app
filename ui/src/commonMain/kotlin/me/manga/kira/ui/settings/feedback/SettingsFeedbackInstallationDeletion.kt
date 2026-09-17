@@ -50,7 +50,10 @@ internal fun SettingsInstallationDeletionContent(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(LocalSpacing.current.sm)) {
         HorizontalDivider()
-        Text(stringResource(Res.string.settings_installation_deletion_title), style = MaterialTheme.typography.titleSmall)
+        Text(
+            stringResource(Res.string.settings_installation_deletion_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
         val deletion = state.deletion
         Text(settingsInstallationDeletionStatus(deletion))
         if (deletion is SettingsFeedbackDeletionState.Pending) SettingsInstallationDeletionPendingInfo(deletion)

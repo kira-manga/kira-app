@@ -160,7 +160,8 @@ class SettingsFeedbackViewModel(
                 val observed = result.value.presentationState()
                 if (observed != SettingsFeedbackDeletionState.Active) retireLiveReport()
                 updateState { it.withDeletion(observed) }
-                if (reconcile && observed == SettingsFeedbackDeletionState.Active && live == null && !terminal) reconcileReports()
+                val activeReconciliationRequested = reconcile && observed == SettingsFeedbackDeletionState.Active
+                if (activeReconciliationRequested && live == null && !terminal) reconcileReports()
             }
         }
     }
@@ -339,7 +340,9 @@ class SettingsFeedbackViewModel(
                     }
                     is ComplaintInstallationDeletionOutcome.Pending ->
                         updateState {
-                            it.withDeletion(SettingsFeedbackDeletionState.Pending(outcome.retryAfterSeconds, outcome.error))
+                            it.withDeletion(
+                                SettingsFeedbackDeletionState.Pending(outcome.retryAfterSeconds, outcome.error),
+                            )
                         }
                 }
         }

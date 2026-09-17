@@ -18,7 +18,6 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.R
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ServerTerminalFact
 import me.manga.kira.data.complaint.backend.InstallationSessionManager.ReportSessionPublication
 import me.manga.kira.domain.model.complaint.ComplaintHistory
-import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
@@ -35,6 +34,7 @@ import me.manga.kira.platform.storage.InstallationPermanentFailure
 import me.manga.kira.platform.storage.InstallationStorageFailure
 import me.manga.kira.platform.storage.PendingClearResult
 import me.manga.kira.platform.storage.PendingComplaintActionStore
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation as DeletionObservation
 
 /**
  * Single-process lifecycle; the named enrollment operation alone adds bounded bootstrap/HTTP.
@@ -328,8 +328,7 @@ class InstallationCredentialCoordinator(
             PendingDeletion(record)
         }
 
-    internal suspend fun observeDeletion(): Outcome<ComplaintInstallationDeletionObservation> =
-        mutex.serialized { deletions.observe() }
+    internal suspend fun observeDeletion(): Outcome<DeletionObservation> = mutex.serialized { deletions.observe() }
 
     /** A warning occupies the SAME slot as local recovery, without canceling work or rotating its epoch. */
     internal suspend fun requestDeletion(): Outcome<InstallationDeletionConfirmation> =
@@ -876,17 +875,25 @@ private class CleanupSteps(
 
 /** One coordinator slot; the public local confirmation type retains its existing API and identity. */
 private sealed interface InstallationConsent {
-    class Local(val token: Confirmation) : InstallationConsent
+    class Local(
+        val token: Confirmation,
+    ) : InstallationConsent
 
-    class Remote(val token: InstallationDeletionConfirmation) : InstallationConsent
+    class Remote(
+        val token: InstallationDeletionConfirmation,
+    ) : InstallationConsent
 }
 
 private sealed interface CleanupResume {
     data object None : CleanupResume
 
-    class Marked(val marker: CredentialCleanupMarker) : CleanupResume
+    class Marked(
+        val marker: CredentialCleanupMarker,
+    ) : CleanupResume
 
-    class Reset(val record: InstallationCredentialRecord) : CleanupResume
+    class Reset(
+        val record: InstallationCredentialRecord,
+    ) : CleanupResume
 }
 
 private class ReportCreateDispatch(

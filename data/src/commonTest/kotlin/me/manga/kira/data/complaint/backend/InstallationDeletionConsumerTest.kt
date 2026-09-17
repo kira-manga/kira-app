@@ -18,6 +18,7 @@ import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt
 import me.manga.kira.platform.storage.CredentialCleanupReason
 import me.manga.kira.platform.storage.InstallationPermanentFailure
 import me.manga.kira.platform.storage.InstallationStorageFailure
+import me.manga.kira.platform.storage.PendingComplaintSlot
 import me.manga.kira.platform.storage.PendingComplaintSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -64,7 +65,13 @@ class InstallationDeletionConsumerTest {
                 assertRefused(Block.CONSENT_PENDING, fixture.coordinator.beginReconciliation())
                 fixture.repository.cancelDeletion(newer).reportSuccess()
                 fixture.coordinator.applyReconciliationIfCurrent(original) {}.success()
-                assertSame(original.issuer, fixture.coordinator.beginReconciliation().success().issuer)
+                assertSame(
+                    original.issuer,
+                    fixture.coordinator
+                        .beginReconciliation()
+                        .success()
+                        .issuer,
+                )
                 assertTrue(work.isCurrent())
                 val localPrompt = fixture.coordinator.requestRecovery(local).success()
                 assertIs<AppResult.Failure>(fixture.repository.requestDeletion())
@@ -122,7 +129,13 @@ class InstallationDeletionConsumerTest {
                 fixture.assertConsumerDidNotStart()
                 fixture.assertRetained(replacement)
                 assertIs<AppResult.Failure>(fixture.repository.cancelDeletion(prompt))
-                assertNotSame(original.issuer, fixture.coordinator.beginReconciliation().success().issuer)
+                assertNotSame(
+                    original.issuer,
+                    fixture.coordinator
+                        .beginReconciliation()
+                        .success()
+                        .issuer,
+                )
                 assertRefused(Block.STALE_BINDING, fixture.coordinator.applyReconciliationIfCurrent(original) {})
             } finally {
                 fixture.close()
@@ -217,7 +230,13 @@ class InstallationDeletionConsumerTest {
                     } else {
                         assertEquals(case.expected, result.reportSuccess())
                     }
-                    case.lastRead?.let { assertEquals(it, fixture.storage.faults.trace.last()) }
+                    case.lastRead?.let {
+                        assertEquals(
+                            it,
+                            fixture.storage.faults.trace
+                                .last(),
+                        )
+                    }
                     fixture.assertConsumerDidNotStart()
                 } finally {
                     fixture.close()
@@ -233,8 +252,10 @@ private fun InstallationDeletionFixture.assertConsumerDidNotStart() {
     assertTrue(storage.faults.mutations.isEmpty())
 }
 
-private fun consumerSlots() =
-    List(PendingComplaintSnapshot.MAX_SLOTS) { sessionPendingSlot(key = historyId(CONSUMER_KEY_OFFSET + it)) }
+private fun consumerSlots(): List<PendingComplaintSlot> =
+    List(PendingComplaintSnapshot.MAX_SLOTS) {
+        sessionPendingSlot(key = historyId(CONSUMER_KEY_OFFSET + it))
+    }
 
 private fun consumerConfirmationDrift(): List<(InstallationCoordinatorFixture) -> Unit> =
     listOf(
@@ -251,7 +272,9 @@ private fun consumerConfirmationDrift(): List<(InstallationCoordinatorFixture) -
             { storage: InstallationCoordinatorFixture ->
                 storage.pending.slots += sessionPendingSlot(key = historyId(CONSUMER_KEY_OFFSET))
             },
-            { storage: InstallationCoordinatorFixture -> storage.pending.slots[0] = sessionPendingSlot(dispatched = true) },
+            { storage: InstallationCoordinatorFixture ->
+                storage.pending.slots[0] = sessionPendingSlot(dispatched = true)
+            },
         )
 
 private fun TestScope.acceptedConsumerDeletion(): InstallationDeletionFixture {
@@ -263,7 +286,10 @@ private fun TestScope.acceptedConsumerDeletion(): InstallationDeletionFixture {
         deletionHandler = {
             assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(deletingRecord()))
             assertEquals(PendingComplaintSnapshot.MAX_SLOTS, storage.pending.slots.size)
-            val readback = storage.faults.trace.dropWhile { it != Step.REPLACE_STORED }.drop(1)
+            val readback =
+                storage.faults.trace
+                    .dropWhile { it != Step.REPLACE_STORED }
+                    .drop(1)
             assertTrue(Step.CREDENTIAL_READ in readback)
             exchanges++
             val status = if (exchanges == 1) HttpStatusCode.Accepted else HttpStatusCode.NoContent
@@ -280,11 +306,13 @@ private class ConsumerObservation(
 
 private fun consumerObservations(): List<ConsumerObservation> {
     val corrupt = InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.CORRUPT)
-    val unsupported = InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.UNSUPPORTED)
     val cases =
         listOf(
             ConsumerObservation(ComplaintInstallationDeletionObservation.Active),
-            ConsumerObservation(ComplaintInstallationDeletionObservation.Active, { it.pending.slots += consumerSlots() }),
+            ConsumerObservation(
+                ComplaintInstallationDeletionObservation.Active,
+                { it.pending.slots += consumerSlots() },
+            ),
             ConsumerObservation(ComplaintInstallationDeletionObservation.Missing, { it.credentials.removePieces() }),
             ConsumerObservation(
                 null,
@@ -317,8 +345,13 @@ private fun consumerObservations(): List<ConsumerObservation> {
                 Step.CREDENTIAL_READ,
             ),
         )
-    val localMarkers =
-        CredentialCleanupReason.entries.filterNot { it == CredentialCleanupReason.SERVER_TERMINAL_CONFIRMED }.map { reason ->
+    return cases + consumerLocalMarkers() + consumerReadErrors()
+}
+
+private fun consumerLocalMarkers(): List<ConsumerObservation> =
+    CredentialCleanupReason.entries
+        .filterNot { it == CredentialCleanupReason.SERVER_TERMINAL_CONFIRMED }
+        .map { reason ->
             ConsumerObservation(
                 ComplaintInstallationDeletionObservation.LocalCleanupRequired,
                 {
@@ -328,16 +361,19 @@ private fun consumerObservations(): List<ConsumerObservation> {
                 Step.MARKER_READ,
             )
         }
-    val errors =
-        listOf(InstallationStoreFaults.ioFailure, corrupt, unsupported).flatMap { failure ->
-            listOf(
-                ConsumerObservation(null, { it.credentials.markerFailure = failure }),
-                ConsumerObservation(null, { it.credentials.readFailure = failure }),
-                ConsumerObservation(null, { it.pending.readFailure = failure }),
-            )
-        }
-    return cases + localMarkers + errors
-}
+
+private fun consumerReadErrors(): List<ConsumerObservation> =
+    listOf(
+        InstallationStoreFaults.ioFailure,
+        InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.CORRUPT),
+        InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.UNSUPPORTED),
+    ).flatMap { failure ->
+        listOf(
+            ConsumerObservation(null, { it.credentials.markerFailure = failure }),
+            ConsumerObservation(null, { it.credentials.readFailure = failure }),
+            ConsumerObservation(null, { it.pending.readFailure = failure }),
+        )
+    }
 
 private class FabricatedDeletionPrompt : ComplaintInstallationDeletionPrompt
 

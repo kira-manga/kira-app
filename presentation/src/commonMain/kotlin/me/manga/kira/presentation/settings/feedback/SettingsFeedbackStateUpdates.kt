@@ -31,12 +31,6 @@ internal fun SettingsFeedbackState.withRecoveryKind(kind: SettingsFeedbackRecove
             ),
     )
 
-internal fun SettingsFeedbackState.withDeletion(deletion: SettingsFeedbackDeletionState): SettingsFeedbackState =
-    copy(context = context.copy(deletion = deletion, missingInstallationObserved = false))
-
-internal fun SettingsFeedbackState.withRemotePrompt(): SettingsFeedbackState =
-    copy(context = context.copy(promptKind = SettingsFeedbackPromptKind.REMOTE_DELETION))
-
 internal fun SettingsFeedbackState.withPreparation(prepared: ComplaintReportPreparation): SettingsFeedbackState =
     withMissingObservation(prepared.isMissingPreparation()).copy(
         result =
@@ -65,7 +59,8 @@ internal fun SettingsFeedbackState.afterWork(
         activity =
             when {
                 terminal -> SettingsFeedbackActivity.TERMINAL
-                !normalActionsAllowed && deletion != SettingsFeedbackDeletionState.Missing -> SettingsFeedbackActivity.BLOCKED
+                !normalActionsAllowed && deletion != SettingsFeedbackDeletionState.Missing ->
+                    SettingsFeedbackActivity.BLOCKED
                 hasLiveReport -> SettingsFeedbackActivity.LIVE
                 else -> SettingsFeedbackActivity.EDITING
             },

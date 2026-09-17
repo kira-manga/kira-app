@@ -220,10 +220,14 @@ internal class GraphCredentials : InstallationCredentialStore {
     ): CredentialReplaceResult {
         if (!allowDeletionReplacement) return mutation()
         writes++
-        if (missing) return CredentialReplaceResult.Missing
-        if (this.record.localGeneration != expectedGeneration) return CredentialReplaceResult.Stale
-        this.record = record
-        return CredentialReplaceResult.Stored
+        return when {
+            missing -> CredentialReplaceResult.Missing
+            this.record.localGeneration != expectedGeneration -> CredentialReplaceResult.Stale
+            else -> {
+                this.record = record
+                CredentialReplaceResult.Stored
+            }
+        }
     }
 
     override suspend fun delete(

@@ -62,7 +62,10 @@ class ComplaintBackendDeletionConsumerTest {
                     fixture.events.filter { it.startsWith("close:") },
                 )
                 assertEquals(0, fixture.deletionKeyGenerations + fixture.reportIdentifierGenerations)
-                assertEquals(0, fixture.historyCalls + fixture.sessionCalls + fixture.mutationCalls + fixture.deletionCalls)
+                assertEquals(
+                    0,
+                    fixture.historyCalls + fixture.sessionCalls + fixture.mutationCalls + fixture.deletionCalls,
+                )
                 assertEquals(0, fixture.credentials.writes + fixture.pending.writes + fixture.generations)
             }
         }
@@ -102,7 +105,7 @@ class ComplaintBackendDeletionConsumerTest {
                 runCurrent()
                 assertTrue(fixture.owners.values.none { it.closed })
                 assertGraphDeletionReopening(app.koin, fixture)
-                assertEquals(listOf(GRAPH_DELETION_KEY, GRAPH_DELETION_KEY), keys)
+                assertEquals(listOf<String?>(GRAPH_DELETION_KEY, GRAPH_DELETION_KEY), keys)
                 assertEquals(bodies.first(), bodies.last())
                 assertEquals(1, fixture.credentials.writes)
                 assertEquals(0, fixture.pending.writes + fixture.generations + fixture.mutationCalls)

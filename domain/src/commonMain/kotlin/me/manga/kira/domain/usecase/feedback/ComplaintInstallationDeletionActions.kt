@@ -3,8 +3,8 @@ package me.manga.kira.domain.usecase.feedback
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
-import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt as DeletionPrompt
 
 /** Separate local recovery and remote erasure actions, bound to one installation owner. */
 class ComplaintInstallationActions(
@@ -30,20 +30,19 @@ class ObserveComplaintInstallationDeletionUseCase(
 class RequestComplaintInstallationDeletionUseCase(
     private val repository: ComplaintInstallationDeletionRepository,
 ) {
-    suspend operator fun invoke(): AppResult<ComplaintInstallationDeletionPrompt> = repository.requestDeletion()
+    suspend operator fun invoke(): AppResult<DeletionPrompt> = repository.requestDeletion()
 }
 
 class CancelComplaintInstallationDeletionUseCase(
     private val repository: ComplaintInstallationDeletionRepository,
 ) {
-    suspend operator fun invoke(prompt: ComplaintInstallationDeletionPrompt): AppResult<Unit> =
-        repository.cancelDeletion(prompt)
+    suspend operator fun invoke(prompt: DeletionPrompt): AppResult<Unit> = repository.cancelDeletion(prompt)
 }
 
 class ConfirmComplaintInstallationDeletionUseCase(
     private val repository: ComplaintInstallationDeletionRepository,
 ) {
-    suspend operator fun invoke(prompt: ComplaintInstallationDeletionPrompt): AppResult<ComplaintInstallationDeletionOutcome> =
+    suspend operator fun invoke(prompt: DeletionPrompt): AppResult<ComplaintInstallationDeletionOutcome> =
         repository.confirmDeletion(prompt)
 }
 

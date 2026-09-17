@@ -2,7 +2,6 @@ package me.manga.kira.presentation.settings.feedback
 
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
-import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.usecase.feedback.CancelComplaintInstallationDeletionUseCase
@@ -11,6 +10,7 @@ import me.manga.kira.domain.usecase.feedback.ConfirmComplaintInstallationDeletio
 import me.manga.kira.domain.usecase.feedback.ContinueComplaintInstallationDeletionUseCase
 import me.manga.kira.domain.usecase.feedback.ObserveComplaintInstallationDeletionUseCase
 import me.manga.kira.domain.usecase.feedback.RequestComplaintInstallationDeletionUseCase
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome as DeletionOutcome
 
 /** Domain-port fake for per-opening intent/lifetime tests, not a replacement deletion coordinator. */
 internal class SettingsInstallationDeletionFake : ComplaintInstallationDeletionRepository {
@@ -24,11 +24,11 @@ internal class SettingsInstallationDeletionFake : ComplaintInstallationDeletionR
     val dismissed = mutableListOf<ComplaintInstallationDeletionPrompt>()
     var onObserve: suspend () -> AppResult<ComplaintInstallationDeletionObservation> = { observation }
     var onRequest: suspend () -> AppResult<ComplaintInstallationDeletionPrompt> = { AppResult.Success(nextPrompt) }
-    var onConfirm: suspend (ComplaintInstallationDeletionPrompt) -> AppResult<ComplaintInstallationDeletionOutcome> = {
-        AppResult.Success(ComplaintInstallationDeletionOutcome.Pending())
+    var onConfirm: suspend (ComplaintInstallationDeletionPrompt) -> AppResult<DeletionOutcome> = {
+        AppResult.Success(DeletionOutcome.Pending())
     }
-    var onContinue: suspend () -> AppResult<ComplaintInstallationDeletionOutcome> = {
-        AppResult.Success(ComplaintInstallationDeletionOutcome.Pending())
+    var onContinue: suspend () -> AppResult<DeletionOutcome> = {
+        AppResult.Success(DeletionOutcome.Pending())
     }
 
     override suspend fun observeDeletion(): AppResult<ComplaintInstallationDeletionObservation> {
@@ -46,12 +46,12 @@ internal class SettingsInstallationDeletionFake : ComplaintInstallationDeletionR
         return AppResult.Success(Unit)
     }
 
-    override suspend fun confirmDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<ComplaintInstallationDeletionOutcome> {
+    override suspend fun confirmDeletion(prompt: ComplaintInstallationDeletionPrompt): AppResult<DeletionOutcome> {
         confirmed += prompt
         return onConfirm(prompt)
     }
 
-    override suspend fun continueDeletion(): AppResult<ComplaintInstallationDeletionOutcome> {
+    override suspend fun continueDeletion(): AppResult<DeletionOutcome> {
         continuations++
         return onContinue()
     }

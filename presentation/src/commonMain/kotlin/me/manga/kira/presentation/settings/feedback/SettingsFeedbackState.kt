@@ -67,15 +67,23 @@ data class SettingsFeedbackState(
     val normalActionsAllowed: Boolean get() = deletion == SettingsFeedbackDeletionState.Active
     val canUsePendingActions: Boolean get() = normalActionsAllowed && !busy && !confirmationPending
     val editable: Boolean
-        get() = (normalActionsAllowed || deletion == SettingsFeedbackDeletionState.Missing) &&
-            activity == SettingsFeedbackActivity.EDITING && !confirmationPending
+        get() =
+            (normalActionsAllowed || deletion == SettingsFeedbackDeletionState.Missing) &&
+                activity == SettingsFeedbackActivity.EDITING &&
+                !confirmationPending
     val canRetry: Boolean
         get() = normalActionsAllowed && activity == SettingsFeedbackActivity.LIVE && !confirmationPending
     val canStartNewDraft: Boolean
         get() = activity == SettingsFeedbackActivity.TERMINAL && !confirmationPending && deletion.canStartNewDraft()
     val canSetupHistory: Boolean
-        get() = !busy && !confirmationPending && activity != SettingsFeedbackActivity.TERMINAL &&
-            (deletion == SettingsFeedbackDeletionState.Missing || (normalActionsAllowed && context.missingInstallationObserved))
+        get() =
+            !busy &&
+                !confirmationPending &&
+                activity != SettingsFeedbackActivity.TERMINAL &&
+                (
+                    deletion == SettingsFeedbackDeletionState.Missing ||
+                        (normalActionsAllowed && context.missingInstallationObserved)
+                )
     val canRequestRemoteDeletion: Boolean get() = normalActionsAllowed && !busy && !confirmationPending
     val canContinueRemoteDeletion: Boolean
         get() = deletion is SettingsFeedbackDeletionState.Pending && !busy && !confirmationPending
