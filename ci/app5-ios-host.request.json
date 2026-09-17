@@ -1,0 +1,47 @@
+{
+  "schema": "app-29-apple-native8-v1",
+  "status": "UNBOUND_REQUIRES_PRIMARY_REVIEW",
+  "authorization": "UNBOUND",
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_ONLY",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "7aed03749876668fb0ebb9f434fd22fdafe27907",
+    "tree": "4005fe82a3b2ddc2b37e3080862d18bef0935ced"
+  },
+  "expectedRunAttempt": 1,
+  "controls": {
+    ".github/workflows/app5-ios-host.yml": "72cdf5038ed9d716b32c96f16e29450934c984c1244019ece310cc2b06e7920a",
+    "ci/app-seven-apple-native.init.gradle": "45db2c028b89106fd2018cb7badb8d078ed632cc4ea141e44e7a5b4631fb3371",
+    "ci/app-seven-apple-native.py": "6799a80d6b366a0e549cd84e66847a168159e75703874f899e031753f252800e",
+    "ci/app-seven-apple.native-tests.json": "a26c7ef73cadb944b974f5593b9dd2e60ea7a8bf0173c8970cdbe5abddc405dc",
+    "ci/app5-ios-host-commands.py": "bad29587b8b5a5095fb5674d3c0c1ceddac517e11d9940182876ec5f1b689a90",
+    "ci/app5-ios-host-evidence.py": "a69d61cf65273c356453d53ac4c376b650929003e6798c6f10edeca93138bb4b",
+    "ci/app5-ios-host.py": "4fe44247855f97e70a01dee88a4a3dd2155b92a3f9c52c348bcf76dd94483312",
+    "ci/app5-ios-host.source-pins.json": "44f497764dc261a4c6507caa6b1780bf1e8f0d3b8c8696bf1d70d27dd4404f17",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf"
+  },
+  "ref": "candidate/app29-apple-native8-20260917-01",
+  "limits": {
+    "nativeSeconds": 1200,
+    "workSeconds": 1440,
+    "controllerSeconds": 1680,
+    "cleanupSeconds": 240,
+    "stopSeconds": 40,
+    "jobMinutes": 35,
+    "gradleWorkers": 1,
+    "nativeThreads": 1,
+    "jvmHeapGiB": 3,
+    "metaspaceMiB": 768,
+    "diskFloorGiB": 8,
+    "nativeCommandLogBytes": 4194304,
+    "otherCommandLogBytes": 1048576,
+    "aggregateCommandLogBytes": 8388608,
+    "otherAggregateCommandLogBytes": 4194304,
+    "cleanupCommandLogBytes": 1048576,
+    "nativeBinaryFingerprintBytes": 1073741824
+  },
+  "nativeTasks": [
+    ":data:remote:iosSimulatorArm64Test"
+  ],
+  "mode": "NATIVE_ONLY"
+}
