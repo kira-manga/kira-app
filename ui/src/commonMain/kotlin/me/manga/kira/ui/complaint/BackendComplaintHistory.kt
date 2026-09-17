@@ -38,8 +38,13 @@ import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
 /** No clickable row/action-dialog or conversion to legacy ComplaintSummary exists in this branch. */
+// Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
-internal fun BackendComplaintHistory(state: ComplaintState, onIntent: (ComplaintIntent) -> Unit) {
+internal fun BackendComplaintHistory(
+    state: ComplaintState,
+    onIntent: (ComplaintIntent) -> Unit,
+) {
     val history = state.history as? ComplaintHistory.Backend ?: return
     val spacing = LocalSpacing.current
     Column(modifier = Modifier.fillMaxSize()) {
@@ -78,14 +83,17 @@ internal fun BackendComplaintHistory(state: ComplaintState, onIntent: (Complaint
     }
 }
 
+// Compose UI declarations use PascalCase.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun BackendHistoryRow(row: ComplaintOwnerRow) {
     val spacing = LocalSpacing.current
-    val title = when (row) {
-        is ComplaintOwnerRow.Report -> row.subject
-        is ComplaintOwnerRow.Reply -> row.subject
-        is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> stringResource(Res.string.unknown)
-    }
+    val title =
+        when (row) {
+            is ComplaintOwnerRow.Report -> row.subject
+            is ComplaintOwnerRow.Reply -> row.subject
+            is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> stringResource(Res.string.unknown)
+        }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(spacing.md), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -103,8 +111,13 @@ private fun BackendHistoryRow(row: ComplaintOwnerRow) {
 }
 
 /** Loading/error is supplementary whenever a genuine prior snapshot (including empty) exists. */
+// Compose UI declarations use PascalCase.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
-internal fun ComplaintHistoryRefreshStatus(state: ComplaintState, onIntent: (ComplaintIntent) -> Unit) {
+internal fun ComplaintHistoryRefreshStatus(
+    state: ComplaintState,
+    onIntent: (ComplaintIntent) -> Unit,
+) {
     if (!state.isLoading && state.error == null) return
     val spacing = LocalSpacing.current
     Row(

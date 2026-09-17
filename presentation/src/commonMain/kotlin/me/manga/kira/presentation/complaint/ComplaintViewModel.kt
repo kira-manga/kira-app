@@ -2,9 +2,9 @@ package me.manga.kira.presentation.complaint
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.manga.kira.core.error.AppError
@@ -128,9 +128,8 @@ class ComplaintViewModel(
     private val editComplaint: EditComplaintUseCase,
     private val deleteComplaint: DeleteComplaintUseCase,
 ) : MviViewModel<ComplaintState, ComplaintIntent, ComplaintEffect>(
-    initialState = ComplaintState(),
-) {
-
+        initialState = ComplaintState(),
+    ) {
     private val loadSerial = Mutex()
     private var loadJob: Job? = null
     private var loadGeneration = 0L
@@ -224,7 +223,10 @@ class ComplaintViewModel(
         }
     }
 
-    private fun handleSubmitEdit(subject: String, body: String) {
+    private fun handleSubmitEdit(
+        subject: String,
+        body: String,
+    ) {
         val current = state.value
         if (current.isSubmittingAction) return
         val original = current.activeComplaint ?: return
@@ -246,7 +248,10 @@ class ComplaintViewModel(
         }
     }
 
-    private suspend fun completeAction(result: Result<Unit>, action: ComplaintAction) {
+    private suspend fun completeAction(
+        result: Result<Unit>,
+        action: ComplaintAction,
+    ) {
         if (result.isSuccess) {
             updateState {
                 it.copy(
@@ -270,27 +275,29 @@ class ComplaintViewModel(
         val generation = ++loadGeneration
         previous?.cancel()
         updateState { it.copy(isLoading = true, error = null) }
-        loadJob = launchSafely {
-            // A canceled intermediate waiter must not let a third retry overtake the oldest
-            // response's finally block. The serial section also covers the selected legacy port.
-            loadSerial.withLock {
-                previous?.join()
-                currentCoroutineContext().ensureActive()
-                val result = try {
-                    observeUserComplaints()
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    AppResult.Failure(AppError.Unexpected("complaint_history_failed"))
-                }
-                currentCoroutineContext().ensureActive()
-                if (generation != loadGeneration) return@withLock
-                when (result) {
-                    is AppResult.Success -> applyHistory(result.value)
-                    is AppResult.Failure -> updateState { it.copy(isLoading = false, error = result.error) }
+        loadJob =
+            launchSafely {
+                // A canceled intermediate waiter must not let a third retry overtake the oldest
+                // response's finally block. The serial section also covers the selected legacy port.
+                loadSerial.withLock {
+                    previous?.join()
+                    currentCoroutineContext().ensureActive()
+                    val result =
+                        try {
+                            observeUserComplaints()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            AppResult.Failure(AppError.Unexpected("complaint_history_failed"))
+                        }
+                    currentCoroutineContext().ensureActive()
+                    if (generation != loadGeneration) return@withLock
+                    when (result) {
+                        is AppResult.Success -> applyHistory(result.value)
+                        is AppResult.Failure -> updateState { it.copy(isLoading = false, error = result.error) }
+                    }
                 }
             }
-        }
     }
 
     private fun applyHistory(history: ComplaintHistory) {
@@ -303,30 +310,46 @@ class ComplaintViewModel(
                 all = legacy,
                 filtered = applyFilter(legacy, it.searchQuery, it.selectedStatus),
                 backendItems = filterBackend(history, it.searchQuery, it.selectedStatus),
-                actionDialogMode = if (history is ComplaintHistory.Legacy) it.actionDialogMode else ActionDialogMode.NONE,
+                actionDialogMode =
+                    if (history is ComplaintHistory.Legacy) {
+                        it.actionDialogMode
+                    } else {
+                        ActionDialogMode.NONE
+                    },
                 activeComplaint = if (history is ComplaintHistory.Legacy) it.activeComplaint else null,
                 isSubmittingAction = history is ComplaintHistory.Legacy && it.isSubmittingAction,
             )
         }
     }
 
-    override fun onUnhandledError(throwable: Throwable, intent: ComplaintIntent?) {
+    override fun onUnhandledError(
+        throwable: Throwable,
+        intent: ComplaintIntent?,
+    ) {
         // Even unexpected failures must not send transport/content diagnostics to Kermit or UI.
         updateState {
             it.copy(isLoading = false, isSubmittingAction = false, error = AppError.Unexpected("complaint_failed"))
         }
     }
 
-    private fun filterBackend(history: ComplaintHistory?, query: String, status: ComplaintStatus?): List<ComplaintOwnerRow> =
+    private fun filterBackend(
+        history: ComplaintHistory?,
+        query: String,
+        status: ComplaintStatus?,
+    ): List<ComplaintOwnerRow> =
         (history as? ComplaintHistory.Backend)?.items.orEmpty().filter { row ->
-            val subject = when (row) {
-                is ComplaintOwnerRow.Report -> row.subject
-                is ComplaintOwnerRow.Reply -> row.subject
-                is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> ""
-            }
+            val subject =
+                when (row) {
+                    is ComplaintOwnerRow.Report -> row.subject
+                    is ComplaintOwnerRow.Reply -> row.subject
+                    is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> ""
+                }
             val content = row as? ComplaintOwnerRow.Content
-            val matches = query.isEmpty() || subject.contains(query, ignoreCase = true) ||
-                content?.fields?.body?.contains(query, ignoreCase = true) == true || row.id.contains(query, ignoreCase = true)
+            val matches =
+                query.isEmpty() ||
+                    subject.contains(query, ignoreCase = true) ||
+                    content?.fields?.body?.contains(query, ignoreCase = true) == true ||
+                    row.id.contains(query, ignoreCase = true)
             val knownStatus = content?.fields?.status as? ComplaintHistoryStatus.Known
             matches && (status == null || knownStatus?.value == status)
         }
@@ -335,24 +358,27 @@ class ComplaintViewModel(
         all: List<ComplaintSummary>,
         query: String,
         status: ComplaintStatus?,
-    ): List<ComplaintSummary> = all.filter { complaint ->
-        val matchesSearch = query.isEmpty() ||
-            complaint.subject.contains(query, ignoreCase = true) ||
-            complaint.body.contains(query, ignoreCase = true) ||
-            complaint.id.contains(query, ignoreCase = true)
-        val matchesStatus = status == null || complaint.status == status
-        matchesSearch && matchesStatus
-    }
+    ): List<ComplaintSummary> =
+        all.filter { complaint ->
+            val matchesSearch =
+                query.isEmpty() ||
+                    complaint.subject.contains(query, ignoreCase = true) ||
+                    complaint.body.contains(query, ignoreCase = true) ||
+                    complaint.id.contains(query, ignoreCase = true)
+            val matchesStatus = status == null || complaint.status == status
+            matchesSearch && matchesStatus
+        }
 
     private companion object {
         const val TAG = "ComplaintViewModel"
-
     }
 }
 
 /** Backend rows have no legacy action shape, and injected legacy-shaped intents are rejected too. */
-private fun ComplaintIntent.isLegacyAction(): Boolean = when (this) {
-    ComplaintIntent.OnRetry, is ComplaintIntent.OnSearchChange, is ComplaintIntent.OnStatusFilter,
-    ComplaintIntent.OnClearSearch -> false
-    else -> true
-}
+private fun ComplaintIntent.isLegacyAction(): Boolean =
+    when (this) {
+        ComplaintIntent.OnRetry, is ComplaintIntent.OnSearchChange, is ComplaintIntent.OnStatusFilter,
+        ComplaintIntent.OnClearSearch,
+        -> false
+        else -> true
+    }

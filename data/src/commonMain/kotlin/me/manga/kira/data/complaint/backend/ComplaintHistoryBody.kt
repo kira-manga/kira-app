@@ -19,12 +19,17 @@ import kotlin.text.CharacterCodingException
 
 /** Limit+one before UTF-8/JSON. Native queue limits are the separately qualified engine's responsibility. */
 internal object ComplaintHistoryBody {
-    suspend fun read(response: HttpResponse, expectedUrl: Url): AppResult<ComplaintHistoryPage> {
+    suspend fun read(
+        response: HttpResponse,
+        expectedUrl: Url,
+    ): AppResult<ComplaintHistoryPage> {
         val channel = response.bodyAsChannel()
         return try {
-            if (response.call.request.url != expectedUrl || response.call.request.method != HttpMethod.Get) invalidHistory()
+            if (response.call.request.url != expectedUrl || response.call.request.method != HttpMethod.Get) {
+                invalidHistory()
+            }
             val success = response.status == HttpStatusCode.OK
-            if (!success && response.status.value !in 400..599) invalidHistory()
+            if (!success && response.status.value !in MIN_ERROR_STATUS..MAX_ERROR_STATUS) invalidHistory()
             val maximum = if (success) MAX_LIST_BYTES else MAX_PROBLEM_BYTES
             val declared = headers(response, success, maximum)
             val text = utf8(channel, maximum, declared)
@@ -44,10 +49,19 @@ internal object ComplaintHistoryBody {
         }
     }
 
-    private fun headers(response: HttpResponse, success: Boolean, maximum: Int): Int? {
+    private fun headers(
+        response: HttpResponse,
+        success: Boolean,
+        maximum: Int,
+    ): Int? {
         val headers = response.headers
         if (headers.single(ComplaintBoundedResponse.CONTRACT_HEADER) != "1") invalidHistory()
-        val cache = headers.single(HttpHeaders.CacheControl)?.lowercase()?.split(',')?.map { it.trim() }
+        val cache =
+            headers
+                .single(HttpHeaders.CacheControl)
+                ?.lowercase()
+                ?.split(',')
+                ?.map { it.trim() }
         if (cache == null || cache.size != CACHE.size || cache.toSet() != CACHE) invalidHistory()
         val encoding = headers.single(HttpHeaders.ContentEncoding)
         if (encoding != null && !encoding.equals("identity", ignoreCase = true)) invalidHistory()
@@ -55,7 +69,17 @@ internal object ComplaintHistoryBody {
         if (!pattern.matches(headers.single(HttpHeaders.ContentType) ?: invalidHistory())) invalidHistory()
         if (headers.contains(HttpHeaders.Location) || headers.contains(HttpHeaders.ETag)) invalidHistory()
         if (response.status == HttpStatusCode.Unauthorized &&
-            headers.single(HttpHeaders.WWWAuthenticate) != "Bearer realm=\"kira-complaints\"") invalidHistory()
+            headers.single(HttpHeaders.WWWAuthenticate) != "Bearer realm=\"kira-complaints\""
+        ) {
+            invalidHistory()
+        }
+        return declaredLength(headers, maximum)
+    }
+
+    private fun declaredLength(
+        headers: Headers,
+        maximum: Int,
+    ): Int? {
         val length = headers.single(HttpHeaders.ContentLength)
         val transfer = headers.single(HttpHeaders.TransferEncoding)
         if (transfer != null && (length != null || !transfer.equals("chunked", ignoreCase = true))) invalidHistory()
@@ -70,7 +94,11 @@ internal object ComplaintHistoryBody {
         return values.single()
     }
 
-    private suspend fun utf8(channel: ByteReadChannel, maximum: Int, declared: Int?): String {
+    private suspend fun utf8(
+        channel: ByteReadChannel,
+        maximum: Int,
+        declared: Int?,
+    ): String {
         val buffer = ByteArray(maximum + 1)
         return try {
             var count = 0
@@ -89,10 +117,16 @@ internal object ComplaintHistoryBody {
         }
     }
 
+    private const val MIN_ERROR_STATUS = 400
+    private const val MAX_ERROR_STATUS = 599
     private const val MAX_LIST_BYTES = 2 * 1_024 * 1_024
     private const val MAX_PROBLEM_BYTES = 16 * 1_024
     private const val MAX_HEADER = 128
     private val CACHE = setOf("no-store", "no-transform")
     private val JSON_MEDIA = Regex("application/json(?:;[ \\t]*charset=(?:utf-8|\"utf-8\"))?", RegexOption.IGNORE_CASE)
-    private val PROBLEM_MEDIA = Regex("application/problem\\+json(?:;[ \\t]*charset=(?:utf-8|\"utf-8\"))?", RegexOption.IGNORE_CASE)
+    private val PROBLEM_MEDIA =
+        Regex(
+            "application/problem\\+json(?:;[ \\t]*charset=(?:utf-8|\"utf-8\"))?",
+            RegexOption.IGNORE_CASE,
+        )
 }

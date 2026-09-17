@@ -20,20 +20,29 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /** Fixed owner-list client borrowing only the separately qualified history engine. No retries/plugins/caches. */
 @OptIn(ExperimentalAtomicApi::class)
-internal class ComplaintHistoryHttp(private val endpoint: ComplaintBackendEndpoint, engine: HttpClientEngine) {
+internal class ComplaintHistoryHttp(
+    private val endpoint: ComplaintBackendEndpoint,
+    engine: HttpClientEngine,
+) {
     private val closed = AtomicBoolean(false)
-    private val client = HttpClient(engine) {
-        followRedirects = false
-        expectSuccess = false
-        useDefaultTransformers = false
-        install(HttpTimeout) {
-            requestTimeoutMillis = REQUEST_TIMEOUT_MS
-            connectTimeoutMillis = IO_TIMEOUT_MS
-            socketTimeoutMillis = IO_TIMEOUT_MS
+    private val client =
+        HttpClient(engine) {
+            followRedirects = false
+            expectSuccess = false
+            useDefaultTransformers = false
+            install(HttpTimeout) {
+                requestTimeoutMillis = REQUEST_TIMEOUT_MS
+                connectTimeoutMillis = IO_TIMEOUT_MS
+                socketTimeoutMillis = IO_TIMEOUT_MS
+            }
         }
-    }
 
-    suspend fun fetch(session: ComplaintSessionResponse, cursor: String?): AppResult<ComplaintHistoryPage> {
+    // URL/cursor, closed-client and transport failures exit before a response can be accepted.
+    @Suppress("ReturnCount")
+    suspend fun fetch(
+        session: ComplaintSessionResponse,
+        cursor: String?,
+    ): AppResult<ComplaintHistoryPage> {
         if (closed.load()) return historyUnavailable()
         if (cursor != null && !validHistoryCursor(cursor)) return malformedHistory()
         // These are the only query names/values. Cursor syntax excludes encoding/delimiter aliases.
@@ -42,14 +51,15 @@ internal class ComplaintHistoryHttp(private val endpoint: ComplaintBackendEndpoi
             withTimeoutOrNull(REQUEST_TIMEOUT_MS) {
                 currentCoroutineContext().ensureActive()
                 if (closed.load()) return@withTimeoutOrNull historyUnavailable()
-                client.prepareGet(url.toString()) {
-                    headers {
-                        append(HttpHeaders.Accept, "application/json, application/problem+json")
-                        append(HttpHeaders.AcceptEncoding, "identity")
-                        append(HttpHeaders.CacheControl, "no-store, no-transform")
-                        append(HttpHeaders.Authorization, session.authorizationValue())
-                    }
-                }.execute { ComplaintHistoryBody.read(it, url) }
+                client
+                    .prepareGet(url.toString()) {
+                        headers {
+                            append(HttpHeaders.Accept, "application/json, application/problem+json")
+                            append(HttpHeaders.AcceptEncoding, "identity")
+                            append(HttpHeaders.CacheControl, "no-store, no-transform")
+                            append(HttpHeaders.Authorization, session.authorizationValue())
+                        }
+                    }.execute { ComplaintHistoryBody.read(it, url) }
             } ?: AppResult.Failure(AppError.Network.Timeout())
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -76,5 +86,6 @@ internal class ComplaintHistoryHttp(private val endpoint: ComplaintBackendEndpoi
     }
 }
 
-internal fun historyUnavailable(): AppResult.Failure =
-    AppResult.Failure(AppError.Platform.FeatureUnavailable("complaint_history"))
+internal fun historyUnavailable(): AppResult.Failure {
+    return AppResult.Failure(AppError.Platform.FeatureUnavailable("complaint_history"))
+}

@@ -5,6 +5,8 @@ import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.repository.ComplaintListRepository
 
 /** One-shot history read; the data boundary owns source selection and typed failure mapping. */
-class ObserveUserComplaintsUseCase(private val repository: ComplaintListRepository) {
+class ObserveUserComplaintsUseCase(
+    private val repository: ComplaintListRepository,
+) {
     suspend operator fun invoke(): AppResult<ComplaintHistory> = repository.loadUserComplaints()
 }

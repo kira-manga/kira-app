@@ -47,7 +47,9 @@ import kotlin.test.assertIs
 
 /** Isolated synthetic storage + MockEngine; never calls native factories or provides activation. */
 @OptIn(ExperimentalCoroutinesApi::class)
-internal class ComplaintBackendGraphFixture(private val scope: TestScope) {
+internal class ComplaintBackendGraphFixture(
+    private val scope: TestScope,
+) {
     val events = mutableListOf<String>()
     val credentials = GraphCredentials()
     val pending = GraphPending()
@@ -62,32 +64,41 @@ internal class ComplaintBackendGraphFixture(private val scope: TestScope) {
         respond(graphHistoryResponse(), HttpStatusCode.OK, graphHeaders())
     }
 
-    fun resources(): ComplaintBackendResources = ComplaintBackendResources(
-        credentials = { events += "allocate:credentials"; credentials },
-        pending = { events += "allocate:pending"; pending },
-        generator = {
-            events += "allocate:generator"
-            object : InstallationCredentialMaterialGenerator {
-                override fun generate(dataScopeId: String): InstallationMaterialGenerationResult {
-                    generations++
-                    return InstallationMaterialGenerationResult.Unsupported
+    fun resources(): ComplaintBackendResources =
+        ComplaintBackendResources(
+            credentials = {
+                events += "allocate:credentials"
+                credentials
+            },
+            pending = {
+                events += "allocate:pending"
+                pending
+            },
+            generator = {
+                events += "allocate:generator"
+                object : InstallationCredentialMaterialGenerator {
+                    override fun generate(dataScopeId: String): InstallationMaterialGenerationResult {
+                        generations++
+                        return InstallationMaterialGenerationResult.Unsupported
+                    }
                 }
-            }
-        },
-        enrollmentEngine = { newOwner("enrollment") { error("Unexpected enrollment for existing fixture identity") } },
-        sessionEngine = {
-            newOwner("session") {
-                sessionCalls++
-                respond(graphSessionResponse(), HttpStatusCode.OK, graphHeaders())
-            }
-        },
-        historyEngine = {
-            newOwner("history") { request ->
-                historyCalls++
-                historyHandler(request)
-            }
-        },
-    )
+            },
+            enrollmentEngine = {
+                newOwner("enrollment") { error("Unexpected enrollment for existing fixture identity") }
+            },
+            sessionEngine = {
+                newOwner("session") {
+                    sessionCalls++
+                    respond(graphSessionResponse(), HttpStatusCode.OK, graphHeaders())
+                }
+            },
+            historyEngine = {
+                newOwner("history") { request ->
+                    historyCalls++
+                    historyHandler(request)
+                }
+            },
+        )
 
     private fun newOwner(
         name: String,
@@ -95,14 +106,23 @@ internal class ComplaintBackendGraphFixture(private val scope: TestScope) {
     ): GraphEngineOwner {
         if (failAllocation == name) error("Synthetic native allocation failure")
         events += "allocate:$name"
-        val engine = MockEngine(MockEngineConfig().apply {
-            dispatcher = StandardTestDispatcher(scope.testScheduler)
-            addHandler { request ->
-                events += "request:$name"
-                handler(request)
-            }
-        })
-        return GraphEngineOwner(name, engine, events, { failEngineAccess == name }, { failClose == name }).also { owners[name] = it }
+        val engine =
+            MockEngine(
+                MockEngineConfig().apply {
+                    dispatcher = StandardTestDispatcher(scope.testScheduler)
+                    addHandler { request ->
+                        events += "request:$name"
+                        handler(request)
+                    }
+                },
+            )
+        return GraphEngineOwner(
+            name,
+            engine,
+            events,
+            { failEngineAccess == name },
+            { failClose == name },
+        ).also { owners[name] = it }
     }
 }
 
@@ -132,34 +152,82 @@ internal class GraphEngineOwner(
 
 /** Mutation SPIs fail closed and are counted; these fixtures support existing-identity reads only. */
 internal class GraphCredentials : InstallationCredentialStore {
-    val record: InstallationCredentialRecord = InstallationCredentialRecord.candidate(
-        assertIs<InstallationValueResult.Valid<InstallationCredentialMaterial>>(
-            InstallationCredentialMaterial.checked(GRAPH_INSTALLATION_ID, "A".repeat(42) + "E", "ANDROID", GRAPH_SCOPE),
-        ).value,
-    )
+    val record: InstallationCredentialRecord =
+        InstallationCredentialRecord.candidate(
+            assertIs<InstallationValueResult.Valid<InstallationCredentialMaterial>>(
+                InstallationCredentialMaterial.checked(
+                    GRAPH_INSTALLATION_ID,
+                    "A".repeat(42) + "E",
+                    "ANDROID",
+                    GRAPH_SCOPE,
+                ),
+            ).value,
+        )
     var writes = 0
         private set
+
     override suspend fun read(): CredentialReadResult = CredentialReadResult.Present(record)
+
     override suspend fun readCleanupMarker(): CleanupMarkerReadResult = CleanupMarkerReadResult.Missing
-    private fun mutation(): InstallationStorageFailure { writes++; return GRAPH_UNSUPPORTED }
+
+    private fun mutation(): InstallationStorageFailure {
+        writes++
+        return GRAPH_UNSUPPORTED
+    }
+
     override suspend fun createIfMissing(record: InstallationCredentialRecord): CredentialCreateResult = mutation()
-    override suspend fun replace(expectedGeneration: Long, record: InstallationCredentialRecord): CredentialReplaceResult = mutation()
-    override suspend fun delete(expectedGeneration: Long, expectedMarker: CredentialCleanupMarker): CredentialDeleteResult = mutation()
-    override suspend fun resetUnreadableAfterConfirmation(expectedMarker: CredentialCleanupMarker): CredentialResetResult = mutation()
-    override suspend fun finishMarkedCleanup(expectedMarker: CredentialCleanupMarker): CredentialDeleteResult = mutation()
-    override suspend fun createCleanupMarkerIfMissing(marker: CredentialCleanupMarker): CleanupMarkerCreateResult = mutation()
-    override suspend fun removeCleanupMarker(expectedMarker: CredentialCleanupMarker): CleanupMarkerRemoveResult = mutation()
+
+    override suspend fun replace(
+        expectedGeneration: Long,
+        record: InstallationCredentialRecord,
+    ): CredentialReplaceResult = mutation()
+
+    override suspend fun delete(
+        expectedGeneration: Long,
+        expectedMarker: CredentialCleanupMarker,
+    ): CredentialDeleteResult = mutation()
+
+    override suspend fun resetUnreadableAfterConfirmation(
+        expectedMarker: CredentialCleanupMarker,
+    ): CredentialResetResult = mutation()
+
+    override suspend fun finishMarkedCleanup(
+        expectedMarker: CredentialCleanupMarker,
+    ): CredentialDeleteResult = mutation()
+
+    override suspend fun createCleanupMarkerIfMissing(
+        marker: CredentialCleanupMarker,
+    ): CleanupMarkerCreateResult = mutation()
+
+    override suspend fun removeCleanupMarker(
+        expectedMarker: CredentialCleanupMarker,
+    ): CleanupMarkerRemoveResult = mutation()
 }
 
 internal class GraphPending : PendingComplaintActionStore {
-    private val snapshot = assertIs<InstallationValueResult.Valid<PendingComplaintSnapshot>>(PendingComplaintSnapshot.checked(emptyList())).value
+    private val snapshot =
+        assertIs<InstallationValueResult.Valid<PendingComplaintSnapshot>>(
+            PendingComplaintSnapshot.checked(emptyList()),
+        ).value
     var writes = 0
         private set
+
     override suspend fun read(): PendingReadResult = PendingReadResult.Verified(snapshot)
-    private fun mutation(): InstallationStorageFailure { writes++; return GRAPH_UNSUPPORTED }
+
+    private fun mutation(): InstallationStorageFailure {
+        writes++
+        return GRAPH_UNSUPPORTED
+    }
+
     override suspend fun createIfMissing(slot: PendingComplaintSlot): PendingCreateResult = mutation()
-    override suspend fun replace(expected: PendingComplaintSlot, replacement: PendingComplaintSlot): PendingReplaceResult = mutation()
+
+    override suspend fun replace(
+        expected: PendingComplaintSlot,
+        replacement: PendingComplaintSlot,
+    ): PendingReplaceResult = mutation()
+
     override suspend fun delete(expected: PendingComplaintSlot): PendingDeleteResult = mutation()
+
     override suspend fun clearForConfirmedRecovery(): PendingClearResult = mutation()
 }
 
@@ -169,44 +237,57 @@ private const val GRAPH_SCOPE = "00000000-0000-0000-0000-000000000000"
 private const val GRAPH_ROW_ID = "22222222-2222-4222-a222-222222222222"
 private val GRAPH_UNSUPPORTED = InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.UNSUPPORTED)
 
-private fun graphSessionResponse(): String = buildJsonObject {
-    put("installationId", GRAPH_INSTALLATION_ID)
-    put("accessToken", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.c3ludGhldGlj")
-    put("tokenType", "Bearer")
-    put("credentialVersion", 1)
-    put("dataScopeId", GRAPH_SCOPE)
-    put("issuedAt", "2026-09-17T00:00:00Z")
-    put("expiresInSeconds", 900)
-}.toString()
+private fun graphSessionResponse(): String =
+    buildJsonObject {
+        put("installationId", GRAPH_INSTALLATION_ID)
+        put("accessToken", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.c3ludGhldGlj")
+        put("tokenType", "Bearer")
+        put("credentialVersion", 1)
+        put("dataScopeId", GRAPH_SCOPE)
+        put("issuedAt", "2026-09-17T00:00:00Z")
+        put("expiresInSeconds", 900)
+    }.toString()
 
-internal fun graphHistoryResponse(empty: Boolean = false): String = buildJsonObject {
-    put("notices", buildJsonArray {})
-    put("items", buildJsonArray {
-        if (!empty) add(buildJsonObject {
-            put("id", GRAPH_ROW_ID)
-            put("kind", "REPORT")
-            put("type", "TECHNICAL")
-            put("subject", "Synthetic connected subject")
-            put("body", "Synthetic connected body")
-            put("status", "OPEN")
-            put("createdAt", "2026-09-17T00:00:00Z")
-            put("updatedAt", "2026-09-17T00:00:00Z")
-            put("version", 1)
-            put("actionTag", "\"complaint-$GRAPH_ROW_ID-v1\"")
-            put("appVersion", JsonNull)
-            put("platform", "ANDROID")
-            put("osVersion", JsonNull)
-            put("manufacturer", JsonNull)
-            put("deviceModel", JsonNull)
-            put("closureReason", JsonNull)
-            put("replyToId", JsonNull)
-        })
-    })
-    put("nextCursor", JsonNull)
-}.toString()
+internal fun graphHistoryResponse(empty: Boolean = false): String =
+    buildJsonObject {
+        put("notices", buildJsonArray {})
+        put(
+            "items",
+            buildJsonArray {
+                if (!empty) {
+                    add(
+                        buildJsonObject {
+                            put("id", GRAPH_ROW_ID)
+                            put("kind", "REPORT")
+                            put("type", "TECHNICAL")
+                            put("subject", "Synthetic connected subject")
+                            put("body", "Synthetic connected body")
+                            put("status", "OPEN")
+                            put("createdAt", "2026-09-17T00:00:00Z")
+                            put("updatedAt", "2026-09-17T00:00:00Z")
+                            put("version", 1)
+                            put("actionTag", "\"complaint-$GRAPH_ROW_ID-v1\"")
+                            put("appVersion", JsonNull)
+                            put("platform", "ANDROID")
+                            put("osVersion", JsonNull)
+                            put("manufacturer", JsonNull)
+                            put("deviceModel", JsonNull)
+                            put("closureReason", JsonNull)
+                            put("replyToId", JsonNull)
+                        },
+                    )
+                }
+            },
+        )
+        put("nextCursor", JsonNull)
+    }.toString()
 
-internal fun graphHeaders(status: HttpStatusCode = HttpStatusCode.OK): Headers = Headers.build {
-    append("X-Kira-Complaint-Contract", "1")
-    append(HttpHeaders.CacheControl, "no-store, no-transform")
-    append(HttpHeaders.ContentType, if (status == HttpStatusCode.OK) "application/json" else "application/problem+json")
-}
+internal fun graphHeaders(status: HttpStatusCode = HttpStatusCode.OK): Headers =
+    Headers.build {
+        append("X-Kira-Complaint-Contract", "1")
+        append(HttpHeaders.CacheControl, "no-store, no-transform")
+        append(
+            HttpHeaders.ContentType,
+            if (status == HttpStatusCode.OK) "application/json" else "application/problem+json",
+        )
+    }

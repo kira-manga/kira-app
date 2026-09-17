@@ -48,30 +48,31 @@ internal class InstallationSessionManager(
     suspend fun historySession(
         permit: ReconciliationPermit,
         work: ComplaintHistoryWork,
-    ): ComplaintHistorySessionResult = mutex.withLock {
-        val previous = state.load()
-        if (previous === SessionCacheState.Closed || !state.compareAndSet(previous, SessionCacheState.Empty)) {
-            return@withLock ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
+    ): ComplaintHistorySessionResult =
+        mutex.withLock {
+            val previous = state.load()
+            if (previous === SessionCacheState.Closed || !state.compareAndSet(previous, SessionCacheState.Empty)) {
+                return@withLock ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
+            }
+            when (val admitted = coordinator.checkHistorySession(permit, work)) {
+                is Outcome.Success -> Unit
+                is Outcome.Refused -> return@withLock failedHistory(admitted)
+                is Outcome.StorageFailure -> return@withLock failedHistory(admitted)
+                is Outcome.Invalid -> return@withLock failedHistory(admitted)
+            }
+            val result = obtain(permit, previous as? SessionCacheState.Cached)
+            when (val checked = coordinator.checkHistorySession(permit, work)) {
+                is Outcome.Success ->
+                    if (state.load() === SessionCacheState.Closed) {
+                        ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
+                    } else {
+                        historyResult(result)
+                    }
+                is Outcome.Refused -> failedHistory(checked)
+                is Outcome.StorageFailure -> failedHistory(checked)
+                is Outcome.Invalid -> failedHistory(checked)
+            }
         }
-        when (val admitted = coordinator.checkHistorySession(permit, work)) {
-            is Outcome.Success -> Unit
-            is Outcome.Refused -> return@withLock failedHistory(admitted)
-            is Outcome.StorageFailure -> return@withLock failedHistory(admitted)
-            is Outcome.Invalid -> return@withLock failedHistory(admitted)
-        }
-        val result = obtain(permit, previous as? SessionCacheState.Cached)
-        when (val checked = coordinator.checkHistorySession(permit, work)) {
-            is Outcome.Success ->
-                if (state.load() === SessionCacheState.Closed) {
-                    ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
-                } else {
-                    historyResult(result)
-                }
-            is Outcome.Refused -> failedHistory(checked)
-            is Outcome.StorageFailure -> failedHistory(checked)
-            is Outcome.Invalid -> failedHistory(checked)
-        }
-    }
 
     private fun failedHistory(outcome: Outcome<Nothing>): ComplaintHistorySessionResult =
         ComplaintHistorySessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))

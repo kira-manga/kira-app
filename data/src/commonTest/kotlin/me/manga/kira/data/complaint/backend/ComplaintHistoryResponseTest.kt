@@ -13,8 +13,8 @@ import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.UnknownComplaintItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -23,13 +23,16 @@ import kotlin.test.assertTrue
 class ComplaintHistoryResponseTest {
     @Test
     fun knownClosedUnionKeepsOrdinaryCustomReplyDistinctFromNoticeThread() {
-        val page = decodedHistory(
-            items = listOf(
-                historyItem(103), historyItem(102, kind = "REPLY", type = "CUSTOM"),
-                historyItem(101, kind = "REPLY", type = "CUSTOM", noticeKey = "complaints.notice.synthetic"),
-            ),
-            notices = listOf(historyNotice()),
-        )
+        val page =
+            decodedHistory(
+                items =
+                    listOf(
+                        historyItem(103),
+                        historyItem(102, kind = "REPLY", type = "CUSTOM"),
+                        historyItem(101, kind = "REPLY", type = "CUSTOM", noticeKey = "complaints.notice.synthetic"),
+                    ),
+                notices = listOf(historyNotice()),
+            )
         assertIs<ComplaintOwnerRow.Report>(page.items[0])
         assertEquals("Synthetic subject", assertIs<ComplaintOwnerRow.Reply>(page.items[1]).subject)
         assertEquals("complaints.notice.synthetic", assertIs<ComplaintOwnerRow.NoticeReply>(page.items[2]).noticeKey)
@@ -39,13 +42,15 @@ class ComplaintHistoryResponseTest {
 
     @Test
     fun literalUnknownStatusIsRecognizedButFutureStatusAndTypeAreNotActionable() {
-        val page = decodedHistory(
-            items = listOf(
-                historyItem(103, status = "UNKNOWN"),
-                historyItem(102, status = "FUTURE_STATUS"),
-                historyItem(101, type = "FUTURE_TYPE"),
-            ),
-        )
+        val page =
+            decodedHistory(
+                items =
+                    listOf(
+                        historyItem(103, status = "UNKNOWN"),
+                        historyItem(102, status = "FUTURE_STATUS"),
+                        historyItem(101, type = "FUTURE_TYPE"),
+                    ),
+            )
         val literal = assertIs<ComplaintOwnerRow.Report>(page.items[0])
         assertEquals(ComplaintStatus.UNKNOWN, assertIs<ComplaintHistoryStatus.Known>(literal.fields.status).value)
         assertTrue(literal.isContractRecognized)
@@ -94,10 +99,17 @@ class ComplaintHistoryResponseTest {
             historyNotice(),
         ).forEach { malformed(historyResponse(items = listOf(it))) }
         malformed(historyResponse(notices = listOf(JsonObject(historyNotice() + ("body" to JsonPrimitive("prose"))))))
-        malformed(historyResponse(notices = listOf(JsonObject(historyNotice() + ("status" to JsonPrimitive("UNKNOWN"))))))
+        malformed(
+            historyResponse(notices = listOf(JsonObject(historyNotice() + ("status" to JsonPrimitive("UNKNOWN"))))),
+        )
         malformed(historyResponse().dropLast(1) + ",\"future\":null}")
         malformed("""{"notices":[],"items":[],"items":[],"nextCursor":null}""")
-        malformed(historyResponse(items = listOf(report)).replace("\"kind\":\"REPORT\"", "\"kind\":\"REPORT\",\"kind\":\"REPORT\""))
+        malformed(
+            historyResponse(items = listOf(report)).replace(
+                "\"kind\":\"REPORT\"",
+                "\"kind\":\"REPORT\",\"kind\":\"REPORT\"",
+            ),
+        )
     }
 
     @Test
@@ -112,14 +124,25 @@ class ComplaintHistoryResponseTest {
             "platform" to JsonPrimitive("DESKTOP"),
             "closureReason" to JsonPrimitive("Only CLOSED may carry this known field"),
         ).forEach { malformed(historyResponse(items = listOf(JsonObject(row + it)))) }
-        malformed(historyResponse(items = listOf(JsonObject(historyItem(status = "CLOSED") + ("closureReason" to JsonNull)))))
-        assertIs<ComplaintOwnerRow.Report>(decodedHistory(items = listOf(historyItem(status = "CLOSED"))).items.single())
+        malformed(
+            historyResponse(items = listOf(JsonObject(historyItem(status = "CLOSED") + ("closureReason" to JsonNull)))),
+        )
+        assertIs<ComplaintOwnerRow.Report>(
+            decodedHistory(items = listOf(historyItem(status = "CLOSED"))).items.single(),
+        )
     }
 
     @Test
     fun proseUsesIndependentCodePointUtf8NormalizationAndEscapedRowBounds() {
         val row = historyItem()
-        val maximum = JsonObject(row + mapOf("subject" to JsonPrimitive("😀".repeat(200)), "body" to JsonPrimitive("😀".repeat(1_000))))
+        val maximum =
+            JsonObject(
+                row +
+                    mapOf(
+                        "subject" to JsonPrimitive("😀".repeat(200)),
+                        "body" to JsonPrimitive("😀".repeat(1_000)),
+                    ),
+            )
         assertIs<ComplaintOwnerRow.Report>(decodedHistory(items = listOf(maximum)).items.single())
         listOf(
             "subject" to JsonPrimitive("😀".repeat(201)),
@@ -146,7 +169,9 @@ class ComplaintHistoryResponseTest {
             assertFailsWith<InvalidComplaintHistory> { boundedText(body, 1, 100, 400) }
         }
         val text = row.toString()
+
         fun paddedRow(bytes: Int) = text.dropLast(1) + " ".repeat(bytes - text.encodeToByteArray().size) + "}"
+
         fun document(item: String) = """{"notices":[],"items":[$item],"nextCursor":null}"""
         assertIs<AppResult.Success<*>>(ComplaintHistoryResponse.decode(document(paddedRow(32 * 1_024))))
         malformed(document(paddedRow(32 * 1_024 + 1)))
@@ -155,7 +180,9 @@ class ComplaintHistoryResponseTest {
     @Test
     fun globalEnvelopeCollectionsDepthTokensAndCursorAreBoundedBeforeFallback() {
         val empty = historyResponse()
-        assertIs<AppResult.Success<*>>(ComplaintHistoryResponse.decode(empty + " ".repeat(2 * 1_024 * 1_024 - empty.length)))
+        assertIs<AppResult.Success<*>>(
+            ComplaintHistoryResponse.decode(empty + " ".repeat(2 * 1_024 * 1_024 - empty.length)),
+        )
         malformed(empty + " ".repeat(2 * 1_024 * 1_024 + 1 - empty.length))
         malformed(historyResponse(items = List(51) { historyItem(it) }))
         malformed(historyResponse(notices = List(17) { historyNotice(it, "notice.$it") }))
@@ -172,13 +199,25 @@ class ComplaintHistoryResponseTest {
     fun problemUsesActualNonEmptyApiErrorIncludingCodeLessDisabledAndSecurityBodies() {
         assertTrue(ComplaintHistoryProblem.installationNotFound(historyInstallationNotFoundProblem()))
         assertFalse(ComplaintHistoryProblem.installationNotFound(historyProblem(HttpStatusCode.NotFound)))
-        assertFalse(ComplaintHistoryProblem.installationNotFound(historyInstallationNotFoundProblem().replace("INSTALLATION_NOT_FOUND", "NOT_FOUND")))
-        assertFalse(ComplaintHistoryProblem.installationNotFound(historyInstallationNotFoundProblem().replace("Not Found", "Unavailable")))
+        assertFalse(
+            ComplaintHistoryProblem.installationNotFound(
+                historyInstallationNotFoundProblem().replace("INSTALLATION_NOT_FOUND", "NOT_FOUND"),
+            ),
+        )
+        assertFalse(
+            ComplaintHistoryProblem.installationNotFound(
+                historyInstallationNotFoundProblem().replace("Not Found", "Unavailable"),
+            ),
+        )
         assertTrue(ComplaintHistoryProblem.valid(historyProblem(HttpStatusCode.NotFound), 404))
         assertTrue(ComplaintHistoryProblem.valid(historyProblem(HttpStatusCode.Unauthorized), 401))
-        assertTrue(ComplaintHistoryProblem.valid(
-            """{"type":"about:blank","title":"Bad Request","status":400,"errors":[{"code":"INVALID_CURSOR","message":"Invalid request."}]}""", 400,
-        ))
+        assertTrue(
+            ComplaintHistoryProblem.valid(
+                """{"type":"about:blank","title":"Bad Request","status":400,""" +
+                    """"errors":[{"code":"INVALID_CURSOR","message":"Invalid request."}]}""",
+                400,
+            ),
+        )
         listOf(
             """{"type":"about:blank","title":"Not Found","status":401}""",
             """{"type":"about:blank","title":"Not Found","status":404,"code":"NOT_FOUND"}""",

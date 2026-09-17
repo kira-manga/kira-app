@@ -13,18 +13,18 @@ import me.manga.kira.sources.runtime.GeneratedSourceRemoteConfig
  * Not referenced by the shipping iOS graph. Future activation must supply the independently
  * verified signing/default-access-group value; this slice neither guesses nor copies entitlements.
  */
-internal fun unselectedIosComplaintHistoryGraph(
-    expectedDefaultAccessGroup: String,
-): AppResult<ComplaintBackendGraph> = selectComplaintBackendCandidate {
-    createComplaintBackendGraph(
-        baseUrl = { GeneratedSourceRemoteConfig.BASE_URL },
-        resources = ComplaintBackendResources(
-            credentials = { IosInstallationCredentialStore(expectedDefaultAccessGroup) },
-            pending = { IosPendingComplaintActionStore(expectedDefaultAccessGroup) },
-            generator = { IosInstallationCredentialMaterialGenerator() },
-            enrollmentEngine = ::createIosComplaintEnrollmentEngineOwner,
-            sessionEngine = ::createIosComplaintSessionEngineOwner,
-            historyEngine = ::createIosComplaintHistoryEngineOwner,
-        ),
-    )
-}
+internal fun unselectedIosComplaintHistoryGraph(expectedDefaultAccessGroup: String): AppResult<ComplaintBackendGraph> =
+    selectComplaintBackendCandidate {
+        createComplaintBackendGraph(
+            baseUrl = { GeneratedSourceRemoteConfig.BASE_URL },
+            resources =
+                ComplaintBackendResources(
+                    credentials = { IosInstallationCredentialStore(expectedDefaultAccessGroup) },
+                    pending = { IosPendingComplaintActionStore(expectedDefaultAccessGroup) },
+                    generator = { IosInstallationCredentialMaterialGenerator() },
+                    enrollmentEngine = ::createIosComplaintEnrollmentEngineOwner,
+                    sessionEngine = ::createIosComplaintSessionEngineOwner,
+                    historyEngine = ::createIosComplaintHistoryEngineOwner,
+                ),
+        )
+    }

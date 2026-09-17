@@ -25,13 +25,14 @@ class ComplaintHistoryPagesTest {
 
     @Test
     fun repeatedCursorLaterNoticesDuplicateIdsAndAscendingOrderFailClosed() {
-        val invalidSeconds = listOf(
-            decodedHistory(listOf(historyItem(9)), cursor = "v1.same.mac"),
-            decodedHistory(listOf(historyItem(9)), notices = listOf(historyNotice())),
-            decodedHistory(listOf(historyItem(10))),
-            decodedHistory(listOf(historyItem(11))),
-            decodedHistory(listOf(historyItem(9, createdAt = "2026-09-17T08:09:10Z"))),
-        )
+        val invalidSeconds =
+            listOf(
+                decodedHistory(listOf(historyItem(9)), cursor = "v1.same.mac"),
+                decodedHistory(listOf(historyItem(9)), notices = listOf(historyNotice())),
+                decodedHistory(listOf(historyItem(10))),
+                decodedHistory(listOf(historyItem(11))),
+                decodedHistory(listOf(historyItem(9, createdAt = "2026-09-17T08:09:10Z"))),
+            )
         for (second in invalidSeconds) {
             val pages = ComplaintHistoryPages()
             assertTrue(pages.accept(decodedHistory(listOf(historyItem(10)), cursor = "v1.same.mac")))

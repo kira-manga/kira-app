@@ -20,17 +20,26 @@ internal class ComplaintHistorySession(
 }
 
 internal sealed interface ComplaintHistorySessionResult {
-    class Ready(val session: ComplaintHistorySession) : ComplaintHistorySessionResult
-    class Failed(val failure: ComplaintSessionResult) : ComplaintHistorySessionResult
+    class Ready(
+        val session: ComplaintHistorySession,
+    ) : ComplaintHistorySessionResult
+
+    class Failed(
+        val failure: ComplaintSessionResult,
+    ) : ComplaintHistorySessionResult
 }
 
 /** Captured before the first session attempt; Missing is an exact empty-state observation, not a failed read. */
 internal sealed interface ComplaintHistoryAdmission {
-    class Existing(val permit: ReconciliationPermit) : ComplaintHistoryAdmission {
+    class Existing(
+        val permit: ReconciliationPermit,
+    ) : ComplaintHistoryAdmission {
         override fun toString(): String = "ComplaintHistoryAdmission.Existing(redacted)"
     }
 
-    class Missing(val issuer: ReconciliationIssuer) : ComplaintHistoryAdmission {
+    class Missing(
+        val issuer: ReconciliationIssuer,
+    ) : ComplaintHistoryAdmission {
         override fun toString(): String = "ComplaintHistoryAdmission.Missing(redacted)"
     }
 }

@@ -26,7 +26,9 @@ internal object ComplaintBoundedResponse {
                 } else {
                     ComplaintSessionResult.HttpFailure(
                         response.status.value,
-                        if (response.status == HttpStatusCode.NotFound && ComplaintHistoryProblem.installationNotFound(body.text)) {
+                        if (response.status == HttpStatusCode.NotFound &&
+                            ComplaintHistoryProblem.installationNotFound(body.text)
+                        ) {
                             ComplaintSessionProblem.INSTALLATION_NOT_FOUND
                         } else {
                             null

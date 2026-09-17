@@ -1,5 +1,6 @@
 package me.manga.kira.data.complaint.backend
 
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,14 +21,17 @@ internal class BackendComplaintHistoryRepository(
     private val http: ComplaintHistoryHttp,
     private val loads: ComplaintHistoryLoads,
 ) : ComplaintListRepository {
-    override suspend fun loadUserComplaints(): AppResult<ComplaintHistory> = try {
-        loads.run { work -> read(work) }
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        AppResult.Failure(AppError.Unexpected("complaint_history_failed"))
-    }
+    override suspend fun loadUserComplaints(): AppResult<ComplaintHistory> =
+        try {
+            loads.run { work -> read(work) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            AppResult.Failure(AppError.Unexpected("complaint_history_failed"))
+        }
 
+    // These ordered fail-closed guards must complete before any registered history work is used.
+    @Suppress("ReturnCount")
     private suspend fun read(work: ComplaintHistoryWork): AppResult<ComplaintHistory> {
         val cleanup = coordinator.resumeCleanup()
         if (cleanup !is Outcome.Success) return historyLocalFailure(cleanup)
@@ -40,6 +44,8 @@ internal class BackendComplaintHistoryRepository(
         }
     }
 
+    // Keep failure exits adjacent to their binding/page checks; no partial history is published.
+    @Suppress("ReturnCount")
     private suspend fun readAdmitted(
         binding: ComplaintHistoryAdmission,
         work: ComplaintHistoryWork,
@@ -54,7 +60,7 @@ internal class BackendComplaintHistoryRepository(
             val result = coordinator.readHistoryPage(lease, sessions, work, http, pages.cursor)
             if (result is AppResult.Failure) {
                 val status = (result.error as? AppError.Network.Http)?.statusCode
-                if (status != 401 || refreshed) return result
+                if (status != HttpStatusCode.Unauthorized.value || refreshed) return result
                 refreshed = true
                 sessions.invalidateHistorySession(lease)
                 val renewed = session(ComplaintHistoryAdmission.Existing(lease.permit), work, allowEnrollment = false)
@@ -66,18 +72,20 @@ internal class BackendComplaintHistoryRepository(
                     return historyLocalFailure(Outcome.Refused(Block.STALE_BINDING))
                 }
                 lease = replacement
-            } else {
-                val page = (result as AppResult.Success).value
-                if (!pages.accept(page)) return malformedHistory()
-                if (pages.complete) {
-                    val published = coordinator.publishHistory(lease, sessions, work, pages.snapshot())
-                    if (published is AppResult.Success) pages.reportMismatches()
-                    return published
-                }
+                continue
+            }
+            val page = (result as AppResult.Success).value
+            if (!pages.accept(page)) return malformedHistory()
+            if (pages.complete) {
+                val published = coordinator.publishHistory(lease, sessions, work, pages.snapshot())
+                if (published is AppResult.Success) pages.reportMismatches()
+                return published
             }
         }
     }
 
+    // Session and enrollment failures retain their exact admission rather than sharing a fallthrough.
+    @Suppress("ReturnCount")
     private suspend fun session(
         binding: ComplaintHistoryAdmission,
         work: ComplaintHistoryWork,
@@ -95,10 +103,11 @@ internal class BackendComplaintHistoryRepository(
         }
         // Recheck the original exact record/pending/epoch (or still-Missing observation) while locked.
         // The returned permit, never an arbitrary recapture, binds the mandatory follow-on session.
-        val permit = when (val enrolled = coordinator.enrollHistory(binding, work, enrollment, generator)) {
-            is InstallationEnrollmentResult.Failure -> return historyEnrollmentFailure(enrolled)
-            is InstallationEnrollmentResult.Ready -> enrolled.value
-        }
+        val permit =
+            when (val enrolled = coordinator.enrollHistory(binding, work, enrollment, generator)) {
+                is InstallationEnrollmentResult.Failure -> return historyEnrollmentFailure(enrolled)
+                is InstallationEnrollmentResult.Ready -> enrolled.value
+            }
         return when (val authenticated = sessions.historySession(permit, work)) {
             is ComplaintHistorySessionResult.Ready -> AppResult.Success(authenticated.session)
             is ComplaintHistorySessionResult.Failed -> historySessionFailure(authenticated.failure)
@@ -107,5 +116,6 @@ internal class BackendComplaintHistoryRepository(
 }
 
 private fun ComplaintSessionResult.isNeverClaimed(): Boolean =
-    this is ComplaintSessionResult.HttpFailure && status == 404 &&
+    this is ComplaintSessionResult.HttpFailure &&
+        status == HttpStatusCode.NotFound.value &&
         problem == ComplaintSessionProblem.INSTALLATION_NOT_FOUND

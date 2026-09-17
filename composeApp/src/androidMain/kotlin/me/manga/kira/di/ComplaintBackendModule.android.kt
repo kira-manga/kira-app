@@ -15,13 +15,14 @@ internal fun unselectedAndroidComplaintHistoryGraph(context: Context): AppResult
     selectComplaintBackendCandidate {
         createComplaintBackendGraph(
             baseUrl = { GeneratedSourceRemoteConfig.BASE_URL },
-            resources = ComplaintBackendResources(
-                credentials = { AndroidInstallationCredentialStore(context.applicationContext) },
-                pending = { AndroidPendingComplaintActionStore(context.applicationContext) },
-                generator = { AndroidInstallationCredentialMaterialGenerator() },
-                enrollmentEngine = ::createAndroidComplaintEnrollmentEngineOwner,
-                sessionEngine = ::createAndroidComplaintSessionEngineOwner,
-                historyEngine = ::createAndroidComplaintHistoryEngineOwner,
-            ),
+            resources =
+                ComplaintBackendResources(
+                    credentials = { AndroidInstallationCredentialStore(context.applicationContext) },
+                    pending = { AndroidPendingComplaintActionStore(context.applicationContext) },
+                    generator = { AndroidInstallationCredentialMaterialGenerator() },
+                    enrollmentEngine = ::createAndroidComplaintEnrollmentEngineOwner,
+                    sessionEngine = ::createAndroidComplaintSessionEngineOwner,
+                    historyEngine = ::createAndroidComplaintHistoryEngineOwner,
+                ),
         )
     }

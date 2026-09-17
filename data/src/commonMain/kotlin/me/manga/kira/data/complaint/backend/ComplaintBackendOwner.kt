@@ -21,12 +21,14 @@ class ComplaintBackendOwner private constructor(
 
     /** No credential/pending writes or deletion, and no synchronous native-drain assertion. */
     fun close() {
-        if (closed.compareAndSet(expectedValue = false, newValue = true) && !closeEvery(closeActions)) {
-            throw IllegalStateException("Complaint backend close failed")
+        if (closed.compareAndSet(expectedValue = false, newValue = true)) {
+            check(closeEvery(closeActions)) { "Complaint backend close failed" }
         }
     }
 
     companion object {
+        // Keep distinct borrowed engines explicit. Fatal failures only trigger cleanup, then are rethrown.
+        @Suppress("LongParameterList", "TooGenericExceptionCaught")
         fun create(
             endpoint: ComplaintBackendEndpoint,
             credentials: InstallationCredentialStore,
@@ -36,14 +38,18 @@ class ComplaintBackendOwner private constructor(
             sessionEngine: HttpClientEngine,
             historyEngine: HttpClientEngine,
         ): AppResult<ComplaintBackendOwner> {
-            if (enrollmentEngine === sessionEngine || enrollmentEngine === historyEngine || sessionEngine === historyEngine) {
+            if (enrollmentEngine === sessionEngine ||
+                enrollmentEngine === historyEngine ||
+                sessionEngine === historyEngine
+            ) {
                 return historyUnavailable()
             }
             val close = mutableListOf<() -> Unit>()
             return try {
                 val coordinator = InstallationCredentialCoordinator(credentials, pending)
                 val enrollment = InstallationEnrollmentHttp(endpoint, enrollmentEngine).also { close += it::close }
-                val sessions = InstallationSessionManager(coordinator, endpoint, sessionEngine).also { close.add(0, it::close) }
+                val sessions =
+                    InstallationSessionManager(coordinator, endpoint, sessionEngine).also { close.add(0, it::close) }
                 val http = ComplaintHistoryHttp(endpoint, historyEngine).also { close.add(0, it::close) }
                 val loads = ComplaintHistoryLoads().also { close.add(0, it::close) }
                 AppResult.Success(
@@ -56,8 +62,11 @@ class ComplaintBackendOwner private constructor(
                 closeEvery(close)
                 throw cancelled
             } catch (_: Exception) {
-                if (closeEvery(close)) historyUnavailable()
-                else AppResult.Failure(AppError.Unexpected("complaint_backend_cleanup_failed"))
+                if (closeEvery(close)) {
+                    historyUnavailable()
+                } else {
+                    AppResult.Failure(AppError.Unexpected("complaint_backend_cleanup_failed"))
+                }
             } catch (failure: Throwable) {
                 closeEvery(close)
                 throw failure

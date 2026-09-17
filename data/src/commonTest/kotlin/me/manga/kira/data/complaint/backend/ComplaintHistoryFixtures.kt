@@ -45,20 +45,28 @@ internal class ComplaintHistoryFixture(
     val enrollment = InstallationEnrollmentFixture(scope, storage)
     val sessionRequests = mutableListOf<HttpRequestData>()
     val historyRequests = mutableListOf<HttpRequestData>()
-    val sessionEngine = historyMockEngine(scope) { request ->
-        sessionRequests += request
-        sessionHandler(request)
-    }
-    val historyEngine = historyMockEngine(scope) { request ->
-        historyRequests += request
-        historyHandler(request)
-    }
+    val sessionEngine =
+        historyMockEngine(scope) { request ->
+            sessionRequests += request
+            sessionHandler(request)
+        }
+    val historyEngine =
+        historyMockEngine(scope) { request ->
+            historyRequests += request
+            historyHandler(request)
+        }
     val sessions = InstallationSessionManager(storage.coordinator, endpoint, sessionEngine, clock)
     val http = ComplaintHistoryHttp(endpoint, historyEngine)
     val loads = ComplaintHistoryLoads()
-    val repository = BackendComplaintHistoryRepository(
-        storage.coordinator, sessions, enrollment.http, enrollment.generator, http, loads,
-    )
+    val repository =
+        BackendComplaintHistoryRepository(
+            storage.coordinator,
+            sessions,
+            enrollment.http,
+            enrollment.generator,
+            http,
+            loads,
+        )
 
     fun assertPreserved(
         record: InstallationCredentialRecord = Fixtures.record(),
@@ -85,15 +93,18 @@ internal class ComplaintHistoryFixture(
 internal fun historyMockEngine(
     scope: TestScope,
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
-): MockEngine = MockEngine(
-    MockEngineConfig().apply {
-        dispatcher = StandardTestDispatcher(scope.testScheduler)
-        addHandler(handler)
-    },
-)
+): MockEngine =
+    MockEngine(
+        MockEngineConfig().apply {
+            dispatcher = StandardTestDispatcher(scope.testScheduler)
+            addHandler(handler)
+        },
+    )
 
 internal fun historyId(index: Int): String = "44444444-4444-4444-8444-${index.toString(16).padStart(12, '0')}"
 
+// Named independent wire fields make the closed-union test matrices explicit at each call site.
+@Suppress("LongParameterList")
 internal fun historyItem(
     index: Int = 100,
     kind: String = "REPORT",
@@ -101,79 +112,97 @@ internal fun historyItem(
     status: String = "OPEN",
     noticeKey: String? = null,
     createdAt: String = SESSION_ISSUED_AT,
-): JsonObject = buildJsonObject {
-    val id = historyId(index)
-    put("id", id)
-    put("kind", kind)
-    put("type", type)
-    put("subject", if (noticeKey == null) JsonPrimitive("Synthetic subject") else JsonNull)
-    put("body", "Synthetic body")
-    put("status", status)
-    put("createdAt", createdAt)
-    put("updatedAt", createdAt)
-    put("version", 1)
-    put("actionTag", "\"complaint-$id-v1\"")
-    put("appVersion", JsonNull)
-    put("platform", "ANDROID")
-    put("osVersion", JsonNull)
-    put("manufacturer", JsonNull)
-    put("deviceModel", JsonNull)
-    put("closureReason", if (status == "CLOSED") JsonPrimitive("Synthetic closure") else JsonNull)
-    put("replyToId", if (kind == "REPLY") JsonPrimitive(Fixtures.OTHER_ID) else JsonNull)
-    if (noticeKey != null) put("noticeKey", noticeKey)
-}
+): JsonObject =
+    buildJsonObject {
+        val id = historyId(index)
+        put("id", id)
+        put("kind", kind)
+        put("type", type)
+        put("subject", if (noticeKey == null) JsonPrimitive("Synthetic subject") else JsonNull)
+        put("body", "Synthetic body")
+        put("status", status)
+        put("createdAt", createdAt)
+        put("updatedAt", createdAt)
+        put("version", 1)
+        put("actionTag", "\"complaint-$id-v1\"")
+        put("appVersion", JsonNull)
+        put("platform", "ANDROID")
+        put("osVersion", JsonNull)
+        put("manufacturer", JsonNull)
+        put("deviceModel", JsonNull)
+        put("closureReason", if (status == "CLOSED") JsonPrimitive("Synthetic closure") else JsonNull)
+        put("replyToId", if (kind == "REPLY") JsonPrimitive(Fixtures.OTHER_ID) else JsonNull)
+        if (noticeKey != null) put("noticeKey", noticeKey)
+    }
 
-internal fun historyNotice(index: Int = 200, key: String = "complaints.notice.synthetic"): JsonObject = buildJsonObject {
-    put("id", historyId(index))
-    put("kind", "NOTICE")
-    put("noticeKey", key)
-    put("status", "PINNED")
-    put("createdAt", SESSION_ISSUED_AT)
-    put("updatedAt", SESSION_ISSUED_AT)
-    put("version", 1)
-}
+internal fun historyNotice(
+    index: Int = 200,
+    key: String = "complaints.notice.synthetic",
+): JsonObject =
+    buildJsonObject {
+        put("id", historyId(index))
+        put("kind", "NOTICE")
+        put("noticeKey", key)
+        put("status", "PINNED")
+        put("createdAt", SESSION_ISSUED_AT)
+        put("updatedAt", SESSION_ISSUED_AT)
+        put("version", 1)
+    }
 
 internal fun historyResponse(
     items: List<JsonObject> = emptyList(),
     notices: List<JsonObject> = emptyList(),
     cursor: String? = null,
-): String = buildJsonObject {
-    put("notices", JsonArray(notices))
-    put("items", JsonArray(items))
-    put("nextCursor", cursor?.let { JsonPrimitive(it) } ?: JsonNull)
-}.toString()
+): String =
+    buildJsonObject {
+        put("notices", JsonArray(notices))
+        put("items", JsonArray(items))
+        put("nextCursor", cursor?.let { JsonPrimitive(it) } ?: JsonNull)
+    }.toString()
 
 internal fun decodedHistory(
     items: List<JsonObject> = emptyList(),
     notices: List<JsonObject> = emptyList(),
     cursor: String? = null,
-): ComplaintHistoryPage = assertIs<AppResult.Success<ComplaintHistoryPage>>(
-    ComplaintHistoryResponse.decode(historyResponse(items, notices, cursor)),
-).value
+): ComplaintHistoryPage =
+    assertIs<AppResult.Success<ComplaintHistoryPage>>(
+        ComplaintHistoryResponse.decode(historyResponse(items, notices, cursor)),
+    ).value
 
 /** Actual common/ApiError.kt NON_EMPTY shape; no fabricated top-level code/requestId/instance. */
-internal fun historyProblem(status: HttpStatusCode): String = buildJsonObject {
-    put("type", "about:blank")
-    put("title", status.description)
-    put("status", status.value)
-    if (status == HttpStatusCode.NotFound) put("detail", "Not found.")
-    if (status == HttpStatusCode.Unauthorized) {
-        put("detail", "Authentication is required or the token is invalid.")
-    }
-}.toString()
+internal fun historyProblem(status: HttpStatusCode): String =
+    buildJsonObject {
+        put("type", "about:blank")
+        put("title", status.description)
+        put("status", status.value)
+        if (status == HttpStatusCode.NotFound) put("detail", "Not found.")
+        if (status == HttpStatusCode.Unauthorized) {
+            put("detail", "Authentication is required or the token is invalid.")
+        }
+    }.toString()
 
 /** This precise machine code is distinct from the otherwise valid code-less disabled404 problem. */
-internal fun historyInstallationNotFoundProblem(): String = buildJsonObject {
-    put("type", "about:blank")
-    put("title", "Not Found")
-    put("status", 404)
-    put("errors", JsonArray(listOf(buildJsonObject {
-        put("code", "INSTALLATION_NOT_FOUND")
-        put("message", "Installation was never claimed.")
-    })))
-}.toString()
+internal fun historyInstallationNotFoundProblem(): String =
+    buildJsonObject {
+        put("type", "about:blank")
+        put("title", "Not Found")
+        put("status", 404)
+        put(
+            "errors",
+            JsonArray(
+                listOf(
+                    buildJsonObject {
+                        put("code", "INSTALLATION_NOT_FOUND")
+                        put("message", "Installation was never claimed.")
+                    },
+                ),
+            ),
+        )
+    }.toString()
 
-internal class HistoryTrackedChannel(private val delegate: ByteReadChannel) : ByteReadChannel by delegate {
+internal class HistoryTrackedChannel(
+    private val delegate: ByteReadChannel,
+) : ByteReadChannel by delegate {
     var cancelled = false
         private set
 

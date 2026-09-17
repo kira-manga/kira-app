@@ -48,29 +48,34 @@ internal class ComplaintBackendResources(
 /**
  * Internal, injectable candidate assembler for the actual consumer fixture. Never itself an
  * activation decision. The only native callers remain behind selectComplaintBackendCandidate.
+ * Fatal failures are caught solely to release captured owners, then rethrown unchanged.
  */
+@Suppress("TooGenericExceptionCaught")
 internal fun createComplaintBackendGraph(
     baseUrl: () -> String,
     resources: ComplaintBackendResources,
 ): AppResult<ComplaintBackendGraph> {
     val cleanup = mutableListOf<() -> Unit>()
-    val result = try {
-        assembleComplaintBackendGraph(baseUrl, resources, cleanup)
-    } catch (cancelled: CancellationException) {
-        closeBackendGraphResources(cleanup)
-        throw cancelled
-    } catch (_: Exception) {
-        backendGraphUnavailable()
-    } catch (failure: Throwable) {
-        closeBackendGraphResources(cleanup)
-        throw failure
-    }
+    val result =
+        try {
+            assembleComplaintBackendGraph(baseUrl, resources, cleanup)
+        } catch (cancelled: CancellationException) {
+            closeBackendGraphResources(cleanup)
+            throw cancelled
+        } catch (_: Exception) {
+            backendGraphUnavailable()
+        } catch (failure: Throwable) {
+            closeBackendGraphResources(cleanup)
+            throw failure
+        }
     if (result is AppResult.Failure && !closeBackendGraphResources(cleanup)) {
         return AppResult.Failure(AppError.Unexpected("complaint_backend_cleanup_failed"))
     }
     return result
 }
 
+// Ordered early exits retain every already-created owner before any later resource can fail.
+@Suppress("ReturnCount")
 private fun assembleComplaintBackendGraph(
     baseUrl: () -> String,
     resources: ComplaintBackendResources,
@@ -84,15 +89,16 @@ private fun assembleComplaintBackendGraph(
     val history = resources.historyEngine(endpoint.historyUrl) ?: return backendGraphUnavailable()
     cleanup.add(0, history::close)
     // Capture every owner above before reading engine properties or constructing later resources.
-    val made = ComplaintBackendOwner.create(
-        endpoint = endpoint,
-        credentials = resources.credentials(),
-        pending = resources.pending(),
-        generator = resources.generator(),
-        enrollmentEngine = enrollment.engine,
-        sessionEngine = sessions.engine,
-        historyEngine = history.engine,
-    )
+    val made =
+        ComplaintBackendOwner.create(
+            endpoint = endpoint,
+            credentials = resources.credentials(),
+            pending = resources.pending(),
+            generator = resources.generator(),
+            enrollmentEngine = enrollment.engine,
+            sessionEngine = sessions.engine,
+            historyEngine = history.engine,
+        )
     return when (made) {
         is AppResult.Failure -> made
         is AppResult.Success -> {
@@ -112,27 +118,28 @@ internal class ComplaintBackendGraph(
     val history: ComplaintListRepository get() = owner.history
 
     /** Install only in an isolated candidate Koin graph; never append over legacy-backed writes. */
-    fun module(): Module = module {
-        single(createdAtStart = true) { this@ComplaintBackendGraph } onClose { it?.close() }
-        single<ComplaintListRepository> { get<ComplaintBackendGraph>().history }
-        single<ComplaintActionRepository> { ReadOnlyComplaintActionRepository() }
-        factory { ObserveUserComplaintsUseCase(get()) }
-        factory { ReplyToComplaintUseCase(get()) }
-        factory { EditComplaintUseCase(get()) }
-        factory { DeleteComplaintUseCase(get()) }
-        viewModel {
-            ComplaintViewModel(
-                observeUserComplaints = get(),
-                replyToComplaint = get(),
-                editComplaint = get(),
-                deleteComplaint = get(),
-            )
+    fun module(): Module =
+        module {
+            single(createdAtStart = true) { this@ComplaintBackendGraph } onClose { it?.close() }
+            single<ComplaintListRepository> { get<ComplaintBackendGraph>().history }
+            single<ComplaintActionRepository> { ReadOnlyComplaintActionRepository() }
+            factory { ObserveUserComplaintsUseCase(get()) }
+            factory { ReplyToComplaintUseCase(get()) }
+            factory { EditComplaintUseCase(get()) }
+            factory { DeleteComplaintUseCase(get()) }
+            viewModel {
+                ComplaintViewModel(
+                    observeUserComplaints = get(),
+                    replyToComplaint = get(),
+                    editComplaint = get(),
+                    deleteComplaint = get(),
+                )
+            }
         }
-    }
 
     fun close() {
-        if (closed.compareAndSet(expectedValue = false, newValue = true) && !closeBackendGraphResources(cleanup)) {
-            throw IllegalStateException("Complaint backend graph close failed")
+        if (closed.compareAndSet(expectedValue = false, newValue = true)) {
+            check(closeBackendGraphResources(cleanup)) { "Complaint backend graph close failed" }
         }
     }
 }
@@ -150,5 +157,6 @@ private fun closeBackendGraphResources(actions: List<() -> Unit>): Boolean {
     return success
 }
 
-private fun backendGraphUnavailable(): AppResult.Failure =
-    AppResult.Failure(AppError.Platform.FeatureUnavailable("complaint_backend"))
+private fun backendGraphUnavailable(): AppResult.Failure {
+    return AppResult.Failure(AppError.Platform.FeatureUnavailable("complaint_backend"))
+}

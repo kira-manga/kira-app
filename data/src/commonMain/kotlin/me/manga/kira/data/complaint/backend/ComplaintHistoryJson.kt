@@ -8,7 +8,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /** Closed shallow wire shapes only. Detect duplicates before JsonObject could collapse them. */
-internal class ComplaintHistoryJson(private val text: String, private val maximumBytes: Int = MAX_LIST_BYTES) {
+internal class ComplaintHistoryJson(
+    private val text: String,
+    private val maximumBytes: Int = MAX_LIST_BYTES,
+) {
     private var position = 0
 
     fun read(): JsonObject {
@@ -29,7 +32,7 @@ internal class ComplaintHistoryJson(private val text: String, private val maximu
             '"' -> JsonPrimitive(string())
             'n' -> {
                 if (!text.startsWith("null", position)) invalidHistory()
-                position += 4
+                position += "null".length
                 JsonNull
             }
             in '0'..'9' -> integer()
@@ -100,7 +103,8 @@ internal class ComplaintHistoryJson(private val text: String, private val maximu
         var index = 0
         while (index < value.length) {
             val char = value[index++]
-            if (char < ' ' && char != '\t' && char != '\n' || char in '\u007f'..'\u009f') invalidHistory()
+            if (char < ' ' && char != '\t' && char != '\n') invalidHistory()
+            if (char in '\u007f'..'\u009f') invalidHistory()
             if (char.isHighSurrogate()) {
                 if (index == value.length || !value[index++].isLowSurrogate()) invalidHistory()
             } else if (char.isLowSurrogate()) {
@@ -147,11 +151,12 @@ internal class InvalidComplaintHistory : Exception()
 
 internal fun invalidHistory(): Nothing = throw InvalidComplaintHistory()
 
-internal fun JsonObject.string(name: String): String =
+internal fun JsonObject.historyString(name: String): String =
     (get(name) as? JsonPrimitive)?.takeIf { it.isString }?.content ?: invalidHistory()
 
-internal fun JsonObject.nullableString(name: String): String? =
-    if (get(name) === JsonNull) null else string(name)
+internal fun JsonObject.nullableString(name: String): String? {
+    return if (get(name) === JsonNull) null else historyString(name)
+}
 
 internal fun JsonObject.number(name: String): Long {
     val value = get(name) as? JsonPrimitive ?: invalidHistory()

@@ -4,13 +4,18 @@ import kotlin.time.Instant
 
 /** Source provenance is explicit: backend rows can never become legacy mutation arguments. */
 sealed interface ComplaintHistory {
-    class Legacy(items: List<ComplaintSummary>) : ComplaintHistory {
+    class Legacy(
+        items: List<ComplaintSummary>,
+    ) : ComplaintHistory {
         val items: List<ComplaintSummary> = items.toList()
 
         override fun toString(): String = "ComplaintHistory.Legacy(redacted)"
     }
 
-    class Backend(notices: List<ComplaintNotice>, items: List<ComplaintOwnerRow>) : ComplaintHistory {
+    class Backend(
+        notices: List<ComplaintNotice>,
+        items: List<ComplaintOwnerRow>,
+    ) : ComplaintHistory {
         val notices: List<ComplaintNotice> = notices.toList()
         val items: List<ComplaintOwnerRow> = items.toList()
 
@@ -31,7 +36,9 @@ class ComplaintNotice(
 
 /** Literal [ComplaintStatus.UNKNOWN] is Known; a future wire value is not that legacy status. */
 sealed interface ComplaintHistoryStatus {
-    class Known(val value: ComplaintStatus) : ComplaintHistoryStatus {
+    class Known(
+        val value: ComplaintStatus,
+    ) : ComplaintHistoryStatus {
         override fun toString(): String = "ComplaintHistoryStatus.Known"
     }
 
@@ -42,7 +49,9 @@ sealed interface ComplaintHistoryStatus {
 
 /** Future types retain no raw token and convey no compatible mutation contract. */
 sealed interface ComplaintHistoryType {
-    class Known(val value: ComplaintType) : ComplaintHistoryType {
+    class Known(
+        val value: ComplaintType,
+    ) : ComplaintHistoryType {
         override fun toString(): String = "ComplaintHistoryType.Known"
     }
 
@@ -52,6 +61,8 @@ sealed interface ComplaintHistoryType {
 }
 
 /** Server-owned display/concurrency fields; intentionally no installation/user/moderator identifier. */
+// A validated immutable row is constructed atomically, not through a mutable builder/options bag.
+@Suppress("LongParameterList")
 class ComplaintOwnerFields(
     val id: String,
     val body: String,

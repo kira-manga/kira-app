@@ -18,19 +18,16 @@ internal class ComplaintHistoryPages {
     var complete: Boolean = false
         private set
 
+    // Preserve ordered fail-closed guards; a rejected page never becomes a published prefix.
+    @Suppress("ReturnCount")
     fun accept(page: ComplaintHistoryPage): Boolean {
         if (complete || pages == MAX_REQUESTS || page.items.size > PAGE_SIZE) return false
         if (pages != 0 && page.notices.isNotEmpty()) return false
         if (page.items.isNotEmpty() && ++populated > MAX_POPULATED) return false
         if (items.size + page.items.size > MAX_ITEMS) return false
-        if (page.items.isEmpty() && page.nextCursor != null) return false
-        if (page.nextCursor != null && !cursors.add(page.nextCursor)) return false
+        if (!acceptCursor(page)) return false
         if ((page.notices.map { it.id } + page.items.map { it.id }).any { !ids.add(it) }) return false
-        var previous = items.lastOrNull()
-        for (row in page.items) {
-            if (previous != null && !ordered(previous, row)) return false
-            previous = row
-        }
+        if (!followsHistoryOrder(page.items)) return false
         mismatches += page.mismatches
         notices += page.notices
         items += page.items
@@ -44,8 +41,24 @@ internal class ComplaintHistoryPages {
 
     fun reportMismatches() = mismatches.forEach { it.report() }
 
-    private fun ordered(before: ComplaintOwnerRow, after: ComplaintOwnerRow): Boolean =
-        before.createdAt > after.createdAt || before.createdAt == after.createdAt && before.id > after.id
+    private fun acceptCursor(page: ComplaintHistoryPage): Boolean {
+        val next = page.nextCursor ?: return true
+        return page.items.isNotEmpty() && cursors.add(next)
+    }
+
+    private fun followsHistoryOrder(rows: List<ComplaintOwnerRow>): Boolean {
+        var previous = items.lastOrNull()
+        for (row in rows) {
+            if (previous != null && !ordered(previous, row)) return false
+            previous = row
+        }
+        return true
+    }
+
+    private fun ordered(
+        before: ComplaintOwnerRow,
+        after: ComplaintOwnerRow,
+    ): Boolean = before.createdAt > after.createdAt || before.createdAt == after.createdAt && before.id > after.id
 
     private companion object {
         const val PAGE_SIZE = 50

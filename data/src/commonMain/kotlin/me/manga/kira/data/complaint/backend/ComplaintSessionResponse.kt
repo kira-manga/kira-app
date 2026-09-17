@@ -50,7 +50,7 @@ internal sealed interface ComplaintSessionResult {
 }
 
 /** The only session problem interpreted here, from the strict bounded ApiError reader. */
-internal enum class ComplaintSessionProblem { INSTALLATION_NOT_FOUND }
+internal enum class ComplaintSessionProblem { INSTALLATION_NOT_FOUND, }
 
 /**
  * Closed response metadata, memory-only. Parsing does not verify a JWT signature or authorize dispatch.
