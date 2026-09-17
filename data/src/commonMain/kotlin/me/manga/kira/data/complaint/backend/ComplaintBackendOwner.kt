@@ -4,6 +4,7 @@ import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
@@ -19,6 +20,8 @@ class ComplaintBackendOwner private constructor(
     internal val feedback: BackendFeedbackRepository?,
     /** Present only when this owner has both a distinct mutation engine and inert report input suppliers. */
     val reports: ComplaintReportRepository?,
+    /** Same concrete report consumer and issuer; no second coordinator or credential authority. */
+    val installationRecovery: ComplaintInstallationRecoveryRepository?,
     private val closeActions: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
@@ -67,6 +70,7 @@ class ComplaintBackendOwner private constructor(
                     ComplaintBackendOwner(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
+                        reports,
                         reports,
                         close.toList(),
                     ),

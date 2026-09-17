@@ -9,8 +9,10 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.result.map
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
+import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Confirmation
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
+import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.RecoveryIntent
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintRecoveryPrompt
@@ -19,6 +21,7 @@ import me.manga.kira.domain.model.feedback.ComplaintReportDraft
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 
 /**
@@ -30,7 +33,8 @@ internal class BackendComplaintReportRepository(
     private val coordinator: InstallationCredentialCoordinator,
     private val backend: BackendFeedbackRepository,
     private val inputs: ComplaintReportInputs,
-) : ComplaintReportRepository {
+) : ComplaintReportRepository,
+    ComplaintInstallationRecoveryRepository {
     private val issuer = ReportConsumerIssuer()
 
     override suspend fun prepare(draft: ComplaintReportDraft): AppResult<ComplaintReportPreparation> =
@@ -81,14 +85,40 @@ internal class BackendComplaintReportRepository(
             backend.cancelPrepared(pending.observation.slot, pending.observation.permit)
         }
 
-    override suspend fun requestRecovery(report: ComplaintPendingReport): AppResult<ComplaintRecoveryPrompt> {
+    override suspend fun requestRecovery(report: ComplaintPendingReport): AppResult<ComplaintRecoveryPrompt> =
+        requestPrompt {
+            val pending = pendingHandle(report) ?: return@requestPrompt invalidHandle()
+            backend.requestRecovery(pending.observation.slot, pending.observation.permit)
+        }
+
+    override suspend fun requestUnreadableRecovery(): AppResult<ComplaintRecoveryPrompt> =
+        requestPrompt {
+            coordinator.requestRecovery(RecoveryIntent.Unreadable).localRecoveryResult()
+        }
+
+    override suspend fun requestDeletionAbandonment(): AppResult<ComplaintRecoveryPrompt> =
+        requestPrompt {
+            when (val deletion = coordinator.pendingDeletion()) {
+                is Outcome.Success ->
+                    coordinator.requestRecovery(RecoveryIntent.Abandon(deletion.value)).localRecoveryResult()
+                else -> AppResult.Failure(reportLocalFailure(deletion).error)
+            }
+        }
+
+    override suspend fun resumeCleanup(): AppResult<Unit> =
+        access {
+            coordinator.resumeCleanup().localRecoveryResult()
+        }
+
+    private suspend fun requestPrompt(
+        request: suspend () -> AppResult<Confirmation>,
+    ): AppResult<ComplaintRecoveryPrompt> {
         var issued: ReportPromptHandle? = null
         var delivered = false
         return try {
             val result =
                 access {
-                    val pending = pendingHandle(report) ?: return@access invalidHandle()
-                    backend.requestRecovery(pending.observation.slot, pending.observation.permit).map {
+                    request().map {
                         ReportPromptHandle(issuer, it).also { prompt -> issued = prompt }
                     }
                 }
@@ -167,3 +197,9 @@ internal class BackendComplaintReportRepository(
 }
 
 private fun <T> invalidHandle(): AppResult<T> = AppResult.Failure(AppError.Auth.Forbidden())
+
+private fun <T> Outcome<T>.localRecoveryResult(): AppResult<T> =
+    when (this) {
+        is Outcome.Success -> AppResult.Success(value)
+        else -> AppResult.Failure(reportLocalFailure(this).error)
+    }
