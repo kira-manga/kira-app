@@ -48,8 +48,13 @@ internal class BackendFeedbackRepository(
             if (inventory !is Outcome.Success) {
                 return@withWork AppResult.Success(ReportAttempt.Unresolved(report, reportLocalFailure(inventory)))
             }
-            val slot = inventory.value.snapshot.entries().singleOrNull { it.id == report.identity.key.value }
-                ?: return@withWork AppResult.Success(ReportAttempt.Unresolved(report, reportUnavailable(Block.MISSING)))
+            val slot =
+                inventory.value.snapshot
+                    .entries()
+                    .singleOrNull { it.id == report.identity.key.value }
+            if (slot == null) {
+                return@withWork AppResult.Success(ReportAttempt.Unresolved(report, reportUnavailable(Block.MISSING)))
+            }
             val attempt =
                 when (val admitted = coordinator.beginReportAction(work, ReportStart.Retained(slot, report))) {
                     is Outcome.Success -> execution.status(admitted.value, retryLive = true).attempt
@@ -59,8 +64,9 @@ internal class BackendFeedbackRepository(
         }
 
     /** Startup and manual reads remain usable with sixteen retained records; no CREATE is constructed. */
-    suspend fun reconcile(): AppResult<ReportRecovery> =
-        withWork { work -> AppResult.Success(reconciler.reconcile(work)) }
+    suspend fun reconcile(): AppResult<ReportRecovery> {
+        return withWork { work -> AppResult.Success(reconciler.reconcile(work)) }
+    }
 
     /** Explicit unsent cancellation alone may delete PREPARED; cancelCurrent/finally never do so. */
     suspend fun cancelPrepared(slot: PendingComplaintSlot): AppResult<Unit> =
@@ -71,11 +77,13 @@ internal class BackendFeedbackRepository(
             }
         }
 
-    suspend fun cancelRecovery(expected: Confirmation): AppResult<Unit> =
-        withWork { coordinator.cancelRecovery(expected).unitResult() }
+    suspend fun cancelRecovery(expected: Confirmation): AppResult<Unit> {
+        return withWork { coordinator.cancelRecovery(expected).unitResult() }
+    }
 
-    suspend fun confirmRecovery(expected: Confirmation): AppResult<Unit> =
-        withWork { coordinator.confirmRecovery(expected).unitResult() }
+    suspend fun confirmRecovery(expected: Confirmation): AppResult<Unit> {
+        return withWork { coordinator.confirmRecovery(expected).unitResult() }
+    }
 
     /** The prompt caller survives cancellation of its registered, no-HTTP worker by consent issuance. */
     suspend fun requestRecovery(slot: PendingComplaintSlot): AppResult<Confirmation> =
@@ -116,8 +124,9 @@ internal class BackendFeedbackRepository(
     private suspend fun <T> withWork(action: suspend (ReportWork) -> AppResult<T>): AppResult<T> =
         try {
             coroutineScope {
-                val work = works.begin(currentCoroutineContext().job)
-                    ?: return@coroutineScope AppResult.Failure(reportUnavailable(Block.ACTION_IN_PROGRESS).error)
+                val work =
+                    works.begin(currentCoroutineContext().job)
+                        ?: return@coroutineScope AppResult.Failure(reportUnavailable(Block.ACTION_IN_PROGRESS).error)
                 try {
                     action(work)
                 } finally {

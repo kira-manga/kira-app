@@ -43,7 +43,11 @@ class ComplaintReportLifecycleTest {
                 fixture.storage.faults.onStep = { observed -> if (observed == step) fixture.works.close() }
                 try {
                     assertFailsWith<CancellationException> { fixture.repository.submit(mutationReport()) }
-                    val state = reportRecord(fixture.storage.pending.slots.single()).state
+                    val state =
+                        reportRecord(
+                            fixture.storage.pending.slots
+                                .single(),
+                        ).state
                     val expected =
                         if (step == Step.PENDING_CREATED) {
                             PendingComplaintState.PREPARED
@@ -69,17 +73,19 @@ class ComplaintReportLifecycleTest {
                     mutationHandler = { respond(mutationApplied(), HttpStatusCode.OK, mutationHeaders()) },
                 )
             val slot = reportSlot()
-            fixture.storage.pending.slots += slot
+            val slots = fixture.storage.pending.slots
+            slots += slot
             val work = assertNotNull(fixture.works.begin(Job()))
             try {
                 val binding = fixture.coordinator.beginReportAction(work, ReportStart.Retained(slot)).success()
                 val session = fixture.readySession(binding)
-                val outcome = fixture.coordinator.readReportStatus(binding, session, fixture.sessions, fixture.http).success()
+                val outcome =
+                    fixture.coordinator.readReportStatus(binding, session, fixture.sessions, fixture.http).success()
                 fixture.storage.faults.onStep = { step -> if (step == Step.PENDING_READ) fixture.works.close() }
                 assertRefused(Block.STALE_BINDING, fixture.coordinator.applyReportOutcome(outcome, fixture.sessions))
                 assertTrue(currentCoroutineContext().isActive)
                 assertNull(work.application())
-                assertTrue(slot.sameAs(fixture.storage.pending.slots.single()))
+                assertTrue(slot.sameAs(slots.single()))
                 assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace)
             } finally {
                 fixture.coordinator.finishReport(work)
@@ -92,18 +98,19 @@ class ComplaintReportLifecycleTest {
     fun explicitUnsentCancelAndWarnedResetAreDistinctAndCancelingThePromptPreservesDispatchedEvidence() =
         runTest {
             val fixture = ComplaintReportFixture(this)
+            val slots = fixture.storage.pending.slots
             try {
                 val unsent = reportSlot(dispatched = false)
-                fixture.storage.pending.slots += unsent
+                slots += unsent
                 fixture.repository.cancelPrepared(unsent).reportSuccess()
-                assertTrue(fixture.storage.pending.slots.isEmpty())
+                assertTrue(slots.isEmpty())
                 val dispatched = reportSlot()
-                fixture.storage.pending.slots += dispatched
+                slots += dispatched
                 assertIs<AppResult.Failure>(fixture.repository.cancelPrepared(dispatched))
                 val canceledPrompt = fixture.repository.requestRecovery(dispatched).reportSuccess()
                 assertRefused(Block.CONSENT_PENDING, fixture.coordinator.admit())
                 fixture.repository.cancelRecovery(canceledPrompt).reportSuccess()
-                assertTrue(dispatched.sameAs(fixture.storage.pending.slots.single()))
+                assertTrue(dispatched.sameAs(slots.single()))
                 assertTrue(assertNotNull(fixture.storage.credentials.payloadRecord).sameAs(Fixtures.record()))
                 val confirmed = fixture.repository.requestRecovery(dispatched).reportSuccess()
                 fixture.repository.confirmRecovery(confirmed).reportSuccess()
@@ -134,7 +141,11 @@ private suspend fun TestScope.assertRefreshFence(change: String) {
         release.complete(Unit)
         assertFailsWith<CancellationException> { request.await() }
         assertTrue(fixture.requests.isEmpty(), change)
-        assertTrue(fixture.storage.pending.slots.isEmpty(), change)
+        assertTrue(
+            fixture.storage.pending.slots
+                .isEmpty(),
+            change,
+        )
         assertTrue(Step.PENDING_CREATE_BEFORE !in fixture.storage.faults.trace, change)
     } finally {
         release.complete(Unit)

@@ -19,7 +19,7 @@ class InstallationSessionObservationTest {
             val fixture = ComplaintSessionFixture(this)
             try {
                 val prepared = fixture.assertPreparedObservationKeepsTokenOnly()
-                fixture.assertDispatchObservationKeepsOriginalExpiry(prepared)
+                fixture.assertDispatchKeepsOriginalExpiry(prepared)
             } finally {
                 fixture.close()
             }
@@ -48,7 +48,7 @@ private suspend fun ComplaintSessionFixture.assertPreparedObservationKeepsTokenO
 }
 
 @OptIn(ExperimentalTime::class)
-private suspend fun ComplaintSessionFixture.assertDispatchObservationKeepsOriginalExpiry(prepared: ComplaintHistorySession) {
+private suspend fun ComplaintSessionFixture.assertDispatchKeepsOriginalExpiry(prepared: ComplaintHistorySession) {
     clock += 599.seconds
     storage.pending.slots[0] = sessionPendingSlot(dispatched = true)
     val dispatched = assertIs<ComplaintHistorySessionResult.Ready>(manager.historySession()).session

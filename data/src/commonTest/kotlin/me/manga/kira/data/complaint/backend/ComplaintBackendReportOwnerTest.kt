@@ -35,11 +35,13 @@ class ComplaintBackendReportOwnerTest {
                 fixture.entered.await()
                 assertIs<AppResult.Failure>(feedback.submit(mutationReport(key = historyId(30))))
                 assertTrue(first.isActive)
-                assertIs<ComplaintHistory.Backend>(fixture.owner.history.loadUserComplaints().reportSuccess())
+                val history = fixture.owner.history.loadUserComplaints()
+                assertIs<ComplaintHistory.Backend>(history.reportSuccess())
                 fixture.owner.close()
                 fixture.release.complete(Unit)
                 assertFailsWith<CancellationException> { first.await() }
-                val retained = reportRecord(fixture.storage.pending.slots.single())
+                val pending = fixture.storage.pending
+                val retained = reportRecord(pending.slots.single())
                 assertEquals(PendingComplaintState.MAY_HAVE_DISPATCHED, retained.state)
                 assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace)
                 assertTrue(fixture.engines.all { it.coroutineContext.job.isActive })
@@ -51,7 +53,9 @@ class ComplaintBackendReportOwnerTest {
 }
 
 /** Wiring only: the real owner owns both work lanes and all four borrowing clients. */
-private class ReportOwnerFixture(scope: TestScope) {
+private class ReportOwnerFixture(
+    scope: TestScope,
+) {
     val storage = InstallationCoordinatorFixture(Fixtures.record())
     val entered = CompletableDeferred<Unit>()
     val release = CompletableDeferred<Unit>()
@@ -81,7 +85,14 @@ private class ReportOwnerFixture(scope: TestScope) {
 
     private fun createOwner(mutationEngine: HttpClientEngine?): AppResult<ComplaintBackendOwner> =
         ComplaintBackendOwner.create(
-            endpoint, storage.credentials, storage.pending, generator, enrollment, session, history, mutationEngine,
+            endpoint,
+            storage.credentials,
+            storage.pending,
+            generator,
+            enrollment,
+            session,
+            history,
+            mutationEngine,
         )
 
     fun close() {

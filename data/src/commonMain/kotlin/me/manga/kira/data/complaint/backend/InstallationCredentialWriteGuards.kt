@@ -54,7 +54,7 @@ internal suspend fun PendingComplaintActionStore.createPendingCoordinated(
         PendingCreateResult.AlreadyPresent -> refuse(Block.STALE_BINDING)
         is InstallationStorageFailure -> fail(result)
     }
-    return readBackPending(expected)
+    return readBack(expected)
 }
 
 internal suspend fun PendingComplaintActionStore.replacePendingCoordinated(
@@ -63,14 +63,14 @@ internal suspend fun PendingComplaintActionStore.replacePendingCoordinated(
     replacement: PendingComplaintSlot,
 ): PendingComplaintSnapshot {
     if (expected.id != replacement.id || inventory.entries().none { it.sameAs(expected) }) refuse(Block.STALE_BINDING)
-    val next =
-        checked(PendingComplaintSnapshot.checked(inventory.entries().map { if (it.id == expected.id) replacement else it }))
+    val slots = inventory.entries().map { if (it.id == expected.id) replacement else it }
+    val next = checked(PendingComplaintSnapshot.checked(slots))
     when (val result = replace(expected, replacement)) {
         PendingReplaceResult.Stored -> Unit
         PendingReplaceResult.Missing, PendingReplaceResult.Stale -> refuse(Block.STALE_BINDING)
         is InstallationStorageFailure -> fail(result)
     }
-    return readBackPending(next)
+    return readBack(next)
 }
 
 internal suspend fun PendingComplaintActionStore.deletePendingCoordinated(
@@ -84,10 +84,10 @@ internal suspend fun PendingComplaintActionStore.deletePendingCoordinated(
         PendingDeleteResult.Missing, PendingDeleteResult.Stale -> refuse(Block.STALE_BINDING)
         is InstallationStorageFailure -> fail(result)
     }
-    return readBackPending(next)
+    return readBack(next)
 }
 
-private suspend fun PendingComplaintActionStore.readBackPending(expected: PendingComplaintSnapshot): PendingComplaintSnapshot =
+private suspend fun PendingComplaintActionStore.readBack(expected: PendingComplaintSnapshot): PendingComplaintSnapshot =
     when (val result = read()) {
         is PendingReadResult.Verified -> {
             if (!samePending(expected, result.snapshot)) permanent(InstallationPermanentFailure.READ_BACK_MISMATCH)

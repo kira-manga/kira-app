@@ -46,6 +46,7 @@ class AndroidComplaintMutationEngineTest {
                     assertEquals(Policy.MAX_REQUEST_BYTES.toLong(), request.bodySize)
                     assertEquals(MUTATION_TEST_AUTHORIZATION, request.headers["Authorization"])
                     assertEquals("identity", request.headers["Accept-Encoding"])
+                    assertEquals("ktor-client", request.headers["User-Agent"])
                     val key = if (route == ComplaintMutationRoute.CREATE) MUTATION_TEST_KEY else null
                     assertEquals(key, request.headers[Policy.IDEMPOTENCY_HEADER])
                     listOf("If-Match", "Cookie", "Proxy-Authorization", "Content-Encoding", "Transfer-Encoding")
@@ -70,6 +71,12 @@ class AndroidComplaintMutationEngineTest {
                 fixture.reject { headers.append(Policy.IDEMPOTENCY_HEADER, MUTATION_TEST_KEY) }
                 fixture.reject { headers.remove(Policy.IDEMPOTENCY_HEADER) }
                 fixture.reject { headers.append("Content-Encoding", "gzip") }
+                fixture.reject { headers.append("User-Agent", "synthetic") }
+                fixture.reject { headers.append("User-Agent", "ktor-client,ktor-client") }
+                fixture.reject {
+                    headers.append("User-Agent", "ktor-client")
+                    headers.append("user-agent", "ktor-client")
+                }
                 assertFails {
                     fixture.exchange(ComplaintMutationRoute.STATUS) {
                         headers.append(Policy.IDEMPOTENCY_HEADER, MUTATION_TEST_KEY)

@@ -15,10 +15,11 @@ internal class ComplaintReportReconciliationPass {
     }
 
     fun consume(permit: ReconciliationPermit) {
-        val previous = anchor
         if (!permit.snapshot.isEmpty &&
-            (previous == null || previous.issuer !== permit.issuer || !previous.record.sameAs(permit.record) ||
-                permit.snapshot.entries().any { slots[it.id]?.sameAs(it) != true })
+            (
+                !sameScope(permit) ||
+                    permit.snapshot.entries().any { slots[it.id]?.sameAs(it) != true }
+            )
         ) {
             refuse(Block.RECONCILIATION_REQUIRED)
         }
@@ -31,8 +32,7 @@ internal class ComplaintReportReconciliationPass {
     }
 
     fun record(binding: ReportActionBinding) {
-        val previous = anchor
-        if (previous == null || previous.issuer !== binding.permit.issuer || !previous.record.sameAs(binding.permit.record)) {
+        if (!sameScope(binding.permit)) {
             clear()
             anchor = binding.permit
         }
@@ -40,5 +40,10 @@ internal class ComplaintReportReconciliationPass {
         slots.entries.removeAll { (_, observed) -> inventory.none { it.sameAs(observed) } }
         val slot = binding.slot ?: refuse(Block.STALE_BINDING)
         slots[slot.id] = slot
+    }
+
+    private fun sameScope(permit: ReconciliationPermit): Boolean {
+        val previous = anchor ?: return false
+        return previous.issuer === permit.issuer && previous.record.sameAs(permit.record)
     }
 }

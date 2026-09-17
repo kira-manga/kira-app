@@ -1,6 +1,12 @@
 package me.manga.kira.data.remote.complaint
 
+import io.ktor.client.engine.mergeHeaders
+import io.ktor.http.ContentType
+import io.ktor.http.buildHeaders
+import io.ktor.http.content.ByteArrayContent
+import io.ktor.utils.io.InternalAPI
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
@@ -63,6 +69,33 @@ class ComplaintMutationRequestHeadersTest {
         assertTrue(accepts(route, headers + ("Content-Length" to "1")))
     }
 
+    @Test
+    fun onlyOptionalSingleFixedSupplierUserAgentFitsTheClosedNativeHeaderSet() {
+        ComplaintMutationRoute.entries.forEach { route ->
+            val applicationHeaders = mutationTestHeaders(route) + ("Content-Length" to "1")
+            val nativeHeaders = mutationTestEngineHeaders(route)
+            assertEquals(applicationHeaders.toSet() + ("User-Agent" to "ktor-client"), nativeHeaders.toSet())
+            assertEquals(applicationHeaders.size + 1, nativeHeaders.size)
+            assertTrue(accepts(route, applicationHeaders))
+            assertTrue(accepts(route, nativeHeaders))
+            assertTrue(accepts(route, nativeHeaders.map { it.first.lowercase() to it.second }))
+            listOf("", "synthetic", "Ktor-client", " ktor-client", "ktor-client ", "ktor-client,ktor-client")
+                .forEach { value ->
+                    assertFalse(accepts(route, applicationHeaders + ("User-Agent" to value)))
+                }
+            assertFalse(accepts(route, nativeHeaders + ("user-agent" to "ktor-client")))
+            assertFalse(accepts(route, nativeHeaders + ("X-Other" to "synthetic")))
+            applicationHeaders.forEach { header -> assertFalse(accepts(route, nativeHeaders + header)) }
+            val other =
+                if (route == ComplaintMutationRoute.CREATE) {
+                    ComplaintMutationRoute.STATUS
+                } else {
+                    ComplaintMutationRoute.CREATE
+                }
+            assertFalse(accepts(other, nativeHeaders))
+        }
+    }
+
     private fun accepts(
         route: ComplaintMutationRoute,
         headers: List<Pair<String, String>>,
@@ -82,6 +115,20 @@ internal fun mutationTestHeaders(route: ComplaintMutationRoute): List<Pair<Strin
         } else {
             emptyList()
         }
+
+/** Executes the same supplier header merger used by both Ktor native converters; no HTTP claim. */
+@OptIn(InternalAPI::class)
+internal fun mutationTestEngineHeaders(route: ComplaintMutationRoute): List<Pair<String, String>> =
+    buildList {
+        val headers =
+            buildHeaders {
+                mutationTestHeaders(route).filterNot { it.first == "Content-Type" }.forEach { (name, value) ->
+                    append(name, value)
+                }
+            }
+        val body = ByteArrayContent(byteArrayOf('x'.code.toByte()), ContentType.Application.Json)
+        mergeHeaders(headers, body) { name, value -> add(name to value) }
+    }
 
 internal const val MUTATION_TEST_KEY = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 internal const val MUTATION_TEST_AUTHORIZATION = "Bearer synthetic.header.signature"

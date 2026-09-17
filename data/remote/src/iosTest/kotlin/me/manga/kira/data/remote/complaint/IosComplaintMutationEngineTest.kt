@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
@@ -88,4 +89,29 @@ class IosComplaintMutationEngineTest {
             assertFails { fixture.guard.prepare(iosMutationTestRequest().apply { setValue("2", "Content-Length") }) }
             fixture.guard.prepare(iosMutationTestRequest().apply { setValue("1", "Content-Length") })
         }
+
+    @Test
+    fun supplierMergedHeadersPassPreparationAndOriginalRequestButCustomUserAgentsFail() {
+        ComplaintMutationRoute.entries.forEach { route ->
+            withIosMutationGuard { fixture ->
+                val request =
+                    iosMutationTestRequest(route).apply {
+                        mutationTestEngineHeaders(route).forEach { (name, value) -> setValue(value, name) }
+                    }
+                fixture.guard.prepare(request)
+                listOf("synthetic", "Ktor-client", "ktor-client,ktor-client").forEach { value ->
+                    assertFails {
+                        fixture.guard.prepare(iosMutationTestRequest(route).apply { setValue(value, "user-agent") })
+                    }
+                }
+                val task = fixture.task(request)
+                val headers = mapOf("Content-Type" to "application/json", "Content-Length" to "1")
+                assertTrue(fixture.admit(task, headers, iosMutationTestUrl(route)))
+                fixture.receive(task, 1)
+                fixture.complete(task)
+                assertEquals(1uL, fixture.callbacks.forwardedBytes)
+                assertNull(fixture.callbacks.errors.single())
+            }
+        }
+    }
 }

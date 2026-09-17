@@ -50,15 +50,19 @@ internal fun reportRequest(
         PendingComplaintAction.checked(PendingComplaintOperation.CREATE_REPORT, identity.clientId.value, null, null)
             ?: refuse(Block.INVALID_CANDIDATE)
     val digest = ComplaintReportFingerprint.of(report)
-    val fingerprint = PendingComplaintFingerprint.checked(digest.version, digest.encoded) ?: refuse(Block.INVALID_CANDIDATE)
+    val fingerprint =
+        PendingComplaintFingerprint.checked(digest.version, digest.encoded) ?: refuse(Block.INVALID_CANDIDATE)
     return PendingComplaintRequest.checked(action, identity.key.value, fingerprint) ?: refuse(Block.INVALID_CANDIDATE)
 }
 
 internal fun decodeReport(slot: PendingComplaintSlot): PendingComplaintRecord =
     when (val result = PendingComplaintRecordCodec.decode(slot)) {
-        is PendingComplaintCodecResult.Value -> result.value.also {
-            if (it.request.action.operation != PendingComplaintOperation.CREATE_REPORT) refuse(Block.RECONCILIATION_REQUIRED)
-        }
+        is PendingComplaintCodecResult.Value ->
+            result.value.also {
+                if (it.request.action.operation != PendingComplaintOperation.CREATE_REPORT) {
+                    refuse(Block.RECONCILIATION_REQUIRED)
+                }
+            }
         PendingComplaintCodecResult.Corrupt -> permanent(InstallationPermanentFailure.CORRUPT)
         PendingComplaintCodecResult.TooLarge -> permanent(InstallationPermanentFailure.TOO_LARGE)
     }

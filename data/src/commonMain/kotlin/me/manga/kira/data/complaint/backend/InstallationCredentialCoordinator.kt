@@ -166,8 +166,9 @@ class InstallationCredentialCoordinator(
             reports.begin(permit, work, start)
         }
 
-    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> =
-        mutex.serialized { reportAdmission(binding) }
+    internal suspend fun checkReportSession(binding: ReportActionBinding): Outcome<Unit> {
+        return mutex.serialized { reportAdmission(binding) }
+    }
 
     /** Named, no-I/O token publication only; never a generic authenticated action callback. */
     internal suspend fun publishReportSession(
@@ -200,21 +201,21 @@ class InstallationCredentialCoordinator(
         sessions: InstallationSessionManager,
         http: ComplaintMutationHttp,
     ): Outcome<ReportExchange.Create> {
-        val dispatch =
-            when (val admitted = mutex.serialized {
-                prepareReportDispatch(binding, session, sessions)
-            }) {
-                is Outcome.Success -> admitted.value
-                is Outcome.Refused -> return admitted
-                is Outcome.StorageFailure -> return admitted
-                is Outcome.Invalid -> return admitted
+        val admitted = mutex.serialized { prepareReportDispatch(binding, session, sessions) }
+        return when (admitted) {
+            is Outcome.Success -> {
+                val dispatch = admitted.value
+                currentCoroutineContext().ensureActive()
+                val result = http.create(dispatch.request, session.response)
+                mutex.serialized {
+                    reportAdmission(dispatch.binding)
+                    reportSessionAdmission(dispatch.binding, session, sessions)
+                    reports.receivedCreate(dispatch.binding, session, dispatch.request, result)
+                }
             }
-        currentCoroutineContext().ensureActive()
-        val result = http.create(dispatch.request, session.response)
-        return mutex.serialized {
-            reportAdmission(dispatch.binding)
-            reportSessionAdmission(dispatch.binding, session, sessions)
-            reports.receivedCreate(dispatch.binding, session, dispatch.request, result)
+            is Outcome.Refused -> admitted
+            is Outcome.StorageFailure -> admitted
+            is Outcome.Invalid -> admitted
         }
     }
 
@@ -241,23 +242,25 @@ class InstallationCredentialCoordinator(
         sessions: InstallationSessionManager,
         http: ComplaintMutationHttp,
     ): Outcome<ReportExchange.Status> {
-        val request =
-            when (val admitted = mutex.serialized {
+        val admitted =
+            mutex.serialized {
                 reportAdmission(binding)
                 reportSessionAdmission(binding, session, sessions)
                 reports.statusRequest(binding)
-            }) {
-                is Outcome.Success -> admitted.value
-                is Outcome.Refused -> return admitted
-                is Outcome.StorageFailure -> return admitted
-                is Outcome.Invalid -> return admitted
             }
-        currentCoroutineContext().ensureActive()
-        val result = http.status(request, session.response)
-        return mutex.serialized {
-            reportAdmission(binding)
-            reportSessionAdmission(binding, session, sessions)
-            reports.receivedStatus(binding, session, request, result)
+        return when (admitted) {
+            is Outcome.Success -> {
+                currentCoroutineContext().ensureActive()
+                val result = http.status(admitted.value, session.response)
+                mutex.serialized {
+                    reportAdmission(binding)
+                    reportSessionAdmission(binding, session, sessions)
+                    reports.receivedStatus(binding, session, admitted.value, result)
+                }
+            }
+            is Outcome.Refused -> admitted
+            is Outcome.StorageFailure -> admitted
+            is Outcome.Invalid -> admitted
         }
     }
 

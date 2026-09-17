@@ -43,7 +43,8 @@ class ComplaintReportActionBindingTest {
                 fixture.installWriteFault(case)
                 try {
                     val report = mutationReport()
-                    val attempted = fixture.repository.submit(report).reportSuccess().attempt
+                    val submission = fixture.repository.submit(report).reportSuccess()
+                    val attempted = submission.attempt
                     assertSame(report, assertIs<ReportAttempt.Unresolved>(attempted).liveReport, case)
                     assertTrue(fixture.requests.isEmpty(), case)
                     assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace, case)
@@ -98,7 +99,8 @@ class ComplaintReportActionBindingTest {
             val work = assertNotNull(fixture.works.begin(Job()))
             try {
                 val outcomeA = fixture.boundStatus(work, a)
-                val copied = ReportExchange.Status(outcomeA.binding, outcomeA.session, outcomeA.request, outcomeA.result)
+                val copied =
+                    ReportExchange.Status(outcomeA.binding, outcomeA.session, outcomeA.request, outcomeA.result)
                 assertRefused(Block.STALE_BINDING, fixture.coordinator.applyReportOutcome(copied, fixture.sessions))
                 assertNull(work.application())
                 fixture.coordinator.releaseReportAction(outcomeA.binding).success()
@@ -209,7 +211,12 @@ private suspend fun ComplaintReportFixture.assertRefreshKeepsDispatchedBytes(fir
     assertTrue(sessions.reportSessionIsCurrent(refreshed))
     val retry = coordinator.dispatchReport(first.binding, refreshed, sessions, http).success()
     assertTrue(exactDispatchedSlot.sameAs(assertNotNull(retry.binding.slot)))
-    assertEquals(safeUntil, retry.binding.pendingRecord?.times?.serverReceiptSafeUntil)
+    assertEquals(
+        safeUntil,
+        retry.binding.pendingRecord
+            ?.times
+            ?.serverReceiptSafeUntil,
+    )
     assertRefused(Block.RECONCILIATION_REQUIRED, coordinator.authorizeReportRefresh(retry, sessions))
     assertEquals(3, sessionRequests.size)
     assertEquals(2, requests.size)

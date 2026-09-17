@@ -16,16 +16,14 @@ internal class ComplaintReportExecution(
             return binding.unresolved(reportSessionFailure(authenticated.failure))
         }
         val session = (authenticated as ReportSessionResult.Ready).session
-        val prepared =
-            if (binding.stage == ReportActionStage.NEW) {
-                when (val result = coordinator.prepareReport(binding, session, sessions)) {
-                    is Outcome.Success -> result.value
-                    else -> return binding.unresolved(reportLocalFailure(result))
-                }
-            } else {
-                binding
+        return if (binding.stage == ReportActionStage.NEW) {
+            when (val result = coordinator.prepareReport(binding, session, sessions)) {
+                is Outcome.Success -> dispatch(result.value, session)
+                else -> binding.unresolved(reportLocalFailure(result))
             }
-        return dispatch(prepared, session)
+        } else {
+            dispatch(binding, session)
+        }
     }
 
     suspend fun status(
@@ -39,16 +37,14 @@ internal class ComplaintReportExecution(
                 binding.unresolved(reportUnavailable(Block.LIVE_REQUEST_REQUIRED))
             }
         }
-        val authenticated = sessions.reportSession(binding)
-        if (authenticated is ReportSessionResult.Failed) {
-            return binding.unresolved(reportSessionFailure(authenticated.failure))
+        return when (val authenticated = sessions.reportSession(binding)) {
+            is ReportSessionResult.Failed -> binding.unresolved(reportSessionFailure(authenticated.failure))
+            is ReportSessionResult.Ready ->
+                when (val result = readStatus(binding, authenticated.session)) {
+                    is ReportStatusRead.Ready -> finishStatus(result.exchange, retryLive)
+                    is ReportStatusRead.Failed -> binding.unresolved(result.failure)
+                }
         }
-        val exchange =
-            when (val result = readStatus(binding, (authenticated as ReportSessionResult.Ready).session)) {
-                is ReportStatusRead.Ready -> result.exchange
-                is ReportStatusRead.Failed -> return binding.unresolved(result.failure)
-            }
-        return finishStatus(exchange, retryLive)
     }
 
     private suspend fun finishStatus(
@@ -57,14 +53,17 @@ internal class ComplaintReportExecution(
     ): ReportExecution {
         val result = exchange.result
         return when {
-            retryLive && result is ComplaintCreateStatusHttpResult.HttpFailure &&
-                result.status == NOT_FOUND && result.problem == ComplaintMutationProblem.OPERATION_NOT_FOUND ->
+            retryLive &&
+                result is ComplaintCreateStatusHttpResult.HttpFailure &&
+                result.status == NOT_FOUND &&
+                result.problem == ComplaintMutationProblem.OPERATION_NOT_FOUND ->
                 dispatch(exchange.binding, exchange.session)
             result is ComplaintCreateStatusHttpResult.Applied || result is ComplaintCreateStatusHttpResult.Rejected ->
                 apply(exchange)
             result is ComplaintCreateStatusHttpResult.HttpFailure ->
                 exchange.binding.unresolved(ReportFailure(AppError.Network.Http(result.status)))
-            result is ComplaintCreateStatusHttpResult.Failed -> exchange.binding.unresolved(reportMutationFailure(result.reason))
+            result is ComplaintCreateStatusHttpResult.Failed ->
+                exchange.binding.unresolved(reportMutationFailure(result.reason))
             else -> exchange.binding.unresolved(reportUnavailable())
         }
     }
@@ -86,12 +85,13 @@ internal class ComplaintReportExecution(
             return exchange.binding.unresolved(reportSessionFailure(refreshed.failure))
         }
         return when (
-            val retry = coordinator.dispatchReport(
-                exchange.binding,
-                (refreshed as ReportSessionResult.Ready).session,
-                sessions,
-                http,
-            )
+            val retry =
+                coordinator.dispatchReport(
+                    exchange.binding,
+                    (refreshed as ReportSessionResult.Ready).session,
+                    sessions,
+                    http,
+                )
         ) {
             is Outcome.Success -> finishCreate(retry.value)
             else -> exchange.binding.unresolved(reportLocalFailure(retry))
@@ -105,16 +105,17 @@ internal class ComplaintReportExecution(
         val first = coordinator.readReportStatus(binding, session, sessions, http)
         if (first !is Outcome.Success) return ReportStatusRead.Failed(reportLocalFailure(first))
         val exchange = first.value
-        if ((exchange.result as? ComplaintCreateStatusHttpResult.HttpFailure)?.status != UNAUTHORIZED) {
-            return ReportStatusRead.Ready(exchange)
-        }
-        return when (val refreshed = refresh(exchange)) {
-            is ReportSessionResult.Ready ->
-                when (val retry = coordinator.readReportStatus(binding, refreshed.session, sessions, http)) {
-                    is Outcome.Success -> ReportStatusRead.Ready(retry.value)
-                    else -> ReportStatusRead.Failed(reportLocalFailure(retry))
-                }
-            is ReportSessionResult.Failed -> ReportStatusRead.Failed(reportSessionFailure(refreshed.failure))
+        return if ((exchange.result as? ComplaintCreateStatusHttpResult.HttpFailure)?.status != UNAUTHORIZED) {
+            ReportStatusRead.Ready(exchange)
+        } else {
+            when (val refreshed = refresh(exchange)) {
+                is ReportSessionResult.Ready ->
+                    when (val retry = coordinator.readReportStatus(binding, refreshed.session, sessions, http)) {
+                        is Outcome.Success -> ReportStatusRead.Ready(retry.value)
+                        else -> ReportStatusRead.Failed(reportLocalFailure(retry))
+                    }
+                is ReportSessionResult.Failed -> ReportStatusRead.Failed(reportSessionFailure(refreshed.failure))
+            }
         }
     }
 

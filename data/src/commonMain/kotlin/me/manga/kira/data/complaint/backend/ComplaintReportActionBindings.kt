@@ -97,15 +97,20 @@ internal class ComplaintReportActionBindings(
     ): ReportActionBinding {
         if (binding.stage != ReportActionStage.PREPARED) return binding
         val record = binding.pendingRecord ?: refuse(Block.STALE_BINDING)
-        if (record.times.sessionIssuedAt == session.response.issuedAt) return binding
-        val change =
-            PendingComplaintTransitions.rebasePrepared(
-                binding.slot ?: refuse(Block.STALE_BINDING),
-                binding.permit.record,
-                session.response.issuedAt,
-            ) as? PendingComplaintChange.Replace ?: refuse(Block.INVALID_CANDIDATE)
-        val inventory = pending.replacePendingCoordinated(binding.permit.snapshot, change.expected, change.replacement)
-        return advance(binding, inventory, change.replacement, decodeReport(change.replacement), ReportActionStage.PREPARED)
+        return if (record.times.sessionIssuedAt == session.response.issuedAt) {
+            binding
+        } else {
+            val change =
+                PendingComplaintTransitions.rebasePrepared(
+                    binding.slot ?: refuse(Block.STALE_BINDING),
+                    binding.permit.record,
+                    session.response.issuedAt,
+                ) as? PendingComplaintChange.Replace ?: refuse(Block.INVALID_CANDIDATE)
+            val inventory =
+                pending.replacePendingCoordinated(binding.permit.snapshot, change.expected, change.replacement)
+            val rebased = decodeReport(change.replacement)
+            advance(binding, inventory, change.replacement, rebased, ReportActionStage.PREPARED)
+        }
     }
 
     suspend fun markDispatch(binding: ReportActionBinding): ReportActionBinding {
@@ -119,7 +124,13 @@ internal class ComplaintReportActionBindings(
             ) as? PendingComplaintChange.Replace ?: refuse(Block.INVALID_CANDIDATE)
         val inventory = pending.replacePendingCoordinated(binding.permit.snapshot, change.expected, change.replacement)
         val next =
-            advance(binding, inventory, change.replacement, decodeReport(change.replacement), ReportActionStage.MAY_HAVE_DISPATCHED)
+            advance(
+                binding,
+                inventory,
+                change.replacement,
+                decodeReport(change.replacement),
+                ReportActionStage.MAY_HAVE_DISPATCHED,
+            )
         firstDispatch = true
         return next
     }
@@ -194,7 +205,8 @@ internal class ComplaintReportActionBindings(
         val exchange = ReportExchange.Status(binding, session, request, result)
         lastExchange = exchange
         val missing =
-            result is ComplaintCreateStatusHttpResult.HttpFailure && result.status == NOT_FOUND &&
+            result is ComplaintCreateStatusHttpResult.HttpFailure &&
+                result.status == NOT_FOUND &&
                 result.problem == ComplaintMutationProblem.OPERATION_NOT_FOUND
         retry = if (missing) ReportRetry.NotFound else null
         if (missing) reconciliation.record(binding)

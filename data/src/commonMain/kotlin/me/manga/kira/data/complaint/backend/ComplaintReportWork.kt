@@ -32,7 +32,8 @@ internal class ReportWorkOwner {
     /** The caller already retained the previous typed result before admitting another exact action. */
     fun beginAction(work: ReportWork): Boolean {
         val current = state.load() as? ReportWorkState.Active ?: return false
-        return current.work === work && work.job.isActive &&
+        return current.work === work &&
+            work.job.isActive &&
             state.compareAndSet(current, ReportWorkState.Active(work))
     }
 
@@ -43,12 +44,18 @@ internal class ReportWorkOwner {
         application: ReportActionState,
     ): Boolean {
         val current = state.load() as? ReportWorkState.Active ?: return false
-        if (current.work !== work || !work.job.isActive) return false
-        val previous = current.applied
-        if (previous != null) {
-            return previous.slot.sameAs(slot) && previous.application.sameAs(application) && state.compareAndSet(current, current)
+        return if (current.work !== work || !work.job.isActive) {
+            false
+        } else {
+            val previous = current.applied
+            if (previous != null) {
+                previous.slot.sameAs(slot) &&
+                    previous.application.sameAs(application) &&
+                    state.compareAndSet(current, current)
+            } else {
+                state.compareAndSet(current, ReportWorkState.Active(work, ReportAppliedState(slot, application)))
+            }
         }
-        return state.compareAndSet(current, ReportWorkState.Active(work, ReportAppliedState(slot, application)))
     }
 
     fun application(work: ReportWork): ReportActionState? =
@@ -60,8 +67,8 @@ internal class ReportWorkOwner {
 
     fun cancel(work: ReportWork) {
         while (true) {
-            val current = state.load() as? ReportWorkState.Active ?: return
-            if (current.work !== work) return
+            val current = state.load()
+            if (current !is ReportWorkState.Active || current.work !== work) return
             if (state.compareAndSet(current, ReportWorkState.Cancelled(work, current.applied))) {
                 work.job.cancel()
                 return

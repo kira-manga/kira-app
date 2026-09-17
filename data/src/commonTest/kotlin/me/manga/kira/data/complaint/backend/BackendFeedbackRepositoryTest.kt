@@ -1,9 +1,6 @@
 package me.manga.kira.data.complaint.backend
 
-import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.request.HttpRequestData
-import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -34,10 +31,18 @@ class BackendFeedbackRepositoryTest {
             try {
                 fixture.repository.reconcile().reportSuccess()
                 val next = fixture.repository.submit(mutationReport()).reportSuccess()
-                assertEquals(Block.RECONCILIATION_REQUIRED, assertIs<ReportAttempt.Unresolved>(next.attempt).failure.block)
+                assertEquals(
+                    Block.RECONCILIATION_REQUIRED,
+                    assertIs<ReportAttempt.Unresolved>(next.attempt).failure.block,
+                )
                 assertEquals(2, fixture.requests.size)
                 assertTrue(fixture.requests.all { it.url.encodedPath.endsWith(Policy.STATUS_PATH) })
-                assertTrue(slot.sameAs(fixture.storage.pending.slots.single()))
+                assertTrue(
+                    slot.sameAs(
+                        fixture.storage.pending.slots
+                            .single(),
+                    ),
+                )
             } finally {
                 fixture.close()
             }
@@ -120,7 +125,13 @@ private suspend fun TestScope.assertDirectRetained(
         )
     try {
         val report = mutationReport()
-        val attempted = assertIs<ReportAttempt.Unresolved>(fixture.repository.submit(report).reportSuccess().attempt)
+        val attempted =
+            assertIs<ReportAttempt.Unresolved>(
+                fixture.repository
+                    .submit(report)
+                    .reportSuccess()
+                    .attempt,
+            )
         assertSame(report, attempted.liveReport)
         assertNull(attempted.application)
         val slot = storage.pending.slots.single()
@@ -148,30 +159,20 @@ private suspend fun TestScope.assertRestartedMetadataApplication(
             },
         )
     try {
-        val item = fixture.repository.reconcile().reportSuccess().entries().single()
+        val recovery = fixture.repository.reconcile().reportSuccess()
+        val item = recovery.entries().single()
         val completed = assertIs<ReportAttempt.Completed>(item.attempt)
         assertNull(completed.liveReport)
         assertMetadataApplication(completed, rejected)
         assertTrue(item.slot.sameAs(slot))
         assertTrue(storage.pending.slots.isEmpty())
         assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(Fixtures.record()))
-        assertTrue(fixture.requests.single().url.encodedPath.endsWith(Policy.STATUS_PATH))
+        val request = fixture.requests.single()
+        assertTrue(request.url.encodedPath.endsWith(Policy.STATUS_PATH))
     } finally {
         fixture.close()
     }
 }
-
-private fun TestScope.successfulReportFixture(): ComplaintReportFixture =
-    ComplaintReportFixture(
-        this,
-        mutationHandler = { request ->
-            if (request.url.encodedPath.endsWith(Policy.STATUS_PATH)) {
-                respond(mutationApplied(), HttpStatusCode.OK, mutationHeaders())
-            } else {
-                respond(mutationAck(), HttpStatusCode.Created, mutationHeaders(HttpStatusCode.Created))
-            }
-        },
-    )
 
 private suspend fun assertNotFoundRetryPolicy(
     fixture: ComplaintReportFixture,
@@ -179,8 +180,10 @@ private suspend fun assertNotFoundRetryPolicy(
     nanosPastBoundary: Int,
 ) {
     val slot = reportSlot(report)
-    fixture.storage.pending.slots += slot
-    val metadata = fixture.repository.reconcile().reportSuccess().entries().single()
+    val slots = fixture.storage.pending.slots
+    slots += slot
+    val recovery = fixture.repository.reconcile().reportSuccess()
+    val metadata = recovery.entries().single()
     assertNull(assertIs<ReportAttempt.Unresolved>(metadata.attempt).liveReport)
     assertEquals(1, fixture.requests.size)
     val wrong = fixture.repository.retry(mutationReport(subject = "Changed")).reportSuccess()
@@ -191,11 +194,11 @@ private suspend fun assertNotFoundRetryPolicy(
     if (nanosPastBoundary == 0) {
         assertIs<ReportAttempt.Completed>(retry)
         assertEquals(3, fixture.requests.size)
-        assertTrue(fixture.storage.pending.slots.isEmpty())
+        assertTrue(slots.isEmpty())
     } else {
         assertEquals(Block.RECEIPT_WINDOW_EXPIRED, assertIs<ReportAttempt.Unresolved>(retry).failure.block)
         assertEquals(2, fixture.requests.size)
-        assertTrue(slot.sameAs(fixture.storage.pending.slots.single()))
+        assertTrue(slot.sameAs(slots.single()))
     }
 }
 
@@ -206,20 +209,30 @@ private suspend fun TestScope.assertCapacityAndReads(
     val submission = fixture.repository.submit(mutationReport()).reportSuccess()
     assertEquals(slots.size, submission.recovery.entries().size)
     if (slots.size == 16) {
-        assertEquals(Block.PENDING_CAPACITY_REACHED, assertIs<ReportAttempt.Unresolved>(submission.attempt).failure.block)
+        assertEquals(
+            Block.PENDING_CAPACITY_REACHED,
+            assertIs<ReportAttempt.Unresolved>(submission.attempt).failure.block,
+        )
         assertEquals(16, fixture.requests.size)
     } else {
         assertIs<ReportAttempt.Completed>(submission.attempt)
         assertEquals(16, fixture.requests.size)
     }
     assertEquals(slots.size, fixture.storage.pending.slots.size)
-    assertTrue(slots.all { old -> fixture.storage.pending.slots.any { old.sameAs(it) } })
+    assertTrue(
+        slots.all { old ->
+            fixture.storage.pending.slots
+                .any { old.sameAs(it) }
+        },
+    )
     assertRetainedReportHistoryRead(fixture)
 }
 
 private suspend fun TestScope.assertRetainedReportHistoryRead(fixture: ComplaintReportFixture) {
     val history = ComplaintHistoryFixture(this, storage = fixture.storage)
-    val mutations = fixture.storage.faults.mutations.toList()
+    val mutations =
+        fixture.storage.faults.mutations
+            .toList()
     try {
         assertIs<ComplaintHistory.Backend>(history.repository.loadUserComplaints().reportSuccess())
         assertEquals(1, history.historyRequests.size)
@@ -230,36 +243,16 @@ private suspend fun TestScope.assertRetainedReportHistoryRead(fixture: Complaint
     }
 }
 
-private fun TestScope.failingSecondStatusFixture(): ComplaintReportFixture {
-    var reads = 0
-    return ComplaintReportFixture(
-        this,
-        mutationHandler = {
-            reads++
-            val status = if (reads == 1) HttpStatusCode.NotFound else HttpStatusCode.ServiceUnavailable
-            val body = if (reads == 1) mutationProblem(status, "OPERATION_NOT_FOUND") else historyProblem(status)
-            respond(body, status, mutationHeaders(status))
-        },
-    )
-}
-
-private fun MockRequestHandleScope.notFoundOrCreated(request: HttpRequestData): HttpResponseData =
-    if (request.url.encodedPath.endsWith(Policy.STATUS_PATH)) {
-        respond(
-            mutationProblem(HttpStatusCode.NotFound, "OPERATION_NOT_FOUND"),
-            HttpStatusCode.NotFound,
-            mutationHeaders(HttpStatusCode.NotFound),
-        )
-    } else {
-        respond(mutationAck(), HttpStatusCode.Created, mutationHeaders(HttpStatusCode.Created))
-    }
-
 private suspend fun assertUncertainDeletionRetry(
     fixture: ComplaintReportFixture,
     report: ComplaintReportRequest,
     step: Step,
 ) {
-    val attempted = fixture.repository.submit(report).reportSuccess().attempt
+    val attempted =
+        fixture.repository
+            .submit(report)
+            .reportSuccess()
+            .attempt
     val unresolved = assertIs<ReportAttempt.Unresolved>(attempted)
     assertSame(report, unresolved.liveReport)
     assertIs<ReportActionState.Applied>(unresolved.application)
@@ -271,7 +264,10 @@ private suspend fun assertUncertainDeletionRetry(
         assertEquals(Block.MISSING, assertIs<ReportAttempt.Unresolved>(retry).failure.block)
         assertEquals(1, fixture.requests.size)
     }
-    assertTrue(fixture.storage.pending.slots.isEmpty())
+    assertTrue(
+        fixture.storage.pending.slots
+            .isEmpty(),
+    )
     assertEquals(1, fixture.requests.count { it.url.encodedPath.endsWith(Policy.CREATE_PATH) })
 }
 
@@ -285,10 +281,3 @@ private fun assertMetadataApplication(
         assertIs<ReportActionState.Applied>(completed.application)
     }
 }
-
-private fun directProblem(status: HttpStatusCode): String =
-    if (status == HttpStatusCode.Conflict) {
-        mutationProblem(status, "COMPLAINT_CAPACITY_REACHED")
-    } else {
-        historyProblem(status)
-    }

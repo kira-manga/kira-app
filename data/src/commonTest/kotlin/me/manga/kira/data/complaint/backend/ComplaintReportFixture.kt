@@ -15,6 +15,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.fail
 import kotlin.time.ExperimentalTime
 import kotlin.time.TestTimeSource
+import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 import me.manga.kira.data.complaint.backend.InstallationCoordinatorFixtures as Fixtures
 import me.manga.kira.data.complaint.backend.InstallationStoreStep as Step
 
@@ -106,3 +107,46 @@ private fun ComplaintReportFixture.installReadbackFault(case: String) {
         }
     }
 }
+
+internal fun TestScope.successfulReportFixture(): ComplaintReportFixture =
+    ComplaintReportFixture(
+        this,
+        mutationHandler = { request ->
+            if (request.url.encodedPath.endsWith(Policy.STATUS_PATH)) {
+                respond(mutationApplied(), HttpStatusCode.OK, mutationHeaders())
+            } else {
+                respond(mutationAck(), HttpStatusCode.Created, mutationHeaders(HttpStatusCode.Created))
+            }
+        },
+    )
+
+internal fun TestScope.failingSecondStatusFixture(): ComplaintReportFixture {
+    var reads = 0
+    return ComplaintReportFixture(
+        this,
+        mutationHandler = {
+            reads++
+            val status = if (reads == 1) HttpStatusCode.NotFound else HttpStatusCode.ServiceUnavailable
+            val body = if (reads == 1) mutationProblem(status, "OPERATION_NOT_FOUND") else historyProblem(status)
+            respond(body, status, mutationHeaders(status))
+        },
+    )
+}
+
+internal fun MockRequestHandleScope.notFoundOrCreated(request: HttpRequestData): HttpResponseData =
+    if (request.url.encodedPath.endsWith(Policy.STATUS_PATH)) {
+        respond(
+            mutationProblem(HttpStatusCode.NotFound, "OPERATION_NOT_FOUND"),
+            HttpStatusCode.NotFound,
+            mutationHeaders(HttpStatusCode.NotFound),
+        )
+    } else {
+        respond(mutationAck(), HttpStatusCode.Created, mutationHeaders(HttpStatusCode.Created))
+    }
+
+internal fun directProblem(status: HttpStatusCode): String =
+    if (status == HttpStatusCode.Conflict) {
+        mutationProblem(status, "COMPLAINT_CAPACITY_REACHED")
+    } else {
+        historyProblem(status)
+    }

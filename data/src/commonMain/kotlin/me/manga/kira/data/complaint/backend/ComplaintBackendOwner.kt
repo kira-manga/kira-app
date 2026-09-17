@@ -40,13 +40,7 @@ class ComplaintBackendOwner private constructor(
             historyEngine: HttpClientEngine,
             mutationEngine: HttpClientEngine? = null,
         ): AppResult<ComplaintBackendOwner> {
-            if (enrollmentEngine === sessionEngine ||
-                enrollmentEngine === historyEngine ||
-                sessionEngine === historyEngine ||
-                mutationEngine === enrollmentEngine ||
-                mutationEngine === sessionEngine ||
-                mutationEngine === historyEngine
-            ) {
+            if (!distinctBorrowedEngines(enrollmentEngine, sessionEngine, historyEngine, mutationEngine)) {
                 return historyUnavailable()
             }
             val close = mutableListOf<() -> Unit>()
@@ -86,6 +80,16 @@ class ComplaintBackendOwner private constructor(
             }
         }
     }
+}
+
+private fun distinctBorrowedEngines(
+    enrollment: HttpClientEngine,
+    session: HttpClientEngine,
+    history: HttpClientEngine,
+    mutation: HttpClientEngine?,
+): Boolean {
+    val readsDistinct = enrollment !== session && enrollment !== history && session !== history
+    return readsDistinct && mutation !== enrollment && mutation !== session && mutation !== history
 }
 
 /** Attempt every owned close even after failure; exceptions never escape with platform/content diagnostics. */
