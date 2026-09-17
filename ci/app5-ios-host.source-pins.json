@@ -1,0 +1,42 @@
+{
+  "schema": "app5-ios-host-source-pins-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "note": "Exact source and configured build inputs. Only ordinary core/data:remote mains and the complete data:remote Native test sources compile; no source replacement, framework/Engine/host/private binary scope.",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "7aed03749876668fb0ebb9f434fd22fdafe27907",
+    "tree": "4005fe82a3b2ddc2b37e3080862d18bef0935ced",
+    "inputs": {
+      "AGENTS.md": "2a9ae9bc38e69e7cd7fd0e0f66ca6a80bc4a6640e5e33a0810f2896df4b469c1",
+      "CLAUDE.md": "d0dc999cb9e179693d7c674c71a3f5b835f61ad95a297f1eaa1b8fd029c35e09",
+      "app/build.gradle.kts": "fb1929a19efcac2e9d843bd3f1946f2573ff486747abf514fcf76f5f80b55889",
+      "build.gradle.kts": "b22544870c22bf616c4f072ad415513c7b346524e3b9a2b4001a6514424f24dd",
+      "composeApp/build.gradle.kts": "457798800fb581a9271dadbcfcb14af92f5423750f57c5a27109aa19acb7f0e6",
+      "core/build.gradle.kts": "0f6a9398471461c285e82d0e1a9147a13790fef382eb10b687766c57d0b9de54",
+      "data/build.gradle.kts": "2cc7ab7c9360d6eaa1190468e85e0b033ba54ba82c279a0fe88919dc6df9fac0",
+      "data/download/build.gradle.kts": "2188a4aa17fde12409e2aebe7fc48d119a8b2325b9d422f2f667b7df2f1d3f74",
+      "data/local/build.gradle.kts": "af618e441f024af7239e476e48098c9f7ec4e09bb358e1055e6c787f81aec8cb",
+      "data/remote/build.gradle.kts": "21013d8465cd665a481a3be0a555175025c6555445a1d5630adf3fd37b88d7cf",
+      "desktopApp/build.gradle.kts": "33cbe01c54993042df2ce3bc5bf20dedaf23256969b1c3097ad77a226bdc99ba",
+      "domain/build.gradle.kts": "ade4c1e77d35a3e57879b45159e2d10c96d0c33f879d53df4bc085f0208bb85f",
+      "gradle.properties": "fbcfeeae64de28e5a2756cd74a01f1c8b9eceedf395d5c114573c0aea6fc9f2a",
+      "gradle/libs.versions.toml": "bb09e1701b46a9926c0a7219c5c2ee76901bcb75bccff0e1e19e6fa40b9ed0f8",
+      "gradle/wrapper/gradle-wrapper.jar": "9687bf4e8beb2c293cfd1393cbf2854ef68f921757302116033f476289abf7b0",
+      "gradle/wrapper/gradle-wrapper.properties": "1d126b2f29d1a87825e57ae7a7a1b1cc06f8dcbc89dd614dc6a5b493244ba2cc",
+      "gradlew": "734b3879d3501dce471cf0522d3bcbafe76873d9fc5129345b67fb43bd15e933",
+      "platform/build.gradle.kts": "5ba4b1f1bc8133502ec5fd3d4e7dd37880cbc3c5917343467c804b503639ae69",
+      "presentation/build.gradle.kts": "e084af1ba5a9906e7639f49f55d004075d91cf0c5cf32adcc493da960d432b92",
+      "release/version.properties": "814383ff95724a36e24779e7ec871eb6765422ad86562a76866e90aab48eb5d3",
+      "settings.gradle.kts": "8125abef549a3ac6bf5b4c1be625187bc6ea04bc530916b00173c31ed4dc9f00",
+      "sources/config/build.gradle.kts": "63db5f2564a6fdf21ccb7bdfa9bbafc8cdb395d08606a6f77417a1ae35ba203c",
+      "sources/contracts/build.gradle.kts": "cd0ead53d56a2072fec38d047f0a6d2a8972e205ba15b005df2060907232597b",
+      "sources/engine/build.gradle.kts": "d71d385ce90d99ac3b7a2a17d7f5cd44fa01fd529f35868c87df9476f49d1954",
+      "sources/legacy/build.gradle.kts": "ca9b5ecaa8294db0eda6f2ce3cced2a16d80089b4a723c4eeddf707d6e359e7f",
+      "ui/build.gradle.kts": "55d1f8748d468ac1b8f89db9b4844aaaaa8a03409211c190aa8792cea7b444d0"
+    }
+  },
+  "app_modules": [
+    "core",
+    "data/remote"
+  ]
+}
