@@ -9,9 +9,12 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.TestScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -159,6 +162,13 @@ class ComplaintSessionHttpTest {
                     fixture.close()
                 }
             }
+            for (status in listOf(HttpStatusCode.OK, HttpStatusCode.NotFound)) {
+                for (framing in listOf("missing", "chunked", "declared")) {
+                    for (afterPrefix in listOf(false, true)) {
+                        assertFailedSessionEofCannotAuthorize(status, framing, afterPrefix)
+                    }
+                }
+            }
         }
 }
 
@@ -233,3 +243,36 @@ private fun invalidSessionHeaders(
             HttpStatusCode.Unauthorized,
         ),
     )
+
+private suspend fun TestScope.assertFailedSessionEofCannotAuthorize(
+    status: HttpStatusCode,
+    framing: String,
+    afterPrefix: Boolean,
+) {
+    val text = if (status == HttpStatusCode.OK) sessionResponse() else historyInstallationNotFoundProblem()
+    val bytes = text.encodeToByteArray()
+    val channel = ComplaintFailedEofChannel(bytes, afterPrefix)
+    val headers = sessionHeaders(status) {
+        when (framing) {
+            "chunked" -> append(HttpHeaders.TransferEncoding, "chunked")
+            "declared" -> append(HttpHeaders.ContentLength, bytes.size.toString())
+            else -> Unit
+        }
+    }
+    // Use the connected owner consumer so a false strict404 could actually invoke enrollment.
+    val fixture = ComplaintHistoryFixture(this, sessionHandler = { respond(channel, status, headers) })
+    try {
+        val error = assertIs<AppResult.Failure>(fixture.repository.loadUserComplaints()).error
+        assertIs<AppError.Network.NoConnectivity>(error)
+        assertNull(error.cause)
+        assertEquals(afterPrefix, channel.prefixDrained)
+        assertTrue(channel.cancelled)
+        assertEquals(1, fixture.sessionRequests.size)
+        assertTrue(fixture.historyRequests.isEmpty())
+        assertTrue(fixture.enrollment.requests.isEmpty())
+        assertTrue(fixture.enrollment.generator.scopes.isEmpty())
+        fixture.assertPreserved()
+    } finally {
+        fixture.close()
+    }
+}

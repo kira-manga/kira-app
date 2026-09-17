@@ -3,13 +3,14 @@ package me.manga.kira.data.complaint.backend
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 
-/** Explicit configuration, not discovery. Only these fixed credential-free HTTPS installation routes exist. */
-internal class ComplaintBackendEndpoint private constructor(
+/** Explicit configuration, not discovery. Only fixed credential-free HTTPS installation/history routes exist. */
+class ComplaintBackendEndpoint private constructor(
     base: String,
 ) {
     val sessionUrl: Url = Url(base + SESSION_PATH)
     val enrollmentUrl: Url = Url(base + ENROLLMENT_PATH)
     val bootstrapUrl: Url = Url(base + BOOTSTRAP_PATH)
+    val historyUrl: Url = Url(base + "/api/v1/complaints")
 
     override fun toString(): String = "ComplaintBackendEndpoint(redacted)"
 

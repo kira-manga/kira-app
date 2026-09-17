@@ -3,19 +3,19 @@ package me.manga.kira.data.remote.complaint
 /** Bounds bytes handed to Ktor; this is not a bound on earlier TLS/socket/native allocation. */
 internal class ComplaintSessionReceiveBudget private constructor(
     private val declaredLength: Int?,
-) {
-    var receivedBytes: Int = 0
+) : ComplaintReceiveBudget {
+    override var receivedBytes: Int = 0
         private set
 
-    val remainingBytes: Int get() = MAX_BYTES - receivedBytes
+    override val remainingBytes: Int get() = MAX_BYTES - receivedBytes
 
-    fun accept(byteCount: ULong): Boolean {
+    override fun accept(byteCount: ULong): Boolean {
         if (byteCount > remainingBytes.toULong()) return false
         receivedBytes += byteCount.toInt()
         return true
     }
 
-    fun isComplete(): Boolean = declaredLength == null || receivedBytes == declaredLength
+    override fun isComplete(): Boolean = declaredLength == null || receivedBytes == declaredLength
 
     companion object {
         const val MAX_BYTES = 16 * 1_024

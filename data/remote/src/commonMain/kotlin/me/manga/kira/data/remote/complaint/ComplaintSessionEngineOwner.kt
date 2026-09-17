@@ -6,7 +6,7 @@ import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * Owns only a dedicated session or enrollment engine. Its dedicated client borrows [engine]; the
+ * Owns only a dedicated installation or history engine. Its dedicated client borrows [engine]; the
  * composition root closes that client before closing this owner. Closing stops admission/cancels
  * work, not a claim that every operating-system callback or socket has synchronously drained.
  */

@@ -20,6 +20,12 @@ internal sealed class IosComplaintInstallationPolicy {
         response: NSHTTPURLResponse,
     ): Boolean
 
+    fun receiveBudget(response: NSHTTPURLResponse): ComplaintReceiveBudget? =
+        when (this) {
+            is Session, is Enrollment -> response.complaintSessionBudget()
+            is History -> response.complaintHistoryBudget()
+        }
+
     class Session(
         private val target: ComplaintSessionTarget,
     ) : IosComplaintInstallationPolicy() {
@@ -54,6 +60,17 @@ internal sealed class IosComplaintInstallationPolicy {
                 else -> false
             }
         }
+    }
+
+    class History(
+        private val target: ComplaintHistoryTarget,
+    ) : IosComplaintInstallationPolicy() {
+        override fun acceptsRequest(request: NSURLRequest): Boolean = request.isComplaintHistoryRequest(target)
+
+        override fun acceptsResponse(
+            task: NSURLSessionDataTask,
+            response: NSHTTPURLResponse,
+        ): Boolean = response.isComplaintHistoryResponse(target, task)
     }
 }
 

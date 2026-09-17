@@ -64,6 +64,15 @@ internal fun NSHTTPURLResponse.complaintSessionBudget(): ComplaintSessionReceive
         selectedHeader("Transfer-Encoding"),
     )
 
+@OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
+internal fun NSHTTPURLResponse.complaintHistoryBudget(): ComplaintReceiveBudget? =
+    ComplaintHistoryReceiveBudget.checked(
+        statusCode,
+        selectedHeader("Content-Encoding"),
+        selectedHeader("Content-Length"),
+        selectedHeader("Transfer-Encoding"),
+    )
+
 /** Foundation may combine duplicate fields; combined selected values fail the shared grammar. */
 @OptIn(ExperimentalForeignApi::class)
 private fun NSHTTPURLResponse.selectedHeader(name: String): List<String> {

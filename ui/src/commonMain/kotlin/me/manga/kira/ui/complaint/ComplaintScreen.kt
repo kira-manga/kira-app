@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
 import me.manga.kira.presentation.complaint.ActionDialogMode
@@ -272,6 +273,22 @@ internal fun ComplaintScreenContent(
             // Complaint surface in line with WhatsNew + the rest of the rework cluster (memory:
             // design-system) — richer error glyph + Retry button, icon + title empty state.
             when {
+                state.history is ComplaintHistory.Backend -> BackendComplaintHistory(state, onIntent)
+                state.history is ComplaintHistory.Legacy -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        ComplaintHistoryRefreshStatus(state, onIntent)
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (state.all.isEmpty()) {
+                                KiraEmptyState(
+                                    title = stringResource(Res.string.np_no_feedback_title),
+                                    message = stringResource(Res.string.np_no_feedback_message),
+                                )
+                            } else {
+                                ComplaintList(state, onIntent)
+                            }
+                        }
+                    }
+                }
                 state.isLoading -> {
                     // GAP-CMP-U-LOAD — native `LoadingState.kt:26-91` renders a message
                     // ("Loading feedback…", native `loading_feedback`) under the spinner; the shared
@@ -311,7 +328,7 @@ internal fun ComplaintScreenContent(
             }
 
             val activeComplaint = state.activeComplaint
-            if (state.actionDialogMode != ActionDialogMode.NONE && activeComplaint != null) {
+            if (state.legacyActionsAllowed && state.actionDialogMode != ActionDialogMode.NONE && activeComplaint != null) {
                 ComplaintActionDialog(
                     complaint = activeComplaint,
                     mode = state.actionDialogMode,
@@ -373,7 +390,7 @@ private fun ComplaintList(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchAndFilterSection(
+internal fun SearchAndFilterSection(
     searchQuery: String,
     selectedStatus: ComplaintStatus?,
     resultsCount: Int,

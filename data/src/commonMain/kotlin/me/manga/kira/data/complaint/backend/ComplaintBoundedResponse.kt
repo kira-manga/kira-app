@@ -9,7 +9,7 @@ internal object ComplaintBoundedResponse {
     const val MAX_BYTES = 16 * 1_024
     const val CONTRACT_HEADER = "X-Kira-Complaint-Contract"
 
-    /** Existing session route/status/decoder behavior is unchanged. */
+    /** Preserve typed HTTP failure; only a strict never-claimed problem supplies a non-authoritative retry fact. */
     suspend fun read(
         response: HttpResponse,
         endpoint: ComplaintBackendEndpoint,
@@ -24,7 +24,14 @@ internal object ComplaintBoundedResponse {
                 if (response.status == HttpStatusCode.OK) {
                     ComplaintSessionResponse.decode(body.text, expected)
                 } else {
-                    ComplaintSessionResult.HttpFailure(response.status.value)
+                    ComplaintSessionResult.HttpFailure(
+                        response.status.value,
+                        if (response.status == HttpStatusCode.NotFound && ComplaintHistoryProblem.installationNotFound(body.text)) {
+                            ComplaintSessionProblem.INSTALLATION_NOT_FOUND
+                        } else {
+                            null
+                        },
+                    )
                 }
         }
 

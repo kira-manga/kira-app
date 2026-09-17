@@ -36,9 +36,10 @@ internal sealed interface ComplaintSessionResult {
         val reason: ComplaintSessionFailure,
     ) : ComplaintSessionResult
 
-    /** Status only; this increment deliberately does not interpret problem/terminal-receipt semantics. */
+    /** A verified problem fact is not lifecycle or replacement authority; the coordinator must recheck its binding. */
     data class HttpFailure(
         val status: Int,
+        val problem: ComplaintSessionProblem? = null,
     ) : ComplaintSessionResult
 
     class LocalFailure(
@@ -47,6 +48,9 @@ internal sealed interface ComplaintSessionResult {
         override fun toString(): String = "ComplaintSession.LocalFailure(redacted)"
     }
 }
+
+/** The only session problem interpreted here, from the strict bounded ApiError reader. */
+internal enum class ComplaintSessionProblem { INSTALLATION_NOT_FOUND }
 
 /**
  * Closed response metadata, memory-only. Parsing does not verify a JWT signature or authorize dispatch.

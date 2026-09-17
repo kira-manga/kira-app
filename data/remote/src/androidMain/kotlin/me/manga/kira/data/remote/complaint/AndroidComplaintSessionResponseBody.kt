@@ -12,7 +12,7 @@ import kotlin.concurrent.Volatile
 
 internal class AndroidComplaintSessionResponseBody(
     private val delegate: ResponseBody,
-    budget: ComplaintSessionReceiveBudget,
+    budget: ComplaintReceiveBudget,
     cancelCall: () -> Unit,
 ) : ResponseBody() {
     private val bounded = SessionResponseSource(delegate.source(), budget, cancelCall).buffer()
@@ -26,7 +26,7 @@ internal class AndroidComplaintSessionResponseBody(
 
 private class SessionResponseSource(
     private val upstream: BufferedSource,
-    private val budget: ComplaintSessionReceiveBudget,
+    private val budget: ComplaintReceiveBudget,
     private val cancelCall: () -> Unit,
 ) : Source {
     @Volatile

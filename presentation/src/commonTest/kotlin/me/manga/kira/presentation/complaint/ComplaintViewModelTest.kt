@@ -7,6 +7,9 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
 import me.manga.kira.domain.model.complaint.ComplaintType
@@ -62,9 +65,12 @@ class ComplaintViewModelTest {
         var result: () -> Result<List<ComplaintSummary>>,
     ) : ComplaintListRepository {
         var loads = 0
-        override suspend fun loadUserComplaints(): Result<List<ComplaintSummary>> {
+        override suspend fun loadUserComplaints(): AppResult<ComplaintHistory> {
             loads++
-            return result()
+            return result().fold(
+                onSuccess = { AppResult.Success(ComplaintHistory.Legacy(it)) },
+                onFailure = { AppResult.Failure(AppError.Network.NoConnectivity()) },
+            )
         }
     }
 
@@ -118,10 +124,7 @@ class ComplaintViewModelTest {
         val state = vm.state.value
         assertFalse(state.isLoading)
         assertNotNull(state.error)
-        assertFalse(
-            state.error!!.contains("PERMISSION_DENIED"),
-            "the raw Firestore text must never leak into state — :ui shows a generic localized message",
-        )
+        assertNull(state.error!!.cause, "raw Firestore causes must not cross the typed read boundary")
         assertTrue(state.all.isEmpty())
     }
 

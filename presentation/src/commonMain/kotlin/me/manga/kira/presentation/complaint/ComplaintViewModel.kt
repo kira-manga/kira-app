@@ -1,11 +1,20 @@
 package me.manga.kira.presentation.complaint
 
-import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.complaint.ComplaintHistory
+import me.manga.kira.domain.model.complaint.ComplaintHistoryStatus
+import me.manga.kira.domain.model.complaint.ComplaintOwnerRow
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
+import me.manga.kira.domain.model.complaint.UnknownComplaintItem
 import me.manga.kira.domain.usecase.complaint.DeleteComplaintUseCase
 import me.manga.kira.domain.usecase.complaint.EditComplaintUseCase
 import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
@@ -122,11 +131,16 @@ class ComplaintViewModel(
     initialState = ComplaintState(),
 ) {
 
+    private val loadSerial = Mutex()
+    private var loadJob: Job? = null
+    private var loadGeneration = 0L
+
     init {
         loadList()
     }
 
     override suspend fun handle(intent: ComplaintIntent) {
+        if (!state.value.legacyActionsAllowed && intent.isLegacyAction()) return
         when (intent) {
             is ComplaintIntent.OnRetry -> loadList()
             is ComplaintIntent.OnSearchChange -> {
@@ -135,6 +149,7 @@ class ComplaintViewModel(
                     it.copy(
                         searchQuery = query,
                         filtered = applyFilter(it.all, query, it.selectedStatus),
+                        backendItems = filterBackend(it.history, query, it.selectedStatus),
                     )
                 }
             }
@@ -144,6 +159,7 @@ class ComplaintViewModel(
                     it.copy(
                         selectedStatus = status,
                         filtered = applyFilter(it.all, it.searchQuery, status),
+                        backendItems = filterBackend(it.history, it.searchQuery, status),
                     )
                 }
             }
@@ -152,6 +168,7 @@ class ComplaintViewModel(
                     it.copy(
                         searchQuery = "",
                         filtered = applyFilter(it.all, "", it.selectedStatus),
+                        backendItems = filterBackend(it.history, "", it.selectedStatus),
                     )
                 }
             }
@@ -201,7 +218,7 @@ class ComplaintViewModel(
         if (current.isSubmittingAction) return
         val parent = current.activeComplaint ?: return
         updateState { it.copy(isSubmittingAction = true) }
-        viewModelScope.launch {
+        launchSafely {
             val result = replyToComplaint(parent, body)
             completeAction(result, action = ComplaintAction.REPLY_SENT)
         }
@@ -212,7 +229,7 @@ class ComplaintViewModel(
         if (current.isSubmittingAction) return
         val original = current.activeComplaint ?: return
         updateState { it.copy(isSubmittingAction = true) }
-        viewModelScope.launch {
+        launchSafely {
             val result = editComplaint(original, subject, body)
             completeAction(result, action = ComplaintAction.UPDATED)
         }
@@ -223,7 +240,7 @@ class ComplaintViewModel(
         if (current.isSubmittingAction) return
         val target = current.activeComplaint ?: return
         updateState { it.copy(isSubmittingAction = true) }
-        viewModelScope.launch {
+        launchSafely {
             val result = deleteComplaint(target.id)
             completeAction(result, action = ComplaintAction.DELETED)
         }
@@ -241,50 +258,78 @@ class ComplaintViewModel(
             emit(ComplaintEffect.ShowActionSuccess(action))
             loadList()
         } else {
-            // The throwable (often a raw Firestore SDK string) is logged, never surfaced to the user:
-            // the snackbar shows a generic localized error resolved in :ui.
-            Logger.withTag(TAG).w(result.exceptionOrNull()) { "complaint action $action failed" }
+            // Do not log the throwable or SDK text; :ui resolves a generic localized error.
+            Logger.withTag(TAG).w { "complaint action failed" }
             updateState { it.copy(isSubmittingAction = false) }
             emit(ComplaintEffect.ShowActionFailure)
         }
     }
 
-    private var loadJob: Job? = null
-
     private fun loadList() {
-        // Cancel-before-relaunch: a fresh load supersedes any in-flight one so two concurrent
-        // observeUserComplaints() results can't race on updateState (last-writer-wins could land
-        // the older snapshot). Cancel-before-relaunch is the documented house pattern for
-        // ordering-sensitive loads (see ReaderViewModel).
-        loadJob?.cancel()
+        val previous = loadJob
+        val generation = ++loadGeneration
+        previous?.cancel()
         updateState { it.copy(isLoading = true, error = null) }
-        loadJob = viewModelScope.launch {
-            val result = observeUserComplaints()
-            if (result.isSuccess) {
-                val list = result.getOrNull().orEmpty()
-                updateState {
-                    it.copy(
-                        isLoading = false,
-                        error = null,
-                        all = list,
-                        filtered = applyFilter(list, it.searchQuery, it.selectedStatus),
-                    )
+        loadJob = launchSafely {
+            // A canceled intermediate waiter must not let a third retry overtake the oldest
+            // response's finally block. The serial section also covers the selected legacy port.
+            loadSerial.withLock {
+                previous?.join()
+                currentCoroutineContext().ensureActive()
+                val result = try {
+                    observeUserComplaints()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    AppResult.Failure(AppError.Unexpected("complaint_history_failed"))
                 }
-            } else {
-                // Don't leak the raw exception text into state (the inline error pane shows a
-                // generic localized message in :ui); log the cause for diagnostics.
-                Logger.withTag(TAG).w(result.exceptionOrNull()) { "loading user complaints failed" }
-                updateState {
-                    it.copy(
-                        isLoading = false,
-                        error = LOAD_FAILED,
-                        all = emptyList(),
-                        filtered = emptyList(),
-                    )
+                currentCoroutineContext().ensureActive()
+                if (generation != loadGeneration) return@withLock
+                when (result) {
+                    is AppResult.Success -> applyHistory(result.value)
+                    is AppResult.Failure -> updateState { it.copy(isLoading = false, error = result.error) }
                 }
             }
         }
     }
+
+    private fun applyHistory(history: ComplaintHistory) {
+        val legacy = (history as? ComplaintHistory.Legacy)?.items.orEmpty()
+        updateState {
+            it.copy(
+                isLoading = false,
+                error = null,
+                history = history,
+                all = legacy,
+                filtered = applyFilter(legacy, it.searchQuery, it.selectedStatus),
+                backendItems = filterBackend(history, it.searchQuery, it.selectedStatus),
+                actionDialogMode = if (history is ComplaintHistory.Legacy) it.actionDialogMode else ActionDialogMode.NONE,
+                activeComplaint = if (history is ComplaintHistory.Legacy) it.activeComplaint else null,
+                isSubmittingAction = history is ComplaintHistory.Legacy && it.isSubmittingAction,
+            )
+        }
+    }
+
+    override fun onUnhandledError(throwable: Throwable, intent: ComplaintIntent?) {
+        // Even unexpected failures must not send transport/content diagnostics to Kermit or UI.
+        updateState {
+            it.copy(isLoading = false, isSubmittingAction = false, error = AppError.Unexpected("complaint_failed"))
+        }
+    }
+
+    private fun filterBackend(history: ComplaintHistory?, query: String, status: ComplaintStatus?): List<ComplaintOwnerRow> =
+        (history as? ComplaintHistory.Backend)?.items.orEmpty().filter { row ->
+            val subject = when (row) {
+                is ComplaintOwnerRow.Report -> row.subject
+                is ComplaintOwnerRow.Reply -> row.subject
+                is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> ""
+            }
+            val content = row as? ComplaintOwnerRow.Content
+            val matches = query.isEmpty() || subject.contains(query, ignoreCase = true) ||
+                content?.fields?.body?.contains(query, ignoreCase = true) == true || row.id.contains(query, ignoreCase = true)
+            val knownStatus = content?.fields?.status as? ComplaintHistoryStatus.Known
+            matches && (status == null || knownStatus?.value == status)
+        }
 
     private fun applyFilter(
         all: List<ComplaintSummary>,
@@ -302,8 +347,12 @@ class ComplaintViewModel(
     private companion object {
         const val TAG = "ComplaintViewModel"
 
-        // Non-leaking sentinel for [ComplaintState.error]; :ui renders a generic localized message
-        // whenever error != null (the value itself is never shown to the user).
-        const val LOAD_FAILED = "load_failed"
     }
+}
+
+/** Backend rows have no legacy action shape, and injected legacy-shaped intents are rejected too. */
+private fun ComplaintIntent.isLegacyAction(): Boolean = when (this) {
+    ComplaintIntent.OnRetry, is ComplaintIntent.OnSearchChange, is ComplaintIntent.OnStatusFilter,
+    ComplaintIntent.OnClearSearch -> false
+    else -> true
 }

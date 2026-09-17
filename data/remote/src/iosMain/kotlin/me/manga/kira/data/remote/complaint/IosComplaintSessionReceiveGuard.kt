@@ -15,7 +15,7 @@ import platform.Foundation.NSURLSessionTask
 import platform.Foundation.setHTTPShouldHandleCookies
 
 /**
- * One response slot matches either installation coordinator's serialized exchange contract.
+ * One response slot matches the selected installation/history coordinator's serialized contract.
  * Every nonempty NSData is counted before forwarding into Ktor's unlimited channel.
  * The lock covers forwarding and close; fixed taskDescription terminal markers prevent late
  * callbacks resurrecting removed accounting without retaining an unbounded tombstone map.
@@ -50,7 +50,7 @@ internal class IosComplaintSessionReceiveGuard(
     ): Boolean =
         locked {
             val native = response as? NSHTTPURLResponse
-            val budget = native?.complaintSessionBudget()
+            val budget = native?.let(policy::receiveBudget)
             val allowed =
                 !closed &&
                     task.taskDescription != TERMINAL &&
@@ -124,7 +124,7 @@ internal class IosComplaintSessionReceiveGuard(
 
     private class Receiving(
         val task: NSURLSessionTask,
-        val budget: ComplaintSessionReceiveBudget,
+        val budget: ComplaintReceiveBudget,
     )
 
     private companion object {

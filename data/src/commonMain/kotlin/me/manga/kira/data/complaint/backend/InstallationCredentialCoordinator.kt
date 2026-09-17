@@ -1,5 +1,12 @@
 package me.manga.kira.data.complaint.backend
 
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeoutOrNull
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
@@ -39,6 +46,7 @@ class InstallationCredentialCoordinator(
     private val mutex = Mutex()
     private var reconciliationIssuer = ReconciliationIssuer()
     private var confirmation: Confirmation? = null
+    private val historyReads = mutableSetOf<ComplaintHistoryWork>()
 
     /** Only an explicit initial candidate may fill a proven-empty store; an existing winner is reread. */
     suspend fun admit(candidate: InstallationCredentialRecord? = null): Outcome<Permit> =
@@ -81,13 +89,50 @@ class InstallationCredentialCoordinator(
         apply: () -> Unit,
     ): Outcome<Unit> =
         mutex.serialized {
-            if (permit.issuer !== reconciliationIssuer) refuse(Block.STALE_BINDING)
-            noConsent()
-            credentials.requireNoCleanupMarker()
-            val record = credentials.exactRecord(permit.record).also(::active)
-            if (!samePending(permit.snapshot, pending.reconciliationSnapshot(record))) refuse(Block.STALE_BINDING)
+            reconciliationAdmission(permit)
             apply()
         }
+
+    /** Bind and register the whole connected load before session HTTP or a missing-store fallback. */
+    internal suspend fun beginHistory(work: ComplaintHistoryWork): Outcome<ComplaintHistoryAdmission> =
+        mutex.serialized {
+            currentCoroutineContext().ensureActive()
+            noConsent()
+            credentials.requireNoCleanupMarker()
+            val binding = when (val read = credentials.read()) {
+                CredentialReadResult.Missing -> {
+                    pending.requireEmptyPending()
+                    ComplaintHistoryAdmission.Missing(reconciliationIssuer)
+                }
+                is CredentialReadResult.Present -> {
+                    val record = read.record.also(::active)
+                    ComplaintHistoryAdmission.Existing(
+                        ReconciliationPermit(record, pending.reconciliationSnapshot(record), reconciliationIssuer),
+                    )
+                }
+                is InstallationStorageFailure -> fail(read)
+            }
+            currentCoroutineContext().ensureActive()
+            if (!work.isCurrent()) refuse(Block.STALE_BINDING)
+            historyReads += work
+            binding
+        }
+
+    /** Cancellation-safe release only after session/enrollment/all pages and their response cleanup. */
+    internal suspend fun finishHistory(work: ComplaintHistoryWork) {
+        withContext(NonCancellable) { mutex.withLock { historyReads -= work } }
+    }
+
+    /** Every bound session outcome, including a never-claimed failure, observes the original work/epoch. */
+    internal suspend fun checkHistorySession(
+        permit: ReconciliationPermit,
+        work: ComplaintHistoryWork,
+    ): Outcome<Unit> = mutex.serialized {
+        currentCoroutineContext().ensureActive()
+        reconciliationAdmission(permit)
+        currentCoroutineContext().ensureActive()
+        historyWorkAdmission(work)
+    }
 
     /** Caller must later establish fresh-session/dispatch prerequisites; this only persists local intent. */
     suspend fun beginDeletion(
@@ -96,6 +141,7 @@ class InstallationCredentialCoordinator(
     ): Outcome<PendingDeletion> =
         mutex.serialized {
             admission(permit)
+            cancelHistoryReads()
             PendingDeletion(credentials.replaceCoordinated(permit.record, checked(permit.record.beginDeletion(key))))
         }
 
@@ -114,6 +160,7 @@ class InstallationCredentialCoordinator(
             noConsent()
             credentials.requireNoCleanupMarker()
             Confirmation(intent, validateIntent(intent)).also {
+                cancelHistoryReads()
                 confirmation = it
                 reconciliationIssuer = ReconciliationIssuer()
             }
@@ -182,10 +229,153 @@ class InstallationCredentialCoordinator(
                 }.enrollmentResult()
         } ?: InstallationEnrollmentResult.Failed(ComplaintSessionFailure.TIMEOUT)
 
+    /**
+     * The history caller alone selects this after exact Missing admission or strict never-claimed 404.
+     * Recheck that original observation under the enrollment mutex; never re-admit arbitrary new state.
+     */
+    internal suspend fun enrollHistory(
+        binding: ComplaintHistoryAdmission,
+        work: ComplaintHistoryWork,
+        http: InstallationEnrollmentHttp,
+        generator: InstallationCredentialMaterialGenerator,
+    ): InstallationEnrollmentResult<ReconciliationPermit> =
+        withTimeoutOrNull(InstallationEnrollmentHttp.ATTEMPT_TIMEOUT_MS) {
+            when (val result = mutex.serialized { enrollHistoryLocked(binding, work, http, generator) }) {
+                is Outcome.Success -> result.value
+                is Outcome.Refused -> InstallationEnrollmentResult.LocalFailure(result)
+                is Outcome.StorageFailure -> InstallationEnrollmentResult.LocalFailure(result)
+                is Outcome.Invalid -> InstallationEnrollmentResult.LocalFailure(result)
+            }
+        } ?: InstallationEnrollmentResult.Failed(ComplaintSessionFailure.TIMEOUT)
+
+    private suspend fun enrollHistoryLocked(
+        binding: ComplaintHistoryAdmission,
+        work: ComplaintHistoryWork,
+        http: InstallationEnrollmentHttp,
+        generator: InstallationCredentialMaterialGenerator,
+    ): InstallationEnrollmentResult<ReconciliationPermit> {
+        currentCoroutineContext().ensureActive()
+        historyWorkAdmission(work)
+        when (binding) {
+            is ComplaintHistoryAdmission.Existing -> reconciliationAdmission(binding.permit)
+            is ComplaintHistoryAdmission.Missing -> {
+                if (binding.issuer !== reconciliationIssuer) refuse(Block.STALE_BINDING)
+                noConsent()
+                credentials.requireNoCleanupMarker()
+                when (val read = credentials.read()) {
+                    CredentialReadResult.Missing -> Unit
+                    is CredentialReadResult.Present -> refuse(Block.STALE_BINDING)
+                    is InstallationStorageFailure -> fail(read)
+                }
+            }
+        }
+        // Retained pending permits reconciliation reads, never same-identity enrollment.
+        pending.requireEmptyPending()
+        currentCoroutineContext().ensureActive()
+        historyWorkAdmission(work)
+        val attempt = InstallationEnrollmentAttempt(credentials, pending, http, generator)
+        val record = when (val prepared = attempt.prepare()) {
+            is InstallationEnrollmentResult.Failure -> return prepared
+            is InstallationEnrollmentResult.Ready -> prepared.value
+        }
+        if (binding is ComplaintHistoryAdmission.Existing && !binding.permit.record.sameAs(record)) {
+            refuse(Block.STALE_BINDING)
+        }
+        val permit = Permit(record)
+        admission(permit)
+        historyWorkAdmission(work)
+        val result = attempt.send(record)
+        if (result is InstallationEnrollmentResult.Ready) admission(permit)
+        currentCoroutineContext().ensureActive()
+        historyWorkAdmission(work)
+        return when (val checked = attempt.checkPublication(result)) {
+            is InstallationEnrollmentResult.Failure -> checked
+            is InstallationEnrollmentResult.Ready -> {
+                val snapshot = pending.reconciliationSnapshot(record)
+                if (snapshot.size != 0) refuse(Block.RECONCILIATION_REQUIRED)
+                historyWorkAdmission(work)
+                InstallationEnrollmentResult.Ready(ReconciliationPermit(record, snapshot, reconciliationIssuer))
+            }
+        }
+    }
+
+    /**
+     * The whole load is already registered; page HTTP still runs OUTSIDE the credential mutex.
+     * Cancellation stops future admissions; already-admitted native work may still send bytes.
+     * The independent final check, not cancellation, prevents late result publication.
+     */
+    internal suspend fun readHistoryPage(
+        session: ComplaintHistorySession,
+        sessions: InstallationSessionManager,
+        work: ComplaintHistoryWork,
+        http: ComplaintHistoryHttp,
+        cursor: String?,
+    ): AppResult<ComplaintHistoryPage> {
+        val admitted = mutex.serialized {
+            currentCoroutineContext().ensureActive()
+            historyAdmission(session, sessions, work)
+        }
+        if (admitted !is Outcome.Success) return historyLocalFailure(admitted)
+        currentCoroutineContext().ensureActive()
+        val result = http.fetch(session.response, cursor)
+        return when (val checked = mutex.serialized {
+            currentCoroutineContext().ensureActive()
+            historyAdmission(session, sessions, work)
+            result
+        }) {
+            is Outcome.Success -> checked.value
+            else -> historyLocalFailure(checked)
+        }
+    }
+
+    internal suspend fun publishHistory(
+        session: ComplaintHistorySession,
+        sessions: InstallationSessionManager,
+        work: ComplaintHistoryWork,
+        history: ComplaintHistory.Backend,
+    ): AppResult<ComplaintHistory> = when (val checked = mutex.serialized {
+        currentCoroutineContext().ensureActive()
+        historyAdmission(session, sessions, work)
+        if (!work.publish()) refuse(Block.STALE_BINDING)
+        history
+    }) {
+        is Outcome.Success -> AppResult.Success(checked.value)
+        else -> historyLocalFailure(checked)
+    }
+
+    private suspend fun historyAdmission(
+        session: ComplaintHistorySession,
+        sessions: InstallationSessionManager,
+        work: ComplaintHistoryWork,
+    ) {
+        reconciliationAdmission(session.permit)
+        historyWorkAdmission(work)
+        if (!sessions.historySessionIsCurrent(session)) refuse(Block.STALE_BINDING)
+    }
+
+    private fun historyWorkAdmission(work: ComplaintHistoryWork) {
+        if (work !in historyReads || !work.isCurrent()) refuse(Block.STALE_BINDING)
+    }
+
+    private suspend fun reconciliationAdmission(permit: ReconciliationPermit) {
+        if (permit.issuer !== reconciliationIssuer) refuse(Block.STALE_BINDING)
+        noConsent()
+        credentials.requireNoCleanupMarker()
+        val record = credentials.exactRecord(permit.record).also(::active)
+        if (!samePending(permit.snapshot, pending.reconciliationSnapshot(record))) refuse(Block.STALE_BINDING)
+    }
+
+    private fun cancelHistoryReads() {
+        historyReads.forEach { it.cancel() }
+    }
+
     private suspend fun resumeCleanupLocked() {
         noConsent()
         when (val marker = credentials.readCleanupMarker()) {
-            is CleanupMarkerReadResult.Present -> finish(marker.marker)
+            is CleanupMarkerReadResult.Present -> {
+                cancelHistoryReads()
+                finish(marker.marker)
+            }
             is InstallationStorageFailure -> fail(marker)
             CleanupMarkerReadResult.Missing ->
                 when (val read = credentials.read()) {

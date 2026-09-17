@@ -7,8 +7,6 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.O
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import me.manga.kira.data.complaint.backend.ComplaintSessionFailure as Failure
@@ -42,6 +40,65 @@ internal class InstallationSessionManager(
                 is Outcome.Invalid -> ComplaintSessionResult.LocalFailure(admitted)
             }
         }
+
+    /** Internal lease only: no caller may dispatch merely because session() returned successfully. */
+    suspend fun historySession(): ComplaintHistorySessionResult = historyResult(session())
+
+    /** The connected load supplies its original binding; success AND failure are checked with its work. */
+    suspend fun historySession(
+        permit: ReconciliationPermit,
+        work: ComplaintHistoryWork,
+    ): ComplaintHistorySessionResult = mutex.withLock {
+        val previous = state.load()
+        if (previous === SessionCacheState.Closed || !state.compareAndSet(previous, SessionCacheState.Empty)) {
+            return@withLock ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
+        }
+        when (val admitted = coordinator.checkHistorySession(permit, work)) {
+            is Outcome.Success -> Unit
+            is Outcome.Refused -> return@withLock failedHistory(admitted)
+            is Outcome.StorageFailure -> return@withLock failedHistory(admitted)
+            is Outcome.Invalid -> return@withLock failedHistory(admitted)
+        }
+        val result = obtain(permit, previous as? SessionCacheState.Cached)
+        when (val checked = coordinator.checkHistorySession(permit, work)) {
+            is Outcome.Success ->
+                if (state.load() === SessionCacheState.Closed) {
+                    ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.CLOSED))
+                } else {
+                    historyResult(result)
+                }
+            is Outcome.Refused -> failedHistory(checked)
+            is Outcome.StorageFailure -> failedHistory(checked)
+            is Outcome.Invalid -> failedHistory(checked)
+        }
+    }
+
+    private fun failedHistory(outcome: Outcome<Nothing>): ComplaintHistorySessionResult =
+        ComplaintHistorySessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
+
+    private fun historyResult(result: ComplaintSessionResult): ComplaintHistorySessionResult =
+        when (result) {
+            is ComplaintSessionResult.Ready -> {
+                val cached = state.load() as? SessionCacheState.Cached
+                if (cached != null && cached.session === result.session && cached.isFresh()) {
+                    ComplaintHistorySessionResult.Ready(cached.lease)
+                } else {
+                    ComplaintHistorySessionResult.Failed(ComplaintSessionResult.Failed(Failure.EXPIRED))
+                }
+            }
+            else -> ComplaintHistorySessionResult.Failed(result)
+        }
+
+    fun historySessionIsCurrent(lease: ComplaintHistorySession): Boolean {
+        val cached = state.load() as? SessionCacheState.Cached
+        return cached?.lease === lease && lease.isFresh()
+    }
+
+    /** A late 401 cannot discard a refreshed token, and Closed never returns to Empty. */
+    fun invalidateHistorySession(lease: ComplaintHistorySession) {
+        val cached = state.load() as? SessionCacheState.Cached ?: return
+        if (cached.lease === lease) state.compareAndSet(cached, SessionCacheState.Empty)
+    }
 
     /** Atomically drops the cache and prevents late publication, even if close races a refresh. */
     fun close() {
@@ -100,12 +157,11 @@ private sealed interface SessionCacheState {
     class Cached(
         val permit: ReconciliationPermit,
         val session: ComplaintSessionResponse,
-        private val started: TimeMark,
+        started: TimeMark,
     ) : SessionCacheState {
-        fun isFresh(): Boolean {
-            val elapsed = started.elapsedNow()
-            return elapsed >= Duration.ZERO && elapsed < session.expiresInSeconds.seconds
-        }
+        val lease = ComplaintHistorySession(permit, session, started)
+
+        fun isFresh(): Boolean = lease.isFresh()
 
         override fun toString(): String = "InstallationSessionCache(redacted)"
     }

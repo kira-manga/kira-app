@@ -141,6 +141,8 @@ internal object ComplaintBoundedInstallationBody {
             if (read < 0) break
             if (read == 0) yield() else count += read
         }
+        // A complete JSON prefix is not a complete response when the channel failed at EOF.
+        channel.closedCause?.let { throw it }
         return count
     }
 }
