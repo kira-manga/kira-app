@@ -1,8 +1,8 @@
 package me.manga.kira.data.remote.complaint
 
 import io.ktor.client.engine.mergeHeaders
+import io.ktor.client.utils.buildHeaders
 import io.ktor.http.ContentType
-import io.ktor.http.buildHeaders
 import io.ktor.http.content.ByteArrayContent
 import io.ktor.utils.io.InternalAPI
 import kotlin.test.Test
