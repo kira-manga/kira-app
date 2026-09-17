@@ -5,19 +5,34 @@ import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportBlock
+import me.manga.kira.domain.model.feedback.ComplaintReportFailure
 import me.manga.kira.domain.model.feedback.ComplaintReportPending
+import me.manga.kira.domain.model.feedback.ComplaintReportPhase
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 
+internal fun AppResult<ComplaintReportPreparation>.preparationResult(): ComplaintReportPreparation =
+    when (this) {
+        is AppResult.Success -> value
+        is AppResult.Failure -> ComplaintReportPreparation.Blocked(ComplaintReportFailure(error))
+    }
+
 /** Only a bounded MISSING preparation result opens the explicit history/setup action. */
-internal fun AppResult<ComplaintReportPreparation>.isMissingPreparation(): Boolean {
-    val preparation =
-        when (this) {
-            is AppResult.Success -> value
-            is AppResult.Failure -> null
-        }
-    return preparation is ComplaintReportPreparation.Blocked &&
-        preparation.failure.block == ComplaintReportBlock.MISSING
+internal fun ComplaintReportPreparation.isMissingPreparation(): Boolean =
+    this is ComplaintReportPreparation.Blocked && failure.block == ComplaintReportBlock.MISSING
+
+internal fun isPreparedReport(
+    report: ComplaintPendingReport,
+    live: ComplaintLiveReport?,
+    latest: ComplaintReportAttempt?,
+    recovery: ComplaintReportRecovery?,
+): Boolean = findReportObservation(report, live, latest, recovery)?.phase == ComplaintReportPhase.PREPARED
+
+internal fun ComplaintReportFailure.afterAttempt(
+    previous: ComplaintReportAttempt?,
+): ComplaintReportAttempt.Unresolved {
+    val unresolved = previous as? ComplaintReportAttempt.Unresolved
+    return ComplaintReportAttempt.Unresolved(this, unresolved?.knownApplication, unresolved?.pending)
 }
 
 /** A known applied/rejected receipt must survive a later failed cleanup/status observation. */

@@ -11,6 +11,9 @@ import me.manga.kira.presentation.mvi.MviState
 /** A live request cannot be edited/replaced; terminal results require an explicit new draft. */
 enum class SettingsFeedbackActivity { EDITING, WORKING, LIVE, TERMINAL }
 
+/** Content-free warning copy; the matching exact consent token remains private to the ViewModel. */
+enum class SettingsFeedbackRecoveryKind { REPORT, UNREADABLE, ABANDON_DELETION }
+
 /** Typed rendering results. Local reset is deliberately not represented as remote deletion success. */
 sealed interface SettingsFeedbackResult {
     data class Invalid(
@@ -34,6 +37,12 @@ sealed interface SettingsFeedbackResult {
 
     data object LocalResetCompleted : SettingsFeedbackResult
 
+    /** Local deletion continuation was abandoned; this is never a server-erasure receipt. */
+    data object LocalDeletionAbandoned : SettingsFeedbackResult
+
+    /** Existing persisted cleanup was checked; success may be an ACTIVE no-op, not erased identity. */
+    data object CleanupCheckCompleted : SettingsFeedbackResult
+
     /** The explicit history/setup read finished; no report was prepared or submitted by that action. */
     data object HistorySetupCompleted : SettingsFeedbackResult
 }
@@ -47,7 +56,8 @@ data class SettingsFeedbackState(
     val recovery: ComplaintReportRecovery? = null,
 ) : MviState {
     val entry: SettingsFeedbackEntry get() = context.entry
-    val confirmationPending: Boolean get() = context.confirmationPending
+    val recoveryKind: SettingsFeedbackRecoveryKind? get() = context.recoveryKind
+    val confirmationPending: Boolean get() = recoveryKind != null
     val busy: Boolean get() = activity == SettingsFeedbackActivity.WORKING
     val editable: Boolean get() = activity == SettingsFeedbackActivity.EDITING && !confirmationPending
     val canRetry: Boolean get() = activity == SettingsFeedbackActivity.LIVE && !confirmationPending
@@ -62,7 +72,7 @@ data class SettingsFeedbackContext(
     val entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
     /** Last report-side MISSING observation; only gates the explicit safe history read. */
     val missingInstallationObserved: Boolean = false,
-    val confirmationPending: Boolean = false,
+    val recoveryKind: SettingsFeedbackRecoveryKind? = null,
 ) {
     override fun toString(): String = "SettingsFeedbackContext(redacted)"
 }

@@ -17,22 +17,29 @@ import me.manga.kira.domain.model.feedback.ComplaintReportPhase
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.CancelPreparedComplaintReportUseCase
+import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ConfirmComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.PrepareComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.ReconcileComplaintReportsUseCase
+import me.manga.kira.domain.usecase.feedback.RequestComplaintDeletionAbandonmentUseCase
 import me.manga.kira.domain.usecase.feedback.RequestComplaintReportRecoveryUseCase
+import me.manga.kira.domain.usecase.feedback.RequestUnreadableComplaintRecoveryUseCase
+import me.manga.kira.domain.usecase.feedback.ResumeComplaintInstallationCleanupUseCase
 import me.manga.kira.domain.usecase.feedback.RetryComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.SubmitComplaintReportUseCase
 
-/** Ordinary domain-port fake, using the existing MVI/use-case test pattern, not a producer or harness. */
-internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
+/** Ordinary domain-port fake; both recovery request sources deliberately share the same prompt fixture. */
+@Suppress("TooManyFunctions")
+internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository,
+    ComplaintInstallationRecoveryRepository {
     val live = SettingsTestLiveReport()
     val pending = SettingsTestPendingReport()
     var nextPrompt: ComplaintRecoveryPrompt = SettingsTestRecoveryPrompt()
@@ -45,6 +52,9 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
     val dismissed = mutableListOf<ComplaintRecoveryPrompt>()
     val confirmed = mutableListOf<ComplaintRecoveryPrompt>()
     var reconciliations = 0
+    var unreadableRequests = 0
+    var abandonmentRequests = 0
+    var cleanupChecks = 0
     var onPrepare: suspend (ComplaintReportDraft) -> AppResult<ComplaintReportPreparation> = {
         AppResult.Success(ComplaintReportPreparation.Ready(live))
     }
@@ -57,6 +67,10 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
     var onRequest: suspend (ComplaintPendingReport) -> AppResult<ComplaintRecoveryPrompt> = {
         AppResult.Success(nextPrompt)
     }
+    var onUnreadable: suspend () -> AppResult<ComplaintRecoveryPrompt> = { AppResult.Success(nextPrompt) }
+    var onAbandonment: suspend () -> AppResult<ComplaintRecoveryPrompt> = { AppResult.Success(nextPrompt) }
+    var onConfirm: suspend (ComplaintRecoveryPrompt) -> AppResult<Unit> = { AppResult.Success(Unit) }
+    var onCleanup: suspend () -> AppResult<Unit> = { AppResult.Success(Unit) }
 
     override suspend fun prepare(draft: ComplaintReportDraft): AppResult<ComplaintReportPreparation> {
         drafts += draft
@@ -95,7 +109,22 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
 
     override suspend fun confirmRecovery(prompt: ComplaintRecoveryPrompt): AppResult<Unit> {
         confirmed += prompt
-        return AppResult.Success(Unit)
+        return onConfirm(prompt)
+    }
+
+    override suspend fun requestUnreadableRecovery(): AppResult<ComplaintRecoveryPrompt> {
+        unreadableRequests++
+        return onUnreadable()
+    }
+
+    override suspend fun requestDeletionAbandonment(): AppResult<ComplaintRecoveryPrompt> {
+        abandonmentRequests++
+        return onAbandonment()
+    }
+
+    override suspend fun resumeCleanup(): AppResult<Unit> {
+        cleanupChecks++
+        return onCleanup()
     }
 
     fun unresolved(known: ComplaintReportApplication? = null): ComplaintReportAttempt.Unresolved =
@@ -139,6 +168,11 @@ internal fun SettingsFeedbackRepositoryFake.viewModel(
             ConfirmComplaintReportRecoveryUseCase(this),
         ),
         ObserveUserComplaintsUseCase(history),
+        ComplaintInstallationRecoveryActions(
+            RequestUnreadableComplaintRecoveryUseCase(this),
+            RequestComplaintDeletionAbandonmentUseCase(this),
+            ResumeComplaintInstallationCleanupUseCase(this),
+        ),
         entry,
     )
 

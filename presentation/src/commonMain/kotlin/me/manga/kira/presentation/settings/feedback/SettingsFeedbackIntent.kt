@@ -34,6 +34,15 @@ sealed interface SettingsFeedbackIntent : MviIntent {
     /** Explicit safe history enrollment/read only, never implicit report creation or submission. */
     data object SetupHistory : SettingsFeedbackIntent
 
+    /** Request a fresh eligibility check and warning, never infer reset permission from an error. */
+    data object RequestUnreadableRecovery : SettingsFeedbackIntent
+
+    /** Review local abandonment of an existing deletion only; this never starts remote deletion. */
+    data object RequestDeletionAbandonment : SettingsFeedbackIntent
+
+    /** Explicitly continue existing durable cleanup authority without enrolling or submitting. */
+    data object ResumeCleanup : SettingsFeedbackIntent
+
     class CancelPrepared(
         val report: ComplaintPendingReport,
     ) : SettingsFeedbackIntent {
