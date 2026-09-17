@@ -37,8 +37,10 @@ import me.manga.kira.ui.generated.resources.unknown
 import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
-/** No clickable row/action-dialog or conversion to legacy ComplaintSummary exists in this branch. */
-// Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
+/**
+ * No clickable row/action-dialog or conversion to legacy ComplaintSummary exists in this branch.
+ * Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
+ */
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun BackendComplaintHistory(
@@ -110,8 +112,10 @@ private fun BackendHistoryRow(row: ComplaintOwnerRow) {
     }
 }
 
-/** Loading/error is supplementary whenever a genuine prior snapshot (including empty) exists. */
-// Compose UI declarations use PascalCase.
+/**
+ * Loading/error is supplementary whenever a genuine prior snapshot (including empty) exists.
+ * Compose UI declarations use PascalCase.
+ */
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun ComplaintHistoryRefreshStatus(

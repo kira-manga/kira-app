@@ -86,6 +86,7 @@ internal class ComplaintHistoryHttp(
     }
 }
 
-internal fun historyUnavailable(): AppResult.Failure {
-    return AppResult.Failure(AppError.Platform.FeatureUnavailable("complaint_history"))
-}
+internal fun historyUnavailable(): AppResult.Failure =
+    AppResult.Failure(
+        AppError.Platform.FeatureUnavailable("complaint_history"),
+    )

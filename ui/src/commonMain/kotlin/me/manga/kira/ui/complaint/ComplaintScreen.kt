@@ -184,8 +184,8 @@ import org.jetbrains.compose.resources.stringResource
  * trail-preservation convention — the citations are historical record of
  * the design lineage; the screen continues to render correctly through the
  * legacy retire.
+ * Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
  */
-// Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 fun ComplaintScreen(
@@ -639,8 +639,8 @@ private fun ComplaintRow(
  * `:ui/components`, outside this slice's edit scope), so the message-bearing loading layout is
  * rendered here — the same posture the admin-side `AdminLoadingState` uses. Fills the parent and
  * centres its content like the shared state views.
+ * Compose UI declarations use PascalCase.
  */
-// Compose UI declarations use PascalCase.
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun ComplaintLoadingState(message: String) {
@@ -666,8 +666,8 @@ private fun ComplaintLoadingState(message: String) {
  * `ComplaintComponents.kt:127-146` `InfoItem`. A 16.dp `onSurfaceVariant`-tinted [icon] followed
  * by a single-line ellipsized bodySmall [text]. Used for the Android-version and manufacturer
  * cells in [ComplaintRow]'s device row (GAP-CMP device-metadata parity).
+ * Compose UI declarations use PascalCase.
  */
-// Compose UI declarations use PascalCase.
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun ComplaintInfoItem(

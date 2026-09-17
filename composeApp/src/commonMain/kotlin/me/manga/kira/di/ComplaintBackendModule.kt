@@ -157,6 +157,7 @@ private fun closeBackendGraphResources(actions: List<() -> Unit>): Boolean {
     return success
 }
 
-private fun backendGraphUnavailable(): AppResult.Failure {
-    return AppResult.Failure(AppError.Platform.FeatureUnavailable("complaint_backend"))
-}
+private fun backendGraphUnavailable(): AppResult.Failure =
+    AppResult.Failure(
+        AppError.Platform.FeatureUnavailable("complaint_backend"),
+    )

@@ -60,8 +60,10 @@ sealed interface ComplaintHistoryType {
     }
 }
 
-/** Server-owned display/concurrency fields; intentionally no installation/user/moderator identifier. */
-// A validated immutable row is constructed atomically, not through a mutable builder/options bag.
+/**
+ * Server-owned display/concurrency fields; intentionally no installation/user/moderator identifier.
+ * A validated immutable row is constructed atomically, not through a mutable builder/options bag.
+ */
 @Suppress("LongParameterList")
 class ComplaintOwnerFields(
     val id: String,

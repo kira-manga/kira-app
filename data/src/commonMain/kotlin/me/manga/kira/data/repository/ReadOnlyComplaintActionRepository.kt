@@ -18,7 +18,8 @@ class ReadOnlyComplaintActionRepository : ComplaintActionRepository {
 
     override suspend fun deleteComplaint(id: String): Result<Unit> = unavailable()
 
-    private fun unavailable(): Result<Unit> {
-        return Result.failure(UnsupportedOperationException("Complaint history is read only"))
-    }
+    private fun unavailable(): Result<Unit> =
+        Result.failure(
+            UnsupportedOperationException("Complaint history is read only"),
+        )
 }

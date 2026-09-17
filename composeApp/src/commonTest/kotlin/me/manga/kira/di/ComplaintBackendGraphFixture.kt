@@ -21,7 +21,6 @@ import me.manga.kira.data.remote.complaint.ComplaintSessionEngineOwner
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
 import me.manga.kira.platform.storage.CleanupMarkerReadResult
 import me.manga.kira.platform.storage.CleanupMarkerRemoveResult
-import me.manga.kira.platform.storage.CredentialCleanupMarker
 import me.manga.kira.platform.storage.CredentialCreateResult
 import me.manga.kira.platform.storage.CredentialDeleteResult
 import me.manga.kira.platform.storage.CredentialReadResult
@@ -44,6 +43,7 @@ import me.manga.kira.platform.storage.PendingDeleteResult
 import me.manga.kira.platform.storage.PendingReadResult
 import me.manga.kira.platform.storage.PendingReplaceResult
 import kotlin.test.assertIs
+import me.manga.kira.platform.storage.CredentialCleanupMarker as Marker
 
 /** Isolated synthetic storage + MockEngine; never calls native factories or provides activation. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -184,24 +184,16 @@ internal class GraphCredentials : InstallationCredentialStore {
 
     override suspend fun delete(
         expectedGeneration: Long,
-        expectedMarker: CredentialCleanupMarker,
+        expectedMarker: Marker,
     ): CredentialDeleteResult = mutation()
 
-    override suspend fun resetUnreadableAfterConfirmation(
-        expectedMarker: CredentialCleanupMarker,
-    ): CredentialResetResult = mutation()
+    override suspend fun resetUnreadableAfterConfirmation(expectedMarker: Marker): CredentialResetResult = mutation()
 
-    override suspend fun finishMarkedCleanup(
-        expectedMarker: CredentialCleanupMarker,
-    ): CredentialDeleteResult = mutation()
+    override suspend fun finishMarkedCleanup(expectedMarker: Marker): CredentialDeleteResult = mutation()
 
-    override suspend fun createCleanupMarkerIfMissing(
-        marker: CredentialCleanupMarker,
-    ): CleanupMarkerCreateResult = mutation()
+    override suspend fun createCleanupMarkerIfMissing(marker: Marker): CleanupMarkerCreateResult = mutation()
 
-    override suspend fun removeCleanupMarker(
-        expectedMarker: CredentialCleanupMarker,
-    ): CleanupMarkerRemoveResult = mutation()
+    override suspend fun removeCleanupMarker(expectedMarker: Marker): CleanupMarkerRemoveResult = mutation()
 }
 
 internal class GraphPending : PendingComplaintActionStore {

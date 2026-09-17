@@ -154,9 +154,12 @@ internal fun invalidHistory(): Nothing = throw InvalidComplaintHistory()
 internal fun JsonObject.historyString(name: String): String =
     (get(name) as? JsonPrimitive)?.takeIf { it.isString }?.content ?: invalidHistory()
 
-internal fun JsonObject.nullableString(name: String): String? {
-    return if (get(name) === JsonNull) null else historyString(name)
-}
+internal fun JsonObject.nullableString(name: String): String? =
+    if (get(name) === JsonNull) {
+        null
+    } else {
+        historyString(name)
+    }
 
 internal fun JsonObject.number(name: String): Long {
     val value = get(name) as? JsonPrimitive ?: invalidHistory()
