@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.Flow
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEffect
+import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackIntent
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackResult
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackState
@@ -34,7 +35,8 @@ import me.manga.kira.presentation.settings.feedback.SettingsFeedbackViewModel
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.category
 import me.manga.kira.ui.generated.resources.close
-import me.manga.kira.ui.generated.resources.request_feature_bug
+import me.manga.kira.ui.generated.resources.request_feedback_history_ready
+import me.manga.kira.ui.generated.resources.request_feedback_setup_history
 import me.manga.kira.ui.generated.resources.settings_report_memory_only
 import me.manga.kira.ui.generated.resources.settings_report_new_draft
 import me.manga.kira.ui.generated.resources.settings_report_prepared_cancelled
@@ -42,7 +44,6 @@ import me.manga.kira.ui.generated.resources.settings_report_reset_completed
 import me.manga.kira.ui.generated.resources.settings_report_retry_same
 import me.manga.kira.ui.generated.resources.subject
 import me.manga.kira.ui.generated.resources.submit
-import me.manga.kira.ui.generated.resources.your_feedback
 import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
@@ -52,9 +53,10 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsFeedbackDialog(
     viewModel: SettingsFeedbackViewModel,
     onClosed: () -> Unit,
+    onOpenUrl: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
-    SettingsFeedbackDialogContent(state, viewModel.effects, viewModel::submit, onClosed)
+    SettingsFeedbackDialogContent(state, viewModel.effects, viewModel::submit, onClosed, onOpenUrl)
 }
 
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
@@ -64,6 +66,7 @@ internal fun SettingsFeedbackDialogContent(
     effects: Flow<SettingsFeedbackEffect>,
     onIntent: (SettingsFeedbackIntent) -> Unit,
     onClosed: () -> Unit,
+    onOpenUrl: (String) -> Unit = {},
 ) {
     val latestOnClosed by rememberUpdatedState(onClosed)
     LaunchedEffect(effects) {
@@ -80,8 +83,8 @@ internal fun SettingsFeedbackDialogContent(
     } else {
         AlertDialog(
             onDismissRequest = { onIntent(SettingsFeedbackIntent.Close) },
-            title = { Text(stringResource(Res.string.request_feature_bug)) },
-            text = { SettingsFeedbackBody(state, onIntent) },
+            title = { SettingsFeedbackTitle(state.entry) },
+            text = { SettingsFeedbackBody(state, onIntent, onOpenUrl) },
             confirmButton = { SettingsFeedbackPrimaryAction(state, onIntent) },
             dismissButton = {
                 TextButton(onClick = { onIntent(SettingsFeedbackIntent.Close) }) {
@@ -97,16 +100,19 @@ internal fun SettingsFeedbackDialogContent(
 private fun SettingsFeedbackBody(
     state: SettingsFeedbackState,
     onIntent: (SettingsFeedbackIntent) -> Unit,
+    onOpenUrl: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(LocalSpacing.current.md),
     ) {
         Text(stringResource(Res.string.settings_report_memory_only), style = MaterialTheme.typography.bodySmall)
+        SettingsFeedbackRequestIntroduction(state.entry)
         SettingsFeedbackDraftFields(state, onIntent)
         SettingsFeedbackResultContent(state, onIntent)
         if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         SettingsReportRecoveryContent(state, onIntent)
+        if (state.entry != SettingsFeedbackEntry.General) SettingsFeedbackSocialFooter(onOpenUrl)
     }
 }
 
@@ -117,20 +123,22 @@ private fun SettingsFeedbackDraftFields(
     onIntent: (SettingsFeedbackIntent) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(LocalSpacing.current.sm)) {
-        Text(stringResource(Res.string.category), style = MaterialTheme.typography.labelLarge)
-        SettingsFeedbackCategory(state, onIntent)
-        OutlinedTextField(
-            value = state.draft.subject,
-            onValueChange = { onIntent(SettingsFeedbackIntent.ChangeSubject(it)) },
-            enabled = state.editable,
-            label = { Text(stringResource(Res.string.subject)) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (state.entry == SettingsFeedbackEntry.General) {
+            Text(stringResource(Res.string.category), style = MaterialTheme.typography.labelLarge)
+            SettingsFeedbackCategory(state, onIntent)
+            OutlinedTextField(
+                value = state.draft.subject,
+                onValueChange = { onIntent(SettingsFeedbackIntent.ChangeSubject(it)) },
+                enabled = state.editable,
+                label = { Text(stringResource(Res.string.subject)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         OutlinedTextField(
             value = state.draft.body,
             onValueChange = { onIntent(SettingsFeedbackIntent.ChangeBody(it)) },
             enabled = state.editable,
-            label = { Text(stringResource(Res.string.your_feedback)) },
+            label = { Text(settingsFeedbackBodyLabel(state.entry)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = BODY_MIN_LINES,
             maxLines = BODY_MAX_LINES,
@@ -171,6 +179,10 @@ private fun SettingsFeedbackPrimaryAction(
     onIntent: (SettingsFeedbackIntent) -> Unit,
 ) {
     when {
+        state.canSetupHistory ->
+            TextButton(onClick = { onIntent(SettingsFeedbackIntent.SetupHistory) }) {
+                Text(stringResource(Res.string.request_feedback_setup_history))
+            }
         state.editable ->
             TextButton(onClick = { onIntent(SettingsFeedbackIntent.Submit) }) {
                 Text(stringResource(Res.string.submit))
@@ -205,6 +217,7 @@ private fun SettingsFeedbackResultContent(
         }
         SettingsFeedbackResult.PreparedCancelled -> Text(stringResource(Res.string.settings_report_prepared_cancelled))
         SettingsFeedbackResult.LocalResetCompleted -> Text(stringResource(Res.string.settings_report_reset_completed))
+        SettingsFeedbackResult.HistorySetupCompleted -> Text(stringResource(Res.string.request_feedback_history_ready))
         null -> Unit
     }
 }

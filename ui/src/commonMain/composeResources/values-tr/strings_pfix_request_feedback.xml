@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Bu cihazda henüz bir bildirim kimliği yok. Göndermeden önce bildirim geçmişini ayarlayın. Taslağınız yalnızca bellekte kalır.</string>
+    <string name="request_feedback_setup_history">Bildirim geçmişini ayarla</string>
+    <string name="request_feedback_history_ready">Bildirim geçmişi hazır. Bu istek gönderilmedi. Gözden geçirip Gönder seçeneğini seçin.</string>
+    <string name="request_feedback_clean_start">Bu yeni geçmiş, önceki hizmet üzerinden gönderilen bildirimleri içermez.</string>
+</resources>
