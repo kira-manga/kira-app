@@ -1,0 +1,35 @@
+{
+  "schema": "app-29-apple-native8-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "7aed03749876668fb0ebb9f434fd22fdafe27907",
+    "tree": "4005fe82a3b2ddc2b37e3080862d18bef0935ced"
+  },
+  "suites": [
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintDeletionEngineTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintDeletionEngineTest.kt",
+      "sourceSha256": "96057ed380cc3888dba1533c850cbb0bb9ddb8207d148f0f8e948023c6e28b3b",
+      "methods": [
+        "factoryKeepsTheExactDeploymentPrefixAndRejectsOtherRoutesBeforeAllocation",
+        "onlyExactPostWithARealBoundedBodyAndTruthfulLengthPassesPreparation",
+        "bodyAuthenticationRejectsBearerCookiesAmbiguousKeysAndUnexpectedHeaders",
+        "actualPinnedSupplierHeaderMergeIsAcceptedWithoutRelaxingTheClosedSet"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintDeletionReceiveGuardTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintDeletionReceiveGuardTest.kt",
+      "sourceSha256": "5728bce0bade64829513f8d6e82db36bdf0c6e25ee566211a8ccf9156fd35503",
+      "methods": [
+        "acceptedAndNoContentNeverForwardAnyBytesAndFailureSurvivesANilCompletion",
+        "problemLimitPlusOneIsRejectedBeforeForwardingAndCannotBeRevivedByLateCallbacks",
+        "invalidEncodingLengthOrMediaAndMismatchedResponseTargetNeverReachTheQueue",
+        "closeBeforeCompletionKeepsItsStickyErrorAndLateEmptySuccessCannotEscape"
+      ]
+    }
+  ]
+}

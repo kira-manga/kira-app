@@ -1,0 +1,310 @@
+// Native-only invocation with ordinary main/test source joins. No source/dependency/compiler replacement.
+// Exactly the deletion Engine4 and ReceiveGuard4 definitions; no framework/Engine supplier or app host.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.security.MessageDigest
+import org.gradle.api.tasks.testing.AbstractTestTask
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def run = new File(System.getenv('KIRA_APP5_RUN') ?: '/UNBOUND').canonicalFile
+def control = new File(System.getenv('KIRA_APP5_CONTROL') ?: '/UNBOUND').canonicalFile
+def reports = new File(run, 'reports')
+def read = { name ->
+    def file = new File(reports, name)
+    require(file.isFile() && !Files.isSymbolicLink(file.toPath()) && file.length() <= 1048576, 'Bound report required')
+    new JsonSlurper().parse(file)
+}
+def source = read('source.json')
+def nativeSource = read('native-source.json')
+def request = read('request.json')
+def simulator = read('simulator.json')
+def candidate = '7aed03749876668fb0ebb9f434fd22fdafe27907'
+require(candidate ==~ /[0-9a-f]{40}/ && request.schema == 'app-29-apple-native8-v1' &&
+    request.status == 'PRIMARY_BOUND_FOR_REVIEW' && request.mode == 'NATIVE_ONLY' &&
+    request.app.sha == candidate && source.app.sha == candidate &&
+    nativeSource.app == request.app && nativeSource.root == source.app.root, 'No direct/unbound native invocation')
+def realHome = new File(System.getenv('KIRA_APP7_SIMULATOR_HOME') ?: '/UNBOUND').canonicalFile
+def device = System.getenv('KIRA_APP7_DEVICE')
+require(device ==~ /[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}/ && simulator.udid == device &&
+    simulator.runnerHome == realHome.path && realHome.isDirectory() && !realHome.toPath().startsWith(run.toPath()),
+    'Wrong owned simulator/home')
+def suites = nativeSource.suites
+def testPaths = [':data:remote:iosSimulatorArm64Test']
+require(request.nativeTasks == testPaths && suites*.task == [testPaths[0], testPaths[0]] &&
+    suites*.methods*.size() == [4, 4] && suites*.'class' == ['me.manga.kira.data.remote.complaint.IosComplaintDeletionEngineTest',
+        'me.manga.kira.data.remote.complaint.IosComplaintDeletionReceiveGuardTest'], 'Exactly deletion engine4 and receive-guard4 methods')
+def compilePaths = testPaths.collect { it.replace('iosSimulatorArm64Test', 'compileTestKotlinIosSimulatorArm64') }
+def linkPaths = testPaths.collect { it.replace('iosSimulatorArm64Test', 'linkDebugTestIosSimulatorArm64') }
+def arguments = testPaths.collectMany { task ->
+    [task] + suites.findAll { it.task == task }.collectMany { spec ->
+        ['--tests', spec.'class' + '.*']
+    } + ['--device', device]
+}
+def modules = [':core', ':data:remote']
+// KGP 2.4's ordinary test-link prerequisite aggregates lock metadata across Apple projects.
+// This admits those exact task types, not those projects' compilers/frameworks or SwiftPM work.
+def swiftModules = [':composeApp', ':core', ':data', ':domain', ':platform', ':presentation', ':ui',
+    ':data:download', ':data:local', ':data:remote', ':sources:config', ':sources:contracts', ':sources:engine', ':sources:legacy']
+def swiftType = 'org.jetbrains.kotlin.gradle.plugin.mpp.apple.swiftimport.'
+def metadataPaths = swiftModules.collect { it + ':serializeSwiftPMDependenciesMetadataForLockFiles' }
+def generatePaths = [':composeApp:generateUmbrellaPackageIdentifierBasedResolutionForDefault',
+    ':data:remote:generateSyntheticLinkageSwiftPMImportProjectForCinteropsAndLdDump']
+def fetchPaths = [':composeApp:fetchUmbrellaPackageIdentifierForDefault', ':data:remote:fetchSyntheticImportProjectPackages']
+def syncPath = ':data:remote:syncPersistedPackageResolvedToSynthetic'
+def localPath = ':data:remote:computeLocalPackageDependencyInputFiles'
+def defPath = ':data:remote:convertSyntheticImportProjectIntoDefFileIphonesimulator'
+def skippedSwiftPaths = generatePaths + fetchPaths + [syncPath]
+def swiftTasks = metadataPaths.collectEntries { [(it): swiftType + 'SerializeSwiftPMDependenciesMetadataForLockFiles_Decorated'] } +
+    generatePaths.collectEntries { [(it): swiftType + 'GenerateSyntheticLinkageImportProject_Decorated'] } +
+    fetchPaths.collectEntries { [(it): swiftType + 'FetchSyntheticImportProjectPackages_Decorated'] } +
+    [(syncPath): swiftType + 'SyncPackageResolvedTask_Decorated',
+     (localPath): swiftType + 'ComputeLocalPackageDependencyInputFiles_Decorated',
+     (defPath): swiftType + 'ConvertSyntheticSwiftPMImportProjectIntoDefFile_Decorated']
+def swiftLocks = new File(source.app.root, '.swiftpm-locks')
+def c = [role: null, source: source, require: require, graph: [], observed: [:], states: [:]]
+def hashBytes = { byte[] bytes -> MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString() }
+def sha = { File file, long cap = 1073741824L ->
+    require(file.isFile() && file.canonicalPath == file.absolutePath && !Files.isSymbolicLink(file.toPath()) &&
+        file.length() <= cap, 'Invalid/oversized Native evidence file')
+    def digest = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { stream ->
+        byte[] buffer = new byte[1048576]
+        for (int count; (count = stream.read(buffer)) != -1;) digest.update(buffer, 0, count)
+    }
+    digest.digest().encodeHex().toString()
+}
+def fingerprint = { File file ->
+    require(file.exists() && file.canonicalPath == file.absolutePath && !Files.isSymbolicLink(file.toPath()), 'Unowned Native output')
+    if (file.isFile()) return [file: file.path, kind: 'file', bytes: file.length(), sha256: sha(file)]
+    def rows = []
+    long bytes = 0
+    file.eachFileRecurse { child ->
+        require(!Files.isSymbolicLink(child.toPath()), 'Symlink Native KLIB entry')
+        if (child.isFile()) {
+            bytes += child.length()
+            require(rows.size() < 4096 && bytes <= 268435456, 'Native test KLIB cap')
+            rows.add([path: file.toPath().relativize(child.toPath()).toString(), sha256: sha(child)])
+        }
+    }
+    rows.sort { it.path }
+    require(!rows.empty, 'Empty Native KLIB')
+    [file: file.path, kind: 'directory', bytes: bytes, files: rows.size(),
+        sha256: hashBytes(rows.collect { it.sha256 + '  ' + it.path + '\n' }.join('').getBytes('UTF-8'))]
+}
+def save = {
+    def bytes = (JsonOutput.prettyPrint(JsonOutput.toJson([role: c.role, source: source[c.role].sha,
+        testTasks: c.role == 'app' ? testPaths : [], graph: c.graph, observed: c.observed, states: c.states])) + '\n').getBytes('UTF-8')
+    require(bytes.length <= 1048576, 'Native task report cap')
+    def name = 'native-' + c.role + '-tasks.json'
+    def file = new File(reports, name).toPath()
+    def pending = new File(reports, name + '.pending').toPath()
+    require(!Files.isSymbolicLink(file), 'Aliased Native report')
+    Files.write(pending, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    Files.move(pending, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+def swiftPackages = { values ->
+    require(values instanceof Collection && values.size() <= 64, 'SwiftPM package observation cap/type')
+    values.collect { dependency ->
+        def name = dependency.'getPackageName$kotlin_gradle_plugin_common'()
+        require(name ==~ /[A-Za-z0-9_.-]{1,160}/, 'Unreportable SwiftPM package name')
+        name // No repository URLs, credentials, local paths or package contents in public diagnostics.
+    }.sort()
+}
+def swiftDependencies = { t, directInput, transitiveProvider ->
+    def direct = swiftPackages(t.inputs.properties[directInput])
+    def metadata = transitiveProvider.get().metadataByDependencyIdentifier
+    require(metadata instanceof Map && metadata.size() <= 128, 'SwiftPM metadata observation cap/type')
+    def transitive = metadata.collect { identifier, value ->
+        require(identifier.identifier ==~ /[A-Za-z0-9_]{1,200}/, 'Unreportable SwiftPM metadata identity')
+        [identifier: identifier.identifier, modular: identifier.isModular(), packages: swiftPackages(value.dependencies)]
+    }.sort { it.identifier + ':' + it.modular }
+    [directPackages: direct, transitiveMetadata: transitive,
+        dependenciesEmpty: direct.empty && transitive.every { it.packages.empty }]
+}
+def swiftOutput = { t, relative ->
+    def expected = new File(source.app.root, relative)
+    require(t.outputs.files.files == ([expected] as Set) && expected.canonicalFile == expected &&
+        !expected.exists() && !Files.isSymbolicLink(expected.toPath()), 'Unexpected/preexisting/aliased SwiftPM metadata output')
+    expected
+}
+def observeSwift = { t ->
+    require(!swiftLocks.exists() && !Files.isSymbolicLink(swiftLocks.toPath()), 'Unexpected persisted SwiftPM material; preserve it')
+    def row = [kind: 'swiftpm-empty-prerequisite', actionAuthorized: !(t.path in skippedSwiftPaths)]
+    if (t.path in metadataPaths) {
+        row += swiftDependencies(t, 'importedSpmModules', t.transitiveSwiftPMDependencies)
+        row.outputPath = swiftOutput(t, t.project.path.substring(1).replace(':', '/') +
+            '/build/kotlin/swiftPMDependenciesMetadataForLockFiles').path
+    } else if (t.path in generatePaths) {
+        row += swiftDependencies(t, 'directlyImportedDependencies', t.dependencyIdentifierToImportedSwiftPMDependencies)
+        row.packageRoot = t.syntheticImportProjectRoot.get().asFile.path
+        def relative = t.path == generatePaths[0] ? '.swiftpm-locks/default/swiftImport' : 'data/remote/build/kotlin/swiftImport'
+        require(row.packageRoot == new File(source.app.root, relative).path, 'Unexpected SwiftPM package root')
+    } else if (t.path in fetchPaths) {
+        def base = t.path == fetchPaths[0] ? '.swiftpm-locks/default/' : 'data/remote/build/kotlin/'
+        row.packageRoot = t.syntheticImportProjectRoot.get().asFile.path
+        row.checkout = t.swiftPMDependenciesCheckout.get().asFile.path
+        require(row.packageRoot == new File(source.app.root, base + 'swiftImport').path &&
+            row.checkout == new File(source.app.root, base + 'swiftPMCheckout').path, 'Unexpected SwiftPM fetch roots')
+    } else if (t.path == syncPath) {
+        row.sourceFile = t.sourceFile.get().asFile.path
+        row.destinationFile = t.destinationFile.get().asFile.path
+        require(row.sourceFile == new File(swiftLocks, 'default/swiftImport/Package.resolved').path &&
+            row.destinationFile == new File(source.app.root, 'data/remote/build/kotlin/swiftImport/Package.resolved').path,
+            'Unexpected persisted SwiftPM synchronization')
+    } else if (t.path == localPath) {
+        row.localPackageCount = t.localPackages.get().size()
+        row.dependenciesEmpty = row.localPackageCount == 0
+        row.outputPath = swiftOutput(t, 'data/remote/build/kotlin/swiftImportFilesToTrackFromLocalPackages').path
+    } else if (t.path == defPath) {
+        row.hasSwiftPMDependencies = t.hasSwiftPMDependencies.get()
+        row.dependenciesEmpty = row.hasSwiftPMDependencies == false
+        row.outputRoots = t.outputs.files.files*.path.sort()
+        require(row.outputRoots == ['swiftImportDefs', 'swiftImportLdDump'].collect {
+            new File(source.app.root, 'data/remote/build/kotlin/' + it + '/iphonesimulator').path }.sort(),
+            'Unexpected SwiftPM no-dependency def/ld outputs')
+    }
+    c.observed[t.path] = row
+    save() // Actual ordinary fields, including any nonempty package identities, precede refusal.
+    if (!(t.path in fetchPaths + [syncPath])) require(row.dependenciesEmpty, 'Nonempty SwiftPM dependency scope is not authorized')
+}
+def libraries = { t ->
+    def files = t.libraries.files.sort { it.path }
+    def owners = [source.app.root, new File(run, 'gradle-home/caches').path, new File(run, 'konan').path]
+    require(!files.empty && files.size() <= 512 && files.every { file ->
+        file.exists() && file.canonicalPath == file.absolutePath && !file.path.contains('/me.manga.kira.source/') &&
+            owners.any { file.path.startsWith(it + '/') }
+    }, 'Unowned/published-neutral/oversized Native libraries')
+    files*.path // Actual ordinary inputs, not another expanded all-library provenance framework.
+}
+def nativeCompiler = { t ->
+    def version = '2.4.0'
+    require(t.target == 'ios_simulator_arm64' && t.kotlinNativeVersion == version &&
+        new File(t.konanHome.get().toString()).canonicalFile == new File(run, 'konan/kotlin-native-prebuilt-macos-aarch64-' + version),
+        'Wrong actual Native target/compiler/home')
+}
+gradle.settingsEvaluated { settings ->
+    def root = settings.settingsDir.canonicalFile
+    c.role = root.path == source.app.root ? 'app' : null
+    require(c.role == 'app' && root == new File(control.parentFile, 'app'), 'Only the exact App source checkout')
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21' &&
+        !gradle.startParameter.offline && !gradle.startParameter.dryRun && gradle.startParameter.excludedTaskNames.empty &&
+        gradle.startParameter.maxWorkerCount == 1 && !gradle.startParameter.parallelProjectExecutionEnabled &&
+        !gradle.startParameter.buildCacheEnabled && !gradle.startParameter.configurationCacheRequested, 'Ordinary one-worker uncached work')
+    require(System.getenv('HOME') == new File(run, 'home').path && System.getProperty('user.home') == new File(run, 'home').path &&
+        gradle.gradleUserHomeDir.canonicalFile == new File(run, 'gradle-home') &&
+        System.getenv('KONAN_DATA_DIR') == new File(run, 'konan').path, 'Isolated Gradle/Native scratch homes')
+    require(gradle.startParameter.taskNames in [testPaths, arguments], 'Only deletion AppleNative8 root/options')
+    c.mains = modules.collect { it + ':compileKotlinIosSimulatorArm64' }
+}
+gradle.projectsEvaluated {
+    gradle.rootProject.allprojects.each { p ->
+        require(['kotlin.native.home', 'kotlin.native.version', 'kotlin.native.distribution.type'].every { p.findProperty(it) == null },
+            'No global Native home/version/distribution override')
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    c.graph = graph.allTasks.collect { [path: it.path, type: it.class.name] }
+    save()
+    require(graph.allTasks*.path.containsAll(c.mains + testPaths + compilePaths + linkPaths + swiftTasks.keySet()),
+        'Missing real Native compile/link/run or ordinary SwiftPM prerequisite closure')
+    graph.allTasks.each { t ->
+        require((t.project.path in modules + [':'] || swiftTasks[t.path] == t.class.name) &&
+            (!(t instanceof AbstractTestTask) || (c.role == 'app' && t.path in testPaths)) &&
+            (!t.class.name.contains('KotlinNativeLink') || (c.role == 'app' && t.path in linkPaths)) &&
+            !t.class.name.contains('PublishToMaven') && !(t.name in ['downloadKcef', 'setupKcef', 'extractKcef']),
+            'No other tests/framework/link/publication/CEF work')
+        if (t.class.name.startsWith(swiftType) || t.path in swiftTasks.keySet()) {
+            require(swiftTasks[t.path] == t.class.name && t.enabled, 'Only the exact enabled KGP SwiftPM prerequisite types')
+            t.doFirst {
+                if (t.path in skippedSwiftPaths) {
+                    c.observed[t.path].unexpectedAction = true
+                    save()
+                    require(false, 'SwiftPM generate/fetch/lock synchronization must naturally skip; no action is authorized')
+                }
+                observeSwift(t)
+            }
+            if (!(t.path in skippedSwiftPaths)) t.doLast {
+                if (t.path in metadataPaths || t.path == localPath) {
+                    def output = new File(c.observed[t.path].outputPath)
+                    require(output.isFile() && output.length() <= 65536, 'SwiftPM metadata/local-input output cap')
+                    c.observed[t.path].output = fingerprint(output)
+                }
+                c.observed[t.path].ended = true
+                save()
+            }
+        }
+        if (t.name.startsWith('compile') && t.name.contains('Kotlin') && !t.name.contains('Metadata'))
+            require(t.path in c.mains || (c.role == 'app' && t.path in compilePaths), 'No independent iosArm64/JVM/other compiler')
+        if (t.path in c.mains || (c.role == 'app' && t.path in compilePaths)) {
+            t.doFirst {
+                nativeCompiler(t)
+                def expected = t.path in c.mains ? source[c.role].mains[t.project.path] : nativeSource.compilations[t.path]
+                def files = t.sources.files.findAll { it.name.endsWith('.kt') }
+                def made = files.findAll { it.canonicalPath.startsWith(t.project.buildDir.canonicalPath + '/') }
+                def original = (files - made).collectEntries { [(t.project.rootProject.relativePath(it)): sha(it)] }
+                require(files.size() <= 4096 && original == expected && made.every {
+                    it.canonicalPath.startsWith(t.project.buildDir.canonicalPath + '/generated/') }, 'Pruned/extra ordinary main/test sources')
+                c.observed[t.path] = [target: t.target, sourcesMatched: true, sourceCount: original.size(),
+                    sourceDigest: hashBytes(original.sort().collect { name, digest -> digest + '  ' + name + '\n' }.join('').getBytes('UTF-8')),
+                    generated: made.collectEntries { [(it.path): sha(it)] }, libraries: libraries(t)]
+                save()
+            }
+            t.doLast { c.observed[t.path].output = fingerprint(t.klibOutput.get()); c.observed[t.path].ended = true; save() }
+        }
+        if (c.role == 'app' && t.path in linkPaths) {
+            def compilePath = compilePaths[linkPaths.indexOf(t.path)]
+            t.doFirst {
+                def includes = t.'getSourceFiles$kotlin_gradle_plugin_common'().files.collect { fingerprint(it) }
+                require(c.observed[compilePath]?.ended && includes == [c.observed[compilePath].output] &&
+                    t.binary.target.konanTarget.name == 'ios_simulator_arm64', 'Link must consume the real freshly compiled test KLIB')
+                c.observed[t.path] = [target: t.binary.target.konanTarget.name, includes: includes, libraries: libraries(t)]
+                save()
+            }
+            t.doLast { c.observed[t.path].output = fingerprint(t.outputFile.get()); c.observed[t.path].ended = true; save() }
+        }
+        if (c.role == 'app' && t.path in testPaths) {
+            def index = testPaths.indexOf(t.path)
+            def selectors = suites.findAll { it.task == t.path }.collectMany { spec ->
+                [spec.'class' + '.*']
+            }.sort()
+            t.standalone.set(false)
+            t.environment('HOME', realHome.path)
+            t.environment('CFFIXED_USER_HOME', realHome.path)
+            t.filter.failOnNoMatchingTests = true
+            t.ignoreFailures = false
+            t.ignoreRunFailures = false
+            t.reports.junitXml.required.set(true)
+            t.reports.junitXml.outputLocation.set(new File(run, 'work/native-xml/' + t.project.path.substring(1).replace(':', '/')))
+            t.outputs.upToDateWhen { false } // Only test execution; ordinary main/link dependency execution is unchanged.
+            t.doFirst {
+                def linked = c.observed[linkPaths[index]]
+                def executable = fingerprint(t.executable)
+                require(t.includePatterns == (selectors as Set) && t.excludePatterns.empty && t.args.empty && !t.debugMode &&
+                    t.standalone.get() == false && t.filter.failOnNoMatchingTests && !t.ignoreFailures && !t.ignoreRunFailures,
+                    'Missing/broader/hidden/skipped Native selection')
+                require(t.device.get() == device && t.environment['HOME'] == realHome.path &&
+                    t.environment['CFFIXED_USER_HOME'] == realHome.path && t.targetName == 'iosSimulatorArm64' &&
+                    linked?.ended && executable == linked.output, 'Wrong owned simulator or linked executable')
+                c.observed[t.path] = [selectors: selectors, device: device, standalone: false, targetName: t.targetName,
+                    simulatorHome: realHome.path, executable: executable]
+                save()
+            }
+            t.doLast { c.observed[t.path].ended = true; save() }
+        }
+    }
+}
+gradle.taskGraph.beforeTask { t ->
+    // These normal KGP onlyIf predicates are not replaced/disabled. Observe even when they skip.
+    if (t.path in skippedSwiftPaths) observeSwift(t)
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.path in c.mains && !state.failure && !state.noSource) nativeCompiler(task)
+    c.states[task.path] = [executed: state.executed, didWork: state.didWork, skipped: state.skipped, upToDate: state.upToDate,
+        noSource: state.noSource, failure: state.failure?.class?.name, ended: c.observed[task.path]?.ended == true]
+    save()
+    if (task.path in skippedSwiftPaths && !state.failure)
+        require(state.skipped && !state.didWork && !state.upToDate && !state.noSource, 'SwiftPM prerequisite did not naturally skip')
+}
