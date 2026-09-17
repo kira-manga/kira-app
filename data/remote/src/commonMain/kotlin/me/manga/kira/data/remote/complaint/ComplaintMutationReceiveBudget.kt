@@ -1,0 +1,68 @@
+package me.manga.kira.data.remote.complaint
+
+import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
+
+/** Only direct CREATE201 JSON can exceed the accepted installation/problem budget. */
+internal class ComplaintMutationReceiveBudget private constructor(
+    private val declaredLength: Int?,
+) : ComplaintReceiveBudget {
+    override var receivedBytes: Int = 0
+        private set
+
+    override val remainingBytes: Int get() = Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES - receivedBytes
+
+    override fun accept(byteCount: ULong): Boolean {
+        if (byteCount > remainingBytes.toULong()) return false
+        receivedBytes += byteCount.toInt()
+        return true
+    }
+
+    override fun isComplete(): Boolean = declaredLength == null || receivedBytes == declaredLength
+
+    companion object {
+        private const val CREATED = 201L
+        private const val MAX_HEADER_CHARACTERS = 128
+        private val JSON = Regex("application/json(?:; *charset=(?:utf-8|\"utf-8\"))?", RegexOption.IGNORE_CASE)
+
+        fun checked(
+            route: ComplaintMutationRoute,
+            status: Long,
+            media: List<String>,
+            encoding: List<String>,
+            length: List<String>,
+            transfer: List<String>,
+        ): ComplaintReceiveBudget? =
+            if (route == ComplaintMutationRoute.CREATE && status == CREATED && isJson(media)) {
+                acknowledgementBudget(encoding, length, transfer)
+            } else {
+                ComplaintSessionReceiveBudget.checked(encoding, length, transfer)
+            }
+
+        private fun isJson(media: List<String>): Boolean =
+            media.size == 1 && media.single().length <= MAX_HEADER_CHARACTERS && JSON.matches(media.single())
+
+        private fun acknowledgementBudget(
+            encoding: List<String>,
+            length: List<String>,
+            transfer: List<String>,
+        ): ComplaintMutationReceiveBudget? =
+            when {
+                !listOf(encoding, length, transfer).all(::singleBoundedHeader) -> null
+                encoding.isNotEmpty() && !encoding.single().equals("identity", ignoreCase = true) -> null
+                transfer.isNotEmpty() &&
+                    (length.isNotEmpty() || !transfer.single().equals("chunked", ignoreCase = true)) -> null
+                length.isEmpty() -> ComplaintMutationReceiveBudget(null)
+                else -> declaredBudget(length.single())
+            }
+
+        private fun declaredBudget(value: String): ComplaintMutationReceiveBudget? =
+            value
+                .takeIf { it.isNotEmpty() && it.all { character -> character in '0'..'9' } }
+                ?.toIntOrNull()
+                ?.takeIf { it in 0..Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES }
+                ?.let(::ComplaintMutationReceiveBudget)
+
+        private fun singleBoundedHeader(values: List<String>): Boolean =
+            values.size <= 1 && values.all { it.length <= MAX_HEADER_CHARACTERS }
+    }
+}

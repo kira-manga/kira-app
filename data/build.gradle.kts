@@ -85,6 +85,7 @@ kotlin {
             implementation(project(":sources:contracts"))
 
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.okio)
             api(libs.kotlinx.datetime)
 
             // kotlinx-serialization runtime for the @Serializable DTOs codegen'd in this module
