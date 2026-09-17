@@ -44,8 +44,8 @@ internal class InstallationDeletionWorks {
 
     fun cancel(work: InstallationDeletionWork) {
         while (true) {
-            val current = state.load() as? DeletionWorkState.Active ?: return
-            if (current.work !== work) return
+            val current = state.load() as? DeletionWorkState.Active
+            if (current == null || current.work !== work) return
             if (state.compareAndSet(current, DeletionWorkState.Cancelled(work))) {
                 work.job.cancel()
                 return

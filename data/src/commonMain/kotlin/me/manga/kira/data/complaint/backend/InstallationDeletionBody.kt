@@ -23,7 +23,9 @@ internal object InstallationDeletionBody {
     ): InstallationDeletionDocument {
         val channel = response.bodyAsChannel()
         return try {
-            if (response.call.request.url != expected || response.call.request.method != HttpMethod.Post) invalidHistory()
+            if (response.call.request.url != expected || response.call.request.method != HttpMethod.Post) {
+                invalidHistory()
+            }
             val empty = response.status == HttpStatusCode.Accepted || response.status == HttpStatusCode.NoContent
             if (!empty && response.status.value !in MIN_ERROR_STATUS..MAX_ERROR_STATUS) invalidHistory()
             val maximum = if (empty) 0 else Policy.MAX_PROBLEM_BYTES
@@ -49,18 +51,25 @@ internal object InstallationDeletionBody {
         if (cache == null || cache.size != CACHE.size || cache.toSet() != CACHE) invalidHistory()
         val encoding = headers.single(HttpHeaders.ContentEncoding)
         if (encoding != null && !encoding.equals("identity", ignoreCase = true)) invalidHistory()
-        val media = headers.single(HttpHeaders.ContentType)
-        if (empty) {
-            if (media != null && !JSON.matches(media)) invalidHistory()
-        } else if (media == null || !PROBLEM.matches(media)) {
-            invalidHistory()
-        }
+        contentType(headers, empty)
         if (headers.single(HttpHeaders.Location) != null || headers.single(HttpHeaders.ETag) != null ||
             headers.single(HttpHeaders.WWWAuthenticate) != null
         ) {
             invalidHistory()
         }
         return length(headers, maximum)
+    }
+
+    private fun contentType(
+        headers: Headers,
+        empty: Boolean,
+    ) {
+        val media = headers.single(HttpHeaders.ContentType)
+        if (empty) {
+            if (media != null && !JSON.matches(media)) invalidHistory()
+        } else if (media == null || !PROBLEM.matches(media)) {
+            invalidHistory()
+        }
     }
 
     private fun retryAfter(response: HttpResponse): Int? {

@@ -38,10 +38,9 @@ internal object InstallationDeletionResponse {
     private fun terminalProblem(text: String): Boolean {
         val root = ComplaintHistoryJson(text, ComplaintDeletionTransportPolicy.MAX_PROBLEM_BYTES).read()
         if (root.keys != ROOT_FIELDS || root.historyString("title") != HttpStatusCode.Gone.description) return false
-        val errors = root["errors"] as? JsonArray ?: return false
-        if (errors.size != 1) return false
-        val error = errors.single() as? JsonObject ?: return false
-        return error.keys == ERROR_FIELDS && error.historyString("code") in TERMINAL_CODES
+        val errors = root["errors"] as? JsonArray
+        val error = errors?.singleOrNull() as? JsonObject
+        return error != null && error.keys == ERROR_FIELDS && error.historyString("code") in TERMINAL_CODES
     }
 
     private val ROOT_FIELDS = setOf("type", "title", "status", "errors")

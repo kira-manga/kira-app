@@ -46,15 +46,17 @@ internal class InstallationDeletionHttp(
 
     suspend fun delete(request: InstallationDeletionRequest): InstallationDeletionHttpResult {
         currentCoroutineContext().ensureActive()
-        if (isClosed) return request.failed(Failure.CLOSED)
-        if (!request.binding.work.isCurrent() ||
-            request.binding.record.state != InstallationCredentialState.DELETION_PENDING
-        ) {
-            return request.failed(Failure.INVALIDATED)
+        return when {
+            isClosed -> request.failed(Failure.CLOSED)
+            !request.binding.work.isCurrent() ||
+                request.binding.record.state != InstallationCredentialState.DELETION_PENDING ->
+                request.failed(Failure.INVALIDATED)
+            else -> {
+                val result = exchange(request)
+                currentCoroutineContext().ensureActive()
+                if (isClosed) request.failed(Failure.CLOSED) else result
+            }
         }
-        val result = exchange(request)
-        currentCoroutineContext().ensureActive()
-        return if (isClosed) request.failed(Failure.CLOSED) else result
     }
 
     /** Borrowing client only; the composition root owns and releases the independent native engine. */

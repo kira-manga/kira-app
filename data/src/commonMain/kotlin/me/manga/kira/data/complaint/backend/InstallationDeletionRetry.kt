@@ -15,10 +15,16 @@ internal class InstallationDeletionRetry(
     fun remaining(binding: InstallationDeletionBinding): Int? {
         if (!record.sameAs(binding.record)) return null
         val elapsed = started.elapsedNow()
-        if (elapsed < Duration.ZERO) return seconds
-        val remainingMillis = seconds * MILLIS_PER_SECOND - elapsed.inWholeMilliseconds
-        if (remainingMillis <= 0) return null
-        return ((remainingMillis + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND).toInt()
+        return if (elapsed < Duration.ZERO) {
+            seconds
+        } else {
+            val remainingMillis = seconds * MILLIS_PER_SECOND - elapsed.inWholeMilliseconds
+            if (remainingMillis <= 0) {
+                null
+            } else {
+                ((remainingMillis + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND).toInt()
+            }
+        }
     }
 
     override fun toString(): String = "InstallationDeletionRetry(redacted)"

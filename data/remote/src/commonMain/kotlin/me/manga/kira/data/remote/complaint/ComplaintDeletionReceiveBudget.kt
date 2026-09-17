@@ -37,12 +37,16 @@ internal class ComplaintDeletionReceiveBudget private constructor(
             val empty = status == ACCEPTED || status == NO_CONTENT
             if ((!empty && status !in MIN_ERROR..MAX_ERROR) || !validHeaders(headers, empty)) return null
             val maximum = if (empty) 0 else Policy.MAX_PROBLEM_BYTES
-            val length = headers.length.singleOrNull() ?: return ComplaintDeletionReceiveBudget(maximum, null)
-            return length
-                .takeIf { it.isNotEmpty() && it.all { character -> character in '0'..'9' } }
-                ?.toIntOrNull()
-                ?.takeIf { it in 0..maximum }
-                ?.let { ComplaintDeletionReceiveBudget(maximum, it) }
+            val length = headers.length.singleOrNull()
+            return if (length == null) {
+                ComplaintDeletionReceiveBudget(maximum, null)
+            } else {
+                length
+                    .takeIf { it.isNotEmpty() && it.all { character -> character in '0'..'9' } }
+                    ?.toIntOrNull()
+                    ?.takeIf { it in 0..maximum }
+                    ?.let { ComplaintDeletionReceiveBudget(maximum, it) }
+            }
         }
 
         private fun validHeaders(

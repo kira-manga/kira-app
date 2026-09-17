@@ -65,10 +65,12 @@ internal class BackendInstallationDeletionRepository(
             when (val outcome = coordinator.dispatchDeletion(binding, http)) {
                 is Outcome.Success -> {
                     val pending = outcome.value as? ComplaintInstallationDeletionOutcome.Pending
-                    retry = pending?.retryAfterSeconds?.let { InstallationDeletionRetry(binding.record, it, inputs.clock) }
+                    retry =
+                        pending?.retryAfterSeconds?.let { InstallationDeletionRetry(binding.record, it, inputs.clock) }
                     AppResult.Success(outcome.value)
                 }
-                else -> AppResult.Success(ComplaintInstallationDeletionOutcome.Pending(error = deletionLocalError(outcome)))
+                else ->
+                    AppResult.Success(ComplaintInstallationDeletionOutcome.Pending(error = deletionLocalError(outcome)))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

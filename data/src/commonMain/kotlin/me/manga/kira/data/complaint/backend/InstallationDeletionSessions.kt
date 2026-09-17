@@ -23,14 +23,25 @@ internal class InstallationDeletionSessions(
             return closed()
         }
         val admitted = coordinator.checkDeletionStart(start)
-        if (admitted !is Outcome.Success) return local(admitted)
-        val mark = clock.markNow()
-        val result = http.fetch(start.record)
-        val checked = coordinator.checkDeletionStart(start)
-        if (checked !is Outcome.Success) return local(checked)
-        if (state.load() === DeletionSessionState.Closed) return closed()
-        if (result !is ComplaintSessionResult.Ready) return InstallationDeletionSessionResult.Failed(result)
-        val entry = InstallationSessionEntry(start.record, start.issuer, result.session, mark)
+        return if (admitted !is Outcome.Success) {
+            local(admitted)
+        } else {
+            val mark = clock.markNow()
+            val result = http.fetch(start.record)
+            val checked = coordinator.checkDeletionStart(start)
+            when {
+                checked !is Outcome.Success -> local(checked)
+                state.load() === DeletionSessionState.Closed -> closed()
+                result !is ComplaintSessionResult.Ready -> InstallationDeletionSessionResult.Failed(result)
+                else -> publish(start, InstallationSessionEntry(start.record, start.issuer, result.session, mark))
+            }
+        }
+    }
+
+    private fun publish(
+        start: InstallationDeletionStart,
+        entry: InstallationSessionEntry,
+    ): InstallationDeletionSessionResult {
         if (!entry.isFresh()) return failed(ComplaintSessionFailure.EXPIRED)
         val ticket = InstallationDeletionSession(start, entry)
         return if (state.compareAndSet(DeletionSessionState.Empty, DeletionSessionState.Ready(ticket))) {
@@ -58,7 +69,8 @@ internal class InstallationDeletionSessions(
     private fun local(outcome: Outcome<*>): InstallationDeletionSessionResult =
         when (outcome) {
             is Outcome.Refused -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
-            is Outcome.StorageFailure -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
+            is Outcome.StorageFailure ->
+                InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
             is Outcome.Invalid -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
             is Outcome.Success -> failed(ComplaintSessionFailure.INVALIDATED)
         }
