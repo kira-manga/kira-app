@@ -46,8 +46,14 @@ class AndroidComplaintDeletionEngineTest {
                 assertEquals(DELETION_TEST_KEY, request.headers[Policy.IDEMPOTENCY_HEADER])
                 assertEquals("identity", request.headers["Accept-Encoding"])
                 assertEquals("ktor-client", request.headers["User-Agent"])
-                listOf("Authorization", "Cookie", "Proxy-Authorization", "If-Match", "Content-Encoding", "Transfer-Encoding")
-                    .forEach { assertNull(request.headers[it]) }
+                listOf(
+                    "Authorization",
+                    "Cookie",
+                    "Proxy-Authorization",
+                    "If-Match",
+                    "Content-Encoding",
+                    "Transfer-Encoding",
+                ).forEach { assertNull(request.headers[it]) }
             }
         }
 
@@ -79,20 +85,20 @@ class AndroidComplaintDeletionEngineTest {
             AndroidDeletionEngineFixture().use { fixture ->
                 fixture.server.enqueue(retryableDeletionResponse())
                 fixture.server.enqueue(MockResponse.Builder().code(NO_CONTENT).build())
-                assertEquals(503, fixture.exchange().status)
+                assertEquals(SERVICE_UNAVAILABLE, fixture.exchange().status)
                 assertEquals(1, fixture.server.requestCount)
                 assertEquals(NO_CONTENT, fixture.exchange().status)
                 fixture.server.enqueue(
                     MockResponse.Builder()
-                        .code(307)
+                        .code(TEMPORARY_REDIRECT)
                         .addHeader("Location", fixture.server.url("/other"))
                         .build(),
                 )
                 fixture.server.enqueue(MockResponse.Builder().code(NO_CONTENT).build())
                 assertFails { fixture.exchange() }
-                assertEquals(3, fixture.server.requestCount)
+                assertEquals(REDIRECT_REQUEST_COUNT, fixture.server.requestCount)
                 assertEquals(NO_CONTENT, fixture.exchange().status)
-                assertEquals(4, fixture.server.requestCount)
+                assertEquals(FINAL_REQUEST_COUNT, fixture.server.requestCount)
             }
         }
 
@@ -103,12 +109,17 @@ class AndroidComplaintDeletionEngineTest {
 
     private companion object {
         const val NO_CONTENT = 204
+        const val TEMPORARY_REDIRECT = 307
+        const val REDIRECT_REQUEST_COUNT = 3
+        const val FINAL_REQUEST_COUNT = 4
     }
 }
 
+private const val SERVICE_UNAVAILABLE = 503
+
 private fun retryableDeletionResponse(): MockResponse =
     MockResponse.Builder()
-        .code(503)
+        .code(SERVICE_UNAVAILABLE)
         .addHeader("Retry-After", "0")
         .addHeader("Content-Type", "application/problem+json")
         .body("synthetic")
