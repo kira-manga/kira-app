@@ -24,10 +24,7 @@ import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.presentation.mvi.MviViewModel
 
-/**
- * Settings report/recovery caller. Entry/input/handles and guarded work/teardown have one VM owner.
- * Exact manual retry and explicit history/cleanup checks never allocate or submit a replacement report.
- */
+/** This VM owns report/recovery work; retry and history/cleanup checks never submit a replacement report. */
 @Suppress("TooManyFunctions")
 class SettingsFeedbackViewModel(
     private val actions: ComplaintReportActions,
