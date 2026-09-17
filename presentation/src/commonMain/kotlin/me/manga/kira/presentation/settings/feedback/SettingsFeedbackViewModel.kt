@@ -17,23 +17,23 @@ import me.manga.kira.domain.model.feedback.ComplaintRecoveryPrompt
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportDraft
 import me.manga.kira.domain.model.feedback.ComplaintReportFailure
-import me.manga.kira.domain.model.feedback.ComplaintReportPhase
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
+import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.presentation.mvi.MviViewModel
 
 /**
- * Candidate Settings report subfeature. Entry/input/handles live only in this VM; one guarded action
- * at a time, exact manual retry and explicit existing-history setup that never prepares/submits reports.
- * Reducer transitions deliberately share this screen's caller/live/prompt state and teardown ownership.
+ * Settings report/recovery caller. Entry/input/handles and guarded work/teardown have one VM owner.
+ * Exact manual retry and explicit history/cleanup checks never allocate or submit a replacement report.
  */
 @Suppress("TooManyFunctions")
 class SettingsFeedbackViewModel(
     private val actions: ComplaintReportActions,
     private val recoveryActions: ComplaintReportRecoveryActions,
     private val observeUserComplaints: ObserveUserComplaintsUseCase,
+    private val installationRecoveryActions: ComplaintInstallationRecoveryActions,
     private val entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
 ) : MviViewModel<SettingsFeedbackState, SettingsFeedbackIntent, SettingsFeedbackEffect>(entry.initialState()) {
     private var live: ComplaintLiveReport? = null
@@ -71,8 +71,13 @@ class SettingsFeedbackViewModel(
             SettingsFeedbackIntent.Retry -> retryReport()
             SettingsFeedbackIntent.RefreshRecovery -> refreshRecovery()
             SettingsFeedbackIntent.SetupHistory -> setupHistory()
+            SettingsFeedbackIntent.ResumeCleanup -> resumeCleanup()
             is SettingsFeedbackIntent.CancelPrepared -> cancelPrepared(intent.report)
-            is SettingsFeedbackIntent.RequestRecovery -> requestRecovery(intent.report)
+            is SettingsFeedbackIntent.RequestRecovery ->
+                requestRecovery(SettingsFeedbackRecoveryKind.REPORT, intent.report)
+            SettingsFeedbackIntent.RequestUnreadableRecovery -> requestRecovery(SettingsFeedbackRecoveryKind.UNREADABLE)
+            SettingsFeedbackIntent.RequestDeletionAbandonment ->
+                requestRecovery(SettingsFeedbackRecoveryKind.ABANDON_DELETION)
             SettingsFeedbackIntent.CancelRecovery -> resolvePrompt(confirm = false)
             SettingsFeedbackIntent.ConfirmRecovery -> resolvePrompt(confirm = true)
             SettingsFeedbackIntent.NewDraft -> newDraft()
@@ -92,20 +97,11 @@ class SettingsFeedbackViewModel(
     private suspend fun submitReport() {
         if (!state.value.editable) return
         work {
-            val prepared = active(actions.prepare(state.value.draft))
-            updateState { it.withMissingObservation(prepared.isMissingPreparation()) }
-            when (prepared) {
-                is AppResult.Failure -> showFailure(ComplaintReportFailure(prepared.error))
-                is AppResult.Success ->
-                    when (val value = prepared.value) {
-                        is ComplaintReportPreparation.Ready -> {
-                            live = value.report
-                            submitLive(value.report)
-                        }
-                        is ComplaintReportPreparation.Invalid ->
-                            updateState { it.copy(result = SettingsFeedbackResult.Invalid(value.field, value.reason)) }
-                        is ComplaintReportPreparation.Blocked -> showFailure(value.failure)
-                    }
+            val prepared = active(actions.prepare(state.value.draft)).preparationResult()
+            updateState { it.withPreparation(prepared) }
+            if (prepared is ComplaintReportPreparation.Ready) {
+                live = prepared.report
+                submitLive(prepared.report)
             }
         }
     }
@@ -134,13 +130,8 @@ class SettingsFeedbackViewModel(
     private suspend fun refreshRecovery() {
         if (live != null || terminal) return
         work {
-            when (val result = active(recoveryActions.reconcile())) {
-                is AppResult.Failure -> {
-                    updateState { it.withMissingObservation(false) }
-                    showFailure(ComplaintReportFailure(result.error))
-                }
-                is AppResult.Success -> updateState { it.withRecovery(result.value) }
-            }
+            val result = active(recoveryActions.reconcile())
+            updateState { it.withRecovery(result) }
         }
     }
 
@@ -155,13 +146,17 @@ class SettingsFeedbackViewModel(
         }
     }
 
-    private suspend fun cancelPrepared(report: ComplaintPendingReport) {
-        if (
-            findReportObservation(report, live, latestAttempt, state.value.recovery)?.phase !=
-            ComplaintReportPhase.PREPARED
-        ) {
-            return
+    private suspend fun resumeCleanup() {
+        work {
+            when (val result = active(installationRecoveryActions.resumeCleanup())) {
+                is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
+                is AppResult.Success -> updateState { it.copy(result = SettingsFeedbackResult.CleanupCheckCompleted) }
+            }
         }
+    }
+
+    private suspend fun cancelPrepared(report: ComplaintPendingReport) {
+        if (!isPreparedReport(report, live, latestAttempt, state.value.recovery)) return
         work {
             when (val result = active(recoveryActions.cancelPrepared(report))) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
@@ -169,28 +164,32 @@ class SettingsFeedbackViewModel(
                     terminal = live != null
                     live = null
                     latestAttempt = null
-                    updateState {
-                        it.copy(
-                            result = SettingsFeedbackResult.PreparedCancelled,
-                            recovery = it.recovery?.without(report),
-                        )
-                    }
+                    updateState { it.afterPreparedCancellation(report) }
                 }
             }
         }
     }
 
-    private suspend fun requestRecovery(report: ComplaintPendingReport) {
-        if (findReportObservation(report, live, latestAttempt, state.value.recovery) == null) return
+    private suspend fun requestRecovery(
+        kind: SettingsFeedbackRecoveryKind,
+        report: ComplaintPendingReport? = null,
+    ) {
+        if (report != null && findReportObservation(report, live, latestAttempt, state.value.recovery) == null) return
         work {
-            val result = recoveryActions.requestRecovery(report)
+            val result =
+                when (kind) {
+                    SettingsFeedbackRecoveryKind.REPORT -> recoveryActions.requestRecovery(report ?: return@work)
+                    SettingsFeedbackRecoveryKind.UNREADABLE -> installationRecoveryActions.requestUnreadable()
+                    SettingsFeedbackRecoveryKind.ABANDON_DELETION ->
+                        installationRecoveryActions.requestDeletionAbandonment()
+                }
             // Capture before checking cancellation so close/VM teardown can dismiss this exact prompt.
             if (result is AppResult.Success) prompt = result.value
             currentCoroutineContext().ensureActive()
             when (result) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
                 is AppResult.Success -> {
-                    updateState { it.withConfirmation(true) }
+                    updateState { it.withRecoveryKind(kind) }
                     emit(SettingsFeedbackEffect.ConfirmLocalReset)
                 }
             }
@@ -199,28 +198,30 @@ class SettingsFeedbackViewModel(
 
     private suspend fun resolvePrompt(confirm: Boolean) {
         val expected = prompt ?: return
+        val kind = state.value.recoveryKind ?: return
         work(allowPrompt = true) {
-            val result =
-                if (confirm) recoveryActions.confirmRecovery(expected) else recoveryActions.cancelRecovery(expected)
-            currentCoroutineContext().ensureActive()
-            when (result) {
-                is AppResult.Failure -> {
-                    showFailure(ComplaintReportFailure(result.error))
-                    emit(SettingsFeedbackEffect.ConfirmLocalReset)
+            try {
+                val result =
+                    if (confirm) recoveryActions.confirmRecovery(expected) else recoveryActions.cancelRecovery(expected)
+                if (result is AppResult.Success) prompt = null
+                currentCoroutineContext().ensureActive()
+                when (result) {
+                    is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
+                    is AppResult.Success -> if (confirm) localResetCompleted(kind)
                 }
-                is AppResult.Success -> {
-                    prompt = null
-                    if (confirm) localResetCompleted() else updateState { it.withConfirmation(false) }
-                }
+            } finally {
+                // Confirmation may have been consumed before cleanup failed; never offer this token again.
+                withContext(NonCancellable) { dismissOwnedPrompt() }
+                if (!closed) updateState { it.withRecoveryKind(null) }
             }
         }
     }
 
-    private fun localResetCompleted() {
+    private fun localResetCompleted(kind: SettingsFeedbackRecoveryKind) {
         live = null
         latestAttempt = null
         terminal = true
-        updateState { it.afterLocalReset() }
+        updateState { it.afterLocalReset(kind) }
     }
 
     private fun showAttempt(attempt: ComplaintReportAttempt) {
@@ -234,8 +235,7 @@ class SettingsFeedbackViewModel(
         if (live == null) {
             updateState { it.copy(result = SettingsFeedbackResult.Failure(failure)) }
         } else {
-            val previous = latestAttempt as? ComplaintReportAttempt.Unresolved
-            showAttempt(ComplaintReportAttempt.Unresolved(failure, previous?.knownApplication, previous?.pending))
+            showAttempt(failure.afterAttempt(latestAttempt))
         }
     }
 

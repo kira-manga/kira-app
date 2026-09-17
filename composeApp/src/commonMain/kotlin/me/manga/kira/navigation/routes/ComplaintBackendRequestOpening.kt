@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import me.manga.kira.di.ComplaintBackendGraph
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
@@ -31,6 +32,9 @@ internal class ComplaintBackendRequestOpening(
         }
         check(candidate.get<ComplaintListRepository>() === graph.history) {
             "Complaint candidate history binding differs"
+        }
+        check(candidate.get<ComplaintInstallationRecoveryRepository>() === graph.installationRecovery) {
+            "Complaint candidate installation recovery binding differs"
         }
         val factory =
             viewModelFactory {

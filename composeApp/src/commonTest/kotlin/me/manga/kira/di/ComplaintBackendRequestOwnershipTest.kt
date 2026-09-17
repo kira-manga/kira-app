@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.complaint.ComplaintType
+import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.FeedbackRepository
 import me.manga.kira.navigation.routes.ComplaintBackendRequestOpening
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
@@ -74,6 +75,28 @@ class ComplaintBackendRequestOwnershipTest {
             try {
                 assertMissingBeforeSetup(opening.viewModel, fixture)
                 assertExplicitHistorySetup(opening.viewModel, fixture)
+            } finally {
+                opening.close()
+                runCurrent()
+                app.close()
+                graph.close()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun installationRecoveryBindingUsesTheReportIssuerAndActiveCleanupIsNeutral() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val fixture = ComplaintBackendGraphFixture(this)
+            val graph = candidateGraph(fixture)
+            val app = koinApplication { modules(graph.module()) }
+            val entry = SettingsFeedbackEntry.SourceRequest("Synthetic source request")
+            val opening = ComplaintBackendRequestOpening(app.koin, entry)
+            try {
+                assertSame(graph.reports, graph.installationRecovery)
+                assertSame(graph.installationRecovery, app.koin.get<ComplaintInstallationRecoveryRepository>())
+                assertNeutralActiveCleanup(opening.viewModel, fixture)
             } finally {
                 opening.close()
                 runCurrent()
@@ -156,6 +179,23 @@ class ComplaintBackendRequestOwnershipTest {
         assertEquals(ComplaintType.LANGUAGES, vm.state.value.draft.type)
         assertEquals(1, fixture.historyCalls)
         assertEquals(1, fixture.sessionCalls)
+        assertNoReportWork(fixture)
+        assertFalse(fixture.events.any { it == "request:enrollment" })
+    }
+
+    private fun TestScope.assertNeutralActiveCleanup(
+        vm: SettingsFeedbackViewModel,
+        fixture: ComplaintBackendGraphFixture,
+    ) {
+        runCurrent()
+        vm.submit(SettingsFeedbackIntent.ChangeBody("Synthetic cleanup-check draft"))
+        runCurrent()
+        vm.submit(SettingsFeedbackIntent.ResumeCleanup)
+        runCurrent()
+        assertIs<SettingsFeedbackResult.CleanupCheckCompleted>(vm.state.value.result)
+        assertEquals("Synthetic cleanup-check draft", vm.state.value.draft.body)
+        assertFalse(vm.state.value.confirmationPending)
+        assertEquals(0, fixture.historyCalls + fixture.sessionCalls)
         assertNoReportWork(fixture)
         assertFalse(fixture.events.any { it == "request:enrollment" })
     }

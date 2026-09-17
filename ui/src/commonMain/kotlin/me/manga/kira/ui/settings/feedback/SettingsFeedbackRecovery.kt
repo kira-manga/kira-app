@@ -18,6 +18,7 @@ import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportPending
 import me.manga.kira.domain.model.feedback.ComplaintReportPhase
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackIntent
+import me.manga.kira.presentation.settings.feedback.SettingsFeedbackRecoveryKind
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackResult
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackState
 import me.manga.kira.ui.generated.resources.Res
@@ -30,9 +31,6 @@ import me.manga.kira.ui.generated.resources.settings_report_recovery_empty
 import me.manga.kira.ui.generated.resources.settings_report_recovery_title
 import me.manga.kira.ui.generated.resources.settings_report_refresh
 import me.manga.kira.ui.generated.resources.settings_report_request_reset
-import me.manga.kira.ui.generated.resources.settings_report_reset_confirm
-import me.manga.kira.ui.generated.resources.settings_report_reset_title
-import me.manga.kira.ui.generated.resources.settings_report_reset_warning
 import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
@@ -52,24 +50,33 @@ internal fun SettingsReportRecoveryContent(
         ) {
             Text(stringResource(Res.string.settings_report_refresh))
         }
-        state.recovery?.let { recovery ->
-            val entries = recovery.entries()
-            if (entries.isEmpty()) Text(stringResource(Res.string.settings_report_recovery_empty))
-            recovery.stopped?.let { Text(settingsReportFailureText(it)) }
-            entries.forEachIndexed { index, observation ->
-                Text(
-                    stringResource(Res.string.settings_report_pending_title, index + 1),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                SettingsReportAttemptSummary(observation.attempt)
-                if (observation.attempt is ComplaintReportAttempt.Unresolved) {
-                    SettingsReportPendingActions(
-                        observation.pending,
-                        !state.busy && !state.confirmationPending,
-                        onIntent,
-                    )
-                }
-            }
+        SettingsReportRecoveryObservations(state, onIntent)
+        SettingsInstallationRecoveryActions(state, onIntent)
+    }
+}
+
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
+@Composable
+private fun SettingsReportRecoveryObservations(
+    state: SettingsFeedbackState,
+    onIntent: (SettingsFeedbackIntent) -> Unit,
+) {
+    val recovery = state.recovery ?: return
+    val entries = recovery.entries()
+    if (entries.isEmpty()) Text(stringResource(Res.string.settings_report_recovery_empty))
+    recovery.stopped?.let { Text(settingsReportFailureText(it)) }
+    entries.forEachIndexed { index, observation ->
+        Text(
+            stringResource(Res.string.settings_report_pending_title, index + 1),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        SettingsReportAttemptSummary(observation.attempt)
+        if (observation.attempt is ComplaintReportAttempt.Unresolved) {
+            SettingsReportPendingActions(
+                observation.pending,
+                !state.busy && !state.confirmationPending,
+                onIntent,
+            )
         }
     }
 }
@@ -104,21 +111,22 @@ internal fun SettingsReportPendingActions(
     }
 }
 
-/** A reset always requires this explicit warning; dismissal is not confirmation or pending deletion. */
+/** Local reset/abandonment requires a real prompt and this warning; dismissal grants no cleanup authority. */
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 internal fun SettingsReportResetDialog(
     state: SettingsFeedbackState,
     onIntent: (SettingsFeedbackIntent) -> Unit,
 ) {
+    val kind = state.recoveryKind ?: return
     AlertDialog(
         onDismissRequest = { if (!state.busy) onIntent(SettingsFeedbackIntent.CancelRecovery) },
         properties = DialogProperties(dismissOnBackPress = !state.busy, dismissOnClickOutside = !state.busy),
-        title = { Text(stringResource(Res.string.settings_report_reset_title)) },
-        text = { SettingsReportResetWarning(state) },
+        title = { Text(settingsInstallationRecoveryTitle(kind)) },
+        text = { SettingsReportResetWarning(state, kind) },
         confirmButton = {
             TextButton(onClick = { onIntent(SettingsFeedbackIntent.ConfirmRecovery) }, enabled = !state.busy) {
-                Text(stringResource(Res.string.settings_report_reset_confirm))
+                Text(settingsInstallationRecoveryConfirmation(kind))
             }
         },
         dismissButton = {
@@ -131,12 +139,15 @@ internal fun SettingsReportResetDialog(
 
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
-private fun SettingsReportResetWarning(state: SettingsFeedbackState) {
+private fun SettingsReportResetWarning(
+    state: SettingsFeedbackState,
+    kind: SettingsFeedbackRecoveryKind,
+) {
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(LocalSpacing.current.sm),
     ) {
-        Text(stringResource(Res.string.settings_report_reset_warning))
+        SettingsInstallationRecoveryWarning(kind)
         val failure =
             when (val result = state.result) {
                 is SettingsFeedbackResult.Failure -> result.failure

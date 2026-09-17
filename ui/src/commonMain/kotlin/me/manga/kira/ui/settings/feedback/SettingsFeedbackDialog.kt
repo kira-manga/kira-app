@@ -37,6 +37,8 @@ import me.manga.kira.ui.generated.resources.category
 import me.manga.kira.ui.generated.resources.close
 import me.manga.kira.ui.generated.resources.request_feedback_history_ready
 import me.manga.kira.ui.generated.resources.request_feedback_setup_history
+import me.manga.kira.ui.generated.resources.settings_installation_abandon_completed
+import me.manga.kira.ui.generated.resources.settings_installation_cleanup_checked
 import me.manga.kira.ui.generated.resources.settings_report_memory_only
 import me.manga.kira.ui.generated.resources.settings_report_new_draft
 import me.manga.kira.ui.generated.resources.settings_report_prepared_cancelled
@@ -218,6 +220,10 @@ private fun SettingsFeedbackResultContent(
         SettingsFeedbackResult.PreparedCancelled -> Text(stringResource(Res.string.settings_report_prepared_cancelled))
         SettingsFeedbackResult.LocalResetCompleted -> Text(stringResource(Res.string.settings_report_reset_completed))
         SettingsFeedbackResult.HistorySetupCompleted -> Text(stringResource(Res.string.request_feedback_history_ready))
+        SettingsFeedbackResult.LocalDeletionAbandoned ->
+            Text(stringResource(Res.string.settings_installation_abandon_completed))
+        SettingsFeedbackResult.CleanupCheckCompleted ->
+            Text(stringResource(Res.string.settings_installation_cleanup_checked))
         null -> Unit
     }
 }
