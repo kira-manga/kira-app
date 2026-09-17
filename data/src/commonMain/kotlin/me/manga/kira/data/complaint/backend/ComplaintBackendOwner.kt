@@ -54,7 +54,15 @@ class ComplaintBackendOwner private constructor(
             reportInputs: ComplaintReportInputs? = null,
             deletionResources: ComplaintInstallationDeletionResources? = null,
         ): AppResult<ComplaintBackendOwner> {
-            if (!distinctBorrowedEngines(enrollmentEngine, sessionEngine, historyEngine, mutationEngine, deletionResources?.engine)) {
+            if (
+                !distinctBorrowedEngines(
+                    enrollmentEngine,
+                    sessionEngine,
+                    historyEngine,
+                    mutationEngine,
+                    deletionResources?.engine,
+                )
+            ) {
                 return historyUnavailable()
             }
             val close = mutableListOf<() -> Unit>()
@@ -125,8 +133,9 @@ private fun distinctBorrowedEngines(
 ): Boolean {
     val readsDistinct = enrollment !== session && enrollment !== history && session !== history
     val mutationDistinct = mutation !== enrollment && mutation !== session && mutation !== history
-    val deletionDistinct = deletion == null ||
-        (deletion !== enrollment && deletion !== session && deletion !== history && deletion !== mutation)
+    val deletionDistinct =
+        deletion == null ||
+            (deletion !== enrollment && deletion !== session && deletion !== history && deletion !== mutation)
     return readsDistinct && mutationDistinct && deletionDistinct
 }
 

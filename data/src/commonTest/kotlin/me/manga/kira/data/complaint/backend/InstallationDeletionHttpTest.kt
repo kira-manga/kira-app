@@ -23,9 +23,12 @@ class InstallationDeletionHttpTest {
     fun failedEofCannotMasqueradeAsAnEmptyTerminalOrACompleteProblem() =
         runTest {
             for (status in listOf(HttpStatusCode.NoContent, HttpStatusCode.Gone)) {
-                val bytes = if (status == HttpStatusCode.NoContent) byteArrayOf() else {
-                    mutationProblem(status, "INSTALLATION_DELETED").encodeToByteArray()
-                }
+                val bytes =
+                    if (status == HttpStatusCode.NoContent) {
+                        byteArrayOf()
+                    } else {
+                        mutationProblem(status, "INSTALLATION_DELETED").encodeToByteArray()
+                    }
                 for (afterPrefix in listOf(false, true)) {
                     val channel = ComplaintFailedEofChannel(bytes, afterPrefix)
                     val headers = deletionHeaders(status) { append(HttpHeaders.ContentLength, bytes.size.toString()) }
@@ -39,9 +42,12 @@ class InstallationDeletionHttpTest {
     fun timeoutAndTransportFailureRetainPendingAndHaveNoHiddenRetryOrSessionFallback() =
         runTest {
             for (timeout in listOf(false, true)) {
-                val fixture = InstallationDeletionFixture(this, InstallationCoordinatorFixture(deletingRecord()), deletionHandler = {
-                    if (timeout) awaitCancellation() else error("Synthetic transport failure")
-                })
+                val fixture =
+                    InstallationDeletionFixture(
+                        this,
+                        InstallationCoordinatorFixture(deletingRecord()),
+                        deletionHandler = { if (timeout) awaitCancellation() else error("Synthetic transport failure") },
+                    )
                 try {
                     val error = assertDeletionPending(fixture.repository.continueDeletion()).error
                     if (timeout) assertIs<AppError.Network.Timeout>(error) else assertIs<AppError.Network.NoConnectivity>(error)
@@ -59,9 +65,12 @@ class InstallationDeletionHttpTest {
     fun callerCancellationPropagatesAndNeverRunsDestructiveFinally() =
         runTest {
             val cancellation = CancellationException("Synthetic deletion cancellation")
-            val fixture = InstallationDeletionFixture(this, InstallationCoordinatorFixture(deletingRecord()), deletionHandler = {
-                throw cancellation
-            })
+            val fixture =
+                InstallationDeletionFixture(
+                    this,
+                    InstallationCoordinatorFixture(deletingRecord()),
+                    deletionHandler = { throw cancellation },
+                )
             try {
                 val caught = assertFailsWith<CancellationException> { fixture.repository.continueDeletion() }
                 assertCancellationIdentity(cancellation, caught)

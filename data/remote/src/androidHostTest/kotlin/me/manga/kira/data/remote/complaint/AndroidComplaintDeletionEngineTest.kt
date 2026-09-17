@@ -77,15 +77,17 @@ class AndroidComplaintDeletionEngineTest {
     fun retryAfterZeroAndRedirectsCannotReplayTheOneShotBodyOrReachAnotherRoute() =
         runBlocking {
             AndroidDeletionEngineFixture().use { fixture ->
-                fixture.server.enqueue(
-                    MockResponse.Builder().code(503).addHeader("Retry-After", "0")
-                        .addHeader("Content-Type", "application/problem+json").body("synthetic").build(),
-                )
+                fixture.server.enqueue(retryableDeletionResponse())
                 fixture.server.enqueue(MockResponse.Builder().code(NO_CONTENT).build())
                 assertEquals(503, fixture.exchange().status)
                 assertEquals(1, fixture.server.requestCount)
                 assertEquals(NO_CONTENT, fixture.exchange().status)
-                fixture.server.enqueue(MockResponse.Builder().code(307).addHeader("Location", fixture.server.url("/other")).build())
+                fixture.server.enqueue(
+                    MockResponse.Builder()
+                        .code(307)
+                        .addHeader("Location", fixture.server.url("/other"))
+                        .build(),
+                )
                 fixture.server.enqueue(MockResponse.Builder().code(NO_CONTENT).build())
                 assertFails { fixture.exchange() }
                 assertEquals(3, fixture.server.requestCount)
@@ -103,3 +105,11 @@ class AndroidComplaintDeletionEngineTest {
         const val NO_CONTENT = 204
     }
 }
+
+private fun retryableDeletionResponse(): MockResponse =
+    MockResponse.Builder()
+        .code(503)
+        .addHeader("Retry-After", "0")
+        .addHeader("Content-Type", "application/problem+json")
+        .body("synthetic")
+        .build()

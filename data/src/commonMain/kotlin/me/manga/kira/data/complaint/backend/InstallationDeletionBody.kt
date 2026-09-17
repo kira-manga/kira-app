@@ -17,7 +17,10 @@ import me.manga.kira.core.complaint.ComplaintDeletionTransportPolicy as Policy
 
 /** Strict downstream bound. Native factories separately bound bytes before Ktor queues them. */
 internal object InstallationDeletionBody {
-    suspend fun read(response: HttpResponse, expected: Url): InstallationDeletionDocument {
+    suspend fun read(
+        response: HttpResponse,
+        expected: Url,
+    ): InstallationDeletionDocument {
         val channel = response.bodyAsChannel()
         return try {
             if (response.call.request.url != expected || response.call.request.method != HttpMethod.Post) invalidHistory()
@@ -35,7 +38,11 @@ internal object InstallationDeletionBody {
         }
     }
 
-    private fun headers(response: HttpResponse, empty: Boolean, maximum: Int): Int? {
+    private fun headers(
+        response: HttpResponse,
+        empty: Boolean,
+        maximum: Int,
+    ): Int? {
         val headers = response.headers
         if (headers.single(ComplaintBoundedResponse.CONTRACT_HEADER) != "1") invalidHistory()
         val cache = headers.single(HttpHeaders.CacheControl)?.lowercase()?.split(',')?.map { it.trim(' ', '\t') }
@@ -64,7 +71,10 @@ internal object InstallationDeletionBody {
             ?: invalidHistory()
     }
 
-    private fun length(headers: Headers, maximum: Int): Int? {
+    private fun length(
+        headers: Headers,
+        maximum: Int,
+    ): Int? {
         val value = headers.single(HttpHeaders.ContentLength)
         val transfer = headers.single(HttpHeaders.TransferEncoding)
         if (transfer != null && (value != null || !transfer.equals("chunked", ignoreCase = true))) invalidHistory()
@@ -81,7 +91,11 @@ internal object InstallationDeletionBody {
         }
     }
 
-    private suspend fun utf8(channel: ByteReadChannel, maximum: Int, declared: Int?): String {
+    private suspend fun utf8(
+        channel: ByteReadChannel,
+        maximum: Int,
+        declared: Int?,
+    ): String {
         val bytes = ByteArray(maximum + 1)
         return try {
             var count = 0

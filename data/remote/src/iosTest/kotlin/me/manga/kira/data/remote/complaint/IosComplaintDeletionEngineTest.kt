@@ -81,9 +81,10 @@ class IosComplaintDeletionEngineTest {
     @Test
     fun actualPinnedSupplierHeaderMergeIsAcceptedWithoutRelaxingTheClosedSet() =
         withIosDeletionGuard { fixture ->
-            val request = iosDeletionTestRequest().apply {
-                deletionTestEngineHeaders().forEach { (name, value) -> setValue(value, name) }
-            }
+            val request =
+                iosDeletionTestRequest().apply {
+                    deletionTestEngineHeaders().forEach { (name, value) -> setValue(value, name) }
+                }
             fixture.guard.prepare(request)
             val task = fixture.task(request)
             assertTrue(fixture.admit(task, mapOf("Content-Length" to "0"), IOS_DELETION_URL, 204))

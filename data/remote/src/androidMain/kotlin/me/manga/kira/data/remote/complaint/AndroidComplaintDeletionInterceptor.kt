@@ -35,7 +35,7 @@ internal class AndroidComplaintDeletionInterceptor(
         val response = proceed(request)
         var transferred = false
         return try {
-            if (!target.matches(response.request.url.toString())) {
+            if (response.request.method != "POST" || !target.matches(response.request.url.toString())) {
                 throw IOException("Complaint deletion response target rejected")
             }
             val budget = response.deletionBudget() ?: throw IOException("Complaint deletion response headers rejected")

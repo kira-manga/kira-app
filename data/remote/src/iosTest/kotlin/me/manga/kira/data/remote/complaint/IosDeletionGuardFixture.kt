@@ -12,9 +12,10 @@ import me.manga.kira.core.complaint.ComplaintDeletionTransportPolicy as Policy
 
 /** Existing real-task/driven-callback fixture; no task is resumed and no native-network proof is implied. */
 internal fun withIosDeletionGuard(block: (IosSessionGuardFixture) -> Unit) {
-    val fixture = IosSessionGuardFixture(
-        IosComplaintDeletionPolicy(assertNotNull(iosComplaintDeletionTarget(Url(IOS_DELETION_URL)))),
-    )
+    val fixture =
+        IosSessionGuardFixture(
+            IosComplaintDeletionPolicy(assertNotNull(iosComplaintDeletionTarget(Url(IOS_DELETION_URL)))),
+        )
     try {
         block(fixture)
     } finally {

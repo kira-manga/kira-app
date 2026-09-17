@@ -22,36 +22,40 @@ internal class BackendInstallationDeletionRepository(
 ) : ComplaintInstallationDeletionRepository {
     private var retry: InstallationDeletionRetry? = null
 
-    override suspend fun startDeletion(): AppResult<ComplaintInstallationDeletionOutcome> = withWork { work ->
-        val admitted = coordinator.beginDeletionStart(work)
-        if (admitted !is Outcome.Success) return@withWork AppResult.Failure(deletionLocalError(admitted))
-        val start = admitted.value
-        val ticket = when (val fresh = sessions.freshDeletionSession(start)) {
-            is InstallationDeletionSessionResult.Ready -> fresh.ticket
-            is InstallationDeletionSessionResult.Failed ->
-                return@withWork AppResult.Failure(deletionSessionError(fresh.result))
-        }
-        currentCoroutineContext().ensureActive()
-        val key = inputs.nextKey()
-        when (val committed = coordinator.commitDeletionStart(start, ticket, sessions, key)) {
-            is Outcome.Success -> send(committed.value)
-            else -> AppResult.Failure(deletionLocalError(committed))
-        }
-    }
-
-    override suspend fun continueDeletion(): AppResult<ComplaintInstallationDeletionOutcome> = withWork { work ->
-        when (val cleanup = coordinator.resumeDeletionCleanup(work)) {
-            is Outcome.Success -> if (cleanup.value == InstallationDeletionCleanup.COMPLETED) {
-                retry = null
-                return@withWork AppResult.Success(ComplaintInstallationDeletionOutcome.Completed)
+    override suspend fun startDeletion(): AppResult<ComplaintInstallationDeletionOutcome> =
+        withWork { work ->
+            val admitted = coordinator.beginDeletionStart(work)
+            if (admitted !is Outcome.Success) return@withWork AppResult.Failure(deletionLocalError(admitted))
+            val start = admitted.value
+            val ticket =
+                when (val fresh = sessions.freshDeletionSession(start)) {
+                    is InstallationDeletionSessionResult.Ready -> fresh.ticket
+                    is InstallationDeletionSessionResult.Failed ->
+                        return@withWork AppResult.Failure(deletionSessionError(fresh.result))
+                }
+            currentCoroutineContext().ensureActive()
+            val key = inputs.nextKey()
+            when (val committed = coordinator.commitDeletionStart(start, ticket, sessions, key)) {
+                is Outcome.Success -> send(committed.value)
+                else -> AppResult.Failure(deletionLocalError(committed))
             }
-            else -> return@withWork AppResult.Failure(deletionLocalError(cleanup))
         }
-        when (val continued = coordinator.continueDeletion(work)) {
-            is Outcome.Success -> send(continued.value)
-            else -> AppResult.Failure(deletionLocalError(continued))
+
+    override suspend fun continueDeletion(): AppResult<ComplaintInstallationDeletionOutcome> =
+        withWork { work ->
+            when (val cleanup = coordinator.resumeDeletionCleanup(work)) {
+                is Outcome.Success ->
+                    if (cleanup.value == InstallationDeletionCleanup.COMPLETED) {
+                        retry = null
+                        return@withWork AppResult.Success(ComplaintInstallationDeletionOutcome.Completed)
+                    }
+                else -> return@withWork AppResult.Failure(deletionLocalError(cleanup))
+            }
+            when (val continued = coordinator.continueDeletion(work)) {
+                is Outcome.Success -> send(continued.value)
+                else -> AppResult.Failure(deletionLocalError(continued))
+            }
         }
-    }
 
     private suspend fun send(binding: InstallationDeletionBinding): AppResult<ComplaintInstallationDeletionOutcome> {
         retry?.remaining(binding)?.let { seconds ->
@@ -79,8 +83,9 @@ internal class BackendInstallationDeletionRepository(
     ): AppResult<ComplaintInstallationDeletionOutcome> =
         try {
             coroutineScope {
-                val work = works.begin(currentCoroutineContext().job)
-                    ?: return@coroutineScope AppResult.Failure(deletionUnavailable())
+                val work =
+                    works.begin(currentCoroutineContext().job)
+                        ?: return@coroutineScope AppResult.Failure(deletionUnavailable())
                 try {
                     action(work)
                 } finally {

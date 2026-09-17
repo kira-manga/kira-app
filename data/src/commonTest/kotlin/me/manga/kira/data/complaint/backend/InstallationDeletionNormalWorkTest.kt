@@ -40,15 +40,20 @@ class InstallationDeletionNormalWorkTest {
 private class DeletionNormalWorkFixture(scope: TestScope) {
     val entered = CompletableDeferred<Unit>()
     val release = CompletableDeferred<Unit>()
-    val deletion = InstallationDeletionFixture(scope, deletionHandler = {
-        val status = HttpStatusCode.ServiceUnavailable
-        respond(mutationProblem(status, "SERVICE_UNAVAILABLE"), status, deletionHeaders(status))
-    })
-    private val engine = historyMockEngine(scope) {
-        entered.complete(Unit)
-        release.await()
-        respond(mutationApplied(), HttpStatusCode.OK, mutationHeaders())
-    }
+    val deletion =
+        InstallationDeletionFixture(
+            scope,
+            deletionHandler = {
+                val status = HttpStatusCode.ServiceUnavailable
+                respond(mutationProblem(status, "SERVICE_UNAVAILABLE"), status, deletionHeaders(status))
+            },
+        )
+    private val engine =
+        historyMockEngine(scope) {
+            entered.complete(Unit)
+            release.await()
+            respond(mutationApplied(), HttpStatusCode.OK, mutationHeaders())
+        }
     private val http = ComplaintMutationHttp(assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL)), engine)
     val slot = reportSlot().also { deletion.storage.pending.slots += it }
     private val job = Job()

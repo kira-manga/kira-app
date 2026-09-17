@@ -16,9 +16,12 @@ class InstallationDeletionCleanupFaultTest {
     @Test
     fun everyFailureBeforeMarkerRetainsTheTupleAndRestartMustRepeatTheExactHttpRequest() =
         runTest {
-            for (point in listOf(Step.PENDING_CLEAR_BEFORE, Step.PENDING_SLOT_REMOVED, Step.PENDING_CLEARED, Step.MARKER_CREATE_BEFORE)) {
-                assertPreMarkerDeletionFailure(point)
-            }
+            listOf(
+                Step.PENDING_CLEAR_BEFORE,
+                Step.PENDING_SLOT_REMOVED,
+                Step.PENDING_CLEARED,
+                Step.MARKER_CREATE_BEFORE,
+            ).forEach { assertPreMarkerDeletionFailure(it) }
         }
 
     @Test
@@ -30,9 +33,13 @@ class InstallationDeletionCleanupFaultTest {
     @Test
     fun markerAndEveryPartialCredentialBoundaryResumeLocallyWithoutHttpSessionOrNewKey() =
         runTest {
-            for (point in listOf(Step.MARKER_STORED, Step.CLEANUP_BEFORE, Step.KEY_REMOVED, Step.PAYLOAD_REMOVED, Step.MARKER_REMOVE_BEFORE)) {
-                assertPostMarkerDeletionFailure(point)
-            }
+            listOf(
+                Step.MARKER_STORED,
+                Step.CLEANUP_BEFORE,
+                Step.KEY_REMOVED,
+                Step.PAYLOAD_REMOVED,
+                Step.MARKER_REMOVE_BEFORE,
+            ).forEach { assertPostMarkerDeletionFailure(it) }
         }
 }
 
@@ -41,17 +48,18 @@ private suspend fun TestScope.assertPreMarkerDeletionFailure(point: Step) {
     val storage = first.storage
     storage.pending.slots += listOf(Fixtures.slot(1), Fixtures.slot(2))
     installDeletionCleanupFailure(storage, point)
-    val original = try {
-        assertNotNull(assertDeletionPending(first.repository.continueDeletion()).error)
-        assertNull(storage.credentials.marker)
-        assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(deletingRecord()))
-        assertTrue(storage.credentials.keyPresent && storage.credentials.payloadPresent)
-        assertRefused(Block.REMOTE_DELETION_PENDING, storage.restart().resumeCleanup())
-        first.bodies.single()
-    } finally {
-        first.close()
-        storage.faults.clearFaults()
-    }
+    val original =
+        try {
+            assertNotNull(assertDeletionPending(first.repository.continueDeletion()).error)
+            assertNull(storage.credentials.marker)
+            assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(deletingRecord()))
+            assertTrue(storage.credentials.keyPresent && storage.credentials.payloadPresent)
+            assertRefused(Block.REMOTE_DELETION_PENDING, storage.restart().resumeCleanup())
+            first.bodies.single()
+        } finally {
+            first.close()
+            storage.faults.clearFaults()
+        }
     val resumed = deletionRestart(storage)
     try {
         assertDeletionCompleted(resumed.repository.continueDeletion())

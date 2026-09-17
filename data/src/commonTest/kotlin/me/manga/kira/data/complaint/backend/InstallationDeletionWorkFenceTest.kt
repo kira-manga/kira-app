@@ -38,9 +38,12 @@ class InstallationDeletionWorkFenceTest {
     fun deletionLaneIsStillBusyDuringResponseCleanupAndReusableOnlyAfterCallerReturns() =
         runTest {
             val channel = DeletionCleanupProbe()
-            val fixture = InstallationDeletionFixture(this, InstallationCoordinatorFixture(deletingRecord()), deletionHandler = {
-                respond(channel, HttpStatusCode.NoContent, deletionHeaders())
-            })
+            val fixture =
+                InstallationDeletionFixture(
+                    this,
+                    InstallationCoordinatorFixture(deletingRecord()),
+                    deletionHandler = { respond(channel, HttpStatusCode.NoContent, deletionHeaders()) },
+                )
             channel.works = fixture.works
             try {
                 assertDeletionCompleted(fixture.repository.continueDeletion())
@@ -60,10 +63,15 @@ private class DeletionFinalFenceFixture(
     private var responded = false
     private val storage = InstallationCoordinatorFixture(deletingRecord())
     private val slot = Fixtures.slot(1).also { storage.pending.slots += it }
-    private val fixture = InstallationDeletionFixture(scope, storage, deletionHandler = {
-        responded = true
-        respond("", HttpStatusCode.NoContent, deletionHeaders())
-    })
+    private val fixture =
+        InstallationDeletionFixture(
+            scope,
+            storage,
+            deletionHandler = {
+                responded = true
+                respond("", HttpStatusCode.NoContent, deletionHeaders())
+            },
+        )
     private val job = Job()
     private val work = assertNotNull(fixture.works.begin(job))
 

@@ -70,19 +70,21 @@ private class DeletionOwnerFixture(scope: TestScope) {
     var keyCalls = 0
         private set
     private val endpoint = assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL))
-    val engines = List(5) { index ->
-        historyMockEngine(scope) {
-            when (index) {
-                SESSION -> respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
-                DELETION -> withContext(NonCancellable) {
-                    entered.complete(Unit)
-                    release.await()
-                    respond("", HttpStatusCode.NoContent, deletionHeaders())
+    val engines =
+        List(5) { index ->
+            historyMockEngine(scope) {
+                when (index) {
+                    SESSION -> respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
+                    DELETION ->
+                        withContext(NonCancellable) {
+                            entered.complete(Unit)
+                            release.await()
+                            respond("", HttpStatusCode.NoContent, deletionHeaders())
+                        }
+                    else -> error("Deletion cannot enroll or use history/mutation routes")
                 }
-                else -> error("Deletion cannot enroll or use history/mutation routes")
             }
         }
-    }
     val owner = create(engines[DELETION]).reportSuccess()
 
     fun create(deletion: HttpClientEngine?): AppResult<ComplaintBackendOwner> =
@@ -95,12 +97,13 @@ private class DeletionOwnerFixture(scope: TestScope) {
             engines[SESSION],
             engines[HISTORY],
             engines[MUTATION],
-            deletionResources = deletion?.let { engine ->
-                ComplaintInstallationDeletionResources(engine) {
-                    keyCalls += 1
-                    Fixtures.KEY
-                }
-            },
+            deletionResources =
+                deletion?.let { engine ->
+                    ComplaintInstallationDeletionResources(engine) {
+                        keyCalls += 1
+                        Fixtures.KEY
+                    }
+                },
         )
 
     fun close() {

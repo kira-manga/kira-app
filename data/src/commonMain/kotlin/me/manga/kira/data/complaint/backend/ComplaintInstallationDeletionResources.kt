@@ -21,5 +21,11 @@ internal fun createInstallationDeletion(
     if (resources == null) return null
     val http = InstallationDeletionHttp(endpoint, resources.engine).also { close.add(0, it::close) }
     val works = InstallationDeletionWorks().also { close.add(0, it::close) }
-    return BackendInstallationDeletionRepository(coordinator, sessions, http, InstallationDeletionInputs(resources.nextKey), works)
+    return BackendInstallationDeletionRepository(
+        coordinator,
+        sessions,
+        http,
+        InstallationDeletionInputs(resources.nextKey),
+        works,
+    )
 }

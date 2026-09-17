@@ -39,7 +39,10 @@ internal class InstallationSessionManager(
             }
         }
 
-    fun claimDeletionSession(start: InstallationDeletionStart, ticket: InstallationDeletionSession): Boolean =
+    fun claimDeletionSession(
+        start: InstallationDeletionStart,
+        ticket: InstallationDeletionSession,
+    ): Boolean =
         state.load() !== SessionCacheState.Closed && deletionSessions.claim(start, ticket)
 
     suspend fun session(): ComplaintSessionResult =

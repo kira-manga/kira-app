@@ -35,12 +35,13 @@ internal class AndroidDeletionEngineFixture(
         try {
             val trust = startDeletionServer(server)
             url = Url(server.url(basePath + Policy.PATH).toString())
-            val engine = OkHttp.create {
-                config {
-                    complaintDeletionPolicy(assertNotNull(androidComplaintDeletionTarget(url)), resources)
-                    sslSocketFactory(trust.sslSocketFactory(), trust.trustManager)
+            val engine =
+                OkHttp.create {
+                    config {
+                        complaintDeletionPolicy(assertNotNull(androidComplaintDeletionTarget(url)), resources)
+                        sslSocketFactory(trust.sslSocketFactory(), trust.trustManager)
+                    }
                 }
-            }
             owner = resources.own(engine)
             claimedOwner = owner
             client = sessionTestClient(owner.engine)
@@ -54,15 +55,16 @@ internal class AndroidDeletionEngineFixture(
         size: Int = 1,
         change: HttpRequestBuilder.() -> Unit = {},
     ): SessionEngineResponse {
-        val request = HttpRequestBuilder().apply {
-            method = HttpMethod.Post
-            url(this@AndroidDeletionEngineFixture.url.toString())
-            deletionTestHeaders().filterNot { it.first == "Content-Type" }.forEach { (name, value) ->
-                headers.append(name, value)
+        val request =
+            HttpRequestBuilder().apply {
+                method = HttpMethod.Post
+                url(this@AndroidDeletionEngineFixture.url.toString())
+                deletionTestHeaders().filterNot { it.first == "Content-Type" }.forEach { (name, value) ->
+                    headers.append(name, value)
+                }
+                setBody(ByteArrayContent(ByteArray(size) { 'x'.code.toByte() }, ContentType.Application.Json))
+                change()
             }
-            setBody(ByteArrayContent(ByteArray(size) { 'x'.code.toByte() }, ContentType.Application.Json))
-            change()
-        }
         return client.prepareRequest(request).execute { response ->
             SessionEngineResponse(
                 response.status.value,

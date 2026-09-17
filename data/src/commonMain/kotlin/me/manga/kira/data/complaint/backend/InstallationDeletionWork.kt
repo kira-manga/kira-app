@@ -22,14 +22,20 @@ internal class InstallationDeletionWorks {
     }
 
     /** The terminal-application/close linearization point, after the coordinator's exact rechecks. */
-    fun claimTerminal(work: InstallationDeletionWork, request: InstallationDeletionRequest): Boolean {
+    fun claimTerminal(
+        work: InstallationDeletionWork,
+        request: InstallationDeletionRequest,
+    ): Boolean {
         val current = state.load() as? DeletionWorkState.Active ?: return false
         return current.work === work && !current.applying && work.job.isActive &&
             request.binding.work === work &&
             state.compareAndSet(current, DeletionWorkState.Active(work, applying = true))
     }
 
-    fun claimMarkedCleanup(work: InstallationDeletionWork, marker: CredentialCleanupMarker): Boolean {
+    fun claimMarkedCleanup(
+        work: InstallationDeletionWork,
+        marker: CredentialCleanupMarker,
+    ): Boolean {
         val current = state.load() as? DeletionWorkState.Active ?: return false
         return current.work === work && !current.applying && work.job.isActive &&
             marker.expectedGeneration != null &&
@@ -51,11 +57,12 @@ internal class InstallationDeletionWorks {
     fun finish(work: InstallationDeletionWork) {
         while (true) {
             val current = state.load()
-            val matches = when (current) {
-                is DeletionWorkState.Active -> current.work === work
-                is DeletionWorkState.Cancelled -> current.work === work
-                else -> false
-            }
+            val matches =
+                when (current) {
+                    is DeletionWorkState.Active -> current.work === work
+                    is DeletionWorkState.Cancelled -> current.work === work
+                    else -> false
+                }
             if (!matches || state.compareAndSet(current, DeletionWorkState.Idle)) return
         }
     }

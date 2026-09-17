@@ -2,11 +2,13 @@ package me.manga.kira.data.complaint.backend
 
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.platform.storage.InstallationPermanentFailure
 import me.manga.kira.platform.storage.InstallationStorageFailure
 import me.manga.kira.platform.storage.InstallationTemporaryFailure
+import me.manga.kira.platform.storage.PendingComplaintSlot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -45,14 +47,7 @@ class InstallationDeletionStartTest {
             val storage = InstallationCoordinatorFixture(Fixtures.record())
             val slots = List(16) { sessionPendingSlot(key = historyId(it + 10), dispatched = it % 2 == 0) }
             storage.pending.slots += slots
-            val fixture = InstallationDeletionFixture(this, storage, deletionHandler = {
-                assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(deletingRecord()))
-                assertEquals(slots, storage.pending.slots)
-                val afterCommit = storage.faults.trace.dropWhile { it != Step.REPLACE_STORED }.drop(1)
-                assertTrue(Step.CREDENTIAL_READ in afterCommit)
-                assertTrue(Step.PENDING_CLEAR_BEFORE !in storage.faults.trace)
-                respond("", HttpStatusCode.NoContent, deletionHeaders())
-            })
+            val fixture = retainedDeletionStart(storage, slots)
             try {
                 assertDeletionCompleted(fixture.repository.startDeletion())
                 assertEquals(1, fixture.sessionRequests.size)
@@ -65,16 +60,12 @@ class InstallationDeletionStartTest {
     @Test
     fun sessionNotFoundForbiddenTerminalAndServerErrorsCannotEnrollAllocateKeyOrChangeStorage() =
         runTest {
-            val cases = listOf(
-                HttpStatusCode.NotFound to "INSTALLATION_NOT_FOUND",
-                HttpStatusCode.Forbidden to "INSTALLATION_CREDENTIAL_REJECTED",
-                HttpStatusCode.Gone to "INSTALLATION_DELETED",
-                HttpStatusCode.ServiceUnavailable to "SERVICE_UNAVAILABLE",
-            )
-            for ((status, code) in cases) {
-                val fixture = InstallationDeletionFixture(this, sessionHandler = {
-                    respond(mutationProblem(status, code), status, sessionHeaders(status))
-                })
+            for ((status, code) in deletionSessionRejections()) {
+                val fixture =
+                    InstallationDeletionFixture(
+                        this,
+                        sessionHandler = { respond(mutationProblem(status, code), status, sessionHeaders(status)) },
+                    )
                 try {
                     assertIs<AppResult.Failure>(fixture.repository.startDeletion())
                     fixture.assertRetained(Fixtures.record())
@@ -134,13 +125,8 @@ class InstallationDeletionStartTest {
     fun badKeyGenerationOverflowAndSessionExpiringBeforeAdmissionLeaveActiveIdentityUntouched() =
         runTest {
             for (scenario in listOf("bad-key", "overflow", "expired")) {
-                val clock = TestTimeSource()
                 val active = Fixtures.record(generation = if (scenario == "overflow") Long.MAX_VALUE else 1)
-                val settings = DeletionFixtureSettings(clock, nextKey = { if (scenario == "bad-key") "bad" else Fixtures.KEY })
-                val fixture = InstallationDeletionFixture(this, InstallationCoordinatorFixture(active), settings, {
-                    if (scenario == "expired") clock += 900.seconds
-                    respond(sessionResponse(active), HttpStatusCode.OK, sessionHeaders())
-                })
+                val fixture = invalidDeletionStart(scenario)
                 try {
                     assertIs<AppResult.Failure>(fixture.repository.startDeletion())
                     fixture.assertRetained(active)
@@ -151,6 +137,47 @@ class InstallationDeletionStartTest {
                 }
             }
         }
+}
+
+private fun TestScope.retainedDeletionStart(
+    storage: InstallationCoordinatorFixture,
+    slots: List<PendingComplaintSlot>,
+): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        storage,
+        deletionHandler = {
+            assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(deletingRecord()))
+            assertEquals(slots, storage.pending.slots)
+            val afterCommit = storage.faults.trace.dropWhile { it != Step.REPLACE_STORED }.drop(1)
+            assertTrue(Step.CREDENTIAL_READ in afterCommit)
+            assertTrue(Step.PENDING_CLEAR_BEFORE !in storage.faults.trace)
+            respond("", HttpStatusCode.NoContent, deletionHeaders())
+        },
+    )
+
+private fun deletionSessionRejections(): List<Pair<HttpStatusCode, String>> =
+    listOf(
+        HttpStatusCode.NotFound to "INSTALLATION_NOT_FOUND",
+        HttpStatusCode.Forbidden to "INSTALLATION_CREDENTIAL_REJECTED",
+        HttpStatusCode.Gone to "INSTALLATION_DELETED",
+        HttpStatusCode.ServiceUnavailable to "SERVICE_UNAVAILABLE",
+    )
+
+@OptIn(ExperimentalTime::class)
+private fun TestScope.invalidDeletionStart(scenario: String): InstallationDeletionFixture {
+    val clock = TestTimeSource()
+    val active = Fixtures.record(generation = if (scenario == "overflow") Long.MAX_VALUE else 1)
+    val settings = DeletionFixtureSettings(clock, nextKey = { if (scenario == "bad-key") "bad" else Fixtures.KEY })
+    return InstallationDeletionFixture(
+        this,
+        InstallationCoordinatorFixture(active),
+        settings,
+        sessionHandler = {
+            if (scenario == "expired") clock += 900.seconds
+            respond(sessionResponse(active), HttpStatusCode.OK, sessionHeaders())
+        },
+    )
 }
 
 private fun deletionStartInvalidStores(): List<(InstallationCoordinatorFixture) -> Unit> =

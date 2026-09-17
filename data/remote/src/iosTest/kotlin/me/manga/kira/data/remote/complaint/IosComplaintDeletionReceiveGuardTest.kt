@@ -37,7 +37,11 @@ class IosComplaintDeletionReceiveGuardTest {
         for (overflow in listOf(false, true)) {
             withIosDeletionGuard { fixture ->
                 val task = fixture.task(iosDeletionTestRequest())
-                val headers = mapOf("Content-Type" to "application/problem+json", "Content-Length" to "${Policy.MAX_PROBLEM_BYTES}")
+                val headers =
+                    mapOf(
+                        "Content-Type" to "application/problem+json",
+                        "Content-Length" to "${Policy.MAX_PROBLEM_BYTES}",
+                    )
                 assertTrue(fixture.admit(task, headers, IOS_DELETION_URL, 410))
                 fixture.receive(task, Policy.MAX_PROBLEM_BYTES)
                 if (overflow) fixture.receive(task, 1)
@@ -54,13 +58,14 @@ class IosComplaintDeletionReceiveGuardTest {
 
     @Test
     fun invalidEncodingLengthOrMediaAndMismatchedResponseTargetNeverReachTheQueue() {
-        val cases = listOf(
-            mapOf("Content-Length" to "1"),
-            mapOf("Content-Length" to "0,0"),
-            mapOf("Content-Type" to "application/problem+json"),
-            mapOf("Content-Encoding" to "gzip"),
-            mapOf("Content-Length" to "0", "Transfer-Encoding" to "chunked"),
-        )
+        val cases =
+            listOf(
+                mapOf("Content-Length" to "1"),
+                mapOf("Content-Length" to "0,0"),
+                mapOf("Content-Type" to "application/problem+json"),
+                mapOf("Content-Encoding" to "gzip"),
+                mapOf("Content-Length" to "0", "Transfer-Encoding" to "chunked"),
+            )
         for (headers in cases) {
             withIosDeletionGuard { fixture ->
                 val task = fixture.task(iosDeletionTestRequest())

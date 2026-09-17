@@ -54,11 +54,17 @@ internal class ComplaintDeletionReceiveBudget private constructor(
                     (encoding.isEmpty() || encoding.single().equals("identity", ignoreCase = true)) &&
                     (transfer.isEmpty() ||
                         length.isEmpty() && transfer.single().equals("chunked", ignoreCase = true)) &&
-                    if (empty) {
-                        media.isEmpty() || JSON.matches(media.single())
-                    } else {
-                        media.size == 1 && PROBLEM.matches(media.single())
-                    }
+                    validMedia(media, empty)
+            }
+
+        private fun validMedia(
+            media: List<String>,
+            empty: Boolean,
+        ): Boolean =
+            if (empty) {
+                media.isEmpty() || JSON.matches(media.single())
+            } else {
+                media.size == 1 && PROBLEM.matches(media.single())
             }
 
         private fun singleBoundedHeader(values: List<String>): Boolean =

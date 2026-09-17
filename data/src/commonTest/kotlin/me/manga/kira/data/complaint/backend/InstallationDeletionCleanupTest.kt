@@ -2,6 +2,7 @@ package me.manga.kira.data.complaint.backend
 
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
@@ -25,10 +26,7 @@ class InstallationDeletionCleanupTest {
             for (code in listOf(null, "INSTALLATION_DELETED", "INSTALLATION_RETIRED", "INSTALLATION_SCOPE_RETIRED")) {
                 val storage = InstallationCoordinatorFixture(deletingRecord())
                 storage.pending.slots += listOf(Fixtures.slot(1), Fixtures.slot(2))
-                val fixture = InstallationDeletionFixture(this, storage, deletionHandler = {
-                    val status = if (code == null) HttpStatusCode.NoContent else HttpStatusCode.Gone
-                    respond(if (code == null) "" else mutationProblem(status, code), status, deletionHeaders(status))
-                })
+                val fixture = terminalDeletionFixture(storage, code)
                 try {
                     val synthetic = ServerTerminalFact(fixture.coordinator.pendingDeletion().success())
                     assertRefused(Block.RECONCILIATION_REQUIRED, fixture.coordinator.finishServerDeletion(synthetic))
@@ -126,13 +124,34 @@ class InstallationDeletionCleanupTest {
         }
 }
 
+private fun TestScope.terminalDeletionFixture(
+    storage: InstallationCoordinatorFixture,
+    code: String?,
+): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        storage,
+        deletionHandler = {
+            val status = if (code == null) HttpStatusCode.NoContent else HttpStatusCode.Gone
+            respond(if (code == null) "" else mutationProblem(status, code), status, deletionHeaders(status))
+        },
+    )
+
 private fun assertDeletionCleanupOrder(storage: InstallationCoordinatorFixture) {
     val mutations = storage.faults.mutations
     assertEquals(
         listOf(
-            Step.PENDING_CLEAR_BEFORE, Step.PENDING_SLOT_REMOVED, Step.PENDING_SLOT_REMOVED, Step.PENDING_CLEARED,
-            Step.MARKER_CREATE_BEFORE, Step.MARKER_STORED, Step.CLEANUP_BEFORE,
-            Step.KEY_REMOVED, Step.PAYLOAD_REMOVED, Step.MARKER_REMOVE_BEFORE, Step.MARKER_REMOVED,
+            Step.PENDING_CLEAR_BEFORE,
+            Step.PENDING_SLOT_REMOVED,
+            Step.PENDING_SLOT_REMOVED,
+            Step.PENDING_CLEARED,
+            Step.MARKER_CREATE_BEFORE,
+            Step.MARKER_STORED,
+            Step.CLEANUP_BEFORE,
+            Step.KEY_REMOVED,
+            Step.PAYLOAD_REMOVED,
+            Step.MARKER_REMOVE_BEFORE,
+            Step.MARKER_REMOVED,
         ),
         mutations,
     )

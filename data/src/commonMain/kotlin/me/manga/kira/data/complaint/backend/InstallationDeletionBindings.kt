@@ -15,7 +15,10 @@ internal class InstallationDeletionBindings(
 ) {
     private val works = mutableSetOf<InstallationDeletionWork>()
 
-    suspend fun start(work: InstallationDeletionWork, issuer: ReconciliationIssuer): InstallationDeletionStart {
+    suspend fun start(
+        work: InstallationDeletionWork,
+        issuer: ReconciliationIssuer,
+    ): InstallationDeletionStart {
         requireLive(work)
         val record = credentials.coordinationRecord().also(::active)
         val snapshot = pending.reconciliationSnapshot(record)
@@ -24,7 +27,10 @@ internal class InstallationDeletionBindings(
         return InstallationDeletionStart(record, snapshot, issuer, work)
     }
 
-    suspend fun continuation(work: InstallationDeletionWork, issuer: ReconciliationIssuer): InstallationDeletionBinding {
+    suspend fun continuation(
+        work: InstallationDeletionWork,
+        issuer: ReconciliationIssuer,
+    ): InstallationDeletionBinding {
         requireLive(work)
         val record = credentials.coordinationRecord().also(::deleting)
         requireLive(work)
@@ -32,19 +38,28 @@ internal class InstallationDeletionBindings(
         return InstallationDeletionBinding(record, issuer, work)
     }
 
-    suspend fun check(start: InstallationDeletionStart, issuer: ReconciliationIssuer) {
+    suspend fun check(
+        start: InstallationDeletionStart,
+        issuer: ReconciliationIssuer,
+    ) {
         requireRegistered(start.work, start.issuer, issuer)
         val record = credentials.exactRecord(start.record).also(::active)
         if (!samePending(start.snapshot, pending.reconciliationSnapshot(record))) refuse(Block.STALE_BINDING)
         requireLive(start.work)
     }
 
-    suspend fun commit(start: InstallationDeletionStart, key: String): InstallationDeletionBinding {
+    suspend fun commit(
+        start: InstallationDeletionStart,
+        key: String,
+    ): InstallationDeletionBinding {
         val next = credentials.replaceCoordinated(start.record, checked(start.record.beginDeletion(key)))
         return InstallationDeletionBinding(next, start.issuer, start.work)
     }
 
-    suspend fun check(binding: InstallationDeletionBinding, issuer: ReconciliationIssuer) {
+    suspend fun check(
+        binding: InstallationDeletionBinding,
+        issuer: ReconciliationIssuer,
+    ) {
         requireRegistered(binding.work, binding.issuer, issuer)
         deleting(credentials.exactRecord(binding.record))
         requireLive(binding.work)

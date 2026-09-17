@@ -41,7 +41,10 @@ internal class InstallationDeletionSessions(
     }
 
     /** Non-suspending under the credential coordinator mutex; never takes the session mutex. */
-    fun claim(start: InstallationDeletionStart, ticket: InstallationDeletionSession): Boolean {
+    fun claim(
+        start: InstallationDeletionStart,
+        ticket: InstallationDeletionSession,
+    ): Boolean {
         val current = state.load() as? DeletionSessionState.Ready ?: return false
         return current.ticket === ticket && ticket.start === start &&
             ticket.entry.matches(start.record, start.issuer) && ticket.entry.isFresh() &&
@@ -52,12 +55,13 @@ internal class InstallationDeletionSessions(
         state.exchange(DeletionSessionState.Closed)
     }
 
-    private fun local(outcome: Outcome<*>): InstallationDeletionSessionResult = when (outcome) {
-        is Outcome.Refused -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
-        is Outcome.StorageFailure -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
-        is Outcome.Invalid -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
-        is Outcome.Success -> failed(ComplaintSessionFailure.INVALIDATED)
-    }
+    private fun local(outcome: Outcome<*>): InstallationDeletionSessionResult =
+        when (outcome) {
+            is Outcome.Refused -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
+            is Outcome.StorageFailure -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
+            is Outcome.Invalid -> InstallationDeletionSessionResult.Failed(ComplaintSessionResult.LocalFailure(outcome))
+            is Outcome.Success -> failed(ComplaintSessionFailure.INVALIDATED)
+        }
 
     private fun closed(): InstallationDeletionSessionResult = failed(ComplaintSessionFailure.CLOSED)
 

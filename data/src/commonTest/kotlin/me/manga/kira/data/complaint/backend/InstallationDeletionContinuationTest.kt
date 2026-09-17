@@ -4,6 +4,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -27,17 +28,15 @@ class InstallationDeletionContinuationTest {
     @Test
     fun restartAfterServerFailureResendsOnlyTheExactDurableBodyAndKey() =
         runTest {
-            val first = InstallationDeletionFixture(this, deletionHandler = {
-                val status = HttpStatusCode.ServiceUnavailable
-                respond(mutationProblem(status, "SERVICE_UNAVAILABLE"), status, deletionHeaders(status))
-            })
-            val original = try {
-                assertIs<AppError.Network.Http>(assertDeletionPending(first.repository.startDeletion()).error)
-                first.assertRetained(deletingRecord())
-                first.bodies.single()
-            } finally {
-                first.close()
-            }
+            val first = unavailableDeletionFixture()
+            val original =
+                try {
+                    assertIs<AppError.Network.Http>(assertDeletionPending(first.repository.startDeletion()).error)
+                    first.assertRetained(deletingRecord())
+                    first.bodies.single()
+                } finally {
+                    first.close()
+                }
             val resumed = deletionRestart(first.storage)
             try {
                 assertDeletionCompleted(resumed.repository.continueDeletion())
@@ -54,12 +53,7 @@ class InstallationDeletionContinuationTest {
     fun acceptedDelayIsMemoryOnlyExactTupleBoundAndNeverARetryLoopOrNewSession() =
         runTest {
             val clock = TestTimeSource()
-            val fixture = InstallationDeletionFixture(this, settings = DeletionFixtureSettings(clock), deletionHandler = {
-                respond("", HttpStatusCode.Accepted, deletionHeaders(HttpStatusCode.Accepted) {
-                    remove(HttpHeaders.RetryAfter)
-                    append(HttpHeaders.RetryAfter, "2")
-                })
-            })
+            val fixture = acceptedDeletionFixture(clock)
             try {
                 assertEquals(2, assertDeletionPending(fixture.repository.startDeletion()).retryAfterSeconds)
                 assertEquals(2, assertDeletionPending(fixture.repository.continueDeletion()).retryAfterSeconds)
@@ -112,6 +106,30 @@ class InstallationDeletionContinuationTest {
             }
         }
 }
+
+private fun TestScope.unavailableDeletionFixture(): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        deletionHandler = {
+            val status = HttpStatusCode.ServiceUnavailable
+            respond(mutationProblem(status, "SERVICE_UNAVAILABLE"), status, deletionHeaders(status))
+        },
+    )
+
+@OptIn(ExperimentalTime::class)
+private fun TestScope.acceptedDeletionFixture(clock: TestTimeSource): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        settings = DeletionFixtureSettings(clock),
+        deletionHandler = {
+            val headers =
+                deletionHeaders(HttpStatusCode.Accepted) {
+                    remove(HttpHeaders.RetryAfter)
+                    append(HttpHeaders.RetryAfter, "2")
+                }
+            respond("", HttpStatusCode.Accepted, headers)
+        },
+    )
 
 private fun assertDeletionWire(fixture: InstallationDeletionFixture) {
     val request = fixture.requests.single()

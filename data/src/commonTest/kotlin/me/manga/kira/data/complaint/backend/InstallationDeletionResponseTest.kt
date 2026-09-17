@@ -15,10 +15,11 @@ class InstallationDeletionResponseTest {
     fun genericMixedWrongAndMalformedGoneProblemsNeverAuthorizeCleanup() =
         runTest {
             val terminal = mutationProblem(HttpStatusCode.Gone, "INSTALLATION_DELETED")
-            val mixed = terminal.replace(
-                "]}",
-                """,{"code":"FORBIDDEN","message":"Synthetic refusal."}]}""",
-            )
+            val mixed =
+                terminal.replace(
+                    "]}",
+                    """,{"code":"FORBIDDEN","message":"Synthetic refusal."}]}""",
+                )
             listOf(
                 mutationProblem(HttpStatusCode.Gone, "NOT_FOUND"),
                 """{"type":"about:blank","title":"Gone","status":410}""",
@@ -35,15 +36,12 @@ class InstallationDeletionResponseTest {
     @Test
     fun acceptedRequiresExactlyOneBoundedDecimalRetryAfterAndAnActuallyEmptyBody() =
         runTest {
-            val values = listOf(
-                emptyList(), listOf("0"), listOf("61"), listOf("-1"), listOf("+1"), listOf("1.0"),
-                listOf("Thu, 17 Sep 2026 08:09:10 GMT"), listOf("1", "1"), listOf("1,1"), listOf("9".repeat(129)),
-            )
-            for (retry in values) {
-                val headers = deletionHeaders(HttpStatusCode.Accepted) {
-                    remove(HttpHeaders.RetryAfter)
-                    retry.forEach { append(HttpHeaders.RetryAfter, it) }
-                }
+            for (retry in invalidDeletionDelays()) {
+                val headers =
+                    deletionHeaders(HttpStatusCode.Accepted) {
+                        remove(HttpHeaders.RetryAfter)
+                        retry.forEach { append(HttpHeaders.RetryAfter, it) }
+                    }
                 assertIs<AppError.Network.Serialization>(
                     deletionResponseRetains(HttpStatusCode.Accepted, ByteReadChannel(byteArrayOf()), headers),
                 )
@@ -57,20 +55,22 @@ class InstallationDeletionResponseTest {
     fun wrongContractCacheMediaEncodingOrFramingCannotTurnAnEmptyBodyIntoTerminalAuthority() =
         runTest {
             for ((name, value) in invalidDeletionHeaders()) {
-                val headers = deletionHeaders {
-                    remove(name)
-                    append(name, value)
-                }
+                val headers =
+                    deletionHeaders {
+                        remove(name)
+                        append(name, value)
+                    }
                 assertIs<AppError.Network.Serialization>(
                     deletionResponseRetains(HttpStatusCode.NoContent, ByteReadChannel(byteArrayOf()), headers),
                 )
             }
             val duplicate = deletionHeaders { append(ComplaintBoundedResponse.CONTRACT_HEADER, "1") }
             deletionResponseRetains(HttpStatusCode.NoContent, ByteReadChannel(byteArrayOf()), duplicate)
-            val framing = deletionHeaders {
-                append(HttpHeaders.ContentLength, "0")
-                append(HttpHeaders.TransferEncoding, "chunked")
-            }
+            val framing =
+                deletionHeaders {
+                    append(HttpHeaders.ContentLength, "0")
+                    append(HttpHeaders.TransferEncoding, "chunked")
+                }
             deletionResponseRetains(HttpStatusCode.NoContent, ByteReadChannel(byteArrayOf()), framing)
         }
 
@@ -98,6 +98,20 @@ class InstallationDeletionResponseTest {
                 }
         }
 }
+
+private fun invalidDeletionDelays(): List<List<String>> =
+    listOf(
+        emptyList(),
+        listOf("0"),
+        listOf("61"),
+        listOf("-1"),
+        listOf("+1"),
+        listOf("1.0"),
+        listOf("Thu, 17 Sep 2026 08:09:10 GMT"),
+        listOf("1", "1"),
+        listOf("1,1"),
+        listOf("9".repeat(129)),
+    )
 
 private fun invalidDeletionHeaders(): List<Pair<String, String>> =
     listOf(

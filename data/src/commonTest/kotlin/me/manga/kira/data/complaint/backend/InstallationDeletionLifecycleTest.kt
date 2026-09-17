@@ -32,28 +32,21 @@ class InstallationDeletionLifecycleTest {
     @Test
     fun consentThenCancellationOfThePromptStillInvalidatesTheEarlierStart() =
         runTest {
-            val entered = CompletableDeferred<Unit>()
-            val release = CompletableDeferred<Unit>()
-            val fixture = InstallationDeletionFixture(this, sessionHandler = {
-                withContext(NonCancellable) {
-                    entered.complete(Unit)
-                    release.await()
-                    respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
-                }
-            })
+            val barrier = DeletionExchangeBarrier()
+            val fixture = deletionConsentFixture(barrier)
             val permit = fixture.coordinator.admit().success()
             try {
                 val caller = async { fixture.repository.startDeletion() }
-                entered.await()
+                barrier.entered.await()
                 val prompt = fixture.coordinator.requestRecovery(RecoveryIntent.Reset(permit)).success()
                 fixture.coordinator.cancelRecovery(prompt).success()
-                release.complete(Unit)
+                barrier.release.complete(Unit)
                 assertFailsWith<CancellationException> { caller.await() }
                 fixture.assertRetained(Fixtures.record())
                 assertEquals(0, fixture.keyCalls)
                 assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())
             } finally {
-                release.complete(Unit)
+                barrier.release.complete(Unit)
                 fixture.close()
             }
         }
@@ -84,54 +77,87 @@ class InstallationDeletionLifecycleTest {
 }
 
 private suspend fun TestScope.assertDeletionSessionReplacement(replacement: InstallationCredentialRecord?) {
-    val entered = CompletableDeferred<Unit>()
-    val release = CompletableDeferred<Unit>()
-    val fixture = InstallationDeletionFixture(this, sessionHandler = {
-        entered.complete(Unit)
-        release.await()
-        respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
-    })
+    val barrier = DeletionExchangeBarrier()
+    val fixture = pausedDeletionSession(barrier)
     try {
         val caller = async { fixture.repository.startDeletion() }
-        entered.await()
+        barrier.entered.await()
         if (replacement == null) {
             fixture.storage.pending.slots += sessionPendingSlot()
         } else {
             fixture.storage.credentials.install(replacement)
         }
-        release.complete(Unit)
+        barrier.release.complete(Unit)
         assertIs<AppResult.Failure>(caller.await())
         assertEquals(0, fixture.keyCalls)
         assertTrue(fixture.requests.isEmpty() && fixture.storage.faults.mutations.isEmpty())
         assertTrue(assertNotNull(fixture.storage.credentials.payloadRecord).sameAs(replacement ?: Fixtures.record()))
     } finally {
-        release.complete(Unit)
+        barrier.release.complete(Unit)
         fixture.close()
     }
 }
 
 private suspend fun TestScope.assertDeletionTerminalReplacement(replacement: InstallationCredentialRecord) {
-    val entered = CompletableDeferred<Unit>()
-    val release = CompletableDeferred<Unit>()
+    val barrier = DeletionExchangeBarrier()
     val storage = InstallationCoordinatorFixture(deletingRecord())
     val slot = Fixtures.slot(1)
     storage.pending.slots += slot
-    val fixture = InstallationDeletionFixture(this, storage, deletionHandler = {
-        entered.complete(Unit)
-        release.await()
-        respond("", HttpStatusCode.NoContent, deletionHeaders())
-    })
+    val fixture = pausedDeletionTerminal(storage, barrier)
     try {
         val caller = async { fixture.repository.continueDeletion() }
-        entered.await()
+        barrier.entered.await()
         storage.credentials.install(replacement)
-        release.complete(Unit)
+        barrier.release.complete(Unit)
         assertNotNull(assertDeletionPending(caller.await()).error)
         fixture.assertRetained(replacement, listOf(slot))
         assertTrue(storage.faults.mutations.isEmpty())
     } finally {
-        release.complete(Unit)
+        barrier.release.complete(Unit)
         fixture.close()
+    }
+}
+
+private fun TestScope.deletionConsentFixture(barrier: DeletionExchangeBarrier): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        sessionHandler = {
+            withContext(NonCancellable) {
+                barrier.pause()
+                respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
+            }
+        },
+    )
+
+private fun TestScope.pausedDeletionSession(barrier: DeletionExchangeBarrier): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        sessionHandler = {
+            barrier.pause()
+            respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
+        },
+    )
+
+private fun TestScope.pausedDeletionTerminal(
+    storage: InstallationCoordinatorFixture,
+    barrier: DeletionExchangeBarrier,
+): InstallationDeletionFixture =
+    InstallationDeletionFixture(
+        this,
+        storage,
+        deletionHandler = {
+            barrier.pause()
+            respond("", HttpStatusCode.NoContent, deletionHeaders())
+        },
+    )
+
+private class DeletionExchangeBarrier {
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+
+    suspend fun pause() {
+        entered.complete(Unit)
+        release.await()
     }
 }
 

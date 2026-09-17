@@ -32,8 +32,12 @@ class AndroidComplaintDeletionReceiveTest {
                 fixture.enqueueProblem(Policy.MAX_PROBLEM_BYTES + 1)
                 assertFails { fixture.exchange() }
                 fixture.server.enqueue(
-                    MockResponse.Builder().code(503).addHeader("Content-Type", "application/problem+json")
-                        .addHeader("Content-Encoding", "gzip").body("synthetic").build(),
+                    MockResponse.Builder()
+                        .code(503)
+                        .addHeader("Content-Type", "application/problem+json")
+                        .addHeader("Content-Encoding", "gzip")
+                        .body("synthetic")
+                        .build(),
                 )
                 assertFails { fixture.exchange() }
                 fixture.server.enqueue(MockResponse.Builder().code(204).build())
@@ -43,8 +47,11 @@ class AndroidComplaintDeletionReceiveTest {
 
     private fun AndroidDeletionEngineFixture.enqueueProblem(size: Int) {
         server.enqueue(
-            MockResponse.Builder().code(503).addHeader("Content-Type", "application/problem+json")
-                .chunkedBody("x".repeat(size), CHUNK_BYTES).build(),
+            MockResponse.Builder()
+                .code(503)
+                .addHeader("Content-Type", "application/problem+json")
+                .chunkedBody("x".repeat(size), CHUNK_BYTES)
+                .build(),
         )
     }
 

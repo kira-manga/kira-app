@@ -377,12 +377,13 @@ class InstallationCredentialCoordinator(
         binding: InstallationDeletionBinding,
         http: InstallationDeletionHttp,
     ): Outcome<ComplaintInstallationDeletionOutcome> {
-        val request = when (val admitted = prepareDeletionDispatch(binding)) {
-            is Outcome.Success -> admitted.value
-            is Outcome.Refused -> return admitted
-            is Outcome.StorageFailure -> return admitted
-            is Outcome.Invalid -> return admitted
-        }
+        val request =
+            when (val admitted = prepareDeletionDispatch(binding)) {
+                is Outcome.Success -> admitted.value
+                is Outcome.Refused -> return admitted
+                is Outcome.StorageFailure -> return admitted
+                is Outcome.Invalid -> return admitted
+            }
         currentCoroutineContext().ensureActive()
         val result = http.delete(request)
         return mutex.serialized {

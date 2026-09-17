@@ -30,16 +30,17 @@ internal class InstallationDeletionHttp(
     engine: HttpClientEngine,
 ) {
     private val closed = AtomicBoolean(false)
-    private val client = HttpClient(engine) {
-        followRedirects = false
-        expectSuccess = false
-        useDefaultTransformers = false
-        install(HttpTimeout) {
-            requestTimeoutMillis = REQUEST_TIMEOUT_MS
-            connectTimeoutMillis = IO_TIMEOUT_MS
-            socketTimeoutMillis = IO_TIMEOUT_MS
+    private val client =
+        HttpClient(engine) {
+            followRedirects = false
+            expectSuccess = false
+            useDefaultTransformers = false
+            install(HttpTimeout) {
+                requestTimeoutMillis = REQUEST_TIMEOUT_MS
+                connectTimeoutMillis = IO_TIMEOUT_MS
+                socketTimeoutMillis = IO_TIMEOUT_MS
+            }
         }
-    }
 
     val isClosed: Boolean get() = closed.load()
 
@@ -89,7 +90,10 @@ internal class InstallationDeletionHttp(
         }
     }
 
-    private suspend fun dispatch(request: InstallationDeletionRequest, bytes: ByteArray): InstallationDeletionHttpResult {
+    private suspend fun dispatch(
+        request: InstallationDeletionRequest,
+        bytes: ByteArray,
+    ): InstallationDeletionHttpResult {
         currentCoroutineContext().ensureActive()
         if (isClosed || !request.binding.work.isCurrent()) return request.failed(Failure.CLOSED)
         return client.preparePost(endpoint.deletionUrl.toString()) {
