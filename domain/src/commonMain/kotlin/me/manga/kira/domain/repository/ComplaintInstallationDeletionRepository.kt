@@ -44,11 +44,11 @@ sealed interface ComplaintInstallationDeletionObservation {
 /** Content-free observations, not input capabilities for credential or pending-store deletion. */
 sealed interface ComplaintInstallationDeletionOutcome {
     /** Qualified terminal response and checked local cleanup; not independent remote journal proof. */
-    data object Completed : ComplaintInstallationDeletionOutcome
+    data object Completed : DeletionOutcome
 
     /** The same durable intent remains. A 202 delay is server supplied; errors do not imply no dispatch. */
     data class Pending(
         val retryAfterSeconds: Int? = null,
         val error: AppError? = null,
-    ) : ComplaintInstallationDeletionOutcome
+    ) : DeletionOutcome
 }
