@@ -10,8 +10,8 @@ import kotlinx.coroutines.withContext
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
-import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionObservation
+import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionPrompt
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import kotlin.time.TimeSource

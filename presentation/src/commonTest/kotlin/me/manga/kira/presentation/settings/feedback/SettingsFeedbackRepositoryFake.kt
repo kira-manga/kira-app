@@ -23,8 +23,8 @@ import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.CancelPreparedComplaintReportUseCase
-import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ComplaintInstallationActions
+import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ConfirmComplaintReportRecoveryUseCase
