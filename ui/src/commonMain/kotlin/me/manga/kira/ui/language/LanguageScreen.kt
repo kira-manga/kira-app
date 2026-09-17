@@ -44,7 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
@@ -65,6 +65,7 @@ import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.at_least_n_characters
 import me.manga.kira.ui.generated.resources.back
 import me.manga.kira.ui.generated.resources.cancel
+import me.manga.kira.ui.generated.resources.complaint_languages
 import me.manga.kira.ui.generated.resources.connect_with_us_in_social_media
 import me.manga.kira.ui.generated.resources.enter_your_language
 import me.manga.kira.ui.generated.resources.language_restart_hint
@@ -177,8 +178,14 @@ import org.jetbrains.compose.resources.stringResource
  * citation is historical record of the design lineage; the rework
  * LanguageScreen continues to render the language picker correctly through
  * the legacy retire.
+ *
+ * @param onRequestLanguage Optional candidate entry callback receiving the localized fixed subject.
+ * When present, request dialogs and outcomes no longer reach the legacy writer; locale selection
+ * remains unchanged. Null keeps the existing shipping request flow.
  */
+// Preserve the existing shipping screen API; the candidate request hook is opt-in and defaults to absent.
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList")
 @Composable
 fun LanguageScreen(
     viewModel: LanguageViewModel,
@@ -195,6 +202,7 @@ fun LanguageScreen(
     // hint. The route adapter passes `!LocalAppLocale.isLiveLocaleSwitchSupported`. Default false
     // keeps Android/Desktop (live switch) callers unchanged.
     restartHintVisible: Boolean = false,
+    onRequestLanguage: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
     LanguageScreenContent(
@@ -205,10 +213,13 @@ fun LanguageScreen(
         onBack = onBack,
         onOpenUrl = onOpenUrl,
         restartHintVisible = restartHintVisible,
+        onRequestLanguage = onRequestLanguage,
     )
 }
 
+// Keep the established picker/layout intact while making all legacy request paths mutually exclusive.
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList", "LongMethod")
 @Composable
 internal fun LanguageScreenContent(
     state: LanguageState,
@@ -218,8 +229,24 @@ internal fun LanguageScreenContent(
     onBack: () -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
     restartHintVisible: Boolean = false,
+    onRequestLanguage: ((String) -> Unit)? = null,
 ) {
     val spacing = LocalSpacing.current
+    val candidateRequest by rememberUpdatedState(onRequestLanguage)
+    val currentOnIntent by rememberUpdatedState(onIntent)
+    val requestSubject = stringResource(Res.string.complaint_languages)
+    val dispatchIntent: (LanguageIntent) -> Unit = { intent ->
+        val candidate = candidateRequest
+        when (intent) {
+            LanguageIntent.OnOpenRequestDialog ->
+                if (candidate == null) currentOnIntent(intent) else candidate(requestSubject)
+            LanguageIntent.OnDismissRequestDialog,
+            is LanguageIntent.OnRequestTextChange,
+            LanguageIntent.OnSubmitRequest,
+            -> if (candidate == null) currentOnIntent(intent)
+            is LanguageIntent.OnSelectLanguage -> currentOnIntent(intent)
+        }
+    }
     // GAP-LANG-04 — first-run selected-language default. Native seeds the picker's selected value
     // with `Locale.getDefault().language` (LanguageSelectionScreen.kt:64-66) and its
     // `DataStoreHelper.languageFlow` falls back to the same when no preference is stored, so the
@@ -230,9 +257,6 @@ internal fun LanguageScreenContent(
     // `Locale.getDefault().language`.
     val effectiveSelectedCode = state.selectedCode.ifBlank { Locale.current.language }
     val snackbarHostState = remember { SnackbarHostState() }
-    // Launch snackbars off the effect collector so showing one never blocks a later navigation
-    // effect for the snackbar's duration (the user couldn't leave a screen while a snackbar showed).
-    val scope = rememberCoroutineScope()
     // Snackbar copy resolved in composable scope — stringResource can't run inside the
     // effect-collector coroutine below.
     val submittedMessage = stringResource(Res.string.request_submitted_successfully)
@@ -241,13 +265,15 @@ internal fun LanguageScreenContent(
     // :146 `actionLabel = retry`). Resolved here in composable scope; the effect collector below
     // can't call stringResource.
     val retryLabel = stringResource(Res.string.retry)
-
-    LaunchedEffect(effects) {
+    // Changing request ownership cancels visible and queued legacy snackbars together.
+    LaunchedEffect(effects, onRequestLanguage != null) {
         effects.collect { effect ->
+            if (candidateRequest != null) return@collect
             when (effect) {
                 is LanguageEffect.RequestSubmitted ->
                     // Native onSuccess uses SnackbarDuration.Short (LanguageSelectionScreen.kt:139).
-                    scope.launch {
+                    launch {
+                        if (candidateRequest != null) return@launch
                         snackbarHostState.showSnackbar(
                             message = submittedMessage,
                             duration = SnackbarDuration.Short,
@@ -260,7 +286,8 @@ internal fun LanguageScreenContent(
                     // survives RequestFailed), so the Retry affordance routes the user back to the
                     // still-mounted dialog to resubmit — matching native, which likewise only shows
                     // the label and leaves the dialog/text intact rather than auto-resubmitting.
-                    scope.launch {
+                    launch {
+                        if (candidateRequest != null) return@launch
                         snackbarHostState.showSnackbar(
                             message = failedMessage,
                             actionLabel = retryLabel,
@@ -314,8 +341,8 @@ internal fun LanguageScreenContent(
                 languages = state.languages,
                 selectedCode = effectiveSelectedCode,
                 restartHintVisible = restartHintVisible,
-                onSelect = { code -> onIntent(LanguageIntent.OnSelectLanguage(code)) },
-                onOpenRequestDialog = { onIntent(LanguageIntent.OnOpenRequestDialog) },
+                onSelect = { code -> dispatchIntent(LanguageIntent.OnSelectLanguage(code)) },
+                onOpenRequestDialog = { dispatchIntent(LanguageIntent.OnOpenRequestDialog) },
                 contentPadding = innerPadding,
                 // Native list horizontal padding is 24.dp (LanguageSelectionScreen.kt:99-101 —
                 // LazyColumn `.padding(horizontal = 24.dp)`); spacing.xl == 24.dp. Was spacing.lg
@@ -326,13 +353,13 @@ internal fun LanguageScreenContent(
         }
     }
 
-    if (state.requestDialogVisible) {
+    if (onRequestLanguage == null && state.requestDialogVisible) {
         LanguageRequestDialog(
             text = state.requestText,
             submitting = state.requestSubmitting,
-            onTextChange = { onIntent(LanguageIntent.OnRequestTextChange(it)) },
-            onSubmit = { onIntent(LanguageIntent.OnSubmitRequest) },
-            onDismiss = { onIntent(LanguageIntent.OnDismissRequestDialog) },
+            onTextChange = { dispatchIntent(LanguageIntent.OnRequestTextChange(it)) },
+            onSubmit = { dispatchIntent(LanguageIntent.OnSubmitRequest) },
+            onDismiss = { dispatchIntent(LanguageIntent.OnDismissRequestDialog) },
             onOpenUrl = onOpenUrl,
         )
     }

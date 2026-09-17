@@ -33,20 +33,36 @@ sealed interface SettingsFeedbackResult {
     data object PreparedCancelled : SettingsFeedbackResult
 
     data object LocalResetCompleted : SettingsFeedbackResult
+
+    /** The explicit history/setup read finished; no report was prepared or submitted by that action. */
+    data object HistorySetupCompleted : SettingsFeedbackResult
 }
 
 /** Memory-only Settings feedback substate; no SavedStateHandle, serialization or metadata exposure. */
 data class SettingsFeedbackState(
-    val draft: ComplaintReportDraft = ComplaintReportDraft(),
+    val context: SettingsFeedbackContext = SettingsFeedbackContext(),
+    val draft: ComplaintReportDraft = context.entry.initialDraft(),
     val activity: SettingsFeedbackActivity = SettingsFeedbackActivity.EDITING,
     val result: SettingsFeedbackResult? = null,
     val recovery: ComplaintReportRecovery? = null,
-    val confirmationPending: Boolean = false,
 ) : MviState {
+    val entry: SettingsFeedbackEntry get() = context.entry
+    val confirmationPending: Boolean get() = context.confirmationPending
     val busy: Boolean get() = activity == SettingsFeedbackActivity.WORKING
     val editable: Boolean get() = activity == SettingsFeedbackActivity.EDITING && !confirmationPending
     val canRetry: Boolean get() = activity == SettingsFeedbackActivity.LIVE && !confirmationPending
     val canStartNewDraft: Boolean get() = activity == SettingsFeedbackActivity.TERMINAL && !confirmationPending
+    val canSetupHistory: Boolean get() = editable && context.missingInstallationObserved
 
     override fun toString(): String = "SettingsFeedbackState(redacted)"
+}
+
+/** Immutable per-opening presentation context, never an installation session or admission authority. */
+data class SettingsFeedbackContext(
+    val entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
+    /** Last report-side MISSING observation; only gates the explicit safe history read. */
+    val missingInstallationObserved: Boolean = false,
+    val confirmationPending: Boolean = false,
+) {
+    override fun toString(): String = "SettingsFeedbackContext(redacted)"
 }

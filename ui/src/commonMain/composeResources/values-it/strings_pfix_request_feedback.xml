@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Questo dispositivo non ha ancora un’identità per le segnalazioni. Configura la cronologia prima di inviare. La bozza resta solo in memoria.</string>
+    <string name="request_feedback_setup_history">Configura la cronologia delle segnalazioni</string>
+    <string name="request_feedback_history_ready">La cronologia delle segnalazioni è pronta. Questa richiesta non è stata inviata. Controllala e scegli Invia.</string>
+    <string name="request_feedback_clean_start">Questa nuova cronologia non include le segnalazioni inviate tramite il servizio precedente.</string>
+</resources>

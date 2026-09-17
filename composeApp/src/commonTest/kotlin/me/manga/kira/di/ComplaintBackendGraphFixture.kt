@@ -175,8 +175,10 @@ internal class GraphCredentials : InstallationCredentialStore {
         )
     var writes = 0
         private set
+    var missing = false
 
-    override suspend fun read(): CredentialReadResult = CredentialReadResult.Present(record)
+    override suspend fun read(): CredentialReadResult =
+        if (missing) CredentialReadResult.Missing else CredentialReadResult.Present(record)
 
     override suspend fun readCleanupMarker(): CleanupMarkerReadResult = CleanupMarkerReadResult.Missing
 

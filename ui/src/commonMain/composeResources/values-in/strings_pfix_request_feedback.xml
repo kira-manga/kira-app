@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Perangkat ini belum memiliki identitas pelaporan. Siapkan riwayat laporan sebelum mengirim. Draf Anda tetap hanya di memori.</string>
+    <string name="request_feedback_setup_history">Siapkan riwayat laporan</string>
+    <string name="request_feedback_history_ready">Riwayat laporan siap. Permintaan ini belum dikirim. Tinjau lalu pilih Kirim.</string>
+    <string name="request_feedback_clean_start">Riwayat laporan baru ini tidak mencakup laporan yang dikirim melalui layanan sebelumnya.</string>
+</resources>

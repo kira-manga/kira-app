@@ -19,20 +19,23 @@ import me.manga.kira.domain.model.feedback.ComplaintReportDraft
 import me.manga.kira.domain.model.feedback.ComplaintReportFailure
 import me.manga.kira.domain.model.feedback.ComplaintReportPhase
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
+import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.presentation.mvi.MviViewModel
 
 /**
- * Candidate Settings report subfeature. Input/handles live only in this VM; one guarded caller action
- * at a time, with exact manual retry and no legacy writer, SavedStateHandle or global cancellation.
+ * Candidate Settings report subfeature. Entry/input/handles live only in this VM; one guarded action
+ * at a time, exact manual retry and explicit existing-history setup that never prepares/submits reports.
  * Reducer transitions deliberately share this screen's caller/live/prompt state and teardown ownership.
  */
 @Suppress("TooManyFunctions")
 class SettingsFeedbackViewModel(
     private val actions: ComplaintReportActions,
     private val recoveryActions: ComplaintReportRecoveryActions,
-) : MviViewModel<SettingsFeedbackState, SettingsFeedbackIntent, SettingsFeedbackEffect>(SettingsFeedbackState()) {
+    private val observeUserComplaints: ObserveUserComplaintsUseCase,
+    private val entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
+) : MviViewModel<SettingsFeedbackState, SettingsFeedbackIntent, SettingsFeedbackEffect>(entry.initialState()) {
     private var live: ComplaintLiveReport? = null
     private var latestAttempt: ComplaintReportAttempt? = null
     private var prompt: ComplaintRecoveryPrompt? = null
@@ -51,7 +54,7 @@ class SettingsFeedbackViewModel(
                     dismissOwnedPrompt()
                     live = null
                     latestAttempt = null
-                    updateState { SettingsFeedbackState() }
+                    updateState { entry.initialState() }
                 }
             }
         }
@@ -60,12 +63,14 @@ class SettingsFeedbackViewModel(
 
     override suspend fun handle(intent: SettingsFeedbackIntent) {
         when (intent) {
-            is SettingsFeedbackIntent.ChangeCategory -> edit { it.copy(type = intent.type, subject = intent.subject) }
-            is SettingsFeedbackIntent.ChangeSubject -> edit { it.copy(subject = intent.subject) }
+            is SettingsFeedbackIntent.ChangeCategory ->
+                edit(fixedFields = true) { it.copy(type = intent.type, subject = intent.subject) }
+            is SettingsFeedbackIntent.ChangeSubject -> edit(fixedFields = true) { it.copy(subject = intent.subject) }
             is SettingsFeedbackIntent.ChangeBody -> edit { it.copy(body = intent.body) }
             SettingsFeedbackIntent.Submit -> submitReport()
             SettingsFeedbackIntent.Retry -> retryReport()
             SettingsFeedbackIntent.RefreshRecovery -> refreshRecovery()
+            SettingsFeedbackIntent.SetupHistory -> setupHistory()
             is SettingsFeedbackIntent.CancelPrepared -> cancelPrepared(intent.report)
             is SettingsFeedbackIntent.RequestRecovery -> requestRecovery(intent.report)
             SettingsFeedbackIntent.CancelRecovery -> resolvePrompt(confirm = false)
@@ -75,15 +80,21 @@ class SettingsFeedbackViewModel(
         }
     }
 
-    private fun edit(change: (ComplaintReportDraft) -> ComplaintReportDraft) {
+    private fun edit(
+        fixedFields: Boolean = false,
+        change: (ComplaintReportDraft) -> ComplaintReportDraft,
+    ) {
         if (closed || !state.value.editable) return
+        if (fixedFields && entry != SettingsFeedbackEntry.General) return
         updateState { it.copy(draft = change(it.draft), result = null) }
     }
 
     private suspend fun submitReport() {
         if (!state.value.editable) return
         work {
-            when (val prepared = active(actions.prepare(state.value.draft))) {
+            val prepared = active(actions.prepare(state.value.draft))
+            updateState { it.withMissingObservation(prepared.isMissingPreparation()) }
+            when (prepared) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(prepared.error))
                 is AppResult.Success ->
                     when (val value = prepared.value) {
@@ -124,8 +135,22 @@ class SettingsFeedbackViewModel(
         if (live != null || terminal) return
         work {
             when (val result = active(recoveryActions.reconcile())) {
+                is AppResult.Failure -> {
+                    updateState { it.withMissingObservation(false) }
+                    showFailure(ComplaintReportFailure(result.error))
+                }
+                is AppResult.Success -> updateState { it.withRecovery(result.value) }
+            }
+        }
+    }
+
+    /** Existing safe history flow only. Report IDs and submission remain behind a later explicit Submit. */
+    private suspend fun setupHistory() {
+        if (live != null || prompt != null || !state.value.canSetupHistory) return
+        work {
+            when (val result = active(observeUserComplaints())) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
-                is AppResult.Success -> updateState { it.copy(recovery = result.value) }
+                is AppResult.Success -> updateState { it.afterHistorySetup() }
             }
         }
     }
@@ -165,7 +190,7 @@ class SettingsFeedbackViewModel(
             when (result) {
                 is AppResult.Failure -> showFailure(ComplaintReportFailure(result.error))
                 is AppResult.Success -> {
-                    updateState { it.copy(confirmationPending = true) }
+                    updateState { it.withConfirmation(true) }
                     emit(SettingsFeedbackEffect.ConfirmLocalReset)
                 }
             }
@@ -185,7 +210,7 @@ class SettingsFeedbackViewModel(
                 }
                 is AppResult.Success -> {
                     prompt = null
-                    if (confirm) localResetCompleted() else updateState { it.copy(confirmationPending = false) }
+                    if (confirm) localResetCompleted() else updateState { it.withConfirmation(false) }
                 }
             }
         }
@@ -195,14 +220,7 @@ class SettingsFeedbackViewModel(
         live = null
         latestAttempt = null
         terminal = true
-        updateState {
-            it.copy(
-                draft = ComplaintReportDraft(),
-                result = SettingsFeedbackResult.LocalResetCompleted,
-                recovery = null,
-                confirmationPending = false,
-            )
-        }
+        updateState { it.afterLocalReset() }
     }
 
     private fun showAttempt(attempt: ComplaintReportAttempt) {
@@ -238,16 +256,9 @@ class SettingsFeedbackViewModel(
             throw cancelled
         } finally {
             if (operation === caller) operation = null
-            if (!closed) updateState { it.copy(activity = activity()) }
+            if (!closed) updateState { it.afterWork(terminal, live != null) }
         }
     }
-
-    private fun activity(): SettingsFeedbackActivity =
-        when {
-            terminal -> SettingsFeedbackActivity.TERMINAL
-            live != null -> SettingsFeedbackActivity.LIVE
-            else -> SettingsFeedbackActivity.EDITING
-        }
 
     private suspend fun <T> active(result: AppResult<T>): AppResult<T> {
         currentCoroutineContext().ensureActive()
@@ -259,7 +270,7 @@ class SettingsFeedbackViewModel(
         live = null
         latestAttempt = null
         terminal = false
-        updateState { SettingsFeedbackState() }
+        updateState { entry.initialState() }
         launchSafely { refreshRecovery() }
     }
 
@@ -270,7 +281,7 @@ class SettingsFeedbackViewModel(
         withContext(NonCancellable) { dismissOwnedPrompt() }
         live = null
         latestAttempt = null
-        updateState { SettingsFeedbackState() }
+        updateState { entry.initialState() }
         emit(SettingsFeedbackEffect.Closed)
     }
 

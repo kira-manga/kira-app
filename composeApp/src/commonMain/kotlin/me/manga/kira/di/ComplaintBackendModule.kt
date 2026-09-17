@@ -30,6 +30,7 @@ import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
 import me.manga.kira.platform.storage.InstallationCredentialStore
 import me.manga.kira.platform.storage.PendingComplaintActionStore
 import me.manga.kira.presentation.complaint.ComplaintViewModel
+import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -172,7 +173,14 @@ internal class ComplaintBackendGraph(
                     confirmRecovery = get(),
                 )
             }
-            viewModel { SettingsFeedbackViewModel(actions = get(), recoveryActions = get()) }
+            viewModel { parameters ->
+                SettingsFeedbackViewModel(
+                    actions = get(),
+                    recoveryActions = get(),
+                    observeUserComplaints = get(),
+                    entry = parameters.getOrNull<SettingsFeedbackEntry>() ?: SettingsFeedbackEntry.General,
+                )
+            }
             viewModel {
                 ComplaintViewModel(
                     observeUserComplaints = get(),

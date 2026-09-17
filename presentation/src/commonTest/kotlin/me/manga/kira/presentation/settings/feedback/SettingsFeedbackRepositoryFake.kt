@@ -2,6 +2,7 @@ package me.manga.kira.presentation.settings.feedback
 
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintRecoveryPrompt
@@ -16,7 +17,9 @@ import me.manga.kira.domain.model.feedback.ComplaintReportPhase
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
+import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
+import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.CancelPreparedComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
@@ -42,6 +45,9 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
     val dismissed = mutableListOf<ComplaintRecoveryPrompt>()
     val confirmed = mutableListOf<ComplaintRecoveryPrompt>()
     var reconciliations = 0
+    var onPrepare: suspend (ComplaintReportDraft) -> AppResult<ComplaintReportPreparation> = {
+        AppResult.Success(ComplaintReportPreparation.Ready(live))
+    }
     var onSubmit: suspend (ComplaintLiveReport) -> AppResult<ComplaintReportSubmission> = {
         AppResult.Success(ComplaintReportSubmission(unresolved(), recovery))
     }
@@ -54,7 +60,7 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
 
     override suspend fun prepare(draft: ComplaintReportDraft): AppResult<ComplaintReportPreparation> {
         drafts += draft
-        return AppResult.Success(ComplaintReportPreparation.Ready(live))
+        return onPrepare(draft)
     }
 
     override suspend fun submit(report: ComplaintLiveReport): AppResult<ComplaintReportSubmission> {
@@ -115,7 +121,10 @@ internal class SettingsFeedbackRepositoryFake : ComplaintReportRepository {
         )
 }
 
-internal fun SettingsFeedbackRepositoryFake.viewModel(): SettingsFeedbackViewModel =
+internal fun SettingsFeedbackRepositoryFake.viewModel(
+    entry: SettingsFeedbackEntry = SettingsFeedbackEntry.General,
+    history: ComplaintListRepository = SettingsFeedbackHistoryFake(),
+): SettingsFeedbackViewModel =
     SettingsFeedbackViewModel(
         ComplaintReportActions(
             PrepareComplaintReportUseCase(this),
@@ -129,7 +138,21 @@ internal fun SettingsFeedbackRepositoryFake.viewModel(): SettingsFeedbackViewMod
             CancelComplaintReportRecoveryUseCase(this),
             ConfirmComplaintReportRecoveryUseCase(this),
         ),
+        ObserveUserComplaintsUseCase(history),
+        entry,
     )
+
+/** Only the existing domain history port is replaced; the actual one-shot use case is used by the VM. */
+internal class SettingsFeedbackHistoryFake : ComplaintListRepository {
+    var calls = 0
+    var result: AppResult<ComplaintHistory> = AppResult.Success(ComplaintHistory.Backend(emptyList(), emptyList()))
+    var onLoad: suspend () -> AppResult<ComplaintHistory> = { result }
+
+    override suspend fun loadUserComplaints(): AppResult<ComplaintHistory> {
+        calls++
+        return onLoad()
+    }
+}
 
 internal class SettingsTestLiveReport : ComplaintLiveReport {
     override fun toString(): String = "TestLiveReport(redacted)"

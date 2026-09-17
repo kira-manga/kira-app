@@ -16,6 +16,7 @@ import me.manga.kira.ui.generated.resources.complaint_other
 import me.manga.kira.ui.generated.resources.complaint_site_error
 import me.manga.kira.ui.generated.resources.complaint_sites_add
 import me.manga.kira.ui.generated.resources.complaint_technical
+import me.manga.kira.ui.generated.resources.request_feedback_missing_installation
 import me.manga.kira.ui.generated.resources.settings_report_applied
 import me.manga.kira.ui.generated.resources.settings_report_capacity_rejected
 import me.manga.kira.ui.generated.resources.settings_report_cleanup_pending
@@ -57,6 +58,7 @@ internal fun settingsReportInvalidText(field: ComplaintReportField): String =
 @Composable
 internal fun settingsReportFailureText(failure: ComplaintReportFailure): String =
     when (failure.block) {
+        ComplaintReportBlock.MISSING -> stringResource(Res.string.request_feedback_missing_installation)
         ComplaintReportBlock.PENDING_CAPACITY_REACHED -> stringResource(Res.string.settings_report_pending_capacity)
         ComplaintReportBlock.RECEIPT_WINDOW_EXPIRED -> stringResource(Res.string.settings_report_receipt_expired)
         ComplaintReportBlock.LIVE_REQUEST_REQUIRED -> stringResource(Res.string.settings_report_live_required)

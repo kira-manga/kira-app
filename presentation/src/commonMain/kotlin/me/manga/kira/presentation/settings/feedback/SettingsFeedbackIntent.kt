@@ -31,6 +31,9 @@ sealed interface SettingsFeedbackIntent : MviIntent {
 
     data object RefreshRecovery : SettingsFeedbackIntent
 
+    /** Explicit safe history enrollment/read only, never implicit report creation or submission. */
+    data object SetupHistory : SettingsFeedbackIntent
+
     class CancelPrepared(
         val report: ComplaintPendingReport,
     ) : SettingsFeedbackIntent {

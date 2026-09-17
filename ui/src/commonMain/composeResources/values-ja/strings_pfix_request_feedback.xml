@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">この端末にはまだ報告用の識別情報がありません。送信前に報告履歴を設定してください。下書きはメモリ内にのみ保持されます。</string>
+    <string name="request_feedback_setup_history">報告履歴を設定</string>
+    <string name="request_feedback_history_ready">報告履歴の準備ができました。このリクエストはまだ送信されていません。内容を確認して「送信」を選んでください。</string>
+    <string name="request_feedback_clean_start">この新しい報告履歴には、以前のサービスで送信した報告は含まれません。</string>
+</resources>
