@@ -175,7 +175,7 @@ internal fun graphEditHeaders(version: Long): Headers =
         append(HttpHeaders.ETag, "\"complaint-$GRAPH_EDIT_ID-v$version\"")
     }
 
-internal const val GRAPH_EDIT_ID = "123e4567-e89b-52d3-a456-426614174000"
+internal const val GRAPH_EDIT_ID = "123e4567-e89b-42d3-a456-426614174000"
 internal const val GRAPH_EDIT_KEY = "77777777-7777-4777-8777-777777777777"
 internal const val GRAPH_EDIT_BODY = "Replacement body"
 private const val GRAPH_EDIT_NO_CHANGE =

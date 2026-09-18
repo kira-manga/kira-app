@@ -113,7 +113,7 @@ class AndroidComplaintMutationEditResponseGuardTest {
         Request
             .Builder()
             .url(EDIT_URL)
-            .method("PATCH", "{}".toRequestBody("application/json".toMediaType()))
+            .method("PATCH", "{}".encodeToByteArray().toRequestBody("application/json".toMediaType()))
             .apply {
                 mutationTestHeaders(ComplaintMutationRoute.EDIT).forEach { (name, value) ->
                     header(name, value)
