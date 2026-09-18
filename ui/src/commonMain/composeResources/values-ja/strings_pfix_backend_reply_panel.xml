@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">返信文はメモリ内だけに保持されます。このパネルを閉じると破棄されます。結果が不確かな場合に同じ返信を再試行できるよう、パネルを開いたままにしてください。</string>
+    <string name="backend_reply_retry_same">同じ返信を再試行</string>
+    <string name="backend_reply_open_recovery">返信を閉じて設定または復旧を開く</string>
+    <string name="backend_reply_target_unavailable">この項目には返信できません。</string>
+    <string name="backend_reply_unresolved">返信の結果はまだ確認できていません。代わりの返信を送信しないでください。</string>
+    <string name="backend_reply_receipt_expired">受領結果を安全に確認できる期間が終了しました。この返信が再送信されることはありません。</string>
+    <string name="backend_reply_live_required">元のメモリ内の返信は利用できなくなりました。保持されているメタデータから再送信することはできません。</string>
+</resources>

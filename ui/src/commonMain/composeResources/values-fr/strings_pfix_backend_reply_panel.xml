@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">Le texte de la réponse reste uniquement en mémoire. Fermer ce panneau le supprime. Gardez le panneau ouvert pour réessayer la même réponse si son résultat est incertain.</string>
+    <string name="backend_reply_retry_same">Réessayer la même réponse</string>
+    <string name="backend_reply_open_recovery">Fermer la réponse et ouvrir la configuration ou la récupération</string>
+    <string name="backend_reply_target_unavailable">Il est impossible de répondre à cet élément.</string>
+    <string name="backend_reply_unresolved">Le résultat de la réponse n’est pas encore confirmé. N’envoyez pas de réponse de remplacement.</string>
+    <string name="backend_reply_receipt_expired">Le délai de sécurité du reçu est écoulé. Cette réponse ne sera pas renvoyée.</string>
+    <string name="backend_reply_live_required">La réponse d’origine en mémoire n’est plus disponible. Les métadonnées conservées ne permettent pas de la renvoyer.</string>
+</resources>
