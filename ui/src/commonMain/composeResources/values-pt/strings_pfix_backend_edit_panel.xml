@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">O texto do rascunho fica apenas na memória. Fechar este editor descarta o rascunho, mas não apaga nem desfaz as operações retidas.</string>
+    <string name="backend_edit_retry_same">Verificar ou tentar novamente a mesma alteração</string>
+    <string name="backend_edit_conflict">Foi comunicado um conflito de versão. O rascunho permanece inalterado; qualquer nova tentativa usa a versão original, nunca uma versão atualizada.</string>
+    <string name="backend_edit_unresolved">O resultado da alteração não foi confirmado. Não inicie uma alteração de substituição.</string>
+    <string name="backend_edit_open_recovery">Fechar e abrir a recuperação de feedback</string>
+    <string name="backend_edit_live_required">A alteração original em memória já não está disponível. Os metadados retidos não podem ser usados para a reenviar.</string>
+    <string name="backend_edit_receipt_expired">O período seguro de confirmação terminou. Esta alteração não será enviada novamente.</string>
+</resources>

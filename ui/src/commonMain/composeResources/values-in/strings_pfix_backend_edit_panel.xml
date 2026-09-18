@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Teks draf hanya disimpan di memori. Menutup editor ini membuang draf, tetapi tidak menghapus atau membatalkan operasi yang tersimpan.</string>
+    <string name="backend_edit_retry_same">Periksa atau coba ulang edit yang sama</string>
+    <string name="backend_edit_conflict">Konflik versi dilaporkan. Draf Anda tidak berubah; setiap percobaan ulang memakai versi asli, bukan versi yang diperbarui.</string>
+    <string name="backend_edit_unresolved">Hasil edit belum dikonfirmasi. Jangan mulai edit pengganti.</string>
+    <string name="backend_edit_open_recovery">Tutup dan buka pemulihan masukan</string>
+    <string name="backend_edit_live_required">Edit asli yang ada di memori tidak lagi tersedia. Metadata yang tersimpan tidak dapat digunakan untuk mengirimnya ulang.</string>
+    <string name="backend_edit_receipt_expired">Batas waktu konfirmasi yang aman telah berakhir. Edit ini tidak akan dikirim lagi.</string>
+</resources>

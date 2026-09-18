@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Der Entwurf bleibt nur im Arbeitsspeicher. Beim Schließen dieses Editors geht er verloren; aufbewahrte Vorgänge werden dadurch weder gelöscht noch rückgängig gemacht.</string>
+    <string name="backend_edit_retry_same">Dieselbe Bearbeitung prüfen oder wiederholen</string>
+    <string name="backend_edit_conflict">Ein Versionskonflikt wurde gemeldet. Dein Entwurf bleibt unverändert; jeder Wiederholungsversuch verwendet die ursprüngliche, nie eine neu geladene Version.</string>
+    <string name="backend_edit_unresolved">Das Ergebnis der Bearbeitung ist noch nicht bestätigt. Starte keine Ersatzbearbeitung.</string>
+    <string name="backend_edit_open_recovery">Schließen und Feedback-Wiederherstellung öffnen</string>
+    <string name="backend_edit_live_required">Die ursprüngliche Bearbeitung im Arbeitsspeicher ist nicht mehr verfügbar. Aufbewahrte Metadaten können nicht zum erneuten Senden verwendet werden.</string>
+    <string name="backend_edit_receipt_expired">Das sichere Zeitfenster für die Bestätigung ist abgelaufen. Diese Bearbeitung wird nicht erneut gesendet.</string>
+</resources>
