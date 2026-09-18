@@ -18,7 +18,7 @@ import me.manga.kira.core.result.AppResult
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
-/** Fixed owner-list client borrowing only the separately qualified history engine. No retries/plugins/caches. */
+/** Closed owner-list/detail client borrowing the isolated history engine. No retries/plugins/caches. */
 @OptIn(ExperimentalAtomicApi::class)
 internal class ComplaintHistoryHttp(
     private val endpoint: ComplaintBackendEndpoint,
@@ -60,6 +60,36 @@ internal class ComplaintHistoryHttp(
                             append(HttpHeaders.Authorization, session.authorizationValue())
                         }
                     }.execute { ComplaintHistoryBody.read(it, url) }
+            } ?: AppResult.Failure(AppError.Network.Timeout())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: HttpRequestTimeoutException) {
+            AppResult.Failure(AppError.Network.Timeout())
+        } catch (_: Exception) {
+            if (closed.load()) historyUnavailable() else AppResult.Failure(AppError.Network.NoConnectivity())
+        }
+    }
+
+    /** Queryless single-resource GET; the same registered reader owns admission and final publication. */
+    suspend fun fetchDetail(
+        session: ComplaintSessionResponse,
+        request: ComplaintDetailRequest,
+    ): AppResult<ComplaintDetailRead> {
+        if (closed.load()) return historyUnavailable()
+        val url = request.url(endpoint)
+        return try {
+            withTimeoutOrNull(REQUEST_TIMEOUT_MS) {
+                currentCoroutineContext().ensureActive()
+                if (closed.load()) return@withTimeoutOrNull historyUnavailable()
+                client
+                    .prepareGet(url.toString()) {
+                        headers {
+                            append(HttpHeaders.Accept, "application/json, application/problem+json")
+                            append(HttpHeaders.AcceptEncoding, "identity")
+                            append(HttpHeaders.CacheControl, "no-store, no-transform")
+                            append(HttpHeaders.Authorization, session.authorizationValue())
+                        }
+                    }.execute { ComplaintDetailBody.read(it, url, request) }
             } ?: AppResult.Failure(AppError.Network.Timeout())
         } catch (cancelled: CancellationException) {
             throw cancelled

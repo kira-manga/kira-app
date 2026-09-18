@@ -6,9 +6,9 @@ import platform.Foundation.NSURL
 
 /**
  * Owns only authenticated GET history at one validated HTTPS origin/base plus `/api/v1/complaints`.
- * [historyUrl] is credential-free and queryless; requests admit only bounded limit/cursor queries.
- * Reuses the isolated owner/delegate with a separate 200-only 2-MiB policy; installation and problem
- * bounds remain 16 KiB. No configured session/trust override or feature activation is accepted.
+ * [historyUrl] is credential-free and queryless; requests admit bounded list queries or canonical detail IDs.
+ * Reuses the isolated owner/delegate: list200 remains2MiB, detail200 JSON is32KiB and problems16KiB.
+ * No configured session/trust override or feature activation is accepted.
  * Close cancels admission/work, not synchronous native drainage; Foundation retry needs qualification.
  */
 fun createIosComplaintHistoryEngineOwner(historyUrl: Url): ComplaintSessionEngineOwner? {

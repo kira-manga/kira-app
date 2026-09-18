@@ -8,7 +8,8 @@ import okhttp3.OkHttpClient
 /**
  * Owns only authenticated GET history at the exact credential-free, queryless HTTPS [historyUrl]
  * ending in `/api/v1/complaints`, optionally beneath a valid base prefix. Invalid targets return
- * null before native allocation. Only bounded limit/cursor queries are admitted by this engine.
+ * null before native allocation. Admits bounded list queries and canonical queryless detail IDs.
+ * Detail200 JSON is capped at32KiB; list200 remains2MiB and all problems remain16KiB.
  * No configured client, trust override or caller policy is accepted; this does not select history.
  */
 fun createAndroidComplaintHistoryEngineOwner(historyUrl: Url): ComplaintSessionEngineOwner? {

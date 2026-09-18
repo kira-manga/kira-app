@@ -3,36 +3,48 @@ package me.manga.kira.data.remote.complaint
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 
-/** Fixed history origin/base/path plus one closed query; never an arbitrary authenticated target. */
+/** Fixed read origin/base: either the bounded list query or exactly one canonical queryless resource. */
 internal class ComplaintHistoryTarget private constructor(
     private val url: Url,
 ) {
     private val host = url.host.removeSurrounding("[", "]").lowercase()
 
-    fun matches(value: String): Boolean = page(value) != null
+    fun matches(value: String): Boolean = read(value) != null
+
+    fun route(value: String): ComplaintHistoryRoute? = read(value)?.route
 
     fun samePage(
         requestUrl: String,
         responseUrl: String,
     ): Boolean {
-        val requested = page(requestUrl) ?: return false
-        return requested == page(responseUrl)
+        val requested = read(requestUrl) ?: return false
+        return requested == read(responseUrl)
     }
 
     // Explicit fail-closed guards keep malformed authenticated targets out of later parsing.
     @Suppress("ReturnCount")
-    private fun page(value: String): ComplaintHistoryQuery? {
+    private fun read(value: String): ComplaintHistoryReadTarget? {
         if (value.length > MAX_TARGET_CHARACTERS + 1 + ComplaintHistoryQuery.maxCharacters || !rawSafe(value)) {
             return null
         }
-        val query = ComplaintHistoryQuery.checked(value.substringAfter('?', missingDelimiterValue = "")) ?: return null
         val candidate = parse(value) ?: return null
-        return query.takeIf {
-            validOrigin(candidate) &&
-                host == candidate.host.removeSurrounding("[", "]").lowercase() &&
-                url.port == candidate.port &&
-                url.encodedPath == candidate.encodedPath
+        if (!validOrigin(candidate) || host != candidate.host.removeSurrounding("[", "]").lowercase() ||
+            url.port != candidate.port
+        ) {
+            return null
         }
+        if (candidate.encodedPath == url.encodedPath) {
+            val query =
+                ComplaintHistoryQuery.checked(value.substringAfter('?', missingDelimiterValue = "")) ?: return null
+            return ComplaintHistoryReadTarget.Page(query)
+        }
+        if (!candidate.encodedPath.startsWith(url.encodedPath + "/") ||
+            candidate.parameters.isNotEmpty() || candidate.trailingQuery || '?' in value
+        ) {
+            return null
+        }
+        val id = candidate.encodedPath.removePrefix(url.encodedPath + "/")
+        return id.takeIf(CANONICAL_ID::matches)?.let { ComplaintHistoryReadTarget.Detail(it) }
     }
 
     override fun toString(): String = "ComplaintHistoryTarget(redacted)"
@@ -42,6 +54,7 @@ internal class ComplaintHistoryTarget private constructor(
         private const val MAX_HOST_CHARACTERS = 253
         private const val MAX_PORT = 65_535
         private const val HISTORY_PATH = "/api/v1/complaints"
+        private val CANONICAL_ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
         private val MAX_TARGET_CHARACTERS = MAX_BASE_CHARACTERS + HISTORY_PATH.length
 
         fun checked(url: Url): ComplaintHistoryTarget? {
@@ -84,6 +97,24 @@ internal class ComplaintHistoryTarget private constructor(
                 }
 
         private fun rawSafe(value: String): Boolean = value.all { it in '!'..'~' && it !in "\\@#" }
+    }
+}
+
+internal enum class ComplaintHistoryRoute { LIST, DETAIL }
+
+private sealed interface ComplaintHistoryReadTarget {
+    val route: ComplaintHistoryRoute
+
+    data class Page(val query: ComplaintHistoryQuery) : ComplaintHistoryReadTarget {
+        override val route: ComplaintHistoryRoute get() = ComplaintHistoryRoute.LIST
+
+        override fun toString(): String = "ComplaintHistoryReadTarget.Page(redacted)"
+    }
+
+    data class Detail(val id: String) : ComplaintHistoryReadTarget {
+        override val route: ComplaintHistoryRoute get() = ComplaintHistoryRoute.DETAIL
+
+        override fun toString(): String = "ComplaintHistoryReadTarget.Detail(redacted)"
     }
 }
 

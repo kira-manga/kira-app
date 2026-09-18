@@ -20,6 +20,15 @@ internal object ComplaintHistoryProblem {
                 (errors.single() as JsonObject).historyString("code") == "INSTALLATION_NOT_FOUND"
         }
 
+    /** Only the detail route's exact resource-not-found fact; disabled/session404 is not parent evidence. */
+    fun detailNotFound(text: String): Boolean =
+        matches(text, NOT_FOUND_STATUS) { root ->
+            val errors = root["errors"] as? JsonArray ?: return@matches false
+            root.historyString("title") == "Not Found" &&
+                errors.size == 1 &&
+                (errors.single() as JsonObject).historyString("code") == "NOT_FOUND"
+        }
+
     private fun matches(
         text: String,
         status: Int,

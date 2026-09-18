@@ -12,7 +12,7 @@ internal class AndroidComplaintHistoryInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         if (!permitted(request)) throw IOException("Complaint history request rejected")
-        return chain.proceedWithComplaintHistoryBudget(request)
+        return chain.proceedWithComplaintHistoryBudget(request, target)
     }
 
     private fun permitted(request: Request): Boolean =
@@ -20,6 +20,8 @@ internal class AndroidComplaintHistoryInterceptor(
             target.matches(request.url.toString()) &&
             request.body == null &&
             FORBIDDEN_HEADERS.all { request.header(it) == null } &&
+            (target.route(request.url.toString()) != ComplaintHistoryRoute.DETAIL ||
+                ComplaintHistoryRequestHeaders.detailForbiddenHeaders.all { request.header(it) == null }) &&
             ComplaintHistoryRequestHeaders.accepts(
                 request.headers.values("Authorization"),
                 request.headers.values("Accept-Encoding"),
@@ -40,17 +42,33 @@ internal class AndroidComplaintHistoryInterceptor(
     }
 }
 
-private fun Interceptor.Chain.proceedWithComplaintHistoryBudget(request: Request): Response {
+private fun Interceptor.Chain.proceedWithComplaintHistoryBudget(
+    request: Request,
+    target: ComplaintHistoryTarget,
+): Response {
     val response = proceed(request)
     var transferred = false
     return try {
+        if (!target.samePage(request.url.toString(), response.request.url.toString())) {
+            throw IOException("Complaint history response target rejected")
+        }
         val budget =
-            ComplaintHistoryReceiveBudget.checked(
-                response.code.toLong(),
-                response.headers.values("Content-Encoding"),
-                response.headers.values("Content-Length"),
-                response.headers.values("Transfer-Encoding"),
-            ) ?: throw IOException("Complaint history response headers rejected")
+            if (target.route(request.url.toString()) == ComplaintHistoryRoute.DETAIL) {
+                ComplaintHistoryReceiveBudget.checkedDetail(
+                    response.code.toLong(),
+                    response.headers.values("Content-Type"),
+                    response.headers.values("Content-Encoding"),
+                    response.headers.values("Content-Length"),
+                    response.headers.values("Transfer-Encoding"),
+                )
+            } else {
+                ComplaintHistoryReceiveBudget.checked(
+                    response.code.toLong(),
+                    response.headers.values("Content-Encoding"),
+                    response.headers.values("Content-Length"),
+                    response.headers.values("Transfer-Encoding"),
+                )
+            } ?: throw IOException("Complaint history response headers rejected")
         response
             .newBuilder()
             .body(AndroidComplaintSessionResponseBody(response.body, budget, call()::cancel))

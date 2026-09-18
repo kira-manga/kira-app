@@ -17,6 +17,8 @@ internal fun NSURLRequest.isComplaintHistoryRequest(target: ComplaintHistoryTarg
         HTTPBody == null &&
         HTTPBodyStream == null &&
         FORBIDDEN_HEADERS.all { valueForHTTPHeaderField(it) == null } &&
+        (URL?.absoluteString?.let(target::route) != ComplaintHistoryRoute.DETAIL ||
+            ComplaintHistoryRequestHeaders.detailForbiddenHeaders.all { valueForHTTPHeaderField(it) == null }) &&
         ComplaintHistoryRequestHeaders.accepts(
             listOfNotNull(valueForHTTPHeaderField("Authorization")),
             listOfNotNull(valueForHTTPHeaderField("Accept-Encoding")),

@@ -23,7 +23,7 @@ internal sealed class IosComplaintInstallationPolicy {
     fun receiveBudget(response: NSHTTPURLResponse): ComplaintReceiveBudget? =
         when (this) {
             is Session, is Enrollment -> response.complaintSessionBudget()
-            is History -> response.complaintHistoryBudget()
+            is History -> historyReceiveBudget(response)
             is IosComplaintMutationPolicy -> mutationReceiveBudget(response)
             is IosComplaintDeletionPolicy -> deletionReceiveBudget(response)
         }
@@ -67,6 +67,9 @@ internal sealed class IosComplaintInstallationPolicy {
     class History(
         private val target: ComplaintHistoryTarget,
     ) : IosComplaintInstallationPolicy() {
+        fun historyReceiveBudget(response: NSHTTPURLResponse): ComplaintReceiveBudget? =
+            response.complaintHistoryBudget(target)
+
         override fun acceptsRequest(request: NSURLRequest): Boolean = request.isComplaintHistoryRequest(target)
 
         override fun acceptsResponse(

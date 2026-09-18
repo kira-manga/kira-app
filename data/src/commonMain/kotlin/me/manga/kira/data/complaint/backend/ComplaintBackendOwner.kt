@@ -4,6 +4,7 @@ import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.repository.ComplaintDetailRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
@@ -18,7 +19,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 /** Owns borrowing clients and separate history/report/deletion lanes. Engines stay with the composition root. */
 @OptIn(ExperimentalAtomicApi::class)
 class ComplaintBackendOwner private constructor(
-    val history: ComplaintListRepository,
+    private val reader: BackendComplaintHistoryRepository,
     internal val feedback: BackendFeedbackRepository?,
     /** Present only when this owner has both a distinct mutation engine and inert report input suppliers. */
     val reports: ComplaintReportRepository?,
@@ -26,6 +27,12 @@ class ComplaintBackendOwner private constructor(
     private val closeActions: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
+
+    /** Same concrete reader and registered load lane as [details]. */
+    val history: ComplaintListRepository get() = reader
+
+    /** Existing identity only; shares the history coordinator, HTTP client, lease and cancellation owner. */
+    val details: ComplaintDetailRepository get() = reader
 
     /** Same concrete report consumer and issuer; no second coordinator or credential authority. */
     val installationRecovery: ComplaintInstallationRecoveryRepository? get() = installationPorts.recovery

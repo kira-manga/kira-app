@@ -17,6 +17,7 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.R
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.RecoveryIntent
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ServerTerminalFact
 import me.manga.kira.data.complaint.backend.InstallationSessionManager.ReportSessionPublication
+import me.manga.kira.domain.model.complaint.ComplaintDetail
 import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionOutcome
 import me.manga.kira.platform.storage.CleanupMarkerCreateResult
@@ -625,6 +626,55 @@ class InstallationCredentialCoordinator(
             else -> historyLocalFailure(checked)
         }
     }
+
+    /** The same registered read lane/lease, never a callback accepting arbitrary authenticated URLs. */
+    internal suspend fun readComplaintDetail(
+        session: ComplaintHistorySession,
+        sessions: InstallationSessionManager,
+        work: ComplaintHistoryWork,
+        http: ComplaintHistoryHttp,
+        request: ComplaintDetailRequest,
+    ): AppResult<ComplaintDetailRead> {
+        val admitted =
+            mutex.serialized {
+                currentCoroutineContext().ensureActive()
+                historyAdmission(session, sessions, work)
+            }
+        if (admitted !is Outcome.Success) return historyLocalFailure(admitted)
+        currentCoroutineContext().ensureActive()
+        val result = http.fetchDetail(session.response, request)
+        return when (
+            val checked =
+                mutex.serialized {
+                    currentCoroutineContext().ensureActive()
+                    historyAdmission(session, sessions, work)
+                    result
+                }
+        ) {
+            is Outcome.Success -> checked.value
+            else -> historyLocalFailure(checked)
+        }
+    }
+
+    /** Unavailable404 is also publication: it cannot escape a reset, changed generation or replaced read. */
+    internal suspend fun publishComplaintDetail(
+        session: ComplaintHistorySession,
+        sessions: InstallationSessionManager,
+        work: ComplaintHistoryWork,
+        detail: ComplaintDetail,
+    ): AppResult<ComplaintDetail> =
+        when (
+            val checked =
+                mutex.serialized {
+                    currentCoroutineContext().ensureActive()
+                    historyAdmission(session, sessions, work)
+                    if (!work.publish()) refuse(Block.STALE_BINDING)
+                    detail
+                }
+        ) {
+            is Outcome.Success -> AppResult.Success(checked.value)
+            else -> historyLocalFailure(checked)
+        }
 
     internal suspend fun publishHistory(
         session: ComplaintHistorySession,

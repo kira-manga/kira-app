@@ -8,7 +8,9 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
+import me.manga.kira.domain.model.complaint.ComplaintDetail
 import me.manga.kira.domain.model.complaint.ComplaintHistory
+import me.manga.kira.domain.repository.ComplaintDetailRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
 
@@ -20,7 +22,7 @@ internal class BackendComplaintHistoryRepository(
     private val generator: InstallationCredentialMaterialGenerator,
     private val http: ComplaintHistoryHttp,
     private val loads: ComplaintHistoryLoads,
-) : ComplaintListRepository {
+) : ComplaintListRepository, ComplaintDetailRepository {
     override suspend fun loadUserComplaints(): AppResult<ComplaintHistory> =
         try {
             loads.run { work -> read(work) }
@@ -29,6 +31,84 @@ internal class BackendComplaintHistoryRepository(
         } catch (_: Exception) {
             AppResult.Failure(AppError.Unexpected("complaint_history_failed"))
         }
+
+    override suspend fun loadComplaintDetail(id: String): AppResult<ComplaintDetail> {
+        val request = ComplaintDetailRequest.checked(id)
+        if (request == null) return AppResult.Failure(AppError.Validation.Format("complaint_id"))
+        return try {
+            loads.run { work -> readDetail(work, request) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            AppResult.Failure(AppError.Unexpected("complaint_detail_failed"))
+        }
+    }
+
+    /** Unlike explicit history setup, detail never resumes cleanup, enrolls or generates a missing identity. */
+    private suspend fun readDetail(
+        work: ComplaintHistoryWork,
+        request: ComplaintDetailRequest,
+    ): AppResult<ComplaintDetail> {
+        val admitted = coordinator.beginHistory(work)
+        if (admitted !is Outcome.Success) return historyLocalFailure(admitted)
+        return try {
+            readDetailAdmitted(admitted.value, work, request)
+        } finally {
+            coordinator.finishHistory(work)
+        }
+    }
+
+    // Same bounded401 rule as list, but no page aggregation, enrollment fallback or recovered prose.
+    @Suppress("ReturnCount")
+    private suspend fun readDetailAdmitted(
+        binding: ComplaintHistoryAdmission,
+        work: ComplaintHistoryWork,
+        request: ComplaintDetailRequest,
+    ): AppResult<ComplaintDetail> {
+        val initial = session(binding, work, allowEnrollment = false)
+        if (initial is AppResult.Failure) return initial
+        var lease = (initial as AppResult.Success).value
+        var refreshed = false
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val result = coordinator.readComplaintDetail(lease, sessions, work, http, request)
+            if (result is AppResult.Failure) {
+                val status = (result.error as? AppError.Network.Http)?.statusCode
+                if (status != HttpStatusCode.Unauthorized.value || refreshed) return result
+                refreshed = true
+                val renewed = renewDetailLease(lease, work)
+                if (renewed is AppResult.Failure) return renewed
+                lease = (renewed as AppResult.Success).value
+                continue
+            }
+            return publishDetailRead(lease, work, (result as AppResult.Success).value)
+        }
+    }
+
+    private suspend fun renewDetailLease(
+        lease: ComplaintHistorySession,
+        work: ComplaintHistoryWork,
+    ): AppResult<ComplaintHistorySession> {
+        sessions.invalidateHistorySession(lease)
+        val renewed = session(ComplaintHistoryAdmission.Existing(lease.permit), work, allowEnrollment = false)
+        if (renewed is AppResult.Failure) return renewed
+        val replacement = (renewed as AppResult.Success).value
+        return if (lease.permit.sameAs(replacement.permit)) {
+            renewed
+        } else {
+            historyLocalFailure(Outcome.Refused(Block.STALE_BINDING))
+        }
+    }
+
+    private suspend fun publishDetailRead(
+        lease: ComplaintHistorySession,
+        work: ComplaintHistoryWork,
+        read: ComplaintDetailRead,
+    ): AppResult<ComplaintDetail> {
+        val published = coordinator.publishComplaintDetail(lease, sessions, work, read.detail)
+        if (published is AppResult.Success) read.reportMismatches()
+        return published
+    }
 
     // These ordered fail-closed guards must complete before any registered history work is used.
     @Suppress("ReturnCount")

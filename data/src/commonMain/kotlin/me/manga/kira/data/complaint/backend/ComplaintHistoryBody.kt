@@ -49,10 +49,11 @@ internal object ComplaintHistoryBody {
         }
     }
 
-    private fun headers(
+    fun headers(
         response: HttpResponse,
         success: Boolean,
         maximum: Int,
+        allowEtag: Boolean = false,
     ): Int? {
         val headers = response.headers
         if (headers.single(ComplaintBoundedResponse.CONTRACT_HEADER) != "1") invalidHistory()
@@ -67,7 +68,7 @@ internal object ComplaintHistoryBody {
         if (encoding != null && !encoding.equals("identity", ignoreCase = true)) invalidHistory()
         val pattern = if (success) JSON_MEDIA else PROBLEM_MEDIA
         if (!pattern.matches(headers.single(HttpHeaders.ContentType) ?: invalidHistory())) invalidHistory()
-        if (headers.contains(HttpHeaders.Location) || headers.contains(HttpHeaders.ETag)) invalidHistory()
+        if (headers.contains(HttpHeaders.Location) || !allowEtag && headers.contains(HttpHeaders.ETag)) invalidHistory()
         if (response.status == HttpStatusCode.Unauthorized &&
             headers.single(HttpHeaders.WWWAuthenticate) != "Bearer realm=\"kira-complaints\""
         ) {
@@ -94,7 +95,9 @@ internal object ComplaintHistoryBody {
         return values.single()
     }
 
-    private suspend fun utf8(
+    fun detailTag(headers: Headers): String? = headers.single(HttpHeaders.ETag)
+
+    suspend fun utf8(
         channel: ByteReadChannel,
         maximum: Int,
         declared: Int?,

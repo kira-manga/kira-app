@@ -2,6 +2,16 @@ package me.manga.kira.data.remote.complaint
 
 /** Mirrors the accepted session reader's bounded compact-token spelling, without parsing claims. */
 internal object ComplaintHistoryRequestHeaders {
+    val detailForbiddenHeaders =
+        listOf(
+            "If-Match",
+            "If-None-Match",
+            "If-Modified-Since",
+            "If-Unmodified-Since",
+            "If-Range",
+            "X-Kira-Idempotency-Key",
+        )
+
     private const val MAX_AUTHORIZATION_CHARACTERS = 4 * 1_024
     private val BEARER = Regex("Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
 

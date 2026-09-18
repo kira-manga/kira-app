@@ -65,13 +65,25 @@ internal fun NSHTTPURLResponse.complaintSessionBudget(): ComplaintSessionReceive
     )
 
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
-internal fun NSHTTPURLResponse.complaintHistoryBudget(): ComplaintReceiveBudget? =
-    ComplaintHistoryReceiveBudget.checked(
-        statusCode,
-        selectedHeader("Content-Encoding"),
-        selectedHeader("Content-Length"),
-        selectedHeader("Transfer-Encoding"),
-    )
+internal fun NSHTTPURLResponse.complaintHistoryBudget(target: ComplaintHistoryTarget): ComplaintReceiveBudget? =
+    when (URL?.absoluteString?.let(target::route)) {
+        ComplaintHistoryRoute.DETAIL ->
+            ComplaintHistoryReceiveBudget.checkedDetail(
+                statusCode,
+                selectedHeader("Content-Type"),
+                selectedHeader("Content-Encoding"),
+                selectedHeader("Content-Length"),
+                selectedHeader("Transfer-Encoding"),
+            )
+        ComplaintHistoryRoute.LIST ->
+            ComplaintHistoryReceiveBudget.checked(
+                statusCode,
+                selectedHeader("Content-Encoding"),
+                selectedHeader("Content-Length"),
+                selectedHeader("Transfer-Encoding"),
+            )
+        null -> null
+    }
 
 /** Foundation may combine duplicate fields; combined selected values fail the shared grammar. */
 @OptIn(ExperimentalForeignApi::class)

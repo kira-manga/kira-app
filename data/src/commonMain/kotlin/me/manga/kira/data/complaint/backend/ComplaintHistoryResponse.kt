@@ -56,7 +56,7 @@ internal object ComplaintHistoryResponse {
         key: String,
     ): JsonArray = root[key] as? JsonArray ?: invalidHistory()
 
-    private fun notice(row: JsonObject): ComplaintNotice {
+    fun notice(row: JsonObject): ComplaintNotice {
         if (row.keys != NOTICE_FIELDS ||
             row.historyString("kind") != "NOTICE" ||
             row.historyString("status") != "PINNED"
@@ -72,7 +72,7 @@ internal object ComplaintHistoryResponse {
 
     // The explicit known-kind matrix is the recognition boundary; do not hide its joint constraints.
     @Suppress("CyclomaticComplexMethod")
-    private fun owner(row: JsonObject): ComplaintOwnerRow {
+    fun owner(row: JsonObject): ComplaintOwnerRow {
         // Future kinds remain inside the bounded, closed common envelope, not an open JSON object.
         if (row.keys.any { it !in ITEM_FIELDS }) invalidHistory()
         val kind = token(row.historyString("kind"))
@@ -129,7 +129,7 @@ internal object ComplaintHistoryResponse {
             if (it.length !in 1..MAX_TOKEN_LENGTH || it.any { char -> char !in '!'..'~' }) invalidHistory()
         }
 
-    private fun mismatches(
+    fun mismatches(
         notices: List<ComplaintNotice>,
         items: List<ComplaintOwnerRow>,
     ): Set<ComplaintHistoryMismatch> =

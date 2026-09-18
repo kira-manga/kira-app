@@ -11,6 +11,7 @@ import me.manga.kira.data.complaint.backend.ComplaintReportInputs
 import me.manga.kira.data.remote.complaint.ComplaintSessionEngineOwner
 import me.manga.kira.data.repository.ReadOnlyComplaintActionRepository
 import me.manga.kira.domain.repository.ComplaintActionRepository
+import me.manga.kira.domain.repository.ComplaintDetailRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
@@ -18,7 +19,6 @@ import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.DeleteComplaintUseCase
 import me.manga.kira.domain.usecase.complaint.EditComplaintUseCase
-import me.manga.kira.domain.usecase.complaint.ObserveUserComplaintsUseCase
 import me.manga.kira.domain.usecase.complaint.ReplyToComplaintUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintInstallationDeletionUseCase
 import me.manga.kira.domain.usecase.feedback.CancelComplaintReportRecoveryUseCase
@@ -184,6 +184,7 @@ internal class ComplaintBackendGraph(
 ) {
     private val closed = AtomicBoolean(false)
     val history: ComplaintListRepository get() = owner.history
+    val details: ComplaintDetailRepository get() = owner.details
     val replies: ComplaintReplyRepository get() = checkNotNull(owner.replies)
 
     /** Install only in an isolated candidate Koin graph; never append over legacy-backed writes. */
@@ -191,13 +192,12 @@ internal class ComplaintBackendGraph(
     fun module(): Module =
         module {
             single(createdAtStart = true) { this@ComplaintBackendGraph } onClose { it?.close() }
-            single<ComplaintListRepository> { get<ComplaintBackendGraph>().history }
+            complaintBackendReadBindings()
             single<ComplaintActionRepository> { ReadOnlyComplaintActionRepository() }
             single<ComplaintReportRepository> { get<ComplaintBackendGraph>().reports }
             single<ComplaintReplyRepository> { get<ComplaintBackendGraph>().replies }
             single<ComplaintInstallationRecoveryRepository> { get<ComplaintBackendGraph>().installationRecovery }
             single<ComplaintInstallationDeletionRepository> { get<ComplaintBackendGraph>().installationDeletion }
-            factory { ObserveUserComplaintsUseCase(get()) }
             factory { ReplyToComplaintUseCase(get()) }
             factory { EditComplaintUseCase(get()) }
             factory { DeleteComplaintUseCase(get()) }
