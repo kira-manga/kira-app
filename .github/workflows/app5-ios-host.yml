@@ -1,0 +1,92 @@
+# One ordinary data:remote Native compile/link/run: reply9 + detail13 literal methods.
+# Preparation is not dispatch authority; request admission remains UNBOUND until primary review.
+name: Targeted reply and detail AppleNative22
+on:
+  push:
+    branches: [candidate/app29-mobile-reply-detail-apple-native22-20260918-01]
+    paths: [ci/app5-ios-host.request.json]
+permissions:
+  contents: read
+concurrency:
+  group: app29-mobile-reply-detail-apple-native22-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native:
+    if: >-
+      ${{ github.repository == 'kira-manga/kira-app' && github.event.repository.private == false &&
+          github.event_name == 'push' && github.ref == 'refs/heads/candidate/app29-mobile-reply-detail-apple-native22-20260918-01' &&
+          github.run_attempt == 1 }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Exact control carrier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Admit primary-bound one-attempt request
+        id: request
+        timeout-minutes: 1
+        run: python3 -B control/ci/app5-ios-host.py request
+      - name: Exact unmodified App source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+        with:
+          repository: kira-manga/kira-app
+          ref: ${{ steps.request.outputs.source_sha }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Reply9 and detail13 on one owned installed simulator
+        id: host
+        timeout-minutes: 30
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 -B control/ci/app5-ios-host.py host
+      - name: Bounded evidence with separate cleanup status
+        if: ${{ always() && steps.host.outputs.retention_ready == 'true' }}
+        env:
+          APP5_RUN: ${{ runner.temp }}/app5-ios-host-${{ github.run_id }}-${{ github.run_attempt }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: app29-mobile-reply-detail-apple-native22-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: false
+          path: |
+            ${{ env.APP5_RUN }}/reports/commands.json
+            ${{ env.APP5_RUN }}/reports/gradle-stop-cleanup.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-final.log
+            ${{ env.APP5_RUN }}/reports/gradle-stop-native.log
+            ${{ env.APP5_RUN }}/reports/identity.json
+            ${{ env.APP5_RUN }}/reports/native-app-tasks.json
+            ${{ env.APP5_RUN }}/reports/native-data-remote-arch.log
+            ${{ env.APP5_RUN }}/reports/native-data-remote-platform.log
+            ${{ env.APP5_RUN }}/reports/native-proof.json
+            ${{ env.APP5_RUN }}/reports/native-source.json
+            ${{ env.APP5_RUN }}/reports/native-tests.log
+            ${{ env.APP5_RUN }}/reports/native-xml-diagnostics.json
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/remote/01.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/remote/02.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/remote/03.xml
+            ${{ env.APP5_RUN }}/reports/native-xml-unexpected/data/remote/04.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintMutationReplyTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintMutationEngineTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintMutationReceiveGuardTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintHistoryDetailTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintHistoryEngineTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintHistoryLifecycleTest.xml
+            ${{ env.APP5_RUN }}/reports/native-xml/data/remote/TEST-iosSimulatorArm64Test.me.manga.kira.data.remote.complaint.IosComplaintHistoryReceiveGuardTest.xml
+            ${{ env.APP5_RUN }}/reports/request.json
+            ${{ env.APP5_RUN }}/reports/result.json
+            ${{ env.APP5_RUN }}/reports/simulator.json
+            ${{ env.APP5_RUN }}/reports/source.json
+            ${{ env.APP5_RUN }}/reports/tools.json

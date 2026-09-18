@@ -1,0 +1,89 @@
+{
+  "schema": "app-29-apple-native22-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "394172b8d12167e5a37e108e42f54e9bdb56b62b",
+    "tree": "d6d304fbef4c4f93750902a5f9f6b0a7f3168c94"
+  },
+  "suites": [
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationReplyTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationReplyTest.kt",
+      "sourceSha256": "f418a5132041030706d6f53ff1c5894525316bda30365c1c7395115c617c85f0",
+      "methods": [
+        "nativeReplyPreparationAcceptsCanonicalNoticeParentButNotMissingKeyPreconditionOrOversizedBody",
+        "responseForAnotherCanonicalParentIsRejectedBeforeForwardingEvenThoughBothRoutesAreReply",
+        "reply201And404Or409UseTheirOwnNativeReceiveCapsWithStickyOverflowAndOneCompletion"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationEngineTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationEngineTest.kt",
+      "sourceSha256": "954ce5aac714f2096c52e8e6d1c09c61d04a23aab912d11eaa6c12eaef8fe9a0",
+      "methods": [
+        "factoryRejectsStatusOrHistoryQueriesButDerivesTheExactDeploymentPrefix",
+        "onlyClosedPostRoutesWithTheCorrectKeyPresencePassNativePreparation",
+        "requestLimitUsesActualNSDataAndRefusesUnknownStreamsOrFalseLength",
+        "supplierMergedHeadersPassPreparationAndOriginalRequestButCustomUserAgentsFail"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationReceiveGuardTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationReceiveGuardTest.kt",
+      "sourceSha256": "f017ac4ba8646780d8f5beaef1a3217050400ef1de9ba9fd87b6fab4e7cbb9ac",
+      "methods": [
+        "routeAndMediaSelectThirtyTwoOrSixteenKibibytesBeforeAnyCallbackIsForwarded",
+        "responseCannotChangeTheOriginalRouteOrGrantTheStatusRequestTheCreateBudget"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintHistoryDetailTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintHistoryDetailTest.kt",
+      "sourceSha256": "3804f9a9845a74330c145acd673f11cd44d09bcb862ba7747b57169309a11b5a",
+      "methods": [
+        "declaredDetailOverflowAndIncompleteEofFailWithoutTruncatedSuccess",
+        "delivered503And421RemainRefusedForDetailWithoutHiddenReplayClaims",
+        "detailRejectsConditionalMutationHeadersAndEveryBodyRepresentationBeforeAdmission",
+        "exactDetailJsonCompletesAtThirtyTwoKiBBeforeAOneByteOverrunIsRefused",
+        "listAndDetailShareOneNativeSlotAndClosedOwnerRejectsLateCallbacksAndNewRequests",
+        "problemOrUnrecognizedSuccessMediaKeepsSixteenKiBAndCannotBorrowListCapacity",
+        "responseIdCannotSwitchToAnotherDetailOrListAndNoPrefixOrLateCallbackEscapes",
+        "sameHistoryGuardPreparesQuerylessCanonicalDetailAndNoticeButNoAliases"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintHistoryEngineTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintHistoryEngineTest.kt",
+      "sourceSha256": "ff1ef51f70527d0cd760ce37e0ea0ff45061c841204d0a5f02d0096458b021e7",
+      "methods": [
+        "onlyExactGetHistoryPagesPassNativePreparation"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintHistoryLifecycleTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintHistoryLifecycleTest.kt",
+      "sourceSha256": "953917056df626f3cb161321929927afafcf2cfa62b8dbcf2f24b3c2806023da",
+      "methods": [
+        "concurrentResponseCancellationAndCloseCannotResurrectTheLargeResponseSlot",
+        "responseMustMatchTheOriginalAuthenticatedGetAndItsExactPage"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintHistoryReceiveGuardTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintHistoryReceiveGuardTest.kt",
+      "sourceSha256": "4dcf9dbd501e8fddcbce580f3aba76506b1a15e14c78a410b0de763e288c5d66",
+      "methods": [
+        "aDeclaredExactTwoMibibyte200CompletesButEveryOtherStatusHasTheSmallerBudget",
+        "historyBurstStopsBeforeTheViolatingNSDataAndCannotCompleteAsTruncatedSuccess"
+      ]
+    }
+  ]
+}
