@@ -67,7 +67,7 @@ internal class ComplaintReportFixture(
 }
 
 internal fun reportSlot(
-    report: ComplaintReportRequest = mutationReport(),
+    report: ComplaintCreationRequest = mutationReport(),
     dispatched: Boolean = true,
 ): PendingComplaintSlot =
     assertIs<PendingComplaintCodecResult.Value<PendingComplaintSlot>>(

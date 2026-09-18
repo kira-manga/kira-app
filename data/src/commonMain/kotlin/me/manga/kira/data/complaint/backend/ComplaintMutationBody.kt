@@ -25,17 +25,26 @@ internal class ComplaintMutationDocument(
     override fun toString(): String = "ComplaintMutationDocument(redacted)"
 }
 
-/** Only the fixed two POSTs; status shares the checked deployment origin/prefix, never a caller URL. */
+/** Closed creation/status POSTs; a reply path derives only from the checked pending parent. */
 internal enum class ComplaintMutationRoute(
     val success: HttpStatusCode,
 ) {
     CREATE(HttpStatusCode.Created),
+    REPLY(HttpStatusCode.Created),
     STATUS(HttpStatusCode.OK),
     ;
 
-    fun url(endpoint: ComplaintBackendEndpoint): Url =
+    fun url(
+        endpoint: ComplaintBackendEndpoint,
+        pending: PendingComplaintRecord,
+    ): Url =
         when (this) {
             CREATE -> endpoint.historyUrl
+            REPLY -> {
+                if (pending.request.action.operation != PendingComplaintOperation.CREATE_REPLY) invalidHistory()
+                val parent = pending.request.action.parentId ?: invalidHistory()
+                Url("${endpoint.historyUrl}/$parent${Policy.REPLIES_SUFFIX}")
+            }
             STATUS -> Url(endpoint.historyUrl.toString().removeSuffix(Policy.CREATE_PATH) + Policy.STATUS_PATH)
         }
 }
@@ -55,7 +64,7 @@ internal object ComplaintMutationBody {
             val success = response.status == route.success
             if (!success && response.status.value !in MIN_ERROR_STATUS..MAX_ERROR_STATUS) invalidHistory()
             val maximum =
-                if (success && route == ComplaintMutationRoute.CREATE) {
+                if (success && route != ComplaintMutationRoute.STATUS) {
                     Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES
                 } else {
                     Policy.MAX_STATUS_OR_PROBLEM_BYTES
@@ -103,7 +112,7 @@ internal object ComplaintMutationBody {
         val headers = response.headers
         val location = headers.single(HttpHeaders.Location)
         val etag = headers.single(HttpHeaders.ETag)
-        if (success && route == ComplaintMutationRoute.CREATE) {
+        if (success && route != ComplaintMutationRoute.STATUS) {
             if (location == null || etag == null) invalidHistory()
         } else if (location != null || etag != null) {
             invalidHistory()

@@ -13,19 +13,23 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.C
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.RecoveryIntent
+import me.manga.kira.domain.model.feedback.ComplaintLiveReply
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintRecoveryPrompt
+import me.manga.kira.domain.model.feedback.ComplaintReplyDraft
+import me.manga.kira.domain.model.feedback.ComplaintReplyPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportDraft
 import me.manga.kira.domain.model.feedback.ComplaintReportPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
+import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 
 /**
- * Thin in-memory consumer of the existing report producer, not a second transport or action registry.
+ * Thin report/reply consumer of the existing producer, not a second transport or action registry.
  * All verbs and their guards share one issuer/coordinator; splitting them would fragment handle ownership.
  */
 @Suppress("TooManyFunctions")
@@ -34,6 +38,7 @@ internal class BackendComplaintReportRepository(
     private val backend: BackendFeedbackRepository,
     private val inputs: ComplaintReportInputs,
 ) : ComplaintReportRepository,
+    ComplaintReplyRepository,
     ComplaintInstallationRecoveryRepository {
     private val issuer = ReportConsumerIssuer()
 
@@ -56,8 +61,36 @@ internal class BackendComplaintReportRepository(
         }
 
     override suspend fun submit(report: ComplaintLiveReport): AppResult<ComplaintReportSubmission> =
+        submitLive(liveHandle(report))
+
+    override suspend fun retry(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt> = retryLive(liveHandle(report))
+
+    override suspend fun prepare(draft: ComplaintReplyDraft): AppResult<ComplaintReplyPreparation> =
         access {
-            val live = liveHandle(report) ?: return@access invalidHandle()
+            val observed = coordinator.beginReconciliation()
+            if (observed !is Outcome.Success) {
+                return@access AppResult.Success(
+                    ComplaintReplyPreparation.Blocked(reportLocalFailure(observed).consumerResult()),
+                )
+            }
+            when (val captured = capture(draft, observed.value)) {
+                null, ComplaintReplyRequestResult.InvalidParent ->
+                    AppResult.Success(
+                        ComplaintReplyPreparation.Blocked(reportUnavailable(Block.INVALID_CANDIDATE).consumerResult()),
+                    )
+                is ComplaintReplyRequestResult.Rejected -> AppResult.Success(captured.consumerResult())
+                is ComplaintReplyRequestResult.Accepted -> publishPrepared(captured.request, observed.value)
+            }
+        }
+
+    override suspend fun submit(reply: ComplaintLiveReply): AppResult<ComplaintReportSubmission> =
+        submitLive(replyHandle(reply))
+
+    override suspend fun retry(reply: ComplaintLiveReply): AppResult<ComplaintReportAttempt> = retryLive(replyHandle(reply))
+
+    private suspend fun submitLive(candidate: ComplaintCreationLiveHandle?): AppResult<ComplaintReportSubmission> =
+        access {
+            val live = candidate ?: return@access invalidHandle()
             if (!live.claimSubmission()) return@access invalidHandle()
             backend.submit(live.request, live.origin).map {
                 ComplaintReportSubmission(
@@ -67,9 +100,9 @@ internal class BackendComplaintReportRepository(
             }
         }
 
-    override suspend fun retry(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt> =
+    private suspend fun retryLive(candidate: ComplaintCreationLiveHandle?): AppResult<ComplaintReportAttempt> =
         access {
-            val live = liveHandle(report) ?: return@access invalidHandle()
+            val live = candidate ?: return@access invalidHandle()
             if (!live.canRetry()) return@access invalidHandle()
             backend.retry(live.request, live.origin).map { live.remember(it.consumerResult(issuer)) }
         }
@@ -146,14 +179,23 @@ internal class BackendComplaintReportRepository(
     private fun capture(
         draft: ComplaintReportDraft,
         origin: ReconciliationPermit,
-    ): ComplaintReportRequestResult? {
-        val ids = inputs.identifiers()
-        if (ids.clientId == ids.idempotencyKey) return null
-        val identity =
-            ComplaintReportIdentity.checked(ids.clientId, ids.idempotencyKey, origin.record.material.dataScopeId)
-        return identity?.let {
+    ): ComplaintReportRequestResult? =
+        captureIdentity(origin)?.let {
             ComplaintReportRequest.normalize(it, draft.type, draft.subject, draft.body, inputs.metadata())
         }
+
+    private fun capture(
+        draft: ComplaintReplyDraft,
+        origin: ReconciliationPermit,
+    ): ComplaintReplyRequestResult? =
+        captureIdentity(origin)?.let {
+            ComplaintReplyRequest.normalize(it, draft.parentId, draft.body, inputs.metadata())
+        }
+
+    private fun captureIdentity(origin: ReconciliationPermit): ComplaintReportIdentity? {
+        val ids = inputs.identifiers()
+        if (ids.clientId == ids.idempotencyKey) return null
+        return ComplaintReportIdentity.checked(ids.clientId, ids.idempotencyKey, origin.record.material.dataScopeId)
     }
 
     private suspend fun publishPrepared(
@@ -170,6 +212,19 @@ internal class BackendComplaintReportRepository(
         (report as? ReportLiveHandle)?.takeIf {
             it.issuer === issuer
         }
+
+    private suspend fun publishPrepared(
+        request: ComplaintReplyRequest,
+        origin: ReconciliationPermit,
+    ): AppResult<ComplaintReplyPreparation> =
+        when (val checked = coordinator.applyReconciliationIfCurrent(origin) {}) {
+            is Outcome.Success ->
+                AppResult.Success(ComplaintReplyPreparation.Ready(ReplyLiveHandle(issuer, request, origin)))
+            else -> AppResult.Success(ComplaintReplyPreparation.Blocked(reportLocalFailure(checked).consumerResult()))
+        }
+
+    private fun replyHandle(reply: ComplaintLiveReply): ReplyLiveHandle? =
+        (reply as? ReplyLiveHandle)?.takeIf { it.issuer === issuer }
 
     private fun pendingHandle(report: ComplaintPendingReport): ReportPendingHandle? =
         (report as? ReportPendingHandle)?.takeIf { it.issuer === issuer }

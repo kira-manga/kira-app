@@ -71,7 +71,8 @@ internal class PendingComplaintAction private constructor(
                     PendingComplaintOperation.CREATE_REPORT ->
                         pendingV4(targetId) && parentId == null && expectedVersion == null
                     PendingComplaintOperation.CREATE_REPLY ->
-                        pendingV4(targetId) && parentId != null && pendingUuid(parentId) && expectedVersion == null
+                        pendingV4(targetId) && parentId != null && pendingUuid(parentId) &&
+                            parentId != targetId && expectedVersion == null
                     PendingComplaintOperation.EDIT_CONTENT, PendingComplaintOperation.DELETE_OWNED ->
                         pendingUuid(targetId) && parentId == null && expectedVersion != null && expectedVersion > 0
                 }

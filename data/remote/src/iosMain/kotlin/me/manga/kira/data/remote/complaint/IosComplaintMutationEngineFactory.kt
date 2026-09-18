@@ -6,9 +6,9 @@ import kotlinx.cinterop.UnsafeNumber
 import platform.Foundation.NSURL
 
 /**
- * Owns one serialized CREATE/status exchange at a time, never GET history or installation work.
+ * Owns one serialized report/reply/status exchange at a time, never GET history or installation work.
  * [createUrl] must be the exact credential-free, queryless HTTPS `/api/v1/complaints` target;
- * status is derived beneath the same checked deployment prefix. Invalid targets return null
+ * status and canonical parent replies use the same checked deployment prefix. Invalid targets return null
  * before native allocation. No session/delegate/trust override or activation is accepted.
  * The borrowing client must retain the fixed no-redirect/no-retry policy.
  */

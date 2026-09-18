@@ -2,8 +2,8 @@ package me.manga.kira.data.complaint.backend
 
 import me.manga.kira.domain.model.complaint.ComplaintType
 
-/** Only this operation has an approved normalized request/frame in this producer. */
-internal enum class ComplaintReportOperation { OWNER_CREATE, }
+/** Closed creation vocabulary; each variant owns its distinct normalized request/frame. */
+internal enum class ComplaintReportOperation { OWNER_CREATE, OWNER_REPLY }
 
 /** All four members are required. Null appVersion is not an empty string or a missing-key default. */
 class ComplaintReportMetadataInput(
@@ -51,13 +51,13 @@ internal sealed interface ComplaintReportRequestResult {
 
 /** Live-only normalized values, not raw JSON, authenticated scope, admission or a durable pending record. */
 internal class ComplaintReportRequest private constructor(
-    val identity: ComplaintReportIdentity,
+    override val identity: ComplaintReportIdentity,
     val type: ComplaintType,
     val subject: String,
-    val body: String,
-    val metadata: ComplaintReportMetadata,
-) {
-    val operation: ComplaintReportOperation get() = ComplaintReportOperation.OWNER_CREATE
+    override val body: String,
+    override val metadata: ComplaintReportMetadata,
+) : ComplaintCreationRequest {
+    override val operation: ComplaintReportOperation get() = ComplaintReportOperation.OWNER_CREATE
 
     override fun toString(): String = "ComplaintReportRequest(redacted)"
 

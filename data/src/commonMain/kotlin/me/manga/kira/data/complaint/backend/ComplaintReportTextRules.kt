@@ -37,13 +37,22 @@ internal object ComplaintReportTextRules {
     fun normalize(
         value: String,
         field: ComplaintReportField,
+    ): String = normalize(value, field, field.minimum)
+
+    /** Reply's one-scalar minimum does not weaken the report BODY contract. */
+    fun replyBody(value: String): String = normalize(value, ComplaintReportField.BODY, 1)
+
+    private fun normalize(
+        value: String,
+        field: ComplaintReportField,
+        minimum: Int,
     ): String {
         if (value.length > MAX_INPUT_CODE_UNITS) reject(field, ComplaintReportRejection.TOO_LONG)
         val lineNormalized = value.replace("\r\n", "\n")
         validateCharacters(lineNormalized, field)
         val normalized = lineNormalized.trim(::isReportWhitespace)
         val points = scalarCount(normalized)
-        if (points < field.minimum) {
+        if (points < minimum) {
             reject(field, if (points == 0) ComplaintReportRejection.REQUIRED else ComplaintReportRejection.TOO_SHORT)
         }
         if (points > field.maximum || normalized.encodeToByteArray().size > field.maximumBytes) {

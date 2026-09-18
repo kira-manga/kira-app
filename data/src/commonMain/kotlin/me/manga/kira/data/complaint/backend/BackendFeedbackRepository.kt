@@ -16,7 +16,7 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.R
 import me.manga.kira.platform.storage.PendingComplaintSlot
 
 /**
- * Dormant typed report port, deliberately not the legacy Result<Unit> adapter. The caller allocates
+ * Dormant typed report/reply port, deliberately not the legacy Result<Unit> adapter. The caller allocates
  * and normalizes a live request once; this owner neither invents keys nor persists/reconstructs prose.
  * Keep the producer/recovery verbs and admission helpers together on their single shared work lane.
  */
@@ -31,7 +31,7 @@ internal class BackendFeedbackRepository(
     private val reconciler = ComplaintOperationReconciler(coordinator, execution)
 
     suspend fun submit(
-        report: ComplaintReportRequest,
+        report: ComplaintCreationRequest,
         expected: ReconciliationPermit? = null,
     ): AppResult<ReportSubmission> =
         withWork { work ->
@@ -51,7 +51,7 @@ internal class BackendFeedbackRepository(
 
     /** Missing metadata is not permission to turn a retry into a new action with any key. */
     suspend fun retry(
-        report: ComplaintReportRequest,
+        report: ComplaintCreationRequest,
         expected: ReconciliationPermit? = null,
     ): AppResult<ReportAttempt> =
         withWork { work ->

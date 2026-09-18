@@ -2,7 +2,7 @@ package me.manga.kira.data.remote.complaint
 
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** Only direct CREATE201 JSON can exceed the accepted installation/problem budget. */
+/** Only direct report/reply201 JSON can exceed the accepted installation/problem budget. */
 internal class ComplaintMutationReceiveBudget private constructor(
     private val declaredLength: Int?,
 ) : ComplaintReceiveBudget {
@@ -29,7 +29,7 @@ internal class ComplaintMutationReceiveBudget private constructor(
             status: Long,
             headers: ComplaintMutationResponseHeaders,
         ): ComplaintReceiveBudget? =
-            if (route == ComplaintMutationRoute.CREATE && status == CREATED && isJson(headers.media)) {
+            if (route != ComplaintMutationRoute.STATUS && status == CREATED && isJson(headers.media)) {
                 acknowledgementBudget(headers.encoding, headers.length, headers.transfer)
             } else {
                 ComplaintSessionReceiveBudget.checked(headers.encoding, headers.length, headers.transfer)

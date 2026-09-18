@@ -9,7 +9,7 @@ class ComplaintReportIdentifiers(
 }
 
 /**
- * Inert platform suppliers. Only explicit report preparation invokes these, once and outside the
+ * Inert platform suppliers. Only explicit report/reply preparation invokes these, once and outside the
  * credential mutex; neither graph construction nor retry reads platform metadata or allocates IDs.
  */
 class ComplaintReportInputs(

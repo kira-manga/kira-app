@@ -1,5 +1,6 @@
 package me.manga.kira.data.complaint.backend
 
+import me.manga.kira.domain.model.feedback.ComplaintReplyPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportBlock
@@ -22,11 +23,17 @@ internal fun ComplaintReportRequestResult.Rejected.consumerResult(): ComplaintRe
         DomainReportRejection.valueOf(reason.name),
     )
 
+internal fun ComplaintReplyRequestResult.Rejected.consumerResult(): ComplaintReplyPreparation.Invalid =
+    ComplaintReplyPreparation.Invalid(
+        DomainReportField.valueOf(field.name),
+        DomainReportRejection.valueOf(reason.name),
+    )
+
 internal fun ReportActionState.consumerResult(): ComplaintReportApplication =
     when (this) {
         is ReportActionState.Applied -> ComplaintReportApplication.Applied(id, version)
         is ReportActionState.Rejected ->
-            ComplaintReportApplication.Rejected(ComplaintReportReceiptRejection.valueOf(code.name))
+            ComplaintReportApplication.Rejected(ComplaintReportReceiptRejection.valueOf(code.wireCode))
     }
 
 internal fun ReportAttempt.consumerResult(issuer: ReportConsumerIssuer): ComplaintReportAttempt =

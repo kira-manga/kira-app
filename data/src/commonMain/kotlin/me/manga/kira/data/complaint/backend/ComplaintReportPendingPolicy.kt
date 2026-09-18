@@ -39,27 +39,33 @@ private fun retainedReportBinding(
 
 /** Pure recomputation only; callers still need the coordinator's current binding and durable proofs. */
 internal fun reportRequest(
-    report: ComplaintReportRequest,
+    report: ComplaintCreationRequest,
     permit: ReconciliationPermit,
 ): PendingComplaintRequest {
     val identity = report.identity
     if (identity.dataScopeId != permit.record.material.dataScopeId || identity.clientId.value == identity.key.value) {
         refuse(Block.INVALID_CANDIDATE)
     }
+    val parent = (report as? ComplaintReplyRequest)?.parentId
+    val operation =
+        when (report) {
+            is ComplaintReportRequest -> PendingComplaintOperation.CREATE_REPORT
+            is ComplaintReplyRequest -> PendingComplaintOperation.CREATE_REPLY
+        }
     val action =
-        PendingComplaintAction.checked(PendingComplaintOperation.CREATE_REPORT, identity.clientId.value, null, null)
+        PendingComplaintAction.checked(operation, identity.clientId.value, parent, null)
             ?: refuse(Block.INVALID_CANDIDATE)
-    val digest = ComplaintReportFingerprint.of(report)
-    val fingerprint =
-        PendingComplaintFingerprint.checked(digest.version, digest.encoded) ?: refuse(Block.INVALID_CANDIDATE)
-    return PendingComplaintRequest.checked(action, identity.key.value, fingerprint) ?: refuse(Block.INVALID_CANDIDATE)
+    return PendingComplaintRequest.checked(action, identity.key.value, report.pendingFingerprint())
+        ?: refuse(Block.INVALID_CANDIDATE)
 }
 
 internal fun decodeReport(slot: PendingComplaintSlot): PendingComplaintRecord =
     when (val result = PendingComplaintRecordCodec.decode(slot)) {
         is PendingComplaintCodecResult.Value ->
             result.value.also {
-                if (it.request.action.operation != PendingComplaintOperation.CREATE_REPORT) {
+                if (it.request.action.operation != PendingComplaintOperation.CREATE_REPORT &&
+                    it.request.action.operation != PendingComplaintOperation.CREATE_REPLY
+                ) {
                     refuse(Block.RECONCILIATION_REQUIRED)
                 }
             }

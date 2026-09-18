@@ -87,7 +87,7 @@ class ComplaintMutationRequestHeadersTest {
             assertFalse(accepts(route, nativeHeaders + ("X-Other" to "synthetic")))
             applicationHeaders.forEach { header -> assertFalse(accepts(route, nativeHeaders + header)) }
             val other =
-                if (route == ComplaintMutationRoute.CREATE) {
+                if (route != ComplaintMutationRoute.STATUS) {
                     ComplaintMutationRoute.STATUS
                 } else {
                     ComplaintMutationRoute.CREATE
@@ -110,7 +110,7 @@ internal fun mutationTestHeaders(route: ComplaintMutationRoute): List<Pair<Strin
         "Cache-Control" to "no-store, no-transform",
         "Content-Type" to "application/json",
     ) +
-        if (route == ComplaintMutationRoute.CREATE) {
+        if (route != ComplaintMutationRoute.STATUS) {
             listOf(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY)
         } else {
             emptyList()
@@ -131,4 +131,5 @@ internal fun mutationTestEngineHeaders(route: ComplaintMutationRoute): List<Pair
     }
 
 internal const val MUTATION_TEST_KEY = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+internal const val MUTATION_TEST_PARENT = "bbbbbbbb-bbbb-5bbb-8bbb-bbbbbbbbbbbb"
 internal const val MUTATION_TEST_AUTHORIZATION = "Bearer synthetic.header.signature"

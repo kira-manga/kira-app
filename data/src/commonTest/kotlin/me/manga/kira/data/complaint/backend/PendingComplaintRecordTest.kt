@@ -43,6 +43,7 @@ class PendingComplaintRecordTest {
         assertNull(PendingComplaintAction.checked(Operation.CREATE_REPORT, Fixtures.OTHER_ID, null, 1))
         assertNull(PendingComplaintAction.checked(Operation.CREATE_REPLY, SEEDED_ID, Fixtures.ID, null))
         assertNull(PendingComplaintAction.checked(Operation.CREATE_REPLY, Fixtures.OTHER_ID, null, null))
+        assertNull(PendingComplaintAction.checked(Operation.CREATE_REPLY, Fixtures.OTHER_ID, Fixtures.OTHER_ID, null))
         assertNull(PendingComplaintAction.checked(Operation.CREATE_REPLY, Fixtures.OTHER_ID, SEEDED_ID, 1))
         assertNull(PendingComplaintAction.checked(Operation.EDIT_CONTENT, SEEDED_ID, Fixtures.ID, 1))
         assertNull(PendingComplaintAction.checked(Operation.EDIT_CONTENT, SEEDED_ID, null, null))

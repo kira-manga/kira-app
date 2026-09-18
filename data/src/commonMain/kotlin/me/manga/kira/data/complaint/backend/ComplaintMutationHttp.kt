@@ -20,7 +20,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.text.CharacterCodingException
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** Fixed CREATE/status client, borrowing only a separate mutation engine. No arbitrary authenticated work. */
+/** Closed report/reply/status client borrowing one mutation engine. No arbitrary authenticated work. */
 @OptIn(ExperimentalAtomicApi::class)
 internal class ComplaintMutationHttp(
     private val endpoint: ComplaintBackendEndpoint,
@@ -47,7 +47,7 @@ internal class ComplaintMutationHttp(
     ): ComplaintCreateHttpResult {
         currentCoroutineContext().ensureActive()
         refusal(request.pending, session)?.let { return ComplaintCreateHttpResult.Failed(request, it) }
-        val exchange = exchange(ComplaintMutationRoute.CREATE, session, request.pending, request.bodyBytes())
+        val exchange = exchange(request.route, session, request.pending, request.bodyBytes())
         val result =
             when (exchange) {
                 is MutationExchange.Received -> ComplaintMutationResponse.create(exchange.document, request)
@@ -136,7 +136,7 @@ internal class ComplaintMutationHttp(
         pending: PendingComplaintRecord,
         bytes: ByteArray,
     ): MutationExchange.Received {
-        val url = route.url(endpoint)
+        val url = route.url(endpoint, pending)
         return client
             .preparePost(url.toString()) {
                 headers {
@@ -144,7 +144,7 @@ internal class ComplaintMutationHttp(
                     append(HttpHeaders.AcceptEncoding, "identity")
                     append(HttpHeaders.CacheControl, "no-store, no-transform")
                     append(HttpHeaders.Authorization, session.authorizationValue())
-                    if (route == ComplaintMutationRoute.CREATE) {
+                    if (route != ComplaintMutationRoute.STATUS) {
                         append(Policy.IDEMPOTENCY_HEADER, pending.request.key)
                     }
                 }

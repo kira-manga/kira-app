@@ -25,7 +25,7 @@ interface ComplaintReportRepository {
     /** Manual retry of the same request/key only; missing pending metadata is not CREATE permission. */
     suspend fun retry(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt>
 
-    /** Metadata-only startup/manual recovery; never reconstructs prose or creates a report. */
+    /** Metadata-only report/reply recovery; never reconstructs prose or dispatches a creation. */
     suspend fun reconcile(): AppResult<ComplaintReportRecovery>
 
     /** Explicit cancellation of this exact still-PREPARED record; not coroutine cleanup. */

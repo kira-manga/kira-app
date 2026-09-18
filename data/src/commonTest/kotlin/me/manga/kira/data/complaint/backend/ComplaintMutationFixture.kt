@@ -29,7 +29,7 @@ import me.manga.kira.data.complaint.backend.InstallationCoordinatorFixtures as F
 internal class ComplaintMutationFixture(
     scope: TestScope,
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { request ->
-        if (request.url.encodedPath.endsWith(Policy.CREATE_PATH)) {
+        if (!request.url.encodedPath.endsWith(Policy.STATUS_PATH)) {
             respond(mutationAck(), HttpStatusCode.Created, mutationHeaders(HttpStatusCode.Created))
         } else {
             respond(mutationApplied(), HttpStatusCode.OK, mutationHeaders())
@@ -39,6 +39,8 @@ internal class ComplaintMutationFixture(
     val report = mutationReport()
     val pending = mutationPending(report)
     val create = assertNotNull(ComplaintCreateHttpRequest.checked(report, pending))
+    private val reply = mobileReplyRequest()
+    private val replyCreate = assertNotNull(ComplaintCreateHttpRequest.checked(reply, mutationPending(reply)))
     val status = assertNotNull(ComplaintCreateStatusRequest.checked(pending))
     val session = mutationSession()
     val requests = mutableListOf<HttpRequestData>()
@@ -55,6 +57,7 @@ internal class ComplaintMutationFixture(
     suspend fun call(route: ComplaintMutationRoute): Any =
         when (route) {
             ComplaintMutationRoute.CREATE -> http.create(create, session)
+            ComplaintMutationRoute.REPLY -> http.create(replyCreate, session)
             ComplaintMutationRoute.STATUS -> http.status(status, session)
         }
 
@@ -88,7 +91,7 @@ internal fun mutationReport(
     ).request
 
 internal fun mutationPending(
-    report: ComplaintReportRequest = mutationReport(),
+    report: ComplaintCreationRequest = mutationReport(),
     record: InstallationCredentialRecord = Fixtures.record(),
     dispatched: Boolean = true,
 ): PendingComplaintRecord {
@@ -112,22 +115,25 @@ private fun mutationBinding(record: InstallationCredentialRecord): PendingCompla
         ),
     )
 
-private fun mutationPendingRequest(report: ComplaintReportRequest): PendingComplaintRequest {
+private fun mutationPendingRequest(report: ComplaintCreationRequest): PendingComplaintRequest {
     val action =
         assertNotNull(
             PendingComplaintAction.checked(
-                PendingComplaintOperation.CREATE_REPORT,
+                if (report is ComplaintReplyRequest) {
+                    PendingComplaintOperation.CREATE_REPLY
+                } else {
+                    PendingComplaintOperation.CREATE_REPORT
+                },
                 report.identity.clientId.canonical,
-                null,
+                (report as? ComplaintReplyRequest)?.parentId,
                 null,
             ),
         )
-    val fingerprint = ComplaintReportFingerprint.of(report)
     return assertNotNull(
         PendingComplaintRequest.checked(
             action,
             report.identity.key.canonical,
-            assertNotNull(PendingComplaintFingerprint.checked(fingerprint.version, fingerprint.encoded)),
+            report.pendingFingerprint(),
         ),
     )
 }
@@ -158,8 +164,8 @@ internal fun mutationApplied(
         )
     }.toString()
 
-internal fun mutationRejected(code: ComplaintCreateRejection = COMPLAINT_CAPACITY_REACHED): String =
-    """{"outcome":"REJECTED","originalStatus":409,"problemCode":"${code.name}"}"""
+internal fun mutationRejected(code: ComplaintCreationRejection = COMPLAINT_CAPACITY_REACHED): String =
+    """{"outcome":"REJECTED","originalStatus":${code.status},"problemCode":"${code.wireCode}"}"""
 
 internal fun mutationProblem(
     status: HttpStatusCode,
@@ -239,7 +245,7 @@ private fun assertWithinMutationBoundary(
     when {
         status == HttpStatusCode.Created -> assertIs<ComplaintCreateHttpResult.Applied>(result)
         status == HttpStatusCode.OK -> assertIs<ComplaintCreateStatusHttpResult.Rejected>(result)
-        route == ComplaintMutationRoute.CREATE -> assertIs<ComplaintCreateHttpResult.HttpFailure>(result)
+        route != ComplaintMutationRoute.STATUS -> assertIs<ComplaintCreateHttpResult.HttpFailure>(result)
         else -> assertIs<ComplaintCreateStatusHttpResult.HttpFailure>(result)
     }
 }
@@ -248,7 +254,7 @@ internal suspend fun TestScope.assertMutationFailedEof(
     route: ComplaintMutationRoute,
     afterPrefix: Boolean,
 ) {
-    val text = if (route == ComplaintMutationRoute.CREATE) mutationAck() else mutationRejected()
+    val text = if (route != ComplaintMutationRoute.STATUS) mutationAck() else mutationRejected()
     val bytes = text.encodeToByteArray()
     for (declared in listOf(false, true)) {
         val channel = ComplaintFailedEofChannel(bytes, afterPrefix)

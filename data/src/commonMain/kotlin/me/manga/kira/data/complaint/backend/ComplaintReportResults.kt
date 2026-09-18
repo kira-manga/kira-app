@@ -9,10 +9,10 @@ import me.manga.kira.platform.storage.PendingComplaintSnapshot
 
 /** A result carries the original live object, never replacement IDs or reconstructed prose. */
 internal sealed interface ReportAttempt {
-    val liveReport: ComplaintReportRequest?
+    val liveReport: ComplaintCreationRequest?
 
     class Completed(
-        override val liveReport: ComplaintReportRequest?,
+        override val liveReport: ComplaintCreationRequest?,
         val application: ReportActionState,
     ) : ReportAttempt {
         override fun toString(): String = "ReportAttempt.Completed(redacted)"
@@ -20,7 +20,7 @@ internal sealed interface ReportAttempt {
 
     /** Uncertain writes may have changed storage; this is not an assertion that a slot is absent/present. */
     class Unresolved(
-        override val liveReport: ComplaintReportRequest?,
+        override val liveReport: ComplaintCreationRequest?,
         val failure: ReportFailure,
         val application: ReportActionState? = null,
         val pending: ReportPendingObservation? = null,

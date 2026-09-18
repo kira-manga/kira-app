@@ -6,9 +6,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
 /**
- * Owns only POST CREATE and operation-status at the exact HTTPS [createUrl] origin/base prefix.
- * [createUrl] must end in `/api/v1/complaints`, without credentials/query/fragment. Status is
- * derived under that same checked base. Invalid targets return null before native allocation.
+ * Owns only POST report/reply and operation-status at the exact HTTPS [createUrl] origin/base prefix.
+ * [createUrl] must end in `/api/v1/complaints`, without credentials/query/fragment. Status and
+ * canonical parent reply paths are derived under that base. Invalid bases allocate nothing.
  * No configured client, trust override, retries, redirect policy or activation is accepted.
  */
 fun createAndroidComplaintMutationEngineOwner(createUrl: Url): ComplaintSessionEngineOwner? {

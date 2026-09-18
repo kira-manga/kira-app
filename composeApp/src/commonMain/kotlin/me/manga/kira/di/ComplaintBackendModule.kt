@@ -14,6 +14,7 @@ import me.manga.kira.domain.repository.ComplaintActionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
+import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.DeleteComplaintUseCase
 import me.manga.kira.domain.usecase.complaint.EditComplaintUseCase
@@ -25,12 +26,14 @@ import me.manga.kira.domain.usecase.feedback.CancelPreparedComplaintReportUseCas
 import me.manga.kira.domain.usecase.feedback.ComplaintInstallationActions
 import me.manga.kira.domain.usecase.feedback.ComplaintInstallationDeletionActions
 import me.manga.kira.domain.usecase.feedback.ComplaintInstallationRecoveryActions
+import me.manga.kira.domain.usecase.feedback.ComplaintReplyActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportActions
 import me.manga.kira.domain.usecase.feedback.ComplaintReportRecoveryActions
 import me.manga.kira.domain.usecase.feedback.ConfirmComplaintInstallationDeletionUseCase
 import me.manga.kira.domain.usecase.feedback.ConfirmComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.ContinueComplaintInstallationDeletionUseCase
 import me.manga.kira.domain.usecase.feedback.ObserveComplaintInstallationDeletionUseCase
+import me.manga.kira.domain.usecase.feedback.PrepareComplaintReplyUseCase
 import me.manga.kira.domain.usecase.feedback.PrepareComplaintReportUseCase
 import me.manga.kira.domain.usecase.feedback.ReconcileComplaintReportsUseCase
 import me.manga.kira.domain.usecase.feedback.RequestComplaintDeletionAbandonmentUseCase
@@ -38,7 +41,9 @@ import me.manga.kira.domain.usecase.feedback.RequestComplaintInstallationDeletio
 import me.manga.kira.domain.usecase.feedback.RequestComplaintReportRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.RequestUnreadableComplaintRecoveryUseCase
 import me.manga.kira.domain.usecase.feedback.ResumeComplaintInstallationCleanupUseCase
+import me.manga.kira.domain.usecase.feedback.RetryComplaintReplyUseCase
 import me.manga.kira.domain.usecase.feedback.RetryComplaintReportUseCase
+import me.manga.kira.domain.usecase.feedback.SubmitComplaintReplyUseCase
 import me.manga.kira.domain.usecase.feedback.SubmitComplaintReportUseCase
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
 import me.manga.kira.platform.storage.InstallationCredentialStore
@@ -179,6 +184,7 @@ internal class ComplaintBackendGraph(
 ) {
     private val closed = AtomicBoolean(false)
     val history: ComplaintListRepository get() = owner.history
+    val replies: ComplaintReplyRepository get() = checkNotNull(owner.replies)
 
     /** Install only in an isolated candidate Koin graph; never append over legacy-backed writes. */
     fun module(): Module =
@@ -187,6 +193,7 @@ internal class ComplaintBackendGraph(
             single<ComplaintListRepository> { get<ComplaintBackendGraph>().history }
             single<ComplaintActionRepository> { ReadOnlyComplaintActionRepository() }
             single<ComplaintReportRepository> { get<ComplaintBackendGraph>().reports }
+            single<ComplaintReplyRepository> { get<ComplaintBackendGraph>().replies }
             single<ComplaintInstallationRecoveryRepository> { get<ComplaintBackendGraph>().installationRecovery }
             single<ComplaintInstallationDeletionRepository> { get<ComplaintBackendGraph>().installationDeletion }
             factory { ObserveUserComplaintsUseCase(get()) }
@@ -196,6 +203,9 @@ internal class ComplaintBackendGraph(
             factory { PrepareComplaintReportUseCase(get()) }
             factory { SubmitComplaintReportUseCase(get()) }
             factory { RetryComplaintReportUseCase(get()) }
+            factory { PrepareComplaintReplyUseCase(get()) }
+            factory { SubmitComplaintReplyUseCase(get()) }
+            factory { RetryComplaintReplyUseCase(get()) }
             factory { ReconcileComplaintReportsUseCase(get()) }
             factory { CancelPreparedComplaintReportUseCase(get()) }
             factory { RequestComplaintReportRecoveryUseCase(get()) }
@@ -210,6 +220,7 @@ internal class ComplaintBackendGraph(
             factory { ConfirmComplaintInstallationDeletionUseCase(get()) }
             factory { ContinueComplaintInstallationDeletionUseCase(get()) }
             factory { ComplaintReportActions(prepare = get(), submit = get(), retry = get()) }
+            factory { ComplaintReplyActions(prepare = get(), submit = get(), retry = get()) }
             factory {
                 ComplaintReportRecoveryActions(
                     reconcile = get(),

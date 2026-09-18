@@ -5,7 +5,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** Closed CREATE matrices only; decoded facts do not replace coordinator-owned slot/lifetime checks. */
+/** Closed report/reply matrices; decoded facts never replace coordinator-owned slot/lifetime checks. */
 internal object ComplaintMutationResponse {
     fun create(
         document: ComplaintMutationDocument,
@@ -19,7 +19,7 @@ internal object ComplaintMutationResponse {
                 ComplaintCreateHttpResult.HttpFailure(
                     request,
                     document.status,
-                    ComplaintMutationProblemReader.read(document.text, document.status),
+                    problem(document, request.pending.request.action.operation),
                 )
             }
         } catch (_: InvalidComplaintHistory) {
@@ -43,7 +43,7 @@ internal object ComplaintMutationResponse {
                 ComplaintCreateStatusHttpResult.HttpFailure(
                     request,
                     document.status,
-                    ComplaintMutationProblemReader.read(document.text, document.status),
+                    problem(document, request.pending.request.action.operation),
                 )
             }
         } catch (_: InvalidComplaintHistory) {
@@ -75,6 +75,7 @@ internal object ComplaintMutationResponse {
                 request.pending.request.action.targetId,
                 document.location ?: invalidHistory(),
                 document.etag ?: invalidHistory(),
+                request.pending.request.action.operation,
             ),
         )
 
@@ -92,6 +93,7 @@ internal object ComplaintMutationResponse {
                 request.pending.request.action.targetId,
                 root.historyString("location"),
                 root.historyString("etag"),
+                request.pending.request.action.operation,
             ),
         )
     }
@@ -100,24 +102,35 @@ internal object ComplaintMutationResponse {
         root: JsonObject,
         request: ComplaintCreateStatusRequest,
     ): ComplaintCreateStatusHttpResult.Rejected {
-        if (root.keys != REJECTED_FIELDS || root.number("originalStatus") != HttpStatusCode.Conflict.value.toLong()) {
-            invalidHistory()
-        }
-        val code =
-            ComplaintCreateRejection.entries.singleOrNull { it.name == root.historyString("problemCode") }
+        if (root.keys != REJECTED_FIELDS) invalidHistory()
+        val token = root.historyString("problemCode")
+        val code: ComplaintCreationRejection =
+            ComplaintCreateRejection.entries.singleOrNull { it.wireCode == token }
+                ?: ComplaintReplyRejection.entries.singleOrNull {
+                    request.pending.request.action.operation == PendingComplaintOperation.CREATE_REPLY &&
+                        it.wireCode == token
+                }
                 ?: invalidHistory()
+        if (root.number("originalStatus") != code.status.toLong()) invalidHistory()
         return ComplaintCreateStatusHttpResult.Rejected(request, code)
     }
+
+    private fun problem(
+        document: ComplaintMutationDocument,
+        operation: PendingComplaintOperation,
+    ): ComplaintMutationProblem? = ComplaintMutationProblemReader.read(document.text, document.status, operation)
 
     private fun acknowledgement(
         root: JsonObject,
         expectedId: String,
         location: String,
         etag: String,
+        operation: PendingComplaintOperation,
     ): ComplaintCreateAcknowledgement {
         if (root.keys != ACKNOWLEDGEMENT_FIELDS || root.historyString("id") != expectedId) invalidHistory()
         val version = root.number("version")
         if (version < 1 ||
+            (operation == PendingComplaintOperation.CREATE_REPLY && version != 1L) ||
             location != "${Policy.CREATE_PATH}/$expectedId" ||
             etag != "\"complaint-$expectedId-v$version\""
         ) {

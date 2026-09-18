@@ -9,6 +9,7 @@ internal class ComplaintMutationTarget private constructor(
 ) {
     private val host = createUrl.host.removeSurrounding("[", "]").lowercase()
     private val statusPath = createUrl.encodedPath.removeSuffix(Policy.CREATE_PATH) + Policy.STATUS_PATH
+    private val replyPrefix = "${createUrl.encodedPath}/"
 
     @Suppress("ReturnCount")
     fun route(value: String): ComplaintMutationRoute? {
@@ -20,14 +21,21 @@ internal class ComplaintMutationTarget private constructor(
         return when (candidate.encodedPath) {
             createUrl.encodedPath -> ComplaintMutationRoute.CREATE
             statusPath -> ComplaintMutationRoute.STATUS
-            else -> null
+            else -> if (isReplyPath(candidate.encodedPath)) ComplaintMutationRoute.REPLY else null
         }
     }
 
     fun sameRoute(
         requestUrl: String,
         responseUrl: String,
-    ): Boolean = route(requestUrl)?.let { it == route(responseUrl) } == true
+    ): Boolean =
+        route(requestUrl)?.let {
+            it == route(responseUrl) && parse(requestUrl)?.encodedPath == parse(responseUrl)?.encodedPath
+        } == true
+
+    private fun isReplyPath(path: String): Boolean =
+        path.startsWith(replyPrefix) && path.endsWith(Policy.REPLIES_SUFFIX) &&
+            CANONICAL_PARENT.matches(path.removePrefix(replyPrefix).removeSuffix(Policy.REPLIES_SUFFIX))
 
     private fun sameOrigin(candidate: Url): Boolean =
         candidate.protocol == createUrl.protocol &&
@@ -41,7 +49,11 @@ internal class ComplaintMutationTarget private constructor(
 
     companion object {
         private const val MAX_BASE_CHARACTERS = 2_048
-        private val MAX_TARGET_CHARACTERS = MAX_BASE_CHARACTERS + Policy.STATUS_PATH.length
+        private const val UUID_CHARACTERS = 36
+        private val MAX_TARGET_CHARACTERS =
+            MAX_BASE_CHARACTERS +
+                maxOf(Policy.STATUS_PATH.length, Policy.CREATE_PATH.length + 1 + UUID_CHARACTERS + Policy.REPLIES_SUFFIX.length)
+        private val CANONICAL_PARENT = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
         fun checked(createUrl: Url): ComplaintMutationTarget? =
             ComplaintHistoryTarget.checked(createUrl)?.let { ComplaintMutationTarget(createUrl) }
@@ -57,4 +69,4 @@ internal class ComplaintMutationTarget private constructor(
     }
 }
 
-internal enum class ComplaintMutationRoute { CREATE, STATUS }
+internal enum class ComplaintMutationRoute { CREATE, REPLY, STATUS }

@@ -36,7 +36,11 @@ internal fun iosMutationTestRequest(
     }
 
 internal fun iosMutationTestUrl(route: ComplaintMutationRoute): String =
-    if (route == ComplaintMutationRoute.CREATE) IOS_MUTATION_CREATE_URL else IOS_MUTATION_STATUS_URL
+    when (route) {
+        ComplaintMutationRoute.CREATE -> IOS_MUTATION_CREATE_URL
+        ComplaintMutationRoute.REPLY -> "$IOS_MUTATION_CREATE_URL/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
+        ComplaintMutationRoute.STATUS -> IOS_MUTATION_STATUS_URL
+    }
 
 internal const val IOS_MUTATION_CREATE_URL = "https://example.invalid" + Policy.CREATE_PATH
 internal const val IOS_MUTATION_STATUS_URL = "https://example.invalid" + Policy.STATUS_PATH

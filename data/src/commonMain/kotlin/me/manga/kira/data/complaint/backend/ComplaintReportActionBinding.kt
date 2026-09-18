@@ -6,12 +6,12 @@ import me.manga.kira.platform.storage.PendingComplaintSlot
 /** Live normalized prose is never reconstructed from a retained slot or written to platform storage. */
 internal sealed interface ReportStart {
     class New(
-        val report: ComplaintReportRequest,
+        val report: ComplaintCreationRequest,
     ) : ReportStart
 
     class Retained(
         val slot: PendingComplaintSlot,
-        val liveReport: ComplaintReportRequest? = null,
+        val liveReport: ComplaintCreationRequest? = null,
     ) : ReportStart
 }
 
@@ -21,7 +21,7 @@ internal enum class ReportActionStage { NEW, PREPARED, MAY_HAVE_DISPATCHED, COMP
 internal class ReportActionBinding(
     val permit: ReconciliationPermit,
     val work: ReportWork,
-    val liveReport: ComplaintReportRequest?,
+    val liveReport: ComplaintCreationRequest?,
     val observation: ReportActionObservation,
 ) {
     val slot: PendingComplaintSlot? get() = observation.slot
@@ -92,7 +92,7 @@ internal sealed interface ReportActionState {
     }
 
     class Rejected(
-        val code: ComplaintCreateRejection,
+        val code: ComplaintCreationRejection,
     ) : ReportActionState
 }
 

@@ -3,8 +3,32 @@ package me.manga.kira.data.complaint.backend
 /** Content-free transport failures; none permits pending deletion, identity replacement or implicit retry. */
 internal enum class ComplaintMutationFailure { CLOSED, TRANSPORT, TIMEOUT, INVALIDATED, RESPONSE }
 
-/** Only these two CREATE terminal receipt outcomes are allowed by the frozen protocol. */
-internal enum class ComplaintCreateRejection { COMPLAINT_CAPACITY_REACHED, COMPLAINT_RESOURCE_ID_REUSED }
+/** Content-free terminal receipts. Report decoding never accepts a reply-only rejection. */
+internal sealed interface ComplaintCreationRejection {
+    val wireCode: String
+    val status: Int
+}
+
+/** These two terminal receipt outcomes apply to either creation variant. */
+internal enum class ComplaintCreateRejection : ComplaintCreationRejection {
+    COMPLAINT_CAPACITY_REACHED,
+    COMPLAINT_RESOURCE_ID_REUSED,
+    ;
+
+    override val wireCode: String get() = name
+    override val status: Int get() = CONFLICT
+}
+
+/** Hidden and missing parents intentionally share one reply-only outcome. */
+internal enum class ComplaintReplyRejection(
+    override val status: Int,
+) : ComplaintCreationRejection {
+    COMPLAINT_PARENT_NOT_FOUND(NOT_FOUND),
+    COMPLAINT_DELETION_PENDING(CONFLICT),
+    ;
+
+    override val wireCode: String get() = name
+}
 
 /** Minimal acknowledgement, not an owner row, action tag, or a current-resource version observation. */
 internal class ComplaintCreateAcknowledgement(
@@ -56,7 +80,7 @@ internal sealed interface ComplaintCreateStatusHttpResult {
 
     class Rejected(
         override val request: ComplaintCreateStatusRequest,
-        val code: ComplaintCreateRejection,
+        val code: ComplaintCreationRejection,
     ) : ComplaintCreateStatusHttpResult {
         override fun toString(): String = "ComplaintCreateStatusHttpResult.Rejected($code)"
     }
@@ -76,3 +100,6 @@ internal sealed interface ComplaintCreateStatusHttpResult {
         override fun toString(): String = "ComplaintCreateStatusHttpResult.Failed($reason)"
     }
 }
+
+private const val NOT_FOUND = 404
+private const val CONFLICT = 409

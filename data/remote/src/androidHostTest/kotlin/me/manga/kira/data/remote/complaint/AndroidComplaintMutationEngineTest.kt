@@ -41,13 +41,19 @@ class AndroidComplaintMutationEngineTest {
                     assertEquals("accepted", fixture.exchange(route, Policy.MAX_REQUEST_BYTES).body)
                     val request = assertNotNull(fixture.server.takeRequest(1, TimeUnit.SECONDS))
                     assertEquals("POST", request.method)
-                    val path = if (route == ComplaintMutationRoute.CREATE) Policy.CREATE_PATH else Policy.STATUS_PATH
+                    val path =
+                        when (route) {
+                            ComplaintMutationRoute.CREATE -> Policy.CREATE_PATH
+                            ComplaintMutationRoute.REPLY ->
+                                "${Policy.CREATE_PATH}/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
+                            ComplaintMutationRoute.STATUS -> Policy.STATUS_PATH
+                        }
                     assertEquals("/base_1/v2$path", request.target)
                     assertEquals(Policy.MAX_REQUEST_BYTES.toLong(), request.bodySize)
                     assertEquals(MUTATION_TEST_AUTHORIZATION, request.headers["Authorization"])
                     assertEquals("identity", request.headers["Accept-Encoding"])
                     assertEquals("ktor-client", request.headers["User-Agent"])
-                    val key = if (route == ComplaintMutationRoute.CREATE) MUTATION_TEST_KEY else null
+                    val key = if (route != ComplaintMutationRoute.STATUS) MUTATION_TEST_KEY else null
                     assertEquals(key, request.headers[Policy.IDEMPOTENCY_HEADER])
                     listOf("If-Match", "Cookie", "Proxy-Authorization", "Content-Encoding", "Transfer-Encoding")
                         .forEach { assertNull(request.headers[it]) }

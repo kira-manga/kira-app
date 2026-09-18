@@ -3,6 +3,7 @@ package me.manga.kira.data.complaint.backend
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -74,6 +75,31 @@ class ComplaintMutationResponseTest {
     }
 
     @Test
+    fun existingReportDeletionProblemStaysGenericWithoutBecomingAnAllowedTerminalReceipt() {
+        val report = mutationReport()
+        val pending = mutationPending(report)
+        val create = assertNotNull(ComplaintCreateHttpRequest.checked(report, pending))
+        val status = assertNotNull(ComplaintCreateStatusRequest.checked(pending))
+        val document =
+            ComplaintMutationDocument(
+                409,
+                mutationProblem(HttpStatusCode.Conflict, "COMPLAINT_DELETION_PENDING"),
+                null,
+                null,
+            )
+        val direct = assertIs<ComplaintCreateHttpResult.HttpFailure>(ComplaintMutationResponse.create(document, create))
+        val lookup =
+            assertIs<ComplaintCreateStatusHttpResult.HttpFailure>(ComplaintMutationResponse.status(document, status))
+        assertNull(direct.problem)
+        assertNull(lookup.problem)
+        val receipt = mutationRejected(ComplaintReplyRejection.COMPLAINT_DELETION_PENDING)
+        assertMutationFailure(
+            ComplaintMutationFailure.RESPONSE,
+            ComplaintMutationResponse.status(ComplaintMutationDocument(200, receipt, null, null), status),
+        )
+    }
+
+    @Test
     fun requestFactoriesRequireDispatchedCreateAndTheExactImmutableNormalizedTuple() {
         val report = mutationReport()
         val pending = mutationPending(report)
@@ -94,7 +120,7 @@ class ComplaintMutationResponseTest {
         for (mismatch in changed) assertNull(ComplaintCreateHttpRequest.checked(mismatch, pending))
         val reply = replyPending(pending)
         assertNull(ComplaintCreateHttpRequest.checked(report, reply))
-        assertNull(ComplaintCreateStatusRequest.checked(reply))
+        assertNotNull(ComplaintCreateStatusRequest.checked(reply))
     }
 }
 

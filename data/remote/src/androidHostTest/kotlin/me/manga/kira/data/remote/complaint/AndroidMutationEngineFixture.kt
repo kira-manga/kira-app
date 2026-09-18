@@ -61,7 +61,13 @@ internal class AndroidMutationEngineFixture(
         val request =
             HttpRequestBuilder().apply {
                 method = HttpMethod.Post
-                url(if (route == ComplaintMutationRoute.CREATE) createUrl.toString() else statusUrl.toString())
+                url(
+                    when (route) {
+                        ComplaintMutationRoute.CREATE -> createUrl.toString()
+                        ComplaintMutationRoute.REPLY -> "$createUrl/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
+                        ComplaintMutationRoute.STATUS -> statusUrl.toString()
+                    },
+                )
                 mutationTestHeaders(route).filterNot { it.first == "Content-Type" }.forEach { (name, value) ->
                     headers.append(name, value)
                 }

@@ -2,6 +2,7 @@ package me.manga.kira.data.complaint.backend
 
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Confirmation
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
+import me.manga.kira.domain.model.feedback.ComplaintLiveReply
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintRecoveryPrompt
@@ -23,11 +24,11 @@ internal class ReportConsumerIssuer {
 
 /** The handle itself retains the exact immutable normalized request; the singleton stores no prose map. */
 @OptIn(ExperimentalAtomicApi::class)
-internal class ReportLiveHandle(
+internal sealed class ComplaintCreationLiveHandle(
     val issuer: ReportConsumerIssuer,
-    val request: ComplaintReportRequest,
     val origin: ReconciliationPermit,
-) : ComplaintLiveReport {
+) {
+    abstract val request: ComplaintCreationRequest
     private val submitted = AtomicBoolean(false)
     private val completed = AtomicBoolean(false)
     private val application = AtomicReference<ComplaintReportApplication?>(null)
@@ -50,7 +51,25 @@ internal class ReportLiveHandle(
             }
         }
 
+    override fun toString(): String = "ComplaintLiveCreation(redacted)"
+}
+
+internal class ReportLiveHandle(
+    issuer: ReportConsumerIssuer,
+    override val request: ComplaintReportRequest,
+    origin: ReconciliationPermit,
+) : ComplaintCreationLiveHandle(issuer, origin),
+    ComplaintLiveReport {
     override fun toString(): String = "ComplaintLiveReport(redacted)"
+}
+
+internal class ReplyLiveHandle(
+    issuer: ReportConsumerIssuer,
+    override val request: ComplaintReplyRequest,
+    origin: ReconciliationPermit,
+) : ComplaintCreationLiveHandle(issuer, origin),
+    ComplaintLiveReply {
+    override fun toString(): String = "ComplaintLiveReply(redacted)"
 }
 
 internal class ReportPendingHandle(

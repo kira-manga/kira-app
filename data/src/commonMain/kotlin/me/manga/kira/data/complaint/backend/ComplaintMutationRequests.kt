@@ -7,14 +7,26 @@ import kotlinx.serialization.json.put
 
 /** Structural binding only. The coordinator must finish MAY commit/readback before calling checked. */
 internal class ComplaintCreateHttpRequest private constructor(
-    val report: ComplaintReportRequest,
+    val report: ComplaintCreationRequest,
     val pending: PendingComplaintRecord,
 ) {
+    val route: ComplaintMutationRoute
+        get() =
+            when (report) {
+                is ComplaintReportRequest -> ComplaintMutationRoute.CREATE
+                is ComplaintReplyRequest -> ComplaintMutationRoute.REPLY
+            }
+
     internal fun bodyBytes(): ByteArray =
         buildJsonObject {
             put("id", report.identity.clientId.canonical)
-            put("type", report.type.name)
-            put("subject", report.subject)
+            when (report) {
+                is ComplaintReportRequest -> {
+                    put("type", report.type.name)
+                    put("subject", report.subject)
+                }
+                is ComplaintReplyRequest -> Unit
+            }
             put("body", report.body)
             put(
                 "metadata",
@@ -31,11 +43,11 @@ internal class ComplaintCreateHttpRequest private constructor(
 
     companion object {
         fun checked(
-            report: ComplaintReportRequest,
+            report: ComplaintCreationRequest,
             pending: PendingComplaintRecord,
         ): ComplaintCreateHttpRequest? {
-            if (!pending.isDispatchedCreate() || !pending.matchesReportIdentity(report)) return null
-            val fingerprint = ComplaintReportFingerprint.of(report)
+            if (!pending.isDispatchedCreation() || !pending.matchesCreationIdentity(report)) return null
+            val fingerprint = report.pendingFingerprint()
             return if (pending.request.fingerprint.version == fingerprint.version &&
                 pending.request.fingerprint.encoded == fingerprint.encoded
             ) {
@@ -53,9 +65,12 @@ internal class ComplaintCreateStatusRequest private constructor(
 ) {
     internal fun bodyBytes(): ByteArray =
         buildJsonObject {
-            put("operation", "OWNER_CREATE")
+            put("operation", checkNotNull(pending.request.action.creationOperation()).name)
             put("key", pending.request.key)
-            put("targetIds", buildJsonArray { add(JsonPrimitive(pending.request.action.targetId)) })
+            put(
+                "targetIds",
+                buildJsonArray { pending.request.action.orderedTargetIds().forEach { add(JsonPrimitive(it)) } },
+            )
             put("fingerprint", pending.request.fingerprint.encoded)
         }.toString().encodeToByteArray()
 
@@ -63,21 +78,29 @@ internal class ComplaintCreateStatusRequest private constructor(
 
     companion object {
         fun checked(pending: PendingComplaintRecord): ComplaintCreateStatusRequest? =
-            if (pending.isDispatchedCreate()) ComplaintCreateStatusRequest(pending) else null
+            if (pending.isDispatchedCreation()) ComplaintCreateStatusRequest(pending) else null
     }
 }
 
-private fun PendingComplaintRecord.isDispatchedCreate(): Boolean =
+private fun PendingComplaintRecord.isDispatchedCreation(): Boolean =
     state == PendingComplaintState.MAY_HAVE_DISPATCHED &&
-        request.action.operation == PendingComplaintOperation.CREATE_REPORT &&
-        request.action.parentId == null &&
+        request.action.creationOperation() != null &&
         request.action.expectedVersion == null &&
         request.fingerprint.version == 1
 
-private fun PendingComplaintRecord.matchesReportIdentity(report: ComplaintReportRequest): Boolean =
+private fun PendingComplaintRecord.matchesCreationIdentity(report: ComplaintCreationRequest): Boolean =
     binding.dataScopeId == report.identity.dataScopeId &&
+        request.action.creationOperation() == report.operation &&
         request.action.targetId == report.identity.clientId.canonical &&
+        request.action.parentId == (report as? ComplaintReplyRequest)?.parentId &&
         request.key == report.identity.key.canonical
+
+internal fun PendingComplaintAction.creationOperation(): ComplaintReportOperation? =
+    when (operation) {
+        PendingComplaintOperation.CREATE_REPORT -> ComplaintReportOperation.OWNER_CREATE
+        PendingComplaintOperation.CREATE_REPLY -> ComplaintReportOperation.OWNER_REPLY
+        PendingComplaintOperation.EDIT_CONTENT, PendingComplaintOperation.DELETE_OWNED -> null
+    }
 
 /** This is equality, not freshness, authenticated authority, or durable-slot admission. */
 internal fun PendingComplaintBinding.matchesMutationSession(session: ComplaintSessionResponse): Boolean =

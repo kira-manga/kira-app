@@ -7,6 +7,7 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
+import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
 import me.manga.kira.platform.storage.InstallationCredentialStore
@@ -28,6 +29,9 @@ class ComplaintBackendOwner private constructor(
 
     /** Same concrete report consumer and issuer; no second coordinator or credential authority. */
     val installationRecovery: ComplaintInstallationRecoveryRepository? get() = installationPorts.recovery
+
+    /** Same concrete consumer/issuer and mutation lane as reports; never a legacy action adapter. */
+    val replies: ComplaintReplyRepository? get() = installationPorts.replies
 
     /** Explicit delete-all producer, absent unless a separate fixed-route engine was supplied. */
     val deletion: ComplaintInstallationDeletionRepository? get() = installationPorts.deletion
@@ -87,7 +91,7 @@ class ComplaintBackendOwner private constructor(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
                         reports,
-                        ComplaintInstallationPorts(reports, deletion),
+                        ComplaintInstallationPorts(reports, deletion, reports),
                         close.toList(),
                     ),
                 )
@@ -111,6 +115,7 @@ class ComplaintBackendOwner private constructor(
 private class ComplaintInstallationPorts(
     val recovery: ComplaintInstallationRecoveryRepository?,
     val deletion: ComplaintInstallationDeletionRepository?,
+    val replies: ComplaintReplyRepository?,
 )
 
 /** Construct and register the optional consumer together; failure still unwinds through the owner. */

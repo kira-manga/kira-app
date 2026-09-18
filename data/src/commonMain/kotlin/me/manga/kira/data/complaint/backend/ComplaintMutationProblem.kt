@@ -12,6 +12,8 @@ internal enum class ComplaintMutationProblem {
     IDEMPOTENCY_IN_PROGRESS,
     COMPLAINT_CAPACITY_REACHED,
     COMPLAINT_RESOURCE_ID_REUSED,
+    COMPLAINT_PARENT_NOT_FOUND,
+    COMPLAINT_DELETION_PENDING,
 }
 
 /** Reuses the accepted common ApiError grammar; new mutation codes require one exact bounded error. */
@@ -19,9 +21,26 @@ internal object ComplaintMutationProblemReader {
     fun read(
         text: String,
         status: Int,
+        operation: PendingComplaintOperation,
     ): ComplaintMutationProblem? {
-        if (ComplaintHistoryProblem.valid(text, status)) return null
+        val common = ComplaintHistoryProblem.valid(text, status)
+        if (common && operation != PendingComplaintOperation.CREATE_REPLY) return null
         val root = ComplaintHistoryJson(text, ComplaintMutationTransportPolicy.MAX_STATUS_OR_PROBLEM_BYTES).read()
+        // Deletion-pending was already a generic report error. Only reply adds this typed 409 fact.
+        if (common && !isReplyDeletion(root)) return null
+        val code = specific(root, status)
+        if (operation != PendingComplaintOperation.CREATE_REPLY &&
+            code == ComplaintMutationProblem.COMPLAINT_PARENT_NOT_FOUND
+        ) {
+            invalidHistory()
+        }
+        return code
+    }
+
+    private fun specific(
+        root: JsonObject,
+        status: Int,
+    ): ComplaintMutationProblem {
         if (root.keys != ROOT_FIELDS ||
             root.historyString("type") != "about:blank" ||
             root.number("status") != status.toLong()
@@ -30,13 +49,21 @@ internal object ComplaintMutationProblemReader {
         }
         val code = code(root)
         val expected =
-            if (code == ComplaintMutationProblem.OPERATION_NOT_FOUND) {
+            if (code == ComplaintMutationProblem.OPERATION_NOT_FOUND ||
+                code == ComplaintMutationProblem.COMPLAINT_PARENT_NOT_FOUND
+            ) {
                 HttpStatusCode.NotFound
             } else {
                 HttpStatusCode.Conflict
             }
         if (status != expected.value || root.historyString("title") != expected.description) invalidHistory()
         return code
+    }
+
+    private fun isReplyDeletion(root: JsonObject): Boolean {
+        val errors = root["errors"] as? JsonArray ?: return false
+        val error = errors.singleOrNull() as? JsonObject ?: return false
+        return error.historyString("code") == ComplaintMutationProblem.COMPLAINT_DELETION_PENDING.name
     }
 
     private fun code(root: JsonObject): ComplaintMutationProblem {

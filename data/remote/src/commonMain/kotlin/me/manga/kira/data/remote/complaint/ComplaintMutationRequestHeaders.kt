@@ -48,7 +48,7 @@ internal object ComplaintMutationRequestHeaders {
         values: List<String>,
     ): Boolean =
         when (route) {
-            ComplaintMutationRoute.CREATE -> values.size == 1 && KEY.matches(values.single())
+            ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY -> values.size == 1 && KEY.matches(values.single())
             ComplaintMutationRoute.STATUS -> values.isEmpty()
         }
 

@@ -27,8 +27,13 @@ class ComplaintReportFailure(
     override fun toString(): String = "ComplaintReportFailure(redacted)"
 }
 
-/** Terminal receipt rejection, not a transport error or a reason for automatic resubmission. */
-enum class ComplaintReportReceiptRejection { COMPLAINT_CAPACITY_REACHED, COMPLAINT_RESOURCE_ID_REUSED }
+/** Terminal creation receipt, including reply observations in the shared metadata-only recovery pass. */
+enum class ComplaintReportReceiptRejection {
+    COMPLAINT_CAPACITY_REACHED,
+    COMPLAINT_RESOURCE_ID_REUSED,
+    COMPLAINT_PARENT_NOT_FOUND,
+    COMPLAINT_DELETION_PENDING,
+}
 
 /** Acknowledgement facts only; an applied ID/version is not a current history row or edit/delete tag. */
 sealed interface ComplaintReportApplication {
