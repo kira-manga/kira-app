@@ -2,14 +2,15 @@ package me.manga.kira.data.remote.complaint
 
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** Only direct report/reply201 JSON can exceed the accepted installation/problem budget. */
+/** Only direct creation201 or edit200 JSON can exceed the accepted installation/problem budget. */
 internal class ComplaintMutationReceiveBudget private constructor(
+    private val maximum: Int,
     private val declaredLength: Int?,
 ) : ComplaintReceiveBudget {
     override var receivedBytes: Int = 0
         private set
 
-    override val remainingBytes: Int get() = Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES - receivedBytes
+    override val remainingBytes: Int get() = maximum - receivedBytes
 
     override fun accept(byteCount: ULong): Boolean {
         if (byteCount > remainingBytes.toULong()) return false
@@ -21,6 +22,7 @@ internal class ComplaintMutationReceiveBudget private constructor(
 
     companion object {
         private const val CREATED = 201L
+        private const val OK = 200L
         private const val MAX_HEADER_CHARACTERS = 128
         private val JSON = Regex("application/json(?:; *charset=(?:utf-8|\"utf-8\"))?", RegexOption.IGNORE_CASE)
 
@@ -28,12 +30,20 @@ internal class ComplaintMutationReceiveBudget private constructor(
             route: ComplaintMutationRoute,
             status: Long,
             headers: ComplaintMutationResponseHeaders,
-        ): ComplaintReceiveBudget? =
-            if (route != ComplaintMutationRoute.STATUS && status == CREATED && isJson(headers.media)) {
-                acknowledgementBudget(headers.encoding, headers.length, headers.transfer)
+        ): ComplaintReceiveBudget? {
+            val maximum =
+                when (route) {
+                    ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY ->
+                        Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES.takeIf { status == CREATED }
+                    ComplaintMutationRoute.EDIT -> Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES.takeIf { status == OK }
+                    ComplaintMutationRoute.STATUS -> null
+                }
+            return if (maximum != null && isJson(headers.media)) {
+                acknowledgementBudget(headers.encoding, headers.length, headers.transfer, maximum)
             } else {
                 ComplaintSessionReceiveBudget.checked(headers.encoding, headers.length, headers.transfer)
             }
+        }
 
         private fun isJson(media: List<String>): Boolean =
             media.size == 1 && media.single().length <= MAX_HEADER_CHARACTERS && JSON.matches(media.single())
@@ -42,22 +52,26 @@ internal class ComplaintMutationReceiveBudget private constructor(
             encoding: List<String>,
             length: List<String>,
             transfer: List<String>,
+            maximum: Int,
         ): ComplaintMutationReceiveBudget? =
             when {
                 !listOf(encoding, length, transfer).all(::singleBoundedHeader) -> null
                 encoding.isNotEmpty() && !encoding.single().equals("identity", ignoreCase = true) -> null
                 transfer.isNotEmpty() &&
                     (length.isNotEmpty() || !transfer.single().equals("chunked", ignoreCase = true)) -> null
-                length.isEmpty() -> ComplaintMutationReceiveBudget(null)
-                else -> declaredBudget(length.single())
+                length.isEmpty() -> ComplaintMutationReceiveBudget(maximum, null)
+                else -> declaredBudget(length.single(), maximum)
             }
 
-        private fun declaredBudget(value: String): ComplaintMutationReceiveBudget? =
+        private fun declaredBudget(
+            value: String,
+            maximum: Int,
+        ): ComplaintMutationReceiveBudget? =
             value
                 .takeIf { it.isNotEmpty() && it.all { character -> character in '0'..'9' } }
                 ?.toIntOrNull()
-                ?.takeIf { it in 0..Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES }
-                ?.let(::ComplaintMutationReceiveBudget)
+                ?.takeIf { it in 0..maximum }
+                ?.let { ComplaintMutationReceiveBudget(maximum, it) }
 
         private fun singleBoundedHeader(values: List<String>): Boolean =
             values.size <= 1 && values.all { it.length <= MAX_HEADER_CHARACTERS }

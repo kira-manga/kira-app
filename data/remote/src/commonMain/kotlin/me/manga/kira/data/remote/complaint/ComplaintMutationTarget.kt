@@ -21,9 +21,21 @@ internal class ComplaintMutationTarget private constructor(
         return when (candidate.encodedPath) {
             createUrl.encodedPath -> ComplaintMutationRoute.CREATE
             statusPath -> ComplaintMutationRoute.STATUS
-            else -> if (isReplyPath(candidate.encodedPath)) ComplaintMutationRoute.REPLY else null
+            else ->
+                when {
+                    isReplyPath(candidate.encodedPath) -> ComplaintMutationRoute.REPLY
+                    isEditPath(candidate.encodedPath) -> ComplaintMutationRoute.EDIT
+                    else -> null
+                }
         }
     }
+
+    fun editTargetId(value: String): String? =
+        if (route(value) == ComplaintMutationRoute.EDIT) {
+            parse(value)?.encodedPath?.removePrefix(replyPrefix)?.removeSuffix(Policy.CONTENT_SUFFIX)
+        } else {
+            null
+        }
 
     fun sameRoute(
         requestUrl: String,
@@ -37,6 +49,11 @@ internal class ComplaintMutationTarget private constructor(
         path.startsWith(replyPrefix) &&
             path.endsWith(Policy.REPLIES_SUFFIX) &&
             CANONICAL_PARENT.matches(path.removePrefix(replyPrefix).removeSuffix(Policy.REPLIES_SUFFIX))
+
+    private fun isEditPath(path: String): Boolean =
+        path.startsWith(replyPrefix) &&
+            path.endsWith(Policy.CONTENT_SUFFIX) &&
+            CANONICAL_PARENT.matches(path.removePrefix(replyPrefix).removeSuffix(Policy.CONTENT_SUFFIX))
 
     private fun sameOrigin(candidate: Url): Boolean =
         candidate.protocol == createUrl.protocol &&
@@ -56,6 +73,7 @@ internal class ComplaintMutationTarget private constructor(
                 maxOf(
                     Policy.STATUS_PATH.length,
                     Policy.CREATE_PATH.length + 1 + UUID_CHARACTERS + Policy.REPLIES_SUFFIX.length,
+                    Policy.CREATE_PATH.length + 1 + UUID_CHARACTERS + Policy.CONTENT_SUFFIX.length,
                 )
         private val CANONICAL_PARENT = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
@@ -73,4 +91,11 @@ internal class ComplaintMutationTarget private constructor(
     }
 }
 
-internal enum class ComplaintMutationRoute { CREATE, REPLY, STATUS }
+internal enum class ComplaintMutationRoute(
+    val method: String,
+) {
+    CREATE("POST"),
+    REPLY("POST"),
+    EDIT("PATCH"),
+    STATUS("POST"),
+}

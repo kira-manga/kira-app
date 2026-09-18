@@ -3,6 +3,8 @@ package me.manga.kira.ui.settings.feedback
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import me.manga.kira.domain.model.complaint.ComplaintType
+import me.manga.kira.domain.model.feedback.ComplaintEditApplication
+import me.manga.kira.domain.model.feedback.ComplaintEditReceiptRejection
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportBlock
@@ -17,6 +19,7 @@ import me.manga.kira.ui.generated.resources.complaint_site_error
 import me.manga.kira.ui.generated.resources.complaint_sites_add
 import me.manga.kira.ui.generated.resources.complaint_technical
 import me.manga.kira.ui.generated.resources.error_network_not_found
+import me.manga.kira.ui.generated.resources.np_complaint_action_updated
 import me.manga.kira.ui.generated.resources.request_failed
 import me.manga.kira.ui.generated.resources.request_feedback_missing_installation
 import me.manga.kira.ui.generated.resources.settings_report_applied
@@ -31,6 +34,7 @@ import me.manga.kira.ui.generated.resources.settings_report_pending_capacity
 import me.manga.kira.ui.generated.resources.settings_report_receipt_expired
 import me.manga.kira.ui.generated.resources.settings_report_unavailable
 import me.manga.kira.ui.generated.resources.settings_report_unresolved
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -99,5 +103,21 @@ private fun settingsReportApplicationText(application: ComplaintReportApplicatio
                     stringResource(Res.string.error_network_not_found)
                 ComplaintReportReceiptRejection.COMPLAINT_DELETION_PENDING ->
                     stringResource(Res.string.request_failed)
+            }
+        is ComplaintReportApplication.Edit -> stringResource(settingsEditReceiptResource(application.application))
+    }
+
+/** Compatibility for an original edit receipt, not editor controls or a current row/version claim. */
+internal fun settingsEditReceiptResource(application: ComplaintEditApplication): StringResource =
+    when (application) {
+        is ComplaintEditApplication.Applied -> Res.string.np_complaint_action_updated
+        is ComplaintEditApplication.Rejected ->
+            when (application.code) {
+                ComplaintEditReceiptRejection.COMPLAINT_NOT_FOUND -> Res.string.error_network_not_found
+                ComplaintEditReceiptRejection.COMPLAINT_INVALID_TRANSITION,
+                ComplaintEditReceiptRejection.COMPLAINT_NO_CHANGE,
+                ComplaintEditReceiptRejection.COMPLAINT_DELETION_PENDING,
+                ComplaintEditReceiptRejection.PRECONDITION_FAILED,
+                -> Res.string.request_failed
             }
     }

@@ -11,10 +11,13 @@ import kotlin.test.assertNotNull
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
 /** Existing real-task/driven-callback fixture; no task is resumed and no HTTP claim is made. */
-internal fun withIosMutationGuard(block: (IosSessionGuardFixture) -> Unit) {
+internal fun withIosMutationGuard(
+    createUrl: String = IOS_MUTATION_CREATE_URL,
+    block: (IosSessionGuardFixture) -> Unit,
+) {
     val fixture =
         IosSessionGuardFixture(
-            IosComplaintMutationPolicy(assertNotNull(iosComplaintMutationTarget(Url(IOS_MUTATION_CREATE_URL)))),
+            IosComplaintMutationPolicy(assertNotNull(iosComplaintMutationTarget(Url(createUrl)))),
         )
     try {
         block(fixture)
@@ -30,7 +33,7 @@ internal fun iosMutationTestRequest(
     url: String = iosMutationTestUrl(route),
 ): NSMutableURLRequest =
     NSMutableURLRequest.requestWithURL(assertNotNull(NSURL.URLWithString(url))).apply {
-        setHTTPMethod("POST")
+        setHTTPMethod(route.method)
         setHTTPBody(iosSessionTestData(size))
         mutationTestHeaders(route).forEach { (name, value) -> setValue(value, name) }
     }
@@ -39,6 +42,7 @@ internal fun iosMutationTestUrl(route: ComplaintMutationRoute): String =
     when (route) {
         ComplaintMutationRoute.CREATE -> IOS_MUTATION_CREATE_URL
         ComplaintMutationRoute.REPLY -> "$IOS_MUTATION_CREATE_URL/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
+        ComplaintMutationRoute.EDIT -> "$IOS_MUTATION_CREATE_URL/$MUTATION_TEST_PARENT${Policy.CONTENT_SUFFIX}"
         ComplaintMutationRoute.STATUS -> IOS_MUTATION_STATUS_URL
     }
 

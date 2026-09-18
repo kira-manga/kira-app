@@ -99,7 +99,7 @@ class ComplaintMutationRequestHeadersTest {
     private fun accepts(
         route: ComplaintMutationRoute,
         headers: List<Pair<String, String>>,
-    ): Boolean = ComplaintMutationRequestHeaders.accepts(route, headers, 1)
+    ): Boolean = ComplaintMutationRequestHeaders.accepts(route, headers, 1, MUTATION_TEST_PARENT)
 }
 
 internal fun mutationTestHeaders(route: ComplaintMutationRoute): List<Pair<String, String>> =
@@ -110,10 +110,12 @@ internal fun mutationTestHeaders(route: ComplaintMutationRoute): List<Pair<Strin
         "Cache-Control" to "no-store, no-transform",
         "Content-Type" to "application/json",
     ) +
-        if (route != ComplaintMutationRoute.STATUS) {
-            listOf(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY)
-        } else {
-            emptyList()
+        when (route) {
+            ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY ->
+                listOf(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY)
+            ComplaintMutationRoute.EDIT ->
+                listOf(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY, "If-Match" to MUTATION_TEST_PRECONDITION)
+            ComplaintMutationRoute.STATUS -> emptyList()
         }
 
 /** Executes the same supplier header merger used by both Ktor native converters; no HTTP claim. */
@@ -132,4 +134,5 @@ internal fun mutationTestEngineHeaders(route: ComplaintMutationRoute): List<Pair
 
 internal const val MUTATION_TEST_KEY = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 internal const val MUTATION_TEST_PARENT = "bbbbbbbb-bbbb-5bbb-8bbb-bbbbbbbbbbbb"
+internal const val MUTATION_TEST_PRECONDITION = "\"complaint-$MUTATION_TEST_PARENT-v1\""
 internal const val MUTATION_TEST_AUTHORIZATION = "Bearer synthetic.header.signature"

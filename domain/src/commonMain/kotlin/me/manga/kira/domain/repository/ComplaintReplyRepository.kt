@@ -9,7 +9,7 @@ import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 
 /**
  * Typed live reply verbs on the same owner/issuer as [ComplaintReportRepository]. Its recovery port
- * reconciles both kinds and owns every returned pending handle/reset prompt; no second authority exists.
+ * reconciles all supported owner operations and owns every pending handle/reset prompt; no second authority exists.
  * Cancellation never authorizes slot deletion, key replacement, or automatic resubmission.
  */
 interface ComplaintReplyRepository {

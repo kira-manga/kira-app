@@ -45,7 +45,7 @@ internal fun unselectedAndroidComplaintHistoryGraph(context: Context): AppResult
         )
     }
 
-/** No ID generation or metadata read until the data facade explicitly prepares a new live report. */
+/** No eager ID/metadata work; edit's one key never invokes the creation pair or diagnostic supplier. */
 private fun androidComplaintReportInputs(context: Context): ComplaintReportInputs =
     ComplaintReportInputs(
         identifiers = {
@@ -62,4 +62,5 @@ private fun androidComplaintReportInputs(context: Context): ComplaintReportInput
                 deviceModel = Build.MODEL,
             )
         },
+        editKey = { UUID.randomUUID().toString() },
     )

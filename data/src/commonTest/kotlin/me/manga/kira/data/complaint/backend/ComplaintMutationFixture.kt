@@ -58,6 +58,7 @@ internal class ComplaintMutationFixture(
         when (route) {
             ComplaintMutationRoute.CREATE -> http.create(create, session)
             ComplaintMutationRoute.REPLY -> http.create(replyCreate, session)
+            ComplaintMutationRoute.EDIT -> error("Edit has its separate typed fixture")
             ComplaintMutationRoute.STATUS -> http.status(status, session)
         }
 
@@ -72,6 +73,9 @@ internal class ComplaintMutationFixture(
 
 internal const val MUTATION_OTHER_KEY = "55555555-5555-4555-8555-555555555555"
 internal const val MUTATION_OTHER_SCOPE = "66666666-6666-4666-8666-666666666666"
+
+internal val CREATION_AND_STATUS_ROUTES =
+    listOf(ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY, ComplaintMutationRoute.STATUS)
 
 internal fun mutationReport(
     key: String = Fixtures.KEY,

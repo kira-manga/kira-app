@@ -47,7 +47,7 @@ internal fun unselectedIosComplaintHistoryGraph(expectedDefaultAccessGroup: Stri
         )
     }
 
-/** Public report UUIDs are unrelated to installation credentials; all reads remain prepare-only. */
+/** Public operation UUIDs are unrelated to credentials; edit never allocates a content ID or reads UIDevice. */
 private fun iosComplaintReportInputs(): ComplaintReportInputs =
     ComplaintReportInputs(
         identifiers = {
@@ -65,4 +65,5 @@ private fun iosComplaintReportInputs(): ComplaintReportInputs =
                 deviceModel = device.model,
             )
         },
+        editKey = { NSUUID().UUIDString.lowercase() },
     )

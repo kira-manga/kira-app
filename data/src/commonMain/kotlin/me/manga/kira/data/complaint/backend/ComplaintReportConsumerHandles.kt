@@ -2,6 +2,7 @@ package me.manga.kira.data.complaint.backend
 
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Confirmation
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
+import me.manga.kira.domain.model.feedback.ComplaintLiveEdit
 import me.manga.kira.domain.model.feedback.ComplaintLiveReply
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
@@ -24,11 +25,11 @@ internal class ReportConsumerIssuer {
 
 /** The handle itself retains the exact immutable normalized request; the singleton stores no prose map. */
 @OptIn(ExperimentalAtomicApi::class)
-internal sealed class ComplaintCreationLiveHandle(
+internal sealed class ComplaintOwnerLiveHandle(
     val issuer: ReportConsumerIssuer,
     val origin: ReconciliationPermit,
 ) {
-    abstract val request: ComplaintCreationRequest
+    abstract val request: ComplaintOwnerRequest
     private val submitted = AtomicBoolean(false)
     private val completed = AtomicBoolean(false)
     private val application = AtomicReference<ComplaintReportApplication?>(null)
@@ -51,7 +52,24 @@ internal sealed class ComplaintCreationLiveHandle(
             }
         }
 
-    override fun toString(): String = "ComplaintLiveCreation(redacted)"
+    override fun toString(): String = "ComplaintLiveOwnerAction(redacted)"
+}
+
+/** Creation handles remain creation-typed; edits cannot be passed to their wire producer. */
+internal sealed class ComplaintCreationLiveHandle(
+    issuer: ReportConsumerIssuer,
+    origin: ReconciliationPermit,
+) : ComplaintOwnerLiveHandle(issuer, origin) {
+    abstract override val request: ComplaintCreationRequest
+}
+
+internal class EditLiveHandle(
+    issuer: ReportConsumerIssuer,
+    override val request: ComplaintEditRequest,
+    origin: ReconciliationPermit,
+) : ComplaintOwnerLiveHandle(issuer, origin),
+    ComplaintLiveEdit {
+    override fun toString(): String = "ComplaintLiveEdit(redacted)"
 }
 
 internal class ReportLiveHandle(

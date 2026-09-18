@@ -3,6 +3,7 @@ package me.manga.kira.data.remote.complaint
 import io.ktor.http.Url
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UnsafeNumber
+import platform.Foundation.HTTPMethod
 import platform.Foundation.NSInputStream
 import platform.Foundation.setHTTPBodyStream
 import platform.Foundation.setHTTPMethod
@@ -42,7 +43,12 @@ class IosComplaintMutationEngineTest {
     @Test
     fun onlyClosedPostRoutesWithTheCorrectKeyPresencePassNativePreparation() =
         withIosMutationGuard { fixture ->
-            ComplaintMutationRoute.entries.forEach { route -> fixture.guard.prepare(iosMutationTestRequest(route)) }
+            listOf(ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY, ComplaintMutationRoute.STATUS)
+                .forEach { route ->
+                    val request = iosMutationTestRequest(route)
+                    assertEquals("POST", request.HTTPMethod)
+                    fixture.guard.prepare(request)
+                }
             listOf("GET", "PUT", "DELETE").forEach { method ->
                 assertFails { fixture.guard.prepare(iosMutationTestRequest().apply { setHTTPMethod(method) }) }
             }

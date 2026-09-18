@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.ComplaintDetailRepository
+import me.manga.kira.domain.repository.ComplaintEditRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
@@ -39,6 +40,9 @@ class ComplaintBackendOwner private constructor(
 
     /** Same concrete consumer/issuer and mutation lane as reports; never a legacy action adapter. */
     val replies: ComplaintReplyRepository? get() = installationPorts.replies
+
+    /** Same concrete consumer/issuer, coordinator/session and mutation lane; never an active editor. */
+    val edits: ComplaintEditRepository? get() = installationPorts.edits
 
     /** Explicit delete-all producer, absent unless a separate fixed-route engine was supplied. */
     val deletion: ComplaintInstallationDeletionRepository? get() = installationPorts.deletion
@@ -98,7 +102,7 @@ class ComplaintBackendOwner private constructor(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
                         reports,
-                        ComplaintInstallationPorts(reports, deletion, reports),
+                        ComplaintInstallationPorts(reports, deletion, reports, reports),
                         close.toList(),
                     ),
                 )
@@ -123,6 +127,7 @@ private class ComplaintInstallationPorts(
     val recovery: ComplaintInstallationRecoveryRepository?,
     val deletion: ComplaintInstallationDeletionRepository?,
     val replies: ComplaintReplyRepository?,
+    val edits: ComplaintEditRepository?,
 )
 
 /** Construct and register the optional consumer together; failure still unwinds through the owner. */

@@ -36,18 +36,18 @@ class AndroidComplaintMutationEngineTest {
     fun nativePostPreservesBothRoutesAndOnlyCreateHasAKeyAtTheRequestLimit() =
         runBlocking {
             AndroidMutationEngineFixture("/base_1/v2").use { fixture ->
-                ComplaintMutationRoute.entries.forEach { route ->
+                val postRoutes =
+                    listOf(
+                        ComplaintMutationRoute.CREATE to Policy.CREATE_PATH,
+                        ComplaintMutationRoute.REPLY to
+                            "${Policy.CREATE_PATH}/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}",
+                        ComplaintMutationRoute.STATUS to Policy.STATUS_PATH,
+                    )
+                postRoutes.forEach { (route, path) ->
                     fixture.server.enqueue(MockResponse(body = "accepted"))
                     assertEquals("accepted", fixture.exchange(route, Policy.MAX_REQUEST_BYTES).body)
                     val request = assertNotNull(fixture.server.takeRequest(1, TimeUnit.SECONDS))
                     assertEquals("POST", request.method)
-                    val path =
-                        when (route) {
-                            ComplaintMutationRoute.CREATE -> Policy.CREATE_PATH
-                            ComplaintMutationRoute.REPLY ->
-                                "${Policy.CREATE_PATH}/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
-                            ComplaintMutationRoute.STATUS -> Policy.STATUS_PATH
-                        }
                     assertEquals("/base_1/v2$path", request.target)
                     assertEquals(Policy.MAX_REQUEST_BYTES.toLong(), request.bodySize)
                     assertEquals(MUTATION_TEST_AUTHORIZATION, request.headers["Authorization"])
@@ -58,7 +58,7 @@ class AndroidComplaintMutationEngineTest {
                     listOf("If-Match", "Cookie", "Proxy-Authorization", "Content-Encoding", "Transfer-Encoding")
                         .forEach { assertNull(request.headers[it]) }
                 }
-                assertEquals(ComplaintMutationRoute.entries.size, fixture.server.requestCount)
+                assertEquals(postRoutes.size, fixture.server.requestCount)
             }
         }
 

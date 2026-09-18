@@ -5,7 +5,7 @@ import me.manga.kira.platform.storage.PendingComplaintSlot
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
-/** One report/status lane. A second action never cancels or replaces uncertain work. */
+/** One report/reply/edit/status lane. A second action never cancels or replaces uncertain work. */
 @OptIn(ExperimentalAtomicApi::class)
 @Suppress("TooManyFunctions")
 internal class ReportWorkOwner {

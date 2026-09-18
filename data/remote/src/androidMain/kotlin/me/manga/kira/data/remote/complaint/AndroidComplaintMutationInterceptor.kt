@@ -5,7 +5,7 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 
-/** Separate closed POST policy; the accepted installation/history interceptors are unchanged. */
+/** Closed creation/status POST and content PATCH policy; installation/history remain separate. */
 internal class AndroidComplaintMutationInterceptor(
     private val target: ComplaintMutationTarget,
 ) : Interceptor {
@@ -13,23 +13,24 @@ internal class AndroidComplaintMutationInterceptor(
         val request = chain.request()
         val route = target.route(request.url.toString())
         val body = request.body
-        if (request.method != "POST" || route == null || body == null) {
+        if (route == null || request.method != route.method || body == null) {
             throw IOException("Complaint mutation request rejected")
         }
         if (chain.call().isCanceled()) throw IOException("Complaint mutation request rejected")
+        val editTargetId = target.editTargetId(request.url.toString())
         val headers = request.headers.toList().toMutableList()
         val media = body.contentType()?.toString()
         if (request.headers.values("Content-Type").isEmpty() && media != null) headers += "Content-Type" to media
         if (media != "application/json" ||
-            !ComplaintMutationRequestHeaders.accepts(route, headers, body.contentLength())
+            !ComplaintMutationRequestHeaders.accepts(route, headers, body.contentLength(), editTargetId)
         ) {
             throw IOException("Complaint mutation headers rejected")
         }
         val snapshot = boundedComplaintMutationBody(body)
-        if (!ComplaintMutationRequestHeaders.accepts(route, headers, snapshot.contentLength())) {
+        if (!ComplaintMutationRequestHeaders.accepts(route, headers, snapshot.contentLength(), editTargetId)) {
             throw IOException("Complaint mutation body framing rejected")
         }
-        val outgoing = request.newBuilder().method("POST", snapshot).build()
+        val outgoing = request.newBuilder().method(route.method, snapshot).build()
         if (chain.call().isCanceled()) throw IOException("Complaint mutation request cancelled")
         return chain.proceedWithMutationBudget(outgoing, route)
     }
@@ -41,7 +42,9 @@ internal class AndroidComplaintMutationInterceptor(
         val response = proceed(request)
         var transferred = false
         return try {
-            if (!target.sameRoute(request.url.toString(), response.request.url.toString())) {
+            if (response.request.method != request.method ||
+                !target.sameRoute(request.url.toString(), response.request.url.toString())
+            ) {
                 throw IOException("Complaint mutation response target rejected")
             }
             val budget =

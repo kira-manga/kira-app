@@ -4,12 +4,15 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
 
-/** Fixed CREATE/status flows only. Every admission, retry and application still belongs to the coordinator. */
+/** Fixed creation/edit flows on one lane. Every admission, retry and application belongs to the coordinator. */
 internal class ComplaintReportExecution(
     private val coordinator: InstallationCredentialCoordinator,
     private val sessions: InstallationSessionManager,
     private val http: ComplaintMutationHttp,
 ) {
+    private val edits = ComplaintEditExecution(coordinator, sessions, http)
+    private val completion = ComplaintReportExchangeCompletion(coordinator, sessions)
+
     suspend fun create(binding: ReportActionBinding): ReportExecution {
         val authenticated = sessions.reportSession(binding)
         if (authenticated is ReportSessionResult.Failed) {
@@ -37,6 +40,9 @@ internal class ComplaintReportExecution(
                 binding.unresolved(reportUnavailable(Block.LIVE_REQUEST_REQUIRED))
             }
         }
+        if (binding.pendingRecord?.request?.action?.operation == PendingComplaintOperation.EDIT_CONTENT) {
+            return edits.status(binding, retryLive)
+        }
         return when (val authenticated = sessions.reportSession(binding)) {
             is ReportSessionResult.Failed -> binding.unresolved(reportSessionFailure(authenticated.failure))
             is ReportSessionResult.Ready ->
@@ -59,7 +65,7 @@ internal class ComplaintReportExecution(
                 result.problem == ComplaintMutationProblem.OPERATION_NOT_FOUND ->
                 dispatch(exchange.binding, exchange.session)
             result is ComplaintCreateStatusHttpResult.Applied || result is ComplaintCreateStatusHttpResult.Rejected ->
-                apply(exchange)
+                completion.apply(exchange)
             result is ComplaintCreateStatusHttpResult.HttpFailure ->
                 exchange.binding.unresolved(ReportFailure(AppError.Network.Http(result.status)))
             result is ComplaintCreateStatusHttpResult.Failed ->
@@ -72,6 +78,7 @@ internal class ComplaintReportExecution(
         binding: ReportActionBinding,
         session: ReportSession,
     ): ReportExecution {
+        if (binding.liveReport is ComplaintEditRequest) return edits.dispatch(binding, session)
         val first = coordinator.dispatchReport(binding, session, sessions, http)
         if (first !is Outcome.Success) return binding.unresolved(reportLocalFailure(first))
         val exchange = first.value
@@ -80,7 +87,7 @@ internal class ComplaintReportExecution(
     }
 
     private suspend fun retryCreateAfterUnauthorized(exchange: ReportExchange.Create): ReportExecution {
-        val refreshed = refresh(exchange)
+        val refreshed = completion.refresh(exchange)
         if (refreshed is ReportSessionResult.Failed) {
             return exchange.binding.unresolved(reportSessionFailure(refreshed.failure))
         }
@@ -108,7 +115,7 @@ internal class ComplaintReportExecution(
         return if ((exchange.result as? ComplaintCreateStatusHttpResult.HttpFailure)?.status != UNAUTHORIZED) {
             ReportStatusRead.Ready(exchange)
         } else {
-            when (val refreshed = refresh(exchange)) {
+            when (val refreshed = completion.refresh(exchange)) {
                 is ReportSessionResult.Ready ->
                     when (val retry = coordinator.readReportStatus(binding, refreshed.session, sessions, http)) {
                         is Outcome.Success -> ReportStatusRead.Ready(retry.value)
@@ -119,33 +126,12 @@ internal class ComplaintReportExecution(
         }
     }
 
-    private suspend fun refresh(exchange: ReportExchange): ReportSessionResult =
-        when (val allowed = coordinator.authorizeReportRefresh(exchange, sessions)) {
-            is Outcome.Success -> {
-                sessions.invalidateReportSession(exchange.session)
-                sessions.reportSession(exchange.binding)
-            }
-            is Outcome.Refused -> ReportSessionResult.Failed(ComplaintSessionResult.LocalFailure(allowed))
-            is Outcome.StorageFailure -> ReportSessionResult.Failed(ComplaintSessionResult.LocalFailure(allowed))
-            is Outcome.Invalid -> ReportSessionResult.Failed(ComplaintSessionResult.LocalFailure(allowed))
-        }
-
     private suspend fun finishCreate(exchange: ReportExchange.Create): ReportExecution =
         when (val result = exchange.result) {
-            is ComplaintCreateHttpResult.Applied -> apply(exchange)
+            is ComplaintCreateHttpResult.Applied -> completion.apply(exchange)
             is ComplaintCreateHttpResult.HttpFailure ->
                 exchange.binding.unresolved(ReportFailure(AppError.Network.Http(result.status)))
             is ComplaintCreateHttpResult.Failed -> exchange.binding.unresolved(reportMutationFailure(result.reason))
-        }
-
-    private suspend fun apply(exchange: ReportExchange): ReportExecution =
-        when (val applied = coordinator.applyReportOutcome(exchange, sessions)) {
-            is Outcome.Success ->
-                ReportExecution(
-                    applied.value.binding,
-                    ReportAttempt.Completed(exchange.binding.liveReport, applied.value.application),
-                )
-            else -> exchange.binding.unresolved(reportLocalFailure(applied))
         }
 }
 

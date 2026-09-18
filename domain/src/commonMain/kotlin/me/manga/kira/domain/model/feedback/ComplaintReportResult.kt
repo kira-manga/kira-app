@@ -47,6 +47,13 @@ sealed interface ComplaintReportApplication {
     data class Rejected(
         val code: ComplaintReportReceiptRejection,
     ) : ComplaintReportApplication
+
+    /** Edit200 remains distinct from creation201 in the shared metadata-only recovery envelope. */
+    class Edit(
+        val application: ComplaintEditApplication,
+    ) : ComplaintReportApplication {
+        override fun toString(): String = "ComplaintReportApplication.Edit(redacted)"
+    }
 }
 
 /** Observed local phase only. The repository rechecks current durable state for every action. */

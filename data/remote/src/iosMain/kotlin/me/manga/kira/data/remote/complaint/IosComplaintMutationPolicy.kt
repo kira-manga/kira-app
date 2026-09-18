@@ -18,13 +18,14 @@ internal class IosComplaintMutationPolicy(
 ) : IosComplaintInstallationPolicy() {
     @Suppress("ReturnCount")
     override fun acceptsRequest(request: NSURLRequest): Boolean {
-        val route = request.URL?.absoluteString?.let(target::route) ?: return false
+        val url = request.URL?.absoluteString ?: return false
+        val route = target.route(url) ?: return false
         val length = request.HTTPBody?.length ?: return false
-        return request.HTTPMethod == "POST" &&
+        return request.HTTPMethod == route.method &&
             request.HTTPBodyStream == null &&
             length in 1uL..Policy.MAX_REQUEST_BYTES.toULong() &&
             mutationHeaders(request)?.let {
-                ComplaintMutationRequestHeaders.accepts(route, it, length.toLong())
+                ComplaintMutationRequestHeaders.accepts(route, it, length.toLong(), target.editTargetId(url))
             } == true
     }
 

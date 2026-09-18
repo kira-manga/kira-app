@@ -113,7 +113,7 @@ class AndroidComplaintDetailResponseGuardTest {
     }
 }
 
-private class ClosingDetailBody : ResponseBody() {
+internal class ClosingDetailBody : ResponseBody() {
     var closes = 0
         private set
     private val bytes =

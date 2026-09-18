@@ -25,13 +25,15 @@ internal class ComplaintMutationDocument(
     override fun toString(): String = "ComplaintMutationDocument(redacted)"
 }
 
-/** Closed creation/status POSTs; a reply path derives only from the checked pending parent. */
+/** Closed methods/paths; reply parent and edit target derive only from the checked pending tuple. */
 internal enum class ComplaintMutationRoute(
     val success: HttpStatusCode,
+    val method: HttpMethod,
 ) {
-    CREATE(HttpStatusCode.Created),
-    REPLY(HttpStatusCode.Created),
-    STATUS(HttpStatusCode.OK),
+    CREATE(HttpStatusCode.Created, HttpMethod.Post),
+    REPLY(HttpStatusCode.Created, HttpMethod.Post),
+    EDIT(HttpStatusCode.OK, HttpMethod.Patch),
+    STATUS(HttpStatusCode.OK, HttpMethod.Post),
     ;
 
     fun url(
@@ -44,6 +46,10 @@ internal enum class ComplaintMutationRoute(
                 if (pending.request.action.operation != PendingComplaintOperation.CREATE_REPLY) invalidHistory()
                 val parent = pending.request.action.parentId ?: invalidHistory()
                 Url("${endpoint.historyUrl}/$parent${Policy.REPLIES_SUFFIX}")
+            }
+            EDIT -> {
+                if (pending.request.action.operation != PendingComplaintOperation.EDIT_CONTENT) invalidHistory()
+                Url("${endpoint.historyUrl}/${pending.request.action.targetId}${Policy.CONTENT_SUFFIX}")
             }
             STATUS -> Url(endpoint.historyUrl.toString().removeSuffix(Policy.CREATE_PATH) + Policy.STATUS_PATH)
         }
@@ -58,17 +64,12 @@ internal object ComplaintMutationBody {
     ): ComplaintMutationDocument {
         val channel = response.bodyAsChannel()
         return try {
-            if (response.call.request.url != expectedUrl || response.call.request.method != HttpMethod.Post) {
+            if (response.call.request.url != expectedUrl || response.call.request.method != route.method) {
                 invalidHistory()
             }
             val success = response.status == route.success
             if (!success && response.status.value !in MIN_ERROR_STATUS..MAX_ERROR_STATUS) invalidHistory()
-            val maximum =
-                if (success && route != ComplaintMutationRoute.STATUS) {
-                    Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES
-                } else {
-                    Policy.MAX_STATUS_OR_PROBLEM_BYTES
-                }
+            val maximum = maximumBytes(route, success)
             val declared = headers(response, route, success, maximum)
             ComplaintMutationDocument(
                 response.status.value,
@@ -80,6 +81,13 @@ internal object ComplaintMutationBody {
             channel.cancel()
         }
     }
+
+    private fun maximumBytes(route: ComplaintMutationRoute, success: Boolean): Int =
+        when {
+            !success || route == ComplaintMutationRoute.STATUS -> Policy.MAX_STATUS_OR_PROBLEM_BYTES
+            route == ComplaintMutationRoute.EDIT -> Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES
+            else -> Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES
+        }
 
     private fun headers(
         response: HttpResponse,
@@ -112,7 +120,9 @@ internal object ComplaintMutationBody {
         val headers = response.headers
         val location = headers.single(HttpHeaders.Location)
         val etag = headers.single(HttpHeaders.ETag)
-        if (success && route != ComplaintMutationRoute.STATUS) {
+        if (success && route == ComplaintMutationRoute.EDIT) {
+            if (location != null || etag == null) invalidHistory()
+        } else if (success && route != ComplaintMutationRoute.STATUS) {
             if (location == null || etag == null) invalidHistory()
         } else if (location != null || etag != null) {
             invalidHistory()

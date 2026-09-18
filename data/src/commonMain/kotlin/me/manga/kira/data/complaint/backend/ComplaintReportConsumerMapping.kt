@@ -1,5 +1,8 @@
 package me.manga.kira.data.complaint.backend
 
+import me.manga.kira.domain.model.feedback.ComplaintEditApplication
+import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
+import me.manga.kira.domain.model.feedback.ComplaintEditReceiptRejection
 import me.manga.kira.domain.model.feedback.ComplaintReplyPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
@@ -29,11 +32,25 @@ internal fun ComplaintReplyRequestResult.Rejected.consumerResult(): ComplaintRep
         DomainReportRejection.valueOf(reason.name),
     )
 
+internal fun ComplaintEditRequestResult.Rejected.consumerResult(): ComplaintEditPreparation.Invalid =
+    ComplaintEditPreparation.Invalid(
+        DomainReportField.valueOf(field.name),
+        DomainReportRejection.valueOf(reason.name),
+    )
+
 internal fun ReportActionState.consumerResult(): ComplaintReportApplication =
     when (this) {
         is ReportActionState.Applied -> ComplaintReportApplication.Applied(id, version)
         is ReportActionState.Rejected ->
             ComplaintReportApplication.Rejected(ComplaintReportReceiptRejection.valueOf(code.wireCode))
+        is ReportActionState.Edit -> ComplaintReportApplication.Edit(application.consumerResult())
+    }
+
+private fun ComplaintEditActionState.consumerResult(): ComplaintEditApplication =
+    when (this) {
+        is ComplaintEditActionState.Applied -> ComplaintEditApplication.Applied(id, version)
+        is ComplaintEditActionState.Rejected ->
+            ComplaintEditApplication.Rejected(ComplaintEditReceiptRejection.valueOf(code.name))
     }
 
 internal fun ReportAttempt.consumerResult(issuer: ReportConsumerIssuer): ComplaintReportAttempt =

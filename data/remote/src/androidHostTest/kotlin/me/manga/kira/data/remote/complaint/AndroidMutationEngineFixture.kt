@@ -60,11 +60,12 @@ internal class AndroidMutationEngineFixture(
     ): SessionEngineResponse {
         val request =
             HttpRequestBuilder().apply {
-                method = HttpMethod.Post
+                method = HttpMethod(route.method)
                 url(
                     when (route) {
                         ComplaintMutationRoute.CREATE -> createUrl.toString()
                         ComplaintMutationRoute.REPLY -> "$createUrl/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
+                        ComplaintMutationRoute.EDIT -> "$createUrl/$MUTATION_TEST_PARENT${Policy.CONTENT_SUFFIX}"
                         ComplaintMutationRoute.STATUS -> statusUrl.toString()
                     },
                 )

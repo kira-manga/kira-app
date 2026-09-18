@@ -20,10 +20,7 @@ internal class ComplaintReportActionBindings(
     private var activeWork: ReportWork? = null
     private var expectedPermit: ReconciliationPermit? = null
     private var current: ReportActionBinding? = null
-    private var lastExchange: ReportExchange? = null
-    private var firstDispatch = false
-    private var retry: ReportRetry? = null
-    private var unauthorizedRetried = false
+    private val exchanges = ComplaintReportExchanges()
     private val reconciliation = ComplaintReportReconciliationPass()
 
     fun observe(
@@ -51,10 +48,7 @@ internal class ComplaintReportActionBindings(
         }
         val binding = reportStartBinding(permit, work, start)
         if (!work.beginAction()) refuse(Block.STALE_BINDING)
-        firstDispatch = false
-        unauthorizedRetried = false
-        retry = null
-        lastExchange = null
+        exchanges.clear()
         current = binding
         return binding
     }
@@ -131,7 +125,7 @@ internal class ComplaintReportActionBindings(
                 decodeReport(change.replacement),
                 ReportActionStage.MAY_HAVE_DISPATCHED,
             )
-        firstDispatch = true
+        exchanges.markedDispatch()
         return next
     }
 
@@ -139,26 +133,12 @@ internal class ComplaintReportActionBindings(
     fun createRequest(
         binding: ReportActionBinding,
         session: ReportSession,
-    ): ComplaintCreateHttpRequest {
-        if (binding.stage != ReportActionStage.MAY_HAVE_DISPATCHED) refuse(Block.STALE_BINDING)
-        val record = binding.pendingRecord ?: refuse(Block.STALE_BINDING)
-        val report = binding.liveReport ?: refuse(Block.LIVE_REQUEST_REQUIRED)
-        if (!firstDispatch) {
-            if (session.response.issuedAt > record.times.serverReceiptSafeUntil) refuse(Block.RECEIPT_WINDOW_EXPIRED)
-            when (val proof = retry) {
-                is ReportRetry.Unauthorized -> {
-                    if (!unauthorizedRetried || proof.entry === session.entry) refuse(Block.RECONCILIATION_REQUIRED)
-                }
-                ReportRetry.NotFound -> Unit
-                null -> refuse(Block.RECONCILIATION_REQUIRED)
-            }
-        }
-        val request = ComplaintCreateHttpRequest.checked(report, record) ?: refuse(Block.INVALID_CANDIDATE)
-        firstDispatch = false
-        retry = null
-        lastExchange = null
-        return request
-    }
+    ): ComplaintCreateHttpRequest = exchanges.createRequest(binding, session)
+
+    fun editRequest(
+        binding: ReportActionBinding,
+        session: ReportSession,
+    ): ComplaintEditHttpRequest = exchanges.editRequest(binding, session)
 
     fun statusRequest(binding: ReportActionBinding): ComplaintCreateStatusRequest {
         if (binding.stage != ReportActionStage.MAY_HAVE_DISPATCHED) refuse(Block.RECONCILIATION_REQUIRED)
@@ -167,54 +147,50 @@ internal class ComplaintReportActionBindings(
             ?: refuse(Block.INVALID_CANDIDATE)
     }
 
+    fun editStatusRequest(binding: ReportActionBinding): ComplaintEditStatusRequest {
+        if (binding.stage != ReportActionStage.MAY_HAVE_DISPATCHED) refuse(Block.RECONCILIATION_REQUIRED)
+        reconciliation.forget(binding)
+        return ComplaintEditStatusRequest.checked(binding.pendingRecord ?: refuse(Block.STALE_BINDING))
+            ?: refuse(Block.INVALID_CANDIDATE)
+    }
+
     fun receivedCreate(
         binding: ReportActionBinding,
         session: ReportSession,
         request: ComplaintCreateHttpRequest,
         result: ComplaintCreateHttpResult,
-    ): ReportExchange.Create {
-        if (result.request !== request) refuse(Block.STALE_BINDING)
-        val exchange = ReportExchange.Create(binding, session, request, result)
-        lastExchange = exchange
-        retry = null
-        return exchange
-    }
+    ): ReportExchange.Create = ReportExchange.Create(binding, session, request, result).also(exchanges::received)
 
-    /** One matched 401 refresh per action; status authentication cannot grant a CREATE retry. */
-    fun authorizeRefresh(exchange: ReportExchange) {
-        if (lastExchange !== exchange || unauthorizedRetried) refuse(Block.RECONCILIATION_REQUIRED)
-        val unauthorized =
-            when (exchange) {
-                is ReportExchange.Create ->
-                    (exchange.result as? ComplaintCreateHttpResult.HttpFailure)?.status == UNAUTHORIZED
-                is ReportExchange.Status ->
-                    (exchange.result as? ComplaintCreateStatusHttpResult.HttpFailure)?.status == UNAUTHORIZED
-            }
-        if (!unauthorized) refuse(Block.RECONCILIATION_REQUIRED)
-        unauthorizedRetried = true
-        retry = if (exchange is ReportExchange.Create) ReportRetry.Unauthorized(exchange.session.entry) else null
-    }
+    fun receivedEdit(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        request: ComplaintEditHttpRequest,
+        result: ComplaintEditHttpResult,
+    ): ReportExchange.Edit = ReportExchange.Edit(binding, session, request, result).also(exchanges::received)
+
+    fun authorizeRefresh(exchange: ReportExchange) = exchanges.authorizeRefresh(exchange)
 
     fun receivedStatus(
         binding: ReportActionBinding,
         session: ReportSession,
         request: ComplaintCreateStatusRequest,
         result: ComplaintCreateStatusHttpResult,
-    ): ReportExchange.Status {
-        if (result.request !== request) refuse(Block.STALE_BINDING)
-        val exchange = ReportExchange.Status(binding, session, request, result)
-        lastExchange = exchange
-        val missing =
-            result is ComplaintCreateStatusHttpResult.HttpFailure &&
-                result.status == NOT_FOUND &&
-                result.problem == ComplaintMutationProblem.OPERATION_NOT_FOUND
-        retry = if (missing) ReportRetry.NotFound else null
-        if (missing) reconciliation.record(binding)
-        return exchange
+    ): ReportExchange.Status = ReportExchange.Status(binding, session, request, result).also(::receivedStatus)
+
+    fun receivedEditStatus(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        request: ComplaintEditStatusRequest,
+        result: ComplaintEditStatusHttpResult,
+    ): ReportExchange.EditStatus = ReportExchange.EditStatus(binding, session, request, result).also(::receivedStatus)
+
+    private fun receivedStatus(exchange: ReportExchange) {
+        exchanges.received(exchange)
+        if (exchange.operationMissing()) reconciliation.record(exchange.binding)
     }
 
     suspend fun apply(exchange: ReportExchange): ReportCompletion {
-        if (lastExchange !== exchange) refuse(Block.STALE_BINDING)
+        exchanges.requireLast(exchange)
         val binding = exchange.binding
         val application = reportApplication(exchange)
         val slot = binding.slot ?: refuse(Block.STALE_BINDING)
@@ -244,9 +220,7 @@ internal class ComplaintReportActionBindings(
     fun release(binding: ReportActionBinding) {
         requireCurrent(binding)
         current = null
-        lastExchange = null
-        retry = null
-        firstDispatch = false
+        exchanges.clear()
     }
 
     fun finish(work: ReportWork) {
@@ -255,9 +229,7 @@ internal class ComplaintReportActionBindings(
             activeWork = null
             expectedPermit = null
             current = null
-            lastExchange = null
-            retry = null
-            firstDispatch = false
+            exchanges.clear()
         }
         // Failed admission may not have registered a binding, but still owns the caller's lane.
         work.finish()
@@ -278,18 +250,6 @@ internal class ComplaintReportActionBindings(
         ).also {
             current = it
             expectedPermit = it.permit
-            lastExchange = null
-            retry = null
+            exchanges.advanced()
         }
 }
-
-private sealed interface ReportRetry {
-    class Unauthorized(
-        val entry: InstallationSessionEntry,
-    ) : ReportRetry
-
-    data object NotFound : ReportRetry
-}
-
-private const val UNAUTHORIZED = 401
-private const val NOT_FOUND = 404

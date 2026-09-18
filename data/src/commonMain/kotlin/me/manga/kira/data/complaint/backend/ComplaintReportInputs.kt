@@ -9,12 +9,14 @@ class ComplaintReportIdentifiers(
 }
 
 /**
- * Inert platform suppliers. Only explicit report/reply preparation invokes these, once and outside the
- * credential mutex; neither graph construction nor retry reads platform metadata or allocates IDs.
+ * Inert platform suppliers invoked once outside the credential mutex, never on graph construction/retry.
+ * Report/reply preparation uses the pair/diagnostics; edit uses only [editKey], never a new content ID.
+ * A missing edit supplier fails closed and does not fall back to invoking [identifiers].
  */
 class ComplaintReportInputs(
     val identifiers: () -> ComplaintReportIdentifiers,
     val metadata: () -> ComplaintReportMetadataInput,
+    val editKey: (() -> String)? = null,
 ) {
     override fun toString(): String = "ComplaintReportInputs(redacted)"
 }

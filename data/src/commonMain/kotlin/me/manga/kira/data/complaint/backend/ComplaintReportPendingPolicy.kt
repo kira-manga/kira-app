@@ -39,6 +39,15 @@ private fun retainedReportBinding(
 
 /** Pure recomputation only; callers still need the coordinator's current binding and durable proofs. */
 internal fun reportRequest(
+    report: ComplaintOwnerRequest,
+    permit: ReconciliationPermit,
+): PendingComplaintRequest =
+    when (report) {
+        is ComplaintCreationRequest -> creationPendingRequest(report, permit)
+        is ComplaintEditRequest -> editPendingRequest(report, permit)
+    }
+
+private fun creationPendingRequest(
     report: ComplaintCreationRequest,
     permit: ReconciliationPermit,
 ): PendingComplaintRequest {
@@ -59,12 +68,22 @@ internal fun reportRequest(
         ?: refuse(Block.INVALID_CANDIDATE)
 }
 
+private fun editPendingRequest(
+    edit: ComplaintEditRequest,
+    permit: ReconciliationPermit,
+): PendingComplaintRequest {
+    if (edit.dataScopeId != permit.record.material.dataScopeId) refuse(Block.INVALID_CANDIDATE)
+    return PendingComplaintRequest.checked(edit.target.action, edit.key.canonical, edit.pendingFingerprint())
+        ?: refuse(Block.INVALID_CANDIDATE)
+}
+
 internal fun decodeReport(slot: PendingComplaintSlot): PendingComplaintRecord =
     when (val result = PendingComplaintRecordCodec.decode(slot)) {
         is PendingComplaintCodecResult.Value ->
             result.value.also {
                 if (it.request.action.operation != PendingComplaintOperation.CREATE_REPORT &&
-                    it.request.action.operation != PendingComplaintOperation.CREATE_REPLY
+                    it.request.action.operation != PendingComplaintOperation.CREATE_REPLY &&
+                    it.request.action.operation != PendingComplaintOperation.EDIT_CONTENT
                 ) {
                     refuse(Block.RECONCILIATION_REQUIRED)
                 }
@@ -76,17 +95,33 @@ internal fun decodeReport(slot: PendingComplaintSlot): PendingComplaintRecord =
 /** A projection is not evidence: only the owning registry may apply its exact issued exchange. */
 internal fun reportApplication(exchange: ReportExchange): ReportActionState =
     when (exchange) {
-        is ReportExchange.Create ->
+        is ReportExchange.Create -> creationApplication(exchange.result)
+        is ReportExchange.Status -> creationApplication(exchange.result)
+        is ReportExchange.Edit ->
             when (val result = exchange.result) {
-                is ComplaintCreateHttpResult.Applied ->
-                    ReportActionState.Applied(result.acknowledgement.id, result.acknowledgement.version)
+                is ComplaintEditHttpResult.Applied -> result.acknowledgement.application()
                 else -> refuse(Block.RECONCILIATION_REQUIRED)
             }
-        is ReportExchange.Status ->
+        is ReportExchange.EditStatus ->
             when (val result = exchange.result) {
-                is ComplaintCreateStatusHttpResult.Applied ->
-                    ReportActionState.Applied(result.acknowledgement.id, result.acknowledgement.version)
-                is ComplaintCreateStatusHttpResult.Rejected -> ReportActionState.Rejected(result.code)
+                is ComplaintEditStatusHttpResult.Applied -> result.acknowledgement.application()
+                is ComplaintEditStatusHttpResult.Rejected ->
+                    ReportActionState.Edit(ComplaintEditActionState.Rejected(result.code))
                 else -> refuse(Block.RECONCILIATION_REQUIRED)
             }
+    }
+
+private fun creationApplication(result: ComplaintCreateHttpResult): ReportActionState =
+    when (result) {
+        is ComplaintCreateHttpResult.Applied ->
+            ReportActionState.Applied(result.acknowledgement.id, result.acknowledgement.version)
+        else -> refuse(Block.RECONCILIATION_REQUIRED)
+    }
+
+private fun creationApplication(result: ComplaintCreateStatusHttpResult): ReportActionState =
+    when (result) {
+        is ComplaintCreateStatusHttpResult.Applied ->
+            ReportActionState.Applied(result.acknowledgement.id, result.acknowledgement.version)
+        is ComplaintCreateStatusHttpResult.Rejected -> ReportActionState.Rejected(result.code)
+        else -> refuse(Block.RECONCILIATION_REQUIRED)
     }

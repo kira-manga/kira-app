@@ -8,10 +8,13 @@ object ComplaintMutationTransportPolicy {
     /** Appended only after one canonical parent UUID beneath the checked complaint base. */
     const val REPLIES_SUFFIX = "/replies"
 
+    /** Appended only after one canonical existing owner-content UUID; PATCH requires its strong tag. */
+    const val CONTENT_SUFFIX = "/content"
+
     /** Observational operation-status route under the same checked deployment prefix. */
     const val STATUS_PATH = "/api/v1/complaint-operations/status"
 
-    /** Exactly one canonical lower-case v4 UUID on report/reply creation; forbidden on status. */
+    /** Exactly one canonical lower-case v4 UUID on creation/edit; forbidden on status. */
     const val IDEMPOTENCY_HEADER = "X-Kira-Idempotency-Key"
 
     /** Raw outgoing request limit, before JSON parsing or native dispatch. */
@@ -19,6 +22,9 @@ object ComplaintMutationTransportPolicy {
 
     /** Only a direct report/reply201 JSON acknowledgement can use this larger response limit. */
     const val MAX_CREATE_ACKNOWLEDGEMENT_BYTES = 32 * 1_024
+
+    /** Only a direct owner-edit200 JSON acknowledgement can use this edit-specific response limit. */
+    const val MAX_EDIT_ACKNOWLEDGEMENT_BYTES = 32 * 1_024
 
     /** Every operation-status response and every owner-facing problem has this smaller limit. */
     const val MAX_STATUS_OR_PROBLEM_BYTES = 16 * 1_024

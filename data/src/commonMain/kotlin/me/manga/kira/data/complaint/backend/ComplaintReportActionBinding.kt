@@ -6,12 +6,12 @@ import me.manga.kira.platform.storage.PendingComplaintSlot
 /** Live normalized prose is never reconstructed from a retained slot or written to platform storage. */
 internal sealed interface ReportStart {
     class New(
-        val report: ComplaintCreationRequest,
+        val report: ComplaintOwnerRequest,
     ) : ReportStart
 
     class Retained(
         val slot: PendingComplaintSlot,
-        val liveReport: ComplaintCreationRequest? = null,
+        val liveReport: ComplaintOwnerRequest? = null,
     ) : ReportStart
 }
 
@@ -21,7 +21,7 @@ internal enum class ReportActionStage { NEW, PREPARED, MAY_HAVE_DISPATCHED, COMP
 internal class ReportActionBinding(
     val permit: ReconciliationPermit,
     val work: ReportWork,
-    val liveReport: ComplaintCreationRequest?,
+    val liveReport: ComplaintOwnerRequest?,
     val observation: ReportActionObservation,
 ) {
     val slot: PendingComplaintSlot? get() = observation.slot
@@ -80,6 +80,24 @@ internal sealed interface ReportExchange {
     ) : ReportExchange {
         override fun toString(): String = "ReportStatusExchange(redacted)"
     }
+
+    class Edit(
+        override val binding: ReportActionBinding,
+        override val session: ReportSession,
+        val request: ComplaintEditHttpRequest,
+        val result: ComplaintEditHttpResult,
+    ) : ReportExchange {
+        override fun toString(): String = "ReportEditExchange(redacted)"
+    }
+
+    class EditStatus(
+        override val binding: ReportActionBinding,
+        override val session: ReportSession,
+        val request: ComplaintEditStatusRequest,
+        val result: ComplaintEditStatusHttpResult,
+    ) : ReportExchange {
+        override fun toString(): String = "ReportEditStatusExchange(redacted)"
+    }
 }
 
 /** Bounded local application facts, not reconstructed server content or slot-removal authority. */
@@ -94,6 +112,12 @@ internal sealed interface ReportActionState {
     class Rejected(
         val code: ComplaintCreationRejection,
     ) : ReportActionState
+
+    class Edit(
+        val application: ComplaintEditActionState,
+    ) : ReportActionState {
+        override fun toString(): String = "ReportActionState.Edit(redacted)"
+    }
 }
 
 internal class ReportCompletion(
@@ -108,5 +132,6 @@ internal fun ReportActionState.sameAs(other: ReportActionState): Boolean =
         this is ReportActionState.Applied && other is ReportActionState.Applied ->
             id == other.id && version == other.version
         this is ReportActionState.Rejected && other is ReportActionState.Rejected -> code == other.code
+        this is ReportActionState.Edit && other is ReportActionState.Edit -> application.sameAs(other.application)
         else -> false
     }

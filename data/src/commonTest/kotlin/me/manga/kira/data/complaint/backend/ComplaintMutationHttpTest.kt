@@ -85,7 +85,7 @@ class ComplaintMutationHttpTest {
                 mutationRejected(),
                 Policy.MAX_STATUS_OR_PROBLEM_BYTES,
             )
-            for (route in ComplaintMutationRoute.entries) {
+            for (route in CREATION_AND_STATUS_ROUTES) {
                 assertMutationBoundary(
                     route,
                     HttpStatusCode.Conflict,
@@ -102,7 +102,7 @@ class ComplaintMutationHttpTest {
             val bytes = mutationAck().encodeToByteArray()
             for (headers in invalidMutationHeaders(bytes.size)) assertRejectedMutation(bytes, headers)
             assertRejectedMutation(byteArrayOf(0xc3.toByte(), 0x28), mutationHeaders(HttpStatusCode.Created))
-            for (route in ComplaintMutationRoute.entries) {
+            for (route in CREATION_AND_STATUS_ROUTES) {
                 for (status in listOf(HttpStatusCode.NoContent, HttpStatusCode.Found)) {
                     assertRejectedMutation(ByteArray(0), mutationHeaders(status), status, route)
                 }

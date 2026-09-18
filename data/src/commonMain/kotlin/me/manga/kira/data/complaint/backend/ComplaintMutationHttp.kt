@@ -5,7 +5,7 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.headers
-import io.ktor.client.request.preparePost
+import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -20,7 +20,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.text.CharacterCodingException
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** Closed report/reply/status client borrowing one mutation engine. No arbitrary authenticated work. */
+/** Closed report/reply/edit/status client borrowing one mutation engine. No arbitrary authenticated work. */
 @OptIn(ExperimentalAtomicApi::class)
 internal class ComplaintMutationHttp(
     private val endpoint: ComplaintBackendEndpoint,
@@ -75,6 +75,38 @@ internal class ComplaintMutationHttp(
         } else {
             result
         }
+    }
+
+    suspend fun edit(
+        request: ComplaintEditHttpRequest,
+        session: ComplaintSessionResponse,
+    ): ComplaintEditHttpResult {
+        currentCoroutineContext().ensureActive()
+        refusal(request.pending, session)?.let { return ComplaintEditHttpResult.Failed(request, it) }
+        val exchange = exchange(ComplaintMutationRoute.EDIT, session, request.pending, request.bodyBytes())
+        val result =
+            when (exchange) {
+                is MutationExchange.Received -> ComplaintEditResponse.edit(exchange.document, request)
+                is MutationExchange.Failed -> ComplaintEditHttpResult.Failed(request, exchange.reason)
+            }
+        currentCoroutineContext().ensureActive()
+        return if (isClosed) ComplaintEditHttpResult.Failed(request, ComplaintMutationFailure.CLOSED) else result
+    }
+
+    suspend fun editStatus(
+        request: ComplaintEditStatusRequest,
+        session: ComplaintSessionResponse,
+    ): ComplaintEditStatusHttpResult {
+        currentCoroutineContext().ensureActive()
+        refusal(request.pending, session)?.let { return ComplaintEditStatusHttpResult.Failed(request, it) }
+        val exchange = exchange(ComplaintMutationRoute.STATUS, session, request.pending, request.bodyBytes())
+        val result =
+            when (exchange) {
+                is MutationExchange.Received -> ComplaintEditResponse.status(exchange.document, request)
+                is MutationExchange.Failed -> ComplaintEditStatusHttpResult.Failed(request, exchange.reason)
+            }
+        currentCoroutineContext().ensureActive()
+        return if (isClosed) ComplaintEditStatusHttpResult.Failed(request, ComplaintMutationFailure.CLOSED) else result
     }
 
     /** Cancels this client's work only. The composition root retains engine ownership. */
@@ -138,7 +170,8 @@ internal class ComplaintMutationHttp(
     ): MutationExchange.Received {
         val url = route.url(endpoint, pending)
         return client
-            .preparePost(url.toString()) {
+            .prepareRequest(url.toString()) {
+                method = route.method
                 headers {
                     append(HttpHeaders.Accept, "application/json, application/problem+json")
                     append(HttpHeaders.AcceptEncoding, "identity")
@@ -146,6 +179,9 @@ internal class ComplaintMutationHttp(
                     append(HttpHeaders.Authorization, session.authorizationValue())
                     if (route != ComplaintMutationRoute.STATUS) {
                         append(Policy.IDEMPOTENCY_HEADER, pending.request.key)
+                    }
+                    if (route == ComplaintMutationRoute.EDIT) {
+                        append(HttpHeaders.IfMatch, checkNotNull(pending.request.action.canonicalPrecondition()))
                     }
                 }
                 setBody(ByteArrayContent(bytes, ContentType.Application.Json))
