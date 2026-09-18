@@ -51,7 +51,7 @@ class ComplaintBackendDetailGraphTest {
             try {
                 assertSame(graph.history, app.koin.get<ComplaintListRepository>())
                 assertSame(graph.details, app.koin.get<ComplaintDetailRepository>())
-                assertSame(app.koin.get<ComplaintListRepository>(), app.koin.get<ComplaintDetailRepository>())
+                assertSame<Any?>(app.koin.get<ComplaintListRepository>(), app.koin.get<ComplaintDetailRepository>())
                 assertIs<ComplaintHistory.Backend>(app.koin.get<ObserveUserComplaintsUseCase>()().detailGraphSuccess())
                 val id = row.getValue("id").jsonPrimitive.content
                 val detail = app.koin.get<LoadComplaintDetailUseCase>()(id).detailGraphSuccess()

@@ -73,8 +73,8 @@ private fun assertSharedReplyGraph(
     val replies = koin.get<ComplaintReplyRepository>()
     assertSame(graph.reports, reports)
     assertSame(graph.replies, replies)
-    assertSame(reports, replies)
-    assertSame(reports, koin.get<ComplaintInstallationRecoveryRepository>())
+    assertSame<Any?>(reports, replies)
+    assertSame<Any?>(reports, koin.get<ComplaintInstallationRecoveryRepository>())
 }
 
 private suspend fun exerciseTypedReplyGraph(

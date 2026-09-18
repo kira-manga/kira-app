@@ -30,8 +30,8 @@ class ComplaintBackendReplyOwnerTest {
         runTest {
             val fixture = MobileReplyOwnerFixture(this)
             try {
-                assertSame(fixture.owner.reports, assertNotNull(fixture.owner.replies))
-                assertSame(fixture.owner.reports, fixture.owner.installationRecovery)
+                assertSame<Any?>(fixture.owner.reports, assertNotNull(fixture.owner.replies))
+                assertSame<Any?>(fixture.owner.reports, fixture.owner.installationRecovery)
                 fixture.assertNoReplyPort(mutation = null, inputs = consumerInputs())
                 fixture.assertNoReplyPort(mutation = fixture.mutation, inputs = null)
                 val replies = assertNotNull(fixture.owner.replies)
