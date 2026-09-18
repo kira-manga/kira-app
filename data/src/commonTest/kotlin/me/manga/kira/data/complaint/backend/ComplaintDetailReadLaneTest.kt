@@ -105,7 +105,7 @@ class ComplaintDetailReadLaneTest {
                     respond(channel, HttpStatusCode.OK, headers)
                 } else {
                     assertTrue(channel.cancelled, "same reader replacement must wait for body finally")
-                    if (request.url.parameters.isNotEmpty()) {
+                    if (!request.url.parameters.isEmpty()) {
                         respond(historyResponse(), HttpStatusCode.OK, sessionHeaders())
                     } else {
                         respond(historyItem(101).toString(), HttpStatusCode.OK, detailHeaders(historyId(101)))
