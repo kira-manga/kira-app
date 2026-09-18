@@ -4,13 +4,14 @@ import me.manga.kira.core.error.AppError
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Outcome
 
-/** Fixed creation/edit flows on one lane. Every admission, retry and application belongs to the coordinator. */
+/** Fixed owner mutation flows on one lane. Admission, retry and application belong to the coordinator. */
 internal class ComplaintReportExecution(
     private val coordinator: InstallationCredentialCoordinator,
     private val sessions: InstallationSessionManager,
     private val http: ComplaintMutationHttp,
 ) {
     private val edits = ComplaintEditExecution(coordinator, sessions, http)
+    private val ownerDeletes = ComplaintOwnerDeleteExecution(coordinator, sessions, http)
     private val completion = ComplaintReportExchangeCompletion(coordinator, sessions)
 
     suspend fun create(binding: ReportActionBinding): ReportExecution {
@@ -42,6 +43,9 @@ internal class ComplaintReportExecution(
         }
         if (binding.pendingRecord?.request?.action?.operation == PendingComplaintOperation.EDIT_CONTENT) {
             return edits.status(binding, retryLive)
+        }
+        if (binding.pendingRecord?.request?.action?.operation == PendingComplaintOperation.DELETE_OWNED) {
+            return ownerDeletes.status(binding, retryLive)
         }
         return when (val authenticated = sessions.reportSession(binding)) {
             is ReportSessionResult.Failed -> binding.unresolved(reportSessionFailure(authenticated.failure))
@@ -79,6 +83,7 @@ internal class ComplaintReportExecution(
         session: ReportSession,
     ): ReportExecution {
         if (binding.liveReport is ComplaintEditRequest) return edits.dispatch(binding, session)
+        if (binding.liveReport is ComplaintOwnerDeleteRequest) return ownerDeletes.dispatch(binding, session)
         val first = coordinator.dispatchReport(binding, session, sessions, http)
         if (first !is Outcome.Success) return binding.unresolved(reportLocalFailure(first))
         val exchange = first.value

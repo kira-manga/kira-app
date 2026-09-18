@@ -1,6 +1,7 @@
 package me.manga.kira.data.complaint.backend
 
 import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -22,37 +23,44 @@ import me.manga.kira.data.complaint.backend.InstallationStoreStep as Step
 
 class ComplaintEditLifecycleTest {
     @Test
-    fun editReportReplyAndStatusContendOnOneNonReplacingLaneEvenDuringCancelledHttpCleanup() =
+    fun editDeleteReportReplyAndStatusContendOnOneNonReplacingLaneEvenDuringCancelledHttpCleanup() =
         runTest {
-            val entered = CompletableDeferred<Unit>()
-            val release = CompletableDeferred<Unit>()
-            val f = heldEditFixture(entered, release)
-            try {
-                val first = async { f.repository.submit(mobileEditRequest()) }
-                entered.await()
-                f.assertOtherWritesBusy()
-                assertTrue(first.isActive)
-                f.repository.cancelCurrent()
-                f.assertOtherWritesBusy()
-                release.complete(Unit)
-                assertFailsWith<CancellationException> { first.await() }
-                assertEquals(1, f.requests.size)
-                assertEquals(
-                    PendingComplaintState.MAY_HAVE_DISPATCHED,
-                    reportRecord(f.storage.pending.slots.single()).state,
-                )
-                assertTrue(Step.PENDING_DELETE_BEFORE !in f.storage.faults.trace)
-            } finally {
-                release.complete(Unit)
-                f.close()
+            for (request in listOf(mobileEditRequest(), mobileOwnerDeleteRequest())) {
+                assertHeldOwnerMutationLane(request)
             }
         }
 
     @Test
-    fun consentResetDeletionCancellationAndCloseDuringSessionCannotPublishAnEditOrPrepareMetadata() =
+    fun consentResetDeletionCancellationAndCloseDuringSessionCannotPublishEditOrDeleteMetadata() =
         runTest {
-            for (change in listOf("consent", "reset", "deletion", "cancel", "close")) assertEditSessionFence(change)
+            for (request in listOf(mobileEditRequest(), mobileOwnerDeleteRequest())) {
+                for (change in listOf("consent", "reset", "deletion", "cancel", "close")) {
+                    assertEditSessionFence(change, request)
+                }
+            }
         }
+}
+
+private suspend fun TestScope.assertHeldOwnerMutationLane(request: ComplaintOwnerRequest) {
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    val f = heldEditFixture(entered, release)
+    try {
+        val first = async { f.repository.submit(request) }
+        entered.await()
+        f.assertOtherWritesBusy()
+        assertTrue(first.isActive)
+        f.repository.cancelCurrent()
+        f.assertOtherWritesBusy()
+        release.complete(Unit)
+        assertFailsWith<CancellationException> { first.await() }
+        assertEquals(1, f.requests.size)
+        assertEquals(PendingComplaintState.MAY_HAVE_DISPATCHED, reportRecord(f.storage.pending.slots.single()).state)
+        assertTrue(Step.PENDING_DELETE_BEFORE !in f.storage.faults.trace)
+    } finally {
+        release.complete(Unit)
+        f.close()
+    }
 }
 
 private fun TestScope.heldEditFixture(
@@ -61,11 +69,15 @@ private fun TestScope.heldEditFixture(
 ): ComplaintReportFixture =
     ComplaintReportFixture(
         this,
-        mutationHandler = {
+        mutationHandler = { request ->
             withContext(NonCancellable) {
                 entered.complete(Unit)
                 release.await()
-                respond(mobileEditAck(), HttpStatusCode.OK, mobileEditHeaders())
+                if (request.method == HttpMethod.Delete) {
+                    respond("", HttpStatusCode.NoContent, mobileOwnerDeleteHeaders())
+                } else {
+                    respond(mobileEditAck(), HttpStatusCode.OK, mobileEditHeaders())
+                }
             }
         },
     )
@@ -74,16 +86,17 @@ private suspend fun ComplaintReportFixture.assertOtherWritesBusy() {
     assertIs<AppResult.Failure>(repository.submit(mutationReport(key = historyId(30))))
     assertIs<AppResult.Failure>(repository.submit(mobileReplyRequest(key = historyId(31))))
     assertIs<AppResult.Failure>(repository.submit(mobileEditRequest(key = historyId(32))))
+    assertIs<AppResult.Failure>(repository.submit(mobileOwnerDeleteRequest(key = historyId(33))))
     assertIs<AppResult.Failure>(repository.reconcile())
 }
 
-private suspend fun TestScope.assertEditSessionFence(change: String) {
+private suspend fun TestScope.assertEditSessionFence(change: String, request: ComplaintOwnerRequest) {
     val entered = CompletableDeferred<Unit>()
     val release = CompletableDeferred<Unit>()
     val f = heldEditSessionFixture(entered, release)
     val ordinary = f.coordinator.admit().success()
     try {
-        val first = async { f.repository.submit(mobileEditRequest()) }
+        val first = async { f.repository.submit(request) }
         entered.await()
         f.changeEditSessionLifetime(ordinary, change)
         release.complete(Unit)

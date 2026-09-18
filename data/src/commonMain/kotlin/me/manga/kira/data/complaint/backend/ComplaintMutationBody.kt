@@ -25,7 +25,7 @@ internal class ComplaintMutationDocument(
     override fun toString(): String = "ComplaintMutationDocument(redacted)"
 }
 
-/** Closed methods/paths; reply parent and edit target derive only from the checked pending tuple. */
+/** Closed methods/paths; every reply parent and mutation target derives from the checked pending tuple. */
 internal enum class ComplaintMutationRoute(
     val success: HttpStatusCode,
     val method: HttpMethod,
@@ -33,6 +33,7 @@ internal enum class ComplaintMutationRoute(
     CREATE(HttpStatusCode.Created, HttpMethod.Post),
     REPLY(HttpStatusCode.Created, HttpMethod.Post),
     EDIT(HttpStatusCode.OK, HttpMethod.Patch),
+    OWNER_DELETE(HttpStatusCode.NoContent, HttpMethod.Delete),
     STATUS(HttpStatusCode.OK, HttpMethod.Post),
     ;
 
@@ -50,6 +51,10 @@ internal enum class ComplaintMutationRoute(
             EDIT -> {
                 if (pending.request.action.operation != PendingComplaintOperation.EDIT_CONTENT) invalidHistory()
                 Url("${endpoint.historyUrl}/${pending.request.action.targetId}${Policy.CONTENT_SUFFIX}")
+            }
+            OWNER_DELETE -> {
+                if (pending.request.action.operation != PendingComplaintOperation.DELETE_OWNED) invalidHistory()
+                Url("${endpoint.historyUrl}/${pending.request.action.targetId}")
             }
             STATUS -> Url(endpoint.historyUrl.toString().removeSuffix(Policy.CREATE_PATH) + Policy.STATUS_PATH)
         }
@@ -86,6 +91,7 @@ internal object ComplaintMutationBody {
         when {
             !success || route == ComplaintMutationRoute.STATUS -> Policy.MAX_STATUS_OR_PROBLEM_BYTES
             route == ComplaintMutationRoute.EDIT -> Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES
+            route == ComplaintMutationRoute.OWNER_DELETE -> Policy.MAX_OWNER_DELETE_ACKNOWLEDGEMENT_BYTES
             else -> Policy.MAX_CREATE_ACKNOWLEDGEMENT_BYTES
         }
 
@@ -106,10 +112,24 @@ internal object ComplaintMutationBody {
         if (cache == null || cache.size != CACHE.size || cache.toSet() != CACHE) invalidHistory()
         val encoding = headers.single(HttpHeaders.ContentEncoding)
         if (encoding != null && !encoding.equals("identity", ignoreCase = true)) invalidHistory()
+        responseHeaders(response, route, success)
+        if (success && route == ComplaintMutationRoute.OWNER_DELETE) {
+            emptyAcknowledgement(headers)
+            return null
+        }
         val media = if (success) JSON_MEDIA else PROBLEM_MEDIA
         if (!media.matches(headers.single(HttpHeaders.ContentType) ?: invalidHistory())) invalidHistory()
-        responseHeaders(response, route, success)
         return length(headers, maximum)
+    }
+
+    private fun emptyAcknowledgement(headers: Headers) {
+        if (
+            headers.single(HttpHeaders.ContentType) != null ||
+            headers.single(HttpHeaders.ContentLength) != null ||
+            headers.single(HttpHeaders.TransferEncoding) != null
+        ) {
+            invalidHistory()
+        }
     }
 
     private fun responseHeaders(
@@ -122,7 +142,7 @@ internal object ComplaintMutationBody {
         val etag = headers.single(HttpHeaders.ETag)
         if (success && route == ComplaintMutationRoute.EDIT) {
             if (location != null || etag == null) invalidHistory()
-        } else if (success && route != ComplaintMutationRoute.STATUS) {
+        } else if (success && route != ComplaintMutationRoute.STATUS && route != ComplaintMutationRoute.OWNER_DELETE) {
             if (location == null || etag == null) invalidHistory()
         } else if (location != null || etag != null) {
             invalidHistory()

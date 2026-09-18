@@ -37,6 +37,16 @@ class ComplaintEditAuthorityTest {
                 }
             }
         }
+
+    @Test
+    fun finalOwnerDelete204AndTerminalStatusUseTheSameCredentialConsentResetDeletionAndCloseFences() =
+        runTest {
+            for (direct in listOf(false, true)) {
+                for (change in editFinalAuthorityChanges()) {
+                    assertEditFinalFence(direct, change, deletion = true)
+                }
+            }
+        }
 }
 
 private suspend fun TestScope.assertEditExchangeIdentity(applied: Boolean) {
@@ -102,12 +112,12 @@ private suspend fun ComplaintReportFixture.assertExactEditCleanupRetry(
     assertTrue(untouched.sameAs(storage.pending.slots.single()))
 }
 
-private suspend fun TestScope.assertEditFinalFence(direct: Boolean, change: String) {
-    val f = editFinalFenceFixture(direct)
+private suspend fun TestScope.assertEditFinalFence(direct: Boolean, change: String, deletion: Boolean = false) {
+    val f = editFinalFenceFixture(direct, deletion)
     val ordinary = f.coordinator.admit().success()
     val work = assertNotNull(f.works.begin(Job()))
     try {
-        val exchange = f.readyEditExchange(work, direct)
+        val exchange = if (deletion) f.readyOwnerDeleteExchange(work, direct) else f.readyEditExchange(work, direct)
         val slot = f.storage.pending.slots.single()
         f.changeFinalEditAuthority(ordinary, change)
         val mutations = f.storage.faults.mutations.toList()
@@ -137,15 +147,38 @@ private suspend fun ComplaintReportFixture.readyEditExchange(work: ReportWork, d
         boundEditStatus(work, slot).also { assertIs<ComplaintEditStatusHttpResult.Rejected>(it.result) }
     }
 
-private fun TestScope.editFinalFenceFixture(direct: Boolean): ComplaintReportFixture =
+private suspend fun ComplaintReportFixture.readyOwnerDeleteExchange(work: ReportWork, direct: Boolean): ReportExchange =
+    if (direct) {
+        val start = coordinator.beginReportAction(work, ReportStart.New(mobileOwnerDeleteRequest())).success()
+        val session = readySession(start)
+        val prepared = coordinator.prepareReport(start, session, sessions).success()
+        coordinator.dispatchOwnerDelete(prepared, session, sessions, http).success().also {
+            assertIs<ComplaintOwnerDeleteHttpResult.Applied>(it.result)
+        }
+    } else {
+        val slot = mobileOwnerDeleteSlot()
+        storage.pending.slots += slot
+        val binding = coordinator.beginReportAction(work, ReportStart.Retained(slot)).success()
+        coordinator.readOwnerDeleteStatus(binding, readySession(binding), sessions, http).success().also {
+            assertIs<ComplaintOwnerDeleteStatusHttpResult.Rejected>(it.result)
+        }
+    }
+
+private fun TestScope.editFinalFenceFixture(direct: Boolean, deletion: Boolean): ComplaintReportFixture =
     ComplaintReportFixture(
         this,
         mutationHandler = {
-            respond(
-                if (direct) mobileEditAck() else mobileEditRejected(),
-                HttpStatusCode.OK,
-                mobileEditHeaders(direct = direct),
-            )
+            if (deletion && direct) {
+                respond("", HttpStatusCode.NoContent, mobileOwnerDeleteHeaders())
+            } else {
+                val text =
+                    when {
+                        deletion -> mobileOwnerDeleteRejected()
+                        direct -> mobileEditAck()
+                        else -> mobileEditRejected()
+                    }
+                respond(text, HttpStatusCode.OK, mobileEditHeaders(direct = direct))
+            }
         },
     )
 

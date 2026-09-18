@@ -6,6 +6,8 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.O
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import me.manga.kira.domain.model.feedback.ComplaintEditDraft
 import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteDraft
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeletePreparation
 import me.manga.kira.domain.model.feedback.ComplaintReplyDraft
 import me.manga.kira.domain.model.feedback.ComplaintReplyPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportDraft
@@ -69,6 +71,21 @@ internal class ComplaintReportPreparations(
         }
     }
 
+    suspend fun prepare(draft: ComplaintOwnerDeleteDraft): AppResult<ComplaintOwnerDeletePreparation> {
+        val target = ComplaintEditTarget.from(draft.target) ?: return invalidOwnerDelete()
+        val observed = coordinator.beginReconciliation()
+        if (observed !is Outcome.Success) {
+            return AppResult.Success(
+                ComplaintOwnerDeletePreparation.Blocked(reportLocalFailure(observed).consumerResult()),
+            )
+        }
+        val key = inputs.editKey?.invoke() ?: return invalidOwnerDelete()
+        val request =
+            ComplaintOwnerDeleteRequest.checked(target, key, observed.value.record.material.dataScopeId)
+                ?: return invalidOwnerDelete()
+        return publish(request, observed.value)
+    }
+
     private fun capture(
         draft: ComplaintReportDraft,
         origin: ReconciliationPermit,
@@ -123,4 +140,20 @@ internal class ComplaintReportPreparations(
 
     private fun invalidEdit(): AppResult<ComplaintEditPreparation> =
         AppResult.Success(ComplaintEditPreparation.Blocked(reportUnavailable(Block.INVALID_CANDIDATE).consumerResult()))
+
+    private suspend fun publish(
+        request: ComplaintOwnerDeleteRequest,
+        origin: ReconciliationPermit,
+    ): AppResult<ComplaintOwnerDeletePreparation> =
+        when (val checked = coordinator.applyReconciliationIfCurrent(origin) {}) {
+            is Outcome.Success ->
+                AppResult.Success(ComplaintOwnerDeletePreparation.Ready(OwnerDeleteLiveHandle(issuer, request, origin)))
+            else ->
+                AppResult.Success(ComplaintOwnerDeletePreparation.Blocked(reportLocalFailure(checked).consumerResult()))
+        }
+
+    private fun invalidOwnerDelete(): AppResult<ComplaintOwnerDeletePreparation> =
+        AppResult.Success(
+            ComplaintOwnerDeletePreparation.Blocked(reportUnavailable(Block.INVALID_CANDIDATE).consumerResult()),
+        )
 }

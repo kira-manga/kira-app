@@ -45,6 +45,7 @@ internal fun reportRequest(
     when (report) {
         is ComplaintCreationRequest -> creationPendingRequest(report, permit)
         is ComplaintEditRequest -> editPendingRequest(report, permit)
+        is ComplaintOwnerDeleteRequest -> ownerDeletePendingRequest(report, permit)
     }
 
 private fun creationPendingRequest(
@@ -77,13 +78,23 @@ private fun editPendingRequest(
         ?: refuse(Block.INVALID_CANDIDATE)
 }
 
+private fun ownerDeletePendingRequest(
+    deletion: ComplaintOwnerDeleteRequest,
+    permit: ReconciliationPermit,
+): PendingComplaintRequest {
+    if (deletion.dataScopeId != permit.record.material.dataScopeId) refuse(Block.INVALID_CANDIDATE)
+    return PendingComplaintRequest.checked(deletion.action, deletion.key.canonical, deletion.pendingFingerprint())
+        ?: refuse(Block.INVALID_CANDIDATE)
+}
+
 internal fun decodeReport(slot: PendingComplaintSlot): PendingComplaintRecord =
     when (val result = PendingComplaintRecordCodec.decode(slot)) {
         is PendingComplaintCodecResult.Value ->
             result.value.also {
                 if (it.request.action.operation != PendingComplaintOperation.CREATE_REPORT &&
                     it.request.action.operation != PendingComplaintOperation.CREATE_REPLY &&
-                    it.request.action.operation != PendingComplaintOperation.EDIT_CONTENT
+                    it.request.action.operation != PendingComplaintOperation.EDIT_CONTENT &&
+                    it.request.action.operation != PendingComplaintOperation.DELETE_OWNED
                 ) {
                     refuse(Block.RECONCILIATION_REQUIRED)
                 }
@@ -109,6 +120,22 @@ internal fun reportApplication(exchange: ReportExchange): ReportActionState =
                     ReportActionState.Edit(ComplaintEditActionState.Rejected(result.code))
                 else -> refuse(Block.RECONCILIATION_REQUIRED)
             }
+        is ReportExchange.OwnerDelete ->
+            when (exchange.result) {
+                is ComplaintOwnerDeleteHttpResult.Applied ->
+                    ReportActionState.OwnerDelete(ComplaintOwnerDeleteActionState.Applied)
+                else -> refuse(Block.RECONCILIATION_REQUIRED)
+            }
+        is ReportExchange.OwnerDeleteStatus -> ownerDeleteApplication(exchange.result)
+    }
+
+private fun ownerDeleteApplication(result: ComplaintOwnerDeleteStatusHttpResult): ReportActionState.OwnerDelete =
+    when (result) {
+        is ComplaintOwnerDeleteStatusHttpResult.Applied ->
+            ReportActionState.OwnerDelete(ComplaintOwnerDeleteActionState.Applied)
+        is ComplaintOwnerDeleteStatusHttpResult.Rejected ->
+            ReportActionState.OwnerDelete(ComplaintOwnerDeleteActionState.Rejected(result.code))
+        else -> refuse(Block.RECONCILIATION_REQUIRED)
     }
 
 private fun creationApplication(result: ComplaintCreateHttpResult): ReportActionState =

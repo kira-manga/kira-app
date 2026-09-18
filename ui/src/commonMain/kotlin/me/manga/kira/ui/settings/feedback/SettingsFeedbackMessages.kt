@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.model.feedback.ComplaintEditApplication
 import me.manga.kira.domain.model.feedback.ComplaintEditReceiptRejection
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteReceiptRejection
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportBlock
@@ -19,6 +21,7 @@ import me.manga.kira.ui.generated.resources.complaint_site_error
 import me.manga.kira.ui.generated.resources.complaint_sites_add
 import me.manga.kira.ui.generated.resources.complaint_technical
 import me.manga.kira.ui.generated.resources.error_network_not_found
+import me.manga.kira.ui.generated.resources.np_complaint_action_deleted
 import me.manga.kira.ui.generated.resources.np_complaint_action_updated
 import me.manga.kira.ui.generated.resources.request_failed
 import me.manga.kira.ui.generated.resources.request_feedback_missing_installation
@@ -105,6 +108,8 @@ private fun settingsReportApplicationText(application: ComplaintReportApplicatio
                     stringResource(Res.string.request_failed)
             }
         is ComplaintReportApplication.Edit -> stringResource(settingsEditReceiptResource(application.application))
+        is ComplaintReportApplication.OwnerDelete ->
+            stringResource(settingsOwnerDeleteReceiptResource(application.application))
     }
 
 /** Compatibility for an original edit receipt, not editor controls or a current row/version claim. */
@@ -118,6 +123,19 @@ internal fun settingsEditReceiptResource(application: ComplaintEditApplication):
                 ComplaintEditReceiptRejection.COMPLAINT_NO_CHANGE,
                 ComplaintEditReceiptRejection.COMPLAINT_DELETION_PENDING,
                 ComplaintEditReceiptRejection.PRECONDITION_FAILED,
+                -> Res.string.request_failed
+            }
+    }
+
+/** Original owner-delete receipt only; does not imply installation deletion or current row inventory. */
+internal fun settingsOwnerDeleteReceiptResource(application: ComplaintOwnerDeleteApplication): StringResource =
+    when (application) {
+        ComplaintOwnerDeleteApplication.Applied -> Res.string.np_complaint_action_deleted
+        is ComplaintOwnerDeleteApplication.Rejected ->
+            when (application.code) {
+                ComplaintOwnerDeleteReceiptRejection.COMPLAINT_NOT_FOUND -> Res.string.error_network_not_found
+                ComplaintOwnerDeleteReceiptRejection.COMPLAINT_DELETION_PENDING,
+                ComplaintOwnerDeleteReceiptRejection.PRECONDITION_FAILED,
                 -> Res.string.request_failed
             }
     }

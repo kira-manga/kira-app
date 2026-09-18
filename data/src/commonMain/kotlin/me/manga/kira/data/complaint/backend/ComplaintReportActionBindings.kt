@@ -140,6 +140,11 @@ internal class ComplaintReportActionBindings(
         session: ReportSession,
     ): ComplaintEditHttpRequest = exchanges.editRequest(binding, session)
 
+    fun ownerDeleteRequest(
+        binding: ReportActionBinding,
+        session: ReportSession,
+    ): ComplaintOwnerDeleteHttpRequest = exchanges.ownerDeleteRequest(binding, session)
+
     fun statusRequest(binding: ReportActionBinding): ComplaintCreateStatusRequest {
         if (binding.stage != ReportActionStage.MAY_HAVE_DISPATCHED) refuse(Block.RECONCILIATION_REQUIRED)
         reconciliation.forget(binding)
@@ -151,6 +156,13 @@ internal class ComplaintReportActionBindings(
         if (binding.stage != ReportActionStage.MAY_HAVE_DISPATCHED) refuse(Block.RECONCILIATION_REQUIRED)
         reconciliation.forget(binding)
         return ComplaintEditStatusRequest.checked(binding.pendingRecord ?: refuse(Block.STALE_BINDING))
+            ?: refuse(Block.INVALID_CANDIDATE)
+    }
+
+    fun ownerDeleteStatusRequest(binding: ReportActionBinding): ComplaintOwnerDeleteStatusRequest {
+        if (binding.stage != ReportActionStage.MAY_HAVE_DISPATCHED) refuse(Block.RECONCILIATION_REQUIRED)
+        reconciliation.forget(binding)
+        return ComplaintOwnerDeleteStatusRequest.checked(binding.pendingRecord ?: refuse(Block.STALE_BINDING))
             ?: refuse(Block.INVALID_CANDIDATE)
     }
 
@@ -168,6 +180,14 @@ internal class ComplaintReportActionBindings(
         result: ComplaintEditHttpResult,
     ): ReportExchange.Edit = ReportExchange.Edit(binding, session, request, result).also(exchanges::received)
 
+    fun receivedOwnerDelete(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        request: ComplaintOwnerDeleteHttpRequest,
+        result: ComplaintOwnerDeleteHttpResult,
+    ): ReportExchange.OwnerDelete =
+        ReportExchange.OwnerDelete(binding, session, request, result).also(exchanges::received)
+
     fun authorizeRefresh(exchange: ReportExchange) = exchanges.authorizeRefresh(exchange)
 
     fun receivedStatus(
@@ -183,6 +203,14 @@ internal class ComplaintReportActionBindings(
         request: ComplaintEditStatusRequest,
         result: ComplaintEditStatusHttpResult,
     ): ReportExchange.EditStatus = ReportExchange.EditStatus(binding, session, request, result).also(::receivedStatus)
+
+    fun receivedOwnerDeleteStatus(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        request: ComplaintOwnerDeleteStatusRequest,
+        result: ComplaintOwnerDeleteStatusHttpResult,
+    ): ReportExchange.OwnerDeleteStatus =
+        ReportExchange.OwnerDeleteStatus(binding, session, request, result).also(::receivedStatus)
 
     private fun receivedStatus(exchange: ReportExchange) {
         exchanges.received(exchange)

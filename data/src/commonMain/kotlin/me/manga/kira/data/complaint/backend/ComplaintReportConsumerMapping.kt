@@ -3,6 +3,8 @@ package me.manga.kira.data.complaint.backend
 import me.manga.kira.domain.model.feedback.ComplaintEditApplication
 import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
 import me.manga.kira.domain.model.feedback.ComplaintEditReceiptRejection
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteReceiptRejection
 import me.manga.kira.domain.model.feedback.ComplaintReplyPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
@@ -44,6 +46,14 @@ internal fun ReportActionState.consumerResult(): ComplaintReportApplication =
         is ReportActionState.Rejected ->
             ComplaintReportApplication.Rejected(ComplaintReportReceiptRejection.valueOf(code.wireCode))
         is ReportActionState.Edit -> ComplaintReportApplication.Edit(application.consumerResult())
+        is ReportActionState.OwnerDelete -> ComplaintReportApplication.OwnerDelete(application.consumerResult())
+    }
+
+private fun ComplaintOwnerDeleteActionState.consumerResult(): ComplaintOwnerDeleteApplication =
+    when (this) {
+        ComplaintOwnerDeleteActionState.Applied -> ComplaintOwnerDeleteApplication.Applied
+        is ComplaintOwnerDeleteActionState.Rejected ->
+            ComplaintOwnerDeleteApplication.Rejected(ComplaintOwnerDeleteReceiptRejection.valueOf(code.name))
     }
 
 private fun ComplaintEditActionState.consumerResult(): ComplaintEditApplication =

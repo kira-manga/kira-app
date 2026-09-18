@@ -14,8 +14,11 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.R
 import me.manga.kira.domain.model.feedback.ComplaintEditDraft
 import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
 import me.manga.kira.domain.model.feedback.ComplaintLiveEdit
+import me.manga.kira.domain.model.feedback.ComplaintLiveOwnerDelete
 import me.manga.kira.domain.model.feedback.ComplaintLiveReply
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteDraft
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeletePreparation
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintRecoveryPrompt
 import me.manga.kira.domain.model.feedback.ComplaintReplyDraft
@@ -27,11 +30,12 @@ import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 import me.manga.kira.domain.repository.ComplaintEditRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
+import me.manga.kira.domain.repository.ComplaintOwnerDeleteRepository
 import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 
 /**
- * Thin report/reply/edit consumer of the existing producer, not a second transport or action registry.
+ * Thin owner-write consumer of the existing producer, not a second transport or action registry.
  * All verbs and their guards share one issuer/coordinator; splitting them would fragment handle ownership.
  */
 @Suppress("TooManyFunctions")
@@ -42,6 +46,7 @@ internal class BackendComplaintReportRepository(
 ) : ComplaintReportRepository,
     ComplaintReplyRepository,
     ComplaintEditRepository,
+    ComplaintOwnerDeleteRepository,
     ComplaintInstallationRecoveryRepository {
     private val issuer = ReportConsumerIssuer()
     private val preparations = ComplaintReportPreparations(coordinator, inputs, issuer)
@@ -74,6 +79,15 @@ internal class BackendComplaintReportRepository(
     override suspend fun submit(edit: ComplaintLiveEdit): AppResult<ComplaintReportSubmission> = submitLive(editHandle(edit))
 
     override suspend fun retry(edit: ComplaintLiveEdit): AppResult<ComplaintReportAttempt> = retryLive(editHandle(edit))
+
+    override suspend fun prepare(draft: ComplaintOwnerDeleteDraft): AppResult<ComplaintOwnerDeletePreparation> =
+        access { preparations.prepare(draft) }
+
+    override suspend fun submit(deletion: ComplaintLiveOwnerDelete): AppResult<ComplaintReportSubmission> =
+        submitLive(ownerDeleteHandle(deletion))
+
+    override suspend fun retry(deletion: ComplaintLiveOwnerDelete): AppResult<ComplaintReportAttempt> =
+        retryLive(ownerDeleteHandle(deletion))
 
     private suspend fun submitLive(candidate: ComplaintOwnerLiveHandle?): AppResult<ComplaintReportSubmission> =
         access {
@@ -174,6 +188,9 @@ internal class BackendComplaintReportRepository(
 
     private fun editHandle(edit: ComplaintLiveEdit): EditLiveHandle? =
         (edit as? EditLiveHandle)?.takeIf { it.issuer === issuer }
+
+    private fun ownerDeleteHandle(deletion: ComplaintLiveOwnerDelete): OwnerDeleteLiveHandle? =
+        (deletion as? OwnerDeleteLiveHandle)?.takeIf { it.issuer === issuer }
 
     private fun pendingHandle(report: ComplaintPendingReport): ReportPendingHandle? =
         (report as? ReportPendingHandle)?.takeIf { it.issuer === issuer }

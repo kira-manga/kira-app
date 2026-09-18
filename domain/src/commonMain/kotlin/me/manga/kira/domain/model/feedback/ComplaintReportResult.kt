@@ -54,6 +54,13 @@ sealed interface ComplaintReportApplication {
     ) : ComplaintReportApplication {
         override fun toString(): String = "ComplaintReportApplication.Edit(redacted)"
     }
+
+    /** Single-delete204 is not creation/edit acknowledgement or installation-delete-all completion. */
+    class OwnerDelete(
+        val application: ComplaintOwnerDeleteApplication,
+    ) : ComplaintReportApplication {
+        override fun toString(): String = "ComplaintReportApplication.OwnerDelete(redacted)"
+    }
 }
 
 /** Observed local phase only. The repository rechecks current durable state for every action. */

@@ -59,6 +59,7 @@ internal class ComplaintMutationFixture(
             ComplaintMutationRoute.CREATE -> http.create(create, session)
             ComplaintMutationRoute.REPLY -> http.create(replyCreate, session)
             ComplaintMutationRoute.EDIT -> error("Edit has its separate typed fixture")
+            ComplaintMutationRoute.OWNER_DELETE -> error("Owner-delete has its separate typed fixture")
             ComplaintMutationRoute.STATUS -> http.status(status, session)
         }
 

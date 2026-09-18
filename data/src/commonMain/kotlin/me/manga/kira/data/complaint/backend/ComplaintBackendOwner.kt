@@ -9,6 +9,7 @@ import me.manga.kira.domain.repository.ComplaintEditRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
+import me.manga.kira.domain.repository.ComplaintOwnerDeleteRepository
 import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.platform.storage.InstallationCredentialMaterialGenerator
@@ -43,6 +44,9 @@ class ComplaintBackendOwner private constructor(
 
     /** Same concrete consumer/issuer, coordinator/session and mutation lane; never an active editor. */
     val edits: ComplaintEditRepository? get() = installationPorts.edits
+
+    /** Same live issuer/write lane as edits and reports; not installation deletion or shipping selection. */
+    val ownerDeletes: ComplaintOwnerDeleteRepository? get() = installationPorts.ownerDeletes
 
     /** Explicit delete-all producer, absent unless a separate fixed-route engine was supplied. */
     val deletion: ComplaintInstallationDeletionRepository? get() = installationPorts.deletion
@@ -102,7 +106,7 @@ class ComplaintBackendOwner private constructor(
                         BackendComplaintHistoryRepository(coordinator, sessions, enrollment, generator, http, loads),
                         feedback,
                         reports,
-                        ComplaintInstallationPorts(reports, deletion, reports, reports),
+                        ComplaintInstallationPorts(reports, deletion, reports, reports, reports),
                         close.toList(),
                     ),
                 )
@@ -128,6 +132,7 @@ private class ComplaintInstallationPorts(
     val deletion: ComplaintInstallationDeletionRepository?,
     val replies: ComplaintReplyRepository?,
     val edits: ComplaintEditRepository?,
+    val ownerDeletes: ComplaintOwnerDeleteRepository?,
 )
 
 /** Construct and register the optional consumer together; failure still unwinds through the owner. */

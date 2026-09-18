@@ -47,6 +47,16 @@ internal class ComplaintReportExchanges {
             .also { consumeDispatch() }
     }
 
+    fun ownerDeleteRequest(
+        binding: ReportActionBinding,
+        session: ReportSession,
+    ): ComplaintOwnerDeleteHttpRequest {
+        val record = dispatchRecord(binding, session)
+        val deletion = binding.liveReport as? ComplaintOwnerDeleteRequest ?: refuse(Block.INVALID_CANDIDATE)
+        return (ComplaintOwnerDeleteHttpRequest.checked(deletion, record) ?: refuse(Block.INVALID_CANDIDATE))
+            .also { consumeDispatch() }
+    }
+
     private fun dispatchRecord(
         binding: ReportActionBinding,
         session: ReportSession,
@@ -79,6 +89,8 @@ internal class ComplaintReportExchanges {
                 is ReportExchange.Status -> exchange.result.request === exchange.request
                 is ReportExchange.Edit -> exchange.result.request === exchange.request
                 is ReportExchange.EditStatus -> exchange.result.request === exchange.request
+                is ReportExchange.OwnerDelete -> exchange.result.request === exchange.request
+                is ReportExchange.OwnerDeleteStatus -> exchange.result.request === exchange.request
             }
         if (!bound) refuse(Block.STALE_BINDING)
         last = exchange
@@ -89,7 +101,7 @@ internal class ComplaintReportExchanges {
         if (last !== exchange) refuse(Block.STALE_BINDING)
     }
 
-    /** One matched401 refresh. A status401 never authorizes a creation or PATCH retry. */
+    /** One matched401 refresh. A status401 never authorizes a mutation retry. */
     fun authorizeRefresh(exchange: ReportExchange) {
         if (last !== exchange || unauthorizedRetried || !exchange.unauthorized()) {
             refuse(Block.RECONCILIATION_REQUIRED)
@@ -97,8 +109,9 @@ internal class ComplaintReportExchanges {
         unauthorizedRetried = true
         retry =
             when (exchange) {
-                is ReportExchange.Create, is ReportExchange.Edit -> ReportRetry.Unauthorized(exchange.session.entry)
-                is ReportExchange.Status, is ReportExchange.EditStatus -> null
+                is ReportExchange.Create, is ReportExchange.Edit, is ReportExchange.OwnerDelete ->
+                    ReportRetry.Unauthorized(exchange.session.entry)
+                is ReportExchange.Status, is ReportExchange.EditStatus, is ReportExchange.OwnerDeleteStatus -> null
             }
     }
 }
@@ -111,7 +124,10 @@ internal fun ReportExchange.operationMissing(): Boolean =
         is ReportExchange.EditStatus ->
             result is ComplaintEditStatusHttpResult.HttpFailure &&
                 result.status == NOT_FOUND && result.problem == ComplaintEditProblem.OPERATION_NOT_FOUND
-        is ReportExchange.Create, is ReportExchange.Edit -> false
+        is ReportExchange.OwnerDeleteStatus ->
+            result is ComplaintOwnerDeleteStatusHttpResult.HttpFailure &&
+                result.status == NOT_FOUND && result.problem == ComplaintOwnerDeleteProblem.OPERATION_NOT_FOUND
+        is ReportExchange.Create, is ReportExchange.Edit, is ReportExchange.OwnerDelete -> false
     }
 
 private fun ReportExchange.unauthorized(): Boolean =
@@ -120,6 +136,9 @@ private fun ReportExchange.unauthorized(): Boolean =
         is ReportExchange.Status -> (result as? ComplaintCreateStatusHttpResult.HttpFailure)?.status == UNAUTHORIZED
         is ReportExchange.Edit -> (result as? ComplaintEditHttpResult.HttpFailure)?.status == UNAUTHORIZED
         is ReportExchange.EditStatus -> (result as? ComplaintEditStatusHttpResult.HttpFailure)?.status == UNAUTHORIZED
+        is ReportExchange.OwnerDelete -> (result as? ComplaintOwnerDeleteHttpResult.HttpFailure)?.status == UNAUTHORIZED
+        is ReportExchange.OwnerDeleteStatus ->
+            (result as? ComplaintOwnerDeleteStatusHttpResult.HttpFailure)?.status == UNAUTHORIZED
     }
 
 private sealed interface ReportRetry {

@@ -173,7 +173,7 @@ class BackendComplaintEditRepositoryTest {
         }
 }
 
-private suspend fun ComplaintReportFixture.installEditPreparationBlock(state: String) {
+internal suspend fun ComplaintReportFixture.installEditPreparationBlock(state: String) {
     when (state) {
         "missing" -> storage.credentials.removePieces()
         "locked" ->
@@ -232,7 +232,7 @@ private suspend fun TestScope.assertEditCaptureFence(change: String) {
     }
 }
 
-private suspend fun ComplaintReportFixture.changeEditOrigin(ordinary: Permit, change: String) {
+internal suspend fun ComplaintReportFixture.changeEditOrigin(ordinary: Permit, change: String) {
     if (change == "record") {
         storage.credentials.install(Fixtures.record(version = 2, generation = 2))
     } else {

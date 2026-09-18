@@ -12,6 +12,8 @@ import kotlinx.serialization.json.JsonObject
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Block
 import me.manga.kira.domain.model.feedback.ComplaintEditApplication
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteReceiptRejection
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportBlock
@@ -41,24 +43,18 @@ class ComplaintEditRecoveryTest {
         }
 
     @Test
-    fun mixedRecoveryKeepsCreationAndEditApplicationsDistinctWithoutRecoveringInputsOrProse() =
+    fun mixedRecoveryKeepsCreationEditAndDeleteApplicationsDistinctWithoutRecoveringInputsOrProse() =
         runTest {
-            val f = mixedEditRecoveryFixture()
-            f.storage.pending.slots +=
-                listOf(
-                    reportSlot(mutationReport(key = historyId(10), id = historyId(20))),
-                    reportSlot(mobileReplyRequest(key = historyId(11))),
-                    mobileEditSlot(),
-                    mobileEditSlot(mobileEditRequest(key = MUTATION_OTHER_KEY)),
-                )
+            val f = mixedOwnerRecoveryFixture()
+            f.storage.pending.slots += mixedOwnerRecoverySlots()
             val consumer = f.consumer(mobileEditInputs { error("metadata recovery must not allocate a key") })
             try {
                 val recovery = consumer.reconcile().reportSuccess()
                 assertNull(recovery.stopped)
                 val applications =
                     recovery.entries().map { assertIs<ConsumerAttempt.Completed>(it.attempt).application }
-                assertMixedEditApplications(applications)
-                assertEquals(4, f.requests.size)
+                assertMixedOwnerApplications(applications)
+                assertEquals(6, f.requests.size)
                 f.assertOnlyEditStatusRequests()
                 assertTrue(f.sentBodies.none { it.contains("\"body\"") || it.contains("\"subject\"") })
                 assertTrue(f.storage.pending.slots.isEmpty())
@@ -69,31 +65,10 @@ class ComplaintEditRecoveryTest {
         }
 
     @Test
-    fun fullMixedInventoryStillRunsItsBoundedStatusPassBeforeRefusingANewEdit() =
+    fun fullMixedInventoryStillRunsItsBoundedStatusPassBeforeRefusingANewEditOrDelete() =
         runTest {
-            for (count in listOf(15, 16)) {
-                val f = ComplaintReportFixture(this, mutationHandler = { mobileEditNotFoundOrApplied(it) })
-                val slots = List(count, ::mixedEditSlot)
-                f.storage.pending.slots += slots
-                try {
-                    val result = f.repository.submit(mobileEditRequest()).reportSuccess()
-                    assertEquals(count, result.recovery.entries().size)
-                    if (count == 16) {
-                        assertEquals(
-                            Block.PENDING_CAPACITY_REACHED,
-                            assertIs<ReportAttempt.Unresolved>(result.attempt).failure.block,
-                        )
-                        assertTrue(f.requests.none { it.method == HttpMethod.Patch })
-                    } else {
-                        assertIs<ReportAttempt.Completed>(result.attempt)
-                        assertEquals(1, f.requests.count { it.method == HttpMethod.Patch })
-                    }
-                    assertEquals(16, f.requests.size)
-                    assertEquals(count, f.storage.pending.slots.size)
-                    assertTrue(slots.all { old -> f.storage.pending.slots.any(old::sameAs) })
-                } finally {
-                    f.close()
-                }
+            for (request in listOf(mobileEditRequest(), mobileOwnerDeleteRequest())) {
+                for (count in listOf(15, 16)) assertMixedOwnerCapacity(count, request)
             }
         }
 
@@ -178,7 +153,7 @@ private suspend fun TestScope.assertColdEditRejection(
     }
 }
 
-private fun TestScope.mixedEditRecoveryFixture(): ComplaintReportFixture =
+private fun TestScope.mixedOwnerRecoveryFixture(): ComplaintReportFixture =
     ComplaintReportFixture(
         this,
         mutationHandler = { request ->
@@ -189,13 +164,30 @@ private fun TestScope.mixedEditRecoveryFixture(): ComplaintReportFixture =
                     "OWNER_REPLY" -> mutationRejected(ComplaintReplyRejection.COMPLAINT_PARENT_NOT_FOUND)
                     "OWNER_EDIT" ->
                         if (root.historyString("key") == Fixtures.KEY) mobileEditApplied() else mobileEditRejected()
+                    "OWNER_DELETE" ->
+                        if (root.historyString("key") == historyId(12)) {
+                            MOBILE_OWNER_DELETE_APPLIED
+                        } else {
+                            mobileOwnerDeleteRejected()
+                        }
                     else -> error("Unexpected operation")
                 }
             respond(body, HttpStatusCode.OK, mobileEditHeaders(direct = false))
         },
     )
 
-private fun assertMixedEditApplications(applications: List<ComplaintReportApplication>) {
+private fun mixedOwnerRecoverySlots(): List<PendingComplaintSlot> =
+    listOf(
+        reportSlot(mutationReport(key = historyId(10), id = historyId(20))),
+        reportSlot(mobileReplyRequest(key = historyId(11))),
+        mobileEditSlot(),
+        mobileEditSlot(mobileEditRequest(key = MUTATION_OTHER_KEY)),
+        mobileOwnerDeleteSlot(mobileOwnerDeleteRequest(key = historyId(12))),
+        mobileOwnerDeleteSlot(mobileOwnerDeleteRequest(key = historyId(13))),
+    )
+
+private fun assertMixedOwnerApplications(applications: List<ComplaintReportApplication>) {
+    assertEquals(6, applications.size)
     val edits = applications.filterIsInstance<ComplaintReportApplication.Edit>().map { it.application }
     assertEquals(2, edits.size)
     assertEquals(8L, edits.filterIsInstance<ComplaintEditApplication.Applied>().single().version)
@@ -207,14 +199,57 @@ private fun assertMixedEditApplications(applications: List<ComplaintReportApplic
         ),
         applications.filterIsInstance<ComplaintReportApplication.Rejected>().map { it.code }.toSet(),
     )
+    val deletions = applications.filterIsInstance<ComplaintReportApplication.OwnerDelete>().map { it.application }
+    assertEquals(2, deletions.size)
+    assertTrue(ComplaintOwnerDeleteApplication.Applied in deletions)
+    assertEquals(
+        ComplaintOwnerDeleteReceiptRejection.PRECONDITION_FAILED,
+        deletions.filterIsInstance<ComplaintOwnerDeleteApplication.Rejected>().single().code,
+    )
 }
 
-private fun mixedEditSlot(index: Int): PendingComplaintSlot =
-    when (index % 3) {
+private fun mixedOwnerSlot(index: Int): PendingComplaintSlot =
+    when (index % 4) {
         0 -> reportSlot(mutationReport(key = historyId(index + 100), id = historyId(index + 200)))
         1 -> reportSlot(mobileReplyRequest(key = historyId(index + 100), id = historyId(index + 200)))
-        else -> mobileEditSlot(mobileEditRequest(key = historyId(index + 100)))
+        2 -> mobileEditSlot(mobileEditRequest(key = historyId(index + 100)))
+        else -> mobileOwnerDeleteSlot(mobileOwnerDeleteRequest(key = historyId(index + 100)))
     }
+
+private suspend fun TestScope.assertMixedOwnerCapacity(count: Int, request: ComplaintOwnerRequest) {
+    val f = mixedOwnerCapacityFixture()
+    val slots = List(count, ::mixedOwnerSlot)
+    f.storage.pending.slots += slots
+    try {
+        val result = f.repository.submit(request).reportSuccess()
+        assertEquals(count, result.recovery.entries().size)
+        if (count == 16) {
+            assertEquals(Block.PENDING_CAPACITY_REACHED, assertIs<ReportAttempt.Unresolved>(result.attempt).failure.block)
+            assertTrue(f.requests.all { it.method == HttpMethod.Post })
+        } else {
+            assertIs<ReportAttempt.Completed>(result.attempt)
+            val method = if (request is ComplaintOwnerDeleteRequest) HttpMethod.Delete else HttpMethod.Patch
+            assertEquals(1, f.requests.count { it.method == method })
+        }
+        assertEquals(16, f.requests.size)
+        assertEquals(count, f.storage.pending.slots.size)
+        assertTrue(slots.all { old -> f.storage.pending.slots.any(old::sameAs) })
+    } finally {
+        f.close()
+    }
+}
+
+private fun TestScope.mixedOwnerCapacityFixture(): ComplaintReportFixture =
+    ComplaintReportFixture(
+        this,
+        mutationHandler = {
+            if (it.method == HttpMethod.Delete) {
+                mobileOwnerDeleteNotFoundOrApplied(it)
+            } else {
+                mobileEditNotFoundOrApplied(it)
+            }
+        },
+    )
 
 private suspend fun TestScope.oldPreparedEditHandle(storage: InstallationCoordinatorFixture): ComplaintPendingReport {
     val f = ComplaintReportFixture(this, storage)

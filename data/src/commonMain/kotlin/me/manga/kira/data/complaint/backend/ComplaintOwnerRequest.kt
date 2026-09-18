@@ -7,4 +7,5 @@ internal fun ComplaintOwnerRequest.operationKey(): String =
     when (this) {
         is ComplaintCreationRequest -> identity.key.canonical
         is ComplaintEditRequest -> key.canonical
+        is ComplaintOwnerDeleteRequest -> key.canonical
     }

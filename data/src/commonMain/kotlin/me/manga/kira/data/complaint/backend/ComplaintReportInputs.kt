@@ -10,8 +10,8 @@ class ComplaintReportIdentifiers(
 
 /**
  * Inert platform suppliers invoked once outside the credential mutex, never on graph construction/retry.
- * Report/reply preparation uses the pair/diagnostics; edit uses only [editKey], never a new content ID.
- * A missing edit supplier fails closed and does not fall back to invoking [identifiers].
+ * Report/reply uses the pair/diagnostics; edit and single-delete use only [editKey], never a new content ID.
+ * A missing key-only supplier fails closed and does not fall back to invoking [identifiers].
  */
 class ComplaintReportInputs(
     val identifiers: () -> ComplaintReportIdentifiers,

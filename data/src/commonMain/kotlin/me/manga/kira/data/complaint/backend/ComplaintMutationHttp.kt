@@ -7,7 +7,9 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.headers
 import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.setBody
+import io.ktor.client.utils.EmptyContent
 import io.ktor.http.ContentType
+import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.ByteArrayContent
 import kotlinx.coroutines.CancellationException
@@ -20,7 +22,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.text.CharacterCodingException
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** Closed report/reply/edit/status client borrowing one mutation engine. No arbitrary authenticated work. */
+/** Closed owner-mutation/status client borrowing one engine. No arbitrary authenticated work. */
 @OptIn(ExperimentalAtomicApi::class)
 internal class ComplaintMutationHttp(
     private val endpoint: ComplaintBackendEndpoint,
@@ -109,6 +111,42 @@ internal class ComplaintMutationHttp(
         return if (isClosed) ComplaintEditStatusHttpResult.Failed(request, ComplaintMutationFailure.CLOSED) else result
     }
 
+    suspend fun ownerDelete(
+        request: ComplaintOwnerDeleteHttpRequest,
+        session: ComplaintSessionResponse,
+    ): ComplaintOwnerDeleteHttpResult {
+        currentCoroutineContext().ensureActive()
+        refusal(request.pending, session)?.let { return ComplaintOwnerDeleteHttpResult.Failed(request, it) }
+        val exchange = exchange(ComplaintMutationRoute.OWNER_DELETE, session, request.pending, byteArrayOf())
+        val result =
+            when (exchange) {
+                is MutationExchange.Received -> ComplaintOwnerDeleteResponse.ownerDelete(exchange.document, request)
+                is MutationExchange.Failed -> ComplaintOwnerDeleteHttpResult.Failed(request, exchange.reason)
+            }
+        currentCoroutineContext().ensureActive()
+        return if (isClosed) ComplaintOwnerDeleteHttpResult.Failed(request, ComplaintMutationFailure.CLOSED) else result
+    }
+
+    suspend fun ownerDeleteStatus(
+        request: ComplaintOwnerDeleteStatusRequest,
+        session: ComplaintSessionResponse,
+    ): ComplaintOwnerDeleteStatusHttpResult {
+        currentCoroutineContext().ensureActive()
+        refusal(request.pending, session)?.let { return ComplaintOwnerDeleteStatusHttpResult.Failed(request, it) }
+        val exchange = exchange(ComplaintMutationRoute.STATUS, session, request.pending, request.bodyBytes())
+        val result =
+            when (exchange) {
+                is MutationExchange.Received -> ComplaintOwnerDeleteResponse.status(exchange.document, request)
+                is MutationExchange.Failed -> ComplaintOwnerDeleteStatusHttpResult.Failed(request, exchange.reason)
+            }
+        currentCoroutineContext().ensureActive()
+        return if (isClosed) {
+            ComplaintOwnerDeleteStatusHttpResult.Failed(request, ComplaintMutationFailure.CLOSED)
+        } else {
+            result
+        }
+    }
+
     /** Cancels this client's work only. The composition root retains engine ownership. */
     fun close() {
         if (closed.compareAndSet(expectedValue = false, newValue = true)) {
@@ -172,20 +210,28 @@ internal class ComplaintMutationHttp(
         return client
             .prepareRequest(url.toString()) {
                 method = route.method
-                headers {
-                    append(HttpHeaders.Accept, "application/json, application/problem+json")
-                    append(HttpHeaders.AcceptEncoding, "identity")
-                    append(HttpHeaders.CacheControl, "no-store, no-transform")
-                    append(HttpHeaders.Authorization, session.authorizationValue())
-                    if (route != ComplaintMutationRoute.STATUS) {
-                        append(Policy.IDEMPOTENCY_HEADER, pending.request.key)
-                    }
-                    if (route == ComplaintMutationRoute.EDIT) {
-                        append(HttpHeaders.IfMatch, checkNotNull(pending.request.action.canonicalPrecondition()))
-                    }
+                headers { mutationHeaders(route, session, pending) }
+                if (route == ComplaintMutationRoute.OWNER_DELETE) {
+                    setBody(EmptyContent)
+                } else {
+                    setBody(ByteArrayContent(bytes, ContentType.Application.Json))
                 }
-                setBody(ByteArrayContent(bytes, ContentType.Application.Json))
             }.execute { MutationExchange.Received(ComplaintMutationBody.read(it, url, route)) }
+    }
+
+    private fun HeadersBuilder.mutationHeaders(
+        route: ComplaintMutationRoute,
+        session: ComplaintSessionResponse,
+        pending: PendingComplaintRecord,
+    ) {
+        append(HttpHeaders.Accept, "application/json, application/problem+json")
+        append(HttpHeaders.AcceptEncoding, "identity")
+        append(HttpHeaders.CacheControl, "no-store, no-transform")
+        append(HttpHeaders.Authorization, session.authorizationValue())
+        if (route != ComplaintMutationRoute.STATUS) append(Policy.IDEMPOTENCY_HEADER, pending.request.key)
+        if (route == ComplaintMutationRoute.EDIT || route == ComplaintMutationRoute.OWNER_DELETE) {
+            append(HttpHeaders.IfMatch, checkNotNull(pending.request.action.canonicalPrecondition()))
+        }
     }
 
     private companion object {

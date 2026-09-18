@@ -60,44 +60,21 @@ class ComplaintEditDurabilityTest {
         }
 
     @Test
-    fun everyPreparedAndMayWriteFailureOrDishonestReadbackStopsPatchWithoutDeletingEvidence() =
+    fun everyPreparedAndMayWriteFailureOrDishonestReadbackStopsEditAndDeleteWithoutDeletingEvidence() =
         runTest {
             for (case in EDIT_WRITE_FAULTS) {
-                val f = mobileEditReportFixture()
-                f.installWriteFault(case)
-                try {
-                    val edit = mobileEditRequest()
-                    val attempt = f.repository.submit(edit).reportSuccess().attempt
-                    assertSame(edit, assertIs<ReportAttempt.Unresolved>(attempt).liveReport, case)
-                    assertTrue(f.requests.isEmpty(), case)
-                    assertTrue(Step.PENDING_DELETE_BEFORE !in f.storage.faults.trace, case)
-                    assertTrue(Step.CREATE_BEFORE !in f.storage.faults.trace, case)
-                } finally {
-                    f.close()
+                for (request in listOf(mobileEditRequest(), mobileOwnerDeleteRequest())) {
+                    assertOwnerMutationWriteFault(request, case)
                 }
             }
         }
 
     @Test
-    fun closeAtEitherDurableTransitionKeepsPreparedOrMayMetadataWithoutDestructiveFinally() =
+    fun closeAtEitherDurableTransitionKeepsEditAndDeleteMetadataWithoutDestructiveFinally() =
         runTest {
             for (step in listOf(Step.PENDING_CREATED, Step.PENDING_REPLACED)) {
-                val f = mobileEditReportFixture()
-                f.storage.faults.onStep = { observed -> if (step == observed) f.works.close() }
-                try {
-                    assertFailsWith<CancellationException> { f.repository.submit(mobileEditRequest()) }
-                    val expected =
-                        if (step == Step.PENDING_CREATED) {
-                            PendingComplaintState.PREPARED
-                        } else {
-                            PendingComplaintState.MAY_HAVE_DISPATCHED
-                        }
-                    assertEquals(expected, reportRecord(f.storage.pending.slots.single()).state)
-                    assertTrue(f.requests.isEmpty())
-                    assertTrue(Step.PENDING_DELETE_BEFORE !in f.storage.faults.trace)
-                    assertIs<AppResult.Failure>(f.repository.submit(mobileEditRequest(key = MUTATION_OTHER_KEY)))
-                } finally {
-                    f.close()
+                for (request in listOf(mobileEditRequest(), mobileOwnerDeleteRequest())) {
+                    assertOwnerMutationTransitionClose(request, step)
                 }
             }
         }
@@ -109,6 +86,36 @@ class ComplaintEditDurabilityTest {
                 assertEditKnownAck(step)
             }
         }
+}
+
+private suspend fun TestScope.assertOwnerMutationWriteFault(request: ComplaintOwnerRequest, case: String) {
+    val f = mobileEditReportFixture()
+    f.installWriteFault(case)
+    try {
+        val attempt = f.repository.submit(request).reportSuccess().attempt
+        assertSame(request, assertIs<ReportAttempt.Unresolved>(attempt).liveReport, case)
+        assertTrue(f.requests.isEmpty(), case)
+        assertTrue(Step.PENDING_DELETE_BEFORE !in f.storage.faults.trace, case)
+        assertTrue(Step.CREATE_BEFORE !in f.storage.faults.trace, case)
+    } finally {
+        f.close()
+    }
+}
+
+private suspend fun TestScope.assertOwnerMutationTransitionClose(request: ComplaintOwnerRequest, step: Step) {
+    val f = mobileEditReportFixture()
+    f.storage.faults.onStep = { observed -> if (step == observed) f.works.close() }
+    try {
+        assertFailsWith<CancellationException> { f.repository.submit(request) }
+        val expected =
+            if (step == Step.PENDING_CREATED) PendingComplaintState.PREPARED else PendingComplaintState.MAY_HAVE_DISPATCHED
+        assertEquals(expected, reportRecord(f.storage.pending.slots.single()).state)
+        assertTrue(f.requests.isEmpty())
+        assertTrue(Step.PENDING_DELETE_BEFORE !in f.storage.faults.trace)
+        assertIs<AppResult.Failure>(f.repository.submit(request))
+    } finally {
+        f.close()
+    }
 }
 
 private suspend fun TestScope.assertEditKnownAck(step: Step) {

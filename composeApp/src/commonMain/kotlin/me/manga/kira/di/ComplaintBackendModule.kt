@@ -16,6 +16,7 @@ import me.manga.kira.domain.repository.ComplaintEditRepository
 import me.manga.kira.domain.repository.ComplaintInstallationDeletionRepository
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
+import me.manga.kira.domain.repository.ComplaintOwnerDeleteRepository
 import me.manga.kira.domain.repository.ComplaintReplyRepository
 import me.manga.kira.domain.repository.ComplaintReportRepository
 import me.manga.kira.domain.usecase.complaint.DeleteComplaintUseCase
@@ -180,6 +181,7 @@ internal class ComplaintBackendGraph(
     val details: ComplaintDetailRepository get() = owner.details
     val replies: ComplaintReplyRepository get() = checkNotNull(owner.replies)
     val edits: ComplaintEditRepository get() = checkNotNull(owner.edits)
+    val ownerDeletes: ComplaintOwnerDeleteRepository get() = checkNotNull(owner.ownerDeletes)
 
     /** Install only in an isolated candidate Koin graph; never append over legacy-backed writes. */
     @Suppress("LongMethod") // Keep the isolated candidate's single-owner declarations together.

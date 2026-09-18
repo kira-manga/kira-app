@@ -98,6 +98,24 @@ internal sealed interface ReportExchange {
     ) : ReportExchange {
         override fun toString(): String = "ReportEditStatusExchange(redacted)"
     }
+
+    class OwnerDelete(
+        override val binding: ReportActionBinding,
+        override val session: ReportSession,
+        val request: ComplaintOwnerDeleteHttpRequest,
+        val result: ComplaintOwnerDeleteHttpResult,
+    ) : ReportExchange {
+        override fun toString(): String = "ReportOwnerDeleteExchange(redacted)"
+    }
+
+    class OwnerDeleteStatus(
+        override val binding: ReportActionBinding,
+        override val session: ReportSession,
+        val request: ComplaintOwnerDeleteStatusRequest,
+        val result: ComplaintOwnerDeleteStatusHttpResult,
+    ) : ReportExchange {
+        override fun toString(): String = "ReportOwnerDeleteStatusExchange(redacted)"
+    }
 }
 
 /** Bounded local application facts, not reconstructed server content or slot-removal authority. */
@@ -118,6 +136,12 @@ internal sealed interface ReportActionState {
     ) : ReportActionState {
         override fun toString(): String = "ReportActionState.Edit(redacted)"
     }
+
+    class OwnerDelete(
+        val application: ComplaintOwnerDeleteActionState,
+    ) : ReportActionState {
+        override fun toString(): String = "ReportActionState.OwnerDelete(redacted)"
+    }
 }
 
 internal class ReportCompletion(
@@ -133,5 +157,7 @@ internal fun ReportActionState.sameAs(other: ReportActionState): Boolean =
             id == other.id && version == other.version
         this is ReportActionState.Rejected && other is ReportActionState.Rejected -> code == other.code
         this is ReportActionState.Edit && other is ReportActionState.Edit -> application.sameAs(other.application)
+        this is ReportActionState.OwnerDelete && other is ReportActionState.OwnerDelete ->
+            application.sameAs(other.application)
         else -> false
     }

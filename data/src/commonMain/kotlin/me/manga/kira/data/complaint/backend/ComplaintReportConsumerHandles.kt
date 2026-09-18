@@ -3,6 +3,7 @@ package me.manga.kira.data.complaint.backend
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.Confirmation
 import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.ReconciliationPermit
 import me.manga.kira.domain.model.feedback.ComplaintLiveEdit
+import me.manga.kira.domain.model.feedback.ComplaintLiveOwnerDelete
 import me.manga.kira.domain.model.feedback.ComplaintLiveReply
 import me.manga.kira.domain.model.feedback.ComplaintLiveReport
 import me.manga.kira.domain.model.feedback.ComplaintPendingReport
@@ -70,6 +71,15 @@ internal class EditLiveHandle(
 ) : ComplaintOwnerLiveHandle(issuer, origin),
     ComplaintLiveEdit {
     override fun toString(): String = "ComplaintLiveEdit(redacted)"
+}
+
+internal class OwnerDeleteLiveHandle(
+    issuer: ReportConsumerIssuer,
+    override val request: ComplaintOwnerDeleteRequest,
+    origin: ReconciliationPermit,
+) : ComplaintOwnerLiveHandle(issuer, origin),
+    ComplaintLiveOwnerDelete {
+    override fun toString(): String = "ComplaintLiveOwnerDelete(redacted)"
 }
 
 internal class ReportLiveHandle(

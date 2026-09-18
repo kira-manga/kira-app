@@ -277,6 +277,40 @@ class InstallationCredentialCoordinator(
         return ReportEditDispatch(dispatched, reports.editRequest(dispatched, session))
     }
 
+    /** A bodyless DELETE still requires both durable proofs and the same post-I/O lease checks. */
+    internal suspend fun dispatchOwnerDelete(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+        http: ComplaintMutationHttp,
+    ): Outcome<ReportExchange.OwnerDelete> {
+        val admitted = mutex.serialized { prepareOwnerDeleteDispatch(binding, session, sessions) }
+        return when (admitted) {
+            is Outcome.Success -> {
+                val dispatch = admitted.value
+                currentCoroutineContext().ensureActive()
+                val result = http.ownerDelete(dispatch.request, session.response)
+                mutex.serialized {
+                    reportAdmission(dispatch.binding)
+                    reportSessionAdmission(dispatch.binding, session, sessions)
+                    reports.receivedOwnerDelete(dispatch.binding, session, dispatch.request, result)
+                }
+            }
+            is Outcome.Refused -> admitted
+            is Outcome.StorageFailure -> admitted
+            is Outcome.Invalid -> admitted
+        }
+    }
+
+    private suspend fun prepareOwnerDeleteDispatch(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+    ): ReportOwnerDeleteDispatch {
+        val dispatched = prepareMutationDispatch(binding, session, sessions)
+        return ReportOwnerDeleteDispatch(dispatched, reports.ownerDeleteRequest(dispatched, session))
+    }
+
     internal suspend fun readReportStatus(
         binding: ReportActionBinding,
         session: ReportSession,
@@ -325,6 +359,34 @@ class InstallationCredentialCoordinator(
                     reportAdmission(binding)
                     reportSessionAdmission(binding, session, sessions)
                     reports.receivedEditStatus(binding, session, admitted.value, result)
+                }
+            }
+            is Outcome.Refused -> admitted
+            is Outcome.StorageFailure -> admitted
+            is Outcome.Invalid -> admitted
+        }
+    }
+
+    internal suspend fun readOwnerDeleteStatus(
+        binding: ReportActionBinding,
+        session: ReportSession,
+        sessions: InstallationSessionManager,
+        http: ComplaintMutationHttp,
+    ): Outcome<ReportExchange.OwnerDeleteStatus> {
+        val admitted =
+            mutex.serialized {
+                reportAdmission(binding)
+                reportSessionAdmission(binding, session, sessions)
+                reports.ownerDeleteStatusRequest(binding)
+            }
+        return when (admitted) {
+            is Outcome.Success -> {
+                currentCoroutineContext().ensureActive()
+                val result = http.ownerDeleteStatus(admitted.value, session.response)
+                mutex.serialized {
+                    reportAdmission(binding)
+                    reportSessionAdmission(binding, session, sessions)
+                    reports.receivedOwnerDeleteStatus(binding, session, admitted.value, result)
                 }
             }
             is Outcome.Refused -> admitted
@@ -1026,4 +1088,9 @@ private class ReportCreateDispatch(
 private class ReportEditDispatch(
     val binding: ReportActionBinding,
     val request: ComplaintEditHttpRequest,
+)
+
+private class ReportOwnerDeleteDispatch(
+    val binding: ReportActionBinding,
+    val request: ComplaintOwnerDeleteHttpRequest,
 )
