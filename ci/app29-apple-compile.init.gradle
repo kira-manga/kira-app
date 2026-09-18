@@ -1,0 +1,128 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.tasks.testing.Test
+
+// Observe the ordinary full-composition main closure. No source or task substitution,
+// probe configuration, test, link, SwiftPM fetch, framework or Simulator execution.
+def evidence = new File(System.getenv('KIRA_APP29_EVIDENCE')).canonicalFile
+def inputRoot = new File(System.getenv('KIRA_APP29_INPUT_ROOT')).canonicalFile
+def sourceRoot = new File(System.getenv('KIRA_APP29_APP')).canonicalFile
+def control = new File(System.getenv('KIRA_APP5_CONTROL')).canonicalFile
+def sha = { File f -> MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+def manifestFile = new File(control, 'ci/app29-original-inputs/manifest.json')
+def manifestSha = '60b23eee4ab4c620a9e353f0ddbb02377013129b2f068a60ebd28278223d29bb'
+if (!manifestFile.isFile() || manifestFile.length() > 65536 || sha(manifestFile) != manifestSha) {
+    throw new GradleException('Exact sanitized original30 dependency inventory required')
+}
+def manifest = new JsonSlurper().parse(manifestFile)
+def expected = ['source-engine', 'source-contract'].collectEntries { family ->
+    def rel = "me/manga/kira/source/${family}-iossimulatorarm64/0.1.0/${family}-iossimulatorarm64-0.1.0.klib"
+    [(family): manifest.files.find { it.path == rel }]
+}
+def mainTask = ':composeApp:compileKotlinIosSimulatorArm64'
+def modules = [':core', ':domain', ':platform', ':data', ':data:local', ':data:remote', ':data:download',
+               ':presentation', ':ui', ':composeApp', ':sources:contracts', ':sources:engine', ':sources:config', ':sources:legacy']
+def observedTasks = modules.collect { it + ':compileKotlinIosSimulatorArm64' }
+def report = [inputManifestSha256: manifestSha, requested: gradle.startParameter.taskNames,
+              dryRun: gradle.startParameter.dryRun, excluded: gradle.startParameter.excludedTaskNames.toList(),
+              graph: [], states: [:], resolved: []]
+def save = {
+    def data = (JsonOutput.prettyPrint(JsonOutput.toJson(report)) + '\n').getBytes('UTF-8')
+    if (data.length > 1048576) throw new GradleException('Bounded compile observation cap exceeded')
+    def pending = new File(evidence, 'compile-tasks.json.pending')
+    def target = new File(evidence, 'compile-tasks.json')
+    if (pending.exists()) throw new GradleException('Unsettled prior compile observation')
+    pending.bytes = data
+    if (!pending.renameTo(target)) throw new GradleException('Cannot atomically preserve compile observations')
+}
+synchronized (evidence) { save() }
+
+gradle.settingsEvaluated { settings ->
+    if (settings.settingsDir.canonicalFile != sourceRoot) throw new GradleException('Wrong source settings root')
+    def repositories = settings.dependencyResolutionManagement.repositories
+    repositories.exclusiveContent {
+        forRepository {
+            repositories.maven {
+                name = 'App29SealedOriginalInputs'
+                url = new File(inputRoot, 'repository').toURI()
+                metadataSources { gradleMetadata() }
+            }
+        }
+        filter { includeGroup('me.manga.kira.source') }
+    }
+}
+
+gradle.beforeProject { project ->
+    project.configurations.configureEach { configuration ->
+        def name = configuration.name.toLowerCase(Locale.ROOT)
+        if (name.contains('iossimulatorarm64') && name.endsWith('compileklibraries') && !name.contains('test')) {
+            configuration.incoming.afterResolve { incoming ->
+                incoming.artifacts.artifacts.each { artifact ->
+                    def id = artifact.id.componentIdentifier
+                    if (id instanceof ModuleComponentIdentifier && id.group == 'me.manga.kira.source') {
+                        def family = id.module.replaceFirst(/-iossimulatorarm64$/, '')
+                        def pin = expected[family]
+                        def file = artifact.file
+                        if (pin == null || id.version != '0.1.0' || !file.isFile() ||
+                            file.length() != pin.bytes || sha(file) != pin.sha256) {
+                            throw new GradleException('Unadmitted Kira ARM main compile dependency')
+                        }
+                        def row = [project: project.path, configuration: configuration.name, group: id.group,
+                                   module: id.module, version: id.version, family: family, path: file.canonicalPath,
+                                   bytes: file.length(), sha256: pin.sha256, unionPath: pin.path]
+                        synchronized (evidence) {
+                            if (report.resolved.size() >= 256) throw new GradleException('Compile resolution observation cap')
+                            report.resolved.add(row)
+                            save()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def paths = graph.allTasks.collect { it.path }
+    synchronized (evidence) {
+        if (paths.size() > 512) throw new GradleException('Compile graph observation cap')
+        report.graph = paths
+        graph.allTasks.each { task ->
+            report.states[task.path] = [task: task.path, type: task.class.name, ended: false]
+        }
+        save()
+    }
+    if (gradle.startParameter.taskNames != [mainTask] || gradle.startParameter.dryRun ||
+        !gradle.startParameter.excludedTaskNames.empty || !observedTasks.every { paths.contains(it) }) {
+        throw new GradleException('Exactly the ordinary ARM main compile with its full prerequisites is required')
+    }
+    if (graph.allTasks.any { task ->
+        def name = task.name.toLowerCase(Locale.ROOT)
+        task instanceof Test || !(task.project.path in modules) || name.startsWith('run') ||
+            ['test', 'link', 'framework', 'publish', 'iosx64', 'iosarm64', 'android', 'desktop',
+             'assemble', 'bundle', 'install', 'sign', 'swift', 'umbrella', 'xcode', 'pod'].any { name.contains(it) } ||
+            (name.contains('cinterop') && task.path != ':platform:cinteropLibwebpIosSimulatorArm64')
+    }) throw new GradleException('No tests/link/framework/SwiftPM/host/publishing/launcher/non-ARM work')
+    if (gradle.startParameter.projectProperties['kiraIntelSimulatorTests'] != 'false' ||
+        gradle.startParameter.projectProperties['kiraUseMavenLocal'] != 'false' ||
+        gradle.startParameter.projectProperties.containsKey('kotlin.native.home')) {
+        throw new GradleException('Intel opt-in, Maven local and toolchain substitution are forbidden')
+    }
+}
+
+gradle.taskGraph.afterTask { task, state ->
+    def row = [task: task.path, type: task.class.name, ended: true, executed: state.executed,
+               didWork: state.didWork, skipped: state.skipped, upToDate: state.upToDate,
+               noSource: state.noSource, failure: state.failure?.class?.name]
+    if (observedTasks.contains(task.path)) {
+        row.target = task.target
+        row.klib = task.outputFile.orNull?.canonicalPath
+    }
+    synchronized (evidence) {
+        if (!report.states.containsKey(task.path)) throw new GradleException('Unobserved compile task')
+        report.states[task.path] = row
+        save()
+    }
+}
