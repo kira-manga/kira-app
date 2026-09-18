@@ -39,7 +39,7 @@ internal class ComplaintHistoryTarget private constructor(
             return ComplaintHistoryReadTarget.Page(query)
         }
         if (!candidate.encodedPath.startsWith(url.encodedPath + "/") ||
-            candidate.parameters.isNotEmpty() || candidate.trailingQuery || '?' in value
+            !candidate.parameters.isEmpty() || candidate.trailingQuery || '?' in value
         ) {
             return null
         }
