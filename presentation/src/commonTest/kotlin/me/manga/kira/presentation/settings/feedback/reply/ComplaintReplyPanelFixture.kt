@@ -24,7 +24,9 @@ import me.manga.kira.domain.model.complaint.ComplaintOwnerRow
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.model.complaint.UnknownComplaintItem
+import me.manga.kira.domain.model.feedback.ComplaintEditApplication
 import me.manga.kira.domain.model.feedback.ComplaintLiveReply
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
 import me.manga.kira.domain.model.feedback.ComplaintReplyDraft
 import me.manga.kira.domain.model.feedback.ComplaintReplyPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
@@ -227,12 +229,22 @@ internal fun ordinaryReplyDetail(
     ComplaintDetail.Owned(ComplaintOwnerRow.Reply(replyFields(status), type, "synthetic private subject", REPLY_ID))
 
 internal fun failedReplyRetries(): List<suspend () -> AppResult<ComplaintReportAttempt>> =
-    listOf(
-        { AppResult.Failure(AppError.Network.Http(404)) },
-        { AppResult.Failure(AppError.Network.Http(401)) },
-        { throw CancellationException("synthetic private retry cancellation") },
-        { throw AssertionError("synthetic private retry failure") },
-    )
+    buildList {
+        add { AppResult.Failure(AppError.Network.Http(404)) }
+        add { AppResult.Failure(AppError.Network.Http(401)) }
+        add { throw CancellationException("synthetic private retry cancellation") }
+        add { throw AssertionError("synthetic private retry failure") }
+        val other = SettingsFeedbackRepositoryFake()
+        val foreign =
+            listOf(
+                ComplaintReportApplication.Edit(ComplaintEditApplication.Applied(REPLY_ID, 2)),
+                ComplaintReportApplication.OwnerDelete(ComplaintOwnerDeleteApplication.Applied),
+            )
+        for (application in foreign) {
+            add { AppResult.Success(ComplaintReportAttempt.Completed(application)) }
+            add { AppResult.Success(other.unresolved(application)) }
+        }
+    }
 
 internal fun blockedReplyFailure(block: ComplaintReportBlock): ComplaintReportFailure =
     ComplaintReportFailure(AppError.Platform.FeatureUnavailable("synthetic reply block"), block)

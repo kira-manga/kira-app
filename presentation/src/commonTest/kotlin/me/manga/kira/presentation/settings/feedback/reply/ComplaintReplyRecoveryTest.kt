@@ -168,20 +168,23 @@ class ComplaintReplyRecoveryTest {
     @Test
     fun knownAppliedAndRejectedReceiptsAndExactPendingSurviveFailedCancelledAndThrowingRetry() =
         runTest {
-            for (known in knownApplications()) {
+            for (known in listOf(null) + knownApplications()) {
                 val fixture = fixture()
                 val first = fixture.reports.unresolved(known)
                 fixture.onSubmit = { AppResult.Success(ComplaintReportSubmission(first, fixture.reports.recovery)) }
                 val vm = fixture.model()
                 vm.submit(ComplaintReplyIntent.Submit)
-                for (fail in failedReplyRetries()) {
+                val retries = failedReplyRetries()
+                for (fail in retries) {
                     val attempt = failedRetry(fixture, vm, fail)
                     assertSame(known, attempt.knownApplication)
                     assertSame(first.pending, attempt.pending)
                     assertFalse(vm.state.value.canSubmit || vm.state.value.editable)
+                    assertTrue(vm.state.value.canRetry)
                 }
                 assertEquals(1, fixture.drafts.size)
                 assertEquals(1, fixture.submitted.size)
+                assertEquals(retries.size, fixture.retried.size)
                 assertTrue(fixture.retried.all { it === fixture.live })
                 fixture.assertNoRecoveryMutation()
             }
@@ -280,15 +283,18 @@ private suspend fun failedRetry(
     fail: suspend () -> AppResult<ComplaintReportAttempt>,
 ): ComplaintReportAttempt.Unresolved {
     val caller = CompletableDeferred<Job>()
+    var mismatch = false
     fixture.onRetry = {
         caller.complete(currentCoroutineContext().job)
-        fail()
+        fail().also { mismatch = it is AppResult.Success }
     }
     vm.submit(ComplaintReplyIntent.Retry)
     val attempt = unresolved(vm)
     val error = attempt.failure.error
     assertNull(error.cause)
     if (error is AppError.Cancelled) assertTrue(caller.await().isCancelled)
-    if (error is AppError.Unexpected) assertEquals("complaint_reply_failed", error.message)
+    if (mismatch) assertEquals(ComplaintReportBlock.RECONCILIATION_REQUIRED, attempt.failure.block)
+    val marker = if (mismatch) "complaint_reply_receipt_mismatch" else "complaint_reply_failed"
+    if (mismatch || error is AppError.Unexpected) assertEquals(marker, assertIs<AppError.Unexpected>(error).message)
     return attempt
 }

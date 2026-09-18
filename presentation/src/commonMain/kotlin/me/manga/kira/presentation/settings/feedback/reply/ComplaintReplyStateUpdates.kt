@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.settings.feedback.reply
 
+import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportAttempt
 import me.manga.kira.domain.model.feedback.ComplaintReportBlock
@@ -28,12 +29,17 @@ internal fun ComplaintReplyState.afterReplyWork(
             },
     )
 
-/** Preserve receipt facts, not permission to delete a record or repeat the mutation. */
+/** Own reply receipts exclude edit/delete; shared recovery retains its separate mixed observations. */
 internal fun ComplaintReportAttempt.retainingReplyReceipt(previous: ComplaintReportAttempt?): ComplaintReportAttempt =
     when (this) {
-        is ComplaintReportAttempt.Completed -> this
+        is ComplaintReportAttempt.Completed ->
+            if (application.replyReceipt() != null) this else replyReceiptMismatch().afterReplyAttempt(previous)
         is ComplaintReportAttempt.Unresolved ->
-            ComplaintReportAttempt.Unresolved(failure, knownApplication ?: previous.knownReplyApplication(), pending)
+            if (knownApplication != null && knownApplication.replyReceipt() == null) {
+                replyReceiptMismatch().afterReplyAttempt(previous)
+            } else {
+                ComplaintReportAttempt.Unresolved(failure, knownApplication ?: previous.knownReplyApplication(), pending)
+            }
     }
 
 internal fun ComplaintReportFailure.afterReplyAttempt(previous: ComplaintReportAttempt?): ComplaintReportAttempt =
@@ -45,10 +51,22 @@ internal fun ComplaintReportFailure.afterReplyAttempt(previous: ComplaintReportA
 
 private fun ComplaintReportAttempt?.knownReplyApplication(): ComplaintReportApplication? =
     when (this) {
-        is ComplaintReportAttempt.Completed -> application
-        is ComplaintReportAttempt.Unresolved -> knownApplication
+        is ComplaintReportAttempt.Completed -> application.replyReceipt()
+        is ComplaintReportAttempt.Unresolved -> knownApplication.replyReceipt()
         null -> null
     }
+
+private fun ComplaintReportApplication?.replyReceipt(): ComplaintReportApplication? =
+    when (this) {
+        is ComplaintReportApplication.Applied, is ComplaintReportApplication.Rejected -> this
+        is ComplaintReportApplication.Edit, is ComplaintReportApplication.OwnerDelete, null -> null
+    }
+
+private fun replyReceiptMismatch(): ComplaintReportFailure =
+    ComplaintReportFailure(
+        AppError.Unexpected(REPLY_RECEIPT_MISMATCH),
+        ComplaintReportBlock.RECONCILIATION_REQUIRED,
+    )
 
 internal fun closedReplyState(): ComplaintReplyState =
     ComplaintReplyState(
@@ -73,3 +91,5 @@ internal fun ComplaintReplyState.withReplyFailureObservation(failure: ComplaintR
         }
     return copy(context = context.copy(installation = installation))
 }
+
+private const val REPLY_RECEIPT_MISMATCH = "complaint_reply_receipt_mismatch"
