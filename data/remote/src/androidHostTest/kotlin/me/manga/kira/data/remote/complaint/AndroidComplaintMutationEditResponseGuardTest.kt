@@ -98,7 +98,7 @@ class AndroidComplaintMutationEditResponseGuardTest {
         }
     }
 
-    private fun editReceiveBudget(overflow: Boolean): ComplaintMutationReceiveBudget {
+    private fun editReceiveBudget(overflow: Boolean): ComplaintReceiveBudget {
         val headers =
             ComplaintMutationResponseHeaders(
                 listOf("application/json"),
