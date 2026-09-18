@@ -55,24 +55,7 @@ class AndroidComplaintMutationEditTest {
             AndroidMutationEngineFixture().use { fixture ->
                 fixture.server.enqueue(MockResponse(body = "allowed"))
                 val edit = "${fixture.createUrl}/$MUTATION_TEST_PARENT/content"
-                val invalid =
-                    listOf<HttpRequestBuilder.() -> Unit>(
-                        { method = HttpMethod.Post },
-                        { url("$edit?version=1") },
-                        { url(edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_PARENT.uppercase())) },
-                        { url(edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_KEY)) },
-                        { url(edit.replace("localhost", "127.0.0.1")) },
-                        { headers.remove(Policy.IDEMPOTENCY_HEADER) },
-                        { headers[Policy.IDEMPOTENCY_HEADER] = MUTATION_TEST_PARENT },
-                        { headers.append(Policy.IDEMPOTENCY_HEADER, MUTATION_TEST_KEY) },
-                        { headers.remove("If-Match") },
-                        { headers["If-Match"] = "W/$MUTATION_TEST_PRECONDITION" },
-                        { headers["If-Match"] = "\"complaint-$MUTATION_TEST_KEY-v1\"" },
-                        { headers.append("if-match", MUTATION_TEST_PRECONDITION) },
-                        { headers.append("Content-Encoding", "gzip") },
-                        { headers.append("Cookie", "synthetic") },
-                        { setBody(ByteArrayContent(byteArrayOf(1), ContentType.Text.Plain)) },
-                    )
+                val invalid = invalidEdits(edit)
                 for (change in invalid) {
                     assertFails { fixture.exchange(ComplaintMutationRoute.EDIT, change = change) }
                     assertEquals(0, fixture.server.requestCount)
@@ -100,18 +83,7 @@ class AndroidComplaintMutationEditTest {
         runBlocking {
             AndroidMutationEngineFixture().use { fixture ->
                 listOf(503, 421, 307, 401, 429).forEachIndexed { index, status ->
-                    fixture.server.enqueue(
-                        MockResponse
-                            .Builder()
-                            .code(status)
-                            .addHeader("Retry-After", "0")
-                            .addHeader("WWW-Authenticate", "Basic realm=\"test\"")
-                            .addHeader("Location", fixture.server.url("/forbidden"))
-                            .addHeader("Set-Cookie", "synthetic=value; Secure; Path=/")
-                            .addHeader("Cache-Control", "public, max-age=60")
-                            .body("terminal")
-                            .build(),
-                    )
+                    fixture.server.enqueue(terminalResponse(fixture, status))
                     fixture.server.enqueue(MockResponse(body = "next-explicit-call"))
                     assertEquals(status, fixture.exchange(ComplaintMutationRoute.EDIT).status)
                     assertEquals(index * 2 + 1, fixture.server.requestCount)
@@ -130,6 +102,37 @@ class AndroidComplaintMutationEditTest {
                 }
             }
         }
+
+    private fun invalidEdits(edit: String): List<HttpRequestBuilder.() -> Unit> =
+        listOf(
+            { method = HttpMethod.Post },
+            { url("$edit?version=1") },
+            { url(edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_PARENT.uppercase())) },
+            { url(edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_KEY)) },
+            { url(edit.replace("localhost", "127.0.0.1")) },
+            { headers.remove(Policy.IDEMPOTENCY_HEADER) },
+            { headers[Policy.IDEMPOTENCY_HEADER] = MUTATION_TEST_PARENT },
+            { headers.append(Policy.IDEMPOTENCY_HEADER, MUTATION_TEST_KEY) },
+            { headers.remove("If-Match") },
+            { headers["If-Match"] = "W/$MUTATION_TEST_PRECONDITION" },
+            { headers["If-Match"] = "\"complaint-$MUTATION_TEST_KEY-v1\"" },
+            { headers.append("if-match", MUTATION_TEST_PRECONDITION) },
+            { headers.append("Content-Encoding", "gzip") },
+            { headers.append("Cookie", "synthetic") },
+            { setBody(ByteArrayContent(byteArrayOf(1), ContentType.Text.Plain)) },
+        )
+
+    private fun terminalResponse(fixture: AndroidMutationEngineFixture, status: Int): MockResponse =
+        MockResponse
+            .Builder()
+            .code(status)
+            .addHeader("Retry-After", "0")
+            .addHeader("WWW-Authenticate", "Basic realm=\"test\"")
+            .addHeader("Location", fixture.server.url("/forbidden"))
+            .addHeader("Set-Cookie", "synthetic=value; Secure; Path=/")
+            .addHeader("Cache-Control", "public, max-age=60")
+            .body("terminal")
+            .build()
 
     private companion object {
         const val EDIT_BODY = "{\"subject\":\"Updated subject\",\"body\":\"Updated body\"}"

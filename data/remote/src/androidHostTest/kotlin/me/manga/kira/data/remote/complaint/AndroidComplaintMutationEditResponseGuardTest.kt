@@ -40,15 +40,7 @@ class AndroidComplaintMutationEditResponseGuardTest {
     fun editBodyRejectsTheOverrunByteAndShortDeclaredEofWithStickyFailureAndOneCancellation() {
         val cap = Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES
         for (overflow in listOf(true, false)) {
-            val headers =
-                ComplaintMutationResponseHeaders(
-                    listOf("application/json"),
-                    emptyList(),
-                    if (overflow) emptyList() else listOf("2"),
-                    emptyList(),
-                )
-            val budget =
-                assertNotNull(ComplaintMutationReceiveBudget.checked(ComplaintMutationRoute.EDIT, 200, headers))
+            val budget = editReceiveBudget(overflow)
             var cancellations = 0
             val upstream = ByteArray(if (overflow) cap + 1 else 1).toResponseBody()
             val body = AndroidComplaintSessionResponseBody(upstream, budget) { cancellations++ }
@@ -75,10 +67,7 @@ class AndroidComplaintMutationEditResponseGuardTest {
         }
     }
 
-    private fun assertResponseBinding(
-        responseUrl: String,
-        responseMethod: String,
-    ) {
+    private fun assertResponseBinding(responseUrl: String, responseMethod: String) {
         val resources = AndroidComplaintSessionResources()
         val upstream = ClosingDetailBody()
         var dispatches = 0
@@ -86,35 +75,13 @@ class AndroidComplaintMutationEditResponseGuardTest {
             val target = assertNotNull(androidComplaintMutationTarget(Url(CREATE_URL)))
             // Existing synthetic downstream pattern: the real interceptor runs, with no live-origin claim.
             val client =
-                OkHttpClient
-                    .Builder()
+                OkHttpClient.Builder()
                     .complaintMutationPolicy(target, resources)
                     .addInterceptor { chain ->
                         dispatches++
-                        val outgoing = chain.request()
-                        assertTrue(assertNotNull(outgoing.body).isOneShot())
-                        val delivered =
-                            outgoing.newBuilder().url(responseUrl).method(responseMethod, outgoing.body).build()
-                        Response
-                            .Builder()
-                            .request(delivered)
-                            .protocol(Protocol.HTTP_1_1)
-                            .code(200)
-                            .message("Synthetic edit")
-                            .header("Content-Type", "application/json")
-                            .body(upstream)
-                            .build()
+                        editResponse(chain.request(), responseUrl, responseMethod, upstream)
                     }.build()
-            val request =
-                Request
-                    .Builder()
-                    .url(EDIT_URL)
-                    .method("PATCH", "{}".toRequestBody("application/json".toMediaType()))
-                    .apply {
-                        mutationTestHeaders(ComplaintMutationRoute.EDIT).forEach { (name, value) ->
-                            header(name, value)
-                        }
-                    }.build()
+            val request = editRequest()
             val call = client.newCall(request)
             if (responseUrl == EDIT_URL && responseMethod == "PATCH") {
                 call.execute().use { assertEquals("{}", it.body.string()) }
@@ -129,6 +96,47 @@ class AndroidComplaintMutationEditResponseGuardTest {
             upstream.close()
             resources.close()
         }
+    }
+
+    private fun editReceiveBudget(overflow: Boolean): ComplaintMutationReceiveBudget {
+        val headers =
+            ComplaintMutationResponseHeaders(
+                listOf("application/json"),
+                emptyList(),
+                if (overflow) emptyList() else listOf("2"),
+                emptyList(),
+            )
+        return assertNotNull(ComplaintMutationReceiveBudget.checked(ComplaintMutationRoute.EDIT, 200, headers))
+    }
+
+    private fun editRequest(): Request =
+        Request
+            .Builder()
+            .url(EDIT_URL)
+            .method("PATCH", "{}".toRequestBody("application/json".toMediaType()))
+            .apply {
+                mutationTestHeaders(ComplaintMutationRoute.EDIT).forEach { (name, value) ->
+                    header(name, value)
+                }
+            }.build()
+
+    private fun editResponse(
+        outgoing: Request,
+        responseUrl: String,
+        responseMethod: String,
+        upstream: ClosingDetailBody,
+    ): Response {
+        assertTrue(assertNotNull(outgoing.body).isOneShot())
+        val delivered = outgoing.newBuilder().url(responseUrl).method(responseMethod, outgoing.body).build()
+        return Response
+            .Builder()
+            .request(delivered)
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("Synthetic edit")
+            .header("Content-Type", "application/json")
+            .body(upstream)
+            .build()
     }
 
     private companion object {

@@ -30,6 +30,16 @@ class ComplaintMutationEditPolicyTest {
         assertFalse(target.sameRoute(edit, create))
         assertFalse(target.sameRoute(edit, replyPolicyUrl(create, MUTATION_TEST_PARENT)))
         assertFalse(target.sameRoute(edit, BASE + Policy.STATUS_PATH))
+        invalidEditUrls(edit).forEach { value ->
+            assertNull(target.route(value), value)
+            assertNull(target.editTargetId(value), value)
+            assertFalse(target.sameRoute(edit, value), value)
+        }
+        assertNull(target.editTargetId(create))
+        assertNull(ComplaintMutationTarget.checked(Url(edit)), "Content is not an engine base.")
+    }
+
+    private fun invalidEditUrls(edit: String): List<String> =
         listOf(
             "$edit/",
             "$edit?",
@@ -44,14 +54,7 @@ class ComplaintMutationEditPolicyTest {
             edit.replace(":9443", ""),
             edit.replace("example.invalid", "elsewhere.invalid"),
             edit.replace("https://", "http://"),
-        ).forEach { value ->
-            assertNull(target.route(value), value)
-            assertNull(target.editTargetId(value), value)
-            assertFalse(target.sameRoute(edit, value), value)
-        }
-        assertNull(target.editTargetId(create))
-        assertNull(ComplaintMutationTarget.checked(Url(edit)), "Content is not an engine base.")
-    }
+        )
 
     @Test
     fun editRequiresOneCanonicalStrongTargetBoundPositiveLongPrecondition() {

@@ -14,33 +14,7 @@ class AndroidComplaintMutationEditReceiveTest {
     fun edit200AloneGetsThirtyTwoKiBWhileErrorsWrongSuccessAndStatusStaySixteenWithNoRetryAfterOverrun() =
         runBlocking {
             AndroidMutationEngineFixture().use { fixture ->
-                val cases =
-                    listOf(
-                        Boundary(
-                            ComplaintMutationRoute.EDIT,
-                            200,
-                            "application/json",
-                            Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES,
-                        ),
-                        Boundary(
-                            ComplaintMutationRoute.EDIT,
-                            412,
-                            "application/problem+json",
-                            Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                        ),
-                        Boundary(
-                            ComplaintMutationRoute.EDIT,
-                            201,
-                            "application/json",
-                            Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                        ),
-                        Boundary(
-                            ComplaintMutationRoute.STATUS,
-                            200,
-                            "application/json",
-                            Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                        ),
-                    )
+                val cases = responseBoundaries()
                 for (case in cases) {
                     for (extra in 0..1) {
                         fixture.server.enqueue(
@@ -70,47 +44,7 @@ class AndroidComplaintMutationEditReceiveTest {
     fun editDeclaredOverrunBadMediaCodingFramingAndFailedEofCannotBecomeTruncatedSuccess() =
         runBlocking {
             AndroidMutationEngineFixture().use { fixture ->
-                val large = Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES
-                val small = Policy.MAX_STATUS_OR_PROBLEM_BYTES
-                val invalid =
-                    listOf(
-                        MockResponse
-                            .Builder()
-                            .addHeader("Content-Type", "application/json")
-                            .body("x".repeat(large + 1))
-                            .build(),
-                        MockResponse
-                            .Builder()
-                            .addHeader("Content-Type", "application/problem+json")
-                            .body("x".repeat(small + 1))
-                            .build(),
-                        MockResponse
-                            .Builder()
-                            .addHeader("Content-Type", "application/json")
-                            .addHeader("Content-Type", "application/json")
-                            .body("x".repeat(small + 1))
-                            .build(),
-                        MockResponse
-                            .Builder()
-                            .addHeader("Content-Type", "application/json")
-                            .addHeader("Content-Encoding", "gzip")
-                            .body("plain")
-                            .build(),
-                        MockResponse
-                            .Builder()
-                            .addHeader("Content-Type", "application/json")
-                            .body("x")
-                            .setHeader("Content-Length", "1, 1")
-                            .onResponseEnd(SocketEffect.CloseSocket())
-                            .build(),
-                        MockResponse
-                            .Builder()
-                            .addHeader("Content-Type", "application/json")
-                            .body("short")
-                            .setHeader("Content-Length", large)
-                            .onResponseEnd(SocketEffect.CloseSocket())
-                            .build(),
-                    )
+                val invalid = invalidEditResponses()
                 invalid.forEachIndexed { index, response ->
                     fixture.server.enqueue(response)
                     assertFails { fixture.exchange(ComplaintMutationRoute.EDIT) }
@@ -121,6 +55,33 @@ class AndroidComplaintMutationEditReceiveTest {
                 assertEquals(invalid.size + 1, fixture.server.requestCount)
             }
         }
+
+    private fun responseBoundaries(): List<Boundary> =
+        listOf(
+            Boundary(ComplaintMutationRoute.EDIT, 200, "application/json", Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES),
+            Boundary(ComplaintMutationRoute.EDIT, 412, "application/problem+json", Policy.MAX_STATUS_OR_PROBLEM_BYTES),
+            Boundary(ComplaintMutationRoute.EDIT, 201, "application/json", Policy.MAX_STATUS_OR_PROBLEM_BYTES),
+            Boundary(ComplaintMutationRoute.STATUS, 200, "application/json", Policy.MAX_STATUS_OR_PROBLEM_BYTES),
+        )
+
+    private fun invalidEditResponses(): List<MockResponse> {
+        val large = Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES
+        val small = Policy.MAX_STATUS_OR_PROBLEM_BYTES
+        return listOf(
+            MockResponse.Builder().addHeader("Content-Type", "application/json")
+                .body("x".repeat(large + 1)).build(),
+            MockResponse.Builder().addHeader("Content-Type", "application/problem+json")
+                .body("x".repeat(small + 1)).build(),
+            MockResponse.Builder().addHeader("Content-Type", "application/json")
+                .addHeader("Content-Type", "application/json").body("x".repeat(small + 1)).build(),
+            MockResponse.Builder().addHeader("Content-Type", "application/json")
+                .addHeader("Content-Encoding", "gzip").body("plain").build(),
+            MockResponse.Builder().addHeader("Content-Type", "application/json")
+                .body("x").setHeader("Content-Length", "1, 1").onResponseEnd(SocketEffect.CloseSocket()).build(),
+            MockResponse.Builder().addHeader("Content-Type", "application/json")
+                .body("short").setHeader("Content-Length", large).onResponseEnd(SocketEffect.CloseSocket()).build(),
+        )
+    }
 
     private data class Boundary(
         val route: ComplaintMutationRoute,

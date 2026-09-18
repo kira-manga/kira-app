@@ -21,39 +21,7 @@ import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 class IosComplaintMutationEditReceiveGuardTest {
     @Test
     fun edit200JsonAloneGetsThirtyTwoKiBWithStickyOverflowAndExactlyOneCompletion() {
-        val cases =
-            listOf(
-                Boundary(
-                    ComplaintMutationRoute.EDIT,
-                    200,
-                    "application/json",
-                    Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES,
-                ),
-                Boundary(
-                    ComplaintMutationRoute.EDIT,
-                    412,
-                    "application/problem+json",
-                    Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                ),
-                Boundary(
-                    ComplaintMutationRoute.EDIT,
-                    201,
-                    "application/json",
-                    Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                ),
-                Boundary(
-                    ComplaintMutationRoute.EDIT,
-                    200,
-                    "application/json, application/json",
-                    Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                ),
-                Boundary(
-                    ComplaintMutationRoute.STATUS,
-                    200,
-                    "application/json",
-                    Policy.MAX_STATUS_OR_PROBLEM_BYTES,
-                ),
-            )
+        val cases = responseBoundaries()
         for (case in cases) {
             for (overflow in listOf(false, true)) {
                 withIosMutationGuard { fixture ->
@@ -75,6 +43,20 @@ class IosComplaintMutationEditReceiveGuardTest {
             }
         }
     }
+
+    private fun responseBoundaries(): List<Boundary> =
+        listOf(
+            Boundary(ComplaintMutationRoute.EDIT, 200, "application/json", Policy.MAX_EDIT_ACKNOWLEDGEMENT_BYTES),
+            Boundary(ComplaintMutationRoute.EDIT, 412, "application/problem+json", Policy.MAX_STATUS_OR_PROBLEM_BYTES),
+            Boundary(ComplaintMutationRoute.EDIT, 201, "application/json", Policy.MAX_STATUS_OR_PROBLEM_BYTES),
+            Boundary(
+                ComplaintMutationRoute.EDIT,
+                200,
+                "application/json, application/json",
+                Policy.MAX_STATUS_OR_PROBLEM_BYTES,
+            ),
+            Boundary(ComplaintMutationRoute.STATUS, 200, "application/json", Policy.MAX_STATUS_OR_PROBLEM_BYTES),
+        )
 
     @Test
     fun declaredEditOverrunBadCodingAndAmbiguousFramingRejectBeforeAnyPrefixIsForwarded() {

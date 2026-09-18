@@ -44,15 +44,7 @@ class IosComplaintMutationEditTest {
             assertEquals(NSURLRequestReloadIgnoringLocalCacheData, request.cachePolicy)
             assertNull(request.valueForHTTPHeaderField("Cookie"))
             assertNull(request.valueForHTTPHeaderField("Proxy-Authorization"))
-            listOf(
-                "$edit?version=1",
-                "$edit/",
-                edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_PARENT.uppercase()),
-                edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_KEY),
-                edit.replace("/base_1/v2", ""),
-                edit.replace(":9443", ""),
-                edit.replace("example.invalid", "elsewhere.invalid"),
-            ).forEach { url ->
+            invalidEditUrls(edit).forEach { url ->
                 assertFails { fixture.guard.prepare(iosMutationTestRequest(ComplaintMutationRoute.EDIT, url = url)) }
             }
             assertEquals(0, fixture.guard.activeTaskCount)
@@ -62,40 +54,15 @@ class IosComplaintMutationEditTest {
     @Test
     fun editNativeAdmissionRejectsMissingOrAmbiguousAuthorityAndNeverWidensOldPostRoutes() =
         withIosMutationGuard { fixture ->
-            listOf(null, MUTATION_TEST_PARENT, "$MUTATION_TEST_KEY, $MUTATION_TEST_KEY").forEach { key ->
-                assertFails {
-                    fixture.guard.prepare(
-                        iosMutationTestRequest(ComplaintMutationRoute.EDIT).apply {
-                            setValue(key, Policy.IDEMPOTENCY_HEADER)
-                        },
-                    )
-                }
-            }
-            listOf(
-                null,
-                "W/$MUTATION_TEST_PRECONDITION",
-                "*",
-                "$MUTATION_TEST_PRECONDITION, $MUTATION_TEST_PRECONDITION",
-                "\"complaint-$MUTATION_TEST_KEY-v1\"",
-                "\"complaint-$MUTATION_TEST_PARENT-v01\"",
-                "\"complaint-$MUTATION_TEST_PARENT-v9223372036854775808\"",
-            ).forEach { tag ->
+            assertRejectedEditKeys(fixture)
+            invalidPreconditions().forEach { tag ->
                 assertFails {
                     fixture.guard.prepare(
                         iosMutationTestRequest(ComplaintMutationRoute.EDIT).apply { setValue(tag, "If-Match") },
                     )
                 }
             }
-            val invalid =
-                listOf<NSMutableURLRequest.() -> Unit>(
-                    { setHTTPMethod("POST") },
-                    { setHTTPBody(null) },
-                    { setHTTPBodyStream(NSInputStream(data = iosSessionTestData(1))) },
-                    { setValue("2", "Content-Length") },
-                    { setValue("text/plain", "Content-Type") },
-                    { setValue("gzip", "Content-Encoding") },
-                    { setValue("synthetic", "Cookie") },
-                )
+            val invalid = invalidEditRequests()
             invalid.forEach { change ->
                 assertFails { fixture.guard.prepare(iosMutationTestRequest(ComplaintMutationRoute.EDIT).apply(change)) }
             }
@@ -112,6 +79,51 @@ class IosComplaintMutationEditTest {
                 }
             assertEquals(0, fixture.guard.activeTaskCount)
         }
+
+    private fun invalidEditUrls(edit: String): List<String> =
+        listOf(
+            "$edit?version=1",
+            "$edit/",
+            edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_PARENT.uppercase()),
+            edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_KEY),
+            edit.replace("/base_1/v2", ""),
+            edit.replace(":9443", ""),
+            edit.replace("example.invalid", "elsewhere.invalid"),
+        )
+
+    private fun invalidPreconditions(): List<String?> =
+        listOf(
+            null,
+            "W/$MUTATION_TEST_PRECONDITION",
+            "*",
+            "$MUTATION_TEST_PRECONDITION, $MUTATION_TEST_PRECONDITION",
+            "\"complaint-$MUTATION_TEST_KEY-v1\"",
+            "\"complaint-$MUTATION_TEST_PARENT-v01\"",
+            "\"complaint-$MUTATION_TEST_PARENT-v9223372036854775808\"",
+        )
+
+    private fun invalidEditRequests(): List<NSMutableURLRequest.() -> Unit> =
+        listOf(
+            { setHTTPMethod("POST") },
+            { setHTTPBody(null) },
+            { setHTTPBodyStream(NSInputStream(data = iosSessionTestData(1))) },
+            { setValue("2", "Content-Length") },
+            { setValue("text/plain", "Content-Type") },
+            { setValue("gzip", "Content-Encoding") },
+            { setValue("synthetic", "Cookie") },
+        )
+
+    private fun assertRejectedEditKeys(fixture: IosSessionGuardFixture) {
+        listOf(null, MUTATION_TEST_PARENT, "$MUTATION_TEST_KEY, $MUTATION_TEST_KEY").forEach { key ->
+            assertFails {
+                fixture.guard.prepare(
+                    iosMutationTestRequest(ComplaintMutationRoute.EDIT).apply {
+                        setValue(key, Policy.IDEMPOTENCY_HEADER)
+                    },
+                )
+            }
+        }
+    }
 
     @Test
     fun responseForAnotherContentIdOrRouteIsRejectedBeforeAnyDataOrLateCallbackCanEscape() {
