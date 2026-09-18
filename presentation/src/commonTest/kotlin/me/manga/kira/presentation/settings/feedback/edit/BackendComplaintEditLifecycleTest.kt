@@ -1,15 +1,5 @@
 package me.manga.kira.presentation.settings.feedback.edit
 
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +26,16 @@ import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("TooManyFunctions") // Four lifecycle tests share bounded ownership/barrier assertions.
@@ -100,7 +100,6 @@ class BackendComplaintEditLifecycleTest {
                 late.release.complete(Unit)
             }
         }
-
 
     private suspend fun TestScope.assertChildCleanupFence(openRecovery: Boolean) {
         val fixture = fixture()

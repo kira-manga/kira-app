@@ -1,14 +1,5 @@
 package me.manga.kira.presentation.settings.feedback.delete
 
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +26,15 @@ import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
 import me.manga.kira.domain.model.feedback.ComplaintOwnerDeletePreparation
 import me.manga.kira.domain.model.feedback.ComplaintReportApplication
 import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackendComplaintDeleteLifecycleTest {
@@ -150,7 +150,6 @@ class BackendComplaintDeleteLifecycleTest {
         assertTrue(late.cleaned)
         assertEquals(listOf(BackendComplaintDeleteEffect.OpenRecovery), events)
     }
-
 
     private suspend fun TestScope.assertChildCleanupFence(openRecovery: Boolean) {
         val fixture = fixture()
