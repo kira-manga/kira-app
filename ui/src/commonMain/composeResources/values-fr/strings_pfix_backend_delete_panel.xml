@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Supprimer uniquement le commentaire affiché ci-dessous ? Cette action est irréversible. L’identité d’installation est conservée. Fermer cette boîte de dialogue n’annule pas une demande envoyée.</string>
+    <string name="backend_delete_conflict">Un conflit de version a été signalé. La suppression initiale conserve sa version d’origine ; elle n’est jamais adaptée à une version actualisée.</string>
+    <string name="backend_delete_retry_same">Vérifier ou réessayer la même suppression</string>
+    <string name="backend_delete_open_recovery">Ouvrir la configuration et la récupération</string>
+    <string name="backend_delete_unresolved">La suppression n’est pas encore confirmée. Vérifiez son état avant de supposer un échec.</string>
+    <string name="backend_delete_unavailable">La suppression ou la récupération est indisponible. Consultez les opérations conservées dans la configuration et la récupération ; elles n’ont pas été remplacées.</string>
+    <string name="backend_delete_live_required">Cette suppression ne peut être réessayée que depuis sa confirmation initiale encore ouverte. La récupération ne peut pas la recréer.</string>
+    <string name="backend_delete_receipt_expired">Le délai du reçu de suppression est écoulé. Cela ne prouve pas que la suppression a échoué.</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Eliminar apenas o comentário apresentado abaixo? Esta ação é irreversível. A identidade da instalação mantém-se. Fechar esta janela não anula um pedido enviado.</string>
+    <string name="backend_delete_conflict">Foi comunicado um conflito de versão. A eliminação original mantém a versão original; nunca é adaptada a uma versão atualizada.</string>
+    <string name="backend_delete_retry_same">Verificar ou repetir a mesma eliminação</string>
+    <string name="backend_delete_open_recovery">Abrir configuração e recuperação</string>
+    <string name="backend_delete_unresolved">A eliminação ainda não foi confirmada. Verifique o estado antes de presumir que falhou.</string>
+    <string name="backend_delete_unavailable">A eliminação ou recuperação está indisponível. Consulte as operações guardadas na configuração e recuperação; não foram substituídas.</string>
+    <string name="backend_delete_live_required">Esta eliminação só pode ser repetida a partir da confirmação original ainda aberta. A recuperação não pode recriá-la.</string>
+    <string name="backend_delete_receipt_expired">O prazo do comprovativo de eliminação terminou. Isto não prova que a eliminação falhou.</string>
+</resources>

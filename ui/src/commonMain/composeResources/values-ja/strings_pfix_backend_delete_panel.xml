@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">下に表示されたフィードバックだけを削除しますか？元に戻せません。インストールの識別情報は保持されます。このダイアログを閉じても、送信済みのリクエストは取り消されません。</string>
+    <string name="backend_delete_conflict">バージョンの競合が報告されました。元の削除は元のバージョンを維持し、更新されたバージョンに変更されることはありません。</string>
+    <string name="backend_delete_retry_same">同じ削除を確認または再試行</string>
+    <string name="backend_delete_open_recovery">設定と復旧を開く</string>
+    <string name="backend_delete_unresolved">削除はまだ確認されていません。失敗と判断する前に状態を確認してください。</string>
+    <string name="backend_delete_unavailable">削除または復旧を利用できません。設定と復旧で保持された操作を確認してください。操作は置き換えられていません。</string>
+    <string name="backend_delete_live_required">この削除は、元の確認画面が開いている場合のみ再試行できます。復旧では再作成できません。</string>
+    <string name="backend_delete_receipt_expired">削除の受領記録を確認できる期間が終了しました。削除の失敗を意味するものではありません。</string>
+</resources>

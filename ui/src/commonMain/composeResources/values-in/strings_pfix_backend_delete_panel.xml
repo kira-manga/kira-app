@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Hapus hanya masukan yang ditampilkan di bawah? Tindakan ini tidak dapat dibatalkan. Identitas instalasi tetap tersimpan. Menutup dialog ini tidak membatalkan permintaan yang sudah dikirim.</string>
+    <string name="backend_delete_conflict">Konflik versi dilaporkan. Penghapusan awal tetap memakai versi awalnya dan tidak pernah disesuaikan dengan versi yang diperbarui.</string>
+    <string name="backend_delete_retry_same">Periksa atau coba lagi penghapusan yang sama</string>
+    <string name="backend_delete_open_recovery">Buka penyiapan dan pemulihan</string>
+    <string name="backend_delete_unresolved">Penghapusan belum dikonfirmasi. Periksa statusnya sebelum menganggapnya gagal.</string>
+    <string name="backend_delete_unavailable">Penghapusan atau pemulihan tidak tersedia. Gunakan penyiapan dan pemulihan untuk memeriksa operasi tersimpan; operasi tersebut tidak diganti.</string>
+    <string name="backend_delete_live_required">Penghapusan ini hanya dapat dicoba lagi dari konfirmasi awal yang masih terbuka. Pemulihan tidak dapat membuatnya ulang.</string>
+    <string name="backend_delete_receipt_expired">Jangka waktu bukti penghapusan berakhir. Ini tidak membuktikan penghapusan gagal.</string>
+</resources>
