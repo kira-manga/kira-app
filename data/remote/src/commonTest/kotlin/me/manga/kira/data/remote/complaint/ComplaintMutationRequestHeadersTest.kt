@@ -1,6 +1,7 @@
 package me.manga.kira.data.remote.complaint
 
 import io.ktor.client.engine.mergeHeaders
+import io.ktor.client.utils.EmptyContent
 import io.ktor.client.utils.buildHeaders
 import io.ktor.http.ContentType
 import io.ktor.http.content.ByteArrayContent
@@ -72,7 +73,8 @@ class ComplaintMutationRequestHeadersTest {
     @Test
     fun onlyOptionalSingleFixedSupplierUserAgentFitsTheClosedNativeHeaderSet() {
         ComplaintMutationRoute.entries.forEach { route ->
-            val applicationHeaders = mutationTestHeaders(route) + ("Content-Length" to "1")
+            val applicationHeaders =
+                mutationTestHeaders(route) + ("Content-Length" to mutationTestBodySize(route).toString())
             val nativeHeaders = mutationTestEngineHeaders(route)
             assertEquals(applicationHeaders.toSet() + ("User-Agent" to "ktor-client"), nativeHeaders.toSet())
             assertEquals(applicationHeaders.size + 1, nativeHeaders.size)
@@ -99,24 +101,32 @@ class ComplaintMutationRequestHeadersTest {
     private fun accepts(
         route: ComplaintMutationRoute,
         headers: List<Pair<String, String>>,
-    ): Boolean = ComplaintMutationRequestHeaders.accepts(route, headers, 1, MUTATION_TEST_PARENT)
+    ): Boolean =
+        ComplaintMutationRequestHeaders.accepts(
+            route,
+            headers,
+            mutationTestBodySize(route).toLong(),
+            MUTATION_TEST_PARENT,
+        )
 }
 
 internal fun mutationTestHeaders(route: ComplaintMutationRoute): List<Pair<String, String>> =
-    listOf(
-        "Authorization" to MUTATION_TEST_AUTHORIZATION,
-        "Accept" to "application/json, application/problem+json",
-        "Accept-Encoding" to "identity",
-        "Cache-Control" to "no-store, no-transform",
-        "Content-Type" to "application/json",
-    ) +
+    buildList {
+        add("Authorization" to MUTATION_TEST_AUTHORIZATION)
+        add("Accept" to "application/json, application/problem+json")
+        add("Accept-Encoding" to "identity")
+        add("Cache-Control" to "no-store, no-transform")
+        if (route != ComplaintMutationRoute.OWNER_DELETE) add("Content-Type" to "application/json")
         when (route) {
             ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY ->
-                listOf(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY)
-            ComplaintMutationRoute.EDIT ->
-                listOf(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY, "If-Match" to MUTATION_TEST_PRECONDITION)
-            ComplaintMutationRoute.STATUS -> emptyList()
+                add(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY)
+            ComplaintMutationRoute.EDIT, ComplaintMutationRoute.OWNER_DELETE -> {
+                add(Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY)
+                add("If-Match" to MUTATION_TEST_PRECONDITION)
+            }
+            ComplaintMutationRoute.STATUS -> Unit
         }
+    }
 
 /** Executes the same supplier header merger used by both Ktor native converters; no HTTP claim. */
 @OptIn(InternalAPI::class)
@@ -128,9 +138,17 @@ internal fun mutationTestEngineHeaders(route: ComplaintMutationRoute): List<Pair
                     append(name, value)
                 }
             }
-        val body = ByteArrayContent(byteArrayOf('x'.code.toByte()), ContentType.Application.Json)
+        val body =
+            if (route == ComplaintMutationRoute.OWNER_DELETE) {
+                EmptyContent
+            } else {
+                ByteArrayContent(byteArrayOf('x'.code.toByte()), ContentType.Application.Json)
+            }
         mergeHeaders(headers, body) { name, value -> add(name to value) }
     }
+
+internal fun mutationTestBodySize(route: ComplaintMutationRoute): Int =
+    if (route == ComplaintMutationRoute.OWNER_DELETE) 0 else 1
 
 internal const val MUTATION_TEST_KEY = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 internal const val MUTATION_TEST_PARENT = "bbbbbbbb-bbbb-5bbb-8bbb-bbbbbbbbbbbb"

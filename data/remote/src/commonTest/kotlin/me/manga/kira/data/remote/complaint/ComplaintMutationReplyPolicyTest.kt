@@ -32,7 +32,6 @@ class ComplaintMutationReplyPolicyTest {
                 first.replace(REPLY_POLICY_PARENT, REPLY_POLICY_PARENT.uppercase()),
                 first.replace(REPLY_POLICY_PARENT, "a-a-4-8-a"),
                 first.replace(REPLY_POLICY_PARENT, "%61" + REPLY_POLICY_PARENT.drop(1)),
-                first.removeSuffix("/replies"),
                 first.replace("/base_1/v2", ""),
             )
         invalid.forEach { assertNull(target.route(it), it) }

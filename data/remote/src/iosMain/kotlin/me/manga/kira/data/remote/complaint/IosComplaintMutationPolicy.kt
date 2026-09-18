@@ -11,7 +11,7 @@ import platform.Foundation.NSURLSessionDataTask
 import platform.Foundation.allHTTPHeaderFields
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
-/** New closed case; reuses the existing sticky-failure native receive guard without widening old cases. */
+/** Closed owner mutation/status cases reuse the existing sticky-failure native receive guard. */
 @OptIn(ExperimentalForeignApi::class, UnsafeNumber::class)
 internal class IosComplaintMutationPolicy(
     private val target: ComplaintMutationTarget,
@@ -20,14 +20,24 @@ internal class IosComplaintMutationPolicy(
     override fun acceptsRequest(request: NSURLRequest): Boolean {
         val url = request.URL?.absoluteString ?: return false
         val route = target.route(url) ?: return false
-        val length = request.HTTPBody?.length ?: return false
+        val length = request.HTTPBody?.length ?: 0uL
         return request.HTTPMethod == route.method &&
             request.HTTPBodyStream == null &&
-            length in 1uL..Policy.MAX_REQUEST_BYTES.toULong() &&
+            validLength(route, length) &&
             mutationHeaders(request)?.let {
-                ComplaintMutationRequestHeaders.accepts(route, it, length.toLong(), target.editTargetId(url))
+                ComplaintMutationRequestHeaders.accepts(route, it, length.toLong(), target.preconditionTargetId(url))
             } == true
     }
+
+    private fun validLength(
+        route: ComplaintMutationRoute,
+        length: ULong,
+    ): Boolean =
+        if (route == ComplaintMutationRoute.OWNER_DELETE) {
+            length == 0uL
+        } else {
+            length in 1uL..Policy.MAX_REQUEST_BYTES.toULong()
+        }
 
     @Suppress("ReturnCount")
     override fun acceptsResponse(
@@ -65,7 +75,7 @@ private fun mutationHeaders(request: NSURLRequest): List<Pair<String, String>>? 
     return result
 }
 
-/** Foundation-combined duplicate content fields cannot grant the larger acknowledgement budget. */
+/** Foundation-combined duplicate content fields cannot grant acknowledgement budgets. */
 @OptIn(ExperimentalForeignApi::class)
 private fun NSHTTPURLResponse.mutationHeader(name: String): List<String> {
     val values = mutableListOf<String>()

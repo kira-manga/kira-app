@@ -7,6 +7,7 @@ import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.utils.EmptyContent
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.Url
@@ -55,26 +56,10 @@ internal class AndroidMutationEngineFixture(
 
     suspend fun exchange(
         route: ComplaintMutationRoute = ComplaintMutationRoute.CREATE,
-        size: Int = 1,
+        size: Int = mutationTestBodySize(route),
         change: HttpRequestBuilder.() -> Unit = {},
     ): SessionEngineResponse {
-        val request =
-            HttpRequestBuilder().apply {
-                method = HttpMethod(route.method)
-                url(
-                    when (route) {
-                        ComplaintMutationRoute.CREATE -> createUrl.toString()
-                        ComplaintMutationRoute.REPLY -> "$createUrl/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
-                        ComplaintMutationRoute.EDIT -> "$createUrl/$MUTATION_TEST_PARENT${Policy.CONTENT_SUFFIX}"
-                        ComplaintMutationRoute.STATUS -> statusUrl.toString()
-                    },
-                )
-                mutationTestHeaders(route).filterNot { it.first == "Content-Type" }.forEach { (name, value) ->
-                    headers.append(name, value)
-                }
-                setBody(ByteArrayContent(ByteArray(size) { 'x'.code.toByte() }, ContentType.Application.Json))
-                change()
-            }
+        val request = request(route, size).apply(change)
         return client.prepareRequest(request).execute { response ->
             SessionEngineResponse(
                 response.status.value,
@@ -82,6 +67,32 @@ internal class AndroidMutationEngineFixture(
             )
         }
     }
+
+    private fun request(
+        route: ComplaintMutationRoute,
+        size: Int,
+    ): HttpRequestBuilder =
+        HttpRequestBuilder().apply {
+            method = HttpMethod(route.method)
+            url(routeUrl(route))
+            mutationTestHeaders(route).filterNot { it.first == "Content-Type" }.forEach { (name, value) ->
+                headers.append(name, value)
+            }
+            if (route == ComplaintMutationRoute.OWNER_DELETE && size == 0) {
+                setBody(EmptyContent)
+            } else {
+                setBody(ByteArrayContent(ByteArray(size) { 'x'.code.toByte() }, ContentType.Application.Json))
+            }
+        }
+
+    private fun routeUrl(route: ComplaintMutationRoute): String =
+        when (route) {
+            ComplaintMutationRoute.CREATE -> createUrl.toString()
+            ComplaintMutationRoute.REPLY -> "$createUrl/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
+            ComplaintMutationRoute.EDIT -> "$createUrl/$MUTATION_TEST_PARENT${Policy.CONTENT_SUFFIX}"
+            ComplaintMutationRoute.OWNER_DELETE -> "$createUrl/$MUTATION_TEST_PARENT"
+            ComplaintMutationRoute.STATUS -> statusUrl.toString()
+        }
 
     private fun closeNative(claimedOwner: ComplaintSessionEngineOwner?) {
         try {

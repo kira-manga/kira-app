@@ -25,16 +25,18 @@ internal class ComplaintMutationTarget private constructor(
                 when {
                     isReplyPath(candidate.encodedPath) -> ComplaintMutationRoute.REPLY
                     isEditPath(candidate.encodedPath) -> ComplaintMutationRoute.EDIT
+                    isOwnerDeletePath(candidate.encodedPath) -> ComplaintMutationRoute.OWNER_DELETE
                     else -> null
                 }
         }
     }
 
-    fun editTargetId(value: String): String? =
-        if (route(value) == ComplaintMutationRoute.EDIT) {
-            parse(value)?.encodedPath?.removePrefix(replyPrefix)?.removeSuffix(Policy.CONTENT_SUFFIX)
-        } else {
-            null
+    fun preconditionTargetId(value: String): String? =
+        when (route(value)) {
+            ComplaintMutationRoute.EDIT ->
+                parse(value)?.encodedPath?.removePrefix(replyPrefix)?.removeSuffix(Policy.CONTENT_SUFFIX)
+            ComplaintMutationRoute.OWNER_DELETE -> parse(value)?.encodedPath?.removePrefix(replyPrefix)
+            else -> null
         }
 
     fun sameRoute(
@@ -54,6 +56,9 @@ internal class ComplaintMutationTarget private constructor(
         path.startsWith(replyPrefix) &&
             path.endsWith(Policy.CONTENT_SUFFIX) &&
             CANONICAL_PARENT.matches(path.removePrefix(replyPrefix).removeSuffix(Policy.CONTENT_SUFFIX))
+
+    private fun isOwnerDeletePath(path: String): Boolean =
+        path.startsWith(replyPrefix) && CANONICAL_PARENT.matches(path.removePrefix(replyPrefix))
 
     private fun sameOrigin(candidate: Url): Boolean =
         candidate.protocol == createUrl.protocol &&
@@ -97,5 +102,6 @@ internal enum class ComplaintMutationRoute(
     CREATE("POST"),
     REPLY("POST"),
     EDIT("PATCH"),
+    OWNER_DELETE("DELETE"),
     STATUS("POST"),
 }

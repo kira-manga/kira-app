@@ -81,7 +81,7 @@ class IosComplaintMutationEngineTest {
     @Test
     fun requestLimitUsesActualNSDataAndRefusesUnknownStreamsOrFalseLength() =
         withIosMutationGuard { fixture ->
-            ComplaintMutationRoute.entries.forEach { route ->
+            ComplaintMutationRoute.entries.filterNot { it == ComplaintMutationRoute.OWNER_DELETE }.forEach { route ->
                 fixture.guard.prepare(iosMutationTestRequest(route, Policy.MAX_REQUEST_BYTES))
                 listOf(0, Policy.MAX_REQUEST_BYTES + 1).forEach { size ->
                     assertFails { fixture.guard.prepare(iosMutationTestRequest(route, size)) }
@@ -98,7 +98,7 @@ class IosComplaintMutationEngineTest {
 
     @Test
     fun supplierMergedHeadersPassPreparationAndOriginalRequestButCustomUserAgentsFail() {
-        ComplaintMutationRoute.entries.forEach { route ->
+        ComplaintMutationRoute.entries.filterNot { it == ComplaintMutationRoute.OWNER_DELETE }.forEach { route ->
             withIosMutationGuard { fixture ->
                 val request =
                     iosMutationTestRequest(route).apply {

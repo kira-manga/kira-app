@@ -29,12 +29,12 @@ internal fun withIosMutationGuard(
 @OptIn(ExperimentalForeignApi::class)
 internal fun iosMutationTestRequest(
     route: ComplaintMutationRoute = ComplaintMutationRoute.CREATE,
-    size: Int = 1,
+    size: Int = mutationTestBodySize(route),
     url: String = iosMutationTestUrl(route),
 ): NSMutableURLRequest =
     NSMutableURLRequest.requestWithURL(assertNotNull(NSURL.URLWithString(url))).apply {
         setHTTPMethod(route.method)
-        setHTTPBody(iosSessionTestData(size))
+        setHTTPBody(if (route == ComplaintMutationRoute.OWNER_DELETE && size == 0) null else iosSessionTestData(size))
         mutationTestHeaders(route).forEach { (name, value) -> setValue(value, name) }
     }
 
@@ -43,6 +43,7 @@ internal fun iosMutationTestUrl(route: ComplaintMutationRoute): String =
         ComplaintMutationRoute.CREATE -> IOS_MUTATION_CREATE_URL
         ComplaintMutationRoute.REPLY -> "$IOS_MUTATION_CREATE_URL/$MUTATION_TEST_PARENT${Policy.REPLIES_SUFFIX}"
         ComplaintMutationRoute.EDIT -> "$IOS_MUTATION_CREATE_URL/$MUTATION_TEST_PARENT${Policy.CONTENT_SUFFIX}"
+        ComplaintMutationRoute.OWNER_DELETE -> "$IOS_MUTATION_CREATE_URL/$MUTATION_TEST_PARENT"
         ComplaintMutationRoute.STATUS -> IOS_MUTATION_STATUS_URL
     }
 

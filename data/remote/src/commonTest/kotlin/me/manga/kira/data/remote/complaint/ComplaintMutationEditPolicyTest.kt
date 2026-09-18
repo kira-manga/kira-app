@@ -19,7 +19,7 @@ class ComplaintMutationEditPolicyTest {
         val target = assertNotNull(ComplaintMutationTarget.checked(Url(create)))
         assertEquals("/content", Policy.CONTENT_SUFFIX)
         assertEquals(ComplaintMutationRoute.EDIT, target.route(edit))
-        assertEquals(MUTATION_TEST_PARENT, target.editTargetId(edit))
+        assertEquals(MUTATION_TEST_PARENT, target.preconditionTargetId(edit))
         assertEquals("PATCH", ComplaintMutationRoute.EDIT.method)
         listOf(ComplaintMutationRoute.CREATE, ComplaintMutationRoute.REPLY, ComplaintMutationRoute.STATUS)
             .forEach { assertEquals("POST", it.method) }
@@ -32,10 +32,10 @@ class ComplaintMutationEditPolicyTest {
         assertFalse(target.sameRoute(edit, BASE + Policy.STATUS_PATH))
         invalidEditUrls(edit).forEach { value ->
             assertNull(target.route(value), value)
-            assertNull(target.editTargetId(value), value)
+            assertNull(target.preconditionTargetId(value), value)
             assertFalse(target.sameRoute(edit, value), value)
         }
-        assertNull(target.editTargetId(create))
+        assertNull(target.preconditionTargetId(create))
         assertNull(ComplaintMutationTarget.checked(Url(edit)), "Content is not an engine base.")
     }
 
@@ -45,7 +45,6 @@ class ComplaintMutationEditPolicyTest {
             "$edit?",
             "$edit?version=1",
             "$edit#fragment",
-            edit.removeSuffix("/content"),
             edit.replace("/content", "/Content"),
             edit.replace(MUTATION_TEST_PARENT, MUTATION_TEST_PARENT.uppercase()),
             edit.replace(MUTATION_TEST_PARENT, "%62" + MUTATION_TEST_PARENT.drop(1)),
