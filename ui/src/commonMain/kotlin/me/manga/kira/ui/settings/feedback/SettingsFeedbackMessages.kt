@@ -16,6 +16,8 @@ import me.manga.kira.ui.generated.resources.complaint_other
 import me.manga.kira.ui.generated.resources.complaint_site_error
 import me.manga.kira.ui.generated.resources.complaint_sites_add
 import me.manga.kira.ui.generated.resources.complaint_technical
+import me.manga.kira.ui.generated.resources.error_network_not_found
+import me.manga.kira.ui.generated.resources.request_failed
 import me.manga.kira.ui.generated.resources.request_feedback_missing_installation
 import me.manga.kira.ui.generated.resources.settings_report_applied
 import me.manga.kira.ui.generated.resources.settings_report_capacity_rejected
@@ -93,5 +95,9 @@ private fun settingsReportApplicationText(application: ComplaintReportApplicatio
                     stringResource(Res.string.settings_report_capacity_rejected)
                 ComplaintReportReceiptRejection.COMPLAINT_RESOURCE_ID_REUSED ->
                     stringResource(Res.string.settings_report_id_rejected)
+                ComplaintReportReceiptRejection.COMPLAINT_PARENT_NOT_FOUND ->
+                    stringResource(Res.string.error_network_not_found)
+                ComplaintReportReceiptRejection.COMPLAINT_DELETION_PENDING ->
+                    stringResource(Res.string.request_failed)
             }
     }
