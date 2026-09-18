@@ -47,7 +47,7 @@ class BackendComplaintEditViewModel(
     }
 
     private fun edit(change: (BackendComplaintEditText) -> BackendComplaintEditText) {
-        if (!state.value.editable) return
+        if (operation?.isCompleted == false || !state.value.editable) return
         updateState {
             it.copy(draft = change(it.draft), invalidField = null, result = BackendComplaintEditObservation())
         }
@@ -110,7 +110,7 @@ class BackendComplaintEditViewModel(
     /** Before the first suspension, lock the draft and reject concurrent submits/retries rather than queueing. */
     @Suppress("TooGenericExceptionCaught") // Keep every thrown failure inside this opening's owned operation.
     private suspend fun work(action: suspend () -> Unit) {
-        if (retired || state.value.busy) return
+        if (retired || operation?.isCompleted == false) return
         updateState { it.copy(activity = BackendComplaintEditActivity.WORKING, invalidField = null) }
         val caller = currentCoroutineContext().job
         operation = caller
@@ -122,7 +122,7 @@ class BackendComplaintEditViewModel(
         } catch (_: Throwable) {
             showFailure(ComplaintReportFailure(AppError.Unexpected(FAILURE_CODE)))
         } finally {
-            if (operation === caller) operation = null
+            // Keep the caller until Job completion, including any cancellation-safe child cleanup.
             if (!retired) finishWork()
         }
     }

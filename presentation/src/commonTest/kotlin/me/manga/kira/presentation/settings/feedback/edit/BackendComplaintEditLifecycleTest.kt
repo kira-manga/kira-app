@@ -1,25 +1,5 @@
 package me.manga.kira.presentation.settings.feedback.edit
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import me.manga.kira.core.error.AppError
-import me.manga.kira.core.result.AppResult
-import me.manga.kira.domain.model.feedback.ComplaintEditApplication
-import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
-import me.manga.kira.domain.model.feedback.ComplaintReportApplication
-import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
-import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -30,6 +10,32 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.feedback.ComplaintEditApplication
+import me.manga.kira.domain.model.feedback.ComplaintEditPreparation
+import me.manga.kira.domain.model.feedback.ComplaintReportApplication
+import me.manga.kira.domain.model.feedback.ComplaintReportRecovery
+import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("TooManyFunctions") // Four lifecycle tests share bounded ownership/barrier assertions.
@@ -66,32 +72,7 @@ class BackendComplaintEditLifecycleTest {
     @Test
     fun currentCancellationPreservesTheSameLiveRetryAndKnownOutcome() =
         runTest {
-            val fixture = fixture()
-            val fake = fixture.repository
-            val receipt = ComplaintEditApplication.Applied(EDIT_ID, 8)
-            fake.onSubmit = {
-                AppResult.Success(fake.submission(fake.unresolved(ComplaintReportApplication.Edit(receipt))))
-            }
-            fixture.model.fillEditDraft()
-            fixture.model.submit(BackendComplaintEditIntent.Submit)
-            var caller: Job? = null
-            fake.onRetry = {
-                caller = currentCoroutineContext().job
-                throw CancellationException("Synthetic private cancellation")
-            }
-            fixture.model.submit(BackendComplaintEditIntent.Retry)
-            assertTrue(assertNotNull(caller).isCancelled)
-            val state = fixture.model.state.value
-            assertIs<AppError.Cancelled>(state.result.failure?.error)
-            assertNull(state.result.failure?.error?.cause)
-            assertSame(receipt, state.result.receipt)
-            assertTrue(state.canRetry && state.result.cleanupPending)
-            assertEquals(EDIT_PRIVATE_BODY, state.draft.body)
-            fake.onRetry = { AppResult.Success(completedEdit(receipt)) }
-            fixture.model.submit(BackendComplaintEditIntent.Retry)
-            assertTrue(fake.retried.all { it === fake.submitted.single() })
-            assertEquals(1, fake.drafts.size)
-            assertTrue(fixture.model.state.value.result.completed)
+            for (openRecovery in listOf(false, true)) assertChildCleanupFence(openRecovery)
         }
 
     @Test
@@ -119,6 +100,67 @@ class BackendComplaintEditLifecycleTest {
                 late.release.complete(Unit)
             }
         }
+
+
+    private suspend fun TestScope.assertChildCleanupFence(openRecovery: Boolean) {
+        val fixture = fixture()
+        val fake = fixture.repository
+        val receipt = ComplaintEditApplication.Applied(EDIT_ID, 8)
+        fake.onSubmit = { AppResult.Success(fake.submission(fake.unresolved(ComplaintReportApplication.Edit(receipt)))) }
+        fixture.model.fillEditDraft()
+        fixture.model.submit(BackendComplaintEditIntent.Submit)
+        val release = CompletableDeferred<Unit>()
+        val caller = CompletableDeferred<Job>()
+        fake.onRetry = { cancelWithChildCleanup(release, caller) }
+        val events = mutableListOf<BackendComplaintEditEffect>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { fixture.model.effects.collect { events += it } }
+        try {
+            fixture.model.submit(BackendComplaintEditIntent.Retry)
+            assertPendingRetryOwned(fixture, caller.await(), receipt)
+            if (openRecovery) fixture.model.submit(BackendComplaintEditIntent.OpenRecovery)
+            assertTrue(events.isEmpty())
+            release.complete(Unit)
+            runCurrent()
+            assertTrue(caller.await().isCompleted)
+            assertAfterChildDrain(fixture, openRecovery, events, receipt)
+        } finally {
+            release.complete(Unit)
+            runCurrent()
+        }
+    }
+
+    private fun assertPendingRetryOwned(fixture: BackendComplaintEditViewModelFixture, caller: Job, receipt: ComplaintEditApplication) {
+        val state = fixture.model.state.value
+        assertTrue(caller.isCancelled && !caller.isCompleted)
+        assertIs<AppError.Cancelled>(state.result.failure?.error)
+        assertNull(state.result.failure?.error?.cause)
+        assertSame(receipt, state.result.receipt)
+        assertTrue(state.canRetry && state.result.cleanupPending)
+        assertFalse(state.busy)
+        assertEquals(EDIT_PRIVATE_BODY, state.draft.body)
+        fixture.model.submit(BackendComplaintEditIntent.Submit)
+        fixture.model.submit(BackendComplaintEditIntent.Retry)
+        assertEquals(1, fixture.repository.drafts.size)
+        assertSame(fixture.repository.live, fixture.repository.retried.single())
+    }
+
+    private fun assertAfterChildDrain(
+        fixture: BackendComplaintEditViewModelFixture,
+        openRecovery: Boolean,
+        events: List<BackendComplaintEditEffect>,
+        receipt: ComplaintEditApplication,
+    ) {
+        if (openRecovery) {
+            assertEditRetired(fixture.model)
+            assertEquals(listOf(BackendComplaintEditEffect.OpenRecovery), events)
+        } else {
+            fixture.repository.onRetry = { AppResult.Success(completedEdit(receipt)) }
+            fixture.model.submit(BackendComplaintEditIntent.Retry)
+            assertTrue(fixture.repository.retried.all { it === fixture.repository.submitted.single() })
+            assertEquals(1, fixture.repository.drafts.size)
+            assertTrue(fixture.model.state.value.result.completed)
+        }
+    }
 
     private fun fixture(fake: EditRepositoryFake = EditRepositoryFake()): BackendComplaintEditViewModelFixture =
         BackendComplaintEditViewModelFixture(repository = fake).also { fixtures += it }
@@ -207,4 +249,19 @@ class BackendComplaintEditLifecycleTest {
         assertEquals(1, fake.submitted.size)
         assertTrue(fake.retried.isEmpty())
     }
+}
+
+/** Reproduces a canceled caller that has returned while its attached child is still draining. */
+private suspend fun cancelWithChildCleanup(release: CompletableDeferred<Unit>, caller: CompletableDeferred<Job>): Nothing {
+    val context = currentCoroutineContext()
+    CoroutineScope(context).launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            awaitCancellation()
+        } finally {
+            withContext(NonCancellable) { release.await() }
+        }
+    }
+    caller.complete(context.job)
+    context.job.cancel()
+    throw CancellationException("synthetic canceled operation")
 }

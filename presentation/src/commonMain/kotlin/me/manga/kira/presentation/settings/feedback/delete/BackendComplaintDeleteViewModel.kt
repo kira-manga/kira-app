@@ -92,7 +92,7 @@ class BackendComplaintDeleteViewModel(
     /** Lock before suspension: rapid confirm/retry intents never create a second deletion. */
     @Suppress("TooGenericExceptionCaught") // Do not log provider errors or revive a retired target.
     private suspend fun work(action: suspend () -> Unit) {
-        if (retired || state.value.busy) return
+        if (retired || operation?.isCompleted == false) return
         updateState { it.copy(activity = BackendComplaintDeleteActivity.WORKING) }
         val caller = currentCoroutineContext().job
         operation = caller
@@ -104,7 +104,7 @@ class BackendComplaintDeleteViewModel(
         } catch (_: Throwable) {
             showFailure(ComplaintReportFailure(AppError.Unexpected(FAILURE_CODE)))
         } finally {
-            if (operation === caller) operation = null
+            // Keep the caller until Job completion, including any cancellation-safe child cleanup.
             if (!retired) finishWork()
         }
     }

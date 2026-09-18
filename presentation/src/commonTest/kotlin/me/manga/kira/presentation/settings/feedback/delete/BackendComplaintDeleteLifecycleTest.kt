@@ -1,30 +1,40 @@
 package me.manga.kira.presentation.settings.feedback.delete
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import me.manga.kira.core.error.AppError
-import me.manga.kira.core.result.AppResult
-import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
-import me.manga.kira.domain.model.feedback.ComplaintOwnerDeletePreparation
-import me.manga.kira.domain.model.feedback.ComplaintReportApplication
-import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeleteApplication
+import me.manga.kira.domain.model.feedback.ComplaintOwnerDeletePreparation
+import me.manga.kira.domain.model.feedback.ComplaintReportApplication
+import me.manga.kira.domain.model.feedback.ComplaintReportSubmission
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackendComplaintDeleteLifecycleTest {
@@ -73,21 +83,7 @@ class BackendComplaintDeleteLifecycleTest {
     @Test
     fun currentCancellationPreservesKnownReceiptAndDoesNotPermitReplacementConfirmation() =
         runTest {
-            val fixture = fixture()
-            val receipt = ComplaintReportApplication.OwnerDelete(ComplaintOwnerDeleteApplication.Applied)
-            fixture.repository.onSubmit = { AppResult.Success(fixture.repository.submission(unresolved(receipt))) }
-            fixture.model.submit(BackendComplaintDeleteIntent.Confirm)
-            fixture.repository.onRetry = { throw CancellationException("synthetic current cancellation") }
-            fixture.model.submit(BackendComplaintDeleteIntent.Retry)
-            val state = fixture.model.state.value
-            assertSame(ComplaintOwnerDeleteApplication.Applied, state.result.receipt)
-            assertTrue(state.result.cleanupPending)
-            assertIs<AppError.Cancelled>(state.result.failure?.error)
-            assertTrue(state.canRetry)
-            assertFalse(state.busy)
-            fixture.model.submit(BackendComplaintDeleteIntent.Confirm)
-            assertEquals(1, fixture.repository.drafts.size)
-            assertSame(fixture.repository.live, fixture.repository.retried.single())
+            for (openRecovery in listOf(false, true)) assertChildCleanupFence(openRecovery)
         }
 
     private suspend fun TestScope.assertLatePreparationFenced(clearStore: Boolean) {
@@ -155,5 +151,79 @@ class BackendComplaintDeleteLifecycleTest {
         assertEquals(listOf(BackendComplaintDeleteEffect.OpenRecovery), events)
     }
 
+
+    private suspend fun TestScope.assertChildCleanupFence(openRecovery: Boolean) {
+        val fixture = fixture()
+        val fake = fixture.repository
+        val receipt = ComplaintOwnerDeleteApplication.Applied
+        fake.onSubmit = { AppResult.Success(fake.submission(unresolved(ComplaintReportApplication.OwnerDelete(receipt)))) }
+        fixture.model.submit(BackendComplaintDeleteIntent.Confirm)
+        val release = CompletableDeferred<Unit>()
+        val caller = CompletableDeferred<Job>()
+        fake.onRetry = { cancelWithChildCleanup(release, caller) }
+        val events = mutableListOf<BackendComplaintDeleteEffect>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { fixture.model.effects.collect { events += it } }
+        try {
+            fixture.model.submit(BackendComplaintDeleteIntent.Retry)
+            assertPendingRetryOwned(fixture, caller.await(), receipt)
+            if (openRecovery) fixture.model.submit(BackendComplaintDeleteIntent.OpenRecovery)
+            assertTrue(events.isEmpty())
+            release.complete(Unit)
+            runCurrent()
+            assertTrue(caller.await().isCompleted)
+            assertAfterChildDrain(fixture, openRecovery, events, receipt)
+        } finally {
+            release.complete(Unit)
+            runCurrent()
+        }
+    }
+
+    private fun assertPendingRetryOwned(fixture: BackendComplaintDeleteFixture, caller: Job, receipt: ComplaintOwnerDeleteApplication) {
+        val state = fixture.model.state.value
+        assertTrue(caller.isCancelled && !caller.isCompleted)
+        assertIs<AppError.Cancelled>(state.result.failure?.error)
+        assertNull(state.result.failure?.error?.cause)
+        assertSame(receipt, state.result.receipt)
+        assertTrue(state.canRetry && state.result.cleanupPending)
+        assertFalse(state.busy)
+        fixture.model.submit(BackendComplaintDeleteIntent.Confirm)
+        fixture.model.submit(BackendComplaintDeleteIntent.Retry)
+        assertEquals(1, fixture.repository.drafts.size)
+        assertSame(fixture.repository.live, fixture.repository.retried.single())
+    }
+
+    private fun assertAfterChildDrain(
+        fixture: BackendComplaintDeleteFixture,
+        openRecovery: Boolean,
+        events: List<BackendComplaintDeleteEffect>,
+        receipt: ComplaintOwnerDeleteApplication,
+    ) {
+        if (openRecovery) {
+            assertDeleteClosed(fixture.model)
+            assertEquals(listOf(BackendComplaintDeleteEffect.OpenRecovery), events)
+        } else {
+            fixture.repository.onRetry = { AppResult.Success(deleteCompleted(receipt)) }
+            fixture.model.submit(BackendComplaintDeleteIntent.Retry)
+            assertTrue(fixture.repository.retried.all { it === fixture.repository.submitted.single() })
+            assertEquals(1, fixture.repository.drafts.size)
+            assertTrue(fixture.model.state.value.result.completed)
+        }
+    }
+
     private fun fixture(): BackendComplaintDeleteFixture = BackendComplaintDeleteFixture().also { fixtures += it }
+}
+
+/** Reproduces a canceled caller that has returned while its attached child is still draining. */
+private suspend fun cancelWithChildCleanup(release: CompletableDeferred<Unit>, caller: CompletableDeferred<Job>): Nothing {
+    val context = currentCoroutineContext()
+    CoroutineScope(context).launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            awaitCancellation()
+        } finally {
+            withContext(NonCancellable) { release.await() }
+        }
+    }
+    caller.complete(context.job)
+    context.job.cancel()
+    throw CancellationException("synthetic canceled operation")
 }
