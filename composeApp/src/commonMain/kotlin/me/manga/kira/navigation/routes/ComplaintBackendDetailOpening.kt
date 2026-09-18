@@ -1,5 +1,6 @@
 package me.manga.kira.navigation.routes
 
+import androidx.compose.runtime.RememberObserver
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -13,10 +14,11 @@ import me.manga.kira.presentation.complaint.ComplaintDetailViewModel
 import me.manga.kira.presentation.complaint.ComplaintViewModel
 import org.koin.core.Koin
 
-/** UI-thread lifetime for this unregistered candidate. It owns VMs, never the shared backend graph. */
+/** UI-thread VM owner for remembered, forgotten and abandoned composition; never the shared graph. */
+@Suppress("TooGenericExceptionCaught") // Failed construction still owns any already-resolved ViewModels.
 internal class ComplaintBackendDetailOpening(
     candidate: Koin,
-) {
+) : RememberObserver {
     private val store = ViewModelStore()
     private var closed = false
     val history: ComplaintViewModel
@@ -36,9 +38,24 @@ internal class ComplaintBackendDetailOpening(
                 initializer { ComplaintDetailViewModel(candidate.get<LoadComplaintDetailUseCase>()) }
             }
         val provider = ViewModelProvider.create(store, factory)
-        history = provider[ComplaintViewModel::class]
-        detail = provider[ComplaintDetailViewModel::class]
+        try {
+            history = provider[ComplaintViewModel::class]
+            detail = provider[ComplaintDetailViewModel::class]
+        } catch (failure: Throwable) {
+            try {
+                close()
+            } catch (cleanup: Throwable) {
+                if (cleanup !== failure) failure.addSuppressed(cleanup)
+            }
+            throw failure
+        }
     }
+
+    override fun onRemembered() = Unit
+
+    override fun onForgotten() = close()
+
+    override fun onAbandoned() = close()
 
     fun select(id: String) {
         val state = history.state.value

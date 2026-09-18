@@ -1,7 +1,6 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import me.manga.kira.ui.complaint.BackendComplaintDetail
 import me.manga.kira.ui.complaint.ComplaintScreen
@@ -14,10 +13,8 @@ internal fun ComplaintBackendDetailRoute(
     candidate: Koin,
     onBack: () -> Unit,
 ) {
+    // The RememberObserver owner also closes if composition is abandoned before any effect starts.
     val opening = remember(candidate) { ComplaintBackendDetailOpening(candidate) }
-    DisposableEffect(opening) {
-        onDispose { opening.close() }
-    }
     ComplaintScreen(
         viewModel = opening.history,
         onBack = {
