@@ -1,0 +1,47 @@
+{
+  "schema": "app-29-apple-native12-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "authorization": "APP_29_APPLE_NATIVE12_ONE_ATTEMPT_AUTHORIZED",
+  "acquisitionAuthorization": "PUBLIC_DECLARED_WRAPPER_GRADLE_NATIVE_ONLY",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "1b83918087a642b952de22983bb711fc8efd205e",
+    "tree": "1e8741ebfe32b7365f499fc096f3b385d512da43"
+  },
+  "expectedRunAttempt": 1,
+  "controls": {
+    ".github/workflows/app5-ios-host.yml": "44a2f21b0218c95d54fc1605be9247ec6f70f1baa56d0fd4a59c1b9a723cf1c7",
+    "ci/app-seven-apple-native.init.gradle": "5ef161087925671ae8b335f4e4f0e372f9571febf5eaaffc3d1efef7aa766f14",
+    "ci/app-seven-apple-native.py": "3a0021b43aa179db785c730d4a5937c83ea7ea48a42ba05b72fb979ca2054e37",
+    "ci/app-seven-apple.native-tests.json": "42f2c2aec31d0bb2f6bb975cf48eab04c264f536bc68ddea449bb45418df3833",
+    "ci/app5-ios-host-commands.py": "bad29587b8b5a5095fb5674d3c0c1ceddac517e11d9940182876ec5f1b689a90",
+    "ci/app5-ios-host-evidence.py": "0389f481f6c4b5d021c4b5aa659212adcd347c7e3b7b33d4cdeb2295c4ea0216",
+    "ci/app5-ios-host.py": "b955520b975fa84440eccc147039c4cfa6ba67b18c4521a25419d0374b3d9cef",
+    "ci/app5-ios-host.source-pins.json": "01842f8dfe4ce0b9d38aa71f881005abdd6a0cc1e5327293cb8b0c5bcd9efa48",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf"
+  },
+  "ref": "candidate/app29-mobile-owner-delete-apple-native12-20260918-02",
+  "limits": {
+    "nativeSeconds": 1200,
+    "workSeconds": 1440,
+    "controllerSeconds": 1680,
+    "cleanupSeconds": 240,
+    "stopSeconds": 40,
+    "jobMinutes": 35,
+    "gradleWorkers": 1,
+    "nativeThreads": 1,
+    "jvmHeapGiB": 3,
+    "metaspaceMiB": 768,
+    "diskFloorGiB": 8,
+    "nativeCommandLogBytes": 4194304,
+    "otherCommandLogBytes": 1048576,
+    "aggregateCommandLogBytes": 8388608,
+    "otherAggregateCommandLogBytes": 4194304,
+    "cleanupCommandLogBytes": 1048576,
+    "nativeBinaryFingerprintBytes": 1073741824
+  },
+  "nativeTasks": [
+    ":data:remote:iosSimulatorArm64Test"
+  ],
+  "mode": "NATIVE_ONLY"
+}

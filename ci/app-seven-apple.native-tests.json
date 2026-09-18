@@ -1,0 +1,55 @@
+{
+  "schema": "app-29-apple-native12-tests-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "1b83918087a642b952de22983bb711fc8efd205e",
+    "tree": "1e8741ebfe32b7365f499fc096f3b385d512da43"
+  },
+  "suites": [
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationOwnerDeleteTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationOwnerDeleteTest.kt",
+      "sourceSha256": "33aba5bdeb9ce693bd251b330e0a7c9a7cc950e4a8a3f4a0ef7dbbddd27e271d",
+      "methods": [
+        "deliveredResponseRechecksTheActualDeleteMethodKeyTagAndBody",
+        "nativeDeleteRejectsPositiveDataStreamsAndNoncanonicalFramingWithoutRelaxingJsonRoutes",
+        "responseForAnotherTargetOrMutationRouteNeverForwardsOrResurrects",
+        "supplierMergedDeleteAdmitsNilAndEmptyNSDataWithoutRepresentationHeaders"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationOwnerDeleteReceiveGuardTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationOwnerDeleteReceiveGuardTest.kt",
+      "sourceSha256": "725419f328242b3014e33317b0f8063ab66af50cc1585bc25dc3fb038b18b58e",
+      "methods": [
+        "deleteErrorKeepsTheExistingProblemCapAndRejectsTheFirstExcessByte",
+        "deliveredCancellationCannotBecomeEmptySuccessAndTheNextExplicitStatusOwnsTheFreedSlot",
+        "direct204LengthIncludingZeroMediaTransferAndBadCodingRejectBeforeCallbacks",
+        "emptyCallbacksAreSuppressedAndFirstNonemptyDataFailsStickyExactlyOnce",
+        "occupiedDeleteSlotRefusesStatusAndOwnerCloseFencesEveryLateCallback"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationEngineTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationEngineTest.kt",
+      "sourceSha256": "6e08a44085105285094ad3fc6fc3d9e26444c761c307daf602819c260eb20369",
+      "methods": [
+        "requestLimitUsesActualNSDataAndRefusesUnknownStreamsOrFalseLength",
+        "supplierMergedHeadersPassPreparationAndOriginalRequestButCustomUserAgentsFail"
+      ]
+    },
+    {
+      "task": ":data:remote:iosSimulatorArm64Test",
+      "class": "me.manga.kira.data.remote.complaint.IosComplaintMutationReceiveGuardTest",
+      "source": "data/remote/src/iosTest/kotlin/me/manga/kira/data/remote/complaint/IosComplaintMutationReceiveGuardTest.kt",
+      "sourceSha256": "f017ac4ba8646780d8f5beaef1a3217050400ef1de9ba9fd87b6fab4e7cbb9ac",
+      "methods": [
+        "responseCannotChangeTheOriginalRouteOrGrantTheStatusRequestTheCreateBudget"
+      ]
+    }
+  ]
+}
