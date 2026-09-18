@@ -18,6 +18,7 @@ internal enum class ComplaintMutationProblem {
 
 /** Reuses the accepted common ApiError grammar; new mutation codes require one exact bounded error. */
 internal object ComplaintMutationProblemReader {
+    @Suppress("ReturnCount") // Preserve generic report exits before parsing reply-only receipt facts.
     fun read(
         text: String,
         status: Int,
@@ -60,6 +61,7 @@ internal object ComplaintMutationProblemReader {
         return code
     }
 
+    @Suppress("ReturnCount") // Keep both structural guards before reading the single reply deletion code.
     private fun isReplyDeletion(root: JsonObject): Boolean {
         val errors = root["errors"] as? JsonArray ?: return false
         val error = errors.singleOrNull() as? JsonObject ?: return false

@@ -69,7 +69,11 @@ internal class ComplaintCreateStatusRequest private constructor(
             put("key", pending.request.key)
             put(
                 "targetIds",
-                buildJsonArray { pending.request.action.orderedTargetIds().forEach { add(JsonPrimitive(it)) } },
+                buildJsonArray {
+                    pending.request.action
+                        .orderedTargetIds()
+                        .forEach { add(JsonPrimitive(it)) }
+                },
             )
             put("fingerprint", pending.request.fingerprint.encoded)
         }.toString().encodeToByteArray()

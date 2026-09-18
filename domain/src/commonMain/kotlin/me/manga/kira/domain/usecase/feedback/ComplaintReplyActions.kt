@@ -19,14 +19,18 @@ class ComplaintReplyActions(
 class PrepareComplaintReplyUseCase(
     private val repository: ComplaintReplyRepository,
 ) {
-    suspend operator fun invoke(draft: ComplaintReplyDraft): AppResult<ComplaintReplyPreparation> = repository.prepare(draft)
+    suspend operator fun invoke(
+        draft: ComplaintReplyDraft,
+    ): AppResult<ComplaintReplyPreparation> = repository.prepare(draft)
 }
 
 /** Send only the exact live reply; ambiguous outcomes remain explicit and retain pending metadata. */
 class SubmitComplaintReplyUseCase(
     private val repository: ComplaintReplyRepository,
 ) {
-    suspend operator fun invoke(reply: ComplaintLiveReply): AppResult<ComplaintReportSubmission> = repository.submit(reply)
+    suspend operator fun invoke(
+        reply: ComplaintLiveReply,
+    ): AppResult<ComplaintReportSubmission> = repository.submit(reply)
 }
 
 /** Retry an existing live reply through status; never manufacture a new operation. */

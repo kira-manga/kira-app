@@ -60,7 +60,10 @@ class ComplaintReplyFingerprintTest {
         assertEquals(fingerprints.size, fingerprints.toSet().size)
         val otherKey = replyProtocolRequest(identity = Fixtures.identity(key = Fixtures.OTHER_KEY))
         assertNotEquals(original.identity.key.value, otherKey.identity.key.value)
-        assertContentEquals(ComplaintReplyFingerprint.frameBytes(original), ComplaintReplyFingerprint.frameBytes(otherKey))
+        assertContentEquals(
+            ComplaintReplyFingerprint.frameBytes(original),
+            ComplaintReplyFingerprint.frameBytes(otherKey),
+        )
         assertNotEquals(
             ComplaintReplyFingerprint.of(replyProtocolRequest(body = "é")).encoded,
             ComplaintReplyFingerprint.of(replyProtocolRequest(body = "e\u0301")).encoded,
@@ -100,6 +103,7 @@ class ComplaintReplyFingerprintTest {
         val encoded: String,
     )
 
+    @Suppress("MaxLineLength") // Preserve the independent backend wire-vector literal chunks byte-for-byte.
     private companion object {
         // Frozen backend focused-reply-tests-source-20260918-01 literals, not computed by the app's writer.
         // These candidate vectors do not claim accepted runtime or enabled backend/app parity.

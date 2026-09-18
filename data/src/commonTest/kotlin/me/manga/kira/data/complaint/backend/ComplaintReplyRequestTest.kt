@@ -99,7 +99,8 @@ class ComplaintReplyRequestTest {
         val result = ComplaintReplyRequest.normalize(Fixtures.identity(), Fixtures.OTHER_ID, "private-body", metadata)
         val request = assertIs<ComplaintReplyRequestResult.Accepted>(result).request
         val fingerprint = ComplaintReplyFingerprint.of(request)
-        val rendering = listOf(metadata, result, request, request.metadata, request.identity, fingerprint).joinToString()
+        val rendering =
+            listOf(metadata, result, request, request.metadata, request.identity, fingerprint).joinToString()
         for (forbidden in listOf("private-", Fixtures.ID, Fixtures.OTHER_ID, Fixtures.KEY, fingerprint.encoded)) {
             assertFalse(rendering.contains(forbidden))
         }

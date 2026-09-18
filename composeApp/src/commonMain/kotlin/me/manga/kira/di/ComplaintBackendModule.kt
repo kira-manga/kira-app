@@ -187,6 +187,7 @@ internal class ComplaintBackendGraph(
     val replies: ComplaintReplyRepository get() = checkNotNull(owner.replies)
 
     /** Install only in an isolated candidate Koin graph; never append over legacy-backed writes. */
+    @Suppress("LongMethod") // Keep the isolated candidate's single-owner declarations together.
     fun module(): Module =
         module {
             single(createdAtStart = true) { this@ComplaintBackendGraph } onClose { it?.close() }

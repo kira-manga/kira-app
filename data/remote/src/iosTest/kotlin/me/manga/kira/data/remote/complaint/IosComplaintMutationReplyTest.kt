@@ -19,7 +19,9 @@ class IosComplaintMutationReplyTest {
     fun nativeReplyPreparationAcceptsCanonicalNoticeParentButNotMissingKeyPreconditionOrOversizedBody() =
         withIosMutationGuard { fixture ->
             val replyUrl = replyPolicyUrl(IOS_MUTATION_CREATE_URL, REPLY_POLICY_NOTICE)
-            fixture.guard.prepare(iosMutationTestRequest(ComplaintMutationRoute.REPLY, Policy.MAX_REQUEST_BYTES, replyUrl))
+            fixture.guard.prepare(
+                iosMutationTestRequest(ComplaintMutationRoute.REPLY, Policy.MAX_REQUEST_BYTES, replyUrl),
+            )
             assertFails {
                 fixture.guard.prepare(
                     iosMutationTestRequest(ComplaintMutationRoute.REPLY, url = replyUrl).apply {
@@ -35,10 +37,14 @@ class IosComplaintMutationReplyTest {
                 )
             }
             for (size in listOf(0, Policy.MAX_REQUEST_BYTES + 1)) {
-                assertFails { fixture.guard.prepare(iosMutationTestRequest(ComplaintMutationRoute.REPLY, size, replyUrl)) }
+                assertFails {
+                    fixture.guard.prepare(iosMutationTestRequest(ComplaintMutationRoute.REPLY, size, replyUrl))
+                }
             }
             assertFails {
-                fixture.guard.prepare(iosMutationTestRequest(ComplaintMutationRoute.REPLY, url = "$replyUrl?ignored=true"))
+                fixture.guard.prepare(
+                    iosMutationTestRequest(ComplaintMutationRoute.REPLY, url = "$replyUrl?ignored=true"),
+                )
             }
             assertEquals(0, fixture.guard.activeTaskCount)
         }

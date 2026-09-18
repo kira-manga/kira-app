@@ -14,6 +14,7 @@ import kotlin.test.assertNull
 import me.manga.kira.core.complaint.ComplaintMutationTransportPolicy as Policy
 
 /** Existing owned HTTPS fixture only. Bodies exercise native framing, not the higher-level receipt decoder. */
+@Suppress("MagicNumber") // Fixed protocol statuses, receive chunks and exact fixture request counts.
 class AndroidComplaintMutationReplyTest {
     @Test
     fun nativeReplyPreservesCanonicalNoticeParentAndRefusesMissingKeyPreconditionAndQueryBeforeHttp() =
@@ -21,7 +22,12 @@ class AndroidComplaintMutationReplyTest {
             AndroidMutationEngineFixture("/base_1/v2").use { fixture ->
                 val replyUrl = replyPolicyUrl(fixture.createUrl.toString(), REPLY_POLICY_NOTICE)
                 fixture.server.enqueue(
-                    MockResponse.Builder().code(201).addHeader("Content-Type", "application/json").body("accepted").build(),
+                    MockResponse
+                        .Builder()
+                        .code(201)
+                        .addHeader("Content-Type", "application/json")
+                        .body("accepted")
+                        .build(),
                 )
                 val invalid =
                     listOf<HttpRequestBuilder.() -> Unit>(
@@ -92,7 +98,11 @@ class AndroidComplaintMutationReplyTest {
                     "next-explicit-call",
                     fixture.exchange(ComplaintMutationRoute.REPLY) { url(replyUrl) }.body,
                 )
-                assertEquals(7, fixture.server.requestCount, "No native retry or replacement dispatch after an overflow.")
+                assertEquals(
+                    7,
+                    fixture.server.requestCount,
+                    "No native retry or replacement dispatch after an overflow.",
+                )
             }
         }
 

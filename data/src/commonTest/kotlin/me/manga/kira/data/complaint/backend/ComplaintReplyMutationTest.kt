@@ -160,7 +160,11 @@ class ComplaintReplyMutationTest {
                 ComplaintMutationProblem.COMPLAINT_DELETION_PENDING,
                 direct = true,
             )
-            assertReplyHttpFailure(HttpStatusCode.NotFound, ComplaintMutationProblem.OPERATION_NOT_FOUND, direct = false)
+            assertReplyHttpFailure(
+                HttpStatusCode.NotFound,
+                ComplaintMutationProblem.OPERATION_NOT_FOUND,
+                direct = false,
+            )
             assertReplyHttpFailure(HttpStatusCode.Unauthorized, null, direct = false)
             val reply = mobileReplyRequest()
             val pending = mutationPending(reply)

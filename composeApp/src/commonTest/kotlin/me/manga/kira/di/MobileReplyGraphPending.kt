@@ -34,6 +34,7 @@ internal class MobileReplyGraphPending : PendingComplaintActionStore {
         return PendingCreateResult.Stored
     }
 
+    @Suppress("ReturnCount") // Preserve the fixture's explicit missing/stale/stored CAS guards.
     override suspend fun replace(
         expected: PendingComplaintSlot,
         replacement: PendingComplaintSlot,
@@ -46,6 +47,7 @@ internal class MobileReplyGraphPending : PendingComplaintActionStore {
         return PendingReplaceResult.Stored
     }
 
+    @Suppress("ReturnCount") // Preserve the fixture's explicit missing/stale/deleted CAS guards.
     override suspend fun delete(expected: PendingComplaintSlot): PendingDeleteResult {
         val index = slots.indexOfFirst { it.id == expected.id }
         if (index < 0) return PendingDeleteResult.Missing
@@ -55,8 +57,9 @@ internal class MobileReplyGraphPending : PendingComplaintActionStore {
         return PendingDeleteResult.Deleted
     }
 
-    override suspend fun clearForConfirmedRecovery(): PendingClearResult =
-        error("reply must not clear installation state")
+    override suspend fun clearForConfirmedRecovery(): PendingClearResult = error(
+        "reply must not clear installation state",
+    )
 
     private fun remember(slot: PendingComplaintSlot) {
         transitions += assertIs<JsonObject>(Json.parseToJsonElement(slot.bytes().decodeToString()))

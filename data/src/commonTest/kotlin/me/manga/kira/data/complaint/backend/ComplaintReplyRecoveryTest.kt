@@ -77,7 +77,10 @@ class ComplaintReplyRecoveryTest {
                 assertTrue(fixture.requests.all { it.url.encodedPath.endsWith(Policy.STATUS_PATH) })
                 assertTrue(fixture.requests.all { it.headers[Policy.IDEMPOTENCY_HEADER] == null })
                 assertTrue(fixture.sentBodies.none { it.contains("Report body") || it.contains("\"body\"") })
-                assertTrue(fixture.storage.pending.slots.isEmpty())
+                assertTrue(
+                    fixture.storage.pending.slots
+                        .isEmpty(),
+                )
             } finally {
                 consumer.close()
                 fixture.close()
@@ -103,8 +106,18 @@ class ComplaintReplyRecoveryTest {
                 assertNull(result.application)
                 assertSame(reply, result.liveReport)
                 assertEquals(1, fixture.requests.size)
-                assertTrue(fixture.requests.single().url.encodedPath.endsWith(Policy.STATUS_PATH))
-                assertTrue(slot.sameAs(fixture.storage.pending.slots.single()))
+                assertTrue(
+                    fixture.requests
+                        .single()
+                        .url.encodedPath
+                        .endsWith(Policy.STATUS_PATH),
+                )
+                assertTrue(
+                    slot.sameAs(
+                        fixture.storage.pending.slots
+                            .single(),
+                    ),
+                )
             } finally {
                 fixture.close()
             }
@@ -163,12 +176,23 @@ private suspend fun TestScope.assertReplyDirectThenRecovered(code: ComplaintRepl
             respond(mutationRejected(code), HttpStatusCode.OK, mutationHeaders())
         })
     try {
-        val outcome = restarted.repository.reconcile().reportSuccess().entries().single().attempt
+        val outcome =
+            restarted.repository
+                .reconcile()
+                .reportSuccess()
+                .entries()
+                .single()
+                .attempt
         val completed = assertIs<ReportAttempt.Completed>(outcome)
         assertNull(completed.liveReport)
         assertEquals(code, assertIs<ReportActionState.Rejected>(completed.application).code)
         assertTrue(storage.pending.slots.isEmpty())
-        assertTrue(restarted.requests.single().url.encodedPath.endsWith(Policy.STATUS_PATH))
+        assertTrue(
+            restarted.requests
+                .single()
+                .url.encodedPath
+                .endsWith(Policy.STATUS_PATH),
+        )
         assertTrue(!restarted.sentBodies.single().contains("private vanished reply"))
     } finally {
         restarted.close()
@@ -194,7 +218,13 @@ private suspend fun TestScope.assertReplyReceiptWindow(pastBoundary: Int) {
         )
     fixture.storage.pending.slots += slot
     try {
-        val cold = fixture.repository.reconcile().reportSuccess().entries().single().attempt
+        val cold =
+            fixture.repository
+                .reconcile()
+                .reportSuccess()
+                .entries()
+                .single()
+                .attempt
         assertNull(assertIs<ReportAttempt.Unresolved>(cold).liveReport)
         assertEquals(1, fixture.requests.size)
         val changed = mobileReplyRequest(parentId = "44444444-4444-5444-8444-444444444444")
@@ -205,11 +235,19 @@ private suspend fun TestScope.assertReplyReceiptWindow(pastBoundary: Int) {
         if (pastBoundary == 0) {
             assertIs<ReportAttempt.Completed>(retry)
             assertEquals(3, fixture.requests.size)
-            assertTrue(fixture.storage.pending.slots.isEmpty())
+            assertTrue(
+                fixture.storage.pending.slots
+                    .isEmpty(),
+            )
         } else {
             assertEquals(Block.RECEIPT_WINDOW_EXPIRED, assertIs<ReportAttempt.Unresolved>(retry).failure.block)
             assertEquals(2, fixture.requests.size)
-            assertTrue(slot.sameAs(fixture.storage.pending.slots.single()))
+            assertTrue(
+                slot.sameAs(
+                    fixture.storage.pending.slots
+                        .single(),
+                ),
+            )
         }
     } finally {
         fixture.close()

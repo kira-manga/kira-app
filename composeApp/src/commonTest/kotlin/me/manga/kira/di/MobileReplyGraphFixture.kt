@@ -70,7 +70,15 @@ internal class MobileReplyGraphFixture(
     }
 
     private fun assertMayBeforeDispatch() {
-        val retained = assertIs<JsonObject>(Json.parseToJsonElement(pending.slots.single().bytes().decodeToString()))
+        val retained =
+            assertIs<JsonObject>(
+                Json.parseToJsonElement(
+                    pending.slots
+                        .single()
+                        .bytes()
+                        .decodeToString(),
+                ),
+            )
         assertEquals("MAY_HAVE_DISPATCHED", retained.getValue("state").jsonPrimitive.content)
         assertEquals("CREATE_REPLY", retained.getValue("operation").jsonPrimitive.content)
     }

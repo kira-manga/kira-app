@@ -60,10 +60,13 @@ internal class BackendComplaintReportRepository(
             }
         }
 
-    override suspend fun submit(report: ComplaintLiveReport): AppResult<ComplaintReportSubmission> =
-        submitLive(liveHandle(report))
+    override suspend fun submit(report: ComplaintLiveReport): AppResult<ComplaintReportSubmission> = submitLive(
+        liveHandle(report),
+    )
 
-    override suspend fun retry(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt> = retryLive(liveHandle(report))
+    override suspend fun retry(report: ComplaintLiveReport): AppResult<ComplaintReportAttempt> = retryLive(
+        liveHandle(report),
+    )
 
     override suspend fun prepare(draft: ComplaintReplyDraft): AppResult<ComplaintReplyPreparation> =
         access {
@@ -83,10 +86,13 @@ internal class BackendComplaintReportRepository(
             }
         }
 
-    override suspend fun submit(reply: ComplaintLiveReply): AppResult<ComplaintReportSubmission> =
-        submitLive(replyHandle(reply))
+    override suspend fun submit(reply: ComplaintLiveReply): AppResult<ComplaintReportSubmission> = submitLive(
+        replyHandle(reply),
+    )
 
-    override suspend fun retry(reply: ComplaintLiveReply): AppResult<ComplaintReportAttempt> = retryLive(replyHandle(reply))
+    override suspend fun retry(reply: ComplaintLiveReply): AppResult<ComplaintReportAttempt> = retryLive(
+        replyHandle(reply),
+    )
 
     private suspend fun submitLive(candidate: ComplaintCreationLiveHandle?): AppResult<ComplaintReportSubmission> =
         access {
@@ -224,7 +230,9 @@ internal class BackendComplaintReportRepository(
         }
 
     private fun replyHandle(reply: ComplaintLiveReply): ReplyLiveHandle? =
-        (reply as? ReplyLiveHandle)?.takeIf { it.issuer === issuer }
+        (reply as? ReplyLiveHandle)?.takeIf {
+            it.issuer === issuer
+        }
 
     private fun pendingHandle(report: ComplaintPendingReport): ReportPendingHandle? =
         (report as? ReportPendingHandle)?.takeIf { it.issuer === issuer }

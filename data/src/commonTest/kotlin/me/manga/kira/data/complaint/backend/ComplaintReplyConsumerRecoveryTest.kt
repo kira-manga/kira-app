@@ -28,14 +28,25 @@ class ComplaintReplyConsumerRecoveryTest {
             storage.pending.slots += reportSlot(mobileReplyRequest(), dispatched = false)
             val original = ComplaintReportFixture(this, storage)
             val old = original.consumer(mobileReplyNoInputs())
-            val oldHandle = old.reconcile().reportSuccess().entries().single().pending.handle
+            val oldHandle =
+                old
+                    .reconcile()
+                    .reportSuccess()
+                    .entries()
+                    .single()
+                    .pending.handle
             old.close()
             original.close()
             val restarted = ComplaintReportFixture(this, storage, storage.restart())
             val current = restarted.consumer(mobileReplyNoInputs())
             try {
                 assertIs<AppResult.Failure>(current.cancelPrepared(oldHandle))
-                val entry = current.reconcile().reportSuccess().entries().single()
+                val entry =
+                    current
+                        .reconcile()
+                        .reportSuccess()
+                        .entries()
+                        .single()
                 assertEquals(ComplaintReportPhase.PREPARED, entry.pending.phase)
                 val unresolved = assertIs<ComplaintReportAttempt.Unresolved>(entry.attempt)
                 assertEquals(ComplaintReportBlock.LIVE_REQUEST_REQUIRED, unresolved.failure.block)
@@ -67,7 +78,10 @@ class ComplaintReplyConsumerRecoveryTest {
                 val prompt = recovery.requestRecovery(pending.handle).reportSuccess()
                 assertIs<AppResult.Failure>(foreign.confirmRecovery(prompt))
                 recovery.cancelRecovery(prompt).reportSuccess()
-                assertTrue(fixture.storage.pending.slots.isNotEmpty())
+                assertTrue(
+                    fixture.storage.pending.slots
+                        .isNotEmpty(),
+                )
                 assertIs<AppResult.Failure>(recovery.requestRecovery(pending.handle))
                 assertMobileReplyConfirmedReset(fixture, recovery)
             } finally {
@@ -105,9 +119,18 @@ private suspend fun assertMobileReplyConfirmedReset(
     fixture: ComplaintReportFixture,
     recovery: ComplaintReportRepository,
 ) {
-    val current = recovery.reconcile().reportSuccess().entries().single().pending.handle
+    val current =
+        recovery
+            .reconcile()
+            .reportSuccess()
+            .entries()
+            .single()
+            .pending.handle
     val prompt = recovery.requestRecovery(current).reportSuccess()
-    assertTrue(fixture.storage.pending.slots.isNotEmpty())
+    assertTrue(
+        fixture.storage.pending.slots
+            .isNotEmpty(),
+    )
     assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace)
     recovery.confirmRecovery(prompt).reportSuccess()
     fixture.storage.assertAbsent()

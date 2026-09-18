@@ -39,7 +39,10 @@ class ComplaintBackendReplyOwnerTest {
                 fixture.owner.close()
                 assertIs<AppResult.Failure>(replies.submit(live))
                 assertIs<AppResult.Failure>(replies.prepare(ComplaintReplyDraft(MOBILE_REPLY_PARENT, "x")))
-                assertTrue(fixture.storage.faults.mutations.isEmpty())
+                assertTrue(
+                    fixture.storage.faults.mutations
+                        .isEmpty(),
+                )
                 assertTrue(fixture.engines.all { it.coroutineContext.job.isActive })
             } finally {
                 fixture.close()
@@ -62,7 +65,11 @@ class ComplaintBackendReplyOwnerTest {
                 fixture.owner.close()
                 fixture.release.complete(Unit)
                 assertFailsWith<CancellationException> { first.await() }
-                val retained = reportRecord(fixture.storage.pending.slots.single())
+                val retained =
+                    reportRecord(
+                        fixture.storage.pending.slots
+                            .single(),
+                    )
                 assertEquals(PendingComplaintOperation.CREATE_REPLY, retained.request.action.operation)
                 assertEquals(PendingComplaintState.MAY_HAVE_DISPATCHED, retained.state)
                 assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace)

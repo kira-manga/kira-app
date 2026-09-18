@@ -129,8 +129,8 @@ internal object ComplaintMutationResponse {
     ): ComplaintCreateAcknowledgement {
         if (root.keys != ACKNOWLEDGEMENT_FIELDS || root.historyString("id") != expectedId) invalidHistory()
         val version = root.number("version")
-        if (version < 1 ||
-            (operation == PendingComplaintOperation.CREATE_REPLY && version != 1L) ||
+        val invalidVersion = version < 1 || (operation == PendingComplaintOperation.CREATE_REPLY && version != 1L)
+        if (invalidVersion ||
             location != "${Policy.CREATE_PATH}/$expectedId" ||
             etag != "\"complaint-$expectedId-v$version\""
         ) {

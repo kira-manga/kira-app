@@ -34,7 +34,8 @@ internal class ComplaintMutationTarget private constructor(
         } == true
 
     private fun isReplyPath(path: String): Boolean =
-        path.startsWith(replyPrefix) && path.endsWith(Policy.REPLIES_SUFFIX) &&
+        path.startsWith(replyPrefix) &&
+            path.endsWith(Policy.REPLIES_SUFFIX) &&
             CANONICAL_PARENT.matches(path.removePrefix(replyPrefix).removeSuffix(Policy.REPLIES_SUFFIX))
 
     private fun sameOrigin(candidate: Url): Boolean =
@@ -52,7 +53,10 @@ internal class ComplaintMutationTarget private constructor(
         private const val UUID_CHARACTERS = 36
         private val MAX_TARGET_CHARACTERS =
             MAX_BASE_CHARACTERS +
-                maxOf(Policy.STATUS_PATH.length, Policy.CREATE_PATH.length + 1 + UUID_CHARACTERS + Policy.REPLIES_SUFFIX.length)
+                maxOf(
+                    Policy.STATUS_PATH.length,
+                    Policy.CREATE_PATH.length + 1 + UUID_CHARACTERS + Policy.REPLIES_SUFFIX.length,
+                )
         private val CANONICAL_PARENT = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
         fun checked(createUrl: Url): ComplaintMutationTarget? =

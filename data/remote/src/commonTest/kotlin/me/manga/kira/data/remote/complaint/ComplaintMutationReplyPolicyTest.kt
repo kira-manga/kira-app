@@ -44,18 +44,37 @@ class ComplaintMutationReplyPolicyTest {
         val route = ComplaintMutationRoute.REPLY
         val headers = mutationTestEngineHeaders(route)
         assertTrue(ComplaintMutationRequestHeaders.accepts(route, headers, 1))
-        assertEquals(listOf(MUTATION_TEST_KEY), headers.filter { it.first == Policy.IDEMPOTENCY_HEADER }.map { it.second })
+        assertEquals(
+            listOf(MUTATION_TEST_KEY),
+            headers.filter { it.first == Policy.IDEMPOTENCY_HEADER }.map { it.second },
+        )
         assertFalse(ComplaintMutationRequestHeaders.accepts(ComplaintMutationRoute.STATUS, headers, 1))
         val withoutKey = headers.filterNot { it.first.equals(Policy.IDEMPOTENCY_HEADER, ignoreCase = true) }
         assertFalse(ComplaintMutationRequestHeaders.accepts(route, withoutKey, 1))
-        assertFalse(ComplaintMutationRequestHeaders.accepts(route, headers + (Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY), 1))
-        assertFalse(ComplaintMutationRequestHeaders.accepts(route, withoutKey + (Policy.IDEMPOTENCY_HEADER to REPLY_POLICY_NOTICE), 1))
+        assertFalse(
+            ComplaintMutationRequestHeaders.accepts(
+                route,
+                headers + (Policy.IDEMPOTENCY_HEADER to MUTATION_TEST_KEY),
+                1,
+            ),
+        )
+        assertFalse(
+            ComplaintMutationRequestHeaders.accepts(
+                route,
+                withoutKey + (Policy.IDEMPOTENCY_HEADER to REPLY_POLICY_NOTICE),
+                1,
+            ),
+        )
         for (name in listOf("If-Match", "Cookie", "Proxy-Authorization", "Content-Encoding")) {
             assertFalse(ComplaintMutationRequestHeaders.accepts(route, headers + (name to "synthetic"), 1))
         }
         val applicationHeaders = mutationTestHeaders(route)
-        assertTrue(ComplaintMutationRequestHeaders.accepts(route, applicationHeaders, Policy.MAX_REQUEST_BYTES.toLong()))
-        assertFalse(ComplaintMutationRequestHeaders.accepts(route, applicationHeaders, Policy.MAX_REQUEST_BYTES.toLong() + 1))
+        assertTrue(
+            ComplaintMutationRequestHeaders.accepts(route, applicationHeaders, Policy.MAX_REQUEST_BYTES.toLong()),
+        )
+        assertFalse(
+            ComplaintMutationRequestHeaders.accepts(route, applicationHeaders, Policy.MAX_REQUEST_BYTES.toLong() + 1),
+        )
     }
 
     @Test

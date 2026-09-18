@@ -64,7 +64,11 @@ class ComplaintReplyLifecycleTest {
                 fixture.installWriteFault(case)
                 try {
                     val reply = mobileReplyRequest()
-                    val attempt = fixture.repository.submit(reply).reportSuccess().attempt
+                    val attempt =
+                        fixture.repository
+                            .submit(reply)
+                            .reportSuccess()
+                            .attempt
                     assertSame(reply, assertIs<ReportAttempt.Unresolved>(attempt).liveReport, case)
                     assertTrue(fixture.requests.isEmpty(), case)
                     assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace, case)
@@ -92,7 +96,11 @@ class ComplaintReplyLifecycleTest {
                         }
                     })
                 try {
-                    val result = fixture.repository.submit(mobileReplyRequest()).reportSuccess().attempt
+                    val result =
+                        fixture.repository
+                            .submit(mobileReplyRequest())
+                            .reportSuccess()
+                            .attempt
                     if (secondUnauthorized) {
                         assertIs<ReportAttempt.Unresolved>(result)
                     } else {
@@ -137,7 +145,10 @@ class ComplaintReplyLifecycleTest {
                 assertEquals(1, fixture.requests.size)
                 assertEquals(
                     PendingComplaintState.MAY_HAVE_DISPATCHED,
-                    reportRecord(fixture.storage.pending.slots.single()).state,
+                    reportRecord(
+                        fixture.storage.pending.slots
+                            .single(),
+                    ).state,
                 )
                 assertTrue(Step.PENDING_DELETE_BEFORE !in fixture.storage.faults.trace)
             } finally {
@@ -166,7 +177,10 @@ class ComplaintReplyLifecycleTest {
             try {
                 val result =
                     assertIs<ReportAttempt.Unresolved>(
-                        fixture.repository.submit(mobileReplyRequest()).reportSuccess().attempt,
+                        fixture.repository
+                            .submit(mobileReplyRequest())
+                            .reportSuccess()
+                            .attempt,
                     )
                 assertEquals(Block.STALE_BINDING, result.failure.block)
                 assertNull(result.application)
@@ -209,7 +223,11 @@ private suspend fun TestScope.assertReplySessionFence(change: String) {
         release.complete(Unit)
         assertFailsWith<CancellationException> { first.await() }
         assertTrue(fixture.requests.isEmpty(), change)
-        assertTrue(fixture.storage.pending.slots.isEmpty(), change)
+        assertTrue(
+            fixture.storage.pending.slots
+                .isEmpty(),
+            change,
+        )
         assertTrue(Step.PENDING_CREATE_BEFORE !in fixture.storage.faults.trace, change)
     } finally {
         release.complete(Unit)
@@ -219,6 +237,13 @@ private suspend fun TestScope.assertReplySessionFence(change: String) {
 
 private val REPLY_WRITE_FAULTS =
     listOf(
-        "create-before", "create-after", "create-readback", "create-lie",
-        "replace-before", "replace-after", "replace-readback", "replace-lie", "unrelated-slot",
+        "create-before",
+        "create-after",
+        "create-readback",
+        "create-lie",
+        "replace-before",
+        "replace-after",
+        "replace-readback",
+        "replace-lie",
+        "unrelated-slot",
     )
