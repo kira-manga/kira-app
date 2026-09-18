@@ -185,6 +185,7 @@ import org.jetbrains.compose.resources.stringResource
  * the design lineage; the screen continues to render correctly through the
  * legacy retire.
  * Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
+ * [onBackendRowClick] is an optional explicit-candidate read callback; default routes supply none.
  */
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
@@ -192,6 +193,7 @@ fun ComplaintScreen(
     viewModel: ComplaintViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBackendRowClick: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -230,6 +232,7 @@ fun ComplaintScreen(
         onIntent = viewModel::submit,
         onBack = onBack,
         modifier = modifier,
+        onBackendRowClick = onBackendRowClick,
     )
 }
 
@@ -243,6 +246,7 @@ internal fun ComplaintScreenContent(
     onIntent: (ComplaintIntent) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBackendRowClick: ((String) -> Unit)? = null,
 ) {
     val errorMessage = state.error
     Scaffold(
@@ -280,7 +284,7 @@ internal fun ComplaintScreenContent(
             // Complaint surface in line with WhatsNew + the rest of the rework cluster (memory:
             // design-system) — richer error glyph + Retry button, icon + title empty state.
             when {
-                state.history is ComplaintHistory.Backend -> BackendComplaintHistory(state, onIntent)
+                state.history is ComplaintHistory.Backend -> BackendComplaintHistory(state, onIntent, onBackendRowClick)
                 state.history is ComplaintHistory.Legacy -> {
                     Column(modifier = Modifier.fillMaxSize()) {
                         ComplaintHistoryRefreshStatus(state, onIntent)

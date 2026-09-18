@@ -1,5 +1,6 @@
 package me.manga.kira.ui.complaint
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,6 +19,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintHistoryStatus
 import me.manga.kira.domain.model.complaint.ComplaintHistoryType
@@ -33,12 +35,14 @@ import me.manga.kira.ui.generated.resources.np_no_feedback_message
 import me.manga.kira.ui.generated.resources.np_no_feedback_title
 import me.manga.kira.ui.generated.resources.np_try_different_search
 import me.manga.kira.ui.generated.resources.retry
+import me.manga.kira.ui.generated.resources.show_items_details
 import me.manga.kira.ui.generated.resources.unknown
 import me.manga.kira.ui.theme.LocalSpacing
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * No clickable row/action-dialog or conversion to legacy ComplaintSummary exists in this branch.
+ * An explicit candidate may select a recognized row for a read. Default shipping remains non-clickable;
+ * no action-dialog, legacy ComplaintSummary conversion or mutation authority is supplied here.
  * Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
  */
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
@@ -46,6 +50,7 @@ import org.jetbrains.compose.resources.stringResource
 internal fun BackendComplaintHistory(
     state: ComplaintState,
     onIntent: (ComplaintIntent) -> Unit,
+    onBackendRowClick: ((String) -> Unit)? = null,
 ) {
     val history = state.history as? ComplaintHistory.Backend ?: return
     val spacing = LocalSpacing.current
@@ -65,7 +70,10 @@ internal fun BackendComplaintHistory(
                     Text(stringResource(Res.string.unknown), modifier = Modifier.padding(spacing.md))
                 }
             }
-            items(state.backendItems, key = { "owner:" + it.id }) { row -> BackendHistoryRow(row) }
+            items(state.backendItems, key = { "owner:" + it.id }) { row ->
+                val select = onBackendRowClick?.takeIf { row.isContractRecognized && !state.isLoading }
+                BackendHistoryRow(row, onClick = select?.let { open -> { open(row.id) } })
+            }
             if (history.notices.isEmpty() && history.items.isEmpty()) {
                 item(key = "empty") {
                     KiraEmptyState(
@@ -88,7 +96,30 @@ internal fun BackendComplaintHistory(
 // Compose UI declarations use PascalCase.
 @Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
-private fun BackendHistoryRow(row: ComplaintOwnerRow) {
+internal fun BackendHistoryRow(
+    row: ComplaintOwnerRow,
+    onClick: (() -> Unit)? = null,
+) {
+    val modifier = Modifier.fillMaxWidth()
+    Card(
+        modifier =
+            if (onClick == null) {
+                modifier
+            } else {
+                modifier.clickable(
+                    role = Role.Button,
+                    onClickLabel = stringResource(Res.string.show_items_details),
+                    onClick = onClick,
+                )
+            },
+    ) {
+        BackendHistoryRowContent(row)
+    }
+}
+
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
+@Composable
+private fun BackendHistoryRowContent(row: ComplaintOwnerRow) {
     val spacing = LocalSpacing.current
     val title =
         when (row) {
@@ -96,18 +127,16 @@ private fun BackendHistoryRow(row: ComplaintOwnerRow) {
             is ComplaintOwnerRow.Reply -> row.subject
             is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> stringResource(Res.string.unknown)
         }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(spacing.md), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            if (row is ComplaintOwnerRow.Content) {
-                when (val status = row.fields.status) {
-                    is ComplaintHistoryStatus.Known -> ComplaintStatusChip(status.value)
-                    ComplaintHistoryStatus.Unrecognized -> Text(stringResource(Res.string.unknown))
-                }
-                if (row.type is ComplaintHistoryType.Unrecognized) Text(stringResource(Res.string.unknown))
-                Text(row.fields.body, style = MaterialTheme.typography.bodyMedium)
-                row.fields.closureReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    Column(modifier = Modifier.padding(spacing.md), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        if (row is ComplaintOwnerRow.Content) {
+            when (val status = row.fields.status) {
+                is ComplaintHistoryStatus.Known -> ComplaintStatusChip(status.value)
+                ComplaintHistoryStatus.Unrecognized -> Text(stringResource(Res.string.unknown))
             }
+            if (row.type is ComplaintHistoryType.Unrecognized) Text(stringResource(Res.string.unknown))
+            Text(row.fields.body, style = MaterialTheme.typography.bodyMedium)
+            row.fields.closureReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
