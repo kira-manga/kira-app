@@ -111,7 +111,7 @@ class ComplaintBackendActionHostOwnershipTest {
         }
 
     @Test
-    fun staleUnknownAndNoticeReadsCannotGrantActionsAndOnlyKnownNoticeRepliesAreBodyOnly() =
+    fun staleUnknownReadsCannotGrantActionsAndKnownNoticeRepliesKeepBodyOnlyEdits() =
         runTest {
             assertReadEligibility()
             withActionHost {
@@ -190,7 +190,7 @@ class ComplaintBackendActionHostOwnershipTest {
     private fun ComplaintBackendActionHostFixture.assertKnownNoticeReply(key: String) {
         val report = graphEditTarget()
         val target = ComplaintDetail.Owned(ComplaintOwnerRow.NoticeReply(report.fields, key, GRAPH_EDIT_ID))
-        assertFalse(REPLY.accepts(target))
+        assertTrue(REPLY.accepts(target))
         assertTrue(EDIT.accepts(target) && DELETE.accepts(target))
         val opening = ComplaintBackendActionOpening(app.koin, EDIT, target)
         try {
@@ -215,6 +215,10 @@ private fun assertReadEligibility() {
     val unknown = UnknownComplaintItem(report.id, "FUTURE", report.createdAt, report.updatedAt)
     val type = ComplaintOwnerRow.Report(report.fields, ComplaintHistoryType.Unrecognized, report.subject)
     val notice = ComplaintNotice(report.id, "complaints.notice.content-policy", report.createdAt, report.updatedAt, 1)
+    val system = ComplaintDetail.Notice(notice)
+    assertSame(system, fresh.copy(detail = system).actionTarget())
+    assertTrue(REPLY.accepts(system))
+    assertFalse(EDIT.accepts(system) || DELETE.accepts(system))
     listOf(
         fresh.copy(isLoading = true),
         fresh.copy(error = AppError.Unexpected("synthetic-read-failure")),
@@ -222,7 +226,6 @@ private fun assertReadEligibility() {
         fresh.copy(selectedId = "00000000-0000-0000-0000-000000000000"),
         fresh.copy(detail = null),
         fresh.copy(detail = ComplaintDetail.Unavailable),
-        fresh.copy(detail = ComplaintDetail.Notice(notice)),
         fresh.copy(detail = ComplaintDetail.Owned(unknown)),
         fresh.copy(detail = ComplaintDetail.Owned(type)),
     ).forEach { assertNull(it.actionTarget()) }

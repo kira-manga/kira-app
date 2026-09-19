@@ -64,10 +64,10 @@ internal fun BackendComplaintHistory(
             item(key = "search") {
                 SearchAndFilterSection(state.searchQuery, state.selectedStatus, state.backendItems.size, onIntent)
             }
-            items(history.notices, key = { "notice:" + it.id }) {
-                // App-owned copy only; notice rows remain read-only, including unknown keys.
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    BackendNoticeText(it.noticeKey, modifier = Modifier.padding(spacing.md))
+            items(history.notices, key = { "notice:" + it.id }) { notice ->
+                val select = onBackendRowClick?.takeIf { isKnownBackendNoticeKey(notice.noticeKey) && !state.isLoading }
+                Card(modifier = backendHistoryReadModifier(select?.let { open -> { open(notice.id) } })) {
+                    BackendNoticeText(notice.noticeKey, modifier = Modifier.padding(spacing.md))
                 }
             }
             items(state.backendItems, key = { "owner:" + it.id }) { row ->
@@ -100,20 +100,22 @@ internal fun BackendHistoryRow(
     row: ComplaintOwnerRow,
     onClick: (() -> Unit)? = null,
 ) {
-    val modifier = Modifier.fillMaxWidth()
-    Card(
-        modifier =
-            if (onClick == null) {
-                modifier
-            } else {
-                modifier.clickable(
-                    role = Role.Button,
-                    onClickLabel = stringResource(Res.string.show_items_details),
-                    onClick = onClick,
-                )
-            },
-    ) {
+    Card(modifier = backendHistoryReadModifier(onClick)) {
         BackendHistoryRowContent(row)
+    }
+}
+
+@Composable
+private fun backendHistoryReadModifier(onClick: (() -> Unit)?): Modifier {
+    val modifier = Modifier.fillMaxWidth()
+    return if (onClick == null) {
+        modifier
+    } else {
+        modifier.clickable(
+            role = Role.Button,
+            onClickLabel = stringResource(Res.string.show_items_details),
+            onClick = onClick,
+        )
     }
 }
 

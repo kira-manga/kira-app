@@ -30,10 +30,10 @@ internal class ComplaintBackendActionHostOwner(
 
     val canSelect: Boolean get() = !retired && !changing && slot.value == null
 
-    fun canOpen(action: ComplaintBackendAction, target: ComplaintDetail.Owned): Boolean =
+    fun canOpen(action: ComplaintBackendAction, target: ComplaintDetail): Boolean =
         canSelect && detail.state.value.actionTarget() === target && action.accepts(target)
 
-    fun open(action: ComplaintBackendAction, target: ComplaintDetail.Owned) {
+    fun open(action: ComplaintBackendAction, target: ComplaintDetail) {
         if (!canOpen(action, target)) return
         changing = true
         try {
@@ -104,8 +104,11 @@ internal class ComplaintBackendActionHostOwner(
 }
 
 /** Fresh current read shape only. Neither recognition nor matching IDs authorizes a write. */
-internal fun ComplaintDetailState.actionTarget(): ComplaintDetail.Owned? {
+internal fun ComplaintDetailState.actionTarget(): ComplaintDetail? {
     if (isLoading || error != null) return null
-    val current = detail as? ComplaintDetail.Owned ?: return null
-    return current.takeIf { it.item.isContractRecognized && it.item.id == selectedId }
+    return when (val current = detail) {
+        is ComplaintDetail.Owned -> current.takeIf { it.item.isContractRecognized && it.item.id == selectedId }
+        is ComplaintDetail.Notice -> current.takeIf { it.item.id == selectedId }
+        ComplaintDetail.Unavailable, null -> null
+    }
 }

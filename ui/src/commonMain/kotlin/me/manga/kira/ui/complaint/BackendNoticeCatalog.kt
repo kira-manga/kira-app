@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import me.manga.kira.domain.model.complaint.BackendNoticeKey
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.backend_notice_content_policy_body
 import me.manga.kira.ui.generated.resources.backend_notice_content_policy_subject
@@ -18,33 +19,40 @@ import org.jetbrains.compose.resources.stringResource
 
 /** Finite app-owned copy. Definition versions are not backend row concurrency versions. */
 internal enum class BackendNoticeDefinition(
-    val key: String,
+    val identity: BackendNoticeKey,
     val definitionVersion: Int,
     val subject: StringResource,
     val body: StringResource,
 ) {
     CONTENT_POLICY(
-        "complaints.notice.content-policy",
+        BackendNoticeKey.CONTENT_POLICY,
         INITIAL_NOTICE_DEFINITION_VERSION,
         Res.string.backend_notice_content_policy_subject,
         Res.string.backend_notice_content_policy_body,
     ),
     SOURCE_REQUIREMENTS(
-        "complaints.notice.source-requirements",
+        BackendNoticeKey.SOURCE_REQUIREMENTS,
         INITIAL_NOTICE_DEFINITION_VERSION,
         Res.string.backend_notice_source_requirements_subject,
         Res.string.backend_notice_source_requirements_body,
     ),
+    ;
+
+    val key: String get() = identity.key
 }
 
 internal fun backendNoticeDefinition(key: String): BackendNoticeDefinition? =
-    BackendNoticeDefinition.entries.firstOrNull { it.key == key }
+    when (BackendNoticeKey.fromKey(key)) {
+        BackendNoticeKey.CONTENT_POLICY -> BackendNoticeDefinition.CONTENT_POLICY
+        BackendNoticeKey.SOURCE_REQUIREMENTS -> BackendNoticeDefinition.SOURCE_REQUIREMENTS
+        null -> null
+    }
 
 /**
  * Exact-key display eligibility for the finite in-app notice catalog. No aliases or normalization.
  * Recognition does not authorize a backend mutation or prove that a notice was seeded or activated.
  */
-fun isKnownBackendNoticeKey(key: String): Boolean = backendNoticeDefinition(key) != null
+fun isKnownBackendNoticeKey(key: String): Boolean = BackendNoticeKey.fromKey(key) != null
 
 /**
  * Read-only localized notice copy; unknown keys render only the generic localized placeholder.

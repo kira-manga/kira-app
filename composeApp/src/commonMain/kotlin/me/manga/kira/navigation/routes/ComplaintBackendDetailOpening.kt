@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import me.manga.kira.di.ComplaintBackendGraph
+import me.manga.kira.domain.model.complaint.BackendNoticeKey
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.repository.ComplaintDetailRepository
 import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.usecase.complaint.LoadComplaintDetailUseCase
@@ -60,7 +62,11 @@ internal class ComplaintBackendDetailOpening(
     fun select(id: String) {
         val state = history.state.value
         if (closed || state.isLoading) return
-        if (state.backendItems.none { it.id == id && it.isContractRecognized }) return
+        val knownNotice =
+            (state.history as? ComplaintHistory.Backend)?.notices?.any {
+                it.id == id && BackendNoticeKey.fromKey(it.noticeKey) != null
+            } == true
+        if (!knownNotice && state.backendItems.none { it.id == id && it.isContractRecognized }) return
         detail.submit(ComplaintDetailIntent.Select(id))
     }
 

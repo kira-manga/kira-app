@@ -56,7 +56,7 @@ private fun CandidateDetailActions(
 private fun actionCallback(
     owner: ComplaintBackendActionHostOwner,
     action: ComplaintBackendAction,
-    target: ComplaintDetail.Owned?,
+    target: ComplaintDetail?,
 ): (() -> Unit)? =
     if (target != null && owner.canOpen(action, target)) {
         { owner.open(action, target) }

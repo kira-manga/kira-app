@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import me.manga.kira.di.ComplaintBackendGraph
+import me.manga.kira.domain.model.complaint.BackendNoticeKey
 import me.manga.kira.domain.model.complaint.ComplaintDetail
 import me.manga.kira.domain.model.complaint.ComplaintOwnerRow
 import me.manga.kira.domain.repository.ComplaintDetailRepository
@@ -19,7 +20,6 @@ import me.manga.kira.presentation.settings.feedback.delete.BackendComplaintDelet
 import me.manga.kira.presentation.settings.feedback.edit.BackendComplaintEditViewModel
 import me.manga.kira.presentation.settings.feedback.reply.ComplaintReplyTarget
 import me.manga.kira.presentation.settings.feedback.reply.ComplaintReplyViewModel
-import me.manga.kira.ui.complaint.isKnownBackendNoticeKey
 import org.koin.core.Koin
 
 /** Opening selection only. No verb here prepares, dispatches, retries or reconstructs a live request. */
@@ -39,7 +39,7 @@ internal sealed interface ComplaintBackendActionPanel {
 internal class ComplaintBackendActionOpening(
     candidate: Koin,
     action: ComplaintBackendAction,
-    target: ComplaintDetail.Owned,
+    target: ComplaintDetail,
 ) {
     private val store = ViewModelStore()
     private var closed = false
@@ -49,7 +49,7 @@ internal class ComplaintBackendActionOpening(
         try {
             check(action.accepts(target)) { "Complaint action target unavailable" }
             checkComplaintBackendActionBindings(candidate)
-            val provider = ViewModelProvider.create(store, actionFactory(candidate, target))
+            val provider = ViewModelProvider.create(store, actionFactory(candidate, action, target))
             panel =
                 when (action) {
                     ComplaintBackendAction.REPLY ->
@@ -93,13 +93,14 @@ internal fun checkComplaintBackendActionBindings(candidate: Koin) {
     ) { "Complaint candidate action binding differs" }
 }
 
-/** Shape eligibility only; the existing producer still checks every target/tag/installation fence. */
-internal fun ComplaintBackendAction.accepts(target: ComplaintDetail.Owned): Boolean =
+/** Shape eligibility, not mutation authority. Only owned edit/delete use concurrency tags. */
+internal fun ComplaintBackendAction.accepts(target: ComplaintDetail): Boolean =
     when (this) {
         ComplaintBackendAction.REPLY -> ComplaintReplyTarget.capture(target) != null
         ComplaintBackendAction.EDIT, ComplaintBackendAction.DELETE ->
-            when (val row = target.item) {
-                is ComplaintOwnerRow.NoticeReply -> row.isContractRecognized && isKnownBackendNoticeKey(row.noticeKey)
+            when (val row = (target as? ComplaintDetail.Owned)?.item) {
+                is ComplaintOwnerRow.NoticeReply ->
+                    row.isContractRecognized && BackendNoticeKey.fromKey(row.noticeKey) != null
                 is ComplaintOwnerRow.Content -> row.isContractRecognized
                 else -> false
             }
@@ -107,14 +108,24 @@ internal fun ComplaintBackendAction.accepts(target: ComplaintDetail.Owned): Bool
 
 private fun actionFactory(
     candidate: Koin,
-    target: ComplaintDetail.Owned,
+    action: ComplaintBackendAction,
+    target: ComplaintDetail,
 ): ViewModelProvider.Factory =
     viewModelFactory {
-        initializer {
-            ComplaintReplyViewModel(
-                candidate.get(), candidate.get(), candidate.get(), ComplaintReplyTarget.capture(target),
-            )
+        when (action) {
+            ComplaintBackendAction.REPLY ->
+                initializer {
+                    ComplaintReplyViewModel(
+                        candidate.get(), candidate.get(), candidate.get(), ComplaintReplyTarget.capture(target),
+                    )
+                }
+            ComplaintBackendAction.EDIT -> {
+                check(target is ComplaintDetail.Owned)
+                initializer { BackendComplaintEditViewModel(candidate.get(), target.item) }
+            }
+            ComplaintBackendAction.DELETE -> {
+                check(target is ComplaintDetail.Owned)
+                initializer { BackendComplaintDeleteViewModel(candidate.get(), target.item) }
+            }
         }
-        initializer { BackendComplaintEditViewModel(candidate.get(), target.item) }
-        initializer { BackendComplaintDeleteViewModel(candidate.get(), target.item) }
     }
