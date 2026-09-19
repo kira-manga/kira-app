@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">Adult content policy</string>
+    <string name="backend_notice_content_policy_body">References to adult / 18+ content aren't allowed here. Please keep submissions consistent with our community guidelines.</string>
+    <string name="backend_notice_source_requirements_subject">New manga site requirements</string>
+    <string name="backend_notice_source_requirements_body">Any new manga site must offer at least 200 titles, have no bot verification steps, and be worth the setup effort. Adding a site takes significant time and work.</string>
+</resources>

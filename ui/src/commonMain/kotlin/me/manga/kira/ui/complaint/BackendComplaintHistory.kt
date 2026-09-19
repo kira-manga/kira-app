@@ -65,9 +65,9 @@ internal fun BackendComplaintHistory(
                 SearchAndFilterSection(state.searchQuery, state.selectedStatus, state.backendItems.size, onIntent)
             }
             items(history.notices, key = { "notice:" + it.id }) {
-                // No live notice-key catalog has been accepted. Unknown keys never inject server text/actions.
+                // App-owned copy only; notice rows remain read-only, including unknown keys.
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(Res.string.unknown), modifier = Modifier.padding(spacing.md))
+                    BackendNoticeText(it.noticeKey, modifier = Modifier.padding(spacing.md))
                 }
             }
             items(state.backendItems, key = { "owner:" + it.id }) { row ->
@@ -125,7 +125,9 @@ private fun BackendHistoryRowContent(row: ComplaintOwnerRow) {
         when (row) {
             is ComplaintOwnerRow.Report -> row.subject
             is ComplaintOwnerRow.Reply -> row.subject
-            is ComplaintOwnerRow.NoticeReply, is UnknownComplaintItem -> stringResource(Res.string.unknown)
+            is ComplaintOwnerRow.NoticeReply ->
+                stringResource(backendNoticeDefinition(row.noticeKey)?.subject ?: Res.string.unknown)
+            is UnknownComplaintItem -> stringResource(Res.string.unknown)
         }
     Column(modifier = Modifier.padding(spacing.md), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         Text(title, style = MaterialTheme.typography.titleMedium)

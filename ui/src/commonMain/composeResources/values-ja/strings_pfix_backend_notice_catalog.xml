@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">成人向けコンテンツのポリシー</string>
+    <string name="backend_notice_content_policy_body">ここでは成人向け / 18歳以上向けコンテンツへの言及は認められていません。投稿内容はコミュニティガイドラインに従ってください。</string>
+    <string name="backend_notice_source_requirements_subject">新しい漫画サイトの要件</string>
+    <string name="backend_notice_source_requirements_body">新しく追加する漫画サイトは、200作品以上を提供し、ボット対策の認証手順がなく、設定にかかる労力に見合うものでなければなりません。サイトの追加には多くの時間と作業が必要です。</string>
+</resources>

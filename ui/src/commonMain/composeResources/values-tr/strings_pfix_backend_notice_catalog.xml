@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">Yetişkin içerik politikası</string>
+    <string name="backend_notice_content_policy_body">Burada yetişkinlere yönelik / 18+ içeriklere atıfta bulunulmasına izin verilmez. Lütfen gönderilerinizin topluluk kurallarımıza uygun olmasına dikkat edin.</string>
+    <string name="backend_notice_source_requirements_subject">Yeni manga sitesi gereksinimleri</string>
+    <string name="backend_notice_source_requirements_body">Her yeni manga sitesi en az 200 eser sunmalı, bot doğrulama adımları gerektirmemeli ve kurulum çabasına değmelidir. Bir site eklemek önemli ölçüde zaman ve emek gerektirir.</string>
+</resources>
