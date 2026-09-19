@@ -94,7 +94,7 @@ class SettingsFeedbackViewModel(
         fixedFields: Boolean = false,
         change: (ComplaintReportDraft) -> ComplaintReportDraft,
     ) {
-        if (closed || !state.value.editable) return
+        if (closed || operation?.isCompleted == false || !state.value.editable) return
         if (fixedFields && entry != SettingsFeedbackEntry.General) return
         updateState { it.copy(draft = change(it.draft), result = null) }
     }
@@ -383,7 +383,7 @@ class SettingsFeedbackViewModel(
         allowPrompt: Boolean = false,
         action: suspend () -> Unit,
     ) {
-        if (closed || state.value.busy) return
+        if (closed || operation?.isCompleted == false || state.value.busy) return
         if (!allowPrompt && prompt != null) return
         updateState { it.copy(activity = SettingsFeedbackActivity.WORKING) }
         val caller = currentCoroutineContext().job
@@ -394,8 +394,8 @@ class SettingsFeedbackViewModel(
             if (!closed) showFailure(ComplaintReportFailure(AppError.Cancelled()))
             throw cancelled
         } finally {
-            if (operation === caller) operation = null
-            if (!closed) updateState { it.afterWork(terminal, live != null) }
+            // Retain the caller until its Job, including attached child cleanup, actually completes.
+            if (!closed && operation === caller) updateState { it.afterWork(terminal, live != null) }
         }
     }
 
@@ -405,7 +405,7 @@ class SettingsFeedbackViewModel(
     }
 
     private fun newDraft() {
-        if (closed || !state.value.canStartNewDraft) return
+        if (closed || operation?.isCompleted == false || !state.value.canStartNewDraft) return
         live = null
         latestAttempt = null
         terminal = false
@@ -417,6 +417,7 @@ class SettingsFeedbackViewModel(
         if (closed) return
         closed = true
         operation?.cancelAndJoin()
+        operation = null
         withContext(NonCancellable) { dismissOwnedPrompt() }
         live = null
         latestAttempt = null
