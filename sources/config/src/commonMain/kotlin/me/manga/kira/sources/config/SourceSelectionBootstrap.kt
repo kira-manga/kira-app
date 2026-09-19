@@ -7,6 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -64,7 +65,7 @@ class SourceSelectionBootstrap(
                 flight.result
             }
             // Only wait for a previous caller's cancellation tail; this is not a preparation retry.
-            closing.join()
+            closing.cancelAndJoin()
         }
     }
 
