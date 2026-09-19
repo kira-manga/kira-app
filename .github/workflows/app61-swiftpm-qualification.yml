@@ -1,0 +1,54 @@
+name: App61 NONSHIPPING XcodeGen and strict SwiftPM qualification
+
+# A new workflow is not registered for workflow_dispatch on the default branch.
+# Primary's one reviewed push to this exact nonshipping branch is the sole trigger.
+on:
+  push:
+    branches: [candidate/app61-xcodegen-swiftpm-20260919-02]
+    paths: [.github/workflows/app61-swiftpm-qualification.yml, 'ci/app61-swiftpm/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kira-app61-xcodegen-strict-swiftpm
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: github.repository == 'kira-manga/kira-app' && github.event_name == 'push' && github.ref == 'refs/heads/candidate/app61-xcodegen-swiftpm-20260919-02' && github.run_attempt == 1
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact reviewed control commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out the unchanged verified app checkpoint separately
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: kira-manga/kira-app
+          ref: 57a15e55669e6590a61fc26bca0b4c9128c301db
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Production XcodeGen, strict resolver positive and one stale-lock negative
+        id: qualification
+        timeout-minutes: 25
+        shell: bash
+        # Hosted Python must support the unchanged Darwin owner; no installer/fallback.
+        run: python3 -I -B control/ci/app61-swiftpm/qualify.py --qualify
+
+      - name: Retain bounded receipts, including failed or incomplete cleanup
+        if: ${{ always() && steps.qualification.outputs.retention_ready == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: app61-swiftpm-${{ github.run_id }}
+          path: app61-swiftpm-reports/
+          if-no-files-found: error
+          retention-days: 3

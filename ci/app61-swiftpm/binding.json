@@ -1,0 +1,51 @@
+{
+  "schema": "app61-xcodegen-strict-swiftpm-v1",
+  "repository": "kira-manga/kira-app",
+  "branch": "candidate/app61-xcodegen-swiftpm-20260919-02",
+  "carrierBase": "57a15e55669e6590a61fc26bca0b4c9128c301db",
+  "issueCommit": "57a15e55669e6590a61fc26bca0b4c9128c301db",
+  "issueTree": "afcdc37e3da33f05ad756420649df3b5b8f9f792",
+  "issueParent": "3776d853d82126805ac8808fd8c26b79c9e6bcd7",
+  "candidateFiles": {
+    ".github/workflows/android-internal-testing.yml": "3e4a82b8a1d3f454a9dcb7a35374cb5acd468785392d7ef8020744c174c74ffc",
+    ".github/workflows/ci.yml": "99042f9f6f851cb3581051029498bfb56946b80cbc88ca7e72494c4bf62c214f",
+    ".github/workflows/testflight.yml": "290eab1da2280ceabdc184945f737fefd5628bf076c7c73ffa662b6d5d367daf",
+    "iosApp/Package.resolved": "fa47d64d18b1010dc7415816f69762a4f50f50acabebdda5f55eb83b86db1dd5",
+    "iosApp/project.yml": "66d03422a60a507e48ebcb9baac9553b20f694eb11e43b4a261afa83322c6018",
+    "release/verified-tools.json": "cecca00f72edcbeccbdce141ef79931cee01e6950d3abc9d0876d3d4dd18a887",
+    "scripts/release/cleanup-xcodegen.sh": "5fad2dcdc2bea70a0d5b739b5e150b8aca5e35ab5b474d38ab8fdaf917e027ed",
+    "scripts/release/install-xcodegen.sh": "9f771617981efebfdfed0e9f465a51092a7f155606f88eedc404fddd96d31466",
+    "scripts/release/verify-toolchain-inputs.rb": "2aade473e15bae0619bdaee3948fd913b62002993c5a141cbbc9cb1cd15a6f76"
+  },
+  "carrierFiles": [
+    ".github/workflows/app61-swiftpm-qualification.yml",
+    "ci/app61-swiftpm/app5-commands.py",
+    "ci/app61-swiftpm/app8-owner.py",
+    "ci/app61-swiftpm/binding.json",
+    "ci/app61-swiftpm/qualify.py"
+  ],
+  "ownerSha256": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf",
+  "commandsSha256": "4134f5dcc39aa7b7a182bf45701dc5192e7e5c0f4ff07065a948cb2c2b84acc1",
+  "developerDir": "/Applications/Xcode_26.4.1.app/Contents/Developer",
+  "xcodeVersion": "Xcode 26.4.1\nBuild version 17E202",
+  "deadlinesSeconds": {
+    "bootstrap": 60,
+    "install": 120,
+    "generate": 60,
+    "positive": 600,
+    "negative": 180,
+    "metadata": 120,
+    "work": 1200,
+    "cleanup": 180,
+    "stop": 40,
+    "controller": 1440
+  },
+  "artifactRetentionDays": 3,
+  "scope": "Production XcodeGen and resolver-only SwiftPM positive/negative; no Java, Native or Ruby installers, Gradle, build phases, host build, signing, simulator, SDK setup or credentials",
+  "carryOnly": {
+    "engine234-app61-strict-consume-linux01/PRIMARY-ACCEPTANCE.json": "b2c6f8da6d69dd3dfb923e02a0593adf2609512cfbf9f9d438451a4a0b5b2184",
+    "app-9-33-63-87-apple-host-20260915-05/PRIMARY-ACCEPTANCE.json": "9b6bd84d1338ce614f226e1f44e5a86d91e319b4757b5ab4fed6e94a305cd355",
+    "app-two-batch-apple-result-review-20260915-06/artifacts/swiftpm.json": "0625511a23b96e5d49078daaefe0681bb93895233021eeb9e50e4033fdec707d"
+  },
+  "externalSupplierBlock": "Official libffi checksum mismatch remains unresolved; this carrier neither retries nor bypasses it"
+}
