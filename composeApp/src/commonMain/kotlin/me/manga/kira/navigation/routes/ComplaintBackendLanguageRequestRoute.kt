@@ -1,6 +1,7 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import me.manga.kira.locale.LocalAppLocale
 import me.manga.kira.presentation.language.LanguageViewModel
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
@@ -17,12 +18,16 @@ internal fun ComplaintBackendLanguageRequestRoute(
     onOpenUrl: (String) -> Unit,
 ) {
     ComplaintBackendRequestHost(candidate, onOpenUrl) { onRequest ->
+        // Keep old clicks bound to this candidate host, never a latest callback for a new graph.
+        val requestLanguage: (String) -> Unit = remember(candidate) {
+            { subject -> onRequest(SettingsFeedbackEntry.LanguageRequest(subject)) }
+        }
         LanguageScreen(
             viewModel = viewModel,
             onBack = onBack,
             onOpenUrl = onOpenUrl,
             restartHintVisible = !LocalAppLocale.isLiveLocaleSwitchSupported,
-            onRequestLanguage = { subject -> onRequest(SettingsFeedbackEntry.LanguageRequest(subject)) },
+            onRequestLanguage = requestLanguage,
         )
     }
 }
