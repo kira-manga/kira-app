@@ -5,6 +5,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.sources.contracts.CommittedSourceSelection
@@ -84,10 +87,13 @@ class IncrementalSourceCatalogManager(
                 reconcileCancellation()
                 throw cancelled
             } catch (failure: Exception) {
+                val failed = pending
+                val recovery = retained?.takeIf { failed != null && failed.candidate.payload != it.candidate.payload }
                 if (pending != null || failure is SourceSelectionUnavailable) store.invalidateSelection()
                 pending = null
                 onRejected("catalog refresh failed; retaining the complete previous execution catalog")
                 updateState.value = UpdateState.Failed(REFRESH_FAILED)
+                if (recovery != null) recoverRetainedReadiness(recovery)
                 AppResult.Failure(AppError.Unexpected(REFRESH_FAILED, failure))
             }
         }
@@ -200,11 +206,36 @@ class IncrementalSourceCatalogManager(
     }
 
     private fun publish(publication: SelectionPublication, receipt: CommittedSourceSelection) {
+        publishCatalog(publication, receipt)
+        updateState.value = UpdateState.Active(publication.catalog.document.revision, publication.origin)
+    }
+
+    private fun publishCatalog(publication: SelectionPublication, receipt: CommittedSourceSelection) {
         retained = publication
         retainedReceipt = receipt
         active.value = publication.catalog.document
         catalogDiagnostics.value = catalogDiagnostics(publication.catalog, publication.origin)
-        updateState.value = UpdateState.Active(publication.catalog.document.revision, publication.origin)
+    }
+
+    /** One read-only A recovery after a different pending B failed; never retry A's own failed adoption. */
+    private suspend fun recoverRetainedReadiness(publication: SelectionPublication) {
+        try {
+            val adopted = withTimeoutOrNull(RECONCILIATION_TIMEOUT_MS) {
+                val context = currentCoroutineContext()
+                store.adoptSelection(publication.candidate) { receipt ->
+                    context.ensureActive()
+                    publishCatalog(publication, receipt) // Keep the original failure visible; the store supplies a CURRENT receipt.
+                }.also { context.ensureActive() }
+            }
+            currentCoroutineContext().ensureActive()
+            if (adopted == null) store.invalidateSelection()
+        } catch (cancelled: CancellationException) {
+            store.invalidateSelection()
+            throw cancelled // No second adoption via cancellation reconciliation for this new recovery.
+        } catch (_: Exception) {
+            store.invalidateSelection()
+            currentCoroutineContext().ensureActive()
+        }
     }
 
     /** One bounded durable reconciliation, including commit-before-receipt cancellation. No old-state reset. */
