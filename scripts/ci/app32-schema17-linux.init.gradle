@@ -1,0 +1,67 @@
+// Observe/guard the ordinary build; never rewrite source sets, dependencies or compiler inputs.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.tasks.testing.Test
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def taskRoot = ':data:local:desktopTest'
+def projects = [':core', ':data:local']
+def declared = [':app', ':composeApp', ':desktopApp', ':core', ':domain', ':data', ':data:local',
+    ':data:remote', ':data:download', ':platform', ':presentation', ':ui', ':sources:contracts',
+    ':sources:engine', ':sources:config', ':sources:legacy']
+def mainTasks = ['kmpPartiallyResolvedDependenciesChecker', 'checkKotlinGradlePluginConfigurationErrors',
+    'compileKotlinDesktop', 'compileDesktopMainJava', 'desktopProcessResources',
+    'processDesktopMainResources', 'desktopMainClasses', 'desktopJar']
+def expectedGraph = projects.collectMany { p -> mainTasks.collect { p + ':' + it } } +
+    ['compileTestKotlinDesktop', 'compileDesktopTestJava', 'desktopTestProcessResources',
+     'processDesktopTestResources', 'desktopTestClasses', 'desktopTest'].collect { ':data:local:' + it } + [':data:local:kspKotlinDesktop', ':data:local:kspTestKotlinDesktop', ':data:local:copyRoomSchemas']
+def required = projects.collect { it + ':compileKotlinDesktop' } +
+    [':data:local:compileTestKotlinDesktop', ':data:local:kspKotlinDesktop', ':data:local:copyRoomSchemas', taskRoot]
+def methods = new JsonSlurper().parseText(System.getenv('APP32_METHODS'))
+def emit = { label, data -> logger.lifecycle('APP32_' + label + ' ' + JsonOutput.toJson(data)) }
+
+gradle.settingsEvaluated { settings ->
+    def s = gradle.startParameter
+    require(settings.settingsDir.canonicalPath == System.getenv('APP32_APP_ROOT'), 'Bound source root only')
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21',
+        'Gradle 9.6.1 / installed JDK21 required')
+    require(!s.offline && !s.dryRun && s.excludedTaskNames.empty && s.maxWorkerCount == 1 &&
+        !s.parallelProjectExecutionEnabled && !s.buildCacheEnabled && !s.configurationCacheRequested &&
+        !s.configureOnDemand && s.taskNames.findAll { it.startsWith(':') } == [taskRoot],
+        'One ordinary online single-worker task, no exclusions/caches/configuration pruning')
+}
+gradle.projectsEvaluated {
+    // :sources is the implicit parent project, not a seventeenth declared module.
+    require(gradle.includedBuilds.empty && gradle.rootProject.allprojects*.path.toSet() ==
+        (declared + [':', ':sources']).toSet(), 'Keep all16 modules and no composite build')
+}
+gradle.beforeProject { p ->
+    p.tasks.withType(Test).configureEach { t ->
+        if (t.path == taskRoot) {
+            maxParallelForks = 1
+            maxHeapSize = '768m'
+            filter.failOnNoMatchingTests = true
+            jvmArgs('-XX:ActiveProcessorCount=2', '-Dapp32.owned.root=' + System.getenv('APP32_OWNED_ROOT'))
+            systemProperty('java.awt.headless', 'true')
+            systemProperty('user.home', System.getenv('HOME'))
+            systemProperty('java.io.tmpdir', System.getenv('TMPDIR'))
+            environment('APP32_OWNED_ROOT', System.getenv('APP32_OWNED_ROOT'))
+            doFirst {
+                require(t.filter.commandLineIncludePatterns.toSet() == methods.toSet(), 'Exact reviewed method roster')
+                require(!t.classpath.files.any { it.name.startsWith('source-engine-') ||
+                    it.name.startsWith('source-contract-') }, 'No custom Engine binaries in consumed classpath')
+            }
+        }
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    def paths = graph.allTasks*.path
+    emit('GRAPH', paths)
+    require(paths.size() == expectedGraph.size() && paths.toSet() == expectedGraph.toSet(),
+        'Only the normal25-task core/Room graph; no Android/Apple/publish/deploy tasks')
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.path in required) emit('COMPLETE', [path: task.path, executed: state.executed,
+        didWork: state.didWork, skipped: state.skipped, upToDate: state.upToDate,
+        noSource: state.noSource, failure: state.failure?.class?.name])
+}

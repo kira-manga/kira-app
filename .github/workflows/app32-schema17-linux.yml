@@ -1,0 +1,74 @@
+name: App32 schema17 migration verification
+
+on:
+  push:
+    branches: [remediation/app32-schema17-linux-20260919-02]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app32-schema17-linux
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app32-schema17-linux-20260919-02' &&
+      github.event.created == true && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # Primary binds the independently reviewed source-only parent before publication.
+      APP32_SOURCE_SHA: 9ac6684840c88e4feb703e2cd0d0d5807cc8fe20
+      APP32_SOURCE_TREE: 253ab6b966e9c3b6d53a5d0abbf101ec0c657d05
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        id: checkout
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: One ordinary invocation and bounded evidence
+        timeout-minutes: 22
+        run: python3 -B scripts/ci/app32-schema17-linux.py run
+
+      - name: Always remove only this invocation's owned runtime and fresh outputs
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 2
+        run: python3 -B scripts/ci/app32-schema17-linux.py cleanup
+
+      - name: Retain only public validation evidence, including failures
+        id: upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app32-schema17-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app32-schema17-evidence/17.json
+            ${{ runner.temp }}/app32-schema17-evidence/schema-generation.json
+            ${{ runner.temp }}/app32-schema17-evidence/result.json
+            ${{ runner.temp }}/app32-schema17-evidence/source-before.json
+            ${{ runner.temp }}/app32-schema17-evidence/source-after.json
+            ${{ runner.temp }}/app32-schema17-evidence/runtime.json
+            ${{ runner.temp }}/app32-schema17-evidence/resources.json
+            ${{ runner.temp }}/app32-schema17-evidence/command.json
+            ${{ runner.temp }}/app32-schema17-evidence/gradle.log
+            ${{ runner.temp }}/app32-schema17-evidence/graph.json
+            ${{ runner.temp }}/app32-schema17-evidence/task-completions.json
+            ${{ runner.temp }}/app32-schema17-evidence/observed-tests.json
+            ${{ runner.temp }}/app32-schema17-evidence/cleanup.json
+            ${{ runner.temp }}/app32-schema17-evidence/stop.json
+            ${{ runner.temp }}/app32-schema17-evidence/stop.log
+            ${{ runner.temp }}/app32-schema17-evidence/reports/*.xml
+
+      - name: Remove owned temporary evidence after the upload attempt
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 1
+        run: python3 -B scripts/ci/app32-schema17-linux.py discard
