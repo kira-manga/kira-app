@@ -81,12 +81,12 @@ class ComplaintBackendNoticeReplyHostTest {
             withNoticeReplyHost(ownedNoticeReplyRow()) {
                 val selected = assertIs<ComplaintDetail.Owned>(select())
                 val child = assertIs<ComplaintOwnerRow.NoticeReply>(selected.item)
-                assertEquals(GRAPH_REPLY_PARENT, child.id)
-                assertEquals(GRAPH_EDIT_ID, child.replyToId)
+                assertEquals(GRAPH_EDIT_ID, child.id)
+                assertEquals(GRAPH_REPLY_PARENT, child.replyToId)
                 assertEquals("REPLY", row.getValue("kind").jsonPrimitive.content)
                 assertEquals(JsonNull, row["subject"])
                 assertTrue(ComplaintBackendAction.entries.all { owner.canOpen(it, selected) })
-                submitExplicitReply(open(selected))
+                submitExplicitReply(open(selected), expectedParentId = GRAPH_EDIT_ID)
             }
         }
 
@@ -174,13 +174,16 @@ class ComplaintBackendNoticeReplyHostTest {
         assertNoWriteOrSetup()
     }
 
-    private fun ComplaintBackendNoticeReplyFixture.submitExplicitReply(opening: ComplaintBackendActionOpening) {
+    private fun ComplaintBackendNoticeReplyFixture.submitExplicitReply(
+        opening: ComplaintBackendActionOpening,
+        expectedParentId: String = GRAPH_REPLY_PARENT,
+    ) {
         changeBody(opening)
         assertNoWriteOrSetup()
         val reads = backend.historyCalls
         opening.replyModel.submit(ComplaintReplyIntent.Submit)
         idle()
-        assertExactReply()
+        assertExactReply(expectedParentId)
         val result = assertIs<ComplaintReplyResult.Attempt>(opening.replyModel.state.value.result)
         val completed = assertIs<ComplaintReportAttempt.Completed>(result.attempt)
         val applied = assertIs<ComplaintReportApplication.Applied>(completed.application)

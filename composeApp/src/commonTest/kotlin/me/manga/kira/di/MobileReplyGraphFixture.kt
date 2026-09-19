@@ -83,10 +83,10 @@ internal class MobileReplyGraphFixture(
         assertEquals("CREATE_REPLY", retained.getValue("operation").jsonPrimitive.content)
     }
 
-    fun assertExactReply() {
+    fun assertExactReply(expectedParentId: String = GRAPH_REPLY_PARENT) {
         val request = requests.single()
         assertEquals(
-            "$GRAPH_BASE${Policy.CREATE_PATH}/$GRAPH_REPLY_PARENT${Policy.REPLIES_SUFFIX}",
+            "$GRAPH_BASE${Policy.CREATE_PATH}/$expectedParentId${Policy.REPLIES_SUFFIX}",
             request.url.toString(),
         )
         assertEquals(GRAPH_REPLY_KEY, request.headers[Policy.IDEMPOTENCY_HEADER])
@@ -101,7 +101,7 @@ internal class MobileReplyGraphFixture(
             listOf("PREPARED", "MAY_HAVE_DISPATCHED"),
             pending.transitions.map { it.getValue("state").jsonPrimitive.content },
         )
-        assertTrue(pending.transitions.all { it.getValue("parentId").jsonPrimitive.content == GRAPH_REPLY_PARENT })
+        assertTrue(pending.transitions.all { it.getValue("parentId").jsonPrimitive.content == expectedParentId })
         assertTrue(pending.transitions.all { it.getValue("targetId").jsonPrimitive.content == GRAPH_REPLY_ID })
         assertFalse(pending.transitions.any { it.toString().contains(GRAPH_REPLY_BODY) || "body" in it })
         assertTrue(pending.slots.isEmpty())

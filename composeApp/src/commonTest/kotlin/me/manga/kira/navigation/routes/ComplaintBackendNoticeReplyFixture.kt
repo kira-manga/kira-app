@@ -27,7 +27,6 @@ import me.manga.kira.di.ComplaintBackendGraph
 import me.manga.kira.di.ComplaintBackendGraphFixture
 import me.manga.kira.di.ComplaintBackendResources
 import me.manga.kira.di.GRAPH_BASE
-import me.manga.kira.di.GRAPH_EDIT_ID
 import me.manga.kira.di.GRAPH_REPLY_BODY
 import me.manga.kira.di.GRAPH_REPLY_PARENT
 import me.manga.kira.di.MobileReplyGraphFixture
@@ -167,8 +166,8 @@ internal class ComplaintBackendNoticeReplyFixture(private val scope: TestScope, 
         assertTrue(backend.events.none { it == "request:enrollment" })
     }
 
-    fun assertExactReply() {
-        reply.assertExactReply()
+    fun assertExactReply(expectedParentId: String = GRAPH_REPLY_PARENT) {
+        reply.assertExactReply(expectedParentId)
         assertEquals(HttpMethod.Post, reply.requests.single().method)
         assertNull(reply.requests.single().headers[HttpHeaders.IfMatch])
         assertTrue(reply.pending.transitions.all { it["expectedVersion"] == JsonNull })
@@ -209,16 +208,15 @@ internal fun systemNoticeRow(key: String = BackendNoticeKey.CONTENT_POLICY.key):
         put("version", 1)
     }
 
+// Keep graphEditDetail's v4 owned child ID/tag; the SYSTEM notice ancestor may use a non-v4 ID.
 internal fun ownedNoticeReplyRow(): JsonObject =
     JsonObject(
         graphEditDetail() + mapOf(
-            "id" to JsonPrimitive(GRAPH_REPLY_PARENT),
             "kind" to JsonPrimitive("REPLY"),
             "type" to JsonPrimitive("CUSTOM"),
             "subject" to JsonNull,
             "noticeKey" to JsonPrimitive(BackendNoticeKey.CONTENT_POLICY.key),
-            "replyToId" to JsonPrimitive(GRAPH_EDIT_ID),
-            "actionTag" to JsonPrimitive("\"complaint-$GRAPH_REPLY_PARENT-v7\""),
+            "replyToId" to JsonPrimitive(GRAPH_REPLY_PARENT),
         ),
     )
 
