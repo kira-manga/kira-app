@@ -56,7 +56,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,7 +67,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,7 +79,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import me.manga.kira.domain.model.sources.Source
 import me.manga.kira.presentation.sources.SourcesEffect
 import me.manga.kira.presentation.sources.SourcesIntent
@@ -288,8 +292,8 @@ import org.jetbrains.compose.resources.stringResource
  *  pattern.
  *
  * @param onRequestSource Optional candidate entry callback receiving the localized fixed subject.
- * When present, it replaces every legacy request dialog, submission and retry path; null keeps
- * the existing shipping flow.
+ * Committing a non-null callback permanently retires this retained VM's legacy request producer,
+ * even without a click. Returning to null never restores it; initially null preserves legacy.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList")
@@ -309,9 +313,20 @@ fun SourcesScreen(
     onRequestSource: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val requestSource: ((String) -> Unit)? = remember(viewModel, onRequestSource) {
+        onRequestSource?.let { request ->
+            { subject: String ->
+                viewModel.retireLegacyRequest()
+                request(subject)
+            }
+        }
+    }
+    SideEffect {
+        if (onRequestSource != null) viewModel.retireLegacyRequest()
+    }
     SourcesScreenContent(
         state = state,
-        effects = viewModel.effects,
+        effects = viewModel.screenEffects,
         onIntent = viewModel::submit,
         onImportFromStorage = onImportFromStorage,
         modifier = modifier,
@@ -319,7 +334,8 @@ fun SourcesScreen(
         onboardingLanguageTag = onboardingLanguageTag,
         onBack = onBack,
         onOpenUrl = onOpenUrl,
-        onRequestSource = onRequestSource,
+        onRequestSource = requestSource,
+        isLegacyRequestRetired = { viewModel.state.value.legacyRequestRetired },
     )
 }
 
@@ -347,11 +363,30 @@ internal fun SourcesScreenContent(
     // GAP-SRC-SOCIAL — forwarded to the Request-Source dialog's social-media footer.
     onOpenUrl: (String) -> Unit = {},
     onRequestSource: ((String) -> Unit)? = null,
+    isLegacyRequestRetired: () -> Boolean = { state.legacyRequestRetired },
 ) {
     val spacing = LocalSpacing.current
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = remember(effects) { SnackbarHostState() }
+    val snackbarJobs = remember(effects) { mutableSetOf<Job>() }
+    val requestOwner = remember(effects, onRequestSource, state.legacyRequestRetired) { mutableStateOf(true) }
+    val currentRequestOwner by rememberUpdatedState(requestOwner)
     val candidateRequest by rememberUpdatedState(onRequestSource)
     val currentOnIntent by rememberUpdatedState(onIntent)
+    val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
+    val currentIsLegacyRequestRetired by rememberUpdatedState(isLegacyRequestRetired)
+
+    fun legacyRequestAllowed(owner: State<Boolean>): Boolean =
+        owner.value && owner === currentRequestOwner && candidateRequest == null && !currentIsLegacyRequestRetired()
+
+    DisposableEffect(requestOwner) {
+        onDispose {
+            requestOwner.value = false
+            // Completion handlers remove jobs, so cancellation iterates a snapshot.
+            snackbarJobs.toList().forEach { it.cancel() }
+            snackbarJobs.clear()
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
     val isOnboarding = onboardingLanguageTag != null
     // NP Phase 2 (GAP-SRC-06): the top-bar title is parameterized by entry. The onboarding entry
     // (onboardingLanguageTag != null) surfaces its title as the centered "Select Your Manga
@@ -380,28 +415,31 @@ internal fun SourcesScreenContent(
     val dispatchIntent: (SourcesIntent) -> Unit = { intent ->
         val candidate = candidateRequest
         when (intent) {
-            SourcesIntent.OnOpenComplaintDialog ->
-                if (candidate == null) currentOnIntent(intent) else candidate(complaintSubject)
+            SourcesIntent.OnOpenComplaintDialog -> {
+                if (requestOwner.value && requestOwner === currentRequestOwner) {
+                    if (candidate != null) {
+                        candidate(complaintSubject)
+                    } else if (legacyRequestAllowed(requestOwner)) {
+                        currentOnIntent(intent)
+                    }
+                }
+            }
             is SourcesIntent.OnSubmitComplaint, SourcesIntent.OnDismissComplaintDialog ->
-                if (candidate == null) currentOnIntent(intent)
+                if (legacyRequestAllowed(requestOwner)) currentOnIntent(intent)
             else -> currentOnIntent(intent)
         }
     }
 
-    // Child snackbar jobs never block collection; selecting the candidate cancels every queued
-    // or visible legacy snackbar, not just the one currently holding the host's mutex.
-    LaunchedEffect(effects, onRequestSource != null) {
+    // Keep collection stable across mode changes; every child and saved Retry has an owner.
+    LaunchedEffect(effects) {
         effects.collect { effect ->
-            // A queued legacy outcome is not evidence for the candidate request, even after suspension.
-            if (candidateRequest != null) return@collect
-            when (effect) {
-                is SourcesEffect.RequestSubmitted ->
-                    launch {
-                        if (candidateRequest == null) snackbarHostState.showSnackbar(submittedMessage)
-                    }
-                is SourcesEffect.RequestFailed ->
-                    launch {
-                        if (candidateRequest != null) return@launch
+            val owner = currentRequestOwner
+            if (!legacyRequestAllowed(owner)) return@collect
+            val job = launch {
+                if (!legacyRequestAllowed(owner)) return@launch
+                when (effect) {
+                    is SourcesEffect.RequestSubmitted -> snackbarHostState.showSnackbar(submittedMessage)
+                    is SourcesEffect.RequestFailed -> {
                         // NP Phase 2 (GAP-SRC-03): failure snackbar offers a "Retry" action (Long
                         // duration) that re-submits the preserved body, matching the legacy
                         // RepoSettingsScreen.kt:178-209 onError posture.
@@ -411,7 +449,7 @@ internal fun SourcesScreenContent(
                                 actionLabel = retryLabel,
                                 duration = SnackbarDuration.Long,
                             )
-                        if (result == SnackbarResult.ActionPerformed && candidateRequest == null) {
+                        if (result == SnackbarResult.ActionPerformed && legacyRequestAllowed(owner)) {
                             currentOnIntent(
                                 SourcesIntent.OnSubmitComplaint(
                                     body = effect.body,
@@ -420,7 +458,10 @@ internal fun SourcesScreenContent(
                             )
                         }
                     }
+                }
             }
+            snackbarJobs += job
+            job.invokeOnCompletion { snackbarJobs -= job }
         }
     }
 
@@ -493,7 +534,7 @@ internal fun SourcesScreenContent(
         }
     }
 
-    if (onRequestSource == null && state.complaintDialogOpen) {
+    if (state.complaintDialogOpen && legacyRequestAllowed(requestOwner)) {
         RequestSourceDialog(
             isSubmitting = state.isSubmittingComplaint,
             onSubmit = { body ->
@@ -502,7 +543,9 @@ internal fun SourcesScreenContent(
                 )
             },
             onDismiss = { dispatchIntent(SourcesIntent.OnDismissComplaintDialog) },
-            onOpenUrl = onOpenUrl,
+            onOpenUrl = { url ->
+                if (legacyRequestAllowed(requestOwner)) currentOnOpenUrl(url)
+            },
         )
     }
 }
