@@ -1,0 +1,72 @@
+name: App32 local source selection
+
+on:
+  push:
+    branches: [remediation/app32-bootstrap-owner-linux-20260919-01]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app32-local-restore-linux
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app32-bootstrap-owner-linux-20260919-01' &&
+      github.event.created == true && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # Primary binds the independently reviewed source-only parent before publication.
+      APP32_SOURCE_SHA: dfbbc7a47eaeff0d3bafefd2b210feeb211267cf
+      APP32_SOURCE_TREE: b07ee363279d6aa92f9b2d6957d3dc48fdd8c10b
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        id: checkout
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: One ordinary invocation and bounded evidence
+        timeout-minutes: 22
+        run: python3 -B scripts/ci/app32-local-restore-linux.py run
+
+      - name: Always remove only this invocation's owned runtime and fresh outputs
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 2
+        run: python3 -B scripts/ci/app32-local-restore-linux.py cleanup
+
+      - name: Retain only public validation evidence, including failures
+        id: upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app32-local-selection-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app32-local-restore-evidence/result.json
+            ${{ runner.temp }}/app32-local-restore-evidence/source-before.json
+            ${{ runner.temp }}/app32-local-restore-evidence/source-after.json
+            ${{ runner.temp }}/app32-local-restore-evidence/runtime.json
+            ${{ runner.temp }}/app32-local-restore-evidence/resources.json
+            ${{ runner.temp }}/app32-local-restore-evidence/command.json
+            ${{ runner.temp }}/app32-local-restore-evidence/gradle.log
+            ${{ runner.temp }}/app32-local-restore-evidence/graph.json
+            ${{ runner.temp }}/app32-local-restore-evidence/task-completions.json
+            ${{ runner.temp }}/app32-local-restore-evidence/observed-tests.json
+            ${{ runner.temp }}/app32-local-restore-evidence/cleanup.json
+            ${{ runner.temp }}/app32-local-restore-evidence/stop.json
+            ${{ runner.temp }}/app32-local-restore-evidence/stop.log
+            ${{ runner.temp }}/app32-local-restore-evidence/reports/*.xml
+
+      - name: Remove owned temporary evidence after the upload attempt
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 1
+        run: python3 -B scripts/ci/app32-local-restore-linux.py discard
