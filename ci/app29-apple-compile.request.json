@@ -1,0 +1,57 @@
+{
+  "acquisitionAuthorization": "ORIGINAL4_AUTHENTICATED_AND_PUBLIC_DECLARED_GRADLE_ONLY",
+  "app": {
+    "repository": "kira-manga/kira-app",
+    "sha": "1758d325d89a938b6a67ab33ceef0c0ebbd2bd55",
+    "tree": "c3f7ce7e51faa1d39f2da26a4f6eb0cd85dfd1b7"
+  },
+  "authorization": "APP_29_APPLE_MAIN_COMPILE_ONE_ATTEMPT_AUTHORIZED",
+  "controls": {
+    ".github/workflows/app29-apple-compile.yml": "68d4c2d6d55e57db84b8cfccd4cb3856eb0f96d95977800b6aa1dfffc5af3484",
+    "ci/app29-apple-compile-admission.py": "ba404ba5013b809d7685e29ce880363343114ca207789eda46d6d31c1a8b549a",
+    "ci/app29-apple-compile-evidence.py": "cdeafa9c34c1e9a3550c8b14526ea910533f753c63a76dacee44f64ff15bbfa6",
+    "ci/app29-apple-compile-inputs.py": "02e04741568e5f274d98d296f65f8a90f926a3ed8d4035750ed3a4872a7a8c86",
+    "ci/app29-apple-compile-proof.py": "db92f64952f539514da1cde289d3e28709e7831dc06ea4b1d6cd28b873078550",
+    "ci/app29-apple-compile.init.gradle": "40752c3e1b4554991837e4e4b0f2b8d58a876ae257ae88da65a2af7a895e3414",
+    "ci/app29-apple-compile.py": "6693d2865c175df91295f6d1f72b416abf4997b814fdc54bd191d39e27a903e0",
+    "ci/app29-apple-compile.source-pins.json": "d5c9ebf3ea8c3e3848ad9f05dee8c86b68ecf489d30c3e289aae2b0d43195830",
+    "ci/app29-original-inputs/manifest.json": "60b23eee4ab4c620a9e353f0ddbb02377013129b2f068a60ebd28278223d29bb",
+    "ci/app5-ios-host-commands.py": "bad29587b8b5a5095fb5674d3c0c1ceddac517e11d9940182876ec5f1b689a90",
+    "ci/app8-apple.py": "9f69c87182eba29030fcd65c49b4e8459a41749440dab9767f3fbfe0c02db6cf"
+  },
+  "expectedRunAttempt": 1,
+  "inputManifestSha256": "60b23eee4ab4c620a9e353f0ddbb02377013129b2f068a60ebd28278223d29bb",
+  "limits": {
+    "aggregateCommandLogBytes": 12582912,
+    "artifactHttpRequests": 3,
+    "artifactMetadataBytes": 65536,
+    "artifactNetworkSeconds": 90,
+    "artifactRedirects": 1,
+    "artifactRetries": 0,
+    "artifactSeconds": 120,
+    "artifactZipBytes": 1048576,
+    "cleanupCommandLogBytes": 1048576,
+    "cleanupSeconds": 240,
+    "compileCommandLogBytes": 8388608,
+    "compileSeconds": 1200,
+    "controllerSeconds": 1680,
+    "diskFloorGiB": 8,
+    "gradleWorkers": 1,
+    "jobMinutes": 35,
+    "jvmHeapGiB": 3,
+    "klibFingerprintBytes": 1073741824,
+    "metaspaceMiB": 768,
+    "nativeThreads": 1,
+    "otherAggregateCommandLogBytes": 4194304,
+    "otherCommandLogBytes": 1048576,
+    "stopSeconds": 40,
+    "workSeconds": 1440
+  },
+  "mode": "COMPILE_ONLY",
+  "ref": "candidate/app29-backend-action-host-apple-compile-20260919-01",
+  "schema": "app-29-apple-compile-v1",
+  "status": "PRIMARY_BOUND_FOR_REVIEW",
+  "tasks": [
+    ":composeApp:compileKotlinIosSimulatorArm64"
+  ]
+}
