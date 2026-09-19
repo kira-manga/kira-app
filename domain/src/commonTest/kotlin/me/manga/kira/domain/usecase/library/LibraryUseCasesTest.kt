@@ -5,7 +5,9 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.testing.FakeLibraryRepository
 import me.manga.kira.domain.testing.sampleChapter
 import me.manga.kira.domain.testing.sampleLibraryManga
@@ -74,7 +76,7 @@ class LibraryUseCasesTest {
 
         assertEquals(true, result.getOrNull())
         assertTrue(
-            repo.calls.any { it == "addToLibrary(test-api,en,Absent,chapters=2)" },
+            repo.calls.any { it == "addToLibrary(test-api,https://example.test/manga,chapters=2)" },
             "add must forward the chapter list to the repository; calls=${repo.calls}",
         )
         assertEquals(details, repo.lastAddedDetails, "the complete fetched details must reach the repo")
@@ -119,9 +121,9 @@ class LibraryUseCasesTest {
     fun bulkRemove_forwards_the_targeted_count() = runTest {
         val repo = FakeLibraryRepository()
         val keys = listOf(
-            MangaKey("a", "en", "One"),
-            MangaKey("a", "en", "Two"),
-            MangaKey("a", "en", "Three"),
+            SavedWorkIdentity(1L, WorkLocator("a", "https://example.test/1")),
+            SavedWorkIdentity(2L, WorkLocator("a", "https://example.test/2")),
+            SavedWorkIdentity(3L, WorkLocator("a", "https://example.test/3")),
         )
 
         val result = BulkRemoveFromLibraryUseCase(repo)(keys)
@@ -131,52 +133,98 @@ class LibraryUseCasesTest {
     }
 
     @Test
-    fun bulkRemove_forwards_the_repos_actual_purged_count_when_below_targeted() = runTest {
-        // #21: when some selected keys are already gone (no saved_manga row), the repo purges fewer
-        // rows than were targeted and returns that TRUE count. The use case must forward the repo's
-        // count verbatim — NOT keys.size — so the "Removed N items" toast reflects what was removed.
-        val repo = FakeLibraryRepository().apply { removeAllPurgedCount = 2 }
-        val keys = listOf(
-            MangaKey("a", "en", "One"),
-            MangaKey("a", "en", "Two"),
-            MangaKey("a", "en", "Gone"), // already removed → repo skips it
-        )
+    fun bulkRemove_forwards_rollback_failure_for_stale_retained_owner() = runTest {
+        val failure = AppResult.Failure(AppError.Storage.Constraint("retained-owner-changed"))
+        val repo = FakeLibraryRepository().apply { removeAllResult = failure }
+        val owners = listOf(SavedWorkIdentity(8L, WorkLocator("a", "https://example.test/old")))
 
-        val result = BulkRemoveFromLibraryUseCase(repo)(keys)
+        val result = BulkRemoveFromLibraryUseCase(repo)(owners)
 
-        assertEquals(2, result.getOrNull(), "must forward the repo's actual purged count, not keys.size=3")
-        assertTrue(repo.calls.any { it == "removeAllFromLibrary(3)" }, "calls=${repo.calls}")
+        assertEquals(failure, result)
+        assertEquals(owners, repo.lastBulkOwners)
+    }
+
+    @Test
+    fun bulkRemove_forwards_deduplicated_count() = runTest {
+        val owner = SavedWorkIdentity(8L, WorkLocator("a", "https://example.test/one"))
+        val repo = FakeLibraryRepository().apply { removeAllResult = AppResult.Success(1) }
+        assertEquals(1, BulkRemoveFromLibraryUseCase(repo)(listOf(owner, owner)).getOrNull())
     }
 
     @Test
     fun toggleLiked_delegates_to_repository() = runTest {
         val repo = FakeLibraryRepository()
 
-        val result = ToggleMangaLikedUseCase(repo)(MangaKey("a", "en", "Liked"))
+        val result = ToggleMangaLikedUseCase(repo)(SavedWorkIdentity(12L, WorkLocator("a", "https://example.test/liked")))
 
         assertTrue(result.isSuccess)
-        assertTrue(repo.calls.any { it == "toggleLiked(Liked)" }, "calls=${repo.calls}")
+        assertTrue(repo.calls.any { it == "toggleLiked(12)" }, "calls=${repo.calls}")
     }
 
     @Test
     fun toggleWatchingNow_delegates_to_repository() = runTest {
         val repo = FakeLibraryRepository()
 
-        val result = ToggleMangaWatchingNowUseCase(repo)(MangaKey("a", "en", "Watch"))
+        val result = ToggleMangaWatchingNowUseCase(repo)(SavedWorkIdentity(13L, WorkLocator("a", "https://example.test/watch")))
 
         assertTrue(result.isSuccess)
-        assertTrue(repo.calls.any { it == "toggleWatchingNow(Watch)" }, "calls=${repo.calls}")
+        assertTrue(repo.calls.any { it == "toggleWatchingNow(13)" }, "calls=${repo.calls}")
     }
 
     @Test
-    fun observeInLibrary_forwards_the_membership_flow() = runTest {
+    fun observeInLibrary_forwards_owner_and_explicit_failure() = runTest {
         val repo = FakeLibraryRepository()
-
-        ObserveInLibraryUseCase(repo)(api = "a", language = "en", title = "X").test {
-            assertEquals(false, awaitItem())
-            repo.emitInLibrary(true)
-            assertEquals(true, awaitItem())
+        val work = WorkLocator("a", "https://example.test/x")
+        val owner = SavedWorkIdentity(7L, work)
+        ObserveInLibraryUseCase(repo)(work).test {
+            assertEquals(AppResult.Success(null), awaitItem())
+            repo.emitMembership(work, AppResult.Success(owner))
+            assertEquals(AppResult.Success(owner), awaitItem())
+            val failure = AppResult.Failure(AppError.Storage.Constraint("ambiguous"))
+            repo.emitMembership(work, failure)
+            assertEquals(failure, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun toggleInLibrary_uses_locator_despite_title_and_language_drift() = runTest {
+        val repo = FakeLibraryRepository()
+        val original = sampleManga()
+        val saved = sampleLibraryManga(manga = original, id = 11L)
+        repo.emitLibrary(listOf(saved))
+        val renamed = original.copy(title = "Renamed", language = "ar")
+
+        assertEquals(false, ToggleInLibraryUseCase(repo)(renamed).getOrNull())
+        assertEquals(saved.identity, repo.lastRemovedOwner)
+        assertTrue(repo.lastAddedDetails == null)
+    }
+
+    @Test
+    fun toggleInLibrary_retained_owner_cannot_be_replaced_by_a_new_lookup() = runTest {
+        val repo = FakeLibraryRepository()
+        val manga = sampleManga()
+        val oldOwner = SavedWorkIdentity(10L, WorkLocator(manga.api, manga.url))
+        repo.emitLibrary(listOf(sampleLibraryManga(manga, id = 20L)))
+        val failure = AppResult.Failure(AppError.Storage.Constraint("retained-owner-changed"))
+        repo.removeResult = failure
+
+        assertEquals(failure, ToggleInLibraryUseCase(repo)(manga, retainedOwner = oldOwner))
+        assertEquals(oldOwner, repo.lastRemovedOwner)
+        assertTrue(repo.calls.none { it.startsWith("get(") || it.startsWith("addToLibrary(") })
+    }
+
+    @Test
+    fun toggleInLibrary_does_not_rewrite_the_retained_locator_from_display_metadata() = runTest {
+        val repo = FakeLibraryRepository()
+        val original = sampleManga()
+        val owner = SavedWorkIdentity(10L, WorkLocator(original.api, original.url))
+        val failure = AppResult.Failure(AppError.Storage.Constraint("unproven retained address"))
+        repo.removeResult = failure
+        val changedDisplay = original.copy(url = "https://another.test/work")
+
+        assertEquals(failure, ToggleInLibraryUseCase(repo)(changedDisplay, retainedOwner = owner))
+        assertEquals(owner, repo.lastRemovedOwner, "the writer must still revalidate the captured address")
+        assertTrue(repo.calls.none { it.startsWith("get(") || it.startsWith("addToLibrary(") })
     }
 }

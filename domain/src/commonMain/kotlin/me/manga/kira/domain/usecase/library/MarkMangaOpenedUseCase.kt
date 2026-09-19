@@ -1,16 +1,15 @@
 package me.manga.kira.domain.usecase.library
 
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.domain.repository.LibraryRepository
 
 /**
- * Record that a manga's Details screen was just opened, bumping its `lastOpenTimestamp` (no-op when
- * not in the library). The Library's LAST_READ sort orders by this (native parity — native bumps the
- * timestamp on each Details open).
+ * Record a chapter-open event for the displayed saved owner, bumping its last-open timestamp.
+ * The Library LAST_READ sort uses this date. A missing/replaced owner is a failure, not a no-op.
  */
 class MarkMangaOpenedUseCase(
     private val repository: LibraryRepository,
 ) {
-    suspend operator fun invoke(api: String, language: String, title: String): AppResult<Unit> =
-        repository.markOpened(api, language, title)
+    suspend operator fun invoke(owner: SavedWorkIdentity): AppResult<Unit> = repository.markOpened(owner)
 }

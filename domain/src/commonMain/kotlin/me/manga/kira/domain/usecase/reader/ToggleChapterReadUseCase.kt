@@ -1,5 +1,6 @@
 package me.manga.kira.domain.usecase.reader
 
+import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.MarkChapterReadRepository
 
 /**
@@ -17,7 +18,10 @@ import me.manga.kira.domain.repository.MarkChapterReadRepository
 class ToggleChapterReadUseCase(
     private val repository: MarkChapterReadRepository,
 ) {
-    suspend operator fun invoke(chapterUrl: String) {
-        repository.toggleRead(chapterUrl)
+    suspend operator fun invoke(
+        manga: Manga,
+        chapterUrl: String,
+    ) {
+        repository.toggleRead(manga, chapterUrl)
     }
 }

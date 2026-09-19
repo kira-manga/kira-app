@@ -4,6 +4,11 @@ import kotlin.time.Instant
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryActivity
+import me.manga.kira.domain.model.library.LibraryAffinity
+import me.manga.kira.domain.model.library.LibraryChapterCounts
 
 /**
  * Test data factories for the Library domain types.
@@ -61,16 +66,15 @@ fun sampleLibraryManga(
     downloadedCount: Int = 0,
     isLiked: Boolean = false,
     isWatchingNow: Boolean = false,
+    id: Long = 1L,
 ): LibraryManga = LibraryManga(
     manga = manga,
-    addedAt = Instant.fromEpochMilliseconds(addedAtEpochMillis),
-    unreadCount = unreadCount,
-    hasDownloads = hasDownloads,
-    totalChapters = totalChapters,
-    lastReadAt = lastReadAtEpochMillis?.let { Instant.fromEpochMilliseconds(it) },
-    lastOpenedAt = Instant.fromEpochMilliseconds(lastOpenedAtEpochMillis),
-    bookmarkedCount = bookmarkedCount,
-    downloadedCount = downloadedCount,
-    isLiked = isLiked,
-    isWatchingNow = isWatchingNow,
+    identity = SavedWorkIdentity(id, WorkLocator(manga.api, manga.url)),
+    activity = LibraryActivity(
+        Instant.fromEpochMilliseconds(addedAtEpochMillis),
+        Instant.fromEpochMilliseconds(lastOpenedAtEpochMillis),
+        lastReadAtEpochMillis?.let(Instant::fromEpochMilliseconds),
+    ),
+    counts = LibraryChapterCounts(totalChapters, unreadCount, maxOf(downloadedCount, if (hasDownloads) 1 else 0), bookmarkedCount),
+    affinity = LibraryAffinity(isLiked, isWatchingNow),
 )

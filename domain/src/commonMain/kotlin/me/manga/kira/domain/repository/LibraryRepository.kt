@@ -2,10 +2,12 @@ package me.manga.kira.domain.repository
 
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
-import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 
 /**
  * Library aggregate root contract.
@@ -101,129 +103,47 @@ import me.manga.kira.domain.model.MangaDetails
  *  preservation convention.
  */
 interface LibraryRepository {
-
-    /**
-     * Reactive snapshot of the user's library. Emit order is unspecified — the presentation
-     * layer applies the user-chosen sort. The DAO currently emits by title ASC; callers must
-     * not depend on that.
-     */
+    /** Every item retains its local parent ID; display metadata is never an action key. */
     fun observeLibrary(): Flow<List<LibraryManga>>
 
-    /** Reactive flag: is this manga currently in the user's library? */
-    fun observeIsInLibrary(api: String, language: String, title: String): Flow<Boolean>
+    /** Emits explicit ownership failures and invalidates on accepted-catalog changes. */
+    fun observeMembership(work: WorkLocator): Flow<AppResult<SavedWorkIdentity?>>
 
-    /** One-shot lookup of a single library entry, or null when absent. */
-    suspend fun get(api: String, language: String, title: String): AppResult<LibraryManga?>
+    /** Resolve one complete exact/accepted-alias family; ambiguity is not absence. */
+    suspend fun get(work: WorkLocator): AppResult<LibraryManga?>
 
-    /**
-     * Add a manga to the library together with its complete fetched metadata and chapter list.
-     * Idempotent — adding an existing entry is a no-op success, and only chapter URLs not already
-     * persisted are inserted.
-     *
-     * Native parity: the source-of-truth app persists the manga row AND its chapters atomically at
-     * add-time (`saveMangaWithChapters`) so an in-library manga can render the same description,
-     * author, rating, status, genres, cover, and chapters straight from Room without a network
-     * re-fetch on open. Callers must fetch [MangaDetails] before adding; saving a lightweight
-     * listing [Manga] would silently discard detail-only fields.
-     */
-    suspend fun addToLibrary(details: MangaDetails): AppResult<Unit>
+    /** Same-work re-add refreshes metadata while preserving parent/child IDs and local state. */
+    suspend fun addToLibrary(fetched: FetchedWorkDetails): AppResult<SavedWorkIdentity>
 
     /**
-     * Persist chapters discovered by a Details/library refresh that are not yet saved for this
-     * (in-library) manga, flagging each as NEW (native parity: `LibraryDetailsViewModel.refreshChapters`
-     * + `LibraryRefreshWorker` insert with `isNew = true`). Diffs [fetched] against the saved chapter
-     * URLs and inserts only the genuinely-new ones (idempotent: re-running inserts nothing). Returns
-     * the count of newly-persisted chapters. No-op (returns 0) when the manga isn't in the library.
-     *
-     * This is what makes new chapters survive leaving and reopening the Details screen (they are
-     * written to Room, not just held in ViewModel state) and what feeds the red NEW badge.
+     * Preflight all requests and atomically reconcile metadata, new chapters and optional Updates.
+     * Every request revalidates its pre-fetch parent ID and both raw fetch addresses in the writer.
+     * A failure rolls back this complete batch, not just the statement that failed.
      */
-    suspend fun persistNewChapters(
-        api: String,
-        language: String,
-        title: String,
-        fetched: List<Chapter>,
-    ): AppResult<Int>
+    suspend fun refresh(
+        requests: List<LibraryRefreshRequest>,
+        notify: Boolean,
+    ): AppResult<List<LibraryRefreshReceipt>>
 
-    /**
-     * Like [persistNewChapters] but ALSO writes a `notifications` row for each newly-persisted chapter
-     * so it appears in the Notifications/Updates screen (native parity: the Android `LibraryRefreshWorker`
-     * calls `addNewChapterNotification` after the insert). Used ONLY by the library refresh-all path
-     * (incl. the Desktop/iOS inline refresh) — NOT by the Details pull-to-refresh, which must stay
-     * notification-free to match native. De-dup is intrinsic: only genuinely-new chapters are notified.
-     * Returns the count newly persisted; 0 when the manga isn't in the library.
-     */
-    suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int>
+    /** Clear durable work progress and remove exactly this retained parent, then clean its files. */
+    suspend fun removeFromLibrary(owner: SavedWorkIdentity): AppResult<Unit>
 
-    /**
-     * Reconcile the saved cover URL for an in-library manga when a refresh discovers it changed.
-     * No-op (success) when the manga isn't in the library or [newCoverUrl] already matches the saved
-     * row. Mirrors the native `LibraryRefreshWorker`'s `updateMangaImageUrlEverywhere`: rewrites the
-     * cover in `saved_manga`, `history` and `notifications` so a rotated CDN URL doesn't leave a
-     * permanently-stale cover on Desktop/iOS (which have no WorkManager worker and run only the
-     * cross-platform inline refresh). Manga sites rotate cover/CDN URLs constantly, so without this
-     * a cover that rots after add is never repaired on those platforms.
-     */
-    suspend fun updateCoverIfChanged(
-        api: String,
-        language: String,
-        title: String,
-        newCoverUrl: String,
-    ): AppResult<Unit>
+    /** Preflight the complete selection; never substitute a re-added parent or partially remove it. */
+    suspend fun removeAllFromLibrary(owners: List<SavedWorkIdentity>): AppResult<Int>
 
-    /** Remove a manga (and its associated chapter rows / cached files) from the library. */
-    suspend fun removeFromLibrary(api: String, language: String, title: String): AppResult<Unit>
+    /** Atomic, checked affinity update after current-policy retained-owner resolution. */
+    suspend fun toggleLiked(owner: SavedWorkIdentity): AppResult<Unit>
 
-    /**
-     * Bulk removal — used by the library multi-select UI. Returns the count of rows ACTUALLY
-     * purged (#21): keys with no saved_manga row are skipped, so this can be < `keys.size`. The
-     * success toast shows this true count instead of the selected count.
-     */
-    suspend fun removeAllFromLibrary(keys: List<MangaKey>): AppResult<Int>
+    /** Atomic, checked watching flag update; metadata/timestamps are untouched. */
+    suspend fun toggleWatchingNow(owner: SavedWorkIdentity): AppResult<Unit>
 
-    /**
-     * Flip the `isLiked` affinity flag for the manga identified by [key]. Idempotent in the
-     * sense that calling twice restores the original value — there is no separate "set" path.
-     *
-     * No-ops (success) if the manga is not in the library; the action-row only renders for
-     * in-library cards so the absent-key case is defensive rather than expected.
-     *
-     * Strangler-fig boundary: the `:data` impl reaches the legacy `MangaDao.updateManga`
-     * (via the existing `:shared` strangler-fig posture) to persist the flipped row,
-     * preserving the exact same wire format the legacy Details-screen heart toggle and
-     * legacy `LibraryViewModel.toggleLiked` already use. Same posture as the existing
-     * `addToLibrary` / `removeFromLibrary` methods on this interface — Phase 9.x retires
-     * the legacy DAO reach, not this slice.
-     *
-     * §179 (Task #345). Closes the `LibraryManga.isLiked` KDoc's "Mutation is still owned by
-     * the legacy Details route until a later slice ports the toggle into `:domain`" comment.
-     */
-    suspend fun toggleLiked(key: MangaKey): AppResult<Unit>
-
-    /**
-     * Flip the `isWatchingNow` affinity flag for the manga identified by [key]. Same shape
-     * and semantics as [toggleLiked] — see that method's KDoc for the strangler-fig boundary
-     * narrative.
-     *
-     * §179 (Task #345). Closes the `LibraryManga.isWatchingNow` KDoc's "Mutation is still
-     * owned by the legacy" comment.
-     */
-    suspend fun toggleWatchingNow(key: MangaKey): AppResult<Unit>
-
-    /**
-     * Record that the manga identified by ([api], [language], [title]) was just opened, bumping its
-     * `lastOpenTimestamp` to now. No-op (success) when the manga isn't in the library. Feeds the
-     * LAST_READ sort (native parity: native bumps `lastOpenTimestamp` on each Details open so
-     * LAST_READ orders by recency of opening).
-     */
-    suspend fun markOpened(api: String, language: String, title: String): AppResult<Unit>
+    /** Opened-only write for a retained saved parent; removal/replacement is an explicit failure. */
+    suspend fun markOpened(owner: SavedWorkIdentity): AppResult<Unit>
 }
 
 /**
- * Composite primary key used to identify a manga across the source/repo boundary.
- *
- * Carried explicitly rather than collapsed into a single string so callers can't accidentally
- * mix encodings — this is the same triple as the existing `SavedMangaEntity` composite PK.
+ * Legacy display carrier for the not-yet-cutover Home/backup surfaces.
+ * It is NOT a primary key and is deliberately not accepted by any library mutation.
  */
 data class MangaKey(
     val api: String,

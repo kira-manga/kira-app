@@ -2,24 +2,24 @@ package me.manga.kira.domain.usecase.library
 
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.LibraryRepository
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 
 /**
  * Bulk-remove a set of manga from the user's library in one call.
  *
  * Contract §6 SRP: this use case owns ONE rule — "remove a batch of library entries and tell the
- * caller how many were targeted so the UI can render a localized 'removed N items' message".
+ * caller how many were durably removed so the UI can render a localized 'removed N items' message".
  * The per-item removal policy lives in [me.manga.kira.domain.repository.LibraryRepository.removeAllFromLibrary] /
  * the data layer; bulk-vs-single is an orchestration concern that belongs in a use case, not in
  * the ViewModel and not in the repository.
  *
  * Behavior:
- *  - Empty [keys] → returns `AppResult.Success(0)` without touching the repository. Avoids a
+ *  - Empty [owners] → returns `AppResult.Success(0)` without touching the repository. Avoids a
  *    pointless DAO round-trip when the multi-select list happens to be cleared between the
  *    user's tap and the dispatch.
- *  - Non-empty [keys] → delegates to `repository.removeAllFromLibrary(keys)` and forwards its
- *    result verbatim: `AppResult.Success(actualPurgedCount)` (not-found keys are skipped, so the
- *    toast reflects what was really removed) or the underlying [AppResult.Failure].
+ *  - Non-empty [owners] → delegates to `repository.removeAllFromLibrary(owners)` and forwards its
+ *    result verbatim. The complete retained-owner batch is preflighted and committed atomically;
+ *    a stale/missing owner or unsafe download lease fails the whole batch, never skips an item.
  *
  * Constructor-injected `LibraryRepository` per contract §6 DIP — Koin binds it as a factory in
  * `:composeApp` (cheap to instantiate, no per-call state).
@@ -58,10 +58,9 @@ import me.manga.kira.domain.repository.MangaKey
 class BulkRemoveFromLibraryUseCase(
     private val repository: LibraryRepository,
 ) {
-    suspend operator fun invoke(keys: List<MangaKey>): AppResult<Int> {
-        if (keys.isEmpty()) return AppResult.Success(0)
-        // #21: forward the ACTUAL purged-row count from the repo (skips not-found keys) instead of
-        // the selected keys.size, so the success toast reflects what was really removed.
-        return repository.removeAllFromLibrary(keys)
+    suspend operator fun invoke(owners: List<SavedWorkIdentity>): AppResult<Int> {
+        if (owners.isEmpty()) return AppResult.Success(0)
+        // Only a fully committed batch supplies a count. Stale-owner failures are not skipped.
+        return repository.removeAllFromLibrary(owners)
     }
 }

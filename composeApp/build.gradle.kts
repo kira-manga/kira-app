@@ -279,6 +279,7 @@ kotlin {
         getByName("desktopTest").dependencies {
             // Exercise the real NavHost/entry lifecycle without bootstrapping the application.
             implementation(libs.compose.ui.test.junit4)
+            implementation(libs.androidx.sqlite.bundled)
         }
 
         androidMain.dependencies {
