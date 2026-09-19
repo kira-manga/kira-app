@@ -167,7 +167,7 @@ class SettingsViewModelTest {
                 assertEquals(listOf(feedbackIntent), feedback.requests)
                 release.complete(Unit)
                 runCurrent()
-                assertEquals(listOf(SettingsEffect.FeedbackResult(success)), effects)
+                assertEquals(listOf<SettingsEffect>(SettingsEffect.FeedbackResult(success)), effects)
                 assertFalse(model.state.value.isSubmittingFeedback)
                 assertEquals(!success, model.state.value.feedbackDialogOpen)
                 assertFalse(model.state.value.legacyFeedbackRetired)
@@ -269,7 +269,7 @@ class SettingsViewModelTest {
             val collector = backgroundScope.launch(dispatcher) { model.screenEffects.collect { effects += it } }
             model.submit(SettingsIntent.OnNavigate(destination))
             runCurrent()
-            assertEquals(listOf(SettingsEffect.NavigateTo(destination)), effects)
+            assertEquals(listOf<SettingsEffect>(SettingsEffect.NavigateTo(destination)), effects)
             collector.cancel()
             assertRetired(model)
         }
@@ -282,7 +282,7 @@ class SettingsViewModelTest {
         runCurrent()
         assertFalse(fresh.state.value.legacyFeedbackRetired)
         assertEquals(listOf(feedbackIntent), freshFeedback.requests)
-        assertEquals(listOf(SettingsEffect.FeedbackResult(true)), freshEffects)
+        assertEquals(listOf<SettingsEffect>(SettingsEffect.FeedbackResult(true)), freshEffects)
     }
 
     private fun assertRetired(model: SettingsViewModel) {
