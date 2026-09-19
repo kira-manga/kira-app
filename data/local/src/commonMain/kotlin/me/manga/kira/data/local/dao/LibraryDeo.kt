@@ -6,6 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import me.manga.kira.data.local.entity.ChapterNotification
+import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.presentation.features.home.data.ApiTitle
@@ -49,9 +51,8 @@ interface LibraryDeo : ChapterDiscoveryQueries {
     @Query("SELECT id FROM saved_manga WHERE title = :title LIMIT 1")
     suspend fun getMangaIdByTitle(title: String): Long?
 
-    // Library identity is the (api, title) pair everywhere else (ApiTitle drives the heart icons),
-    // so removal must resolve by api+title — a title-only lookup can hit a same-titled row from a
-    // different source and delete the wrong manga + its downloaded files.
+    // Legacy-only lookup for not-yet-cutover consumers. Never use title equality as authority for
+    // library mutation; the rework writer resolves retained IDs and exact/accepted-alias locators.
     @Query("SELECT id FROM saved_manga WHERE api = :api AND title = :title LIMIT 1")
     suspend fun getMangaIdByApiAndTitle(api: String, title: String): Long?
 
@@ -94,6 +95,48 @@ interface LibraryDeo : ChapterDiscoveryQueries {
     @Query("DELETE FROM notifications WHERE mangaUrl = :mangaUrl")
     suspend fun removeNotificationsByUrl(mangaUrl: String)
 
+    /** Candidate rows only; the encompassing library writer must resolve their full ownership. */
+    @Query("SELECT * FROM history_items WHERE mangaId = :mangaId OR api = :api")
+    suspend fun getLibraryHistoryCandidates(mangaId: Long, api: String): List<HistoryItemD>
+
+    /** Includes malformed ID-linked rows so preflight cannot silently overlook a conflicting owner. */
+    @Query("SELECT * FROM notifications WHERE mangaId = :mangaId OR api = :api")
+    suspend fun getLibraryNotificationCandidates(mangaId: Long, api: String): List<ChapterNotification>
+
+    /** Use only with an ID preflighted in the same writer; count must be exactly one. */
+    @Query("UPDATE history_items SET mangaImageUrl = :coverUrl WHERE id = :id")
+    suspend fun updateLibraryHistoryCover(id: Long, coverUrl: String): Int
+
+    /** Use only with an ID preflighted in the same writer; no other notification column changes. */
+    @Query("UPDATE notifications SET mangaImageUrl = :coverUrl WHERE id = :id")
+    suspend fun updateLibraryNotificationCover(id: Long, coverUrl: String): Int
+
+    /** Delete only preflighted row IDs, never a URL-wide cross-source group. */
+    @Query("DELETE FROM history_items WHERE id IN (:ids)")
+    suspend fun deleteLibraryHistory(ids: List<Long>): Int
+
+    /** Delete only preflighted row IDs, never another owner's matching URL. */
+    @Query("DELETE FROM notifications WHERE id IN (:ids)")
+    suspend fun deleteLibraryNotifications(ids: List<Long>): Int
+
+    @Query("SELECT COUNT(*) FROM chapter_downloads WHERE mangaId = :mangaId")
+    suspend fun countLibraryDownloads(mangaId: Long): Int
+
+    /** Requires an engine quiescence lease plus an in-transaction active-queue recheck. */
+    @Query("DELETE FROM chapter_downloads WHERE mangaId = :mangaId")
+    suspend fun deleteLibraryDownloads(mangaId: Long): Int
+
+    /** Final parent deletion after clearWork, on the same writer connection. */
+    @Query("DELETE FROM saved_manga WHERE id = :id AND api = :api AND url = :url")
+    suspend fun deleteMangaForExactOwner(id: Long, api: String, url: String): Int
+
+    /** Insert-only after parent/discovery preflight in the writer; never replace existing children. */
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertNewLibraryChapters(chapters: List<SavedChapterEntity>): List<Long>
+
+    /** Fresh autogen Updates rows, committed with the newly inserted chapters. */
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertNewLibraryNotifications(notifications: List<ChapterNotification>): List<Long>
 
     @Transaction
     suspend fun markChapterAndNotificationRead(chapterId: Long) {
