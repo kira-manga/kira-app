@@ -171,7 +171,7 @@ class IosRestoredDownloadRetryTest {
             host.cancelAndJoin()
             assertEquals(1, receipts)
             assertEquals(1, received.publications)
-            assertTrue(received.discarded.isCompleted)
+            assertFalse(received.discarded.isCompleted, "Successful publication transfers the stage; receiver disposal must not delete it again")
             assertFalse(fixture.system.exists(received.path))
             assertTrue(transport.enqueued.isEmpty())
             assertEquals(manifest, fixture.manifest(chapter), "No new retry budget was manufactured for the gap")
