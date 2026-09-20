@@ -4,10 +4,13 @@ import android.app.Application
 import android.content.Context
 import androidx.work.WorkerParameters
 import io.ktor.client.engine.HttpClientEngine
+import me.manga.kira.core.result.AppResult
 import org.junit.Test
 import org.koin.core.annotation.KoinExperimentalAPI
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.koin.test.verify.definition
+import org.koin.test.verify.injectedParameters
 import org.koin.test.verify.verify
 
 /**
@@ -40,7 +43,12 @@ class KoinGraphResolutionTest {
         // Merge into one umbrella module so verify() flattens the included modules and resolves
         // cross-module dependencies against the full union of definitions.
         val umbrella = module { includes(all) }
-        umbrella.verify(extraTypes = EXTERNALLY_PROVIDED)
+        umbrella.verify(
+            extraTypes = EXTERNALLY_PROVIDED,
+            // Only this private factory-created constructor receives the already selected graph
+            // result. It is not a global AppResult binding or a blanket verifier exclusion.
+            injections = injectedParameters(definition<ComplaintBackendHostOwner>(AppResult::class)),
+        )
     }
 
     private companion object {

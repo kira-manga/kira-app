@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Elimina i dati delle segnalazioni</string>
+    <string name="settings_installation_deletion_active">Puoi richiedere l’eliminazione dal server di tutti i dati delle segnalazioni collegati a questa installazione dell’app.</string>
+    <string name="settings_installation_deletion_checking">Verifica dello stato locale delle segnalazioni di questa installazione…</string>
+    <string name="settings_installation_deletion_missing">Non sono state trovate identità locali per le segnalazioni né operazioni conservate. Questo non conferma l’eliminazione sul server.</string>
+    <string name="settings_installation_deletion_cleanup">La pulizia locale delle segnalazioni richiede attenzione. Usa le azioni di ripristino locale qui sotto, poi verifica di nuovo lo stato locale. Questo non conferma l’eliminazione sul server.</string>
+    <string name="settings_installation_deletion_uncertain">Lo stato dell’eliminazione è incerto. Una richiesta potrebbe essere già stata inviata. Verifica lo stato locale prima di eseguire un’altra azione.</string>
+    <string name="settings_installation_deletion_pending">La richiesta di eliminazione o la relativa pulizia locale è ancora in sospeso. Il completamento non è confermato. Prosegui la richiesta esistente senza crearne una sostitutiva.</string>
+    <string name="settings_installation_deletion_completed">La richiesta di eliminazione sul server è stata completata. L’identità locale per le segnalazioni e le operazioni conservate di questa installazione sono state cancellate.</string>
+    <string name="settings_installation_deletion_request">Esamina l’eliminazione dal server</string>
+    <string name="settings_installation_deletion_check">Verifica lo stato locale</string>
+    <string name="settings_installation_deletion_continue">Prosegui l’eliminazione esistente</string>
+    <string name="settings_installation_deletion_warning_title">Eliminare i dati delle segnalazioni di questa installazione?</string>
+    <string name="settings_installation_deletion_warning">Questa azione richiede l’eliminazione dal server di tutti i dati delle segnalazioni collegati a questa installazione. Al termine vengono cancellate anche l’identità locale per le segnalazioni e le operazioni conservate. Potresti perdere l’accesso alla cronologia delle segnalazioni. L’eliminazione sul server non può essere annullata.</string>
+    <string name="settings_installation_deletion_confirm">Elimina i dati delle segnalazioni</string>
+    <string name="settings_installation_deletion_close_notice">Una richiesta accettata dal server può proseguire dopo la chiusura di questa finestra o dell’app.</string>
+    <string name="settings_installation_deletion_uninstall">Disinstallare l’app non elimina i dati delle segnalazioni sul server.</string>
+    <string name="settings_installation_deletion_local_only">Il ripristino o l’abbandono locale non cancella i dati del server, non ne conferma l’eliminazione e non annulla una richiesta già inviata.</string>
+    <string name="settings_installation_deletion_retry_after">Attesa suggerita dal server: %1$d s. Prosegui manualmente; non ci sono tentativi automatici.</string>
+    <string name="settings_installation_deletion_retry_failed">Non è stato possibile completare l’ultimo tentativo. La stessa richiesta di eliminazione è ancora conservata.</string>
+</resources>

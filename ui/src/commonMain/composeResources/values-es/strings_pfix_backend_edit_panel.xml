@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">El borrador se guarda solo en memoria. Al cerrar este editor se descarta, pero no se borran ni se deshacen las operaciones conservadas.</string>
+    <string name="backend_edit_retry_same">Comprobar o reintentar la misma modificación</string>
+    <string name="backend_edit_conflict">Se informó de un conflicto de versión. Tu borrador no ha cambiado; cualquier reintento usa la versión original, nunca una versión actualizada.</string>
+    <string name="backend_edit_unresolved">El resultado de la modificación no está confirmado. No inicies una modificación de reemplazo.</string>
+    <string name="backend_edit_open_recovery">Cerrar y abrir la recuperación de comentarios</string>
+    <string name="backend_edit_live_required">La modificación original en memoria ya no está disponible. Los metadatos conservados no pueden usarse para reenviarla.</string>
+    <string name="backend_edit_receipt_expired">El plazo seguro del comprobante ha terminado. Esta modificación no se volverá a enviar.</string>
+</resources>

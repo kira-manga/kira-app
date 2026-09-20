@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Taslak metni yalnızca bellekte tutulur. Bu düzenleyiciyi kapatmak taslağı siler ancak saklanan işlemleri silmez veya geri almaz.</string>
+    <string name="backend_edit_retry_same">Aynı düzenlemeyi kontrol et veya yeniden dene</string>
+    <string name="backend_edit_conflict">Sürüm çakışması bildirildi. Taslağınız değişmedi; her yeniden deneme güncellenmiş bir sürümü değil, ilk sürümü kullanır.</string>
+    <string name="backend_edit_unresolved">Düzenlemenin sonucu henüz doğrulanmadı. Yerine yeni bir düzenleme başlatmayın.</string>
+    <string name="backend_edit_open_recovery">Kapat ve geri bildirim kurtarmayı aç</string>
+    <string name="backend_edit_live_required">Bellekteki ilk düzenleme artık mevcut değil. Saklanan üst veriler düzenlemeyi yeniden göndermek için kullanılamaz.</string>
+    <string name="backend_edit_receipt_expired">Güvenli alındı onayı süresi sona erdi. Bu düzenleme yeniden gönderilmeyecek.</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Yalnızca aşağıdaki geri bildirim silinsin mi? Bu işlem geri alınamaz. Kurulum kimliği korunur. Bu pencereyi kapatmak gönderilmiş bir isteği geri almaz.</string>
+    <string name="backend_delete_conflict">Bir sürüm çakışması bildirildi. İlk silme isteği ilk sürümünü korur ve hiçbir zaman yenilenmiş bir sürüme uyarlanmaz.</string>
+    <string name="backend_delete_retry_same">Aynı silmeyi kontrol et veya yeniden dene</string>
+    <string name="backend_delete_open_recovery">Kurulum ve kurtarmayı aç</string>
+    <string name="backend_delete_unresolved">Silme henüz doğrulanmadı. Başarısız olduğunu varsaymadan önce durumunu kontrol edin.</string>
+    <string name="backend_delete_unavailable">Silme veya kurtarma kullanılamıyor. Saklanan işlemleri kurulum ve kurtarmadan inceleyin; işlemler değiştirilmedi.</string>
+    <string name="backend_delete_live_required">Bu silme yalnızca ilk onay penceresi açıkken yeniden denenebilir. Kurtarma bu isteği yeniden oluşturamaz.</string>
+    <string name="backend_delete_receipt_expired">Silme makbuzunun süresi doldu. Bu, silmenin başarısız olduğunu kanıtlamaz.</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Recuperação da identidade local de relatos</string>
+    <string name="settings_installation_review_unreadable">Verificar se uma identidade ilegível pode ser recuperada</string>
+    <string name="settings_installation_review_abandonment">Revisar o abandono local da exclusão</string>
+    <string name="settings_installation_continue_cleanup">Verificar ou continuar a limpeza local autorizada</string>
+    <string name="settings_installation_abandon_title">Abandonar a continuação local da exclusão?</string>
+    <string name="settings_installation_abandon_warning">Isso abandona a continuação local de uma solicitação de exclusão existente. Você pode perder a capacidade de tentar novamente ou verificar o resultado. Não desfaz uma solicitação já enviada nem confirma a exclusão no servidor.</string>
+    <string name="settings_installation_abandon_confirm">Abandonar a continuação local da exclusão</string>
+    <string name="settings_installation_abandon_completed">A continuação local da exclusão foi abandonada. Isso não confirma a exclusão no servidor.</string>
+    <string name="settings_installation_cleanup_checked">A verificação de limpeza local foi concluída. Talvez nada tenha sido alterado. Isso não confirma a remoção da identidade nem a exclusão no servidor.</string>
+</resources>

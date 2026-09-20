@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">Teks balasan hanya disimpan di memori. Menutup panel ini membuangnya. Biarkan panel tetap terbuka untuk mencoba ulang balasan yang sama jika hasilnya belum pasti.</string>
+    <string name="backend_reply_retry_same">Coba ulang balasan yang sama</string>
+    <string name="backend_reply_open_recovery">Tutup balasan dan buka penyiapan atau pemulihan</string>
+    <string name="backend_reply_target_unavailable">Balasan tidak tersedia untuk item ini.</string>
+    <string name="backend_reply_unresolved">Hasil balasan belum dikonfirmasi. Jangan kirim balasan pengganti.</string>
+    <string name="backend_reply_receipt_expired">Jangka waktu aman tanda terima telah berakhir. Balasan ini tidak akan dikirim lagi.</string>
+    <string name="backend_reply_live_required">Balasan asli di memori tidak lagi tersedia. Metadata yang disimpan tidak dapat digunakan untuk mengirimnya ulang.</string>
+</resources>

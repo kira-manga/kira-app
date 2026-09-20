@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Este dispositivo aún no tiene una identidad para los informes. Configura el historial antes de enviar. Tu borrador permanece solo en memoria.</string>
+    <string name="request_feedback_setup_history">Configurar historial de informes</string>
+    <string name="request_feedback_history_ready">El historial de informes está listo. Esta solicitud no se ha enviado. Revísala y selecciona «Enviar».</string>
+    <string name="request_feedback_clean_start">Este nuevo historial no incluye los informes enviados a través del servicio anterior.</string>
+</resources>

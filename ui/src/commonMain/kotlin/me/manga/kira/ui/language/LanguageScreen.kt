@@ -41,12 +41,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.domain.model.language.Language
 import me.manga.kira.ui.components.KiraDialogError
@@ -68,6 +72,7 @@ import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.at_least_n_characters
 import me.manga.kira.ui.generated.resources.back
 import me.manga.kira.ui.generated.resources.cancel
+import me.manga.kira.ui.generated.resources.complaint_languages
 import me.manga.kira.ui.generated.resources.connect_with_us_in_social_media
 import me.manga.kira.ui.generated.resources.enter_your_language
 import me.manga.kira.ui.generated.resources.language_restart_hint
@@ -179,8 +184,14 @@ import org.jetbrains.compose.resources.stringResource
  * citation is historical record of the design lineage; the rework
  * LanguageScreen continues to render the language picker correctly through
  * the legacy retire.
+ *
+ * @param onRequestLanguage Optional candidate entry callback receiving the localized fixed subject.
+ * Committing a non-null callback permanently retires this retained VM's legacy request producer,
+ * even without a click. Returning to null does not restore legacy; initially null keeps it enabled.
+ * Locale selection and Back remain unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList")
 @Composable
 fun LanguageScreen(
     viewModel: LanguageViewModel,
@@ -197,20 +208,36 @@ fun LanguageScreen(
     // hint. The route adapter passes `!LocalAppLocale.isLiveLocaleSwitchSupported`. Default false
     // keeps Android/Desktop (live switch) callers unchanged.
     restartHintVisible: Boolean = false,
+    onRequestLanguage: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val requestLanguage: ((String) -> Unit)? = remember(viewModel, onRequestLanguage) {
+        onRequestLanguage?.let { request ->
+            { subject ->
+                viewModel.retireLegacyRequest()
+                request(subject)
+            }
+        }
+    }
+    SideEffect {
+        if (onRequestLanguage != null) viewModel.retireLegacyRequest()
+    }
     LanguageScreenContent(
         state = state,
-        effects = viewModel.effects,
+        effects = viewModel.screenEffects,
         onIntent = viewModel::submit,
         modifier = modifier,
         onBack = onBack,
         onOpenUrl = onOpenUrl,
         restartHintVisible = restartHintVisible,
+        onRequestLanguage = requestLanguage,
+        isLegacyRequestRetired = { viewModel.state.value.legacyRequestRetired },
     )
 }
 
+// Keep the established picker/layout intact while making all legacy request paths mutually exclusive.
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList", "LongMethod")
 @Composable
 internal fun LanguageScreenContent(
     state: LanguageState,
@@ -220,8 +247,52 @@ internal fun LanguageScreenContent(
     onBack: () -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
     restartHintVisible: Boolean = false,
+    onRequestLanguage: ((String) -> Unit)? = null,
+    isLegacyRequestRetired: () -> Boolean = { state.legacyRequestRetired },
 ) {
     val spacing = LocalSpacing.current
+    val snackbarHostState = remember(effects) { SnackbarHostState() }
+    val snackbarJobs = remember(effects) { mutableSetOf<Job>() }
+    val requestOwner = remember(effects, onRequestLanguage, state.legacyRequestRetired) { mutableStateOf(true) }
+    val currentRequestOwner by rememberUpdatedState(requestOwner)
+    val currentRequestLanguage by rememberUpdatedState(onRequestLanguage)
+    val currentOnIntent by rememberUpdatedState(onIntent)
+    val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
+    val currentIsLegacyRequestRetired by rememberUpdatedState(isLegacyRequestRetired)
+
+    fun legacyRequestAllowed(owner: State<Boolean>): Boolean =
+        owner.value && owner === currentRequestOwner && currentRequestLanguage == null &&
+            !currentIsLegacyRequestRetired()
+
+    DisposableEffect(requestOwner) {
+        onDispose {
+            requestOwner.value = false
+            // Completion callbacks remove jobs, so cancel a snapshot rather than the live set.
+            snackbarJobs.toList().forEach { it.cancel() }
+            snackbarJobs.clear()
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+    val requestSubject = stringResource(Res.string.complaint_languages)
+    val dispatchIntent: (LanguageIntent) -> Unit = { intent ->
+        when (intent) {
+            LanguageIntent.OnOpenRequestDialog -> {
+                if (requestOwner.value && requestOwner === currentRequestOwner) {
+                    val request = currentRequestLanguage
+                    if (request != null) {
+                        request(requestSubject)
+                    } else if (legacyRequestAllowed(requestOwner)) {
+                        currentOnIntent(intent)
+                    }
+                }
+            }
+            LanguageIntent.OnDismissRequestDialog,
+            is LanguageIntent.OnRequestTextChange,
+            LanguageIntent.OnSubmitRequest,
+            -> if (legacyRequestAllowed(requestOwner)) currentOnIntent(intent)
+            is LanguageIntent.OnSelectLanguage -> currentOnIntent(intent)
+        }
+    }
     // GAP-LANG-04 — first-run selected-language default. Native seeds the picker's selected value
     // with `Locale.getDefault().language` (LanguageSelectionScreen.kt:64-66) and its
     // `DataStoreHelper.languageFlow` falls back to the same when no preference is stored, so the
@@ -231,26 +302,27 @@ internal fun LanguageScreenContent(
     // `Locale.current.language` returns the ISO-639 code ("en", "ar", ...) matching native's
     // `Locale.getDefault().language`.
     val effectiveSelectedCode = state.selectedCode.ifBlank { Locale.current.language }
-    val snackbarHostState = remember { SnackbarHostState() }
-    // Launch snackbars off the effect collector so showing one never blocks a later navigation
-    // effect for the snackbar's duration (the user couldn't leave a screen while a snackbar showed).
-    val scope = rememberCoroutineScope()
     // Snackbar copy resolved in composable scope — stringResource can't run inside the
     // effect-collector coroutine below.
     val submittedMessage = stringResource(Res.string.request_submitted_successfully)
-
+    // Stable across request-mode changes; owner disposal cancels consumed and queued snackbars.
     LaunchedEffect(effects) {
         effects.collect { effect ->
-            when (effect) {
-                is LanguageEffect.RequestSubmitted ->
-                    // Native onSuccess uses SnackbarDuration.Short (LanguageSelectionScreen.kt:139).
-                    scope.launch {
+            val owner = currentRequestOwner
+            if (!legacyRequestAllowed(owner)) return@collect
+            val job = launch {
+                if (!legacyRequestAllowed(owner)) return@launch
+                when (effect) {
+                    is LanguageEffect.RequestSubmitted ->
+                        // Native onSuccess uses SnackbarDuration.Short (LanguageSelectionScreen.kt:139).
                         snackbarHostState.showSnackbar(
                             message = submittedMessage,
                             duration = SnackbarDuration.Short,
                         )
-                    }
+                }
             }
+            snackbarJobs += job
+            job.invokeOnCompletion { snackbarJobs -= job }
         }
     }
 
@@ -283,9 +355,10 @@ internal fun LanguageScreenContent(
                     }
                 },
                 // Native `TopAppBarCom.kt:29-31` sets the container color to background.
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -297,8 +370,8 @@ internal fun LanguageScreenContent(
                 languages = state.languages,
                 selectedCode = effectiveSelectedCode,
                 restartHintVisible = restartHintVisible,
-                onSelect = { code -> onIntent(LanguageIntent.OnSelectLanguage(code)) },
-                onOpenRequestDialog = { onIntent(LanguageIntent.OnOpenRequestDialog) },
+                onSelect = { code -> dispatchIntent(LanguageIntent.OnSelectLanguage(code)) },
+                onOpenRequestDialog = { dispatchIntent(LanguageIntent.OnOpenRequestDialog) },
                 contentPadding = innerPadding,
                 // Native list horizontal padding is 24.dp (LanguageSelectionScreen.kt:99-101 —
                 // LazyColumn `.padding(horizontal = 24.dp)`); spacing.xl == 24.dp. Was spacing.lg
@@ -309,15 +382,17 @@ internal fun LanguageScreenContent(
         }
     }
 
-    if (state.requestDialogVisible) {
+    if (state.requestDialogVisible && legacyRequestAllowed(requestOwner)) {
         LanguageRequestDialog(
             text = state.requestText,
             submitting = state.requestSubmitting,
             failed = state.requestFailed,
-            onTextChange = { onIntent(LanguageIntent.OnRequestTextChange(it)) },
-            onSubmit = { onIntent(LanguageIntent.OnSubmitRequest) },
-            onDismiss = { onIntent(LanguageIntent.OnDismissRequestDialog) },
-            onOpenUrl = onOpenUrl,
+            onTextChange = { dispatchIntent(LanguageIntent.OnRequestTextChange(it)) },
+            onSubmit = { dispatchIntent(LanguageIntent.OnSubmitRequest) },
+            onDismiss = { dispatchIntent(LanguageIntent.OnDismissRequestDialog) },
+            onOpenUrl = { url ->
+                if (legacyRequestAllowed(requestOwner)) currentOnOpenUrl(url)
+            },
         )
     }
 }

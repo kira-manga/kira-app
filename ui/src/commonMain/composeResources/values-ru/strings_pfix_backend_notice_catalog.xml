@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">Правила о контенте для взрослых</string>
+    <string name="backend_notice_content_policy_body">Упоминания контента для взрослых / 18+ здесь запрещены. Пожалуйста, соблюдайте правила нашего сообщества в своих сообщениях.</string>
+    <string name="backend_notice_source_requirements_subject">Требования к новым сайтам манги</string>
+    <string name="backend_notice_source_requirements_body">Любой новый сайт манги должен предлагать не менее 200 произведений, не требовать проверок на ботов и оправдывать затраты на настройку. Добавление сайта требует значительного времени и труда.</string>
+</resources>

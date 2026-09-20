@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">Yanıt metni yalnızca bellekte tutulur. Bu paneli kapatmak metni siler. Sonuç belirsizse aynı yanıtı yeniden denemek için paneli açık tutun.</string>
+    <string name="backend_reply_retry_same">Aynı yanıtı yeniden dene</string>
+    <string name="backend_reply_open_recovery">Yanıtı kapat ve kurulumu veya kurtarmayı aç</string>
+    <string name="backend_reply_target_unavailable">Bu öğe için yanıt kullanılamıyor.</string>
+    <string name="backend_reply_unresolved">Yanıtın sonucu henüz doğrulanmadı. Yerine yeni bir yanıt göndermeyin.</string>
+    <string name="backend_reply_receipt_expired">Güvenli alındı süresi sona erdi. Bu yanıt tekrar gönderilmeyecek.</string>
+    <string name="backend_reply_live_required">Bellekteki özgün yanıt artık kullanılamıyor. Saklanan üst veriler yanıtı yeniden göndermek için kullanılamaz.</string>
+</resources>

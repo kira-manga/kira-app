@@ -1,12 +1,21 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.di.ComplaintBackendEntrypoint
+import me.manga.kira.di.ComplaintBackendHostOwner
 import me.manga.kira.locale.LocalAppLocale
 import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.language.LanguageViewModel
+import me.manga.kira.ui.complaint.ComplaintUnavailableDialog
 import me.manga.kira.ui.language.LanguageScreen
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -123,18 +132,27 @@ import org.koin.compose.viewmodel.koinViewModel
 fun LanguageReworkScreenRoute(
     navController: NavController,
     @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
+    complaintHost: ComplaintBackendHostOwner = koinInject(),
 ) {
     val viewModel: LanguageViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
-    // GAP-LANG-01 — wire the top-bar back arrow (native TopAppBarCom navigationIcon).
-    LanguageScreen(
-        viewModel = viewModel,
-        onBack = { navController.safePopBackStack() },
-        // iOS can't re-resolve resources in-session → show the "restart to apply" hint there;
-        // Android/Desktop switch live so the hint stays hidden.
-        restartHintVisible = !LocalAppLocale.isLiveLocaleSwitchSupported,
-        // Request-language dialog social-media row forwards each brand URL to the platform
-        // IntentLauncher (fire-and-forget; same posture as SettingsReworkScreenRoute's onOpenUrl).
-        onOpenUrl = { url -> launcher.openUrl(url) },
-    )
+    val selection by complaintHost.selection.collectAsState()
+    var unavailable by remember(complaintHost) { mutableStateOf(false) }
+    val refuse: (String) -> Unit = remember(complaintHost) { { unavailable = true } }
+    when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.LANGUAGE, selection)) {
+        is AppResult.Success -> ComplaintBackendLanguageRequestRoute(
+            candidate = candidate.value,
+            viewModel = viewModel,
+            onBack = { navController.safePopBackStack() },
+            onOpenUrl = { launcher.openUrl(it) },
+        )
+        is AppResult.Failure -> LanguageScreen(
+            viewModel = viewModel,
+            onBack = { navController.safePopBackStack() },
+            restartHintVisible = !LocalAppLocale.isLiveLocaleSwitchSupported,
+            onOpenUrl = { launcher.openUrl(it) },
+            onRequestLanguage = refuse,
+        )
+    }
+    if (unavailable) ComplaintUnavailableDialog(onBack = { unavailable = false })
 }

@@ -58,15 +58,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,7 +85,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import me.manga.kira.domain.model.sources.Source
 import me.manga.kira.presentation.sources.SourcesEffect
 import me.manga.kira.presentation.sources.SourcesIntent
@@ -292,8 +296,13 @@ import org.jetbrains.compose.resources.stringResource
  *  the §307-retired AnimatedBackground precedent that originally
  *  established the Lottie-to-Compose-primitive omit-decorative-chrome
  *  pattern.
+ *
+ * @param onRequestSource Optional candidate entry callback receiving the localized fixed subject.
+ * Committing a non-null callback permanently retires this retained VM's legacy request producer,
+ * even without a click. Returning to null never restores it; initially null preserves legacy.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongParameterList")
 @Composable
 fun SourcesScreen(
     viewModel: SourcesViewModel,
@@ -307,11 +316,23 @@ fun SourcesScreen(
     // Language request dialog's onOpenUrl; the host route adapter may forward it to the platform
     // IntentLauncher.openUrl.
     onOpenUrl: (String) -> Unit = {},
+    onRequestSource: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val requestSource: ((String) -> Unit)? = remember(viewModel, onRequestSource) {
+        onRequestSource?.let { request ->
+            { subject: String ->
+                viewModel.retireLegacyRequest()
+                request(subject)
+            }
+        }
+    }
+    SideEffect {
+        if (onRequestSource != null) viewModel.retireLegacyRequest()
+    }
     SourcesScreenContent(
         state = state,
-        effects = viewModel.effects,
+        effects = viewModel.screenEffects,
         onIntent = viewModel::submit,
         onImportFromStorage = onImportFromStorage,
         modifier = modifier,
@@ -319,10 +340,22 @@ fun SourcesScreen(
         onboardingLanguageTag = onboardingLanguageTag,
         onBack = onBack,
         onOpenUrl = onOpenUrl,
+        onRequestSource = requestSource,
+        isLegacyRequestRetired = { viewModel.state.value.legacyRequestRetired },
     )
 }
 
+// Existing screen/layout debt stays local; candidate routing must not restructure unrelated source controls.
+// Keep explicit ownership guards around both callbacks and suspended effects rather than weakening them
+// to lower this established screen's branch count. This exception is local, not a baseline/file suppression.
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress(
+    "ktlint:standard:function-naming",
+    "FunctionNaming",
+    "LongParameterList",
+    "LongMethod",
+    "CyclomaticComplexMethod",
+)
 @Composable
 internal fun SourcesScreenContent(
     state: SourcesState,
@@ -335,12 +368,31 @@ internal fun SourcesScreenContent(
     onBack: (() -> Unit)? = null,
     // GAP-SRC-SOCIAL — forwarded to the Request-Source dialog's social-media footer.
     onOpenUrl: (String) -> Unit = {},
+    onRequestSource: ((String) -> Unit)? = null,
+    isLegacyRequestRetired: () -> Boolean = { state.legacyRequestRetired },
 ) {
     val spacing = LocalSpacing.current
-    val snackbarHostState = remember { SnackbarHostState() }
-    // Launch snackbars off the effect collector so showing one never blocks a later navigation
-    // effect for the snackbar's duration (the user couldn't leave a screen while a snackbar showed).
-    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember(effects) { SnackbarHostState() }
+    val snackbarJobs = remember(effects) { mutableSetOf<Job>() }
+    val requestOwner = remember(effects, onRequestSource, state.legacyRequestRetired) { mutableStateOf(true) }
+    val currentRequestOwner by rememberUpdatedState(requestOwner)
+    val candidateRequest by rememberUpdatedState(onRequestSource)
+    val currentOnIntent by rememberUpdatedState(onIntent)
+    val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
+    val currentIsLegacyRequestRetired by rememberUpdatedState(isLegacyRequestRetired)
+
+    fun legacyRequestAllowed(owner: State<Boolean>): Boolean =
+        owner.value && owner === currentRequestOwner && candidateRequest == null && !currentIsLegacyRequestRetired()
+
+    DisposableEffect(requestOwner) {
+        onDispose {
+            requestOwner.value = false
+            // Completion handlers remove jobs, so cancellation iterates a snapshot.
+            snackbarJobs.toList().forEach { it.cancel() }
+            snackbarJobs.clear()
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
     val isOnboarding = onboardingLanguageTag != null
     // NP Phase 2 (GAP-SRC-06): the top-bar title is parameterized by entry. The onboarding entry
     // (onboardingLanguageTag != null) surfaces its title as the centered "Select Your Manga
@@ -348,11 +400,12 @@ internal fun SourcesScreenContent(
     // "Sources". The in-settings (RepoSettings) entry — the SourcesReworkScreenRoute, which passes
     // a null tag and null onFinish — reads "Sources Settings" (legacy title_sources_settings),
     // matching legacy RepoSettingsScreen.kt:70-84. Standalone entries keep "Sources".
-    val topBarTitle = if (!isOnboarding && onFinish == null) {
-        stringResource(Res.string.title_sources_settings)
-    } else {
-        stringResource(Res.string.sources_title)
-    }
+    val topBarTitle =
+        if (!isOnboarding && onFinish == null) {
+            stringResource(Res.string.title_sources_settings)
+        } else {
+            stringResource(Res.string.sources_title)
+        }
     // Snackbar copy resolved in composable scope — stringResource can't be called inside the
     // effect-collector coroutine below. NP Phase 2 (GAP-SRC-02): replaces the former English
     // literals built VM-side with localized en+ar resources.
@@ -365,31 +418,56 @@ internal fun SourcesScreenContent(
     // which submits getDisplayName(context) as the subject (vs the former VM-side "SITES_ADD"
     // enum name). The Request-Source row pins the type to SITES_ADD, so the subject is fixed.
     val complaintSubject = stringResource(Res.string.add_manga_site)
-
-    LaunchedEffect(effects) {
-        effects.collect { effect ->
-            when (effect) {
-                is SourcesEffect.RequestSubmitted ->
-                    scope.launch { snackbarHostState.showSnackbar(submittedMessage) }
-                is SourcesEffect.RequestFailed -> scope.launch {
-                    // NP Phase 2 (GAP-SRC-03): failure snackbar offers a "Retry" action (Long
-                    // duration) that re-submits the preserved body, matching the legacy
-                    // RepoSettingsScreen.kt:178-209 onError posture.
-                    val result = snackbarHostState.showSnackbar(
-                        message = failedMessage,
-                        actionLabel = retryLabel,
-                        duration = SnackbarDuration.Long,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        onIntent(
-                            SourcesIntent.OnSubmitComplaint(
-                                body = effect.body,
-                                subject = complaintSubject,
-                            ),
-                        )
+    val dispatchIntent: (SourcesIntent) -> Unit = { intent ->
+        val candidate = candidateRequest
+        when (intent) {
+            SourcesIntent.OnOpenComplaintDialog -> {
+                if (requestOwner.value && requestOwner === currentRequestOwner) {
+                    if (candidate != null) {
+                        candidate(complaintSubject)
+                    } else if (legacyRequestAllowed(requestOwner)) {
+                        currentOnIntent(intent)
                     }
                 }
             }
+            is SourcesIntent.OnSubmitComplaint, SourcesIntent.OnDismissComplaintDialog ->
+                if (legacyRequestAllowed(requestOwner)) currentOnIntent(intent)
+            else -> currentOnIntent(intent)
+        }
+    }
+
+    // Keep collection stable across mode changes; every child and saved Retry has an owner.
+    LaunchedEffect(effects) {
+        effects.collect { effect ->
+            val owner = currentRequestOwner
+            if (!legacyRequestAllowed(owner)) return@collect
+            val job = launch {
+                if (!legacyRequestAllowed(owner)) return@launch
+                when (effect) {
+                    is SourcesEffect.RequestSubmitted -> snackbarHostState.showSnackbar(submittedMessage)
+                    is SourcesEffect.RequestFailed -> {
+                        // NP Phase 2 (GAP-SRC-03): failure snackbar offers a "Retry" action (Long
+                        // duration) that re-submits the preserved body, matching the legacy
+                        // RepoSettingsScreen.kt:178-209 onError posture.
+                        val result =
+                            snackbarHostState.showSnackbar(
+                                message = failedMessage,
+                                actionLabel = retryLabel,
+                                duration = SnackbarDuration.Long,
+                            )
+                        if (result == SnackbarResult.ActionPerformed && legacyRequestAllowed(owner)) {
+                            currentOnIntent(
+                                SourcesIntent.OnSubmitComplaint(
+                                    body = effect.body,
+                                    subject = complaintSubject,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            snackbarJobs += job
+            job.invokeOnCompletion { snackbarJobs -= job }
         }
     }
 
@@ -448,29 +526,32 @@ internal fun SourcesScreenContent(
                 state.isLoading -> LoadingBox(innerPadding)
                 // Keep the list surface when the catalog is empty so its recovery actions remain
                 // reachable. SourcesList adds Import from storage only for that empty snapshot.
-                else -> SourcesList(
-                    groups = state.groupedByLanguage,
-                    onIntent = onIntent,
-                    onImportFromStorage = onImportFromStorage,
-                    contentPadding = innerPadding,
-                    spacingMd = spacing.md,
-                    spacingLg = spacing.lg,
-                    showOnboardingHeadline = isOnboarding,
-                )
+                else ->
+                    SourcesList(
+                        groups = state.groupedByLanguage,
+                        onIntent = dispatchIntent,
+                        onImportFromStorage = onImportFromStorage,
+                        contentPadding = innerPadding,
+                        spacingMd = spacing.md,
+                        spacingLg = spacing.lg,
+                        showOnboardingHeadline = isOnboarding,
+                    )
             }
         }
     }
 
-    if (state.complaintDialogOpen) {
+    if (state.complaintDialogOpen && legacyRequestAllowed(requestOwner)) {
         RequestSourceDialog(
             isSubmitting = state.isSubmittingComplaint,
             onSubmit = { body ->
-                onIntent(
+                dispatchIntent(
                     SourcesIntent.OnSubmitComplaint(body = body, subject = complaintSubject),
                 )
             },
-            onDismiss = { onIntent(SourcesIntent.OnDismissComplaintDialog) },
-            onOpenUrl = onOpenUrl,
+            onDismiss = { dispatchIntent(SourcesIntent.OnDismissComplaintDialog) },
+            onOpenUrl = { url ->
+                if (legacyRequestAllowed(requestOwner)) currentOnOpenUrl(url)
+            },
         )
     }
 }

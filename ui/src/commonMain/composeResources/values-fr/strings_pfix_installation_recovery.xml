@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Récupération de l’identité locale des signalements</string>
+    <string name="settings_installation_review_unreadable">Vérifier si une identité illisible peut être récupérée</string>
+    <string name="settings_installation_review_abandonment">Examiner l’abandon local de la suppression</string>
+    <string name="settings_installation_continue_cleanup">Vérifier ou poursuivre le nettoyage local autorisé</string>
+    <string name="settings_installation_abandon_title">Abandonner la poursuite locale de la suppression ?</string>
+    <string name="settings_installation_abandon_warning">Cela abandonne la poursuite locale d’une demande de suppression existante. Vous risquez de ne plus pouvoir réessayer ou vérifier son résultat. Cela n’annule pas une demande déjà envoyée et ne confirme aucune suppression sur le serveur.</string>
+    <string name="settings_installation_abandon_confirm">Abandonner la poursuite locale de la suppression</string>
+    <string name="settings_installation_abandon_completed">La poursuite locale de la suppression a été abandonnée. Cela ne confirme aucune suppression sur le serveur.</string>
+    <string name="settings_installation_cleanup_checked">La vérification du nettoyage local est terminée. Il se peut que rien n’ait changé. Cela ne confirme ni le retrait de l’identité ni une suppression sur le serveur.</string>
+</resources>

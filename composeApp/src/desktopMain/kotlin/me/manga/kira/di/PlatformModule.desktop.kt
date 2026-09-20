@@ -71,6 +71,11 @@ import org.koin.dsl.module
  */
 actual fun platformModule(): Module =
     module {
+        // Desktop shares the actual selector/owner, but has no supported complaint native allocator.
+        complaintBackendHost {
+            selectComplaintBackendCandidate { backendGraphUnavailable() }
+        }
+
         // ---- Settings / DataStore (Phase 8.1) ----
         single<SettingsFactory> { DesktopSettingsFactory() }
         single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }

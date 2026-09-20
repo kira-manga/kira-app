@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">سياسة المحتوى المخصص للبالغين</string>
+    <string name="backend_notice_content_policy_body">لا يُسمح هنا بالإشارة إلى محتوى للبالغين / 18+. يُرجى أن تتوافق مشاركاتك مع إرشادات مجتمعنا.</string>
+    <string name="backend_notice_source_requirements_subject">متطلبات مواقع المانغا الجديدة</string>
+    <string name="backend_notice_source_requirements_body">يجب أن يوفّر أي موقع مانغا جديد 200 عنوان على الأقل، وألا يتطلّب خطوات تحقق من أنك لست روبوتًا، وأن يستحق جهد الإعداد. تستغرق إضافة موقع وقتًا وجهدًا كبيرين.</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Pemulihan identitas laporan lokal</string>
+    <string name="settings_installation_review_unreadable">Periksa kelayakan pemulihan identitas yang tidak terbaca</string>
+    <string name="settings_installation_review_abandonment">Tinjau penghentian tindak lanjut penghapusan lokal</string>
+    <string name="settings_installation_continue_cleanup">Periksa atau lanjutkan pembersihan lokal yang diizinkan</string>
+    <string name="settings_installation_abandon_title">Hentikan tindak lanjut penghapusan secara lokal?</string>
+    <string name="settings_installation_abandon_warning">Ini menghentikan tindak lanjut lokal atas permintaan penghapusan yang sudah ada. Anda mungkin tidak dapat mencoba ulang atau memeriksa hasilnya. Ini tidak membatalkan permintaan yang sudah dikirim dan tidak memastikan penghapusan di server.</string>
+    <string name="settings_installation_abandon_confirm">Hentikan tindak lanjut penghapusan secara lokal</string>
+    <string name="settings_installation_abandon_completed">Tindak lanjut penghapusan secara lokal dihentikan. Ini tidak memastikan penghapusan di server.</string>
+    <string name="settings_installation_cleanup_checked">Pemeriksaan pembersihan lokal selesai. Mungkin tidak ada perubahan. Ini tidak memastikan penghapusan identitas atau penghapusan di server.</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complaint_backend_unavailable_title">Feedback indisponível</string>
+    <string name="complaint_backend_unavailable_message">O feedback não está disponível nesta versão. Você pode voltar e continuar usando o aplicativo.</string>
+    <string name="complaint_backend_unavailable_back">Voltar</string>
+</resources>

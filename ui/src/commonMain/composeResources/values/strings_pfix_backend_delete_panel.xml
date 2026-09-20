@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Delete only the feedback item shown below? This cannot be undone. Your installation identity stays. Closing this dialog does not undo a sent request.</string>
+    <string name="backend_delete_conflict">A version conflict was reported. The original deletion keeps its original version; it is never rebased onto a refreshed version.</string>
+    <string name="backend_delete_retry_same">Check or retry the same deletion</string>
+    <string name="backend_delete_open_recovery">Open setup and recovery</string>
+    <string name="backend_delete_unresolved">The deletion is not yet confirmed. Check its status before assuming it failed.</string>
+    <string name="backend_delete_unavailable">Deletion or recovery is unavailable. Use setup and recovery to inspect retained work; it has not been replaced.</string>
+    <string name="backend_delete_live_required">This deletion can only be retried from its original open confirmation. Recovery cannot recreate it.</string>
+    <string name="backend_delete_receipt_expired">The deletion receipt window has ended. This does not prove the deletion failed.</string>
+</resources>

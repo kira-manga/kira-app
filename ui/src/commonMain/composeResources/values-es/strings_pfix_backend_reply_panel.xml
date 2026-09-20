@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">El texto de la respuesta solo se conserva en memoria. Al cerrar este panel se descarta. Mantén el panel abierto para reintentar la misma respuesta si el resultado es incierto.</string>
+    <string name="backend_reply_retry_same">Reintentar la misma respuesta</string>
+    <string name="backend_reply_open_recovery">Cerrar la respuesta y abrir la configuración o recuperación</string>
+    <string name="backend_reply_target_unavailable">No se puede responder a este elemento.</string>
+    <string name="backend_reply_unresolved">El resultado de la respuesta aún no está confirmado. No envíes otra en su lugar.</string>
+    <string name="backend_reply_receipt_expired">El plazo seguro del recibo ha terminado. Esta respuesta no se enviará de nuevo.</string>
+    <string name="backend_reply_live_required">La respuesta original en memoria ya no está disponible. Los metadatos conservados no se pueden usar para reenviarla.</string>
+</resources>

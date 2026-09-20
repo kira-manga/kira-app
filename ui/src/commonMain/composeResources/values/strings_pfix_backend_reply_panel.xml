@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">Reply text is kept only in memory. Closing this panel discards it. Keep the panel open to retry the same reply if its outcome is uncertain.</string>
+    <string name="backend_reply_retry_same">Retry the same reply</string>
+    <string name="backend_reply_open_recovery">Close reply and open setup or recovery</string>
+    <string name="backend_reply_target_unavailable">Reply is unavailable for this item.</string>
+    <string name="backend_reply_unresolved">The reply outcome is not yet confirmed. Do not send a replacement.</string>
+    <string name="backend_reply_receipt_expired">The safe receipt window has ended. This reply will not be sent again.</string>
+    <string name="backend_reply_live_required">The original in-memory reply is no longer available. Retained metadata cannot be used to resend it.</string>
+</resources>

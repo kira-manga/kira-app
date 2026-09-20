@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">Kebijakan konten dewasa</string>
+    <string name="backend_notice_content_policy_body">Referensi ke konten dewasa / 18+ tidak diizinkan di sini. Pastikan kiriman Anda sesuai dengan pedoman komunitas kami.</string>
+    <string name="backend_notice_source_requirements_subject">Persyaratan situs manga baru</string>
+    <string name="backend_notice_source_requirements_body">Setiap situs manga baru harus menawarkan setidaknya 200 judul, tidak memerlukan langkah verifikasi bot, dan sepadan dengan upaya penyiapannya. Menambahkan situs membutuhkan banyak waktu dan usaha.</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Текст черновика хранится только в памяти. Закрытие редактора удалит черновик, но не удалит и не отменит сохранённые операции.</string>
+    <string name="backend_edit_retry_same">Проверить или повторить ту же правку</string>
+    <string name="backend_edit_conflict">Сообщено о конфликте версий. Черновик не изменён; повторная попытка использует исходную, а не обновлённую версию.</string>
+    <string name="backend_edit_unresolved">Результат правки ещё не подтверждён. Не начинайте новую правку взамен этой.</string>
+    <string name="backend_edit_open_recovery">Закрыть и открыть восстановление отзывов</string>
+    <string name="backend_edit_live_required">Исходная правка в памяти больше недоступна. Сохранённые метаданные нельзя использовать для её повторной отправки.</string>
+    <string name="backend_edit_receipt_expired">Безопасный срок подтверждения истёк. Эта правка больше не будет отправлена.</string>
+</resources>

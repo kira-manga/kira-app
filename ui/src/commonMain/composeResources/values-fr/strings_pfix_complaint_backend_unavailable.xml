@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complaint_backend_unavailable_title">Commentaires indisponibles</string>
+    <string name="complaint_backend_unavailable_message">Les commentaires ne sont pas disponibles dans cette version. Vous pouvez revenir en arrière et continuer à utiliser l’application.</string>
+    <string name="complaint_backend_unavailable_back">Retour</string>
+</resources>

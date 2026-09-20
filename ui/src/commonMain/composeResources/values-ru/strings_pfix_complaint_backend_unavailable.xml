@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complaint_backend_unavailable_title">Обратная связь недоступна</string>
+    <string name="complaint_backend_unavailable_message">Обратная связь недоступна в этой сборке. Вы можете вернуться и продолжить пользоваться приложением.</string>
+    <string name="complaint_backend_unavailable_back">Назад</string>
+</resources>

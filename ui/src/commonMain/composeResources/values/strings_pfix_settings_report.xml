@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">Draft text is kept only in memory. Keep this dialog open to retry the same report if its result is uncertain.</string>
+    <string name="settings_report_retry_same">Retry the same report</string>
+    <string name="settings_report_new_draft">New report</string>
+    <string name="settings_report_recovery_title">Retained operations</string>
+    <string name="settings_report_refresh">Check retained operations</string>
+    <string name="settings_report_recovery_empty">This check reported no retained operations.</string>
+    <string name="settings_report_pending_title">Retained report %1$d</string>
+    <string name="settings_report_prepared">Prepared locally; not dispatched.</string>
+    <string name="settings_report_may_have_sent">May have reached the server.</string>
+    <string name="settings_report_cancel_prepared">Cancel unsent report</string>
+    <string name="settings_report_request_reset">Review local reset</string>
+    <string name="settings_report_reset_title">Reset this device’s complaint identity?</string>
+    <string name="settings_report_reset_warning">This forgets the entire local complaint identity and ALL retained complaint operations. Server reports are NOT erased or undone. You may lose access to their history and the ability to retry them safely.</string>
+    <string name="settings_report_reset_confirm">Reset local complaint data</string>
+    <string name="settings_report_prepared_cancelled">The unsent report was cancelled.</string>
+    <string name="settings_report_reset_completed">Local complaint identity and retained operations were cleared. Server reports were not deleted.</string>
+    <string name="settings_report_applied">The server accepted this report.</string>
+    <string name="settings_report_capacity_rejected">The server rejected this report because the report limit was reached.</string>
+    <string name="settings_report_id_rejected">The server rejected this report because its report ID was already used.</string>
+    <string name="settings_report_unresolved">The outcome is not yet confirmed. Do not start a replacement report.</string>
+    <string name="settings_report_cleanup_pending">The server outcome is known, but local confirmation is incomplete.</string>
+    <string name="settings_report_invalid_subject">Check the subject’s length and characters.</string>
+    <string name="settings_report_invalid_body">Check the body’s length and characters.</string>
+    <string name="settings_report_invalid_metadata">Device details could not be accepted. Reporting is unavailable.</string>
+    <string name="settings_report_pending_capacity">The local pending-operation limit was reached. Resolve retained work before reporting again.</string>
+    <string name="settings_report_receipt_expired">The safe receipt window has ended. This report will not be sent again.</string>
+    <string name="settings_report_live_required">The original in-memory report is no longer available. Retained metadata cannot be used to resend it.</string>
+    <string name="settings_report_unavailable">Reporting or recovery is unavailable for this local identity. Retained work has not been replaced.</string>
+</resources>
