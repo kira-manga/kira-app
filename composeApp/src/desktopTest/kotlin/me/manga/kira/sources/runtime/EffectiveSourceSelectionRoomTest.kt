@@ -229,7 +229,12 @@ class EffectiveSourceSelectionRoomTest {
         EffectiveSourceSelectionRoomFixture().use { f ->
             val manager = f.manager(emptySelectionRemote())
             f.migration.afterCommit = { if (it.advancesSignedFloor) throw CancellationException("after real commit") }
-            assertFailsWith<CancellationException> { manager.refresh() }
+            val cancelled = assertFailsWith<CancellationException> {
+                // Reconciliation's bounded timeout must use real time, like Room's Default I/O;
+                // runTest otherwise advances its virtual deadline while that I/O is still pending.
+                withContext(Dispatchers.Default) { manager.refresh() }
+            }
+            assertEquals("after real commit", cancelled.message)
             val selected = assertNotNull(f.store.readSelection().selection)
             assertEquals(SelectedCatalogKind.SIGNED, selected.token.identity.kind)
             assertTrue(manager.activeDocument().sources.isEmpty())

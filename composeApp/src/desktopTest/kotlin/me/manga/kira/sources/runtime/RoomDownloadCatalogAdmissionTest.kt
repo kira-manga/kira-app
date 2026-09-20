@@ -72,9 +72,13 @@ class RoomDownloadCatalogAdmissionTest {
         withAdmission { _, admission, operations ->
             assertIs<AppResult.Success<*>>(admission.prepareLocal())
             val original = SourceSelectionUnavailable("fixture caller failure after admission")
-            assertSame(original, assertFailsWith<SourceSelectionUnavailable> {
+            val thrown = assertFailsWith<SourceSelectionUnavailable> {
                 admission.withAdmittedOperation<Unit> { throw original }
-            })
+            }
+            // JVM coroutine stack recovery may copy the exception at withContext's boundary,
+            // retaining the original as its cause. Require that provenance, not just equal text.
+            assertEquals(original.message, thrown.message)
+            assertSame(original, thrown.cause ?: thrown)
             operations.withExclusive {}
         }
     }

@@ -17,6 +17,9 @@ import me.manga.kira.data.download.selection.DownloadCatalogAdmission
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.repository.LibraryMetadataRepository
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.device.DeviceTierProbe
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -72,12 +75,11 @@ internal class AndroidChallengeCase(
         override fun detect(): DeviceTier = DeviceTier.LOW
     }
     private val library = LibraryRepository(
-        rows.db.mangaDao(),
-        rows.db.chapterDao(),
-        rows.db.libraryDeo(),
-        rows.db.notificationDao(),
-        rows.db.historyDao(),
-        files,
+        mangaDao = rows.db.mangaDao(),
+        chapterDao = rows.db.chapterDao(),
+        libraryDeo = rows.db.libraryDeo(),
+        metadata = DownloadFixtureUnusedCoverMetadata,
+        fileService = files,
     )
     val service = ChapterDownloadService(
         storage.context,
@@ -164,4 +166,13 @@ internal class AndroidChallengeCase(
     }
 
     override fun close() = client.close()
+}
+
+/** The real service uses this facade only for chapter paths; cover reconciliation is out of scope. */
+internal object DownloadFixtureUnusedCoverMetadata : LibraryMetadataRepository {
+    override suspend fun updateCoverIfChanged(
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
+        newCoverUrl: String,
+    ): Nothing = error("Download fixture must not reconcile manga covers")
 }

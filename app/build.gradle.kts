@@ -304,9 +304,16 @@ val notificationHostSdkInput by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
 }
+// Resolve separately: one configuration would evict SDK32 in favor of the SDK35 module version.
+val notificationHostSdk32Input by configurations.creating {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+}
 dependencies {
     add(notificationHostNativeInput.name, notificationHostCatalog.findLibrary("sqlite-host-jni-input").get())
     add(notificationHostSdkInput.name, notificationHostCatalog.findLibrary("robolectric-sdk35").get())
+    add(notificationHostSdk32Input.name, notificationHostCatalog.findLibrary("robolectric-sdk32").get())
 }
 
 val notificationHostRuntime = layout.buildDirectory.dir("notification-android-host-runtime")
@@ -317,6 +324,7 @@ val prepareNotificationAndroidHostRuntime by tasks.registering(Sync::class) {
         includeEmptyDirs = false
     }
     from(notificationHostSdkInput) { into("sdk") }
+    from(notificationHostSdk32Input) { into("sdk") }
     into(notificationHostRuntime)
 }
 
@@ -355,6 +363,15 @@ tasks
             check(sdk.isFile) { "Pinned offline Robolectric SDK35 input was not staged" }
             check(sdk.notificationHostSha256() == "06c4c8602d6db7486266a982bc55834ed6dfebd62a0b88daca204139ecf142cb") {
                 "Offline Robolectric SDK35 input does not match the pinned host runtime"
+            }
+            val sdk32 =
+                notificationHostRuntime
+                    .get()
+                    .file("sdk/android-all-instrumented-12.1-robolectric-8229987-i7.jar")
+                    .asFile
+            check(sdk32.isFile) { "Pinned offline Robolectric SDK32 input was not staged" }
+            check(sdk32.notificationHostSha256() == "4bcf8fde62de31d0c6d6b98bd667abc9da526d46848d31284b5238ca6192c3ca") {
+                "Offline Robolectric SDK32 input does not match the pinned host runtime"
             }
         }
     }
