@@ -94,6 +94,7 @@ skiko-test = "0.144.6"
 junit = "4.13.2"
 turbine = "1.2.1"
 robolectric = "4.16.1"
+android32-instrumented = "12.1-robolectric-8229987-i7"
 android35-instrumented = "15-robolectric-13954326-i7"
 mockito = "5.18.0"
 # Public foreground-test adapter; Work 2.11.2 already requires concurrent-futures-ktx 1.1.0 at runtime.
@@ -247,6 +248,7 @@ androidx-work-testing = { group = "androidx.work", name = "work-testing", versio
 androidx-concurrent-futures = { group = "androidx.concurrent", name = "concurrent-futures", version.ref = "concurrent-futures" }
 # Non-classpath, non-transitive inputs for the focused Linux Android host fixture.
 sqlite-host-jni-input = { group = "androidx.sqlite", name = "sqlite-bundled-jvm", version.ref = "sqlite" }
+robolectric-sdk32 = { group = "org.robolectric", name = "android-all-instrumented", version.ref = "android32-instrumented" }
 robolectric-sdk35 = { group = "org.robolectric", name = "android-all-instrumented", version.ref = "android35-instrumented" }
 
 [plugins]

@@ -1,6 +1,8 @@
 package me.manga.kira.domain.usecase.reader
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
@@ -8,11 +10,16 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -56,17 +63,26 @@ class ListChaptersUseCaseTest {
     }
 
     private class FakeSavedDetails(
-        private val saved: MangaDetails?,
+        private val result: Flow<AppResult<SavedWorkDetails?>>,
     ) : SavedMangaDetailsRepository {
-        override fun observeSavedDetails(api: String, title: String): Flow<MangaDetails?> = flowOf(saved)
+        val requested = mutableListOf<WorkLocator>()
+
+        override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> {
+            requested += work
+            return result
+        }
     }
+
+    private fun savedDetails(saved: MangaDetails?): FakeSavedDetails = FakeSavedDetails(
+        flowOf(AppResult.Success(saved?.let { SavedWorkDetails(SavedWorkIdentity(7, WorkLocator(it.api, it.url)), it) })),
+    )
 
     @Test
     fun inLibraryMangaReturnsSavedChaptersWithoutHittingNetwork() = runTest {
         val savedChapters = listOf(chapter("https://x/c1"), chapter("https://x/c2"), chapter("https://x/c3"))
         // Network would return a DIVERGENT list (different URLs) — must NOT be consulted at all.
         val network = FakeNetworkDetails(AppResult.Success(detailsWith(listOf(chapter("https://x/OTHER")))))
-        val useCase = ListChaptersUseCase(network, FakeSavedDetails(detailsWith(savedChapters)))
+        val useCase = ListChaptersUseCase(network, savedDetails(detailsWith(savedChapters)))
 
         val result = useCase(manga)
 
@@ -79,7 +95,7 @@ class ListChaptersUseCaseTest {
     fun notInLibraryFallsThroughToNetwork() = runTest {
         val networkChapters = listOf(chapter("https://x/n1"), chapter("https://x/n2"))
         val network = FakeNetworkDetails(AppResult.Success(detailsWith(networkChapters)))
-        val useCase = ListChaptersUseCase(network, FakeSavedDetails(saved = null))
+        val useCase = ListChaptersUseCase(network, savedDetails(saved = null))
 
         val result = useCase(manga)
 
@@ -93,7 +109,7 @@ class ListChaptersUseCaseTest {
         val networkChapters = listOf(chapter("https://x/n1"))
         val network = FakeNetworkDetails(AppResult.Success(detailsWith(networkChapters)))
         // Saved row exists but has no chapters yet (e.g. quick-added, not opened) -> network fills it.
-        val useCase = ListChaptersUseCase(network, FakeSavedDetails(detailsWith(emptyList())))
+        val useCase = ListChaptersUseCase(network, savedDetails(detailsWith(emptyList())))
 
         val result = useCase(manga)
 
@@ -106,11 +122,59 @@ class ListChaptersUseCaseTest {
     fun notInLibraryNetworkFailureSurfacesFailure() = runTest {
         val failure = AppResult.Failure(AppError.Unexpected("boom"))
         val network = FakeNetworkDetails(failure)
-        val useCase = ListChaptersUseCase(network, FakeSavedDetails(saved = null))
+        val useCase = ListChaptersUseCase(network, savedDetails(saved = null))
 
         val result = useCase(manga)
 
         assertFalse(result is AppResult.Success)
         assertEquals(1, network.fetchCount)
+    }
+
+    @Test
+    fun lookupUsesRequestedLocatorDespiteRenamedMetadata() = runTest {
+        val chapters = listOf(chapter("https://x/saved"))
+        val saved = savedDetails(detailsWith(chapters))
+        val network = FakeNetworkDetails(AppResult.Success(detailsWith(emptyList())))
+
+        val result = ListChaptersUseCase(network, saved)(manga.copy(title = "Renamed", language = "ar"))
+
+        assertEquals(AppResult.Success(chapters), result)
+        assertEquals(listOf(WorkLocator(manga.api, manga.url)), saved.requested)
+        assertEquals(0, network.fetchCount)
+    }
+
+    @Test
+    fun identityConflictAndReadinessFailureDoNotBecomeCacheMisses() = runTest {
+        val failures = listOf(
+            AppError.Storage.Constraint("saved owner conflict"),
+            AppError.Storage.Io(IllegalStateException("selection not ready")),
+        )
+        for (error in failures) {
+            val network = FakeNetworkDetails(AppResult.Success(detailsWith(emptyList())))
+            val saved = FakeSavedDetails(flowOf(AppResult.Failure(error)))
+
+            assertEquals(AppResult.Failure(error), ListChaptersUseCase(network, saved)(manga))
+            assertEquals(0, network.fetchCount, "an explicit failure cannot authorize a network fallback")
+        }
+    }
+
+    @Test
+    fun thrownCacheReadFailureStaysTypedWithoutNetworkFallback() = runTest {
+        val cause = IllegalStateException("local read failed")
+        val network = FakeNetworkDetails(AppResult.Success(detailsWith(emptyList())))
+        val saved = FakeSavedDetails(flow { throw cause })
+
+        assertEquals(AppResult.Failure(AppError.Storage.Io(cause)), ListChaptersUseCase(network, saved)(manga))
+        assertEquals(0, network.fetchCount)
+    }
+
+    @Test
+    fun cacheCancellationPropagatesWithoutNetworkFallback() = runTest {
+        val cancelled = CancellationException("entry replaced")
+        val network = FakeNetworkDetails(AppResult.Success(detailsWith(emptyList())))
+        val saved = FakeSavedDetails(flow { throw cancelled })
+
+        assertSame(cancelled, assertFailsWith<CancellationException> { ListChaptersUseCase(network, saved)(manga) })
+        assertEquals(0, network.fetchCount)
     }
 }

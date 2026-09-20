@@ -1,5 +1,6 @@
 package me.manga.kira.domain.usecase.library
 
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -15,40 +16,27 @@ import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.domain.model.LibraryManga
-import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
 import me.manga.kira.domain.model.library.LibraryRefreshCompleted
-import me.manga.kira.domain.repository.LibraryRepository
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
+import me.manga.kira.domain.repository.LibraryMetadataRepository
 import me.manga.kira.domain.usecase.details.FetchMangaDetailsUseCase
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Cross-platform "refresh all library" (#1): iterate every saved manga, fetch its current chapter
- * list from the source, and persist any newly-discovered chapters (flagged NEW). Success means the
- * entire snapshot completed; failures/timeouts never become a successful partial chapter count.
- * Committed partial data is retained. Caller cancellation always propagates.
- *
- * Composed from existing rework use cases (so it never touches `sources_repositry/` or the source
- * engine directly): [ObserveLibraryUseCase] for the saved set, [FetchMangaDetailsUseCase] for the
- * per-manga fetch (which routes piloted/legacy sources), and [PersistNewChaptersAndNotifyUseCase]
- * for the dedup + isNew/fetchedAt insert (it also writes a Notifications-screen entry per new
- * chapter, matching the native `LibraryRefreshWorker`). Throttling mirrors that same worker:
- * batches of [BATCH_SIZE], a per-manga timeout, a total timeout, and a small inter-batch delay.
- *
- * This is the in-process refresh used on Desktop/iOS (the user-initiated pull-to-refresh runs it
- * inline while the screen is open). Android continues to run the full WorkManager worker (which also
- * fires per-manga notifications). Android's notification helper is detached: this use case's
- * observed combined persist-and-notify completion does not prove Android Updates persistence.
+ * Refresh a captured library snapshot with bounded concurrent work and a bounded total deadline.
+ * Success means every observed item completed; failures/timeouts never become partial success.
+ * Each ready owner commits through the typed atomic metadata/chapter/Updates writer without
+ * waiting for its fetching siblings. This retains confirmed sibling writes at the total deadline.
+ * A failed/uncertain persistence result stops later batches, not already completed owner commits.
+ * Caller cancellation propagates; only bookkeeping, never persistence, is non-cancellable.
  */
 class RefreshAllLibraryChaptersUseCase(
     private val observeLibrary: ObserveLibraryUseCase,
     private val fetchDetails: FetchMangaDetailsUseCase,
-    // Refresh-all persists AND notifies (so new chapters surface in the Notifications screen on
-    // every platform — Android already does this via its worker; this covers Desktop/iOS inline).
     private val persistAndNotify: PersistNewChaptersAndNotifyUseCase,
-    // Reconciles a rotated cover URL across saved_manga/history/notifications — the Android worker
-    // does this inline; Desktop/iOS have no worker, so the inline refresh must repair covers too.
-    private val libraryRepo: LibraryRepository,
     private val dispatchers: DispatcherProvider,
+    private val libraryMetadata: LibraryMetadataRepository,
 ) {
     suspend operator fun invoke(): AppResult<LibraryRefreshCompleted> =
         try {
@@ -93,8 +81,17 @@ class RefreshAllLibraryChaptersUseCase(
                     LibraryRefreshStop(LibraryRefreshStopReason.LIBRARY_READ_TIMEOUT, AppError.Network.Timeout())
                 } else {
                     accounting.readSnapshot(library.size)
-                    refreshBatches(library, accounting)
-                    LibraryRefreshStop(LibraryRefreshStopReason.EXHAUSTED)
+                    // Ready sub-batches must not turn a repeated snapshot owner into two writes.
+                    if (library.map { it.identity.id }.distinct().size != library.size ||
+                        library.map { it.identity.locator }.distinct().size != library.size
+                    ) {
+                        LibraryRefreshStop(
+                            LibraryRefreshStopReason.ABORTED,
+                            AppError.Storage.Constraint("Duplicate library refresh owner"),
+                        )
+                    } else {
+                        refreshBatches(library, accounting)
+                    }
                 }
             },
             onFailure = { t ->
@@ -105,58 +102,85 @@ class RefreshAllLibraryChaptersUseCase(
     private suspend fun refreshBatches(
         library: List<LibraryManga>,
         accounting: LibraryRefreshAccounting,
-    ) {
+    ): LibraryRefreshStop {
         val batches = library.chunked(BATCH_SIZE)
-        batches.forEachIndexed { i, batch ->
-            coroutineScope {
-                batch
-                    .map { lib ->
-                        async {
-                            accounting.startItem()
-                            // Record each confirmation before awaitAll: an interrupted sibling must not
-                            // erase a completed child's contribution. Counts remain a lower bound if a
-                            // write commits but cancellation prevents its result from returning.
-                            accounting.finishItem(refreshOne(lib.manga))
-                        }
-                    }.awaitAll()
+        for ((index, batch) in batches.withIndex()) {
+            val results = coroutineScope {
+                batch.map { saved ->
+                    async {
+                        accounting.startItem()
+                        val result = refreshOne(saved)
+                        // Confirm before awaitAll: an interrupted sibling cannot erase completed
+                        // work. A commit whose result never returns is not optimistically counted.
+                        accounting.finishItem(result.outcome)
+                        result
+                    }
+                }.awaitAll()
             }
-            if (i < batches.lastIndex) delay(INTER_BATCH_DELAY_MS)
+            results.firstOrNull { it.stopLaterBatches }?.let { failed ->
+                val error = (failed.outcome as? LibraryRefreshItemOutcome.Failed)?.error
+                    ?: AppError.Network.Timeout()
+                return LibraryRefreshStop(LibraryRefreshStopReason.ABORTED, error)
+            }
+            if (index < batches.lastIndex) delay(INTER_BATCH_DELAY_MS)
         }
+        return LibraryRefreshStop(LibraryRefreshStopReason.EXHAUSTED)
     }
 
-    private suspend fun refreshOne(manga: Manga): LibraryRefreshItemOutcome =
-        try {
+    private suspend fun refreshOne(saved: LibraryManga): RefreshItemResult {
+        var persisting = false
+        return try {
             withTimeoutOrNull(PER_MANGA_TIMEOUT_MS) {
-                when (val details = fetchDetails(manga)) {
-                    is AppResult.Failure -> LibraryRefreshItemOutcome.Failed(details.error)
+                when (val response = fetchDetails(saved.manga)) {
+                    is AppResult.Failure -> RefreshItemResult(LibraryRefreshItemOutcome.Failed(response.error))
                     is AppResult.Success -> {
-                        reconcileCover(manga, details.value.coverUrl)
-                        when (val persisted = persistAndNotify(manga, details.value.chapters)) {
-                            is AppResult.Success -> LibraryRefreshItemOutcome.Completed(persisted.value)
-                            is AppResult.Failure -> LibraryRefreshItemOutcome.Failed(persisted.error)
+                        val fetched = FetchedWorkDetails(saved.identity.locator, response.value)
+                        reconcileCover(saved, fetched)
+                        // Cover is optional and was attempted best-effort above. Empty tells the
+                        // atomic writer to preserve it and skip cover fanout, even on cover failure.
+                        val request = LibraryRefreshRequest(saved.identity, fetched.copy(details = response.value.copy(coverUrl = "")))
+                        persisting = true
+                        when (val persisted = persistAndNotify(listOf(request))) {
+                            is AppResult.Success -> RefreshItemResult(LibraryRefreshItemOutcome.Completed(persisted.value))
+                            is AppResult.Failure -> RefreshItemResult(
+                                LibraryRefreshItemOutcome.Failed(persisted.error),
+                                stopLaterBatches = true,
+                            )
                         }
                     }
                 }
-            } ?: LibraryRefreshItemOutcome.TimedOut
+            } ?: RefreshItemResult(LibraryRefreshItemOutcome.TimedOut, stopLaterBatches = persisting)
         } catch (ce: CancellationException) {
             throw ce
         } catch (t: Throwable) {
-            LibraryRefreshItemOutcome.Failed(AppError.Unexpected(message = "Library item refresh failed", cause = t))
+            RefreshItemResult(
+                LibraryRefreshItemOutcome.Failed(AppError.Unexpected(message = "Library item refresh failed", cause = t)),
+                stopLaterBatches = persisting,
+            )
         }
+    }
 
-    private suspend fun reconcileCover(
-        manga: Manga,
-        coverUrl: String,
-    ) {
+    private suspend fun reconcileCover(saved: LibraryManga, fetched: FetchedWorkDetails) {
         try {
-            // Best-effort only. A cover failure must not invalidate completed chapter work.
-            libraryRepo.updateCoverIfChanged(manga.api, manga.language, manga.title, coverUrl)
+            val result = libraryMetadata.updateCoverIfChanged(
+                saved.identity,
+                WorkLocator(fetched.details.api, fetched.details.url),
+                fetched.details.coverUrl,
+            )
+            if (result is AppResult.Failure) {
+                FlowLog.log("LibraryRefresh", "coverFailed", "best-effort cover reconciliation failed")
+            }
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: Throwable) {
             FlowLog.log("LibraryRefresh", "coverFailed", "best-effort cover reconciliation failed")
         }
     }
+
+    private data class RefreshItemResult(
+        val outcome: LibraryRefreshItemOutcome,
+        val stopLaterBatches: Boolean = false,
+    )
 
     companion object {
         const val BATCH_SIZE = 5

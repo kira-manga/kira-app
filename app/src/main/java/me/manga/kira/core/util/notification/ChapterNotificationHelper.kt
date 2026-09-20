@@ -17,42 +17,38 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.R
-import me.manga.kira.data.local.dao.LibraryDeo
-import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.core.result.map
+import me.manga.kira.domain.model.library.LibraryChapterNotification
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
+import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.platform.locale.localizedResourceSnapshot
 import me.manga.kira.platform.notification.ensureLocalizedChannel
 
 /**
  * Worker-owned Updates persistence followed by optional Android display. No independent scope:
  * a cancelled worker may leave committed Updates, but cannot schedule later cover work/posts.
- * The shared Room discovery transaction owns chapter/Updates atomicity and cross-worker dedup.
+ * The shared library writer owns retained-parent validation, atomic discovery and cross-worker dedup.
  */
 class ChapterNotificationHelper(
     private val context: Context,
-    private val libraryDeo: LibraryDeo,
+    private val library: LibraryRepository,
     private val covers: NotificationCovers,
 ) {
-    /** Persist all intended rows before making any notification-service or cover decision. */
+    /** Validate/persist even zero-new requests before any notification-service or cover decision. */
     suspend fun persistNewChapterNotifications(
-        manga: SavedMangaEntity,
-        chapters: List<SavedChapterEntity>,
-    ): List<ChapterNotification> = libraryDeo.persistChapterDiscoveries(
-        api = manga.api,
-        mangaUrl = manga.url,
-        chapters = chapters,
-        expectedMangaId = manga.id,
-    )
+        request: LibraryRefreshRequest,
+    ): AppResult<LibraryRefreshReceipt> = library.refresh(listOf(request), notify = true).map { it.single() }
 
     /** Best effort only, joined by the worker outside its per-manga persistence timeout. */
-    suspend fun displayNotifications(notifications: List<ChapterNotification>) {
+    suspend fun displayNotifications(notifications: List<LibraryChapterNotification>) {
         val owner = currentCoroutineContext()
         owner.ensureActive()
         if (notifications.isEmpty()) return
         try {
             val selected = notifications.takeLast(DISPLAY_LIMIT).asReversed()
-            covers.withCover(selected.first().mangaImageUrl, ::canPost) { bitmap ->
+            covers.withCover(selected.first().manga.coverUrl, ::canPost) { bitmap ->
                 selected.forEach { notification ->
                     owner.ensureActive()
                     if (canPost()) post(notification, bitmap)
@@ -104,16 +100,16 @@ class ChapterNotificationHelper(
     }
 
     private fun post(
-        notification: ChapterNotification,
+        notification: LibraryChapterNotification,
         bitmap: Bitmap?,
     ) {
         val built = buildChapterNotification(notification) { bitmap }
-        context.getSystemService<NotificationManager>()?.notify(notification.id.toInt(), built)
+        context.getSystemService<NotificationManager>()?.notify(notification.notificationId.toInt(), built)
     }
 
     // Inline keeps posting synchronous inside NotificationCovers' bounded bitmap lifetime.
     internal inline fun buildChapterNotification(
-        notification: ChapterNotification,
+        notification: LibraryChapterNotification,
         loadCover: () -> Bitmap?,
     ): Notification {
         val bitmap = loadCover()
@@ -123,8 +119,8 @@ class ChapterNotificationHelper(
             NotificationCompat
                 .Builder(resources, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle(notification.mangaTitle)
-                .setContentText(resources.getString(R.string.chapter_is_available, notification.chapterNumber))
+                .setContentTitle(notification.manga.title)
+                .setContentText(resources.getString(R.string.chapter_is_available, notification.chapter.number))
                 .setAutoCancel(true)
         if (bitmap != null) builder.setLargeIcon(bitmap)
         return builder.build()

@@ -133,7 +133,7 @@ internal fun sourceRow(
 
 internal class StatefulMangaDao(
     seed: List<SavedMangaEntity> = emptyList(),
-) : MangaDao {
+) : MangaDao by FailFastMangaDao {
     val rows = seed.toMutableList()
     val updates = mutableListOf<SavedMangaEntity>()
 

@@ -13,8 +13,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.toList
 import me.manga.kira.core.cbz.OptimizedCbzManager
 import me.manga.kira.core.util.heap.DeviceTier
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
+import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.repository.LibraryMetadataRepository
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.device.DeviceTierProbe
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -48,6 +53,8 @@ internal class AndroidChallengeCase(
     val responseStatus = AtomicInteger(403)
     val transportCancellation = AtomicReference<CancellationException?>()
     val requests = AtomicInteger()
+    val workerQueueReads = AtomicInteger()
+    val workerServiceResolutions = AtomicInteger()
     val requestHeaders = CopyOnWriteArrayList<Headers>()
     val pages = listOf(DownloadPage("https://images.example/page.png", emptyMap()))
     private val client = HttpClient(
@@ -68,12 +75,11 @@ internal class AndroidChallengeCase(
         override fun detect(): DeviceTier = DeviceTier.LOW
     }
     private val library = LibraryRepository(
-        rows.db.mangaDao(),
-        rows.db.chapterDao(),
-        rows.db.libraryDeo(),
-        rows.db.notificationDao(),
-        rows.db.historyDao(),
-        files,
+        mangaDao = rows.db.mangaDao(),
+        chapterDao = rows.db.chapterDao(),
+        libraryDeo = rows.db.libraryDeo(),
+        metadata = DownloadFixtureUnusedCoverMetadata,
+        fileService = files,
     )
     val service = ChapterDownloadService(
         storage.context,
@@ -82,6 +88,12 @@ internal class AndroidChallengeCase(
         ChapterDownloadArchive(OptimizedCbzManager(storage.context, deviceTierProbe), storage.settings),
         artifacts = rows.artifacts,
     )
+    private val workerDao = object : ChapterDownloadDao by rows.realDao {
+        override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> {
+            workerQueueReads.incrementAndGet()
+            return rows.realDao.getQueuedChaptersForWorker(queuedState)
+        }
+    }
 
     suspend fun resetRow() {
         assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id), "never reset an unsettled attempt")
@@ -114,30 +126,9 @@ internal class AndroidChallengeCase(
         resolveFailure: Throwable? = null,
         pageProvider: ChapterPageProvider? = null,
     ): ListenableWorker.Result {
-        val provider = pageProvider ?: object : ChapterPageProvider {
-            override suspend fun pagesOrNull(
-                api: String,
-                mangaUrl: String,
-                mangaLanguage: String,
-                chapterUrl: String,
-            ): List<DownloadPage> {
-                resolveFailure?.let { throw it }
-                return pages
-            }
-        }
+        val provider = pageProvider ?: workerPageProvider(resolveFailure)
         check(GlobalContext.getOrNull() == null)
-        val owned = startKoin {
-            modules(
-                module {
-                    single<ChapterDownloadDao> { rows.realDao }
-                    single<MangaDao> { rows.db.mangaDao() }
-                    single<ChapterDownloadService> { service }
-                    single { rows.artifacts }
-                    single<ChapterPageProvider> { provider }
-                    single<AppFileSystem> { storage.fileSystem }
-                },
-            )
-        }
+        val owned = startKoin { modules(workerModule(provider)) }
         try {
             val foregroundCalls = AtomicInteger()
             val worker = TestListenableWorkerBuilder<DownloadWorkerV2>(storage.context)
@@ -151,5 +142,37 @@ internal class AndroidChallengeCase(
         }
     }
 
+    private fun workerPageProvider(resolveFailure: Throwable?) = object : ChapterPageProvider {
+        override suspend fun pagesOrNull(
+            api: String,
+            mangaUrl: String,
+            mangaLanguage: String,
+            chapterUrl: String,
+        ): List<DownloadPage> {
+            resolveFailure?.let { throw it }
+            return pages
+        }
+    }
+
+    private fun workerModule(provider: ChapterPageProvider) = module {
+        single<ChapterDownloadDao> { workerDao }
+        single<MangaDao> { rows.db.mangaDao() }
+        single<ChapterDownloadService> { service.also { workerServiceResolutions.incrementAndGet() } }
+        single { rows.artifacts }
+        single { rows.operations }
+        single<DownloadCatalogAdmission> { rows.catalogAdmission }
+        single<ChapterPageProvider> { provider }
+        single<AppFileSystem> { storage.fileSystem }
+    }
+
     override fun close() = client.close()
+}
+
+/** The real service uses this facade only for chapter paths; cover reconciliation is out of scope. */
+internal object DownloadFixtureUnusedCoverMetadata : LibraryMetadataRepository {
+    override suspend fun updateCoverIfChanged(
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
+        newCoverUrl: String,
+    ): Nothing = error("Download fixture must not reconcile manga covers")
 }

@@ -18,7 +18,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.emptyFlow
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.presentation.library.LibraryIntent
 import me.manga.kira.presentation.library.LibraryState
 import me.manga.kira.ui.generated.resources.Res
@@ -51,7 +52,7 @@ internal class LibrarySearchVisibilityFixture(
     fun enterSelection() {
         state.value =
             state.value.copy(
-                selection = setOf(MangaKey(api = "fixture", language = "en", title = "Selected manga")),
+                selection = setOf(SavedWorkIdentity(1L, WorkLocator("fixture", "https://fixture.test/selected"))),
                 isInSelectionMode = true,
             )
     }

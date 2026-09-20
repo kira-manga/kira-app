@@ -130,6 +130,7 @@ import kotlinx.datetime.toLocalDateTime
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.presentation.details.AdultGateStep
@@ -311,18 +312,13 @@ fun DetailsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToReader: (Manga, Chapter) -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onNavigateToBackupExport: (api: String, language: String, title: String) -> Unit,
+    onNavigateToBackupExport: (WorkLocator) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
 ) {
     val state by viewModel.state.collectAsState()
-    // Full-tuple entry — dispatch OnEnter once per identity (api + language + title). The reducer
-    // is idempotent on re-entry for the same triple; the LaunchedEffect key change covers
-    // navigation to a sibling Details screen via the same VM (rare, but possible with deep links).
-    LaunchedEffect(manga.api, manga.language, manga.title) {
-        viewModel.submit(DetailsIntent.OnEnter(manga))
-    }
+    DetailsEntryEffect(manga, viewModel::submit)
     DetailsScreenContent(
         state = state,
         effects = viewModel.effects,
@@ -335,6 +331,14 @@ fun DetailsScreen(
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         modifier = modifier,
     )
+}
+
+/** Dispatch once per requested source/raw address, never per mutable display metadata. */
+@Composable
+internal fun DetailsEntryEffect(manga: Manga, onIntent: (DetailsIntent) -> Unit) {
+    LaunchedEffect(manga.api, manga.url) {
+        onIntent(DetailsIntent.OnEnter(manga))
+    }
 }
 
 /**
@@ -356,7 +360,7 @@ fun DetailsScreenByUrl(
     onNavigateBack: () -> Unit,
     onNavigateToReader: (Manga, Chapter) -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onNavigateToBackupExport: (api: String, language: String, title: String) -> Unit,
+    onNavigateToBackupExport: (WorkLocator) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
@@ -403,7 +407,7 @@ internal fun DetailsScreenContent(
     onNavigateBack: () -> Unit,
     onNavigateToReader: (Manga, Chapter) -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onNavigateToBackupExport: (api: String, language: String, title: String) -> Unit,
+    onNavigateToBackupExport: (WorkLocator) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
@@ -521,7 +525,7 @@ internal fun DetailsScreenContent(
                 is DetailsEffect.ShowError -> snackbarScope.launch { snackbarHostState.showSnackbar(errorMessages.messageFor(effect.error)) }
                 DetailsEffect.NavigateToDownloads -> onNavigateToDownloads()
                 is DetailsEffect.NavigateToBackupExport ->
-                    onNavigateToBackupExport(effect.key.api, effect.key.language, effect.key.title)
+                    onNavigateToBackupExport(effect.key)
                 is DetailsEffect.NavigateToWebView -> onOpenInWebView(effect.url, effect.api)
                 // 403 Cloudflare interstitial → route to the WebView challenge-solver (legacy
                 // Handle403Error parity, bug #2). The `:composeApp` adapter navigates to the

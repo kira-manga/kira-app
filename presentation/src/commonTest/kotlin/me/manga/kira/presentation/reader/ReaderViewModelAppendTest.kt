@@ -1,7 +1,10 @@
 package me.manga.kira.presentation.reader
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -9,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.presentation.testing.readerChapter
+import me.manga.kira.presentation.testing.readerLocator
 import me.manga.kira.presentation.testing.readerManga
 import me.manga.kira.presentation.testing.readerPage
 import me.manga.kira.presentation.testing.readerTestEnv
@@ -103,4 +107,33 @@ class ReaderViewModelAppendTest {
             assertEquals(1, s.activeChapterPageNumber, "HUD shows within-chapter page number (1), not flat (3)")
             assertEquals(2, s.activeChapterPageCount, "HUD total is chapter 2's page count")
         }
+
+    @Test
+    fun retryCancelsPendingAppendPreparationWithoutReacquisitionOnRefetch() = runTest {
+        val env = ReaderActiveActionFixture(testScheduler)
+        val anchor = readerLocator(env.manga, env.chapters.first())
+        val next = readerLocator(env.manga, env.chapters[1])
+        val gate = CompletableDeferred<Unit>()
+        var pending: Job? = null
+        env.legacyProgress.beforePrepare = {
+            if (it == next) {
+                pending = currentCoroutineContext()[Job]
+                gate.await()
+            }
+        }
+        try {
+            env.enterAndAppend()
+            env.dispatch(ReaderIntent.OnRetry)
+            assertTrue(pending?.isCancelled == true)
+            env.dispatch(ReaderIntent.OnAppendNextChapter)
+            env.dispatch(ReaderIntent.OnPageChanged(2))
+            assertEquals(listOf("ch/1", "ch/2"), env.vm.state.value.loadedChapterUrls)
+            assertEquals(listOf(anchor, next), env.legacyProgress.prepared)
+            assertEquals(listOf(anchor), env.resume.begun)
+            assertTrue(env.resume.saves.isEmpty(), "readable refetch does not fabricate a handle after cancellation")
+        } finally {
+            gate.complete(Unit)
+            env.close()
+        }
+    }
 }

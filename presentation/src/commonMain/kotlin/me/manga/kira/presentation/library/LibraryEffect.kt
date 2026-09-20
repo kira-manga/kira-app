@@ -2,7 +2,7 @@ package me.manga.kira.presentation.library
 
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.presentation.mvi.MviEffect
 
 /**
@@ -50,10 +50,11 @@ sealed interface LibraryEffect : MviEffect {
 
     /**
      * feature/backup — view should open the Backup screen scoped to [keys] (multi-select export
-     * handoff). Destination descriptor only: the `:composeApp` adapter maps this to
+     * handoff). Only portable work locators cross this boundary; no local IDs or title keys.
+     * Destination descriptor only: the `:composeApp` adapter maps this to
      * `Screen.BackupRework(scopeJson)`.
      */
-    data class NavigateToBackupExport(val keys: List<MangaKey>) : LibraryEffect
+    data class NavigateToBackupExport(val keys: List<WorkLocator>) : LibraryEffect
 
     /** View should show a non-blocking error toast / snackbar. */
     data class ShowError(val error: AppError) : LibraryEffect

@@ -1,6 +1,11 @@
 package me.manga.kira.domain.model
 
 import kotlin.time.Instant
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryActivity
+import me.manga.kira.domain.model.library.LibraryAffinity
+import me.manga.kira.domain.model.library.LibraryChapterCounts
 
 /**
  * A [Manga] paired with the user's library-specific metadata.
@@ -52,55 +57,24 @@ import kotlin.time.Instant
  */
 data class LibraryManga(
     val manga: Manga,
-    /** When the user added this manga to their library. */
-    val addedAt: Instant,
-    /** Number of chapters not yet read. Denormalized for UI. */
-    val unreadCount: Int,
-    /** True when at least one chapter is fully downloaded locally. */
-    val hasDownloads: Boolean,
-    /** Total chapters known for this manga. Denormalized for the TOTAL_CHAPTERS sort. */
-    val totalChapters: Int,
-    /**
-     * Timestamp of the most-recently read chapter (`MAX(SavedChapterEntity.lastReadDate)`),
-     * or `null` if no chapter has ever been read.
-     *
-     * Mirrors the legacy `MangaDisplayItem.lastReadTs` posture.
-     */
-    val lastReadAt: Instant?,
-    /**
-     * Timestamp the manga was last OPENED (`SavedMangaEntity.lastOpenTimestamp`) — set on save and
-     * bumped each time its Details screen is opened. Feeds the LAST_READ sort (native parity: native
-     * sorts LAST_READ by `manga.lastOpenTimestamp`, the last-open time, not by chapter read dates).
-     * Always present (the entity defaults it to "now" at save time).
-     */
-    val lastOpenedAt: Instant,
-    /**
-     * Count of chapters the user has bookmarked for this manga. Denormalized from
-     * `SavedChapterEntity.bookmarked == true` per-manga. Feeds the rework Library's BOOKMARKED
-     * filter axis (predicate: `bookmarkedCount > 0`). `0` for manga with no bookmarks or no
-     * saved chapters.
-     */
-    val bookmarkedCount: Int,
-    /**
-     * Count of chapters fully downloaded locally for this manga. Denormalized from
-     * `SavedChapterEntity.isDownloaded == true` per-manga (the same `MangaChapterMetrics.
-     * downloadedCount` Room column that [hasDownloads] is derived from). Feeds the rework
-     * Library's per-card "↓ N" caption (§150 rung 17, Task #343) parallel to the [bookmarkedCount]
-     * caption. `0` for manga with no downloads or no saved chapters.
-     */
-    val downloadedCount: Int,
-    /**
-     * True when the user has hearted this manga (legacy "like" flag). Pass-through of
-     * `SavedMangaEntity.isLiked`. Feeds the rework Library's `LibraryCategory.LIKED` tab
-     * (predicate: `isLiked`). Mutation (heart toggle) is still owned by the legacy Details
-     * route until a later slice ports the toggle into `:domain`.
-     */
-    val isLiked: Boolean,
-    /**
-     * True when the user has marked this manga as "watching now". Pass-through of
-     * `SavedMangaEntity.isWatchingNow`. Feeds the rework Library's
-     * `LibraryCategory.WATCHING_NOW` tab (predicate: `isWatchingNow`). Mutation is still owned
-     * by the legacy "watching now" mark until a later slice ports it into `:domain`.
-     */
-    val isWatchingNow: Boolean,
-)
+    /** Local action fence; never substitute display metadata or export this numeric ID. */
+    val identity: SavedWorkIdentity,
+    val activity: LibraryActivity,
+    val counts: LibraryChapterCounts,
+    val affinity: LibraryAffinity,
+) {
+    init {
+        require(identity.locator == WorkLocator(manga.api, manga.url))
+    }
+
+    val addedAt: Instant get() = activity.addedAt
+    val lastOpenedAt: Instant get() = activity.lastOpenedAt
+    val lastReadAt: Instant? get() = activity.lastReadAt
+    val unreadCount: Int get() = counts.unread
+    val totalChapters: Int get() = counts.total
+    val downloadedCount: Int get() = counts.downloaded
+    val bookmarkedCount: Int get() = counts.bookmarked
+    val hasDownloads: Boolean get() = counts.downloaded > 0
+    val isLiked: Boolean get() = affinity.isLiked
+    val isWatchingNow: Boolean get() = affinity.isWatchingNow
+}

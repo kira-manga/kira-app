@@ -38,7 +38,7 @@ class IosBackgroundFailedCleanupTest {
             val readable = chapter.saved.copy(isDownloaded = true, localImagePaths = listOf(archive.toString()))
             fixture.db.backupDao().updateChapterRow(readable)
             assertNull(fixture.artifacts.ownership.currentClaim(chapter.saved.id))
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
 
             engine.deleteDownload(chapter.saved.id)
@@ -73,7 +73,7 @@ class IosBackgroundFailedCleanupTest {
             assertNull(fixture.artifacts.ownership.currentClaim(failed.saved.id))
             assertTrue(fixture.system.exists(page), "Ordinary failure must leave the page resumable")
             assertNotNull(DownloadManifestStore(fixture.appFileSystem).read(failed.saved.mangaId, failed.saved.id))
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
 
             engine.deleteDownload(failed.saved.id)
@@ -111,7 +111,7 @@ class IosBackgroundFailedCleanupTest {
             }
             val files = object : AppFileSystem by fixture.appFileSystem { override fun fileSystem() = failing }
             val runtime = ArtifactTestRuntime(fixture.db, files)
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             val engine = fixture.engine(
                 CoroutineScope(coroutineContext + hostJob), transport, files = files, downloadArtifacts = runtime.downloads,
             )

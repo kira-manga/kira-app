@@ -10,8 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.local.MangaWriteTransaction
+import me.manga.kira.data.local.RoomMangaWriteTransaction
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.HistoryItemD
@@ -44,26 +45,27 @@ internal class LibraryMetadataFixture : AutoCloseable {
 
     private var artifactRuntime = ArtifactTestRuntime(db, files)
 
-    fun shared(mangaDao: MangaDao = db.mangaDao()) = LibraryRepositoryImpl(
-        mangaDao, db.libraryDeo(), db.chapterDao(), db.notificationDao(), db.historyDao(),
-        db.chapterDownloadingDao(), FakeDownloadRepository(), FileService(files),
-        RecordingReadProgressRepository(), MetadataDispatchers, artifactRuntime.ownership,
-    )
+    fun runtime(
+        mangaDao: MangaDao = db.mangaDao(),
+        boundary: MangaWriteTransaction = RoomMangaWriteTransaction(db),
+    ) = LibraryTestRuntime(db, files, artifactRuntime.ownership, mangaDao, boundary)
+
+    fun covers() = runtime().covers
 
     fun worker() = WorkerLibraryRepository(
-        db.mangaDao(), db.chapterDao(), db.libraryDeo(), db.notificationDao(), db.historyDao(), FileService(files),
+        db.mangaDao(), db.chapterDao(), db.libraryDeo(), covers(), FileService(files),
     )
 
     suspend fun seed(): LibraryMetadataSnapshot {
         val candidate = SavedMangaEntity(
-            api = "source", language = "en", title = "Metadata", url = "https://manga.test/metadata",
+            api = "source", language = "en", title = "Metadata", url = "https://current.test/metadata",
             imageUrl = OLD_COVER, description = "Keep description", author = "Keep author", status = "Ongoing",
             rating = "4.5", genres = listOf("Adventure"), savedTimestamp = 11, lastOpenTimestamp = 22,
         )
         val manga = candidate.copy(id = db.libraryDeo().insertManga(candidate))
         val chapter = SavedChapterEntity(mangaId = manga.id, name = "One", number = "1", url = "chapter/1")
         val chapterId = db.chapterDao().insertChaptersSafely(listOf(chapter)).single()
-        db.historyDao().insertHistory(metadataHistory(manga, manga.id, "old-parent-url"))
+        db.historyDao().insertHistory(metadataHistory(manga, manga.id, "https://old.test/metadata"))
         db.historyDao().insertHistory(metadataHistory(manga, 0L, manga.url))
         db.notificationDao().insertNotificationsList(listOf(ChapterNotification(
             api = manga.api, language = manga.language, mangaId = manga.id, mangaTitle = manga.title,
@@ -113,14 +115,6 @@ private fun metadataHistory(manga: SavedMangaEntity, mangaId: Long, mangaUrl: St
     isDownloaded = true, localImagePaths = listOf("owned/page.webp"),
     lastReadDate = LocalDateTime(2026, 9, 1, 12, 0), lastReadPage = 7, totalPages = 20,
 )
-
-private object MetadataDispatchers : DispatcherProvider {
-    override val main = Dispatchers.Default
-    override val mainImmediate = Dispatchers.Default
-    override val default = Dispatchers.Default
-    override val io = Dispatchers.IO
-    override val unconfined = Dispatchers.Unconfined
-}
 
 /** Faults after the actual generated history UPDATE, inside Room's transaction. */
 internal class LibraryMetadataSql(

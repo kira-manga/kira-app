@@ -1,22 +1,24 @@
 package me.manga.kira.presentation.reader
 
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
-import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.domain.repository.ReadingModeRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 import me.manga.kira.domain.usecase.reader.ClearExtractedPagesUseCase
@@ -24,25 +26,26 @@ import me.manga.kira.domain.usecase.reader.ClearPageProgressUseCase
 import me.manga.kira.domain.usecase.reader.EndReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.FetchChapterPagesUseCase
 import me.manga.kira.domain.usecase.reader.ListChaptersUseCase
-import me.manga.kira.domain.usecase.reader.LoadPagePositionUseCase
 import me.manga.kira.domain.usecase.reader.MarkChapterReadUseCase
 import me.manga.kira.domain.usecase.reader.ObserveChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ObservePageProgressUseCase
 import me.manga.kira.domain.usecase.reader.ObserveReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.RecordHistoryUseCase
-import me.manga.kira.domain.usecase.reader.SavePagePositionUseCase
 import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.StartReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
 import me.manga.kira.presentation.testing.FakeSettingsRepository
 import me.manga.kira.presentation.testing.RecordingChapterBookmarkRepository
 import me.manga.kira.presentation.testing.RecordingHistoryRepository
+import me.manga.kira.presentation.testing.RecordingLegacyReaderProgressRepository
 import me.manga.kira.presentation.testing.RecordingMarkChapterReadRepository
+import me.manga.kira.presentation.testing.RecordingReaderProgressRepository
 import me.manga.kira.presentation.testing.RecordingPageProgressRepository
 import me.manga.kira.presentation.testing.RecordingReadingSessionRepository
 import me.manga.kira.presentation.testing.readerChapter
 import me.manga.kira.presentation.testing.readerManga
 import me.manga.kira.presentation.testing.readerPage
+import me.manga.kira.presentation.testing.readerProgressSessions
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ReaderActiveActionFixture(
@@ -53,7 +56,8 @@ internal class ReaderActiveActionFixture(
     val manga = readerManga()
     val pages = ActiveActionPages(chapters)
     val progress = ActiveActionProgress()
-    val resume = ActiveActionResume()
+    val resume = RecordingReaderProgressRepository()
+    val legacyProgress = RecordingLegacyReaderProgressRepository()
     val details = ActiveActionDetails(manga, chapters)
     val savedDetails = MutableStateFlow<MangaDetails?>(null)
     val bookmark = RecordingChapterBookmarkRepository()
@@ -61,6 +65,7 @@ internal class ReaderActiveActionFixture(
     val markRead = RecordingMarkChapterReadRepository()
     private val sessions = RecordingReadingSessionRepository()
     private val readingMode = ActiveActionReadingMode(mode)
+    private val store = ViewModelStore()
 
     val vm =
         ReaderViewModel(
@@ -70,8 +75,7 @@ internal class ReaderActiveActionFixture(
             listChapters = ListChaptersUseCase(details, ActiveActionSavedDetails(savedDetails)),
             startReadingSession = StartReadingSessionUseCase(sessions),
             endReadingSession = EndReadingSessionUseCase(sessions),
-            loadPagePosition = LoadPagePositionUseCase(resume),
-            savePagePosition = SavePagePositionUseCase(resume),
+            progressSessions = readerProgressSessions(resume, legacyProgress),
             observePageProgress = ObservePageProgressUseCase(progress),
             observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),
@@ -80,6 +84,10 @@ internal class ReaderActiveActionFixture(
             clearExtractedPages = ClearExtractedPagesUseCase(pages),
             clearPageProgress = ClearPageProgressUseCase(progress),
         )
+
+    init {
+        store.put("reader", vm)
+    }
 
     fun dispatch(intent: ReaderIntent) {
         vm.submit(intent)
@@ -92,7 +100,7 @@ internal class ReaderActiveActionFixture(
     }
 
     fun close() {
-        vm.viewModelScope.cancel()
+        store.clear()
         scheduler.runCurrent()
     }
 
@@ -101,8 +109,9 @@ internal class ReaderActiveActionFixture(
             "fetch" to pages.requested.size,
             "cleanup" to pages.cleared.size,
             "list" to details.requested.size,
-            "resumeLoad" to resume.loaded.size,
-            "resumeSave" to resume.saved.size,
+            "resumeBegin" to resume.begun.size,
+            "resumePrepare" to legacyProgress.prepared.size,
+            "resumeSave" to resume.saves.size,
             "bookmark" to bookmark.observed.size,
             "history" to history.recorded.size,
             "markRead" to markRead.marked.size,
@@ -145,29 +154,6 @@ internal class ActiveActionPages(
 
 internal typealias ActiveActionProgress = RecordingPageProgressRepository
 
-internal class ActiveActionResume : ReadProgressRepository {
-    val positions = mutableMapOf<String, Int>()
-    val loaded = mutableListOf<String>()
-    val saved = mutableListOf<Pair<String, Int>>()
-
-    override suspend fun save(
-        chapterUrl: String,
-        pageIndex: Int,
-    ) {
-        saved += chapterUrl to pageIndex
-        positions[chapterUrl] = pageIndex
-    }
-
-    override suspend fun load(chapterUrl: String): Int? {
-        loaded += chapterUrl
-        return positions[chapterUrl]
-    }
-
-    override suspend fun clear(chapterUrl: String) {
-        positions.remove(chapterUrl)
-    }
-}
-
 internal class ActiveActionDetails(
     manga: Manga,
     chapters: List<Chapter>,
@@ -204,10 +190,14 @@ internal fun activeActionDetails(
 private class ActiveActionSavedDetails(
     private val details: Flow<MangaDetails?>,
 ) : SavedMangaDetailsRepository {
-    override fun observeSavedDetails(
-        api: String,
-        title: String,
-    ): Flow<MangaDetails?> = details
+    override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> =
+        details.map { snapshot ->
+            AppResult.Success(
+                snapshot?.takeIf { it.api == work.api && it.url == work.url }?.let {
+                    SavedWorkDetails(SavedWorkIdentity(1L, work), it)
+                },
+            )
+        }
 }
 
 private class ActiveActionReadingMode(

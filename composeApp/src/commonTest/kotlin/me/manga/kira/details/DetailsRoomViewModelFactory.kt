@@ -16,6 +16,8 @@ import me.manga.kira.data.repository.DownloadsActionStorage
 import me.manga.kira.data.repository.DownloadsRepositoryImpl
 import me.manga.kira.data.repository.MarkChapterReadRepositoryImpl
 import me.manga.kira.data.repository.SavedMangaDetailsRepositoryImpl
+import me.manga.kira.data.repository.library.LibraryOwnerTransactions
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.domain.repository.AdultContentClassifier
 import me.manga.kira.domain.repository.AnalyticsPort
 import me.manga.kira.domain.repository.CompressionDeferralRepository
@@ -63,6 +65,8 @@ internal class DetailsRoomEnvironment(
     val fileSystem: AppFileSystem,
     val artifacts: ChapterArtifacts,
     val dispatchers: DispatcherProvider,
+    val owners: LibraryOwnerTransactions,
+    val operations: DownloadOperationExclusion,
 )
 
 private class DetailsRoomViewModelFactory(
@@ -73,10 +77,10 @@ private class DetailsRoomViewModelFactory(
 ) {
     private val dao = room.db.chapterDao()
     private val resolver = ChapterIdResolverImpl(dao)
-    private val reads = MarkChapterReadRepositoryImpl(dao)
+    private val reads = MarkChapterReadRepositoryImpl(room.owners, dao)
     private val downloads = roomDownloadActions(room, engine)
     private val enqueue = EnqueueDownloadUseCase(downloads)
-    private val saved = SavedMangaDetailsRepositoryImpl(room.db.mangaDao(), dao, room.dispatchers)
+    private val saved = SavedMangaDetailsRepositoryImpl(room.owners, dao, room.dispatchers)
     private val observedDownloads =
         DownloadsRepositoryImpl(engine, room.db.chapterDownloadingDao())
 
@@ -89,7 +93,7 @@ private class DetailsRoomViewModelFactory(
             toggleInLibrary = ToggleInLibraryUseCase(library),
             enqueueAllChaptersDownload = EnqueueAllChaptersDownloadUseCase(resolver, enqueue, room.dispatchers),
             toggleChapterRead = ToggleChapterReadUseCase(reads),
-            toggleChapterBookmark = ToggleChapterBookmarkUseCase(ChapterBookmarkRepositoryImpl(dao)),
+            toggleChapterBookmark = ToggleChapterBookmarkUseCase(ChapterBookmarkRepositoryImpl(room.owners, dao)),
             markChaptersRead = MarkChaptersReadUseCase(reads),
             enqueueDownload = enqueue,
             cancelChapterDownload = CancelChapterDownloadUseCase(resolver, CancelDownloadUseCase(downloads)),
@@ -100,7 +104,7 @@ private class DetailsRoomViewModelFactory(
             resolveChapterId = ResolveChapterIdUseCase(resolver),
             markMangaOpened = MarkMangaOpenedUseCase(library),
             persistNewChapters = PersistNewChaptersUseCase(library),
-            clearChapterNew = ClearChapterNewUseCase(ChapterNewBadgeRepositoryImpl(dao)),
+            clearChapterNew = ClearChapterNewUseCase(ChapterNewBadgeRepositoryImpl(room.owners, dao)),
             deleteChapter = DeleteChapterUseCase(ChapterDeletionRepositoryImpl(dao)),
             observeConnectivity = ObserveConnectivityUseCase(DetailsRoomDevicePorts),
             logMangaOpen = LogMangaOpenUseCase(DetailsRoomDevicePorts),
@@ -118,6 +122,8 @@ private fun roomDownloadActions(
             room.db.chapterDownloadingDao(), room.db.chapterDao(), room.fileSystem,
             room.artifacts, room.db.chapterArtifactRepairDao(),
         ),
+        operations = room.operations,
+        catalog = DetailsDownloadCatalogAdmission(room.operations),
     )
 
 private object DetailsRoomDevicePorts :
@@ -165,4 +171,15 @@ internal object UnusedDetailsDownloadEngine : DownloadRepository {
     override suspend fun cancelAllDownloads(): Unit = error("unused")
 
     override suspend fun reconcileInterruptedDownloads(): Unit = error("unused")
+}
+
+/** Test-only admission seam; this fixture tests Details ownership, not catalog preparation. */
+private class DetailsDownloadCatalogAdmission(
+    private val operations: me.manga.kira.platform.download.DownloadOperationExclusion,
+) : me.manga.kira.data.download.selection.DownloadCatalogAdmission {
+    override suspend fun prepareLocal() = me.manga.kira.core.result.AppResult.Success(Unit)
+
+    override suspend fun <T> withAdmittedOperation(
+        block: suspend (me.manga.kira.platform.download.DownloadOperationExclusion.Operation) -> T,
+    ): T = operations.withOperation(block)
 }

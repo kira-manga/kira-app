@@ -38,7 +38,9 @@ class NotificationSchema14Test {
     private suspend fun verifySchema(path: Path, migrated: Boolean) {
         if (migrated) createExportedV13(path)
         val db = Room.databaseBuilder<MangaDatabase>(name = path.toString())
-            .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
+            .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+            .addCallback(ReaderProgressConstraints)
+            .addCallback(EffectiveSourceSelectionSchema)
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
@@ -56,7 +58,7 @@ class NotificationSchema14Test {
             db.close()
         }
         BundledSQLiteDriver().open(path.toString()).use { connection ->
-            assertEquals(15L, connection.number("PRAGMA user_version"))
+            assertEquals(17L, connection.number("PRAGMA user_version"))
             assertEquals(1L, connection.number("SELECT \"unique\" FROM pragma_index_list('notifications') WHERE name = 'index_notifications_chapterId'"))
         }
     }

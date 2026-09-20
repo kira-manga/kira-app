@@ -1,6 +1,5 @@
 package me.manga.kira.data.repository
 
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlinx.coroutines.flow.Flow
@@ -10,46 +9,32 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.DispatcherProvider
-import me.manga.kira.core.error.AppError
-import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.core.util.runCatchingCancellable
-import me.manga.kira.data.download.artifacts.ChapterArtifacts
-import me.manga.kira.data.local.dao.ChapterDao
-import me.manga.kira.data.local.dao.ChapterDownloadDao
-import me.manga.kira.data.local.dao.HistoryDao
-import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
-import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.data.mapper.savedIdentity
 import me.manga.kira.data.mapper.toLibraryManga
-import me.manga.kira.data.mapper.toNewSavedChapterEntity
-import me.manga.kira.data.mapper.toSavedChapterEntity
-import me.manga.kira.domain.model.Chapter
+import me.manga.kira.data.mapper.toNewLibraryEntity
+import me.manga.kira.data.repository.library.LibraryOwnerSession
+import me.manga.kira.data.repository.library.LibraryRefreshPlan
+import me.manga.kira.data.repository.library.LibraryWriteDependencies
+import me.manga.kira.data.repository.library.LibraryWriteRejection
+import me.manga.kira.data.repository.library.libraryStorageFailures
+import me.manga.kira.data.repository.library.libraryStorageResult
+import me.manga.kira.data.repository.library.relatedRows
+import me.manga.kira.data.repository.library.requireLibraryWrite
 import me.manga.kira.domain.model.LibraryManga
-import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.domain.repository.LibraryRepository
-import me.manga.kira.domain.repository.MangaKey
-import me.manga.kira.domain.repository.ReadProgressRepository
-import me.manga.kira.domain.service.FileService
-import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 
 /**
- * Room-backed [LibraryRepository] implementation.
- *
- * SRP (contract §6): implements the library aggregate contract and nothing else. Chapter
- * reactions / history / notifications live in their own future repository impls.
- *
- * DIP: depends on the [LibraryRepository] interface from :domain, the [MangaDao] / [LibraryDeo]
- * DAOs from :shared (transitional), and [DispatcherProvider] from :core. No Compose, no UI types.
- *
- * Membership semantics (preservation guarantee, contract §13 / baseline §3):
- *   The legacy schema uses `api + title` as the de-facto composite key (see
- *   [MangaDao.getIdByApiAndTitle]). The new domain key is the triple `(api, language, title)`,
- *   but for membership lookups we project to `(api, title)` to match the legacy wire format
- *   verbatim. Language is preserved on the entity and exposed back through the domain model;
- *   only the lookup ignores it.
+ * Room library aggregate. Every ownership read/mutation resolves a complete exact/accepted-alias
+ * family under its writer's accepted snapshot; title/language are metadata only.
+ * The historical audit below describes the pre-identity implementation, not current semantics.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster23.staleKdocSweep.cascade,
  * Task #479, 2026-05-28): one fulfilled-forecast citation appears
@@ -84,303 +69,118 @@ import me.manga.kira.presentation.features.download.domain.clean.DownloadReposit
 @OptIn(ExperimentalTime::class)
 class LibraryRepositoryImpl(
     private val mangaDao: MangaDao,
-    private val libraryDeo: LibraryDeo,
-    private val chapterDao: ChapterDao,
-    private val notificationDao: NotificationDao,
-    private val historyDao: HistoryDao,
-    private val chapterDownloadDao: ChapterDownloadDao,
-    // Legacy download engine — used by purgeManga to cancel an in-flight download of the manga
-    // being removed (so the engine can't write an orphan CBZ into the just-deleted directory).
-    private val downloadRepository: DownloadRepository,
-    private val fileService: FileService,
-    // Clears per-chapter resume positions (stored in settings, keyed by chapter url) on removal.
-    private val readProgress: ReadProgressRepository,
+    private val writes: LibraryWriteDependencies,
     private val dispatchers: DispatcherProvider,
-    private val artifacts: ChapterArtifacts,
 ) : LibraryRepository {
-
     override fun observeLibrary(): Flow<List<LibraryManga>> =
         combine(
-            // distinctUntilChanged (2026-07 audit): Room invalidation re-emits on ANY write to the
-            // observed tables — every chapter write during a bulk refresh re-ran the full-table
-            // GROUP BY + this whole-library map + the VM's applyView per emission. Deduping the
-            // structurally-equal inputs (data-class rows) collapses that to one recompute per real
-            // change; the output dedup below stops identical lists reaching the VM at all.
             mangaDao.getAllSavedMangaFlow().distinctUntilChanged(),
             mangaDao.getAllChapterMetricsFlow().distinctUntilChanged(),
         ) { mangas, metrics ->
             val byId = metrics.associateBy { it.mangaId }
             mangas.map { entity ->
-                val m = byId[entity.id]
+                val counts = byId[entity.id]
                 entity.toLibraryManga(
-                    totalChapters = m?.totalChapters ?: 0,
-                    readCount = m?.readCount ?: 0,
-                    downloadedCount = m?.downloadedCount ?: 0,
-                    lastReadTs = m?.lastReadTs,
-                    bookmarkedCount = m?.bookmarkedCount ?: 0,
+                    totalChapters = counts?.totalChapters ?: 0,
+                    readCount = counts?.readCount ?: 0,
+                    downloadedCount = counts?.downloadedCount ?: 0,
+                    lastReadTs = counts?.lastReadTs,
+                    bookmarkedCount = counts?.bookmarkedCount ?: 0,
                 )
             }
-        }.distinctUntilChanged()
-            .flowOn(dispatchers.io)
+        }.distinctUntilChanged().flowOn(dispatchers.io)
 
-    override fun observeIsInLibrary(
-        api: String,
-        language: String,
-        title: String,
-    ): Flow<Boolean> =
-        mangaDao.getAllSavedMangaFlow()
-            .map { list -> list.any { it.api == api && it.title == title } }
+    override fun observeMembership(work: WorkLocator): Flow<AppResult<SavedWorkIdentity?>> =
+        writes.owners.invalidations()
+            .map { libraryStorageResult { writes.owners.write { resolve(work)?.savedIdentity() } } }
+            .libraryStorageFailures()
             .distinctUntilChanged()
             .flowOn(dispatchers.io)
 
-    override suspend fun get(
-        api: String,
-        language: String,
-        title: String,
-    ): AppResult<LibraryManga?> = runCatchingStorage {
+    override suspend fun get(work: WorkLocator): AppResult<LibraryManga?> = libraryStorageResult {
         withContext(dispatchers.io) {
-            val id = mangaDao.getIdByApiAndTitle(api, title) ?: return@withContext null
-            val entity = mangaDao.getMangaById(id) ?: return@withContext null
-            entity.toLibraryManga(
-                totalChapters = 0,
-                readCount = 0,
-                downloadedCount = 0,
-                lastReadTs = null,
-                bookmarkedCount = 0,
-            )
-        }
-    }
-
-    /**
-     * Native parity (`MangaRepository.save` → `LibraryDeo.saveMangaWithChapters`): persist the
-     * manga row AND its chapter list atomically. `saveMangaWithChapters` upserts the manga (IGNORE
-     * conflict), resolves/creates its id, and inserts only chapter URLs not already saved — so an
-     * idempotent re-add is a no-op and a partial chapter list tops up without duplicating rows.
-     *
-     * `[chapters].reversed()` mirrors native's `...toSavedEntities(1).reversed()` call-site detail:
-     * the source ships chapters newest-first, so reversing lands them oldest-first in Room and the
-     * autoincrement `id` ascends with chapter recency (matching `ChapterDao.getChaptersByMangaId`'s
-     * `ORDER BY id ASC`). The per-chapter `mangaId` is a placeholder here — the DAO re-stamps it
-     * with the resolved id inside the transaction.
-     */
-    override suspend fun addToLibrary(details: MangaDetails): AppResult<Unit> =
-        runCatchingStorage {
-            withContext(dispatchers.io) {
-                libraryDeo.saveMangaWithChapters(
-                    manga = details.toNewEntity(),
-                    chapters = details.chapters.reversed().map { it.toSavedChapterEntity() },
-                )
+            writes.owners.write {
+                resolve(work)?.toLibraryManga(0, 0, 0, null, 0)
             }
         }
-
-    /**
-     * Native parity (`MangaRepository.removeManga`): a removal must purge BOTH the DB rows AND the
-     * on-disk downloaded files, or the "downloaded" badge/size (read from `chapter_downloads`) and
-     * the orphaned `manga/$id/` directory survive the removal. `removeMangaWithChapters` clears the
-     * sibling tables (incl. `chapter_downloads`) in one transaction; `deleteMangaFiles` then drops
-     * the whole `manga/$id` directory recursively (no-op when absent).
-     */
-    /**
-     * Native parity (`LibraryDetailsViewModel.refreshChapters`): for an in-library manga, diff the
-     * freshly-fetched chapter list against the saved URLs and insert ONLY the genuinely-new ones,
-     * flagged `isNew = true` with a `fetchedAt = now` discovery timestamp. Idempotent — the unique
-     * `(mangaId, url)` index + `OnConflict.IGNORE` mean a re-refresh inserts nothing and never resets
-     * `isNew` on already-saved chapters. `.reversed()` matches the add path so autoincrement `id`
-     * stays oldest→newest. Resolves only the captured request's exact api + parent URL; no title
-     * fallback. Returns the count inserted; 0 when that parent isn't in the library.
-     */
-    override suspend fun persistNewChapters(
-        api: String,
-        mangaUrl: String,
-        fetched: List<Chapter>,
-    ): AppResult<Int> = runCatchingStorage {
-        withContext(dispatchers.io) {
-            val mangaId = mangaDao.getIdByApiAndUrl(api, mangaUrl) ?: return@withContext 0
-            insertNewChapters(mangaId, fetched).size
-        }
     }
 
-    /**
-     * Refresh-all variant: the local transaction resolves the exact parent URL, discovers chapters
-     * and writes Updates atomically. Its committed rows, not a pre-insert URL snapshot, determine
-     * the count. Overlapping inline/background refreshes cannot both notify the same discovery.
-     */
-    override suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int> =
-        runCatchingStorage {
+    override suspend fun addToLibrary(fetched: FetchedWorkDetails): AppResult<SavedWorkIdentity> =
+        libraryStorageResult {
             withContext(dispatchers.io) {
-                libraryDeo.persistChapterDiscoveries(
-                    api = manga.api,
-                    mangaUrl = manga.url,
-                    chapters = fetched.reversed().map { it.toSavedChapterEntity() },
-                ).size
-            }
-        }
-
-    /** Diff/dedup and NEW stamping under the parent id already resolved by the caller. */
-    private suspend fun insertNewChapters(
-        mangaId: Long,
-        fetched: List<Chapter>,
-    ): List<Chapter> {
-        val savedUrls = libraryDeo.getSavedChapterUrls(mangaId).toSet()
-        val newOnes = fetched.filter { it.url !in savedUrls }
-        FlowLog.log("Details", "persistNew", "mangaId=$mangaId fetched=${fetched.size} new=${newOnes.size}")
-        if (newOnes.isNotEmpty()) {
-            val now = Clock.System.now().toEpochMilliseconds()
-            libraryDeo.insertChapters(
-                newOnes.reversed().map { it.toNewSavedChapterEntity(mangaId = mangaId, fetchedAt = now) },
-            )
-        }
-        return newOnes
-    }
-
-    /**
-     * Native parity (`LibraryRefreshWorker.updateMangaImageUrlEverywhere`): when a refresh fetches a
-     * rotated cover URL, atomically update its saved, history and notification cover copies.
-     * The local transaction also repairs a prior partial fan-out when the saved URL already
-     * matches, and never rewrites affinity/reading state. Resolves the legacy `(api, title)` key;
-     * blank covers and missing saved parents are no-ops, matching the Android cover facade.
-     */
-    override suspend fun updateCoverIfChanged(
-        api: String,
-        language: String,
-        title: String,
-        newCoverUrl: String,
-    ): AppResult<Unit> = runCatchingStorage {
-        withContext(dispatchers.io) {
-            val id = mangaDao.getIdByApiAndTitle(api, title) ?: return@withContext Unit
-            mangaDao.updateCoverEverywhere(id, newCoverUrl)
-        }
-    }
-
-    override suspend fun removeFromLibrary(
-        api: String,
-        language: String,
-        title: String,
-    ): AppResult<Unit> = runCatchingStorage {
-        withContext(dispatchers.io) {
-            val id = mangaDao.getIdByApiAndTitle(api, title) ?: return@withContext Unit
-            purgeManga(id)
-        }
-    }
-
-    override suspend fun removeAllFromLibrary(keys: List<MangaKey>): AppResult<Int> =
-        runCatchingStorage {
-            withContext(dispatchers.io) {
-                // #21: count only rows that actually existed and were purged — a key with no
-                // saved_manga row (already removed / never saved) is skipped and must NOT inflate
-                // the "Removed N items" toast.
-                var purged = 0
-                for (key in keys) {
-                    val id = mangaDao.getIdByApiAndTitle(key.api, key.title) ?: continue
-                    purgeManga(id)
-                    purged++
+                writes.owners.write {
+                    val current = prepareAdd(fetched) ?: insertParent(fetched)
+                    val plan = preparePlan(current, fetched)
+                    commit(plan, refreshing = false, notify = false).owner
                 }
-                purged
             }
         }
 
-    /**
-     * Fully erase a manga's data on library removal. Reads the url + chapter urls BEFORE deleting
-     * the rows (they're needed to clear the url-keyed stores), then:
-     *  - deleteMangaFiles: finish the on-disk manga/$id directory while the original key exists;
-     *  - removeMangaWithChapters: saved_manga + saved_chapters + chapter_downloads + notifications
-     *    (by mangaId) + history (by mangaId), in one transaction, only after files are removed;
-     *  - removeHistoryByUrl + removeNotificationsByUrl: belt-and-braces clear of any history /
-     *    notification rows the rework wrote with mangaId=0 (history) or a divergent id;
-     *  - readProgress.clear: the per-chapter resume positions in settings (url-keyed, no FK).
-     */
-    private suspend fun purgeManga(id: Long) {
-        val mangaUrl = mangaDao.getMangaById(id)?.url
-        val chapterUrls = libraryDeo.getSavedChapterUrls(id)
-        artifacts.parentRemoval(id) {
-            // Close all same-parent admission before stopping work; callbacks may unwind without
-            // blocking on the parent gate. Include no-FK custody even if earlier rows were removed.
-            val owners = artifacts.ownersForManga(id)
-            chapterDownloadDao.getActiveDownloadChapterIdsForManga(id).forEach { chapterId ->
-                runCatchingCancellable { downloadRepository.cancelARunningChapter(chapterId, id) }
-            }
-            owners.forEach { owner ->
-                check(artifacts.removeChapterUnderParent(owner)) { "Manga artifact removal could not be settled" }
-            }
-            // Keep the original lookup key retryable if final root/stray-file cleanup fails.
-            // The App33 parent barrier remains closed through both files and graph removal.
-            fileService.deleteMangaFiles(id)
-            libraryDeo.removeMangaWithChapters(id)
-        }
-        mangaUrl?.let {
-            libraryDeo.removeHistoryByUrl(it)
-            libraryDeo.removeNotificationsByUrl(it)
-        }
-        chapterUrls.forEach { readProgress.clear(it) }
-    }
-
-    /**
-     * Resolve the existing library key, then flip only the liked column in one SQL statement.
-     * Concurrent watching-now/cover changes cannot be replaced by a stale entity snapshot.
-     * A missing or concurrently removed saved parent remains a successful no-op.
-     */
-    override suspend fun toggleLiked(key: MangaKey): AppResult<Unit> = runCatchingStorage {
+    override suspend fun refresh(
+        requests: List<LibraryRefreshRequest>,
+        notify: Boolean,
+    ): AppResult<List<LibraryRefreshReceipt>> = libraryStorageResult {
         withContext(dispatchers.io) {
-            val id = mangaDao.getIdByApiAndTitle(key.api, key.title) ?: return@withContext Unit
-            mangaDao.toggleLiked(id)
-        }
-    }
-
-    /**
-     * Like [toggleLiked], mutate only the owned column atomically; unrelated metadata survives.
-     */
-    override suspend fun toggleWatchingNow(key: MangaKey): AppResult<Unit> = runCatchingStorage {
-        withContext(dispatchers.io) {
-            val id = mangaDao.getIdByApiAndTitle(key.api, key.title) ?: return@withContext Unit
-            mangaDao.toggleWatchingNow(id)
-        }
-    }
-
-    /**
-     * Bump `lastOpenTimestamp` to now for the saved manga; no-op when it isn't in the library
-     * (`getIdByApiAndTitle` returns null). Feeds the LAST_READ sort (native parity — see
-     * [LibraryRepository.markOpened]).
-     */
-    override suspend fun markOpened(api: String, language: String, title: String): AppResult<Unit> =
-        runCatchingStorage {
-            withContext(dispatchers.io) {
-                val id = mangaDao.getIdByApiAndTitle(api, title) ?: return@withContext Unit
-                mangaDao.updateLastOpenTimestamp(id, Clock.System.now().toEpochMilliseconds())
+            writes.owners.write {
+                val plans = requests.map { preparePlan(acceptFetched(it.owner, it.fetched), it.fetched) }
+                val ids = plans.map { it.owner.id }
+                requireLibraryWrite(ids.distinct().size == ids.size, LibraryWriteRejection.DUPLICATE_REQUEST)
+                plans.map { commit(it, refreshing = true, notify = notify) }
             }
         }
-
-    /**
-     * Project the authoritative fetched [MangaDetails] onto a fresh [SavedMangaEntity]. The
-     * lightweight [Manga] listing model intentionally never reaches this boundary because it does
-     * not contain description, author, status, or the source's opaque string rating.
-     */
-    private fun MangaDetails.toNewEntity(): SavedMangaEntity {
-        val now = Clock.System.now().toEpochMilliseconds()
-        return SavedMangaEntity(
-            api = api,
-            language = language,
-            url = url,
-            imageUrl = coverUrl,
-            title = title,
-            description = description,
-            author = author,
-            status = status,
-            rating = rating,
-            genres = genres,
-            savedTimestamp = now,
-            lastOpenTimestamp = now,
-        )
     }
-}
 
-/**
- * Wraps a suspending block that touches storage into an [AppResult] with [AppError.Storage.Io]
- * on unexpected failure. Cancellation is rethrown unchanged so structured concurrency works.
- */
-private inline fun <T> runCatchingStorage(block: () -> T): AppResult<T> = try {
-    AppResult.Success(block())
-} catch (ce: CancellationException) {
-    throw ce
-} catch (t: Throwable) {
-    AppResult.Failure(AppError.Storage.Io(cause = t))
+    override suspend fun removeFromLibrary(owner: SavedWorkIdentity): AppResult<Unit> = libraryStorageResult {
+        withContext(dispatchers.io) {
+            writes.removal.remove(listOf(owner))
+            Unit
+        }
+    }
+
+    override suspend fun removeAllFromLibrary(owners: List<SavedWorkIdentity>): AppResult<Int> =
+        libraryStorageResult { withContext(dispatchers.io) { writes.removal.remove(owners) } }
+
+    override suspend fun toggleLiked(owner: SavedWorkIdentity): AppResult<Unit> = updateOwner(owner) {
+        mangaDao.toggleLikedForExactOwner(it.id, it.api, it.url)
+    }
+
+    override suspend fun toggleWatchingNow(owner: SavedWorkIdentity): AppResult<Unit> = updateOwner(owner) {
+        mangaDao.toggleWatchingForExactOwner(it.id, it.api, it.url)
+    }
+
+    override suspend fun markOpened(owner: SavedWorkIdentity): AppResult<Unit> = updateOwner(owner) {
+        mangaDao.updateOpenedForExactOwner(it.id, it.api, it.url, Clock.System.now().toEpochMilliseconds())
+    }
+
+    private suspend fun updateOwner(
+        owner: SavedWorkIdentity,
+        update: suspend (SavedMangaEntity) -> Int,
+    ): AppResult<Unit> = libraryStorageResult {
+        withContext(dispatchers.io) {
+            writes.owners.write {
+                requireLibraryWrite(update(retain(owner)) == 1, LibraryWriteRejection.WRITE_COUNT)
+            }
+        }
+    }
+
+    private suspend fun LibraryOwnerSession.insertParent(fetched: FetchedWorkDetails): SavedMangaEntity {
+        val id = writes.libraryDao.insertManga(fetched.toNewLibraryEntity(Clock.System.now().toEpochMilliseconds()))
+        requireLibraryWrite(id > 0, LibraryWriteRejection.INSERT_CONFLICT)
+        return retain(SavedWorkIdentity(id, fetched.requested))
+    }
+
+    private suspend fun LibraryOwnerSession.preparePlan(
+        owner: SavedMangaEntity,
+        fetched: FetchedWorkDetails,
+    ) = LibraryRefreshPlan(
+        owner = owner,
+        fetched = fetched,
+        newChapters = writes.chapters.missing(this, owner, fetched.details.chapters),
+        related = relatedRows(owner, writes.libraryDao),
+    )
+
+    private suspend fun commit(plan: LibraryRefreshPlan, refreshing: Boolean, notify: Boolean): LibraryRefreshReceipt {
+        val current = writes.metadata.details(plan.owner, plan.fetched.details, plan.related)
+        return writes.chapters.insert(current, plan.newChapters, refreshing, notify)
+    }
 }

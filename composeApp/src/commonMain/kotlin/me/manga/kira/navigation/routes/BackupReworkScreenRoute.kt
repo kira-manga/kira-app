@@ -17,16 +17,18 @@ import me.manga.kira.core.platform.rememberBackupFilePicker
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
-import me.manga.kira.domain.model.backup.BackupScope
 import me.manga.kira.domain.model.backup.BackupImportResult
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.model.backup.BackupSelection
+import me.manga.kira.domain.model.backup.isValid
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.presentation.backup.BackupIntent
 import me.manga.kira.presentation.backup.BackupViewModel
 import me.manga.kira.ui.backup.BackupScreen
-import org.koin.compose.viewmodel.koinViewModel
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /**
@@ -37,26 +39,26 @@ import org.koin.core.parameter.parametersOf
 @Serializable
 data class BackupScopeKey(
     val api: String,
-    val language: String,
-    val title: String,
+    val url: String,
+    val title: String = "",
 )
 
 private val backupScopeJson = Json { ignoreUnknownKeys = true }
 
 /** Encode a Details/Library selection into the [Screen.BackupRework] route argument. */
-fun encodeBackupScope(keys: List<BackupScopeKey>): String = if (keys.isEmpty()) "" else backupScopeJson.encodeToString(keys)
+fun encodeBackupScope(keys: List<BackupScopeKey>): String = backupScopeJson.encodeToString(keys)
 
-/** Blank/undecodable/empty scope falls back to a full-library backup screen. */
+/** Only the deliberate default route marker is full-library; invalid selections stay invalid. */
 internal fun decodeBackupScope(raw: String): BackupScope {
-    if (raw.isBlank()) return BackupScope.FullLibrary
+    if (raw == "") return BackupScope.FullLibrary
     val keys =
         runCatching {
             backupScopeJson.decodeFromString<List<BackupScopeKey>>(raw)
         }.getOrNull()
-    if (keys.isNullOrEmpty()) return BackupScope.FullLibrary
+    if (keys.isNullOrEmpty()) return BackupScope.Invalid
     return BackupScope.Mangas(
-        keys.map { MangaKey(api = it.api, language = it.language, title = it.title) },
-    )
+        keys.map { BackupSelection(WorkLocator(it.api, it.url), it.title.ifBlank { it.url }) },
+    ).takeIf { it.isValid } ?: BackupScope.Invalid
 }
 
 /**

@@ -23,7 +23,7 @@ internal const val BACKUP_FORMAT_VERSION = 1
 internal const val BACKUP_JSON_ENTRY = "backup.json"
 
 /** MangaDatabase version at authoring time — provenance only, import never gates on it. */
-internal const val BACKUP_DB_VERSION = 13
+internal const val BACKUP_DB_VERSION = 17
 
 /** Lenient on read (additive forward-compat), explicit on write (defaults serialized). */
 internal val backupJson =

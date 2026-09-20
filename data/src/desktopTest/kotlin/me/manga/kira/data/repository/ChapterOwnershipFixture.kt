@@ -1,5 +1,6 @@
 package me.manga.kira.data.repository
 
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import androidx.room.Room
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.SQLiteDriver
@@ -38,6 +39,7 @@ import kotlin.test.assertTrue
 
 /** Test-only inherited lifecycle and real-Room/filesystem setup for the ownership regressions. */
 open class ChapterOwnershipFixture {
+    protected val downloadOperations = DownloadOperationExclusion()
     protected lateinit var root: Path
     protected lateinit var appFs: AppFileSystem
     protected lateinit var db: MangaDatabase
@@ -81,6 +83,8 @@ open class ChapterOwnershipFixture {
             .setDriver(ForeignKeysOnDriver())
             .setQueryCoroutineContext(Dispatchers.Default)
             .build()
+
+    internal fun libraryRuntime() = LibraryTestRuntime(db, appFs, artifactRuntime.ownership)
 
     protected suspend fun seed(
         manga: Manga,
@@ -153,7 +157,7 @@ open class ChapterOwnershipFixture {
             "source",
             "en",
             "Same title",
-            "https://owner.test/$slug",
+            "https://current.test/$slug",
             "",
             null,
             emptyList(),

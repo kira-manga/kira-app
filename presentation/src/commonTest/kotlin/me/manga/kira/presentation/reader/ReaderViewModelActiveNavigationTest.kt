@@ -19,6 +19,7 @@ import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.presentation.testing.readerChapter
+import me.manga.kira.presentation.testing.readerLocator
 import me.manga.kira.presentation.testing.readerPage
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -49,8 +50,8 @@ class ReaderViewModelActiveNavigationTest {
             val (anchor, active) = env.chapters
             env.enterAndAppend()
             env.dispatch(ReaderIntent.OnPageChanged(3))
-            assertEquals(listOf(active.url to 1), env.resume.saved)
-            env.resume.positions[anchor.url] = 99
+            assertEquals(listOf(env.resume.snapshots.last().handle to 1), env.resume.saves)
+            env.resume.positions[readerLocator(env.manga, anchor)] = 99
             val oldUrls =
                 env.vm.state.value.pages
                     .map { it.url }
@@ -63,14 +64,13 @@ class ReaderViewModelActiveNavigationTest {
 
             assertOnlyChapter(env, anchor)
             assertEquals(1, env.vm.state.value.currentPageIndex, "saved position clamps to the new page count")
-            assertEquals(listOf(anchor.url, anchor.url), env.resume.loaded)
+            val expectedSessions = listOf(anchor, active, anchor).map { readerLocator(env.manga, it) }
+            assertEquals(expectedSessions, env.resume.begun)
+            assertEquals(expectedSessions, env.legacyProgress.prepared)
             assertEquals(listOf(anchor, active, anchor), env.pages.requested.map { it.second })
             assertEquals(listOf(env.manga to active), env.pages.cleared, "retain only the target's extracted pages")
             assertEquals(listOf(env.manga to anchor.url, env.manga to active.url), env.markRead.marked)
-            assertEquals(
-                listOf(env.manga to anchor.url, env.manga to active.url, env.manga to anchor.url),
-                env.bookmark.observed,
-            )
+            assertEquals(listOf(anchor, active, anchor).map { env.manga to it.url }, env.bookmark.observed)
             assertEquals(listOf(anchor.url, active.url, anchor.url), env.history.recorded.map { it.second })
             assertEquals(
                 oldUrls.sorted(),
@@ -123,7 +123,7 @@ class ReaderViewModelActiveNavigationTest {
             assertIgnored(env, ReaderIntent.OnEnter(env.manga, env.chapters.first()))
             assertIgnored(
                 env,
-                ReaderIntent.OnEnter(env.manga.copy(url = "https://x/relocated"), env.chapters.first()),
+                ReaderIntent.OnEnter(env.manga.copy(title = "Renamed", language = "ar"), env.chapters.first()),
             )
         }
 
@@ -132,7 +132,8 @@ class ReaderViewModelActiveNavigationTest {
         runTest(dispatcher) {
             val env = fixture()
             env.enterAndAppend()
-            val other = env.manga.copy(title = "Other manga")
+            // Same metadata is not identity: a different requested URL must establish another work.
+            val other = env.manga.copy(url = "https://x/other")
             val chapters = listOf(readerChapter("other-1"), readerChapter("other-2"))
             val gate = CompletableDeferred<Unit>()
             env.details.lists[other] = chapters

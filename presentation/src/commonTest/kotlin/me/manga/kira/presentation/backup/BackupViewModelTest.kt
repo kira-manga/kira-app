@@ -12,8 +12,9 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.backup.BackupPhase
 import me.manga.kira.domain.model.backup.BackupProgress
 import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.model.backup.BackupSelection
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.model.settings.CbzConversionProgress
-import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.presentation.testing.FakeSettingsRepository
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.AfterTest
@@ -21,6 +22,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -44,7 +46,9 @@ class BackupViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private val scopedKeys = listOf(MangaKey(api = "azora", language = "ar", title = "Solo Leveling"))
+    private val scopedKeys = listOf(
+        BackupSelection(WorkLocator("azora", "https://source.test/work/one"), "Solo Leveling"),
+    )
 
     // --- progress projection ---------------------------------------------------------------------
 
@@ -245,6 +249,39 @@ class BackupViewModelTest {
         vm.submit(BackupIntent.OnImportFilePicked("/cache/cancelled.zip"))
         assertEquals(listOf("/cache/cancelled.zip"), repo.discardedImports)
         assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun picked_file_is_rejected_by_a_scoped_route_even_without_the_picker() = runTest {
+        val repo = FakeBackupRepository()
+        val vm = buildBackupVm(repo, scope = BackupScope.Mangas(scopedKeys))
+        vm.submit(BackupIntent.OnImportFilePicked(localPath = "/cache/unexpected.zip"))
+        assertTrue(repo.importCalls.isEmpty())
+        assertEquals(listOf("/cache/unexpected.zip"), repo.discardedImports)
+    }
+
+    @Test
+    fun invalid_or_empty_selection_is_typed_and_never_exports_imports_or_launches_pickers() = runTest {
+        val invalid = listOf(
+            BackupScope.Invalid,
+            BackupScope.Mangas(emptyList()),
+            BackupScope.Mangas(listOf(BackupSelection(WorkLocator("source", "")))),
+        )
+        invalid.forEach { scope ->
+            val repo = FakeBackupRepository()
+            val vm = buildBackupVm(repo, scope = scope)
+            val effects = mutableListOf<BackupEffect>()
+            val collector = launch(dispatcher) { vm.effects.collect { effects += it } }
+            vm.submit(BackupIntent.OnExport)
+            vm.submit(BackupIntent.OnImport)
+            vm.submit(BackupIntent.OnImportFilePicked("/cache/unexpected.zip"))
+            assertIs<AppError.Validation.Format>(vm.state.value.error)
+            assertFalse(vm.state.value.canStartRun)
+            assertTrue(vm.state.value.isScoped)
+            assertTrue(repo.exportCalls.isEmpty() && repo.importCalls.isEmpty() && effects.isEmpty())
+            assertEquals(listOf("/cache/unexpected.zip"), repo.discardedImports)
+            collector.cancel()
+        }
     }
 
     // --- stop / dismiss ----------------------------------------------------------------------------

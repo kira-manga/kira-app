@@ -1,11 +1,9 @@
 package me.manga.kira.details
 
 import androidx.lifecycle.ViewModelStore
-import me.manga.kira.data.download.artifacts.ChapterArtifacts
-import me.manga.kira.data.download.artifacts.ChapterArtifactRecovery
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
-import com.russhwolf.settings.MapSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -13,18 +11,23 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.download.artifacts.ChapterArtifactRecovery
+import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.local.ReaderProgressConstraints
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
-import me.manga.kira.data.repository.LibraryRepositoryImpl
-import me.manga.kira.data.repository.ReadProgressRepositoryImpl
+import me.manga.kira.data.repository.library.LibraryOwnerTransactions
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
-import me.manga.kira.domain.repository.MangaKey
-import me.manga.kira.domain.service.FileService
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.filesystem.AppFileSystem
 import okio.FileSystem
 import okio.Path
@@ -32,12 +35,14 @@ import okio.Path.Companion.toPath
 import java.nio.file.Files
 import kotlin.test.assertTrue
 
-/** Real file-backed Room and production repositories; only source and membership timing are controlled. */
+/** Real file-backed Room/repositories; source, finite test policy and scoped membership timing are controlled. */
 internal class DetailsUrlOnlyRoomFixture(
     private val dispatcher: CoroutineDispatcher,
 ) {
     private val root = Files.createTempDirectory("kira-details-persistence-").toString().toPath()
     private val store = ViewModelStore()
+    private var viewModelCleared = false
+    val operations = DownloadOperationExclusion()
     val fileSystem =
         object : AppFileSystem {
             override val filesDir: Path = root / "files"
@@ -61,26 +66,16 @@ internal class DetailsUrlOnlyRoomFixture(
     )
     var artifacts = newArtifacts()
         private set
-    val library =
-        DeferredDetailsMembership(
-            LibraryRepositoryImpl(
-                mangaDao = db.mangaDao(),
-                libraryDeo = db.libraryDeo(),
-                chapterDao = db.chapterDao(),
-                notificationDao = db.notificationDao(),
-                historyDao = db.historyDao(),
-                chapterDownloadDao = db.chapterDownloadingDao(),
-                downloadRepository = UnusedDetailsDownloadEngine,
-                fileService = FileService(fileSystem),
-                readProgress = ReadProgressRepositoryImpl(MapSettings()),
-                dispatchers = dispatchers,
-                artifacts = artifacts,
-            ),
-        )
+    private var runtime = DetailsUrlOnlyLibraryRuntime(db, fileSystem, artifacts, dispatchers)
+    val owners: LibraryOwnerTransactions get() = runtime.owners
+    val library = DeferredDetailsMembership(runtime.repository)
     val source = DetailsRoomSource()
-    val vm = createDetailsRoomViewModel(
-        DetailsRoomEnvironment(db, fileSystem, artifacts, dispatchers), library, source,
-    ).also { store.put("details", it) }
+    val vm =
+        createDetailsRoomViewModel(
+            DetailsRoomEnvironment(db, fileSystem, artifacts, dispatchers, owners = owners, operations = operations),
+            library,
+            source,
+        ).also { store.put("details", it) }
 
     suspend fun seed(
         manga: Manga,
@@ -104,12 +99,17 @@ internal class DetailsUrlOnlyRoomFixture(
         return row.copy(id = id)
     }
 
-    fun clearViewModel() = store.clear()
+    fun clearViewModel() {
+        store.clear()
+        viewModelCleared = true
+    }
 
     fun reopen() {
+        check(viewModelCleared) { "The old ViewModel must be cleared before its database is closed" }
         db.close()
         db = openDatabase()
         artifacts = newArtifacts()
+        runtime = DetailsUrlOnlyLibraryRuntime(db, fileSystem, artifacts, dispatchers)
     }
 
     fun close() {
@@ -121,52 +121,57 @@ internal class DetailsUrlOnlyRoomFixture(
     private fun openDatabase(): MangaDatabase =
         Room
             .databaseBuilder<MangaDatabase>(name = (root / "details.db").toString())
-            .setDriver(BundledSQLiteDriver())
+            .addCallback(ReaderProgressConstraints)
+            .setDriver(DetailsUrlOnlyForeignKeysDriver(BundledSQLiteDriver()))
             // Keep Room queries, VM work and invalidations on the same deterministic test scheduler.
             .setQueryCoroutineContext(dispatcher)
             .build()
 }
 
-/** Delays ONLY the UI membership observer; every write still executes the production repository. */
+/** Delays scoped membership authority, never substitutes its result; every refresh is real Room work. */
 internal class DeferredDetailsMembership(
     private val real: LibraryRepository,
 ) : LibraryRepository by real {
     val ready = CompletableDeferred<Unit>()
-    val observedKeys = mutableListOf<MangaKey>()
-    val offeredParents = mutableListOf<Pair<String, String>>()
-    val results = mutableListOf<AppResult<Int>>()
+    val observedKeys = mutableListOf<WorkLocator>()
+    val refreshBatches = mutableListOf<List<LibraryRefreshRequest>>()
+    val notifyRequests = mutableListOf<Boolean>()
+    val offeredParents: List<WorkLocator> get() = refreshBatches.flatten().map { it.fetched.requested }
+    val results = mutableListOf<AppResult<List<LibraryRefreshReceipt>>>()
 
-    override fun observeIsInLibrary(
-        api: String,
-        language: String,
-        title: String,
-    ): Flow<Boolean> =
+    override fun observeMembership(work: WorkLocator): Flow<AppResult<SavedWorkIdentity?>> =
         flow {
-            observedKeys += MangaKey(api, language, title)
+            observedKeys += work
             ready.await()
-            emitAll(real.observeIsInLibrary(api, language, title))
+            emitAll(real.observeMembership(work))
         }
 
-    override suspend fun persistNewChapters(
-        api: String,
-        mangaUrl: String,
-        fetched: List<Chapter>,
-    ): AppResult<Int> {
-        offeredParents += api to mangaUrl
-        return real.persistNewChapters(api, mangaUrl, fetched).also { results += it }
+    override suspend fun refresh(
+        requests: List<LibraryRefreshRequest>,
+        notify: Boolean,
+    ): AppResult<List<LibraryRefreshReceipt>> {
+        refreshBatches += requests.toList()
+        notifyRequests += notify
+        return real.refresh(requests, notify).also { results += it }
     }
 }
 
 internal class DetailsRoomSource : MangaDetailsRepository {
     val requests = mutableListOf<Manga>()
+    val cancelledRequests = mutableListOf<Manga>()
     val answers = mutableMapOf<String, AppResult<MangaDetails>>()
     val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
     override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
         requests += manga
         val answer = answers.getValue(manga.url)
-        gates[manga.url]?.await()
-        return answer
+        return try {
+            gates[manga.url]?.await()
+            answer
+        } catch (cancelled: CancellationException) {
+            cancelledRequests += manga
+            throw cancelled
+        }
     }
 }
 

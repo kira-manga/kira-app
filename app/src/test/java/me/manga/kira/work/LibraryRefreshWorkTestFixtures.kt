@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
@@ -18,51 +16,53 @@ import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryChapterNotification
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.sources.contracts.MangaSourceClient
 
 /** Models the facade's real return contracts, not a second implementation of refresh policy. */
 internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     var libraryFlow: Flow<List<SavedMangaEntity>> = flowOf(listOf(refreshManga(1)))
-    var chapterFlow: (Long) -> Flow<List<SavedChapterEntity>> = { flowOf(emptyList()) }
     var missingSource = false
     var fetch: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(refreshDetails(it)) }
-    var cover: suspend () -> Unit = {}
-    var persist: suspend (SavedMangaEntity, List<SavedChapterEntity>) -> List<ChapterNotification> =
-        ::refreshNotifications
-    var display: suspend (List<ChapterNotification>) -> Unit = {}
+    var cover: suspend () -> AppResult<Unit> = { AppResult.Success(Unit) }
+    var persist: suspend (LibraryRefreshRequest) -> AppResult<LibraryRefreshReceipt> =
+        { AppResult.Success(refreshReceipt(it)) }
+    var display: suspend (List<LibraryChapterNotification>) -> Unit = {}
     var lastSuccess = "old success"
     var stamps = 0
     var stamp: suspend () -> Unit = {
         lastSuccess = "new success"
         stamps++
     }
-    val persistenceCalls = mutableListOf<List<SavedChapterEntity>>()
-    val persistedNotifications = mutableListOf<List<ChapterNotification>>()
-    val displayCalls = mutableListOf<List<ChapterNotification>>()
-    val coverCalls = mutableListOf<Pair<Long, String>>()
+    val persistenceCalls = mutableListOf<LibraryRefreshRequest>()
+    val persistedNotifications = mutableListOf<List<LibraryChapterNotification>>()
+    val displayCalls = mutableListOf<List<LibraryChapterNotification>>()
+    val coverCalls = mutableListOf<Triple<SavedWorkIdentity, WorkLocator, String>>()
 
     override fun library() = libraryFlow
 
-    override fun chapters(mangaId: Long) = chapterFlow(mangaId)
-
     override suspend fun updateCover(
-        mangaId: Long,
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
         coverUrl: String,
-    ) {
-        coverCalls += mangaId to coverUrl
-        cover()
+    ): AppResult<Unit> {
+        coverCalls += Triple(owner, fetched, coverUrl)
+        return cover()
     }
 
-    override suspend fun persistNotifications(
-        manga: SavedMangaEntity,
-        chapters: List<SavedChapterEntity>,
-    ): List<ChapterNotification> {
-        persistenceCalls += chapters
-        return persist(manga, chapters).also { persistedNotifications += it }
+    override suspend fun persistNotifications(request: LibraryRefreshRequest): AppResult<LibraryRefreshReceipt> {
+        persistenceCalls += request
+        return persist(request).also {
+            if (it is AppResult.Success) persistedNotifications += it.value.notifications
+        }
     }
 
-    override suspend fun displayNotifications(notifications: List<ChapterNotification>) {
+    override suspend fun displayNotifications(notifications: List<LibraryChapterNotification>) {
         displayCalls += notifications
         display(notifications)
     }
@@ -99,22 +99,13 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
 }
 
 /** Synthetic port payload only, not a Room/IGNORE/identity implementation. */
-private fun refreshNotifications(
-    manga: SavedMangaEntity,
-    chapters: List<SavedChapterEntity>,
-) = chapters.mapIndexed { index, chapter ->
-    ChapterNotification(
-        id = index + 101L,
-        api = manga.api,
-        language = manga.language,
-        mangaId = manga.id,
-        mangaTitle = manga.title,
-        mangaImageUrl = manga.imageUrl,
-        mangaUrl = manga.url,
-        chapterId = index + 201L,
-        chapterNumber = chapter.number,
-        chapterUrl = chapter.url,
-    )
+private fun refreshReceipt(request: LibraryRefreshRequest): LibraryRefreshReceipt {
+    val details = request.fetched.details
+    val manga = Manga(details.api, details.language, details.title, details.url, details.coverUrl, null, details.genres)
+    val notifications = details.chapters.asReversed().mapIndexed { index, chapter ->
+        LibraryChapterNotification(index + 101L, index + 201L, manga, chapter)
+    }
+    return LibraryRefreshReceipt(request.owner, notifications.size, notifications)
 }
 
 internal fun refreshManga(id: Long) =
@@ -156,14 +147,15 @@ internal fun cancellingRefreshWork(
 ) = LibraryRefreshWorkTestFixtures().apply {
     when (stage) {
         0 -> libraryFlow = flow { pause() }
-        1 -> persist = { _, _ -> pause() }
+        1 -> persist = { pause() }
         2 ->
             stamp = {
                 lastSuccess = "committed"
                 pause()
             }
-        3 -> persist = { _, _ -> pause() }
+        3 -> persist = { pause() }
         4 -> display = { pause() }
+        5 -> cover = { pause() }
     }
 }
 
@@ -171,7 +163,7 @@ internal fun failingUpdatesRefreshWork(
     expires: Boolean,
     settled: CompletableDeferred<Unit>,
 ) = LibraryRefreshWorkTestFixtures().apply {
-    persist = { _, _ ->
+    persist = {
         delay(25_000)
         try {
             if (expires) awaitCancellation() else error("fixture_updates_rejected")

@@ -129,6 +129,8 @@ val downloadsReworkModule: Module = module {
         DownloadsActionRepositoryImpl(
             legacy = get(),
             storage = DownloadsActionStorage(get(), get(), get(), get(), get()),
+            operations = get(),
+            catalog = get(),
         )
     }
     factory { ObserveDownloadsUseCase(get()) }

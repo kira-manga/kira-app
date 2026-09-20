@@ -36,7 +36,11 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.emptyFlow
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryActivity
+import me.manga.kira.domain.model.library.LibraryAffinity
+import me.manga.kira.domain.model.library.LibraryChapterCounts
 import me.manga.kira.presentation.library.LibraryState
 import me.manga.kira.ui.generated.resources.Res
 import me.manga.kira.ui.generated.resources.library_source_badge_format
@@ -76,11 +80,15 @@ class LibrarySourceBadgeContrastTest {
                 LibraryState(isLoading = false, hasLibraryItems = true, items = listOf(item), itemsPerRow = 2)
             val selected =
                 initial.copy(
-                    selection = setOf(MangaKey(item.manga.api, item.manga.language, item.manga.title)),
+                    selection = setOf(item.identity),
                     isInSelectionMode = true,
                 )
             val hidden = initial.copy(display = initial.display.copy(showSource = false))
-            val blankApi = initial.copy(items = listOf(item.copy(manga = item.manga.copy(api = "  "))))
+            val blankItem = item.copy(
+                manga = item.manga.copy(api = "  "),
+                identity = item.identity.copy(locator = item.identity.locator.copy(api = "  ")),
+            )
+            val blankApi = initial.copy(items = listOf(blankItem))
             val state = mutableStateOf(initial)
             var label = ""
             showLibrary(state) { label = it }
@@ -258,14 +266,8 @@ private fun savedManga(): LibraryManga =
                 rating = null,
                 genres = emptyList(),
             ),
-        addedAt = Instant.fromEpochMilliseconds(0),
-        unreadCount = 0,
-        hasDownloads = false,
-        totalChapters = 1,
-        lastReadAt = null,
-        lastOpenedAt = Instant.fromEpochMilliseconds(0),
-        bookmarkedCount = 0,
-        downloadedCount = 0,
-        isLiked = false,
-        isWatchingNow = false,
+        identity = SavedWorkIdentity(1L, WorkLocator("Azora", "https://example.invalid/manga")),
+        activity = LibraryActivity(Instant.fromEpochMilliseconds(0), Instant.fromEpochMilliseconds(0), null),
+        counts = LibraryChapterCounts(total = 1, unread = 0, downloaded = 0, bookmarked = 0),
+        affinity = LibraryAffinity(isLiked = false, isWatchingNow = false),
     )

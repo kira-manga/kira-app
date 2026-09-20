@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.domain.model.library.LibraryChapterNotification
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 
@@ -29,7 +30,7 @@ internal class NotificationOwnerWitness(
 
     suspend fun assertDelayedDisplay(
         posting: NotificationPostingShadow,
-        assertContent: (Notification, ChapterNotification) -> Unit,
+        assertContent: (Notification, LibraryChapterNotification) -> Unit,
     ) {
         // B is the first row for the shared URL; it must never supply A's ID or display metadata.
         val b = seed("b")
@@ -43,10 +44,10 @@ internal class NotificationOwnerWitness(
 
         val capturedB = listOf(b.notification)
         assertStoredOwner(b, capturedB.single())
-        assertTrue(helper.persistNewChapterNotifications(a.manga, listOf(a.chapter)).isEmpty())
-        assertTrue(helper.persistNewChapterNotifications(b.manga, listOf(b.chapter)).isEmpty())
+        assertEquals(0, helper.persistFixtureNotifications(a.manga, listOf(a.chapter)).addedChapters)
+        assertEquals(0, helper.persistFixtureNotifications(b.manga, listOf(b.chapter)).addedChapters)
         val writesBeforeDisplay = room.sql.notificationInserts.get()
-        val stored = (capturedA + capturedB).sortedBy { it.id }
+        val stored = listOf(a.stored, b.stored).sortedBy { it.id }
         assertEquals(stored, room.updates())
 
         helper.displayNotifications(capturedA)
@@ -57,12 +58,12 @@ internal class NotificationOwnerWitness(
     }
 
     private fun assertDisplayedOwner(
-        row: ChapterNotification,
+        row: LibraryChapterNotification,
         posting: NotificationPostingShadow,
-        assertContent: (Notification, ChapterNotification) -> Unit,
+        assertContent: (Notification, LibraryChapterNotification) -> Unit,
     ) {
-        assertEquals(listOf(row.mangaImageUrl), coverUrls)
-        assertEquals(listOf(row.id.toInt()), posting.posted.map { it.first })
+        assertEquals(listOf(row.manga.coverUrl), coverUrls)
+        assertEquals(listOf(row.notificationId.toInt()), posting.posted.map { it.first })
         assertContent(posting.posted.single().second, row)
         cover.assertSingleDecode()
     }
@@ -70,33 +71,35 @@ internal class NotificationOwnerWitness(
     private suspend fun seed(label: String): Owner {
         val manga = room.manga("owner-$label", "https://cover.example/$label.png", title = "Same display title")
         val chapter = room.chapters(manga, 1).single().copy(url = SHARED_URL)
-        val row = room.helper(observedCovers).persistNewChapterNotifications(manga, listOf(chapter)).single()
+        val row = room.helper(observedCovers).persistFixtureNotifications(manga, listOf(chapter)).notifications.single()
         val saved = checkNotNull(realChapters.getChapterByIdSuspend(row.chapterId))
-        return Owner(manga, saved, row)
+        return Owner(manga, saved, row, room.updates().single { it.id == row.notificationId })
     }
 
     private suspend fun assertStoredOwner(
         owner: Owner,
-        row: ChapterNotification,
+        row: LibraryChapterNotification,
     ) {
-        assertTrue(row.id > 0L)
-        assertEquals(owner.manga.id, row.mangaId)
-        assertEquals(owner.manga.url, row.mangaUrl)
-        assertEquals(owner.manga.title, row.mangaTitle)
-        assertEquals(owner.manga.imageUrl, row.mangaImageUrl)
-        assertEquals(owner.manga.api, row.api)
-        assertEquals(owner.manga.language, row.language)
+        assertTrue(row.notificationId > 0L)
+        assertEquals(owner.manga.url, row.manga.url)
+        assertEquals(owner.manga.title, row.manga.title)
+        assertEquals(owner.manga.imageUrl, row.manga.coverUrl)
+        assertEquals(owner.manga.api, row.manga.api)
+        assertEquals(owner.manga.language, row.manga.language)
         assertEquals(owner.chapterId, row.chapterId)
-        assertEquals(owner.chapter.url, row.chapterUrl)
-        assertEquals(owner.chapter.number, row.chapterNumber)
+        assertEquals(owner.chapter.url, row.chapter.url)
+        assertEquals(owner.chapter.number, row.chapter.number)
         assertEquals(owner.chapter.copy(id = row.chapterId), realChapters.getChapterByIdSuspend(row.chapterId))
-        assertEquals(row, room.updates().single { it.mangaId == owner.manga.id })
+        val stored = room.updates().single { it.mangaId == owner.manga.id }
+        assertEquals(owner.stored, stored)
+        assertNotificationPayload(owner.manga.id, row, stored)
     }
 
     private data class Owner(
         val manga: SavedMangaEntity,
         val chapter: SavedChapterEntity,
-        val notification: ChapterNotification,
+        val notification: LibraryChapterNotification,
+        val stored: ChapterNotification,
     ) {
         val chapterId: Long get() = notification.chapterId
     }

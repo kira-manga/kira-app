@@ -2,22 +2,32 @@ package me.manga.kira.presentation.features.download.ui.test2
 
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.execSQL
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import me.manga.kira.data.local.MangaDatabase
+import kotlinx.coroutines.currentCoroutineContext
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.download.artifacts.ChapterArtifactRecovery
 import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
+import me.manga.kira.data.download.selection.DownloadCatalogNotReady
+import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.local.ReaderProgressConstraints
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
@@ -29,12 +39,15 @@ internal class DownloadWorkerCancellationRows(
     commit: NativeCommitGate,
     private val queryDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : AutoCloseable {
+    val operations = DownloadOperationExclusion()
+    val catalogAdmission = DownloadWorkerFixtureAdmission(operations)
     private val databasePath = File(storage.root, "worker.db").absolutePath
     private val database =
         lazy {
             Room
                 .databaseBuilder<MangaDatabase>(storage.context, databasePath)
-                .setDriver(CommitObservingDriver(BundledSQLiteDriver(), commit))
+                .addCallback(ReaderProgressConstraints)
+                .setDriver(CommitObservingDriver(CancellationForeignKeysDriver(BundledSQLiteDriver()), commit))
                 .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .setQueryCoroutineContext(queryDispatcher)
                 .build()
@@ -154,6 +167,16 @@ internal data class DownloadRowsSeed(
     val download: ChapterDownloadEntity,
 )
 
+/** Match production's per-connection FK enforcement, including the typed removal writer. */
+private class CancellationForeignKeysDriver(private val actual: SQLiteDriver) : SQLiteDriver by actual {
+    override fun open(fileName: String): SQLiteConnection = actual.open(fileName).also { connection ->
+        connection.execSQL("PRAGMA foreign_keys = ON")
+        connection.prepare("PRAGMA foreign_keys").use { statement ->
+            check(statement.step() && statement.getLong(0) == 1L)
+        }
+    }
+}
+
 private fun recordClassOrigin(type: Class<*>) {
     val loader = type.classLoader
     val loaderIdentity = loader?.let { "${it.javaClass.name}@${System.identityHashCode(it)}" } ?: "<bootstrap>"
@@ -202,6 +225,26 @@ private fun queuedDownload(saved: SavedChapterEntity): ChapterDownloadEntity =
         progress = 0,
         errorMsg = "previous attempt",
     )
+
+/** Explicit worker-routing control, not selection proof; lifecycle tests retain the same real gate. */
+internal class DownloadWorkerFixtureAdmission(private val operations: DownloadOperationExclusion) : DownloadCatalogAdmission {
+    val preparations = AtomicInteger()
+    val attempts = AtomicInteger()
+    var refuse = false
+
+    override suspend fun prepareLocal(): AppResult<Unit> {
+        check(currentCoroutineContext()[DownloadOperationExclusion.Operation] == null) { "Preparation must precede operation ownership" }
+        preparations.incrementAndGet()
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun <T> withAdmittedOperation(block: suspend (DownloadOperationExclusion.Operation) -> T): T =
+        operations.withOperation { operation ->
+            attempts.incrementAndGet()
+            if (refuse) throw DownloadCatalogNotReady()
+            block(operation)
+        }
+}
 
 private const val SAVED_LAST_READ_PAGE = 3
 private const val ANDROID_SQLITE_DRIVER_SHA256 = "bd3a4c3dbee4e7ed00eb264b96b9018065efc7370126b14c489b69ff12c62524"

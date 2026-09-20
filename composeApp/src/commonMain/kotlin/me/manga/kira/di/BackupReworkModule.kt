@@ -9,6 +9,7 @@ import me.manga.kira.data.backup.BackupImportArtifactRepositoryImpl
 import me.manga.kira.data.backup.BackupImporter
 import me.manga.kira.data.backup.FixedBackupExportProvenance
 import me.manga.kira.data.backup.RestoredDownloadPublisher
+import me.manga.kira.data.backup.BackupMergeWriter
 import me.manga.kira.data.repository.BackupRepositoryImpl
 import me.manga.kira.domain.model.backup.BackupScope
 import me.manga.kira.domain.repository.BackupImportArtifactRepository
@@ -44,11 +45,16 @@ val backupReworkModule: Module =
         single { BackupArchivePreflight(get(), get(), get(), get()) }
         single<BackupImportArtifactRepository> { BackupImportArtifactRepositoryImpl(get(), get()) }
         single { RestoredDownloadPublisher(get(), get(), get(), get(), get()) }
-        single { BackupImporter(get(), get(), get(), get()) }
+        single { BackupMergeWriter(get(), get()) }
+        single {
+            BackupImporter(backupDao = get(), mergeWriter = get(), preflight = get(), publisher = get())
+        }
         single { BackupDownloadExporter(get(), get(), get(), get(), get()) }
         single<BackupExportProvenance> { FixedBackupExportProvenance(get<AppVersionProvider>().versionName, backupPlatformName()) }
-        single { BackupExporter(get(), get(), get(), get(), get()) }
-        single<BackupRepository> { BackupRepositoryImpl(get(), get(), get()) }
+        single {
+            BackupExporter(mergeWriter = get(), files = get(), downloads = get(), provenance = get())
+        }
+        single<BackupRepository> { BackupRepositoryImpl(get(), get(), get(), get()) }
         factory { ExportBackupUseCase(get()) }
         factory { ImportBackupUseCase(get()) }
         factory { ObserveBackupProgressUseCase(get()) }

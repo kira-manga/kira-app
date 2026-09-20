@@ -10,6 +10,9 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.repository.LibraryMetadataRepository
 import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.usecase.details.FetchMangaDetailsUseCase
@@ -50,6 +53,7 @@ internal fun details(
 
 internal fun TestScope.useCase(
     library: LibraryRepository,
+    libraryMetadata: LibraryMetadataRepository = NoopLibraryMetadataRepository,
     fetch: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(details(it)) },
 ) = RefreshAllLibraryChaptersUseCase(
     ObserveLibraryUseCase(library),
@@ -59,13 +63,21 @@ internal fun TestScope.useCase(
         },
     ),
     PersistNewChaptersAndNotifyUseCase(library),
-    library,
     dispatchers(),
+    libraryMetadata,
 )
+
+private object NoopLibraryMetadataRepository : LibraryMetadataRepository {
+    override suspend fun updateCoverIfChanged(
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
+        newCoverUrl: String,
+    ): AppResult<Unit> = AppResult.Success(Unit)
+}
 
 internal fun library(vararg titles: String) =
     FakeLibraryRepository().apply {
-        emitLibrary(titles.map { sampleLibraryManga(title = it) })
+        emitLibrary(titles.mapIndexed { index, title -> sampleLibraryManga(title = title, id = index + 1L) })
     }
 
 internal fun ch(n: String) = Chapter(n, n, "c/$n", null, false, false)

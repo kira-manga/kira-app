@@ -2,7 +2,6 @@ package me.manga.kira.di
 
 import io.ktor.client.HttpClient
 import me.manga.kira.core.logging.KermitLoggerAdapter
-import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.SourceCatalogDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.remote.ktor.createHttpClient
@@ -72,10 +71,8 @@ val sourcesGenericModule =
         single<HeaderStore> { DataStoreHeaderStore(get<DataStoreHelper>()) }
         single<SourceCatalogStore> {
             RoomSourceCatalogStore(
-                database = get<MangaDatabase>(),
                 catalogDao = get<SourceCatalogDao>(),
-                sourcesDao = get<SourcesDao>(),
-                migrator = get(),
+                selections = get(),
                 bundledJson = CONFIG_BACKED_SOURCES_JSON,
             )
         }

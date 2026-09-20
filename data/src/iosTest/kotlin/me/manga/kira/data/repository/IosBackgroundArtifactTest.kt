@@ -9,6 +9,9 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
+import me.manga.kira.platform.download.BackgroundTransport
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.presentation.features.download.data.DownloadingState
@@ -56,7 +59,7 @@ class IosBackgroundArtifactTest {
                 val files = object : AppFileSystem by fixture.appFileSystem {
                     override fun fileSystem() = system
                 }
-                val transport = ArtifactTestTransport(ready = true)
+                val transport = ArtifactTestTransport(fixture.operations, ready = true)
                 val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport, files = files)
                 assertFailsWith<Exception> { engine.retryChapterDownload(captured) }
                 assertEquals(captured, fixture.download(original))
@@ -92,7 +95,7 @@ class IosBackgroundArtifactTest {
             assertTrue(fixture.artifacts.fail(prior, "ordinary failure"))
             assertTrue(fixture.artifacts.settle(prior))
             val captured = fixture.download(original)
-            val transport = ArtifactTestTransport(ready = true)
+            val transport = ArtifactTestTransport(fixture.operations, ready = true)
             val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
             assertTrue(engine.retryChapterDownload(captured))
             val request = transport.requests.receive()
@@ -126,7 +129,7 @@ class IosBackgroundArtifactTest {
             assertTrue(fixture.artifacts.fail(prior, "__page_policy_rejected__:ENCODED_OR_NATIVE_POLICY"))
             assertTrue(fixture.artifacts.settle(prior))
             val captured = fixture.download(original)
-            val transport = ArtifactTestTransport(ready = true)
+            val transport = ArtifactTestTransport(fixture.operations, ready = true)
             val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
             assertTrue(engine.retryChapterDownload(captured))
             assertTrue(transport.enqueued.isEmpty())
@@ -148,7 +151,7 @@ class IosBackgroundArtifactTest {
             val next = fixture.seed()
             val claim = fixture.prepareAttempt(original, DownloadingState.RUNNING, failures = 2)
             val nextClaim = fixture.prepareAttempt(next, DownloadingState.QUEUED)
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
             val failed = ReceiverPage(fixture, original, "failed")
             transport.deliverPage(original, claim.token, failed.page).await()
@@ -210,15 +213,38 @@ class IosBackgroundArtifactTest {
             fixture.db.backupDao().updateChapterRow(completed.saved.copy(isDownloaded = true))
             val waiting = fixture.seed(mangaId = completed.saved.mangaId)
             val claim = fixture.prepareAttempt(waiting, DownloadingState.QUEUED)
-            val transport = ArtifactTestTransport()
-            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
+            val parentClosed = CompletableDeferred<Unit>()
+            val fillCompletedWhileClosed = CompletableDeferred<Boolean>()
+            val catalog = TestDownloadCatalogAdmission(fixture.operations)
+            val observedCatalog = object : DownloadCatalogAdmission by catalog {
+                override suspend fun <T> withAdmittedOperation(
+                    block: suspend (DownloadOperationExclusion.Operation) -> T,
+                ): T = catalog.withAdmittedOperation(block).also {
+                    fillCompletedWhileClosed.complete(parentClosed.isCompleted && !releaseRead.isCompleted)
+                }
+            }
+            val startupEntered = CompletableDeferred<Unit>()
+            val startupReturned = CompletableDeferred<Unit>()
+            val transport = ArtifactTestTransport(fixture.operations)
+            val observedTransport = object : BackgroundTransport by transport {
+                override suspend fun ensureReady() {
+                    startupEntered.complete(Unit)
+                    transport.ensureReady()
+                    startupReturned.complete(Unit)
+                }
+            }
+            val engine = fixture.engine(
+                CoroutineScope(coroutineContext + hostJob), observedTransport, catalog = observedCatalog,
+            )
+            startupEntered.await()
             val reading = CompletableDeferred<Unit>()
-            val closed = CompletableDeferred<Unit>()
             val actions = DownloadsActionRepositoryImpl(
+                operations = fixture.operations,
+                catalog = TestDownloadCatalogAdmission(fixture.operations),
                 legacy = object : DownloadRepository by engine {
                     override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) {
+                        parentClosed.complete(Unit) // The real removeChapter stop callback owns the parent close.
                         engine.cancelARunningChapter(chapterId, mangaId)
-                        closed.complete(Unit) // Actual onCancel filled the window while parent M was closed.
                     }
                 },
                 storage = DownloadsActionStorage(
@@ -236,7 +262,9 @@ class IosBackgroundArtifactTest {
                 try {
                     reading.await()
                     val deletion = async { actions.deleteDownloadedChapter(completed.saved.id) }
-                    closed.await()
+                    parentClosed.await()
+                    assertTrue(fillCompletedWhileClosed.await(), "The admitted fill must finish before reopening")
+                    assertFalse(startupReturned.isCompleted, "Blocked startup must not satisfy the fill witness")
                     assertFalse(deletion.isCompleted)
                     assertEquals(DownloadingState.QUEUED, fixture.download(waiting).state)
                     assertTrue(transport.enqueued.isEmpty())
@@ -244,6 +272,7 @@ class IosBackgroundArtifactTest {
                     pin.join()
                     assertTrue(deletion.await().isSuccess)
                     val transfer = transport.requests.receive() // No enqueue/pump/lifecycle call wakes it.
+                    assertFalse(startupReturned.isCompleted, "Parent reopening, not startup, must resume the transfer")
                     assertEquals(waiting.saved.id, transfer.chapterId)
                     assertEquals(claim.token, transfer.attemptToken)
                     assertEquals(waiting.download.id, fixture.download(waiting).id)

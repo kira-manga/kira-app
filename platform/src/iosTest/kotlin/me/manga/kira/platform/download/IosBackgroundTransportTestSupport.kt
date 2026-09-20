@@ -52,10 +52,12 @@ internal class TransportHarness(
             delegateQueue = null,
         )
     private val requestUrl = requireNotNull(NSURL.URLWithString("https://page-fixture.invalid/page.jpg"))
+    private val recovery = DownloadOperationExclusion.recovering()
+    val operationExclusion = recovery.exclusion
     val events = mutableListOf<TestEvent>()
     val inspector = RecordingNativeInspector(IosPageMediaInspector(inspectionPolicy, fileSystem))
     val transport =
-        IosBackgroundTransport(files, inspector, bytePolicy).apply {
+        IosBackgroundTransport(files, inspector, recovery, bytePolicy).apply {
             if (registerListener) setListener(
                 object : TransferListener {
                     override fun onPageComplete(
@@ -64,6 +66,7 @@ internal class TransportHarness(
                         pageIndex: Int,
                         attemptToken: String,
                         page: StagedDownloadPage,
+                        operation: DownloadOperationExclusion.Operation,
                         acknowledge: () -> Unit,
                     ) {
                         assertEquals(1L, mangaId)
@@ -82,6 +85,7 @@ internal class TransportHarness(
                         pageIndex: Int,
                         attemptToken: String,
                         message: String?,
+                        operation: DownloadOperationExclusion.Operation,
                         acknowledge: () -> Unit,
                     ) {
                         assertEquals(1L, mangaId)
@@ -93,11 +97,11 @@ internal class TransportHarness(
             )
         }
 
-    fun task(index: Int): NSURLSessionDownloadTask =
-        session.downloadTaskWithRequest(NSMutableURLRequest.requestWithURL(requestUrl)).apply {
+    fun task(index: Int, taskSession: NSURLSession = session): NSURLSessionDownloadTask =
+        taskSession.downloadTaskWithRequest(NSMutableURLRequest.requestWithURL(requestUrl)).apply {
             taskDescription = IosTransferIdentity(1, 2, index, TEST_ATTEMPT_TOKEN).encode()
             assertEquals(NSURLSessionTaskStateSuspended, state)
-            // No resume: callbacks are driven synchronously through the production handler seams.
+            // No resume: file callbacks use handler seams; cancellation may deliver real delegates.
         }
 
     fun response(
@@ -171,24 +175,33 @@ internal class HeldTransferListener : TransferListener {
 
     override fun onPageComplete(
         mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
-        page: StagedDownloadPage, acknowledge: () -> Unit,
+        page: StagedDownloadPage, operation: DownloadOperationExclusion.Operation, acknowledge: () -> Unit,
     ) {
-        pages[pageIndex] = HeldPage(page, acknowledge)
+        pages[pageIndex] = HeldPage(page, operation, acknowledge)
     }
 
     override fun onPageFailed(
         mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
-        message: String?, acknowledge: () -> Unit,
+        message: String?, operation: DownloadOperationExclusion.Operation, acknowledge: () -> Unit,
     ) {
-        failures += HeldFailure(pageIndex, message, acknowledge)
+        failures += HeldFailure(pageIndex, message, operation, acknowledge)
     }
 }
 
-internal data class HeldPage(val page: StagedDownloadPage, val acknowledge: () -> Unit) {
+internal data class HeldPage(
+    val page: StagedDownloadPage,
+    val operation: DownloadOperationExclusion.Operation,
+    val acknowledge: () -> Unit,
+) {
     fun discardAndAcknowledge() {
         page.discard()
         acknowledge()
     }
 }
 
-internal data class HeldFailure(val pageIndex: Int, val message: String?, val acknowledge: () -> Unit)
+internal data class HeldFailure(
+    val pageIndex: Int,
+    val message: String?,
+    val operation: DownloadOperationExclusion.Operation,
+    val acknowledge: () -> Unit,
+)

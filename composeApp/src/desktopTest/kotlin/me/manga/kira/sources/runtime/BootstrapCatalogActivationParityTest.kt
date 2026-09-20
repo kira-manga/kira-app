@@ -74,6 +74,8 @@ class BootstrapCatalogActivationParityTest {
             assertEquals(bundle, session.manager.activeDocument())
             assertEquals(beforeDiagnostics, session.manager.diagnostics.value)
             assertEquals(bundle, session.store.bundledProjection)
+            assertEquals(session.store.selection, session.store.ready)
+            assertEquals(BUNDLED_REVISION, session.store.ready?.token?.identity?.revision)
             assertEquals(0, session.store.activations)
             assertNull(session.store.readActive())
             assertNull(session.store.readAcceptanceFloor())
@@ -147,20 +149,17 @@ class BootstrapCatalogActivationParityTest {
         manifest: SourceCatalogManifest,
         actual: SourceConfigDocument,
     ) {
-        val expected =
-            bundle.copy(
-                revision = CATALOG_REVISION,
-                generatedAt = CREATED_AT,
-                sources =
-                    bundle.sources.mapIndexed { index, source ->
-                        source.copy(lifecycle = "active", priority = index)
-                    },
-            )
+        val expected = bundle.copy(
+            revision = CATALOG_REVISION, generatedAt = CREATED_AT,
+            sources = bundle.sources.mapIndexed { index, source -> source.copy(lifecycle = "active", priority = index) },
+        )
         assertEquals(expected, actual, "only manifest lifecycle/order/revision/time project over full source models")
         assertEquals(expected, session.manager.activeDocument())
         assertEquals(UpdateState.Active(CATALOG_REVISION, UpdateState.Origin.REMOTE), session.manager.state.value)
         assertEquals(1, session.store.activations)
         assertEquals(bundle, session.store.bundledProjection)
+        assertEquals(session.store.selection, session.store.ready)
+        assertEquals(CATALOG_REVISION, session.store.ready?.token?.identity?.revision)
         assertEquals(StoredSourceCatalog(fixture.manifest, fixture.sources), session.store.readActive())
         assertEquals(fixture.manifest, session.store.readAcceptedManifest())
         assertEquals(

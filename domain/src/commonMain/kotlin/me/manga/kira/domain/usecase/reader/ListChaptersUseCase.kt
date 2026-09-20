@@ -1,10 +1,12 @@
 package me.manga.kira.domain.usecase.reader
 
 import kotlinx.coroutines.flow.first
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 import kotlin.coroutines.cancellation.CancellationException
@@ -119,14 +121,17 @@ class ListChaptersUseCase(
         // Network fetch is reserved for a NOT-in-library manga (opened from search/home) which has no
         // saved list yet. SavedMangaDetailsRepository restores source order from the database's
         // reversed insertion order, so library membership does not change navigation direction.
-        val saved = try {
-            savedDetails.observeSavedDetails(manga.api, manga.title).first()
+        val savedResult = try {
+            savedDetails.observeSavedDetails(WorkLocator(manga.api, manga.url)).first()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // A local-cache read failure degrades to the network path instead of escaping the
-            // AppResult contract this use case declares.
-            null
+            // A failed local read is not proof of absence and must not bypass owner resolution.
+            AppResult.Failure(AppError.Storage.Io(e))
+        }
+        val saved = when (savedResult) {
+            is AppResult.Failure -> return savedResult
+            is AppResult.Success -> savedResult.value?.details
         }
         if (saved != null && saved.chapters.isNotEmpty()) {
             FlowLog.log("Reader", "chapterList", "source=room count=${saved.chapters.size}")

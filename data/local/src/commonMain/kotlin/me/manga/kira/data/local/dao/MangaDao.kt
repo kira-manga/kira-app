@@ -9,6 +9,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.data.local.entity.SavedMangaMetadataUpdate
 import me.manga.kira.presentation.features.library.data.MangaChapterMetrics
 import kotlin.coroutines.CoroutineContext
 
@@ -164,6 +165,70 @@ interface MangaDao : MangaIdentityQueries {
 
     @Query("SELECT id FROM saved_manga WHERE api = :api")
     suspend fun getMangaIdsByApi(api: String): List<Long>
+
+    /** Global UNIQUE(url) occupancy: inspect the returned api before using its local ID. */
+    @Query("SELECT * FROM saved_manga WHERE url = :url")
+    suspend fun getMangaByExactUrl(url: String): SavedMangaEntity?
+
+    /** Revalidates every retained-owner component; a mismatched/deleted row is absent. */
+    @Query("SELECT * FROM saved_manga WHERE id = :id AND api = :api AND url = :url")
+    suspend fun getMangaByExactOwner(id: Long, api: String, url: String): SavedMangaEntity?
+
+    /**
+     * Low-level partial update; call only after owner resolution in the same writer transaction.
+     * [SavedMangaMetadataUpdate.id] selects the row; it cannot change identity or local state.
+     */
+    @Update(entity = SavedMangaEntity::class, onConflict = OnConflictStrategy.ABORT)
+    suspend fun updateMetadataColumns(update: SavedMangaMetadataUpdate): Int
+
+    /**
+     * Exact-owner guard plus partial metadata update. Zero means no matching owner, not success.
+     * Alias/policy resolution belongs in the caller's encompassing writer transaction. Propagate
+     * failures out of that transaction: ABORT alone does not roll back earlier statements.
+     */
+    @Transaction
+    suspend fun updateMetadataForExactOwner(api: String, url: String, update: SavedMangaMetadataUpdate): Int {
+        if (getMangaByExactOwner(update.id, api, url) == null) return 0
+        val changed = updateMetadataColumns(update)
+        check(changed == 1) { "Resolved metadata owner was not updated" }
+        return changed
+    }
+
+    /** Cover-only write; cannot restore a stale title, identity, affinity or timestamp. */
+    @Query(
+        """
+        UPDATE saved_manga SET imageUrl = :imageUrl
+        WHERE id = :id AND api = :api AND url = :url
+        """,
+    )
+    suspend fun updateCoverForExactOwner(id: Long, api: String, url: String, imageUrl: String): Int
+
+    /** Atomic affinity toggle; the count is zero if the retained owner no longer matches. */
+    @Query(
+        """
+        UPDATE saved_manga SET isLiked = NOT isLiked
+        WHERE id = :id AND api = :api AND url = :url
+        """,
+    )
+    suspend fun toggleLikedForExactOwner(id: Long, api: String, url: String): Int
+
+    /** Atomic watching toggle, without a stale whole-row read/modify/write. */
+    @Query(
+        """
+        UPDATE saved_manga SET isWatchingNow = NOT isWatchingNow
+        WHERE id = :id AND api = :api AND url = :url
+        """,
+    )
+    suspend fun toggleWatchingForExactOwner(id: Long, api: String, url: String): Int
+
+    /** Opened-only write; callers must check the exact-owner affected-row count. */
+    @Query(
+        """
+        UPDATE saved_manga SET lastOpenTimestamp = :timestamp
+        WHERE id = :id AND api = :api AND url = :url
+        """,
+    )
+    suspend fun updateOpenedForExactOwner(id: Long, api: String, url: String, timestamp: Long): Int
 }
 
 /**

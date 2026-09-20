@@ -67,7 +67,8 @@ private fun validateMangas(
         requireIdentity(manga.api)
         requireIdentity(manga.title)
         requireIdentity(manga.url)
-        requireBackup(urls.add(manga.url) && identities.add(manga.api to manga.title))
+        // Titles are display metadata; different same-title works remain distinct portable owners.
+        requireBackup(urls.add(manga.url) && identities.add(manga.api to manga.url))
         records.consume(manga.chapters.size.toLong())
         validateChapters(manga, references, checkpoint)
     }

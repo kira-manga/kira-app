@@ -4,68 +4,53 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import me.manga.kira.data.local.dao.ChapterDao
+import me.manga.kira.data.repository.library.LibraryOwnerTransactions
+import me.manga.kira.data.repository.library.LibraryWriteException
+import me.manga.kira.data.repository.library.LibraryWriteRejection
+import me.manga.kira.data.repository.library.resolveLibraryChildren
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
+import me.manga.kira.sources.contracts.SourceSelectionUnavailable
 
-/**
- * [ChapterBookmarkRepository] strangler-fig delegate straight over the Room [ChapterDao]
- * chapter-bookmark surface (`getChapterIdByUrl` / `getChapterById` / `toggleChapterBookmark`,
- * all over the `saved_chapters` table).
- *
- * Phase 6.4.x.bookmark (task #217); re-pointed at the DAO in RS-3 (task #738). Both the legacy
- * reader and the rework reader flip the SAME `saved_chapters.isBookmarked` column through this DAO,
- * so:
- *  - bookmark state stays consistent across the strangler-fig transition, and
- *  - the Library `bookmarkedCount` badge (`MangaDao.getAllChapterMetricsFlow` COUNT, consumed by
- *    `LibraryRepositoryImpl.observeLibrary`) re-derives automatically via Room invalidation —
- *    no extra wiring. Writing through a net-new url-keyed store instead would silently diverge
- *    that badge; that is why the bridge keys on the Room `Long chapterId`.
- *
- * Chapter identity: the rework Chapter carries no Room ID. The exact owning manga URL plus
- * chapter URL resolve its `saved_chapters.id`. [ChapterDao.getChapterIdByUrl] resolves that pair for
- * the one-shot [toggleBookmark]; a row exists only once the manga is in-library, so a `null` id
- * means "not in-library".
- *
- * Not-in-library behavior (preserves legacy semantics): [observeBookmark] emits `false`,
- * [toggleBookmark] is a no-op — no auto-add-to-library side effect.
- *
- * Bookmark-flow derivation: [observeBookmark] subscribes to the owner-and-chapter-URL-keyed
- * [ChapterDao.getChapterByUrl] Room flow and maps `it?.isBookmarked == true` — a deleted/absent
- * row maps to `false`. Observing both saved parent and chapter tables keeps the stream membership-
- * reactive: if the `saved_chapters` row is created after the Reader attached (manga saved mid-
- * session), Room re-emits and the bookmark state re-binds, instead of the stream completing on a
- * single `false`.
- *
- * Threading: Room suspend queries + Room `Flow`s are main-safe (Room dispatches to its own
- * executor), so — like [ReadingSessionRepositoryImpl] — no explicit dispatcher pinning is needed.
- */
+/** Saved-row bookmarks resolve source, parent and child together; they never add a missing row. */
 class ChapterBookmarkRepositoryImpl(
+    private val owners: LibraryOwnerTransactions,
     private val chapterDao: ChapterDao,
 ) : ChapterBookmarkRepository {
-    override fun observeBookmark(
-        manga: Manga,
-        chapterUrl: String,
-    ): Flow<Boolean> =
-        chapterDao
-            .getChapterByUrl(manga.url, chapterUrl)
-            .map { it?.isBookmarked == true }
+    override fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean> =
+        owners.invalidations()
+            .map { readBookmark(manga, chapterUrl) }
             .distinctUntilChanged()
 
-    override suspend fun toggleBookmark(
-        manga: Manga,
-        chapterUrl: String,
-    ): Boolean {
-        val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapterUrl) ?: return false
-        chapterDao.toggleChapterBookmark(chapterId)
-        return true
+    override suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean =
+        owners.write {
+            val child = resolveLibraryChildren(chapterDao, manga, listOf(chapterUrl)).singleOrNull()
+                ?: return@write false
+            chapterDao.toggleChapterBookmark(child.id)
+            true
+        }
+
+    override suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>) {
+        if (chapterUrls.isEmpty()) return
+        owners.write {
+            val ids = resolveLibraryChildren(chapterDao, manga, chapterUrls).map { it.id }
+            if (ids.isNotEmpty()) chapterDao.toggleChaptersBookmark(ids)
+        }
     }
 
-    override suspend fun toggleBookmark(
-        manga: Manga,
-        chapterUrls: List<String>,
-    ) {
-        val ids = chapterDao.getChapterIdsByUrls(manga.url, chapterUrls)
-        if (ids.isEmpty()) return
-        chapterDao.toggleChaptersBookmark(ids)
-    }
+    // Catch each lookup after its writer unwinds, not the outer Flow: future invalidations retry.
+    private suspend fun readBookmark(manga: Manga, chapterUrl: String): Boolean =
+        try {
+            owners.write {
+                resolveLibraryChildren(chapterDao, manga, listOf(chapterUrl)).singleOrNull()?.isBookmarked == true
+            }
+        } catch (_: SourceSelectionUnavailable) {
+            false
+        } catch (failure: LibraryWriteException) {
+            when (failure.rejection) {
+                LibraryWriteRejection.OWNER_CONFLICT,
+                LibraryWriteRejection.CHAPTER_ALIAS_REQUIRES_RECONCILIATION -> false
+                else -> throw failure
+            }
+        }
 }

@@ -13,6 +13,7 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.downloads.DownloadedChapter
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.ui.test2.DownloadWorkerV2
 
@@ -55,6 +56,7 @@ class DownloadRepositoryImpl(
     private val dao: ChapterDownloadDao,
     private val chapterDownloadService: ChapterDownloadService,
     private val artifacts: ChapterDownloadArtifacts,
+    private val operations: DownloadOperationExclusion,
 ) : DownloadRepository {
 
     private companion object {
@@ -77,19 +79,19 @@ class DownloadRepositoryImpl(
         chapter: SavedChapterEntity,
         title: String,
         mangaApi: String,
-    ) {
+    ): Unit = operations.withOperation {
         val claim = artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
         if (claim != null) enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
-    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean {
-        if (artifacts.retry(expected) == null) return false
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = operations.withOperation {
+        if (artifacts.retry(expected) == null) return@withOperation false
         enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
-        return true
+        true
     }
 
-    override suspend fun deleteDownload(chapterId: Long) {
-        val row = dao.getDownloadByChapter(chapterId) ?: return
+    override suspend fun deleteDownload(chapterId: Long): Unit = operations.withOperation {
+        val row = dao.getDownloadByChapter(chapterId) ?: return@withOperation
         var stopped = false
         try {
             check(artifacts.deleteAttempt(row) { claim ->
@@ -104,8 +106,8 @@ class DownloadRepositoryImpl(
         }
     }
 
-    override suspend fun onCancel(chapterId: Long) {
-        val claim = artifacts.cancel(chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) ?: return
+    override suspend fun onCancel(chapterId: Long): Unit = operations.withOperation {
+        val claim = artifacts.cancel(chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) ?: return@withOperation
         try {
             workManager.cancelUniqueWork(WORK_NAME)
             check(artifacts.settleCancelled(claim)) { "Download cleanup could not be settled" }
@@ -118,7 +120,7 @@ class DownloadRepositoryImpl(
         onCancel(chapterId)
     }
 
-    override suspend fun cancelAllDownloads() {
+    override suspend fun cancelAllDownloads(): Unit = operations.withOperation {
         val active = dao.observeAllDownloads().first().filter { DownloadRecovery.isActiveDownloadState(it.state) }
         val claims = active.mapNotNull { artifacts.cancel(it.chapterId, DownloadedChapter.CANCELLED_BY_USER_SENTINEL) }
         workManager.cancelUniqueWork(WORK_NAME)
@@ -136,7 +138,7 @@ class DownloadRepositoryImpl(
     // seeing the row we just re-QUEUED — re-freezing the exact download BUG 1 fixes. APPEND_OR_REPLACE
     // guarantees a drain pass runs AFTER any current work (appended), and REPLACEs a terminal/failed
     // chain, without cancelling a legitimately in-flight download (which REPLACE would).
-    override suspend fun reconcileInterruptedDownloads() {
+    override suspend fun reconcileInterruptedDownloads(): Unit = operations.withOperation {
         dao.reEnqueueInterrupted()
         enqueueRequest(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }

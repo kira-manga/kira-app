@@ -8,13 +8,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.platformIoDispatcher
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.dao.ChapterDao
-import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
-import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.repository.LibraryMetadataRepository
 import me.manga.kira.domain.service.FileService
 
 // Migration notes (Phase 8.13 batch A):
@@ -100,18 +102,15 @@ class LibraryRepository(
     private val mangaDao: MangaDao,
     private val chapterDao: ChapterDao,
     private val libraryDeo: LibraryDeo,
-    private val notificationDao: NotificationDao,
-    private val historyDao: HistoryDao,
+    private val metadata: LibraryMetadataRepository,
     private val fileService: FileService,
 ) {
-
     suspend fun getApiById(mangaId: Long) = mangaDao.getApiByMangaId(mangaId)
 
-
     fun isChapterBookmarkedFlow(chapterId: Long): Flow<Boolean> =
-        chapterDao.getChapterById(chapterId)
+        chapterDao
+            .getChapterById(chapterId)
             .map { it?.isBookmarked == true }
-
 
     suspend fun insertChapterList(chapters: List<SavedChapterEntity>): List<Long> =
         withContext(platformIoDispatcher) {
@@ -141,19 +140,18 @@ class LibraryRepository(
 
     suspend fun getMangaById(mangaId: Long): SavedMangaEntity? = mangaDao.getMangaById(mangaId)
 
-    fun getChaptersByMangaId(mangaId: Long): Flow<List<SavedChapterEntity>> =
-        chapterDao.getChaptersByMangaId(mangaId)
+    fun getChaptersByMangaId(mangaId: Long): Flow<List<SavedChapterEntity>> = chapterDao.getChaptersByMangaId(mangaId)
 
     suspend fun insertChapters(chapters: List<SavedChapterEntity>) {
         chapterDao.insertAll(chapters)
     }
 
-    suspend fun updateChapterLocalPaths(chapterId: Long, paths: List<String>) =
-        chapterDao.updateChapterLocalPaths(chapterId, paths)
+    suspend fun updateChapterLocalPaths(
+        chapterId: Long,
+        paths: List<String>,
+    ) = chapterDao.updateChapterLocalPaths(chapterId, paths)
 
-
-    suspend fun markChapterAsDownloaded(chapterId: Long) =
-        chapterDao.markChapterDownloaded(chapterId)
+    suspend fun markChapterAsDownloaded(chapterId: Long) = chapterDao.markChapterDownloaded(chapterId)
 
     // Revert twin of markChapterAsDownloaded + updateChapterLocalPaths (2026-07-04 device smoke):
     // a user cancel during the iOS finalize window must undo the readable bookkeeping written at
@@ -181,13 +179,16 @@ class LibraryRepository(
 
     suspend fun markChapterIsNew(chapterId: Long) = chapterDao.markChapterIsNew(chapterId)
 
-    /** Shares the atomic, field-only cover fan-out used by cross-platform library refresh. */
+    /**
+     * Scoped cover-only bridge. The shared writer revalidates the retained parent and both work
+     * locators; it updates only cover columns, never a stale whole parent or a URL-wide group.
+     * Identity/count/storage failures are returned to the caller, not silently ignored.
+     */
     suspend fun updateMangaImageUrlEverywhere(
-        mangaId: Long,
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
         newImageUrl: String,
-    ) = withContext(platformIoDispatcher) {
-        mangaDao.updateCoverEverywhere(mangaId, newImageUrl)
-    }
+    ): AppResult<Unit> = metadata.updateCoverIfChanged(owner, fetched, newImageUrl)
 }
 
 /*

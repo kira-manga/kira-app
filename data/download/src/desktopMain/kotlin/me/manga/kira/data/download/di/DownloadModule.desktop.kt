@@ -40,6 +40,8 @@ actual fun downloadModule(): Module =
                 host = get(),
                 stages = get(),
                 artifacts = get(),
+                operations = get(),
+                catalog = get(),
             )
         }
     }

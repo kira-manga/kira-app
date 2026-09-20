@@ -12,7 +12,6 @@ import me.manga.kira.sources.contracts.SourceCatalogEntry
 import me.manga.kira.sources.contracts.SourceCatalogManifest
 import me.manga.kira.sources.contracts.SourceCatalogManifestResult
 import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
-import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import me.manga.kira.sources.contracts.StoredSourceCatalog
@@ -116,7 +115,7 @@ class IncrementalSourceCatalogHeaderFilterRetentionTest {
                 validation.errors,
             )
             assertEquals(listOf("catalog validation failed"), rejections)
-            assertEquals(listOf(1L, 2L, 2L, 3L), validator.calls.map { it.first.revision })
+            assertEquals(listOf(1L, 2L, 3L), validator.calls.map { it.first.revision }) // Warm evidence is retained, not revalidated.
             assertEquals(listOf(null, checksum(2)), remote.requestedEtags)
             assertEquals(
                 setOf("StableSource" to 1L, "ChangingSource" to 1L, "StableSource" to 2L, "ChangingSource" to 2L),
@@ -134,38 +133,8 @@ class IncrementalSourceCatalogHeaderFilterRetentionTest {
             actual.validate(document).also { calls += document to it }
     }
 
-    private class MemoryStore(private val bundle: SourceConfigDocument) : SourceCatalogStore {
-        private var active: StoredSourceCatalog? = null
-        private var floor: SourceCatalogAcceptanceFloor? = null
-        var activationCount = 0
-            private set
-        var bundleProjectionCount = 0
-            private set
-
-        override fun readBundled(): String = Json.encodeToString(SourceConfigDocument.serializer(), bundle)
-
-        override suspend fun projectBundled(document: SourceConfigDocument) {
-            assertEquals(bundle, document)
-            bundleProjectionCount++
-        }
-
-        override suspend fun readActive(): StoredSourceCatalog? = active
-
-        override suspend fun readAcceptanceFloor(): SourceCatalogAcceptanceFloor? = floor
-
-        override suspend fun readAcceptedManifest(): SignedSourceCatalogManifest? = active?.manifest
-
-        override suspend fun findSource(api: String, sourceRevision: Long, checksum: String): SourceRevisionArtifact? =
-            active?.sources?.singleOrNull {
-                it.api == api && it.sourceRevision == sourceRevision && it.checksum == checksum
-            }
-
-        override suspend fun activate(catalog: StoredSourceCatalog) {
-            activationCount++
-            active = catalog
-            floor = SourceCatalogAcceptanceFloor(catalog.manifest.metadata.revision, catalog.manifest.metadata.checksum)
-        }
-    }
+    private class MemoryStore(bundle: SourceConfigDocument) :
+        SourceSelectionTestStore(Json.encodeToString(SourceConfigDocument.serializer(), bundle))
 
     private class FixtureRemote(private val catalogs: List<Catalog>) : RemoteSourceCatalog {
         private val artifacts = catalogs.flatMap { it.stored.sources }

@@ -30,12 +30,11 @@ internal fun fixtureDownloadService(
     val files = FileService(inputs.storage.fileSystem)
     val library =
         LibraryRepository(
-            inputs.rows.db.mangaDao(),
-            inputs.rows.db.chapterDao(),
-            inputs.rows.db.libraryDeo(),
-            inputs.rows.db.notificationDao(),
-            inputs.rows.db.historyDao(),
-            files,
+            mangaDao = inputs.rows.db.mangaDao(),
+            chapterDao = inputs.rows.db.chapterDao(),
+            libraryDeo = inputs.rows.db.libraryDeo(),
+            metadata = DownloadFixtureUnusedCoverMetadata,
+            fileService = files,
         )
     return ChapterDownloadService(
         context = inputs.storage.context,

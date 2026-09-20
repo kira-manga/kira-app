@@ -5,6 +5,7 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
@@ -13,7 +14,11 @@ import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.service.FileService
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.repository.LibraryMetadataRepository
 import me.manga.kira.platform.cbz.CbzWriter
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.media.IosPageMediaInspector
@@ -37,6 +42,7 @@ import kotlin.test.assertNotNull
 
 /** One private temporary directory and a genuine file-backed Room database, never production paths. */
 internal class IosCbzFinalizationFixture {
+    val operations = DownloadOperationExclusion()
     val system: FileSystem = FileSystem.SYSTEM
     private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kira-cbz-finalize-${NSUUID().UUIDString}"
     val appFileSystem: AppFileSystem =
@@ -90,7 +96,7 @@ internal class IosCbzFinalizationFixture {
         dispatchers = CbzCallerDispatchers,
         dataStore = DataStoreHelper(MapSettings()),
         conversion = DownloadedChapterConversion(db.chapterDao(), writer, db.mangaDao(), dao,
-            appFileSystem, artifactRuntime.ownership, artifactRuntime.commits),
+            appFileSystem, artifactRuntime.ownership, artifactRuntime.commits, operations),
         httpCache = me.manga.kira.core.cache.HttpCacheClearer { },
     )
 
@@ -156,8 +162,7 @@ internal class IosCbzFinalizationFixture {
                             mangaDao = db.mangaDao(),
                             chapterDao = db.chapterDao(),
                             libraryDeo = db.libraryDeo(),
-                            notificationDao = db.notificationDao(),
-                            historyDao = db.historyDao(),
+                            metadata = UnusedFinalizationMetadata,
                             fileService = FileService(appFileSystem),
                         ),
                     notifications = db.notificationDao(),
@@ -215,6 +220,14 @@ internal class IosCbzFinalizationFixture {
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.Default)
             .build()
+}
+
+private object UnusedFinalizationMetadata : LibraryMetadataRepository {
+    override suspend fun updateCoverIfChanged(
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
+        newCoverUrl: String,
+    ): AppResult<Unit> = error("Chapter finalization must not reconcile library covers")
 }
 
 internal data class IosCbzChapter(

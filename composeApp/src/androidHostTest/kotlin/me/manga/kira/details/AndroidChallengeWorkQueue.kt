@@ -21,7 +21,9 @@ internal class AndroidChallengeWorkQueue(android: AndroidChallengeCase) : AutoCl
         WorkManagerTestInitHelper.initializeTestWorkManager(android.storage.context)
         WorkManagerImpl.getInstance(android.storage.context)
     }
-    private val actual = DownloadRepositoryImpl(workManager, android.rows.realDao, android.service, android.rows.artifacts)
+    private val actual = DownloadRepositoryImpl(
+        workManager, android.rows.realDao, android.service, android.rows.artifacts, android.rows.operations,
+    )
     val enqueued = MutableStateFlow<List<Triple<Long, String, String>>>(emptyList())
     val engine: DownloadRepository = object : DownloadRepository by actual {
         override suspend fun enqueueChapterDownload(chapter: SavedChapterEntity, title: String, mangaApi: String) {

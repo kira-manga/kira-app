@@ -9,13 +9,10 @@ import kotlinx.serialization.encodeToString
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.backup.model.BackupChapter
 import me.manga.kira.data.backup.model.BackupFile
-import me.manga.kira.data.backup.model.BackupHistoryItem
 import me.manga.kira.data.backup.model.BackupManga
-import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.backup.BackupExportResult
 import me.manga.kira.domain.model.backup.BackupScope
-import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.platform.backup.BackupZipWriter
 import me.manga.kira.platform.backup.ZipLimitExceededException
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -39,16 +36,17 @@ data class FixedBackupExportProvenance(
 
 /** Builds the existing ZIP32 backup format; chapter copies are pinned by [BackupDownloadExporter]. */
 class BackupExporter(
-    private val backupDao: BackupDao,
-    private val readProgress: ReadProgressRepository,
+    private val mergeWriter: BackupMergeWriter,
     private val files: AppFileSystem,
     private val downloads: BackupDownloadExporter,
     private val provenance: BackupExportProvenance,
 ) {
     internal suspend fun run(scope: BackupScope, includeDownloads: Boolean, run: BackupRun): BackupExportResult {
-        val rows = resolveScopeRows(scope)
+        val snapshots = checkNotNull(mergeWriter.export(scope) { run.checkpoint(); false })
+        val saved = snapshots.filter { it.manga != null }
+        val rows = saved.map { checkNotNull(it.manga) }
         run.update { it.copy(totalMangas = rows.size) }
-        val content = collectMangas(rows, includeDownloads, run)
+        val content = collectMangas(saved, includeDownloads, run)
         if (content.packed.sumOf { it.sizeBytes } > MAX_PACKED_BYTES || content.packed.size + 1 > MAX_ARCHIVE_ENTRIES) {
             throw ZipLimitExceededException("Backup export exceeds ZIP32 limits")
         }
@@ -60,7 +58,7 @@ class BackupExporter(
             createdAtEpochMs = Clock.System.now().toEpochMilliseconds(),
             includesDownloads = content.packed.isNotEmpty(),
             mangas = content.mangas,
-            history = exportHistory(scope, rows),
+            history = snapshots.mapNotNull { it.history?.toBackup() },
         )
         return writeArchive(document, suggestedFileName(scope, rows), content, run)
     }
@@ -73,52 +71,36 @@ class BackupExporter(
         }
     }
 
-    private suspend fun resolveScopeRows(scope: BackupScope): List<SavedMangaEntity> =
-        when (scope) {
-            is BackupScope.FullLibrary -> backupDao.getAllSavedManga()
-            is BackupScope.Mangas -> scope.keys.mapNotNull { backupDao.getMangaByApiAndTitle(it.api, it.title) }.distinctBy { it.id }
-        }
-
     private suspend fun collectMangas(
-        rows: List<SavedMangaEntity>,
+        snapshots: List<BackupOwnedExport>,
         includeDownloads: Boolean,
         run: BackupRun,
     ): ExportContent {
         val content = ExportContent()
-        rows.forEachIndexed { index, row ->
+        snapshots.forEachIndexed { index, snapshot ->
             run.checkpoint()
+            val row = checkNotNull(snapshot.manga)
             run.update { it.copy(processedMangas = index, currentTitle = row.title) }
-            val chapters = exportChapters(row.id, includeDownloads, content)
+            val chapters = exportChapters(snapshot.chapters, includeDownloads, content)
             content.chapterCount += chapters.size
             content.mangas += row.toBackup(chapters)
         }
-        run.update { it.copy(processedMangas = rows.size, currentTitle = "", totalDownloads = content.packed.size) }
+        run.update { it.copy(processedMangas = snapshots.size, currentTitle = "", totalDownloads = content.packed.size) }
         return content
     }
 
     private suspend fun exportChapters(
-        mangaId: Long,
+        snapshots: List<BackupExportChapter>,
         includeDownloads: Boolean,
         content: ExportContent,
-    ): List<BackupChapter> = backupDao.getChaptersForManga(mangaId).map { chapter ->
+    ): List<BackupChapter> = snapshots.map { snapshot ->
+        val chapter = snapshot.row
         val packed = if (includeDownloads && chapter.isDownloaded) {
             downloads.candidate(chapter, "$DOWNLOADS_DIR/${content.packed.size}.cbz")
         } else null
         if (packed != null) content.packed += packed
         else if (includeDownloads && chapter.isDownloaded) content.skippedLoose++
-        chapter.toBackup(readProgress.load(chapter.url), packed?.entryName)
-    }
-
-    private suspend fun exportHistory(scope: BackupScope, rows: List<SavedMangaEntity>): List<BackupHistoryItem> {
-        val all = backupDao.getAllHistoryOnce()
-        val relevant = when (scope) {
-            is BackupScope.FullLibrary -> all
-            is BackupScope.Mangas -> {
-                val urls = rows.mapTo(HashSet()) { it.url }
-                all.filter { it.mangaUrl in urls }
-            }
-        }
-        return relevant.map { it.toBackup() }
+        chapter.toBackup(snapshot.pageIndex, packed?.entryName)
     }
 
     private suspend fun writeArchive(

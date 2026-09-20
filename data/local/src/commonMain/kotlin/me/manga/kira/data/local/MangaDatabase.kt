@@ -11,30 +11,39 @@ import me.manga.kira.data.local.converter.LocalDateConverter
 import me.manga.kira.data.local.converter.LocalDateTimeConverter
 import me.manga.kira.data.local.converter.StringListConverter
 import me.manga.kira.data.local.dao.BackupDao
-import me.manga.kira.data.local.dao.ChapterDao
-import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
+import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
+import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.ChapterDownloadDao
+import me.manga.kira.data.local.dao.EffectiveSourceSelectionDao
 import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.dao.NotificationDao
-import me.manga.kira.data.local.dao.SourceConfigCacheDao
+import me.manga.kira.data.local.dao.ReaderLegacyCleanupDao
+import me.manga.kira.data.local.dao.ReaderProgressDao
 import me.manga.kira.data.local.dao.SourceCatalogDao
+import me.manga.kira.data.local.dao.SourceConfigCacheDao
+import me.manga.kira.data.local.dao.SourceSelectionMigrationDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.dao.StatisticsDeo
-import me.manga.kira.data.local.entity.ChapterDownloadEntity
-import me.manga.kira.data.local.entity.ChapterArtifactEntity
-import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SourceConfigCacheEntity
 import me.manga.kira.data.local.entity.ActiveSourceCatalogEntity
-import me.manga.kira.data.local.entity.SourceCatalogEntryEntity
-import me.manga.kira.data.local.entity.SourceCatalogManifestEntity
-import me.manga.kira.data.local.entity.SourceRevisionArtifactEntity
+import me.manga.kira.data.local.entity.ChapterArtifactEntity
+import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.data.local.entity.ChapterNotification
+import me.manga.kira.data.local.entity.EffectiveSourceSelectionEntity
 import me.manga.kira.data.local.entity.HistoryItemD
+import me.manga.kira.data.local.entity.ReaderChapterStateEntity
+import me.manga.kira.data.local.entity.ReaderLegacyCleanupEntity
+import me.manga.kira.data.local.entity.ReaderWorkStateEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.data.local.entity.SourceCatalogEntryEntity
+import me.manga.kira.data.local.entity.SourceCatalogManifestEntity
+import me.manga.kira.data.local.entity.SourceConfigCacheEntity
+import me.manga.kira.data.local.entity.SourceRevisionArtifactEntity
+import me.manga.kira.data.local.entity.SourceSelectionGenerationEntity
 import me.manga.kira.data.local.entity.SourcesEntity
 
 // Migration notes (Phase 6):
@@ -60,6 +69,11 @@ import me.manga.kira.data.local.entity.SourcesEntity
         SourceCatalogEntryEntity::class,
         SourceRevisionArtifactEntity::class,
         ActiveSourceCatalogEntity::class,
+        ReaderWorkStateEntity::class,
+        ReaderChapterStateEntity::class,
+        ReaderLegacyCleanupEntity::class,
+        EffectiveSourceSelectionEntity::class,
+        SourceSelectionGenerationEntity::class,
     ],
     // v8 -> v9: add chapter_downloads.sizeBytes (per-chapter download size, native size-display
     // parity). MIGRATION_8_9 in Migrations.kt; exported schema regenerated to 9.json.
@@ -71,7 +85,8 @@ import me.manga.kira.data.local.entity.SourcesEntity
     // v14: one notification per discovered chapter, with repaired manga-scoped legacy bindings.
     // v14 -> v15: durable artifact custody, independent of deletable download history.
     // v15 -> v16: exact retained-input CONVERT roster for post-commit cleanup/restart.
-    version = 16,
+    // v16 -> v17: reader progress/cleanup receipts and independently generated effective source selection.
+    version = 17,
     exportSchema = true,
 )
 @TypeConverters(
@@ -97,6 +112,17 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun sourceConfigCacheDao(): SourceConfigCacheDao
     abstract fun sourceCatalogDao(): SourceCatalogDao
     abstract fun backupDao(): BackupDao
+
+    /** Durable progress primitives; caller ownership checks belong in the same writer transaction. */
+    abstract fun readerProgressDao(): ReaderProgressDao
+
+    /** Durable cleanup receipts only; Settings transfer and physical cleanup are separate. */
+    abstract fun readerLegacyCleanupDao(): ReaderLegacyCleanupDao
+
+    /** Durable selection primitives; verification and coupled generation checks belong in the owning writer. */
+    abstract fun effectiveSourceSelectionDao(): EffectiveSourceSelectionDao
+
+    abstract fun sourceSelectionMigrationDao(): SourceSelectionMigrationDao
 
     companion object {
         const val DATABASE_NAME = "manga_database"
