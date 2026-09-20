@@ -1,0 +1,60 @@
+// Bound the ordinary invocation and report its requested tasks; do not rewrite the source graph.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.testing.Test
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def filters = new JsonSlurper().parseText(System.getenv('APP32_TEST_FILTERS'))
+def requested = new JsonSlurper().parseText(System.getenv('APP32_REQUESTED_TASKS'))
+def marker = '-Dapp32.owned.root=' + System.getenv('APP32_OWNED_ROOT')
+
+gradle.settingsEvaluated { settings ->
+    def s = gradle.startParameter
+    require(settings.settingsDir.canonicalPath == System.getenv('APP32_APP_ROOT'), 'Bound app root only')
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21',
+        'Gradle9.6.1 / installed JDK21 required')
+    require(!s.offline && !s.dryRun && s.excludedTaskNames.empty && s.maxWorkerCount == 1 &&
+        !s.parallelProjectExecutionEnabled && !s.buildCacheEnabled && !s.configurationCacheRequested &&
+        !s.configureOnDemand && s.taskNames.findAll { it.startsWith(':') } == requested,
+        'Exact ordinary online single-worker invocation; no exclusions/caches/configuration pruning')
+}
+gradle.projectsEvaluated {
+    require(gradle.includedBuilds.empty, 'Use the normal published package resolver, no composite build')
+    gradle.rootProject.allprojects.each { p ->
+        p.tasks.withType(Test).configureEach { t ->
+            t.setEnvironment(t.environment.findAll { key, value -> key != 'KIRA_PACKAGES_READ_TOKEN' })
+            if (filters.containsKey(t.path)) {
+                t.maxParallelForks = 1
+                t.forkEvery = 0
+                t.maxHeapSize = '1g'
+                t.filter.failOnNoMatchingTests = true
+                t.reports.junitXml.required.set(true)
+                t.jvmArgs('-XX:MaxMetaspaceSize=512m', '-XX:ActiveProcessorCount=2', marker)
+                t.systemProperty('java.awt.headless', 'true')
+                t.systemProperty('user.home', System.getenv('HOME'))
+                t.systemProperty('java.io.tmpdir', System.getenv('TMPDIR'))
+                t.doFirst {
+                    require(t.filter.commandLineIncludePatterns.toSet() == filters[t.path].toSet(),
+                        'Exact task-adjacent reviewed filters required: ' + t.path)
+                    require(t.maxParallelForks == 1 && t.maxHeapSize == '1g', 'Bounded test JVM only')
+                }
+            }
+        }
+        [JavaExec, Exec].each { type ->
+            p.tasks.withType(type).configureEach { t ->
+                t.setEnvironment(t.environment.findAll { key, value -> key != 'KIRA_PACKAGES_READ_TOKEN' })
+            }
+        }
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    require(graph.allTasks.findAll { it instanceof Test }*.path.toSet() == filters.keySet(),
+        'Only the selected five Test tasks; no UI automation or broad suite')
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.path in requested) logger.lifecycle('APP32_COMPLETE ' + JsonOutput.toJson([
+        path: task.path, executed: state.executed, didWork: state.didWork, skipped: state.skipped,
+        upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.class?.name]))
+}
