@@ -157,9 +157,16 @@ history cleanup remains a separate issue, including retained failures released b
 Terminal/saved-only restored offline metadata has a separate authored absence-only repair
 (`MissingDownloadMetadataRepair` / `ChapterArtifactRepairDao`), with material Room/file tests
 **NOT_RUN**. It preserves user state, active work and unknown bytes, and conditionally clears the
-exact stale committed reference so explicit import can be admitted. It neither changes the active
-restore/re-download policy nor closes physical iPhone backup/restore acceptance; see
-`ENGINEERING_NOTES.md` §2. No database/schema relocation or filesystem cleanup is part of it.
+exact stale committed reference so explicit import can be admitted. The separate active iOS repair
+now implements the explicit-Retry policy for restored downloads whose required files are genuinely
+missing, while preserving complete/uncertain copies and exact native page ownership. It reuses
+the existing file pins, snapshot-bound Room writer and retained-FAILED settlement; no automatic
+scrape/replacement is authorized by a persisted token alone. If a committed repair loses its suspend
+return, the next same-engine reconcile/Retry uses exact original-claim readback and exclusive settlement;
+unknown or different custody remains held, and Retry never waits for file users under the engine mutex.
+These additions are authored, **NOT_RUN**, and do not close physical iPhone backup/restore acceptance;
+see `ENGINEERING_NOTES.md` §2. No database/schema relocation or restore-repair filesystem cleanup is
+part of either path.
 
 The authored import path admits a bounded, privately owned ZIP/JSON/CBZ plan before any Room or
 resume mutation; every publication consumes those same retained bytes. Android acquisition counts

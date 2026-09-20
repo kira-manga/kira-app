@@ -33,6 +33,8 @@ import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadE
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import me.manga.kira.data.download.artifacts.QueuedArtifactAdmission
+import me.manga.kira.data.download.artifacts.RestoredDownloadAdmission
+import me.manga.kira.data.download.artifacts.RestoredNativePages
 import me.manga.kira.data.download.selection.DownloadCatalogAdmission
 import me.manga.kira.data.download.selection.DownloadCatalogNotReady
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
@@ -105,6 +107,11 @@ class BackgroundUrlSessionDownloadRepository(
 
     private val mutex = Mutex()
     private val attempts = mutableMapOf<Long, ChapterArtifactClaim>()
+    /** Only an explicit enqueue/Retry in this process may create otherwise unowned transfers. */
+    private val explicitAttempts = mutableSetOf<String>()
+    private val recoveredNativePages = mutableMapOf<String, MutableSet<Int>>()
+    private val deferredRestoredAttempts = mutableSetOf<String>()
+    private var restoredScanned = false
     private var parentAdmissionWaiter: Job? = null
 
     /** chapterIds with a finalize coroutine in flight — guards against double-finalize. (Guarded by [mutex].) */
@@ -276,9 +283,12 @@ class BackgroundUrlSessionDownloadRepository(
         transport.ensureReady()
         withCatalogAdmission {
             mutex.withLock {
+                scanRestoredBeforeEnqueueLocked()
                 val claim = artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
                     ?: return@withLock
+                attempts[chapter.id]?.let { forgetAttemptAuthorization(it) }
                 attempts[chapter.id] = claim
+                explicitAttempts += claim.token
                 clearChapterCaches(chapter.id)
                 artifacts.ownership.files(claim) { manifestStore.delete(chapter.mangaId, chapter.id) }
                 fillWindowLocked()
@@ -289,10 +299,19 @@ class BackgroundUrlSessionDownloadRepository(
     override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = withContext(platformIoDispatcher) {
         transport.ensureReady()
         withCatalogAdmission {
+            val original = mutex.withLock {
+                scanRestoredBeforeEnqueueLocked()
+                retainedFailedClaimLocked(expected)
+            }
+            // A committed repair may have lost its suspend return. Drain only exact proved custody,
+            // outside the engine mutex; the ordinary compare-and-reserve still decides Retry.
+            if (original != null) settleMissingRestored(original)
             mutex.withLock {
                 val claim = artifacts.retry(expected) { token -> prepareRetryManifest(expected, token) }
                     ?: return@withLock false
+                attempts[expected.chapterId]?.let { forgetAttemptAuthorization(it) }
                 attempts[expected.chapterId] = claim
+                explicitAttempts += claim.token
                 clearChapterCaches(expected.chapterId)
                 fillWindowLocked()
                 true
@@ -321,6 +340,7 @@ class BackgroundUrlSessionDownloadRepository(
             check(artifacts.deleteAttempt(row) { claim ->
                 mutex.withLock {
                     transport.cancelChapter(chapterId, claim.token)
+                    forgetAttemptAuthorization(claim)
                     clearChapterCaches(chapterId)
                     runCatching { downloadNotifier.clear(chapterId.toInt()) }
                 }
@@ -344,6 +364,7 @@ class BackgroundUrlSessionDownloadRepository(
     private suspend fun cancelLocked(chapterId: Long): ChapterArtifactClaim? {
         val claim = artifacts.cancel(chapterId, CANCELLED_BY_USER) ?: return null
         transport.cancelChapter(chapterId, claim.token)
+        forgetAttemptAuthorization(claim)
         clearChapterCaches(chapterId)
         runCatching { downloadNotifier.clear(chapterId.toInt()) }
         return claim
@@ -479,6 +500,8 @@ class BackgroundUrlSessionDownloadRepository(
         page: StagedDownloadPage,
     ) {
         val claim = callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return
+        rememberNativePages(claim, setOf(pageIndex))
+        recheckRestoredAfterReceipt(claim)
         artifacts.ownership.producing(claim) {
             val manifest = cachedManifest(mangaId, chapterId) ?: return@producing
             if (manifest.pages.none { it.index == pageIndex && !it.policyRejected }) return@producing
@@ -532,14 +555,18 @@ class BackgroundUrlSessionDownloadRepository(
     private fun scheduleFollowups(followups: ReceiverFollowups) {
         followups.retries.forEach(::scheduleRetry)
         if (!followups.pump && !followups.fillWindow && !followups.prefetch &&
-            !followups.settleRetry && followups.finalizeChapterIds.isEmpty()
+            !followups.settleRetry && followups.finalizeChapterIds.isEmpty() && followups.restoredChapterIds.isEmpty()
         ) return
         applicationScope.launch {
             runCatalogContinuation("ownedFollowup") {
                 mutex.withLock {
                     // Hints only: recapture under fresh admission, never an old row/manifest.
+                    followups.restoredChapterIds.forEach { chapterId ->
+                        dao.getDownloadByChapter(chapterId)?.takeIf { it.state in WorkSignalRules.ACTIVE_STATES }
+                            ?.let { claimLocked(it) }
+                    }
                     if (followups.pump) pumpLocked("ownedFollowup")
-                    else if (followups.fillWindow) fillWindowLocked()
+                    else if (followups.fillWindow || followups.restoredChapterIds.isNotEmpty()) fillWindowLocked()
                     followups.finalizeChapterIds.forEach { launchFinalize(it) }
                     if (followups.prefetch && !followups.pump) maybePrefetchLocked()
                     if (followups.settleRetry) {
@@ -572,7 +599,9 @@ class BackgroundUrlSessionDownloadRepository(
     ) {
         try {
             mutex.withLock {
-                callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return@withLock
+                val claim = callbackClaimLocked(mangaId, chapterId, attemptToken) ?: return@withLock
+                rememberNativePages(claim, setOf(pageIndex))
+                recheckRestoredAfterReceipt(claim)
                 handlePageFailedLocked(mangaId, chapterId, pageIndex, message)
             }
         } catch (cancelled: CancellationException) {
@@ -609,24 +638,23 @@ class BackgroundUrlSessionDownloadRepository(
         val retained = attempts[entity.chapterId]
         val claim = admitted ?: retained?.takeIf { it.downloadId == entity.id && currentAttempt(it) != null }
             ?: artifacts.claim(entity) ?: return null
-        if (retained?.token != claim.token) clearChapterCaches(entity.chapterId)
+        if (retained?.token != claim.token) {
+            retained?.let { forgetAttemptAuthorization(it) }
+            clearChapterCaches(entity.chapterId)
+        }
         attempts[entity.chapterId] = claim
         try {
-            val inspected = artifacts.ownership.files(claim) {
-                withContext(platformIoDispatcher) {
-                    // Every manifest writer holds this same pin. A live stage cannot be reclaimed.
-                    manifestStore.cleanOrphanedStaging(entity.mangaId, entity.chapterId)
-                    val legacy = manifestStore.read(entity.mangaId, entity.chapterId)
-                    if (legacy != null) {
-                        check(legacy.api == entity.api && (legacy.attemptToken == null || legacy.attemptToken == claim.token)) {
-                            "Download manifest custody changed"
-                        }
-                        // Upgrade a readable pre-custody roster without resetting its page attempts.
-                        if (legacy.attemptToken == null) manifestStore.write(legacy.copy(attemptToken = claim.token))
-                    }
+            when (inspectClaimLocked(entity, claim)) {
+                RestoredDownloadAdmission.READY -> deferredRestoredAttempts.remove(claim.token)
+                RestoredDownloadAdmission.DEFERRED -> {
+                    deferredRestoredAttempts += claim.token
+                    return null
+                }
+                RestoredDownloadAdmission.FAILED -> {
+                    settleMissingRestoredLocked(claim)
+                    return null
                 }
             }
-            if (inspected == null) return null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -634,6 +662,92 @@ class BackgroundUrlSessionDownloadRepository(
             return null
         }
         return claim
+    }
+
+    private suspend fun settleMissingRestoredLocked(claim: ChapterArtifactClaim) {
+        // Scheduling is not a drain wait under mutex. Unknown readback keeps the original claim.
+        launchRetainedOperation(currentOperation()) {
+            withContext(NonCancellable) { settleMissingRestored(claim) }
+        }
+    }
+
+    private suspend fun settleMissingRestored(claim: ChapterArtifactClaim) {
+        if (!artifacts.settleMissingRestoredFailure(claim)) return
+        mutex.withLock {
+            if (attempts[claim.owner.chapterId]?.token != claim.token) return@withLock
+            attempts.remove(claim.owner.chapterId)
+            forgetAttemptAuthorization(claim)
+            clearChapterCaches(claim.owner.chapterId)
+            BgDownloadLog.log("reconcile.missing.retryRequired", "chapterId" to claim.owner.chapterId)
+        }
+    }
+
+    /** The map retains the original pre-write claim, never a freshly looked-up replacement token. */
+    private fun retainedFailedClaimLocked(row: ChapterDownloadEntity): ChapterArtifactClaim? =
+        attempts[row.chapterId]?.takeIf {
+            row.state == DownloadingState.FAILED && it.downloadId == row.id &&
+                it.owner.mangaId == row.mangaId && it.owner.chapterUrl == row.url
+        }
+
+    private suspend fun inspectClaimLocked(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim): RestoredDownloadAdmission =
+        artifacts.ownership.files(claim) {
+            val manifest = withContext(platformIoDispatcher) { manifestStore.read(entity.mangaId, entity.chapterId) }
+            check(manifest == null || (manifest.api == entity.api && (manifest.attemptToken == null || manifest.attemptToken == claim.token))) {
+                "Download manifest custody changed"
+            }
+            val admission = if (claim.token in explicitAttempts) RestoredDownloadAdmission.READY else {
+                recoverRestoredLocked(entity, claim, manifest)
+            }
+            if (admission == RestoredDownloadAdmission.READY) withContext(platformIoDispatcher) {
+                // Only an admitted attempt may remove staging or bind a legacy readable roster.
+                manifestStore.cleanOrphanedStaging(entity.mangaId, entity.chapterId)
+                if (manifest != null && manifest.attemptToken == null) manifestStore.write(manifest.copy(attemptToken = claim.token))
+            }
+            admission
+        } ?: RestoredDownloadAdmission.DEFERRED
+
+    private suspend fun recoverRestoredLocked(
+        entity: ChapterDownloadEntity,
+        claim: ChapterArtifactClaim,
+        manifest: DownloadManifest?,
+    ): RestoredDownloadAdmission = try {
+        val inFlight = transport.inFlightPages(entity.chapterId, claim.token)
+        rememberNativePages(claim, inFlight)
+        artifacts.reconcileRestoredUnderFilePin(
+            claim, entity, manifest, RestoredNativePages(inFlight, recoveredNativePages[claim.token].orEmpty()),
+        )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        RestoredDownloadAdmission.DEFERRED
+    }
+
+    private fun rememberNativePages(claim: ChapterArtifactClaim, pages: Set<Int>) {
+        if (pages.isNotEmpty()) recoveredNativePages.getOrPut(claim.token) { mutableSetOf() }.addAll(pages)
+    }
+
+    private fun forgetAttemptAuthorization(claim: ChapterArtifactClaim) {
+        explicitAttempts.remove(claim.token)
+        recoveredNativePages.remove(claim.token)
+        deferredRestoredAttempts.remove(claim.token)
+    }
+
+    private fun mayReplacePage(claim: ChapterArtifactClaim, pageIndex: Int): Boolean =
+        claim.token in explicitAttempts || pageIndex in recoveredNativePages[claim.token].orEmpty()
+
+    /** Only a deferred restored probe needs rechecking; ordinary native callbacks stay O(1).
+     * Classify after ACK without pumping RUNNING pages past their retry delay. */
+    private suspend fun recheckRestoredAfterReceipt(claim: ChapterArtifactClaim) {
+        if (claim.token in deferredRestoredAttempts) {
+            currentCoroutineContext()[ReceiverFollowups]?.restoredChapterIds?.add(claim.owner.chapterId)
+        }
+    }
+
+    /** First explicit enqueue can follow a parked startup; classify old rows before occupying slots. */
+    private suspend fun scanRestoredBeforeEnqueueLocked() {
+        if (restoredScanned) return
+        dao.observeAllDownloads().first().filter { it.state in WorkSignalRules.ACTIVE_STATES }.forEach { claimLocked(it) }
+        restoredScanned = true
     }
 
     private suspend fun currentAttempt(claim: ChapterArtifactClaim): ChapterDownloadEntity? {
@@ -707,7 +821,12 @@ class BackgroundUrlSessionDownloadRepository(
 
     private suspend fun pumpLocked(reason: String) {
         currentCoroutineContext()[ReceiverFollowups]?.let { it.pump = true; return }
-        val all = dao.observeAllDownloads().first()
+        val snapshot = dao.observeAllDownloads().first()
+        // FAILED rows are outside active admission, but a lost repair return may still retain custody.
+        snapshot.mapNotNull(::retainedFailedClaimLocked).forEach { settleMissingRestoredLocked(it) }
+        val all = snapshot.filter { it.state in WorkSignalRules.ACTIVE_STATES }
+            .filter { claimLocked(it) != null }
+        restoredScanned = true
         BgDownloadLog.log(
             "pump.start",
             "reason" to reason,
@@ -730,19 +849,18 @@ class BackgroundUrlSessionDownloadRepository(
             // else leftover DOWNLOADED chapters sit "Finalizing…" all session with nothing to re-drive them.
             scheduleSettleRetryLocked()
         }
-        // 2. Reconcile RUNNING chapters from their manifest (resume / re-enqueue missing / detect done|fail).
+        // 2. Reconcile admitted RUNNING chapters (owned page retry / detect done|fail).
         // Reuses the step-1 snapshot: everything that mutates RUNNING rows holds [mutex] (the off-mutex
         // finalize coroutines only touch DOWNLOADED/COMPRESSING→SUCCESS), so a second full-table read
         // here could never observe a different RUNNING set.
         all
             .filter { it.state == DownloadingState.RUNNING }
             .forEach { entity ->
-                if (claimLocked(entity) == null) return@forEach
                 val manifest = readManifest(entity.mangaId, entity.chapterId)
                 if (manifest != null) {
                     reconcileChapterLocked(entity, manifest)
                 } else {
-                    BgDownloadLog.log("manifest.missing", "chapterId" to entity.chapterId, "fallback" to "reResolve")
+                    BgDownloadLog.log("manifest.missing", "chapterId" to entity.chapterId, "fallback" to "explicitResolve")
                     prepareLocked(entity)
                 }
             }
@@ -1153,13 +1271,13 @@ class BackgroundUrlSessionDownloadRepository(
                 // instead of replaying the cookie baked in at resolve time.
                 val live = freshSiteHeaders(manifest.api)
                 val requests =
-                    plan.toEnqueue.mapNotNull { idx ->
+                    plan.toEnqueue.filter { mayReplacePage(claim, it) }.mapNotNull { idx ->
                         val mp = byIndex[idx] ?: return@mapNotNull null
                         val headers = HeaderRefreshRules.overlayFreshHeaders(frozen = mp.headers, fresh = live)
                         TransferRequest(entity.mangaId, entity.chapterId, idx, mp.url, headers, claim.token)
                     }
                 BgDownloadLog.log("reconcile.enqueue", "chapterId" to entity.chapterId, "pages" to plan.toEnqueue.size)
-                artifacts.ownership.publish(claim) { transport.enqueue(requests) }
+                if (requests.isNotEmpty()) artifacts.ownership.publish(claim) { transport.enqueue(requests) }
             }
             else -> BgDownloadLog.log("reconcile.waitInFlight", "chapterId" to entity.chapterId, "inFlight" to inFlight.size)
         }
@@ -1329,6 +1447,7 @@ class BackgroundUrlSessionDownloadRepository(
         claim: ChapterArtifactClaim,
     ) {
         val entity = currentAttempt(claim) ?: return
+        if (!mayReplacePage(claim, pageIndex)) return
         if (canRetryPageLocked(entity, mangaId, pageIndex)) {
             val manifest = readManifest(mangaId, chapterId) ?: return
             retryManifestPageLocked(entity, manifest, mangaId, pageIndex)
@@ -1594,6 +1713,7 @@ class BackgroundUrlSessionDownloadRepository(
         launchOwned(claim, finished = {
             mutex.withLock {
                 finalizing.remove(chapterId)
+                if (currentAttempt(claim) == null) forgetAttemptAuthorization(claim)
                 clearChapterCaches(chapterId)
                 fillWindowLocked()
             }
@@ -1688,6 +1808,7 @@ class BackgroundUrlSessionDownloadRepository(
         if (currentAttempt(claim)?.id != entity.id) return
         if (!artifacts.fail(claim, message)) return
         artifacts.ownership.revoke(claim)
+        forgetAttemptAuthorization(claim)
         transport.cancelChapter(entity.chapterId, claim.token)
         clearChapterCaches(entity.chapterId)
         runCatching { downloadNotifier.onFailed(entity.chapterId.toInt(), notifTitle(entity)) }
@@ -1845,6 +1966,7 @@ class BackgroundUrlSessionDownloadRepository(
         var prefetch = false
         var settleRetry = false
         val finalizeChapterIds = linkedSetOf<Long>()
+        val restoredChapterIds = linkedSetOf<Long>()
         val retries = mutableListOf<PageRetry>()
 
         companion object Key : CoroutineContext.Key<ReceiverFollowups>

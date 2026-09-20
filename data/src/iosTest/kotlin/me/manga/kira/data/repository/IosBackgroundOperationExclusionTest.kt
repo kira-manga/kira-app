@@ -20,7 +20,6 @@ import kotlinx.coroutines.withContext
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.platform.download.DownloadOperationBusy
-import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.presentation.features.download.domain.clean.DownloadManifestStore
@@ -70,16 +69,19 @@ class IosBackgroundOperationExclusionTest {
     fun cancelledHostKeepsResolverOperationUntilItsNonCancellableFinallyActuallyFinishes() = runTest {
         withFixture { fixture, host, scope ->
             val chapter = fixture.seed()
-            fixture.prepareAttempt(chapter, DownloadingState.QUEUED)
-            fixture.system.delete(fixture.appFileSystem.chapterDir(chapter.saved.mangaId, chapter.saved.id) / "manifest.json")
+            fixture.dao.deleteByChapterId(chapter.saved.id)
+            chapter.pages.keys.forEach { fixture.system.delete(it) }
             val entered = CompletableDeferred<Unit>()
             val finishing = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             val provider = heldResolver(entered, finishing, release)
-            val catalog = IosCatalogAdmissionProbe(fixture.operations, ready = true)
+            val catalog = IosCatalogAdmissionProbe(fixture.operations, ready = false)
             try {
-                fixture.engine(scope, ArtifactTestTransport(fixture.operations, ready = true),
+                val engine = fixture.engine(scope, ArtifactTestTransport(fixture.operations, ready = true),
                     pageProvider = provider, catalog = catalog.admission)
+                catalog.assertParked(this)
+                catalog.ready = true
+                engine.enqueueChapterDownload(fixture.saved(chapter), "CBZ", "test")
                 entered.await()
                 catalog.ready = false // Invalidation cannot revoke the original resolver's cleanup.
                 host.cancel()
@@ -88,8 +90,8 @@ class IosBackgroundOperationExclusionTest {
                 assertFailsWith<DownloadOperationBusy> { fixture.operations.withExclusive {} }
                 release.complete(Unit)
                 host.join()
-                assertEquals(1, catalog.preparations)
-                assertEquals(1, catalog.checks)
+                assertEquals(2, catalog.preparations)
+                assertEquals(2, catalog.checks)
                 fixture.operations.withExclusive {}
             } finally {
                 release.complete(Unit)
@@ -107,13 +109,14 @@ class IosBackgroundOperationExclusionTest {
             val chapter = fixture.seed()
             val claim = fixture.prepareAttempt(chapter, DownloadingState.RUNNING, failures = 2)
             val next = fixture.seed()
-            fixture.prepareAttempt(next, DownloadingState.QUEUED)
+            val nextClaim = fixture.prepareAttempt(next, DownloadingState.QUEUED)
+            next.pages.keys.forEach { fixture.system.delete(it) }
             val queued = fixture.download(next)
             val catalog = IosCatalogAdmissionProbe(fixture.operations, ready)
             val handoff = HeldSettlementWrite()
             try {
                 val transport = ArtifactTestTransport(fixture.operations)
-                fixture.engine(scope, transport.holdNextEnqueue(handoff), catalog = catalog.admission)
+                fixture.engine(scope, transport.observeRecoveredOnce(nextClaim).holdNextEnqueue(handoff), catalog = catalog.admission)
                 val page = ReceiverPage(fixture, chapter, "post-ack-next", beforeDiscard = {
                     assertEquals(0, catalog.preparations)
                     assertEquals(0, catalog.checks, "The original receiver must not require fresh selection")
@@ -176,6 +179,7 @@ class IosBackgroundOperationExclusionTest {
             val engine = fixture.engine(scope, transport, downloads = downloads)
             deliverFailure(fixture, chapter, claim.token, engine)
             runCurrent()
+            assertTrue(transport.enqueued.isEmpty(), "A callback recheck must not bypass the page retry delay")
             val beforeRetry = reads
             fixture.operations.withExclusive {
                 advanceTimeBy(2_000)

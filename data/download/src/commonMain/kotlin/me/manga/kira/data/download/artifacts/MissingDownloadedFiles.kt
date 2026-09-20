@@ -1,9 +1,8 @@
-package me.manga.kira.data.repository
+package me.manga.kira.data.download.artifacts
 
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.manga.kira.core.util.runCatchingCancellable
-import me.manga.kira.data.download.artifacts.ChapterArtifactReference
 import me.manga.kira.data.local.dao.ArtifactRepairSnapshot
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -15,7 +14,8 @@ import okio.Path.Companion.toPath
  * Negative evidence only, not a media validator. Existing, corrupt, inaccessible or ambiguous
  * bytes are retained. Never turn a decoder failure or a failed filesystem call into absence.
  */
-internal class MissingDownloadedFiles(private val files: AppFileSystem) {
+class MissingDownloadedFiles(private val files: AppFileSystem) {
+    /** Caller pins the captured chapter files; false includes all uncertain ownership and I/O. */
     suspend fun provenMissing(snapshot: ArtifactRepairSnapshot): Boolean = runCatchingCancellable {
         val owner = ChapterArtifactOwner.of(snapshot.chapter)
         val directory = files.chapterDir(owner.mangaId, owner.chapterId)
@@ -53,7 +53,7 @@ internal class MissingDownloadedFiles(private val files: AppFileSystem) {
         return missing
     }
 
-    private fun storedPresence(raw: String, directory: Path): Presence {
+    internal fun storedPresence(raw: String, directory: Path): Presence {
         val stored = parse(raw) ?: return Presence.UNKNOWN
         if (stored.parent == directory) return presence(stored, files.filesDir)
         // Only the known iOS container UUID may move. Never use an unrelated absolute path,
@@ -72,7 +72,7 @@ internal class MissingDownloadedFiles(private val files: AppFileSystem) {
         return path.takeIf { it.isAbsolute && it.name.isNotBlank() && it.segments.none { part -> part == ".." || part == "." } }
     }
 
-    private fun presence(path: Path, root: Path): Presence {
+    internal fun presence(path: Path, root: Path): Presence {
         val relative = path.relativeTo(root)
         if (relative.segments.any { it == ".." }) return Presence.UNKNOWN
         var current = root
@@ -85,7 +85,7 @@ internal class MissingDownloadedFiles(private val files: AppFileSystem) {
     }
 }
 
-private enum class Presence { ABSENT, PRESENT, UNKNOWN }
+internal enum class Presence { ABSENT, PRESENT, UNKNOWN }
 
 private fun alternatives(first: Presence, second: Presence): Presence = when {
     first == Presence.PRESENT || second == Presence.PRESENT -> Presence.PRESENT
