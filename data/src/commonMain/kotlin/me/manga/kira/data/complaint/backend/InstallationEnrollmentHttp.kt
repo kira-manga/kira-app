@@ -56,11 +56,15 @@ internal class InstallationEnrollmentHttp(
 
     suspend fun enroll(record: InstallationCredentialRecord): EnrollmentResult<Unit> =
         exchange {
-            client
-                .preparePost(endpoint.enrollmentUrl.toString()) {
-                    installationHeaders()
-                    setBody(ByteArrayContent(requestBytes(record), ContentType.Application.Json))
-                }.execute { ComplaintBoundedResponse.enrollment(it, endpoint, record) }
+            if (!endpoint.acceptsDataScope(record.material.dataScopeId)) {
+                EnrollmentResult.Failed(Failure.CONTRACT)
+            } else {
+                client
+                    .preparePost(endpoint.enrollmentUrl.toString()) {
+                        installationHeaders()
+                        setBody(ByteArrayContent(requestBytes(record), ContentType.Application.Json))
+                    }.execute { ComplaintBoundedResponse.enrollment(it, endpoint, record) }
+            }
         }
 
     /** Cancels only this borrowed client's work. Closing it never closes the supplied engine owner. */

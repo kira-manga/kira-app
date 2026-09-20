@@ -33,6 +33,7 @@ internal class ComplaintSessionFixture(
     scope: TestScope,
     val storage: InstallationCoordinatorFixture = InstallationCoordinatorFixture(Fixtures.record()),
     val clock: TestTimeSource = TestTimeSource(),
+    expectedDataScopeId: String? = null,
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
         respond(sessionResponse(), HttpStatusCode.OK, sessionHeaders())
     },
@@ -47,7 +48,7 @@ internal class ComplaintSessionFixture(
     val manager =
         InstallationSessionManager(
             storage.coordinator,
-            assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL)),
+            assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL, expectedDataScopeId)),
             engine,
             clock,
         )

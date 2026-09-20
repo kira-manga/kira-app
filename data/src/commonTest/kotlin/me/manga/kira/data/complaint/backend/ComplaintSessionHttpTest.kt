@@ -27,6 +27,36 @@ import me.manga.kira.data.complaint.backend.InstallationCoordinatorFixtures as F
 
 class ComplaintSessionHttpTest {
     @Test
+    fun launchScopeMismatchRefusesSessionWithoutNetworkOrCredentialPendingMutation() =
+        runTest {
+            val otherScope = "99999999-9999-4999-8999-99999999999a"
+            for (scope in listOf("", "not-a-scope", otherScope.uppercase(), otherScope.replace("4999", "3999"))) {
+                assertNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL, scope))
+            }
+            val endpoint = assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL, Fixtures.SCOPE))
+            assertTrue(endpoint.acceptsDataScope(Fixtures.SCOPE))
+            assertFalse(endpoint.acceptsDataScope(otherScope))
+            val fixture = ComplaintSessionFixture(this, expectedDataScopeId = otherScope)
+            val slot = sessionPendingSlot(dispatched = true)
+            fixture.storage.pending.slots += slot
+            try {
+                assertEquals(Failure.CONTRACT, assertIs<ComplaintSessionResult.Failed>(fixture.manager.session()).reason)
+                assertTrue(fixture.engine.requestHistory.isEmpty())
+                fixture.assertPreserved(slots = listOf(slot))
+            } finally {
+                fixture.close()
+            }
+            val matching = ComplaintSessionFixture(this, expectedDataScopeId = Fixtures.SCOPE)
+            try {
+                assertIs<ComplaintSessionResult.Ready>(matching.manager.session())
+                assertEquals(1, matching.engine.requestHistory.size)
+                matching.assertPreserved()
+            } finally {
+                matching.close()
+            }
+        }
+
+    @Test
     fun onlyExplicitHttpsOriginAndExactBodyCarryCredentials() =
         runTest {
             listOf(

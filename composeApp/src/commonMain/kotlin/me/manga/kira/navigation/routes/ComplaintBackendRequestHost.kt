@@ -7,6 +7,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import me.manga.kira.di.ComplaintBackendGraph
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
 import me.manga.kira.ui.settings.feedback.SettingsFeedbackDialog
 import org.koin.core.Koin
@@ -54,6 +55,7 @@ internal fun ComplaintBackendRequestHost(
 
 /** UI-thread route lifetime only; exposes the actual callback guards to the existing ownership tests. */
 internal class ComplaintBackendRequestHostOwner(private val candidate: Koin) : RememberObserver {
+    private val graph = candidate.get<ComplaintBackendGraph>()
     /** Identity-only display key: the existing detail route owns its ViewModel stores. */
     class History(val candidate: Koin)
 
@@ -63,14 +65,15 @@ internal class ComplaintBackendRequestHostOwner(private val candidate: Koin) : R
         private set
     private var retired = false
     private var changing = false
-    private val canOpen: Boolean get() = !retired && !changing && requestOpening == null && historyOpening == null
+    private val canOpen: Boolean
+        get() = graph.acceptsOpenings && !retired && !changing && requestOpening == null && historyOpening == null
 
     fun request(entry: SettingsFeedbackEntry) {
         if (!canOpen) return
         changing = true
         try {
             val opening = ComplaintBackendRequestOpening(candidate, entry)
-            if (retired) opening.close() else requestOpening = opening
+            if (retired || !graph.acceptsOpenings) opening.close() else requestOpening = opening
         } finally {
             changing = false
         }

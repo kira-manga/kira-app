@@ -22,12 +22,13 @@ internal class ComplaintBackendDetailOpening(
     candidate: Koin,
 ) : RememberObserver {
     private val store = ViewModelStore()
+    private val graph = candidate.get<ComplaintBackendGraph>()
     private var closed = false
     val history: ComplaintViewModel
     val detail: ComplaintDetailViewModel
 
     init {
-        val graph = candidate.get<ComplaintBackendGraph>()
+        check(graph.acceptsOpenings) { "Complaint candidate is retired" }
         check(candidate.get<ComplaintListRepository>() === graph.history) {
             "Complaint candidate history binding differs"
         }
@@ -61,7 +62,7 @@ internal class ComplaintBackendDetailOpening(
 
     fun select(id: String) {
         val state = history.state.value
-        if (closed || state.isLoading) return
+        if (closed || !graph.acceptsOpenings || state.isLoading) return
         val knownNotice =
             (state.history as? ComplaintHistory.Backend)?.notices?.any {
                 it.id == id && BackendNoticeKey.fromKey(it.noticeKey) != null

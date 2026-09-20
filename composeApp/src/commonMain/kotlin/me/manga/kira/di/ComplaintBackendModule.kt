@@ -52,16 +52,6 @@ import org.koin.dsl.onClose
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
-/**
- * Deliberately absent from allReworkModules/platformModule and from every shipping host.
- * No Debug flag, URL, build type or fixture can grant activation. The native adapters call this
- * before reading configuration or constructing stores/engines. Changing it needs the separate
- * W05/full-W08/recovery/owner activation gates, not merely a passing read-only fixture.
- */
-internal fun <T> selectComplaintBackendCandidate(
-    @Suppress("UNUSED_PARAMETER") allocate: () -> AppResult<T>,
-): AppResult<T> = backendGraphUnavailable()
-
 /** Composition-only factories. Constructing this descriptor performs no storage or network work. */
 internal class ComplaintBackendResources(
     val credentials: () -> InstallationCredentialStore,
@@ -95,11 +85,12 @@ internal class ComplaintBackendEngineFactories(
 internal fun createComplaintBackendGraph(
     baseUrl: () -> String,
     resources: ComplaintBackendResources,
+    expectedDataScopeId: String? = null,
 ): AppResult<ComplaintBackendGraph> {
     val cleanup = mutableListOf<() -> Unit>()
     val result =
         try {
-            assembleComplaintBackendGraph(baseUrl, resources, cleanup)
+            assembleComplaintBackendGraph(baseUrl, resources, expectedDataScopeId, cleanup)
         } catch (cancelled: CancellationException) {
             closeBackendGraphResources(cleanup)
             throw cancelled
@@ -120,9 +111,10 @@ internal fun createComplaintBackendGraph(
 private fun assembleComplaintBackendGraph(
     baseUrl: () -> String,
     resources: ComplaintBackendResources,
+    expectedDataScopeId: String?,
     cleanup: MutableList<() -> Unit>,
 ): AppResult<ComplaintBackendGraph> {
-    val endpoint = ComplaintBackendEndpoint.checked(baseUrl()) ?: return backendGraphUnavailable()
+    val endpoint = ComplaintBackendEndpoint.checked(baseUrl(), expectedDataScopeId) ?: return backendGraphUnavailable()
     val enrollment = resources.engines.enrollment(endpoint.enrollmentUrl) ?: return backendGraphUnavailable()
     cleanup.add(0, enrollment::close)
     val sessions = resources.engines.session(endpoint.sessionUrl) ?: return backendGraphUnavailable()
@@ -177,6 +169,8 @@ internal class ComplaintBackendGraph(
     private val cleanup: List<() -> Unit>,
 ) {
     private val closed = AtomicBoolean(false)
+    private val retired = AtomicBoolean(false)
+    val acceptsOpenings: Boolean get() = !retired.load()
     val history: ComplaintListRepository get() = owner.history
     val details: ComplaintDetailRepository get() = owner.details
     val replies: ComplaintReplyRepository get() = checkNotNull(owner.replies)
@@ -238,7 +232,11 @@ internal class ComplaintBackendGraph(
             }
         }
 
+    /** Retires new route work before process teardown, without claiming any native child has drained. */
+    fun retireAccess() { retired.store(true) }
+
     fun close() {
+        retireAccess()
         if (closed.compareAndSet(expectedValue = false, newValue = true)) {
             check(closeBackendGraphResources(cleanup)) { "Complaint backend graph close failed" }
         }
@@ -279,7 +277,7 @@ private fun closeBackendGraphResources(actions: List<() -> Unit>): Boolean {
     return success
 }
 
-private fun backendGraphUnavailable(): AppResult.Failure =
+internal fun backendGraphUnavailable(): AppResult.Failure =
     AppResult.Failure(
         AppError.Platform.FeatureUnavailable("complaint_backend"),
     )

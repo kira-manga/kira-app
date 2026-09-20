@@ -44,6 +44,8 @@ internal class ComplaintSessionHttp(
 
     suspend fun fetch(record: InstallationCredentialRecord): ComplaintSessionResult {
         if (closed.load()) return ComplaintSessionResult.Failed(Failure.CLOSED)
+        // Never send an existing credential to a different launch scope, or rewrite it on mismatch.
+        if (!endpoint.acceptsDataScope(record.material.dataScopeId)) return ComplaintSessionResult.Failed(Failure.CONTRACT)
         return try {
             withTimeoutOrNull(REQUEST_TIMEOUT_MS) { exchange(record) }
                 ?: ComplaintSessionResult.Failed(Failure.TIMEOUT)

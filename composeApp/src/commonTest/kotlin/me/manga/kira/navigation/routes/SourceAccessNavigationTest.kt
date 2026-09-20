@@ -16,6 +16,16 @@ import kotlin.test.assertTrue
 
 class SourceAccessNavigationTest {
     @Test
+    fun settings_complaint_destination_never_selects_mobile_admin() {
+        SourceAccessState.entries.forEach { access ->
+            assertEquals(
+                Screen.ComplaintRework,
+                settingsDestination(SettingsDestination.COMPLAINT, access, crashDiagnosticsEnabled = false),
+            )
+        }
+    }
+
+    @Test
     fun activation_router_validates_without_retaining_the_link() {
         val router = SourceActivationRequestRouter()
 

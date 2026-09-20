@@ -1,6 +1,8 @@
 package me.manga.kira.di
 
 import androidx.lifecycle.viewModelScope
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -16,11 +18,15 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
+import me.manga.kira.domain.repository.ComplaintListRepository
 import me.manga.kira.domain.repository.FeedbackRepository
 import me.manga.kira.navigation.routes.ActionHostCredentialReads
 import me.manga.kira.navigation.routes.ComplaintBackendDetailOpening
 import me.manga.kira.navigation.routes.ComplaintBackendRequestHostOwner
 import me.manga.kira.navigation.routes.ComplaintBackendRequestOpening
+import me.manga.kira.presentation.complaint.ComplaintIntent
+import me.manga.kira.presentation.complaint.ComplaintViewModel
+import me.manga.kira.presentation.complaint.admin.AdminComplaintViewModel
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEffect
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackIntent
@@ -28,6 +34,7 @@ import me.manga.kira.presentation.settings.feedback.SettingsFeedbackResult
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackViewModel
 import org.koin.core.Koin
 import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,6 +49,102 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("TooManyFunctions") // Existing fixtures cover the three added route ownership boundaries.
 class ComplaintBackendRequestOwnershipTest {
+    @Test
+    fun processHostSharesOneGraphAndRefusesLegacyAdminAndRetiredEntrypoints() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val fixture = ComplaintBackendGraphFixture(this)
+            var legacyResolutions = 0
+            val legacy = module {
+                factory<ComplaintViewModel> { legacyResolutions++; error("Global complaint VM must not resolve") }
+                factory<AdminComplaintViewModel> { legacyResolutions++; error("Mobile admin VM must not resolve") }
+                factory<SettingsFeedbackViewModel> { legacyResolutions++; error("Global feedback VM must not resolve") }
+                single<ComplaintListRepository> { legacyResolutions++; error("Legacy history must not resolve") }
+            }
+            val app = koinApplication { modules(legacy, fixture.hostModule()) }
+            // Eager startup has already selected/allocated, before the first route/host lookup.
+            assertEquals(1, fixture.launchReads)
+            assertEquals(5, fixture.owners.size)
+            val process = app.koin.get<ComplaintBackendHostOwner>()
+            val observed = assertIs<AppResult.Success<Koin>>(process.selection.value)
+            val candidate = observed.value
+            val graph = candidate.get<ComplaintBackendGraph>()
+            val first = ComplaintBackendRequestHostOwner(candidate)
+            val second = ComplaintBackendRequestHostOwner(candidate)
+            val retiredProcessRoute = ComplaintBackendRequestHostOwner(candidate)
+            try {
+                assertSame(process, app.koin.get<ComplaintBackendHostOwner>())
+                assertNull(app.koin.getOrNull<ComplaintBackendGraph>())
+                for (entry in ComplaintBackendEntrypoint.entries) {
+                    when (entry) {
+                        ComplaintBackendEntrypoint.COMPLAINT_ADMIN, ComplaintBackendEntrypoint.COMPLAINT_ADMIN_REWORK ->
+                            assertIs<AppResult.Failure>(process.candidate(entry, observed))
+                        else -> assertSame(candidate, assertIs<AppResult.Success<Koin>>(process.candidate(entry, observed)).value)
+                    }
+                }
+                first.request(SettingsFeedbackEntry.General)
+                second.request(SettingsFeedbackEntry.LanguageRequest("Synthetic language subject"))
+                val firstRequest = assertNotNull(first.requestOpening)
+                val secondRequest = assertNotNull(second.requestOpening)
+                assertNotSame(firstRequest.viewModel, secondRequest.viewModel)
+                first.close()
+                runCurrent()
+                assertFalse(firstRequest.viewModel.viewModelScope.isActive)
+                assertTrue(secondRequest.viewModel.viewModelScope.isActive)
+                assertTrue(graph.acceptsOpenings && fixture.owners.values.none { it.closed })
+                val detail = ComplaintBackendDetailOpening(candidate)
+                try {
+                    runCurrent()
+                    assertIs<ComplaintHistory.Backend>(detail.history.state.value.history)
+                    fixture.historyHandler = {
+                        respond(
+                            """{"type":"about:blank","title":"Service Unavailable","status":503}""",
+                            HttpStatusCode.ServiceUnavailable,
+                            graphHeaders(HttpStatusCode.ServiceUnavailable),
+                        )
+                    }
+                    detail.history.submit(ComplaintIntent.OnRetry)
+                    runCurrent()
+                    assertNotNull(detail.history.state.value.error)
+                    assertSame(candidate, assertIs<AppResult.Success<Koin>>(process.candidate(ComplaintBackendEntrypoint.COMPLAINT)).value)
+                } finally {
+                    detail.close()
+                }
+                second.close()
+                runCurrent()
+                assertEquals(0, legacyResolutions)
+                assertNoReportWork(fixture)
+                assertEquals(1, fixture.launchReads)
+                val staleRequest = { retiredProcessRoute.request(SettingsFeedbackEntry.General) }
+                val staleHistory = retiredProcessRoute::openHistory
+                app.close()
+                assertFalse(graph.acceptsOpenings)
+                assertIs<AppResult.Failure>(process.candidate(ComplaintBackendEntrypoint.COMPLAINT, observed))
+                val replacementFixture = ComplaintBackendGraphFixture(this)
+                val replacementApp = koinApplication { modules(replacementFixture.hostModule()) }
+                try {
+                    val replacement = replacementApp.koin.get<ComplaintBackendHostOwner>()
+                    assertNotSame(candidate, assertIs<AppResult.Success<Koin>>(replacement.selection.value).value)
+                    staleRequest()
+                    staleHistory()
+                    assertNull(retiredProcessRoute.requestOpening)
+                    assertNull(retiredProcessRoute.historyOpening)
+                    assertEquals(0, replacementFixture.historyCalls + replacementFixture.sessionCalls)
+                    assertEquals(5, fixture.events.count { it.startsWith("close:") })
+                    assertEquals(0, legacyResolutions)
+                } finally {
+                    replacementApp.close()
+                }
+            } finally {
+                first.close()
+                second.close()
+                retiredProcessRoute.close()
+                runCurrent()
+                app.close()
+                Dispatchers.resetMain()
+            }
+        }
+
     @Test
     fun candidateHistoryUsesSameGraphAndRefusesDuplicateOrStaleOpenings() =
         runTest {
@@ -147,11 +250,10 @@ class ComplaintBackendRequestOwnershipTest {
             val resources = ComplaintBackendResources(
                 { credentials }, original.pending, original.generator, original.engines, original.inputs,
             )
-            val graph = assertIs<AppResult.Success<ComplaintBackendGraph>>(
-                createComplaintBackendGraph({ GRAPH_BASE }, resources),
-            ).value
-            val app = koinApplication { modules(graph.module()) }
-            val host = ComplaintBackendRequestHostOwner(app.koin)
+            val app = koinApplication { modules(fixture.hostModule(resourceFactory = { resources })) }
+            val process = app.koin.get<ComplaintBackendHostOwner>()
+            val candidate = assertIs<AppResult.Success<Koin>>(process.candidate(ComplaintBackendEntrypoint.SETTINGS)).value
+            val host = ComplaintBackendRequestHostOwner(candidate)
             try {
                 host.request(SettingsFeedbackEntry.General)
                 val request = assertNotNull(host.requestOpening)
@@ -191,7 +293,6 @@ class ComplaintBackendRequestOwnershipTest {
                 host.close()
                 runCurrent()
                 app.close()
-                graph.close()
                 Dispatchers.resetMain()
             }
         }

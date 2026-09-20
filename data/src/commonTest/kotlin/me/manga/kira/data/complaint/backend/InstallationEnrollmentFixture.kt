@@ -26,6 +26,7 @@ import me.manga.kira.platform.storage.InstallationCredentialRecord as Credential
 internal class InstallationEnrollmentFixture(
     scope: TestScope,
     val storage: InstallationCoordinatorFixture = InstallationCoordinatorFixture(),
+    expectedDataScopeId: String? = null,
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { request ->
         if (request.method == HttpMethod.Get) {
             respond(bootstrapResponse(), HttpStatusCode.OK, sessionHeaders())
@@ -50,7 +51,9 @@ internal class InstallationEnrollmentFixture(
                 }
             },
         )
-    val http = InstallationEnrollmentHttp(assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL)), engine)
+    val http = InstallationEnrollmentHttp(
+        assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL, expectedDataScopeId)), engine,
+    )
 
     suspend fun enroll(coordinator: CredentialCoordinator = storage.coordinator) = coordinator.enroll(http, generator)
 

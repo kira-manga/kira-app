@@ -1,6 +1,7 @@
 package me.manga.kira.di
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.complaint.backend.ComplaintReportIdentifiers
@@ -15,18 +16,25 @@ import me.manga.kira.platform.storage.AndroidInstallationCredentialMaterialGener
 import me.manga.kira.platform.storage.AndroidInstallationCredentialStore
 import me.manga.kira.platform.storage.AndroidPendingComplaintActionStore
 import me.manga.kira.platform.version.AndroidAppVersionProvider
-import me.manga.kira.sources.runtime.GeneratedSourceRemoteConfig
 import java.util.UUID
 
-/** Not referenced by the shipping Android graph; ordinary Debug is disabled before allocation. */
-internal fun unselectedAndroidComplaintHistoryGraph(context: Context): AppResult<ComplaintBackendGraph> =
-    selectComplaintBackendCandidate {
+/** Actual startup selection; context is not resolved at all for the default Disabled launch. */
+internal fun androidComplaintBackendGraph(context: () -> Context): AppResult<ComplaintBackendGraph> =
+    selectComplaintBackendCandidate(runtime = {
+        val application = context().applicationContext
+        ComplaintBackendRuntime(
+            ComplaintBackendPlatform.ANDROID,
+            application.packageName,
+            isDebug = (application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+        )
+    }) { target ->
         createComplaintBackendGraph(
-            baseUrl = { GeneratedSourceRemoteConfig.BASE_URL },
+            baseUrl = { target.sourceBackend },
+            expectedDataScopeId = target.dataScopeId,
             resources =
                 ComplaintBackendResources(
-                    credentials = { AndroidInstallationCredentialStore(context.applicationContext) },
-                    pending = { AndroidPendingComplaintActionStore(context.applicationContext) },
+                    credentials = { AndroidInstallationCredentialStore(context().applicationContext) },
+                    pending = { AndroidPendingComplaintActionStore(context().applicationContext) },
                     generator = { AndroidInstallationCredentialMaterialGenerator() },
                     engines =
                         ComplaintBackendEngineFactories(
@@ -38,7 +46,7 @@ internal fun unselectedAndroidComplaintHistoryGraph(context: Context): AppResult
                         ),
                     inputs =
                         ComplaintBackendInputFactories(
-                            reports = { androidComplaintReportInputs(context) },
+                            reports = { androidComplaintReportInputs(context()) },
                             deletionKey = { UUID.randomUUID().toString() },
                         ),
                 ),

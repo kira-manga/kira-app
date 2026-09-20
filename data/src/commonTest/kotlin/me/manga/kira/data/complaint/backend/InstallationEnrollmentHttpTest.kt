@@ -25,6 +25,41 @@ import me.manga.kira.data.complaint.backend.InstallationCoordinatorFixtures as F
 
 class InstallationEnrollmentHttpTest {
     @Test
+    fun launchScopeMismatchRefusesBootstrapBeforeMaterialAndExistingIdentityBeforeEnrollment() =
+        runTest {
+            val otherScope = "99999999-9999-4999-8999-999999999999"
+            for (existing in listOf(false, true)) {
+                val storage = if (existing) enrollmentStorage() else InstallationCoordinatorFixture()
+                val fixture = InstallationEnrollmentFixture(this, storage, expectedDataScopeId = otherScope)
+                try {
+                    assertEquals(Failure.CONTRACT, assertIs<InstallationEnrollmentResult.Failed>(fixture.enroll()).reason)
+                    assertTrue(fixture.generator.scopes.isEmpty())
+                    assertTrue(storage.faults.mutations.isEmpty())
+                    assertTrue(storage.pending.slots.isEmpty())
+                    assertNull(storage.credentials.marker)
+                    if (existing) {
+                        assertTrue(fixture.requests.isEmpty())
+                        assertTrue(assertNotNull(storage.credentials.payloadRecord).sameAs(Fixtures.record()))
+                        assertTrue(storage.credentials.keyPresent && storage.credentials.payloadPresent)
+                    } else {
+                        assertEquals(listOf(HttpMethod.Get), fixture.requests.map { it.method })
+                        storage.assertAbsent()
+                    }
+                } finally {
+                    fixture.close()
+                }
+            }
+            val matching = InstallationEnrollmentFixture(this, expectedDataScopeId = Fixtures.SCOPE)
+            try {
+                assertIs<InstallationEnrollmentResult.Ready<Unit>>(matching.enroll())
+                assertEquals(listOf(Fixtures.SCOPE), matching.generator.scopes)
+                assertEquals(listOf(HttpMethod.Get, HttpMethod.Post), matching.requests.map { it.method })
+            } finally {
+                matching.close()
+            }
+        }
+
+    @Test
     fun bootstrapHasNoBodyOrIdentityAndEnrollmentHasExactlyTheDurableFourFields() =
         runTest {
             val fixture = InstallationEnrollmentFixture(this)

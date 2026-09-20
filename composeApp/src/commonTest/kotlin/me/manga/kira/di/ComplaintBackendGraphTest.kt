@@ -31,6 +31,7 @@ import me.manga.kira.presentation.complaint.ActionDialogMode
 import me.manga.kira.presentation.complaint.ComplaintIntent
 import me.manga.kira.presentation.complaint.ComplaintViewModel
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackViewModel
+import org.koin.core.Koin
 import org.koin.dsl.koinApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,7 +44,126 @@ import kotlin.test.assertTrue
 
 /** Connected domain/data/presentation fixture, not UI automation and not native/platform qualification. */
 @OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("TooManyFunctions") // Extend this existing graph fixture for the process selection boundary.
 class ComplaintBackendGraphTest {
+    @Test
+    fun launchSelectionRefusesInvalidInputsDebugAndDesktopBeforeEveryResource() =
+        runTest {
+            val valid = graphLaunchInputs()
+            fun record(value: String) = valid.copy(
+                record = value,
+                binding = valid.binding.copy(approvedRecordSha256 = complaintLaunchSha256(value)),
+            )
+            val invalid = listOf(
+                valid.copy(record = ""), valid.copy(record = COMPLAINT_LAUNCH_DISABLED),
+                record(valid.record + "\n"), record(valid.record.replace("contract=1", "contract=2")),
+                record(valid.record.replace("mode=LIVE", "mode=TEST")),
+                record(valid.record.replace("dataScopeId=$GRAPH_SCOPE", "dataScopeId=not-a-scope")),
+                record(valid.record.replace("contract=1", "contract=1\ncontract=1")),
+                record(valid.record.replace(GRAPH_BASE, "https://user:password@complaints.example.invalid"))
+                    .copy(sourceBackend = "https://user:password@complaints.example.invalid"),
+                valid.copy(sourceBackend = "$GRAPH_BASE/other"),
+                valid.copy(binding = valid.binding.copy(approvedRecordSha256 = "")),
+                valid.copy(binding = valid.binding.copy(approvedRecordSha256 = "d".repeat(64))),
+                valid.copy(binding = valid.binding.copy(deploymentSha256 = "")),
+                valid.copy(binding = valid.binding.copy(deploymentSha256 = "d".repeat(64))),
+                valid.copy(binding = valid.binding.copy(buildInputsSha256 = "")),
+                valid.copy(binding = valid.binding.copy(buildInputsSha256 = "d".repeat(64))),
+                valid.copy(binding = valid.binding.copy(iosDefaultAccessGroup = "unexpected")),
+            )
+            val refusedHosts = listOf(
+                graphLaunchRuntime().copy(isDebug = true),
+                graphLaunchRuntime().copy(applicationId = "me.manga.kira.debug"),
+                graphLaunchRuntime(ComplaintBackendPlatform.DESKTOP),
+                graphLaunchRuntime(ComplaintBackendPlatform.IOS),
+            )
+            val cases = invalid.map { it to graphLaunchRuntime() } + refusedHosts.map { valid to it } + listOf(
+                graphLaunchInputs(ComplaintBackendPlatform.IOS) to graphLaunchRuntime(ComplaintBackendPlatform.IOS).copy(isDebug = true),
+            )
+            for ((inputs, runtime) in cases) {
+                val fixture = ComplaintBackendGraphFixture(this)
+                var resourceReads = 0
+                val app = koinApplication {
+                    modules(fixture.hostModule(inputs, runtime) { resourceReads++; fixture.resources() })
+                }
+                try {
+                    val host = app.koin.get<ComplaintBackendHostOwner>()
+                    ComplaintBackendEntrypoint.entries.forEach { assertIs<AppResult.Failure>(host.candidate(it)) }
+                    assertEquals(1, fixture.launchReads)
+                    assertEquals(0, resourceReads)
+                    assertTrue(fixture.events.isEmpty())
+                    assertEquals(0, fixture.reportIdentifierGenerations + fixture.reportMetadataReads + fixture.generations)
+                } finally {
+                    app.close()
+                }
+            }
+        }
+
+    @Test
+    fun iosLaunchRequiresIndependentExactDefaultGroupInputAndEvidence() =
+        runTest {
+            val valid = graphLaunchInputs(ComplaintBackendPlatform.IOS)
+            val invalid = listOf(
+                valid.copy(binding = valid.binding.copy(iosDefaultAccessGroup = "")),
+                valid.copy(binding = valid.binding.copy(iosDefaultAccessGroup = "OTHER.me.manga.kira")),
+                valid.copy(binding = valid.binding.copy(iosAccessGroupEvidenceSha256 = "")),
+                valid.copy(binding = valid.binding.copy(iosAccessGroupEvidenceSha256 = "d".repeat(64))),
+            )
+            for (inputs in invalid + valid) {
+                val fixture = ComplaintBackendGraphFixture(this)
+                val app = koinApplication { modules(fixture.hostModule(inputs, graphLaunchRuntime(ComplaintBackendPlatform.IOS))) }
+                try {
+                    val selected = app.koin.get<ComplaintBackendHostOwner>().candidate(ComplaintBackendEntrypoint.COMPLAINT)
+                    if (inputs === valid) {
+                        assertIs<AppResult.Success<*>>(selected)
+                        assertEquals(5, fixture.owners.size)
+                    } else {
+                        assertIs<AppResult.Failure>(selected)
+                        assertTrue(fixture.events.isEmpty())
+                    }
+                } finally {
+                    app.close()
+                }
+                assertTrue(fixture.owners.values.all { it.closed })
+            }
+        }
+
+    @Test
+    fun processHostUnwindsFailedStartupAndRetiresBeforeOnceOnlyCloseFailure() =
+        runTest {
+            val failed = ComplaintBackendGraphFixture(this).apply { failAllocation = "report-inputs" }
+            val refused = koinApplication { modules(failed.hostModule()) }
+            try {
+                assertIs<AppResult.Failure>(refused.koin.get<ComplaintBackendHostOwner>().candidate(ComplaintBackendEntrypoint.SETTINGS))
+            } finally {
+                refused.close()
+            }
+            assertEquals(5, failed.events.count { it.startsWith("close:") })
+            assertTrue(failed.owners.values.all { it.closed })
+
+            val fixture = ComplaintBackendGraphFixture(this)
+            val app = koinApplication { modules(fixture.hostModule()) }
+            val host = app.koin.get<ComplaintBackendHostOwner>()
+            val selected = assertIs<AppResult.Success<Koin>>(host.selection.value)
+            val graph = selected.value.get<ComplaintBackendGraph>()
+            fixture.failClose = "history"
+            try {
+                val failure = assertFailsWith<IllegalStateException> { host.close() }
+                assertEquals("Complaint backend host close failed", failure.message)
+                assertNull(failure.cause)
+                host.close()
+                assertIs<AppResult.Failure>(host.candidate(ComplaintBackendEntrypoint.COMPLAINT))
+                assertTrue(fixture.owners.values.all { it.closed })
+                assertEquals(5, fixture.events.count { it.startsWith("close:") })
+                assertEquals(0, fixture.credentials.writes + fixture.pending.writes)
+                assertFalse(graph.acceptsOpenings)
+                assertIs<AppResult.Failure>(host.candidate(ComplaintBackendEntrypoint.COMPLAINT, selected))
+            } finally {
+                app.close()
+            }
+            assertEquals(5, fixture.events.count { it.startsWith("close:") })
+        }
+
     @Test
     fun selectionIsDisabledBeforeConfigurationAndEveryResourceEvenWithAValidUrl() =
         runTest {

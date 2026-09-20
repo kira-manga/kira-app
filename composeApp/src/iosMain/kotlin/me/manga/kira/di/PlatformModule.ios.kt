@@ -76,6 +76,9 @@ import org.koin.dsl.module
  */
 actual fun platformModule(): Module =
     module {
+        // bootstrapIosKoin/doInitKoin eagerly creates exactly this process owner.
+        complaintBackendHost { iosComplaintBackendGraph() }
+
         // ---- Settings / DataStore (Phase 8.1) ----
         single<SettingsFactory> { IosSettingsFactory() }
         single<ObservableSettings> { get<SettingsFactory>().createObservable("kira_settings") }

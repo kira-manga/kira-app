@@ -3,6 +3,7 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.RememberObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import me.manga.kira.di.ComplaintBackendGraph
 import me.manga.kira.domain.model.complaint.ComplaintDetail
 import me.manga.kira.presentation.complaint.ComplaintDetailIntent
 import me.manga.kira.presentation.complaint.ComplaintDetailState
@@ -23,12 +24,13 @@ internal class ComplaintBackendActionHostOwner(
     private val candidate: Koin,
     private val detail: ComplaintDetailViewModel,
 ) : RememberObserver {
+    private val graph = candidate.get<ComplaintBackendGraph>()
     private val slot = MutableStateFlow<ComplaintBackendActionSlot?>(null)
     val state = slot.asStateFlow()
     private var retired = false
     private var changing = false
 
-    val canSelect: Boolean get() = !retired && !changing && slot.value == null
+    val canSelect: Boolean get() = graph.acceptsOpenings && !retired && !changing && slot.value == null
 
     fun canOpen(action: ComplaintBackendAction, target: ComplaintDetail): Boolean =
         canSelect && detail.state.value.actionTarget() === target && action.accepts(target)
@@ -38,7 +40,7 @@ internal class ComplaintBackendActionHostOwner(
         changing = true
         try {
             val opening = ComplaintBackendActionOpening(candidate, action, target)
-            if (retired) {
+            if (retired || !graph.acceptsOpenings) {
                 opening.close()
             } else {
                 slot.value = ComplaintBackendActionSlot.Action(opening)
@@ -59,7 +61,7 @@ internal class ComplaintBackendActionHostOwner(
             opening.close()
             detail.submit(ComplaintDetailIntent.Close)
             slot.value = null
-            if (openRecovery && !retired) createRecoveryOpening()
+            if (openRecovery && !retired && graph.acceptsOpenings) createRecoveryOpening()
         } finally {
             changing = false
         }
@@ -68,7 +70,7 @@ internal class ComplaintBackendActionHostOwner(
     private fun createRecoveryOpening() {
         checkComplaintBackendActionBindings(candidate)
         val opening = ComplaintBackendRequestOpening(candidate, SettingsFeedbackEntry.General)
-        if (retired) opening.close() else slot.value = ComplaintBackendActionSlot.Recovery(opening)
+        if (retired || !graph.acceptsOpenings) opening.close() else slot.value = ComplaintBackendActionSlot.Recovery(opening)
     }
 
     fun recoveryFinished(opening: ComplaintBackendRequestOpening) {

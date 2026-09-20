@@ -78,6 +78,9 @@ import org.koin.dsl.module
  */
 actual fun platformModule(): Module =
     module {
+        // Process-owned isolated complaint graph; never install its bindings over legacy globals.
+        complaintBackendHost { androidComplaintBackendGraph { androidContext() } }
+
         // ---- Settings / DataStore (Phase 8.1 + 7.0b) ----
         // Fresh start under the Kira identity (2026-06): the preferences store is "kira_settings" with
         // NO migration from any legacy Yami store. The app launches with default preferences; old

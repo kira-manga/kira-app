@@ -30,6 +30,7 @@ import me.manga.kira.sources.contracts.SourceRegistry
 import me.manga.kira.sources.runtime.SourceIconRegistry
 import me.manga.kira.ui.common.LocalSourceIconResolver
 import me.manga.kira.ui.common.SourceIconResolution
+import me.manga.kira.ui.complaint.ComplaintUnavailableScreen
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.image.ImageDecoderRegistry
+import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.common.componants.images.platformNetworkFetcherFactory
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
@@ -61,8 +63,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import me.manga.kira.platform.toast.ToastRelay
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
+import me.manga.kira.di.ComplaintBackendEntrypoint
+import me.manga.kira.di.ComplaintBackendHostOwner
 import kotlinx.coroutines.launch
 import me.manga.kira.domain.usecase.downloads.ReconcileDownloadsUseCase
 import me.manga.kira.domain.usecase.language.ObserveSelectedLanguageUseCase
@@ -76,19 +81,16 @@ import me.manga.kira.sources.runtime.ConfigHostTrust
 import me.manga.kira.locale.LocalAppLocale
 import me.manga.kira.locale.isRtlLanguageTag
 import me.manga.kira.navigation.Screen
+import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.navigation.shouldShowBottomBar
 import me.manga.kira.navigation.push.NotificationRouter
 import me.manga.kira.navigation.push.PushDestination
 import me.manga.kira.navigation.push.isHostTrustedFor
 import me.manga.kira.navigation.push.toScreen
 import me.manga.kira.navigation.sourceaccess.SourceActivationRequestRouter
-import me.manga.kira.admin.Admin
 import me.manga.kira.navigation.routes.AboutReworkScreenRoute
-import me.manga.kira.navigation.routes.AdminComplaintReworkScreenRoute
-import me.manga.kira.navigation.routes.AdminComplaintScreenRoute
 import me.manga.kira.navigation.routes.ChapterImagesByLegacyArgsReworkScreenRoute
-import me.manga.kira.navigation.routes.ComplaintReworkScreenRoute
-import me.manga.kira.navigation.routes.ComplaintScreenRoute
+import me.manga.kira.navigation.routes.ComplaintBackendDetailRoute
 import me.manga.kira.navigation.routes.CrashDiagnosticsScreenRoute
 import me.manga.kira.navigation.routes.DownloadsReworkScreenRoute
 import me.manga.kira.navigation.routes.HistoryScreenRoute
@@ -414,6 +416,8 @@ private const val SOURCE_CATALOG_REFRESH_INTERVAL_MILLIS = 60_000L
 
 @Composable
 fun App(crashDiagnosticsEnabled: Boolean = false) {
+    // Resolve the same eager process owner before any navigation dispatch; never create one per route.
+    val complaintHost: ComplaintBackendHostOwner = koinInject()
     PostFirstFrameStartupTasks()
 
     // Bug 5: register the AVIF decoder factory (on Android only) before the URL fetch interceptor so
@@ -538,7 +542,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
         },
     ) {
         KiraTheme(darkTheme = effectiveDark, pureBlack = pureBlack) {
-            MainScreen(crashDiagnosticsEnabled = crashDiagnosticsEnabled)
+            MainScreen(crashDiagnosticsEnabled = crashDiagnosticsEnabled, complaintHost = complaintHost)
         }
     }
 }
@@ -548,7 +552,7 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
 // also validates Reader.coverUrl).
 
 @Composable
-private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
+private fun MainScreen(crashDiagnosticsEnabled: Boolean, complaintHost: ComplaintBackendHostOwner) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -676,6 +680,7 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean) {
                         if (showBottomBar) systemBottom + FloatingNavBarSpace else 0.dp,
                 ) {
                     AppNavHost(
+                        complaintHost = complaintHost,
                         navController = navController,
                         crashDiagnosticsEnabled = crashDiagnosticsEnabled,
                     )
@@ -733,7 +738,9 @@ private val FloatingNavBarSpace = 88.dp
 private fun AppNavHost(
     navController: NavHostController,
     crashDiagnosticsEnabled: Boolean,
+    complaintHost: ComplaintBackendHostOwner,
 ) {
+    val complaintSelection by complaintHost.selection.collectAsState()
     val prefs: SharedPrefsHelper = koinInject()
     val observeSourceAccess: ObserveSourceAccessUseCase = koinInject()
     val sourceAccessState by observeSourceAccess().collectAsState()
@@ -783,6 +790,7 @@ private fun AppNavHost(
             if (sourceAccessState == SourceAccessState.ACTIVATED) {
                 SourcesScreenRoute(
                     navController = navController,
+                    complaintHost = complaintHost,
                     backStackEntry = backStackEntry,
                 )
             } else {
@@ -876,6 +884,7 @@ private fun AppNavHost(
         composable<Screen.Setting> { backStackEntry ->
             SettingsRoute(
                 navController = navController,
+                complaintHost = complaintHost,
                 backStackEntry = backStackEntry,
                 crashDiagnosticsEnabled = crashDiagnosticsEnabled,
             )
@@ -902,6 +911,7 @@ private fun AppNavHost(
             if (sourceAccessState == SourceAccessState.ACTIVATED) {
                 RepoSettingsScreenRoute(
                     navController = navController,
+                    complaintHost = complaintHost,
                     backStackEntry = backStackEntry,
                 )
             } else {
@@ -930,11 +940,18 @@ private fun AppNavHost(
             )
         }
 
-        composable<Screen.Complaint> { backStackEntry ->
-            ComplaintScreenRoute(
-                navController = navController,
-                backStackEntry = backStackEntry,
-            )
+        composable<Screen.Complaint> {
+            when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.COMPLAINT, complaintSelection)) {
+                is AppResult.Success -> {
+                    val launcher: IntentLauncher = koinInject()
+                    ComplaintBackendDetailRoute(
+                        candidate = candidate.value,
+                        onBack = { navController.safePopBackStack() },
+                        onOpenUrl = { launcher.openUrl(it) },
+                    )
+                }
+                is AppResult.Failure -> ComplaintUnavailableScreen(onBack = { navController.safePopBackStack() })
+            }
         }
 
         composable<Screen.WhatsNewScreen> { backStackEntry ->
@@ -944,11 +961,18 @@ private fun AppNavHost(
             )
         }
 
-        composable<Screen.ComplaintAdmin> { backStackEntry ->
-            AdminComplaintScreenRoute(
-                navController = navController,
-                backStackEntry = backStackEntry,
-            )
+        composable<Screen.ComplaintAdmin> {
+            when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.COMPLAINT_ADMIN, complaintSelection)) {
+                is AppResult.Success -> {
+                    val launcher: IntentLauncher = koinInject()
+                    ComplaintBackendDetailRoute(
+                        candidate = candidate.value,
+                        onBack = { navController.safePopBackStack() },
+                        onOpenUrl = { launcher.openUrl(it) },
+                    )
+                }
+                is AppResult.Failure -> ComplaintUnavailableScreen(onBack = { navController.safePopBackStack() })
+            }
         }
 
         // Phase 8.x — architecture-rework Manga Details route (debug-reachable).
@@ -1092,63 +1116,38 @@ private fun AppNavHost(
         composable<Screen.LanguageRework> { backStackEntry ->
             LanguageReworkScreenRoute(
                 navController = navController,
+                complaintHost = complaintHost,
                 backStackEntry = backStackEntry,
             )
         }
 
-        // Architecture-rework user-side Complaint LIST route (Phase 7.x.complaint.foundation —
-        // "Feedback Manager" screen). Hosts the rework `ComplaintViewModel` from `:presentation`,
-        // wired through `complaintReworkModule` (`:composeApp/commonMain/di/`). Coexists with
-        // `Screen.Complaint` (legacy `ComplaintScreenRoute`) — both routable simultaneously and
-        // consume the SAME upstream Firestore `complaints` collection via the legacy
-        // `GetUserComplaintUseCase`; a submission via the legacy `ComplaintViewModel.sendComplaint`
-        // or via the Request-Language slice's `LanguageViewModel` surfaces on BOTH list screens.
-        // The legacy `Screen.Complaint` route stays bound to `ComplaintScreenRoute` with its
-        // reply/edit/delete dialog surface and `ToastShower` feedback wiring; the rework
-        // foundation slice is a reduced read-only LIST with search + status filter — the
-        // reply/edit/delete + Snackbar cross-cutting integration defers to the follow-on
-        // `Phase 7.x.complaint.actions` sub-slice. Not surfaced in any user-facing entry yet —
-        // reachable via `navController.navigate(Screen.ComplaintRework)` from a future developer
-        // trigger. Bottom bar visibility false to mirror the legacy Complaint screen experience
-        // (line 531 sibling).
-        composable<Screen.ComplaintRework> { backStackEntry ->
-            ComplaintReworkScreenRoute(
-                navController = navController,
-                backStackEntry = backStackEntry,
-            )
+        // Both user aliases borrow the one selected process graph; refusal never resolves legacy VMs.
+        composable<Screen.ComplaintRework> {
+            when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.COMPLAINT_REWORK, complaintSelection)) {
+                is AppResult.Success -> {
+                    val launcher: IntentLauncher = koinInject()
+                    ComplaintBackendDetailRoute(
+                        candidate = candidate.value,
+                        onBack = { navController.safePopBackStack() },
+                        onOpenUrl = { launcher.openUrl(it) },
+                    )
+                }
+                is AppResult.Failure -> ComplaintUnavailableScreen(onBack = { navController.safePopBackStack() })
+            }
         }
 
-        // Architecture-rework admin Complaint dashboard route (Phase 7.x.complaint.admin —
-        // "Admin Complaints" screen). Hosts the rework `AdminComplaintViewModel` from
-        // `:presentation`, wired through `complaintAdminReworkModule` (`:composeApp/commonMain/
-        // di/`). Coexists with `Screen.ComplaintAdmin` (legacy `AdminComplaintScreenRoute`) —
-        // both routable simultaneously and consume the SAME upstream Firestore `complaints`
-        // collection via the legacy `GetAllComplaintUseCase`; a user-side submission via the
-        // legacy `ComplaintViewModel.sendComplaint` or via the Request-Language slice's
-        // `LanguageViewModel` surfaces on BOTH admin LIST screens. The legacy
-        // `Screen.ComplaintAdmin` route stays bound to `AdminComplaintScreenRoute` with its
-        // 6 mutation dialogs + statistics card + sort dropdown + app-version filter + long-press
-        // body-copy; the rework foundation slice is a reduced read-only LIST with search + 2-axis
-        // filter (status + type) — all mutations defer to the follow-on
-        // `Phase 7.x.complaint.admin.actions` sub-slice. Reachable from the rework Settings hub
-        // via the `OnNavigate(COMPLAINT)` intent when `Admin.isAdmin` is `true` (see
-        // `SettingsReworkScreenRoute`). Bottom bar visibility false to mirror the legacy admin
-        // Complaint screen experience (line 549 sibling).
-        composable<Screen.ComplaintAdminRework> { backStackEntry ->
-            // C1 defense-in-depth: the Settings hub already picks the admin vs user screen off
-            // Admin.isAdmin (fail-closed, debug-only — see Admin.kt), but re-check here so any
-            // future navigate to this route from a non-admin build degrades to the user-side
-            // Feedback Manager instead of exposing the moderation console.
-            if (Admin.isAdmin) {
-                AdminComplaintReworkScreenRoute(
-                    navController = navController,
-                    backStackEntry = backStackEntry,
-                )
-            } else {
-                ComplaintReworkScreenRoute(
-                    navController = navController,
-                    backStackEntry = backStackEntry,
-                )
+        // Mobile moderation is refused by dispatch before Admin checks or global/admin VM resolution.
+        composable<Screen.ComplaintAdminRework> {
+            when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.COMPLAINT_ADMIN_REWORK, complaintSelection)) {
+                is AppResult.Success -> {
+                    val launcher: IntentLauncher = koinInject()
+                    ComplaintBackendDetailRoute(
+                        candidate = candidate.value,
+                        onBack = { navController.safePopBackStack() },
+                        onOpenUrl = { launcher.openUrl(it) },
+                    )
+                }
+                is AppResult.Failure -> ComplaintUnavailableScreen(onBack = { navController.safePopBackStack() })
             }
         }
     }

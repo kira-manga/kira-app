@@ -13,22 +13,32 @@ import me.manga.kira.platform.storage.IosInstallationCredentialMaterialGenerator
 import me.manga.kira.platform.storage.IosInstallationCredentialStore
 import me.manga.kira.platform.storage.IosPendingComplaintActionStore
 import me.manga.kira.platform.version.IosAppVersionProvider
-import me.manga.kira.sources.runtime.GeneratedSourceRemoteConfig
+import platform.Foundation.NSBundle
 import platform.Foundation.NSUUID
 import platform.UIKit.UIDevice
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.Platform
 
 /**
- * Not referenced by the shipping iOS graph. Future activation must supply the independently
- * verified signing/default-access-group value; this slice neither guesses nor copies entitlements.
+ * Actual startup selection. The generated launch must match separately supplied signing evidence
+ * and the verified default group; no value is guessed or copied from a production entitlement.
  */
-internal fun unselectedIosComplaintHistoryGraph(expectedDefaultAccessGroup: String): AppResult<ComplaintBackendGraph> =
-    selectComplaintBackendCandidate {
+@OptIn(ExperimentalNativeApi::class)
+internal fun iosComplaintBackendGraph(): AppResult<ComplaintBackendGraph> =
+    selectComplaintBackendCandidate(runtime = {
+        ComplaintBackendRuntime(
+            ComplaintBackendPlatform.IOS,
+            NSBundle.mainBundle.bundleIdentifier.orEmpty(),
+            isDebug = Platform.isDebugBinary,
+        )
+    }) { target ->
         createComplaintBackendGraph(
-            baseUrl = { GeneratedSourceRemoteConfig.BASE_URL },
+            baseUrl = { target.sourceBackend },
+            expectedDataScopeId = target.dataScopeId,
             resources =
                 ComplaintBackendResources(
-                    credentials = { IosInstallationCredentialStore(expectedDefaultAccessGroup) },
-                    pending = { IosPendingComplaintActionStore(expectedDefaultAccessGroup) },
+                    credentials = { IosInstallationCredentialStore(target.iosDefaultAccessGroup) },
+                    pending = { IosPendingComplaintActionStore(target.iosDefaultAccessGroup) },
                     generator = { IosInstallationCredentialMaterialGenerator() },
                     engines =
                         ComplaintBackendEngineFactories(

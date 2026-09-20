@@ -48,10 +48,22 @@ internal object ComplaintBoundedResponse {
             is BoundedInstallationBody.Rejected -> InstallationEnrollmentResult.Failed(body.reason)
             is BoundedInstallationBody.Verified ->
                 if (response.status == HttpStatusCode.OK) {
-                    InstallationBootstrapResponse.decode(body.text)
+                    checkedBootstrap(body.text, endpoint)
                 } else {
                     InstallationEnrollmentResult.HttpFailure(response.status.value)
                 }
+        }
+
+    /** Reject the wrong deployment scope before the enrollment attempt can generate or persist material. */
+    private fun checkedBootstrap(
+        text: String,
+        endpoint: ComplaintBackendEndpoint,
+    ): InstallationEnrollmentResult<InstallationBootstrapResponse> =
+        when (val decoded = InstallationBootstrapResponse.decode(text)) {
+            is InstallationEnrollmentResult.Failure -> decoded
+            is InstallationEnrollmentResult.Ready ->
+                if (endpoint.acceptsDataScope(decoded.value.dataScopeId)) decoded
+                else InstallationEnrollmentResult.Failed(ComplaintSessionFailure.CONTRACT)
         }
 
     /** Parse the entire session response against the durable binding, then deliberately discard its token. */

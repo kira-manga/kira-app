@@ -7,12 +7,17 @@ import me.manga.kira.core.complaint.ComplaintDeletionTransportPolicy
 /** Explicit configuration, not discovery. Only fixed credential-free HTTPS installation/history routes exist. */
 class ComplaintBackendEndpoint private constructor(
     base: String,
+    private val expectedDataScopeId: String?,
 ) {
     val sessionUrl: Url = Url(base + SESSION_PATH)
     val enrollmentUrl: Url = Url(base + ENROLLMENT_PATH)
     val bootstrapUrl: Url = Url(base + BOOTSTRAP_PATH)
     val historyUrl: Url = Url(base + "/api/v1/complaints")
     val deletionUrl: Url = Url(base + ComplaintDeletionTransportPolicy.PATH)
+
+    /** Launch-scope binding only; a mismatch never authorizes deleting, rebinding or adopting local data. */
+    internal fun acceptsDataScope(dataScopeId: String): Boolean =
+        expectedDataScopeId == null || expectedDataScopeId == dataScopeId
 
     override fun toString(): String = "ComplaintBackendEndpoint(redacted)"
 
@@ -23,10 +28,17 @@ class ComplaintBackendEndpoint private constructor(
         private const val ENROLLMENT_PATH = "/api/v1/installations"
         private const val SESSION_PATH = "$ENROLLMENT_PATH/session"
         private const val BOOTSTRAP_PATH = "$ENROLLMENT_PATH/bootstrap"
+        private const val LIVE_SCOPE = "00000000-0000-0000-0000-000000000000"
+        private val TEST_SCOPE = Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
-        /** Rejects ambiguous/encoded path segments rather than normalizing them into a different origin/route. */
-        fun checked(value: String): ComplaintBackendEndpoint? =
+        /**
+         * Rejects ambiguous paths and malformed optional scope. The application host always supplies
+         * its checked launch scope; null preserves low-level unbound consumers, not launch selection.
+         */
+        fun checked(value: String, expectedDataScopeId: String? = null): ComplaintBackendEndpoint? =
             when {
+                expectedDataScopeId != null && expectedDataScopeId != LIVE_SCOPE &&
+                    !TEST_SCOPE.matches(expectedDataScopeId) -> null
                 value.length !in 1..MAX_ENDPOINT_CHARACTERS || !value.startsWith("https://") -> null
                 value.any { it !in '!'..'~' || it in "\\@?#" } -> null
                 else ->
@@ -35,7 +47,7 @@ class ComplaintBackendEndpoint private constructor(
                         if (!allowedOrigin(url) || !allowedPort(value) || !allowedPath(url.encodedPath)) {
                             null
                         } else {
-                            ComplaintBackendEndpoint(value.removeSuffix("/"))
+                            ComplaintBackendEndpoint(value.removeSuffix("/"), expectedDataScopeId)
                         }
                     } catch (_: IllegalArgumentException) {
                         null

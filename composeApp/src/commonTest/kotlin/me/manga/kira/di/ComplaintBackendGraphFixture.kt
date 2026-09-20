@@ -43,6 +43,8 @@ import me.manga.kira.platform.storage.PendingCreateResult
 import me.manga.kira.platform.storage.PendingDeleteResult
 import me.manga.kira.platform.storage.PendingReadResult
 import me.manga.kira.platform.storage.PendingReplaceResult
+import org.koin.core.module.Module
+import org.koin.dsl.module
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import me.manga.kira.platform.storage.CredentialCleanupMarker as Marker
@@ -67,11 +69,25 @@ internal class ComplaintBackendGraphFixture(
     var deletionKeyGenerations = 0
     var reportIdentifierGenerations = 0
     var reportMetadataReads = 0
+    var launchReads = 0
     var historyHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
         respond(graphHistoryResponse(), HttpStatusCode.OK, graphHeaders())
     }
     var deletionHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
         error("Unexpected deletion without explicit confirmation")
+    }
+
+    /** Same eager registration and selector as platform startup, substituting only the existing resource SPI. */
+    fun hostModule(
+        inputs: ComplaintBackendLaunchInputs = graphLaunchInputs(),
+        runtime: ComplaintBackendRuntime = graphLaunchRuntime(),
+        resourceFactory: () -> ComplaintBackendResources = ::resources,
+    ): Module = module {
+        complaintBackendHost {
+            selectComplaintBackendCandidate(readInputs = { launchReads++; inputs }, runtime = { runtime }) { target ->
+                createComplaintBackendGraph({ target.sourceBackend }, resourceFactory(), target.dataScopeId)
+            }
+        }
     }
 
     fun resources(): ComplaintBackendResources =
@@ -274,9 +290,36 @@ internal class GraphPending : PendingComplaintActionStore {
 internal const val GRAPH_BASE = "https://complaints.example.invalid/gateway"
 internal const val GRAPH_DELETION_KEY = "55555555-5555-4555-8555-555555555555"
 private const val GRAPH_INSTALLATION_ID = "11111111-1111-4111-8111-111111111111"
-private const val GRAPH_SCOPE = "00000000-0000-0000-0000-000000000000"
+internal const val GRAPH_SCOPE = "00000000-0000-0000-0000-000000000000"
 private const val GRAPH_ROW_ID = "22222222-2222-4222-a222-222222222222"
 private val GRAPH_UNSUPPORTED = InstallationStorageFailure.PermanentFailure(InstallationPermanentFailure.UNSUPPORTED)
+
+/** Synthetic references only: these bytes are never generated into a shipping launch or signing proof. */
+internal fun graphLaunchInputs(platform: ComplaintBackendPlatform = ComplaintBackendPlatform.ANDROID): ComplaintBackendLaunchInputs {
+    val iosGroup = if (platform == ComplaintBackendPlatform.IOS) "SYNTHETIC.me.manga.kira" else ""
+    val iosEvidence = if (platform == ComplaintBackendPlatform.IOS) "c".repeat(64) else ""
+    val deployment = "a".repeat(64)
+    val build = "b".repeat(64)
+    val record = listOf(
+        "kira-complaint-launch-v1",
+        "platform=${platform.name}",
+        "sourceBackend=$GRAPH_BASE",
+        "contract=1",
+        "mode=LIVE",
+        "dataScopeId=$GRAPH_SCOPE",
+        "deploymentSha256=$deployment",
+        "buildInputsSha256=$build",
+        "iosDefaultAccessGroup=$iosGroup",
+        "iosAccessGroupEvidenceSha256=$iosEvidence",
+    ).joinToString("\n")
+    return ComplaintBackendLaunchInputs(
+        record, GRAPH_BASE,
+        ComplaintBackendLaunchBinding(complaintLaunchSha256(record), deployment, build, iosGroup, iosEvidence),
+    )
+}
+
+internal fun graphLaunchRuntime(platform: ComplaintBackendPlatform = ComplaintBackendPlatform.ANDROID) =
+    ComplaintBackendRuntime(platform, "me.manga.kira", isDebug = false)
 
 private fun graphSessionResponse(): String =
     buildJsonObject {
