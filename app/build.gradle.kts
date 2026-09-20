@@ -274,6 +274,7 @@ dependencies {
     implementation(libs.kermit.crashlytics)
 
     // Tests
+    testImplementation(project(":data")) // Same-Room metadata writer in NotificationRoomFixture.
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
     testImplementation(libs.robolectric.runner)

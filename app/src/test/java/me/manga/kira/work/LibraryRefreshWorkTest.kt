@@ -15,6 +15,8 @@ import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.entity.SavedChapterEntity
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -146,10 +148,14 @@ class LibraryRefreshWorkTest {
                     fetch = { AppResult.Success(refreshDetails(it, count = 2)) }
                     val normalPersist = persist
                     persist = { manga, rows -> normalPersist(manga, rows).take(committedCount) }
-                    cover = { error("best-effort cover failure") }
+                    cover = {
+                        if (committedCount == 0) AppResult.Failure(AppError.Storage.Io())
+                        else error("best-effort cover failure")
+                    }
                 }
                 val progress = mutableListOf<LibraryRefreshWorkProgress>()
                 assertEquals(Result.success(), work(port, progress).run())
+                assertEquals(1, port.coverCalls.size)
                 assertEquals(committedCount, progress.last().newChapterCount)
                 assertEquals(1, port.stamps) // Nonempty zero-new also stamps.
                 assertEquals("new success", port.lastSuccess)
@@ -162,9 +168,18 @@ class LibraryRefreshWorkTest {
     fun equalCoverWithNoNewChapters_stillRepairsMetadata_butBlankCoverIsSkipped() =
         runTest {
             for (remoteCover in listOf("old", " ")) {
+                val captured = refreshManga(1)
+                val owner = SavedWorkIdentity(captured.id, WorkLocator(captured.api, captured.url))
+                val fetched = WorkLocator("fetched-source", "m/redirected")
                 val port =
                     LibraryRefreshWorkTestFixtures().apply {
-                        fetch = { AppResult.Success(refreshDetails(it).copy(coverUrl = remoteCover)) }
+                        libraryFlow = flowOf(listOf(captured))
+                        fetch = {
+                            // A reread after fetch would select a different owner. The actual
+                            // response locator is deliberately distinct; the writer must vet it.
+                            libraryFlow = flowOf(listOf(captured.copy(id = 2, api = "replacement", url = "m/replaced")))
+                            AppResult.Success(refreshDetails(it).copy(api = fetched.api, url = fetched.url, coverUrl = remoteCover))
+                        }
                         chapterFlow = { mangaId ->
                             flowOf(
                                 listOf(
@@ -181,7 +196,7 @@ class LibraryRefreshWorkTest {
                     }
                 val progress = mutableListOf<LibraryRefreshWorkProgress>()
                 assertEquals(Result.success(), work(port, progress).run())
-                assertEquals(if (remoteCover.isBlank()) emptyList() else listOf(1L to "old"), port.coverCalls)
+                assertEquals(if (remoteCover.isBlank()) emptyList() else listOf(Triple(owner, fetched, remoteCover)), port.coverCalls)
                 assertEquals(0, progress.last().newChapterCount)
                 assertTrue(port.persistenceCalls.isEmpty())
                 assertEquals(1, port.stamps)
@@ -208,9 +223,9 @@ class LibraryRefreshWorkTest {
         }
 
     @Test
-    fun cancellationDuringReadInsertOrStamp_propagates_withoutMetadataRollback() =
+    fun cancellationDuringReadCoverInsertOrStamp_propagates_withoutMetadataRollback() =
         runTest {
-            for (stage in 0..2) {
+            for (stage in listOf(0, 1, 2, 5)) {
                 val reached = CompletableDeferred<Unit>()
 
                 suspend fun pause(): Nothing {
@@ -227,6 +242,10 @@ class LibraryRefreshWorkTest {
                 assertTrue(job.isCancelled)
                 assertNull(result)
                 assertEquals(if (stage == 2) "committed" else "old success", port.lastSuccess)
+                if (stage == 5) {
+                    assertEquals(1, port.coverCalls.size)
+                    assertTrue(port.persistenceCalls.isEmpty() && port.displayCalls.isEmpty())
+                }
             }
         }
 

@@ -18,6 +18,8 @@ import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.filters.FilterSelections
 import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.sources.contracts.MangaSourceClient
 
@@ -27,7 +29,7 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     var chapterFlow: (Long) -> Flow<List<SavedChapterEntity>> = { flowOf(emptyList()) }
     var missingSource = false
     var fetch: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(refreshDetails(it)) }
-    var cover: suspend () -> Unit = {}
+    var cover: suspend () -> AppResult<Unit> = { AppResult.Success(Unit) }
     var persist: suspend (SavedMangaEntity, List<SavedChapterEntity>) -> List<ChapterNotification> =
         ::refreshNotifications
     var display: suspend (List<ChapterNotification>) -> Unit = {}
@@ -40,18 +42,19 @@ internal class LibraryRefreshWorkTestFixtures : LibraryRefreshWorkPort {
     val persistenceCalls = mutableListOf<List<SavedChapterEntity>>()
     val persistedNotifications = mutableListOf<List<ChapterNotification>>()
     val displayCalls = mutableListOf<List<ChapterNotification>>()
-    val coverCalls = mutableListOf<Pair<Long, String>>()
+    val coverCalls = mutableListOf<Triple<SavedWorkIdentity, WorkLocator, String>>()
 
     override fun library() = libraryFlow
 
     override fun chapters(mangaId: Long) = chapterFlow(mangaId)
 
     override suspend fun updateCover(
-        mangaId: Long,
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
         coverUrl: String,
-    ) {
-        coverCalls += mangaId to coverUrl
-        cover()
+    ): AppResult<Unit> {
+        coverCalls += Triple(owner, fetched, coverUrl)
+        return cover()
     }
 
     override suspend fun persistNotifications(
@@ -164,6 +167,7 @@ internal fun cancellingRefreshWork(
             }
         3 -> persist = { _, _ -> pause() }
         4 -> display = { pause() }
+        5 -> cover = { pause() }
     }
 }
 

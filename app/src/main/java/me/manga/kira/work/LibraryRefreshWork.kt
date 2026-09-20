@@ -22,6 +22,8 @@ import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import kotlin.time.Clock
 
 /** Observed mandatory chapter/Updates work and the worker's actual Result/stamp policy. */
@@ -126,13 +128,14 @@ internal class LibraryRefreshWork(
         runCatchingCancellable {
             withTimeoutOrNull(timeouts.itemMs) {
                 if (manga.id == 0L) return@withTimeoutOrNull ItemOutcome.Failed
+                val owner = SavedWorkIdentity(manga.id, WorkLocator(manga.api, manga.url))
                 val source = port.source(manga.api) ?: return@withTimeoutOrNull ItemOutcome.Failed
                 val details =
                     withTimeoutOrNull(timeouts.detailsMs) {
                         source.details(manga.toManga())
                     } ?: return@withTimeoutOrNull ItemOutcome.TimedOut
                 when (details) {
-                    is AppResult.Success -> reconcile(manga, details.value)
+                    is AppResult.Success -> reconcile(manga, owner, details.value)
                     is AppResult.Failure -> {
                         log.w { "Generic refresh failed: ${details.error}" }
                         ItemOutcome.Failed
@@ -146,9 +149,10 @@ internal class LibraryRefreshWork(
 
     private suspend fun reconcile(
         manga: SavedMangaEntity,
+        owner: SavedWorkIdentity,
         details: MangaDetails,
     ): ItemOutcome {
-        reconcileCover(manga, details.coverUrl)
+        reconcileCover(owner, WorkLocator(details.api, details.url), details.coverUrl)
         val local =
             withTimeoutOrNull(timeouts.localReadMs) { port.chapters(manga.id).first() }
                 ?: return ItemOutcome.TimedOut
@@ -182,12 +186,16 @@ internal class LibraryRefreshWork(
     }
 
     private suspend fun reconcileCover(
-        manga: SavedMangaEntity,
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
         coverUrl: String,
     ) {
         if (coverUrl.isBlank()) return
         runCatchingCancellable {
-            port.updateCover(manga.id, coverUrl)
+            when (port.updateCover(owner, fetched, coverUrl)) {
+                is AppResult.Success -> Unit
+                is AppResult.Failure -> log.w { "Best-effort cover reconciliation refused" }
+            }
         }.onFailure { t ->
             log.w(t) { "Best-effort cover reconciliation failed" }
         }

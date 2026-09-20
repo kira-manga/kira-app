@@ -9,12 +9,24 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.LocalDate
+import me.manga.kira.core.dispatchers.DefaultDispatcherProvider
+import me.manga.kira.data.identity.AcceptedSourceAliasRule
+import me.manga.kira.data.identity.SourceAliasReadiness
+import me.manga.kira.data.identity.SourceAliasSnapshot
+import me.manga.kira.data.identity.SourceAliasSnapshotProvider
+import me.manga.kira.data.local.RoomMangaWriteTransaction
+import me.manga.kira.data.repository.LibraryMetadataRepositoryImpl
+import me.manga.kira.data.repository.library.LibraryMetadataWriter
+import me.manga.kira.data.repository.library.LibraryOwnerTransactions
+import me.manga.kira.sources.contracts.SelectedCatalogIdentity
+import me.manga.kira.sources.contracts.SelectedCatalogKind
+import me.manga.kira.sources.contracts.SourceSelectionToken
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDao
 import me.manga.kira.data.local.dao.LibraryDeo
-import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
@@ -74,15 +86,27 @@ internal class NotificationRoomFixture(
 
     fun repository(
         chapters: ChapterDao = db.chapterDao(),
-        notifications: NotificationDao = db.notificationDao(),
     ) = LibraryRepository(
         mangaDao = db.mangaDao(),
         chapterDao = chapters,
         libraryDeo = db.libraryDeo(),
-        notificationDao = notifications,
-        historyDao = db.historyDao(),
+        metadata = metadata(),
         fileService = FileService(UnusedFiles),
     )
+
+    /** Explicit fixture catalog; the real metadata writer still owns this same Room database. */
+    private fun metadata(): LibraryMetadataRepositoryImpl {
+        val token = SourceSelectionToken(1, SelectedCatalogIdentity(SelectedCatalogKind.SIGNED, 1, "a".repeat(64)), "b".repeat(64))
+        val snapshot = SourceAliasSnapshot(token, listOf(AcceptedSourceAliasRule("notification-fixture", "https://manga.example", emptyList())))
+        val aliases = object : SourceAliasSnapshotProvider {
+            override val readiness = flowOf<SourceAliasReadiness>(SourceAliasReadiness.Ready(token))
+            override suspend fun readInTransaction() = snapshot
+        }
+        return LibraryMetadataRepositoryImpl(
+            LibraryOwnerTransactions(RoomMangaWriteTransaction(db), aliases, db.mangaDao()),
+            LibraryMetadataWriter(db.mangaDao(), db.libraryDeo()), db.libraryDeo(), DefaultDispatcherProvider(),
+        )
+    }
 
     fun helper(
         covers: NotificationCovers,
