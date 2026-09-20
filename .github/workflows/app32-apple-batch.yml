@@ -1,0 +1,67 @@
+name: App32 targeted Apple compile and Native batch
+
+on:
+  push:
+    branches: [remediation/app32-apple-batch-20260920-01]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app32-apple-batch-01
+  cancel-in-progress: false
+
+jobs:
+  apple:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app32-apple-batch-20260920-01' &&
+      github.event.created == true && github.run_attempt == 1
+    runs-on: macos-26
+    timeout-minutes: 65
+    env:
+      # Packet copies only: primary binds a fresh source-only parent and this isolated branch.
+      APP32_BRANCH: remediation/app32-apple-batch-20260920-01
+      APP32_SOURCE_SHA: 8501f2d799563058795e63ded388bd52995eb2a1
+      APP32_SOURCE_TREE: e4e252ef4928f2d000fbd1d6bcc87fc4b30aaeb2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        id: checkout
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: One ordinary shipping-target compile and selected Native-test invocation
+        timeout-minutes: 55
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: python3 -B scripts/ci/app32-apple-batch.py run
+
+      - name: Always stop owned work and delete only its simulator and fresh outputs
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 5
+        env:
+          # Redaction during interrupted report intake; offline stop receives no token.
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: python3 -B scripts/ci/app32-apple-batch.py cleanup
+
+      - name: Retain bounded diagnostic evidence, including failures
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app32-apple-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app32-apple-batch-01-${{ github.run_id }}-${{ github.run_attempt }}-evidence/*.json
+            ${{ runner.temp }}/app32-apple-batch-01-${{ github.run_id }}-${{ github.run_attempt }}-evidence/*.log
+            ${{ runner.temp }}/app32-apple-batch-01-${{ github.run_id }}-${{ github.run_attempt }}-evidence/reports/**/*.xml
+
+      - name: Discard owned local evidence after the upload attempt
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 1
+        run: python3 -B scripts/ci/app32-apple-batch.py discard
