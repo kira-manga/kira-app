@@ -86,7 +86,7 @@ class RoomSourceSelectionCommit(
         val prepared = prepare(candidate)
         return database.useWriterConnection { connection ->
             if (connection.inTransaction()) throw SourceSelectionUnavailable("selection adoption cannot nest inside a caller transaction")
-            val current = connection.immediateTransaction { readInTransaction().selection } ?: return@useWriterConnection null
+            val current = connection.immediateTransaction<CommittedSourceSelection?> { readInTransaction().selection } ?: return@useWriterConnection null
             if (current.payload != prepared.candidate.payload || current.token.payloadDigest != prepared.digest) return@useWriterConnection null
             publish(current)
             readiness.publish(current, prepared.raw)
