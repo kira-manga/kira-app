@@ -324,6 +324,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onRequestFeedback Optional candidate entry. Committing a non-null callback permanently
  * retires this retained VM's legacy feedback producer, even without a click. Returning to null
  * does not restore legacy feedback; an initially null callback preserves the legacy path.
+ * @param onOpenComplaintHistory Direct candidate-only history entry; buffered COMPLAINT navigation
+ * effects are ignored while selected so an old untagged effect cannot target a new candidate.
  */
 @Composable
 fun SettingsScreen(
@@ -341,6 +343,7 @@ fun SettingsScreen(
     // Deliberate fatal-crash controls are present only in protected internal release builds.
     crashDiagnosticsVisible: Boolean = false,
     onRequestFeedback: (() -> Unit)? = null,
+    onOpenComplaintHistory: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val requestFeedback: (() -> Unit)? = remember(viewModel, onRequestFeedback) {
@@ -366,6 +369,7 @@ fun SettingsScreen(
         crashDiagnosticsVisible = crashDiagnosticsVisible,
         onRequestFeedback = requestFeedback,
         isLegacyFeedbackRetired = { viewModel.state.value.legacyFeedbackRetired },
+        onOpenComplaintHistory = onOpenComplaintHistory,
     )
 }
 
@@ -383,14 +387,18 @@ internal fun SettingsScreenContent(
     crashDiagnosticsVisible: Boolean = false,
     onRequestFeedback: (() -> Unit)? = null,
     isLegacyFeedbackRetired: () -> Boolean = { state.legacyFeedbackRetired },
+    onOpenComplaintHistory: (() -> Unit)? = null,
 ) {
     val snackbarHostState = remember(effects) { SnackbarHostState() }
     val snackbarJobs = remember(effects) { mutableSetOf<Job>() }
-    val feedbackOwner = remember(effects, onRequestFeedback, state.legacyFeedbackRetired) { mutableStateOf(true) }
+    val feedbackOwner = remember(effects, onRequestFeedback, onOpenComplaintHistory, state.legacyFeedbackRetired) {
+        mutableStateOf(true)
+    }
     val currentFeedbackOwner by rememberUpdatedState(feedbackOwner)
     val currentRequestFeedback by rememberUpdatedState(onRequestFeedback)
     val currentOnIntent by rememberUpdatedState(onIntent)
     val currentOnNavigate by rememberUpdatedState(onNavigate)
+    val currentOnOpenComplaintHistory by rememberUpdatedState(onOpenComplaintHistory)
     val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
     val currentIsLegacyFeedbackRetired by rememberUpdatedState(isLegacyFeedbackRetired)
 
@@ -418,7 +426,10 @@ internal fun SettingsScreenContent(
     LaunchedEffect(effects) {
         effects.collect { effect ->
             when (effect) {
-                is SettingsEffect.NavigateTo -> currentOnNavigate(effect.destination)
+                is SettingsEffect.NavigateTo ->
+                    if (effect.destination != SettingsDestination.COMPLAINT || currentOnOpenComplaintHistory == null) {
+                        currentOnNavigate(effect.destination)
+                    }
                 // GAP-SET-16 — the CBZ conversion terminal outcome is rendered by the
                 // CbzConversionDialog (driven by the progress Flow), not a snackbar, matching
                 // native which shows ONLY the dialog. No ConversionResult effect branch.
@@ -486,6 +497,15 @@ internal fun SettingsScreenContent(
                             }
                         }
                     },
+                    onOpenComplaintHistory = {
+                        if (feedbackOwner.value && feedbackOwner === currentFeedbackOwner) {
+                            if (onOpenComplaintHistory != null) {
+                                onOpenComplaintHistory()
+                            } else {
+                                currentOnIntent(SettingsIntent.OnNavigate(SettingsDestination.COMPLAINT))
+                            }
+                        }
+                    },
                     sourceAccessActivated = sourceAccessActivated,
                     lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
                     crashDiagnosticsVisible = crashDiagnosticsVisible,
@@ -538,6 +558,7 @@ private fun SettingsList(
     state: SettingsState,
     onIntent: (SettingsIntent) -> Unit,
     onRequestFeedback: () -> Unit,
+    onOpenComplaintHistory: () -> Unit,
     sourceAccessActivated: Boolean = false,
     lowPowerCompressionToggleVisible: Boolean = false,
     crashDiagnosticsVisible: Boolean = false,
@@ -725,7 +746,7 @@ private fun SettingsList(
                 // nav-style row here (native places it in Navigation, not its own section).
                 NavRow(
                     label = settingsDestinationLabel(SettingsDestination.COMPLAINT),
-                    onClick = { onIntent(SettingsIntent.OnNavigate(SettingsDestination.COMPLAINT)) },
+                    onClick = onOpenComplaintHistory,
                     // SET-PFIX-01 — native ic_complaint vector (native SettingsScreen.kt:249).
                     leadingIcon = { RowIcon(Res.drawable.ic_complaint) },
                 )

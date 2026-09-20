@@ -3,7 +3,9 @@ package me.manga.kira.di
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
@@ -11,10 +13,15 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.repository.ComplaintInstallationRecoveryRepository
 import me.manga.kira.domain.repository.FeedbackRepository
+import me.manga.kira.navigation.routes.ActionHostCredentialReads
+import me.manga.kira.navigation.routes.ComplaintBackendDetailOpening
+import me.manga.kira.navigation.routes.ComplaintBackendRequestHostOwner
 import me.manga.kira.navigation.routes.ComplaintBackendRequestOpening
+import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEffect
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackIntent
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackResult
@@ -25,6 +32,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -32,7 +40,162 @@ import kotlin.test.assertTrue
 
 /** Existing graph fixture plus ordinary lifecycle stores; no Compose automation or new transport fixtures. */
 @OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("TooManyFunctions") // Existing fixtures cover the three added route ownership boundaries.
 class ComplaintBackendRequestOwnershipTest {
+    @Test
+    fun candidateHistoryUsesSameGraphAndRefusesDuplicateOrStaleOpenings() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val fixture = ComplaintBackendGraphFixture(this)
+            val graph = candidateGraph(fixture)
+            val app = koinApplication { modules(graph.module()) }
+            val host = ComplaintBackendRequestHostOwner(app.koin)
+            try {
+                host.openHistory()
+                val history = assertNotNull(host.historyOpening)
+                assertSame(app.koin, history.candidate)
+                host.openHistory()
+                host.request(SettingsFeedbackEntry.General)
+                assertSame(history, host.historyOpening)
+                assertNull(host.requestOpening)
+                val detail = ComplaintBackendDetailOpening(history.candidate)
+                try {
+                    runCurrent()
+                    assertIs<ComplaintHistory.Backend>(detail.history.state.value.history)
+                    assertEquals(1, fixture.historyCalls)
+                    assertNoReportWork(fixture)
+                } finally {
+                    detail.close()
+                    runCurrent()
+                }
+                host.historyClosed(history)
+                assertNull(host.historyOpening)
+                host.openHistory()
+                val replacement = assertNotNull(host.historyOpening)
+                assertNotSame(history, replacement)
+                host.historyClosed(history)
+                assertSame(replacement, host.historyOpening)
+                assertTrue(fixture.owners.values.none { it.closed })
+            } finally {
+                host.close()
+                runCurrent()
+                app.close()
+                graph.close()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun retiredRequestHostCannotOpenHistoryOrRetargetCallbacks() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val fixture = ComplaintBackendGraphFixture(this)
+            val graph = candidateGraph(fixture)
+            val app = koinApplication { modules(graph.module()) }
+            try {
+                val retirements = listOf(
+                    ComplaintBackendRequestHostOwner::onForgotten,
+                    ComplaintBackendRequestHostOwner::onAbandoned,
+                    ComplaintBackendRequestHostOwner::close,
+                )
+                for (retire in retirements) {
+                    val host = ComplaintBackendRequestHostOwner(app.koin)
+                    val replacement = ComplaintBackendRequestHostOwner(app.koin)
+                    try {
+                        val oldRequest = { host.request(SettingsFeedbackEntry.General) }
+                        val oldHistory = host::openHistory
+                        oldRequest()
+                        val request = assertNotNull(host.requestOpening)
+                        oldRequest()
+                        assertSame(request, host.requestOpening)
+                        runCurrent()
+                        retire(host)
+                        runCurrent()
+                        assertFalse(request.viewModel.viewModelScope.isActive)
+                        replacement.openHistory()
+                        val history = assertNotNull(replacement.historyOpening)
+                        oldRequest()
+                        oldHistory()
+                        host.requestClosed(request)
+                        host.historyClosed(history)
+                        assertNull(host.requestOpening)
+                        assertNull(host.historyOpening)
+                        assertSame(history, replacement.historyOpening)
+                        assertTrue(fixture.owners.values.none { it.closed })
+                    } finally {
+                        host.close()
+                        replacement.close()
+                        runCurrent()
+                    }
+                }
+                assertEquals(0, fixture.historyCalls + fixture.sessionCalls)
+                assertNoReportWork(fixture)
+            } finally {
+                app.close()
+                graph.close()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun requestHostKeepsHistoryClosedUntilRealRequestChildDrains() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val fixture = ComplaintBackendGraphFixture(this)
+            val credentials = ActionHostCredentialReads(fixture.credentials)
+            val original = fixture.resources()
+            val resources = ComplaintBackendResources(
+                { credentials }, original.pending, original.generator, original.engines, original.inputs,
+            )
+            val graph = assertIs<AppResult.Success<ComplaintBackendGraph>>(
+                createComplaintBackendGraph({ GRAPH_BASE }, resources),
+            ).value
+            val app = koinApplication { modules(graph.module()) }
+            val host = ComplaintBackendRequestHostOwner(app.koin)
+            try {
+                host.request(SettingsFeedbackEntry.General)
+                val request = assertNotNull(host.requestOpening)
+                runCurrent()
+                val hold = credentials.holdNext()
+                request.viewModel.submit(SettingsFeedbackIntent.ResumeCleanup)
+                runCurrent()
+                val work = hold.entered.await()
+                val closed = backgroundScope.launch {
+                    request.viewModel.effects.first { it == SettingsFeedbackEffect.Closed }
+                    host.requestClosed(request)
+                }
+                request.viewModel.submit(SettingsFeedbackIntent.Close)
+                runCurrent()
+                assertTrue(work.isCancelled && hold.closing.isCompleted)
+                assertFalse(work.isCompleted || closed.isCompleted)
+                val reads = credentials.reads
+                host.openHistory()
+                host.request(SettingsFeedbackEntry.General)
+                assertSame(request, host.requestOpening)
+                assertNull(host.historyOpening)
+                assertEquals(reads, credentials.reads)
+                hold.release.complete(Unit)
+                runCurrent()
+                assertTrue(work.isCompleted && closed.isCompleted)
+                assertFalse(request.viewModel.viewModelScope.isActive)
+                assertNull(host.requestOpening)
+                host.openHistory()
+                val history = assertNotNull(host.historyOpening)
+                host.requestClosed(request)
+                assertSame(history, host.historyOpening)
+                assertEquals(0, fixture.historyCalls + fixture.sessionCalls)
+                assertNoReportWork(fixture)
+                assertTrue(fixture.owners.values.none { it.closed })
+            } finally {
+                credentials.releaseAll()
+                host.close()
+                runCurrent()
+                app.close()
+                graph.close()
+                Dispatchers.resetMain()
+            }
+        }
+
     @Test
     fun fixedRequestsOwnSeparateViewModelStoresWithoutOwningTheSharedGraph() =
         runTest {

@@ -20,11 +20,13 @@ internal fun ComplaintBackendGeneralSettingsRoute(
     lowPowerCompressionToggleVisible: Boolean = false,
     crashDiagnosticsVisible: Boolean = false,
 ) {
-    ComplaintBackendRequestHost(candidate, onOpenUrl) { onRequest ->
+    val owner = remember(candidate) { ComplaintBackendRequestHostOwner(candidate) }
+    ComplaintBackendRequestHost(owner, onOpenUrl) {
         // Capture this graph's host holders, not a latest callback that could retarget an old click.
-        val requestFeedback: () -> Unit = remember(candidate) {
-            { onRequest(SettingsFeedbackEntry.General) }
+        val requestFeedback: () -> Unit = remember(owner) {
+            { owner.request(SettingsFeedbackEntry.General) }
         }
+        val openHistory: () -> Unit = remember(owner) { owner::openHistory }
         SettingsScreen(
             viewModel = viewModel,
             onNavigate = onNavigate,
@@ -33,6 +35,7 @@ internal fun ComplaintBackendGeneralSettingsRoute(
             lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
             crashDiagnosticsVisible = crashDiagnosticsVisible,
             onRequestFeedback = requestFeedback,
+            onOpenComplaintHistory = openHistory,
         )
     }
 }
