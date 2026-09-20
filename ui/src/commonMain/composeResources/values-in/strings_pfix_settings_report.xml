@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">Teks draf hanya disimpan di memori. Biarkan dialog ini terbuka untuk mencoba laporan yang sama lagi jika hasilnya belum pasti.</string>
+    <string name="settings_report_retry_same">Coba lagi laporan yang sama</string>
+    <string name="settings_report_new_draft">Laporan baru</string>
+    <string name="settings_report_recovery_title">Operasi tersimpan</string>
+    <string name="settings_report_refresh">Periksa operasi tersimpan</string>
+    <string name="settings_report_recovery_empty">Pemeriksaan ini tidak melaporkan operasi tersimpan.</string>
+    <string name="settings_report_pending_title">Laporan tersimpan %1$d</string>
+    <string name="settings_report_prepared">Disiapkan secara lokal; belum dikirim.</string>
+    <string name="settings_report_may_have_sent">Mungkin sudah sampai ke server.</string>
+    <string name="settings_report_cancel_prepared">Batalkan laporan yang belum dikirim</string>
+    <string name="settings_report_request_reset">Tinjau pengaturan ulang lokal</string>
+    <string name="settings_report_reset_title">Atur ulang identitas laporan perangkat ini?</string>
+    <string name="settings_report_reset_warning">Tindakan ini melupakan seluruh identitas laporan lokal dan SEMUA operasi laporan tersimpan. Laporan di server TIDAK dihapus atau dibatalkan. Anda mungkin kehilangan akses ke riwayatnya dan kemampuan untuk mencobanya lagi dengan aman.</string>
+    <string name="settings_report_reset_confirm">Atur ulang data laporan lokal</string>
+    <string name="settings_report_prepared_cancelled">Laporan yang belum dikirim telah dibatalkan.</string>
+    <string name="settings_report_reset_completed">Identitas laporan lokal dan operasi tersimpan telah dihapus. Laporan di server tidak dihapus.</string>
+    <string name="settings_report_applied">Server menerima laporan ini.</string>
+    <string name="settings_report_capacity_rejected">Server menolak laporan ini karena batas laporan telah tercapai.</string>
+    <string name="settings_report_id_rejected">Server menolak laporan ini karena ID laporannya sudah digunakan.</string>
+    <string name="settings_report_unresolved">Hasilnya belum dikonfirmasi. Jangan mulai laporan pengganti.</string>
+    <string name="settings_report_cleanup_pending">Hasil server sudah diketahui, tetapi konfirmasi lokal belum selesai.</string>
+    <string name="settings_report_invalid_subject">Periksa panjang dan karakter subjek.</string>
+    <string name="settings_report_invalid_body">Periksa panjang dan karakter isi laporan.</string>
+    <string name="settings_report_invalid_metadata">Detail perangkat tidak dapat diterima. Pelaporan tidak tersedia.</string>
+    <string name="settings_report_pending_capacity">Batas operasi tertunda lokal telah tercapai. Selesaikan operasi tersimpan sebelum melapor lagi.</string>
+    <string name="settings_report_receipt_expired">Masa aman tanda terima telah berakhir. Laporan ini tidak akan dikirim lagi.</string>
+    <string name="settings_report_live_required">Laporan asli di memori sudah tidak tersedia. Metadata tersimpan tidak dapat digunakan untuk mengirimnya lagi.</string>
+    <string name="settings_report_unavailable">Pelaporan atau pemulihan tidak tersedia untuk identitas lokal ini. Operasi tersimpan belum diganti.</string>
+</resources>

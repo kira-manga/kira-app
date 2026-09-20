@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Eliminare solo il feedback mostrato sotto? L’azione è irreversibile. L’identità di installazione rimane. Chiudere questa finestra non annulla una richiesta inviata.</string>
+    <string name="backend_delete_conflict">È stato segnalato un conflitto di versione. L’eliminazione originale mantiene la versione originale e non viene mai adattata a una versione aggiornata.</string>
+    <string name="backend_delete_retry_same">Verifica o riprova la stessa eliminazione</string>
+    <string name="backend_delete_open_recovery">Apri configurazione e recupero</string>
+    <string name="backend_delete_unresolved">L’eliminazione non è ancora confermata. Verifica lo stato prima di presumere che sia fallita.</string>
+    <string name="backend_delete_unavailable">Eliminazione o recupero non disponibili. Controlla le operazioni conservate in configurazione e recupero; non sono state sostituite.</string>
+    <string name="backend_delete_live_required">Questa eliminazione può essere riprovata solo dalla conferma originale ancora aperta. Il recupero non può ricrearla.</string>
+    <string name="backend_delete_receipt_expired">Il periodo della ricevuta di eliminazione è terminato. Ciò non dimostra che l’eliminazione sia fallita.</string>
+</resources>

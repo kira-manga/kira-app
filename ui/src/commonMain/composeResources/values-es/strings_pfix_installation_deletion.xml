@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Eliminar datos de informes</string>
+    <string name="settings_installation_deletion_active">Puedes solicitar que se eliminen del servidor todos los datos de informes vinculados a esta instalación de la aplicación.</string>
+    <string name="settings_installation_deletion_checking">Comprobando el estado local de los informes de esta instalación…</string>
+    <string name="settings_installation_deletion_missing">No se encontró ninguna identidad local de informes ni operaciones conservadas. Esto no confirma la eliminación en el servidor.</string>
+    <string name="settings_installation_deletion_cleanup">La limpieza local de informes necesita atención. Usa las acciones de recuperación local de abajo y vuelve a comprobar el estado local. Esto no confirma la eliminación en el servidor.</string>
+    <string name="settings_installation_deletion_uncertain">El estado de la eliminación es incierto. Puede que ya se haya enviado una solicitud. Comprueba el estado local antes de realizar otra acción.</string>
+    <string name="settings_installation_deletion_pending">La solicitud de eliminación o su limpieza local sigue pendiente. No se ha confirmado que haya finalizado. Continúa la solicitud existente; no crees otra que la sustituya.</string>
+    <string name="settings_installation_deletion_completed">La solicitud de eliminación en el servidor finalizó. Se borraron la identidad local de informes y las operaciones conservadas de esta instalación.</string>
+    <string name="settings_installation_deletion_request">Revisar la eliminación en el servidor</string>
+    <string name="settings_installation_deletion_check">Comprobar el estado local</string>
+    <string name="settings_installation_deletion_continue">Continuar la eliminación existente</string>
+    <string name="settings_installation_deletion_warning_title">¿Eliminar los datos de informes de esta instalación?</string>
+    <string name="settings_installation_deletion_warning">Esto solicita eliminar del servidor todos los datos de informes vinculados a esta instalación. Al finalizar también se borran la identidad local de informes y las operaciones conservadas. Puedes perder el acceso al historial de informes. La eliminación en el servidor no se puede deshacer.</string>
+    <string name="settings_installation_deletion_confirm">Eliminar datos de informes</string>
+    <string name="settings_installation_deletion_close_notice">Una solicitud aceptada por el servidor puede continuar después de cerrar este diálogo o la aplicación.</string>
+    <string name="settings_installation_deletion_uninstall">Desinstalar la aplicación no elimina los datos de informes del servidor.</string>
+    <string name="settings_installation_deletion_local_only">La recuperación o el abandono local no borra datos del servidor, no confirma su eliminación ni revierte una solicitud ya enviada.</string>
+    <string name="settings_installation_deletion_retry_after">Espera sugerida por el servidor: %1$d s. Continúa manualmente; no hay reintento automático.</string>
+    <string name="settings_installation_deletion_retry_failed">El último intento no pudo finalizar. Se conserva la misma solicitud de eliminación.</string>
+</resources>

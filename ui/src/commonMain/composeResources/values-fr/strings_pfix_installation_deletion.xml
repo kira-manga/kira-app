@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Supprimer les données des signalements</string>
+    <string name="settings_installation_deletion_active">Vous pouvez demander la suppression sur le serveur de toutes les données des signalements liées à cette installation de l’application.</string>
+    <string name="settings_installation_deletion_checking">Vérification de l’état local des signalements de cette installation…</string>
+    <string name="settings_installation_deletion_missing">Aucune identité locale de signalement ni opération conservée n’a été trouvée. Cela ne confirme aucune suppression sur le serveur.</string>
+    <string name="settings_installation_deletion_cleanup">Le nettoyage local des signalements nécessite votre attention. Utilisez les actions de récupération locale ci-dessous, puis vérifiez à nouveau l’état local. Cela ne confirme aucune suppression sur le serveur.</string>
+    <string name="settings_installation_deletion_uncertain">L’état de la suppression est incertain. Une demande a peut-être déjà été envoyée. Vérifiez l’état local avant toute autre action.</string>
+    <string name="settings_installation_deletion_pending">La demande de suppression ou son nettoyage local est encore en attente. La fin de l’opération n’est pas confirmée. Poursuivez la demande existante sans en créer une autre.</string>
+    <string name="settings_installation_deletion_completed">La demande de suppression sur le serveur est terminée. L’identité locale des signalements et les opérations conservées de cette installation ont été effacées.</string>
+    <string name="settings_installation_deletion_request">Examiner la suppression sur le serveur</string>
+    <string name="settings_installation_deletion_check">Vérifier l’état local</string>
+    <string name="settings_installation_deletion_continue">Poursuivre la suppression existante</string>
+    <string name="settings_installation_deletion_warning_title">Supprimer les données des signalements de cette installation ?</string>
+    <string name="settings_installation_deletion_warning">Cela demande la suppression sur le serveur de toutes les données des signalements liées à cette installation. Une fois l’opération terminée, l’identité locale des signalements et les opérations conservées sont également effacées. Vous risquez de perdre l’accès à l’historique des signalements. La suppression sur le serveur est irréversible.</string>
+    <string name="settings_installation_deletion_confirm">Supprimer les données des signalements</string>
+    <string name="settings_installation_deletion_close_notice">Une demande acceptée par le serveur peut se poursuivre après la fermeture de ce dialogue ou de l’application.</string>
+    <string name="settings_installation_deletion_uninstall">Désinstaller l’application ne supprime pas les données des signalements sur le serveur.</string>
+    <string name="settings_installation_deletion_local_only">La récupération ou l’abandon local n’efface pas les données du serveur, ne confirme pas leur suppression et n’annule pas une demande déjà envoyée.</string>
+    <string name="settings_installation_deletion_retry_after">Attente suggérée par le serveur : %1$d s. Poursuivez manuellement ; aucune nouvelle tentative n’est automatique.</string>
+    <string name="settings_installation_deletion_retry_failed">La dernière tentative n’a pas pu aboutir. La même demande de suppression est toujours conservée.</string>
+</resources>

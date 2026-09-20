@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">استعادة هوية البلاغات المحلية</string>
+    <string name="settings_installation_review_unreadable">التحقق من أهلية استعادة هوية يتعذر قراءتها</string>
+    <string name="settings_installation_review_abandonment">مراجعة التخلي المحلي عن متابعة الحذف</string>
+    <string name="settings_installation_continue_cleanup">فحص التنظيف المحلي المصرّح به أو متابعته</string>
+    <string name="settings_installation_abandon_title">التخلي عن متابعة الحذف محليًا؟</string>
+    <string name="settings_installation_abandon_warning">يعني هذا التخلي عن متابعة طلب حذف موجود من هذا الجهاز. قد تفقد إمكانية إعادة المحاولة أو التحقق من النتيجة. لا يمكنه التراجع عن طلب أُرسل بالفعل، ولا يؤكد حذف البيانات على الخادم.</string>
+    <string name="settings_installation_abandon_confirm">التخلي عن متابعة الحذف محليًا</string>
+    <string name="settings_installation_abandon_completed">تم التخلي عن متابعة الحذف محليًا. لا يؤكد ذلك حذف البيانات على الخادم.</string>
+    <string name="settings_installation_cleanup_checked">اكتمل فحص التنظيف المحلي. ربما لم يُجرَ أي تغيير. لا يؤكد ذلك إزالة الهوية أو حذف البيانات على الخادم.</string>
+</resources>

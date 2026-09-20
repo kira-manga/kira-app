@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">報告データを削除</string>
+    <string name="settings_installation_deletion_active">このアプリのインストールに紐づくすべての報告データをサーバーから削除するようリクエストできます。</string>
+    <string name="settings_installation_deletion_checking">このインストールの端末内の報告状態を確認中…</string>
+    <string name="settings_installation_deletion_missing">端末内に報告用識別情報や保持された操作は見つかりませんでした。これはサーバー上での削除を確認するものではありません。</string>
+    <string name="settings_installation_deletion_cleanup">端末内の報告データのクリーンアップに対応が必要です。下のローカル復旧操作を行い、端末内の状態を再確認してください。これはサーバー上での削除を確認するものではありません。</string>
+    <string name="settings_installation_deletion_uncertain">削除の状態は不確かです。すでにリクエストが送信されている可能性があります。別の操作を行う前に端末内の状態を確認してください。</string>
+    <string name="settings_installation_deletion_pending">削除リクエスト、またはそのローカルクリーンアップがまだ保留中です。完了は確認されていません。代わりのリクエストを作成せず、既存のリクエストを続行してください。</string>
+    <string name="settings_installation_deletion_completed">サーバーへの削除リクエストが完了しました。このインストールの端末内の報告用識別情報と保持された操作を消去しました。</string>
+    <string name="settings_installation_deletion_request">サーバー削除の注意事項を確認</string>
+    <string name="settings_installation_deletion_check">端末内の状態を確認</string>
+    <string name="settings_installation_deletion_continue">既存の削除を続行</string>
+    <string name="settings_installation_deletion_warning_title">このインストールの報告データを削除しますか？</string>
+    <string name="settings_installation_deletion_warning">このインストールに紐づくすべての報告データをサーバーから削除するようリクエストします。完了時には端末内の報告用識別情報と保持された操作も消去されます。報告履歴にアクセスできなくなる場合があります。サーバー上での削除は取り消せません。</string>
+    <string name="settings_installation_deletion_confirm">報告データを削除</string>
+    <string name="settings_installation_deletion_close_notice">サーバーが受け付けたリクエストは、このダイアログやアプリを閉じた後も処理が続く場合があります。</string>
+    <string name="settings_installation_deletion_uninstall">アプリをアンインストールしても、サーバー上の報告データは削除されません。</string>
+    <string name="settings_installation_deletion_local_only">端末内の復旧や継続の放棄は、サーバーデータの削除や削除完了の確認にはならず、送信済みのリクエストを取り消すこともできません。</string>
+    <string name="settings_installation_deletion_retry_after">サーバーが推奨する待機時間：%1$d 秒。手動で続行してください。自動では再試行しません。</string>
+    <string name="settings_installation_deletion_retry_failed">前回の試行を完了できませんでした。同じ削除リクエストが引き続き保持されています。</string>
+</resources>

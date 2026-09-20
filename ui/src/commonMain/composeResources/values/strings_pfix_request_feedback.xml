@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">This device has no complaint identity yet. Set up complaint history before sending. Your draft stays only in memory.</string>
+    <string name="request_feedback_setup_history">Set up complaint history</string>
+    <string name="request_feedback_history_ready">Complaint history is ready. This request has not been sent. Review it and choose Submit.</string>
+    <string name="request_feedback_clean_start">This new complaint history does not include reports sent through the previous service.</string>
+</resources>

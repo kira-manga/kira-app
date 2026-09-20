@@ -1,9 +1,11 @@
 package me.manga.kira.presentation.language
 
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
 import me.manga.kira.domain.usecase.feedback.SendLanguageRequestUseCase
 import me.manga.kira.domain.usecase.language.GetSupportedLanguagesUseCase
 import me.manga.kira.domain.usecase.language.ObserveSelectedLanguageUseCase
@@ -158,6 +160,33 @@ class LanguageViewModel(
 ) : MviViewModel<LanguageState, LanguageIntent, LanguageEffect>(
     initialState = LanguageState(languages = getSupportedLanguages()),
 ) {
+    private var requestJob: Job? = null
+
+    /** Drop buffered legacy request outcomes after retirement; language selection is unaffected. */
+    val screenEffects: Flow<LanguageEffect> =
+        effects.filter { effect ->
+            effect !is LanguageEffect.RequestSubmitted || !state.value.legacyRequestRetired
+        }
+
+    /**
+     * Main/UI-confined, synchronous and irreversible for this retained VM. Close and clear even a
+     * busy legacy draft before best-effort cancellation; already-started provider work may finish.
+     * This must run before the candidate callback, not as an asynchronously dispatched intent.
+     */
+    fun retireLegacyRequest() {
+        if (!state.value.legacyRequestRetired) {
+            updateState {
+                it.copy(
+                    legacyRequestRetired = true,
+                    requestDialogVisible = false,
+                    requestText = "",
+                    requestSubmitting = false,
+                    requestFailed = false,
+                )
+            }
+        }
+        requestJob?.cancel()
+    }
 
     init {
         observeSelectedLanguage()
@@ -176,47 +205,63 @@ class LanguageViewModel(
                 launchSafely { setLanguage(intent.code) }
             }
             is LanguageIntent.OnOpenRequestDialog -> {
-                if (state.value.requestDialogVisible || state.value.requestSubmitting) return
+                if (state.value.legacyRequestRetired || state.value.requestDialogVisible || state.value.requestSubmitting) return
                 updateState {
                     it.copy(
                         requestDialogVisible = true,
                         requestText = "",
-                        requestSubmitting = false,
                         requestFailed = false,
                     )
                 }
             }
             is LanguageIntent.OnDismissRequestDialog -> {
-                if (state.value.requestSubmitting) return
+                if (state.value.legacyRequestRetired || state.value.requestSubmitting) return
                 updateState {
                     it.copy(requestDialogVisible = false, requestText = "", requestFailed = false)
                 }
             }
             is LanguageIntent.OnRequestTextChange -> {
-                if (!state.value.requestDialogVisible || state.value.requestSubmitting) return
+                if (state.value.legacyRequestRetired || !state.value.requestDialogVisible || state.value.requestSubmitting) return
                 updateState { it.copy(requestText = intent.text) }
             }
-            is LanguageIntent.OnSubmitRequest -> {
-                if (!state.value.requestDialogVisible || state.value.requestSubmitting) return
-                val body = state.value.requestText
-                updateState { it.copy(requestSubmitting = true, requestFailed = false) }
-                viewModelScope.launch {
-                    val result = sendLanguageRequest(body)
-                    if (result.isSuccess) {
-                        updateState {
-                            it.copy(
-                                requestDialogVisible = false,
-                                requestText = "",
-                                requestSubmitting = false,
-                                requestFailed = false,
-                            )
-                        }
-                        emit(LanguageEffect.RequestSubmitted)
-                    } else {
-                        updateState { it.copy(requestSubmitting = false, requestFailed = true) }
+            is LanguageIntent.OnSubmitRequest -> handleSubmitRequest()
+        }
+    }
+
+    private fun handleSubmitRequest() {
+        if (state.value.legacyRequestRetired || !state.value.requestDialogVisible ||
+            state.value.requestSubmitting || requestJob?.isActive == true
+        ) return
+        val body = state.value.requestText
+        updateState { it.copy(requestSubmitting = true, requestFailed = false) }
+        requestJob = launchSafely {
+            try {
+                // Retirement can happen after the busy update while this inner launch is queued.
+                if (state.value.legacyRequestRetired) return@launchSafely
+                val result = sendLanguageRequest(body)
+                if (state.value.legacyRequestRetired) return@launchSafely
+                if (result.isSuccess) {
+                    updateState {
+                        it.copy(
+                            requestDialogVisible = false,
+                            requestText = "",
+                            requestSubmitting = false,
+                            requestFailed = false,
+                        )
                     }
+                } else {
+                    updateState { it.copy(requestSubmitting = false, requestFailed = true) }
                 }
+                // A state observer may retire synchronously before the outcome is emitted.
+                if (result.isSuccess && !state.value.legacyRequestRetired) {
+                    emit(LanguageEffect.RequestSubmitted)
+                }
+            } finally {
+                if (!state.value.legacyRequestRetired) updateState { it.copy(requestSubmitting = false) }
             }
+        }.also { job ->
+            // Main.immediate may enter provider code before the returned Job is assigned.
+            if (state.value.legacyRequestRetired) job.cancel()
         }
     }
 }

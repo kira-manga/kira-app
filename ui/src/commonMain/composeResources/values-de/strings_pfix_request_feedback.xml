@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Dieses Gerät hat noch keine Identität für Meldungen. Richten Sie vor dem Senden den Meldungsverlauf ein. Ihr Entwurf bleibt nur im Arbeitsspeicher.</string>
+    <string name="request_feedback_setup_history">Meldungsverlauf einrichten</string>
+    <string name="request_feedback_history_ready">Der Meldungsverlauf ist bereit. Diese Anfrage wurde nicht gesendet. Prüfen Sie sie und wählen Sie „Senden“.</string>
+    <string name="request_feedback_clean_start">Dieser neue Meldungsverlauf enthält keine Meldungen, die über den bisherigen Dienst gesendet wurden.</string>
+</resources>

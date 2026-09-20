@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Delete complaint data</string>
+    <string name="settings_installation_deletion_active">You can request server deletion of all complaint data linked to this app installation.</string>
+    <string name="settings_installation_deletion_checking">Checking this installation’s local complaint state…</string>
+    <string name="settings_installation_deletion_missing">No local complaint identity or retained operations were found. This does not confirm server deletion.</string>
+    <string name="settings_installation_deletion_cleanup">Local complaint cleanup needs attention. Use the local recovery actions below, then check local status again. This does not confirm server deletion.</string>
+    <string name="settings_installation_deletion_uncertain">The deletion state is uncertain. A request may already have been sent. Check local status before taking another action.</string>
+    <string name="settings_installation_deletion_pending">The deletion request or its local cleanup is still pending. Completion is not confirmed. Continue the existing request; do not create a replacement.</string>
+    <string name="settings_installation_deletion_completed">The server deletion request completed. This installation’s local complaint identity and retained operations were cleared.</string>
+    <string name="settings_installation_deletion_request">Review server deletion</string>
+    <string name="settings_installation_deletion_check">Check local status</string>
+    <string name="settings_installation_deletion_continue">Continue existing deletion</string>
+    <string name="settings_installation_deletion_warning_title">Delete this installation’s complaint data?</string>
+    <string name="settings_installation_deletion_warning">This requests deletion of all complaint data linked to this installation on the server. Completion also clears the local complaint identity and retained operations. You may lose access to complaint history. Server deletion cannot be undone.</string>
+    <string name="settings_installation_deletion_confirm">Delete complaint data</string>
+    <string name="settings_installation_deletion_close_notice">A request accepted by the server may continue after you close this dialog or the app.</string>
+    <string name="settings_installation_deletion_uninstall">Uninstalling the app does not delete complaint data on the server.</string>
+    <string name="settings_installation_deletion_local_only">Local recovery or abandonment does not erase server data, confirm server deletion, or undo a request already sent.</string>
+    <string name="settings_installation_deletion_retry_after">Server-suggested wait: %1$d s. Continue manually; there is no automatic retry.</string>
+    <string name="settings_installation_deletion_retry_failed">The last attempt could not finish. The same deletion request is still retained.</string>
+</resources>

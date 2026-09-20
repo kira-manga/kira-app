@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">Текст ответа хранится только в памяти. При закрытии этой панели он удаляется. Если результат неясен, оставьте панель открытой, чтобы повторить тот же ответ.</string>
+    <string name="backend_reply_retry_same">Повторить тот же ответ</string>
+    <string name="backend_reply_open_recovery">Закрыть ответ и открыть настройку или восстановление</string>
+    <string name="backend_reply_target_unavailable">Ответ для этого элемента недоступен.</string>
+    <string name="backend_reply_unresolved">Результат ответа ещё не подтверждён. Не отправляйте новый ответ взамен.</string>
+    <string name="backend_reply_receipt_expired">Безопасный срок подтверждения истёк. Этот ответ не будет отправлен повторно.</string>
+    <string name="backend_reply_live_required">Исходный ответ в памяти больше недоступен. Сохранённые метаданные нельзя использовать для его повторной отправки.</string>
+</resources>

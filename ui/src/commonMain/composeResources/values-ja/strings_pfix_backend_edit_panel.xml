@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">下書きのテキストはメモリ内にのみ保持されます。この編集画面を閉じると下書きは破棄されますが、保持中の操作は削除も取り消しもされません。</string>
+    <string name="backend_edit_retry_same">同じ編集の確認・再試行</string>
+    <string name="backend_edit_conflict">バージョンの競合が報告されました。下書きは変更されていません。再試行では元のバージョンが使われ、更新後のバージョンに置き換わることはありません。</string>
+    <string name="backend_edit_unresolved">編集の結果はまだ確認できていません。代わりの編集を始めないでください。</string>
+    <string name="backend_edit_open_recovery">閉じてフィードバックの復旧を開く</string>
+    <string name="backend_edit_live_required">メモリ内の元の編集はもう利用できません。保持されたメタデータを使って再送信することはできません。</string>
+    <string name="backend_edit_receipt_expired">安全に受付結果を確認できる期間が終了しました。この編集が再送信されることはありません。</string>
+</resources>

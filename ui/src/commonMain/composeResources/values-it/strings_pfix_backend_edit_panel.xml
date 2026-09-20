@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Il testo della bozza resta solo in memoria. Chiudendo questo editor la bozza viene scartata, ma le operazioni conservate non vengono eliminate né annullate.</string>
+    <string name="backend_edit_retry_same">Verifica o riprova la stessa modifica</string>
+    <string name="backend_edit_conflict">È stato segnalato un conflitto di versione. La bozza resta invariata; ogni nuovo tentativo usa la versione originale, mai una versione aggiornata.</string>
+    <string name="backend_edit_unresolved">Il risultato della modifica non è confermato. Non avviare una modifica sostitutiva.</string>
+    <string name="backend_edit_open_recovery">Chiudi e apri il recupero dei feedback</string>
+    <string name="backend_edit_live_required">La modifica originale in memoria non è più disponibile. I metadati conservati non possono essere usati per inviarla di nuovo.</string>
+    <string name="backend_edit_receipt_expired">La finestra sicura di conferma è terminata. Questa modifica non verrà inviata di nuovo.</string>
+</resources>

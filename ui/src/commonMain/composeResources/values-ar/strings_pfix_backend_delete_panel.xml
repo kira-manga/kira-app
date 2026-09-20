@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">هل تريد حذف الملاحظة المعروضة أدناه فقط؟ لا يمكن التراجع عن ذلك. تبقى هوية التثبيت. إغلاق هذا الحوار لا يلغي طلبًا تم إرساله.</string>
+    <string name="backend_delete_conflict">أُبلغ عن تعارض في الإصدار. يحتفظ طلب الحذف الأصلي بإصداره الأصلي ولا يُعدّل ليتوافق مع إصدار مُحدّث.</string>
+    <string name="backend_delete_retry_same">تحقق من الحذف نفسه أو أعد محاولته</string>
+    <string name="backend_delete_open_recovery">فتح الإعداد والاسترداد</string>
+    <string name="backend_delete_unresolved">لم يتأكد الحذف بعد. تحقق من حالته قبل افتراض فشله.</string>
+    <string name="backend_delete_unavailable">الحذف أو الاسترداد غير متاح. استخدم الإعداد والاسترداد لفحص العمليات المحفوظة؛ لم تُستبدل.</string>
+    <string name="backend_delete_live_required">يمكن إعادة محاولة هذا الحذف فقط من حوار التأكيد الأصلي المفتوح. لا يستطيع الاسترداد إعادة إنشائه.</string>
+    <string name="backend_delete_receipt_expired">انتهت مهلة إيصال الحذف. هذا لا يثبت فشل الحذف.</string>
+</resources>

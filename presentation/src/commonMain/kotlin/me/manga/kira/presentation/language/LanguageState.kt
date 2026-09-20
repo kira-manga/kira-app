@@ -115,4 +115,6 @@ data class LanguageState(
     val requestText: String = "",
     val requestSubmitting: Boolean = false,
     val requestFailed: Boolean = false,
+    /** One-way ownership latch for this retained VM; an initially null candidate keeps legacy. */
+    val legacyRequestRetired: Boolean = false,
 ) : MviState

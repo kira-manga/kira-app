@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">端末内の報告用識別情報の復旧</string>
+    <string name="settings_installation_review_unreadable">読み取れない識別情報の復旧可否を確認</string>
+    <string name="settings_installation_review_abandonment">削除のローカル継続の放棄を確認</string>
+    <string name="settings_installation_continue_cleanup">許可済みのローカルクリーンアップを確認または続行</string>
+    <string name="settings_installation_abandon_title">削除のローカル継続を放棄しますか？</string>
+    <string name="settings_installation_abandon_warning">既存の削除リクエストをこの端末から継続することを放棄します。再試行や結果確認ができなくなる場合があります。送信済みのリクエストを取り消すことはできず、サーバー上での削除を確認するものでもありません。</string>
+    <string name="settings_installation_abandon_confirm">削除のローカル継続を放棄</string>
+    <string name="settings_installation_abandon_completed">削除のローカル継続を放棄しました。これはサーバー上での削除を確認するものではありません。</string>
+    <string name="settings_installation_cleanup_checked">ローカルクリーンアップの確認が完了しました。変更が行われなかった可能性があります。これは識別情報の削除やサーバー上での削除を確認するものではありません。</string>
+</resources>

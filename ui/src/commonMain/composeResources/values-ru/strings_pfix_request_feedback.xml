@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">На этом устройстве ещё нет идентификатора для обращений. Настройте историю перед отправкой. Черновик останется только в памяти.</string>
+    <string name="request_feedback_setup_history">Настроить историю обращений</string>
+    <string name="request_feedback_history_ready">История обращений готова. Этот запрос не отправлен. Проверьте его и выберите «Отправить».</string>
+    <string name="request_feedback_clean_start">Новая история не включает обращения, отправленные через предыдущий сервис.</string>
+</resources>

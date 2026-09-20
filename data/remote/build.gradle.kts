@@ -28,6 +28,7 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        withHostTestBuilder {}
     }
 
     jvm("desktop") {
@@ -77,12 +78,27 @@ kotlin {
             implementation(libs.ktor.client.mock)
         }
 
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
         }
 
+        getByName("androidHostTest").dependencies {
+            implementation(kotlin("test-junit"))
+            implementation(libs.junit)
+            implementation(libs.okhttp.mockwebserver)
+            implementation(libs.okhttp.tls)
+        }
+
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+
+        getByName("iosTest").dependencies {
+            implementation(kotlin("test"))
         }
 
         getByName("desktopMain").dependencies {

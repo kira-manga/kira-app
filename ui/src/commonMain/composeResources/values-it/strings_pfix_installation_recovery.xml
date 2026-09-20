@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Ripristino dell’identità locale per le segnalazioni</string>
+    <string name="settings_installation_review_unreadable">Verifica se un’identità illeggibile può essere ripristinata</string>
+    <string name="settings_installation_review_abandonment">Esamina l’abbandono locale dell’eliminazione</string>
+    <string name="settings_installation_continue_cleanup">Verifica o prosegui la pulizia locale autorizzata</string>
+    <string name="settings_installation_abandon_title">Abbandonare la prosecuzione locale dell’eliminazione?</string>
+    <string name="settings_installation_abandon_warning">Questa azione abbandona la prosecuzione locale di una richiesta di eliminazione esistente. Potresti perdere la possibilità di riprovare o verificarne l’esito. Non annulla una richiesta già inviata e non conferma l’eliminazione sul server.</string>
+    <string name="settings_installation_abandon_confirm">Abbandona la prosecuzione locale dell’eliminazione</string>
+    <string name="settings_installation_abandon_completed">La prosecuzione locale dell’eliminazione è stata abbandonata. Questo non conferma l’eliminazione sul server.</string>
+    <string name="settings_installation_cleanup_checked">Verifica della pulizia locale completata. Potrebbe non essere cambiato nulla. Questo non conferma la rimozione dell’identità né l’eliminazione sul server.</string>
+</resources>

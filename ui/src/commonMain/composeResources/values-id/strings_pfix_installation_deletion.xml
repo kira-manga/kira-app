@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">Hapus data laporan</string>
+    <string name="settings_installation_deletion_active">Anda dapat meminta penghapusan semua data laporan yang terkait dengan instalasi aplikasi ini dari server.</string>
+    <string name="settings_installation_deletion_checking">Memeriksa status laporan lokal untuk instalasi ini…</string>
+    <string name="settings_installation_deletion_missing">Tidak ditemukan identitas laporan lokal atau operasi yang tersimpan. Ini tidak memastikan penghapusan di server.</string>
+    <string name="settings_installation_deletion_cleanup">Pembersihan laporan lokal perlu ditangani. Gunakan tindakan pemulihan lokal di bawah, lalu periksa status lokal lagi. Ini tidak memastikan penghapusan di server.</string>
+    <string name="settings_installation_deletion_uncertain">Status penghapusan belum pasti. Permintaan mungkin sudah dikirim. Periksa status lokal sebelum melakukan tindakan lain.</string>
+    <string name="settings_installation_deletion_pending">Permintaan penghapusan atau pembersihan lokalnya masih tertunda. Penyelesaiannya belum dipastikan. Lanjutkan permintaan yang ada; jangan buat penggantinya.</string>
+    <string name="settings_installation_deletion_completed">Permintaan penghapusan di server selesai. Identitas laporan lokal dan operasi yang tersimpan untuk instalasi ini telah dihapus.</string>
+    <string name="settings_installation_deletion_request">Tinjau penghapusan di server</string>
+    <string name="settings_installation_deletion_check">Periksa status lokal</string>
+    <string name="settings_installation_deletion_continue">Lanjutkan penghapusan yang ada</string>
+    <string name="settings_installation_deletion_warning_title">Hapus data laporan untuk instalasi ini?</string>
+    <string name="settings_installation_deletion_warning">Ini meminta penghapusan semua data laporan yang terkait dengan instalasi ini dari server. Setelah selesai, identitas laporan lokal dan operasi yang tersimpan juga dihapus. Anda mungkin kehilangan akses ke riwayat laporan. Penghapusan di server tidak dapat dibatalkan.</string>
+    <string name="settings_installation_deletion_confirm">Hapus data laporan</string>
+    <string name="settings_installation_deletion_close_notice">Permintaan yang diterima server dapat terus diproses setelah Anda menutup dialog ini atau aplikasi.</string>
+    <string name="settings_installation_deletion_uninstall">Menghapus instalasi aplikasi tidak menghapus data laporan di server.</string>
+    <string name="settings_installation_deletion_local_only">Pemulihan atau penghentian tindak lanjut lokal tidak menghapus data server, memastikan penghapusan di server, atau membatalkan permintaan yang sudah dikirim.</string>
+    <string name="settings_installation_deletion_retry_after">Waktu tunggu yang disarankan server: %1$d dtk. Lanjutkan secara manual; tidak ada percobaan ulang otomatis.</string>
+    <string name="settings_installation_deletion_retry_failed">Upaya terakhir tidak dapat diselesaikan. Permintaan penghapusan yang sama masih tersimpan.</string>
+</resources>

@@ -1,14 +1,23 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.storage.StorageKeys
+import me.manga.kira.di.ComplaintBackendEntrypoint
+import me.manga.kira.di.ComplaintBackendHostOwner
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.sources.SourcesViewModel
+import me.manga.kira.ui.complaint.ComplaintUnavailableDialog
 import me.manga.kira.ui.sources.SourcesScreen
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -152,43 +161,44 @@ import org.koin.compose.viewmodel.koinViewModel
  * design lineage; the rework SourcesScreen continues to surface the
  * documented affordances through the legacy retire.
  */
+@Suppress("LongMethod") // One explicit host branch preserves onboarding import/Finish on both outcomes.
 @Composable
 fun SourcesScreenRoute(
     navController: NavController,
     @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
+    complaintHost: ComplaintBackendHostOwner = koinInject(),
 ) {
     val prefs: SharedPrefsHelper = koinInject()
     val viewModel: SourcesViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
-
-    SourcesScreen(
-        viewModel = viewModel,
-        onImportFromStorage = {
-            navController.safeNavigate(Screen.BackupRework(completeStartFlowOnImport = true))
-        },
-        // Activation reveals the stored source state exactly as-is. Do not auto-enable a locale here.
-        onboardingLanguageTag = null,
-        // Request-Source dialog social-media row forwards each brand URL to the platform
-        // IntentLauncher (fire-and-forget; same posture as SettingsReworkScreenRoute's onOpenUrl).
-        onOpenUrl = { url -> launcher.openUrl(url) },
-        // NP onboarding parity (4→3 steps): native onboarding is Welcome → Theme → Sources →
-        // Library (native SourcesScreenRoute.onFinish flips `first_launch = false` then navigates
-        // straight to Screen.Library, clearing the wizard back stack). KMP previously inserted a
-        // duplicate fourth step here by advancing to Screen.RepoSettings(isFirstOpen = true) — a
-        // second render of this same rework Sources screen with a Finish button. This Finish now
-        // mirrors native exactly: flip the `first_launch` flag false (same pref key + helper as
-        // App.kt's start-destination read and the in-settings RepoSettingsScreenRoute.onFinish) and
-        // navigate directly to Library with popUpTo(start destination){inclusive} + launchSingleTop
-        // so system-back from Library does not return to the wizard. Screen.RepoSettings stays the
-        // in-settings entry only (HomeReworkScreenRoute → Screen.RepoSettings(false)).
-        onFinish = {
-            prefs.putBoolean(StorageKeys.FIRST_LAUNCH, false)
-            navController.navigate(Screen.Library) {
-                popUpTo(navController.graph.startDestinationId) {
-                    inclusive = true
-                }
-                launchSingleTop = true
-            }
-        },
-    )
+    val selection by complaintHost.selection.collectAsState()
+    var unavailable by remember(complaintHost) { mutableStateOf(false) }
+    val refuse: (String) -> Unit = remember(complaintHost) { { unavailable = true } }
+    val importFromStorage: () -> Unit = { navController.safeNavigate(Screen.BackupRework(completeStartFlowOnImport = true)) }
+    val finish: () -> Unit = {
+        prefs.putBoolean(StorageKeys.FIRST_LAUNCH, false)
+        navController.navigate(Screen.Library) {
+            popUpTo(navController.graph.startDestinationId) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+    when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.SOURCES, selection)) {
+        is AppResult.Success -> ComplaintBackendSourcesRequestRoute(
+            candidate = candidate.value,
+            viewModel = viewModel,
+            onImportFromStorage = importFromStorage,
+            onOpenUrl = { launcher.openUrl(it) },
+            onFinish = finish,
+        )
+        is AppResult.Failure -> SourcesScreen(
+            viewModel = viewModel,
+            onImportFromStorage = importFromStorage,
+            // Activation reveals stored choices; never auto-enable a locale on refusal either.
+            onboardingLanguageTag = null,
+            onOpenUrl = { launcher.openUrl(it) },
+            onFinish = finish,
+            onRequestSource = refuse,
+        )
+    }
+    if (unavailable) ComplaintUnavailableDialog(onBack = { unavailable = false })
 }
