@@ -151,8 +151,9 @@ class IosBackgroundArtifactTest {
             val next = fixture.seed()
             val claim = fixture.prepareAttempt(original, DownloadingState.RUNNING, failures = 2)
             val nextClaim = fixture.prepareAttempt(next, DownloadingState.QUEUED)
+            next.pages.keys.forEach { fixture.system.delete(it) }
             val transport = ArtifactTestTransport(fixture.operations)
-            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), transport.observeRecoveredOnce(nextClaim))
             val failed = ReceiverPage(fixture, original, "failed")
             transport.deliverPage(original, claim.token, failed.page).await()
             assertTrue(failed.discarded.isCompleted, "Receipt includes receiver failure handling and staging disposal")
@@ -213,6 +214,7 @@ class IosBackgroundArtifactTest {
             fixture.db.backupDao().updateChapterRow(completed.saved.copy(isDownloaded = true))
             val waiting = fixture.seed(mangaId = completed.saved.mangaId)
             val claim = fixture.prepareAttempt(waiting, DownloadingState.QUEUED)
+            waiting.pages.keys.forEach { fixture.system.delete(it) }
             val parentClosed = CompletableDeferred<Unit>()
             val fillCompletedWhileClosed = CompletableDeferred<Boolean>()
             val catalog = TestDownloadCatalogAdmission(fixture.operations)
@@ -226,7 +228,7 @@ class IosBackgroundArtifactTest {
             val startupEntered = CompletableDeferred<Unit>()
             val startupReturned = CompletableDeferred<Unit>()
             val transport = ArtifactTestTransport(fixture.operations)
-            val observedTransport = object : BackgroundTransport by transport {
+            val observedTransport = object : BackgroundTransport by transport.observeRecoveredOnce(claim) {
                 override suspend fun ensureReady() {
                     startupEntered.complete(Unit)
                     transport.ensureReady()

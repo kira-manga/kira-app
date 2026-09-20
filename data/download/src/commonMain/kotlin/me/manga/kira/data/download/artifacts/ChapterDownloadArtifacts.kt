@@ -3,12 +3,16 @@ package me.manga.kira.data.download.artifacts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
+import me.manga.kira.data.local.dao.ChapterDownloadOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
+import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
@@ -16,6 +20,7 @@ import me.manga.kira.data.local.entity.isOwnedBy
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.features.download.data.DownloadingState
+import me.manga.kira.presentation.features.download.domain.clean.DownloadManifest
 import okio.IOException
 import okio.Path.Companion.toPath
 
@@ -27,6 +32,8 @@ class ChapterDownloadArtifacts(
     private val recovery: ChapterArtifactRecovery,
     private val files: AppFileSystem,
 ) {
+    private val restoredFiles = RestoredDownloadFiles(files)
+
     suspend fun enqueue(chapter: SavedChapterEntity, requested: ChapterDownloadEntity): ChapterArtifactClaim? =
         ownership.enqueue(chapter, requested)
 
@@ -67,6 +74,65 @@ class ChapterDownloadArtifacts(
 
     suspend fun fail(claim: ChapterArtifactClaim, message: String?): Boolean =
         ownership.publish(claim) { commits.failDownload(claim, message) } == true
+
+    /** iOS caller holds this claim's file pin: no cleanup/native cancellation or new retry budget. */
+    internal suspend fun reconcileRestoredUnderFilePin(
+        claim: ChapterArtifactClaim,
+        expected: ChapterDownloadEntity,
+        manifest: DownloadManifest?,
+        native: RestoredNativePages,
+    ): RestoredDownloadAdmission = try {
+        val snapshot = commits.restoredDownloadSnapshot(claim)?.takeIf { it.download == expected }
+        if (snapshot == null) RestoredDownloadAdmission.DEFERRED else {
+            val media = withContext(platformIoDispatcher) { restoredFiles.inspect(snapshot, manifest) }
+            val decision = restoredAdmission(media, expected, manifest, native)
+            currentCoroutineContext().ensureActive()
+            if (decision != RestoredDownloadAdmission.FAILED) decision else {
+                if (ownership.publish(claim) { commits.failMissingRestoredDownload(claim, snapshot) } == true) {
+                    RestoredDownloadAdmission.FAILED
+                } else RestoredDownloadAdmission.DEFERRED
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        RestoredDownloadAdmission.DEFERRED // Unknown storage/SQL outcome retains original custody and bytes.
+    }
+
+    /** A lost repair return is not failure proof. Recover only this original revoked FAILED claim. */
+    internal suspend fun settleMissingRestoredFailure(claim: ChapterArtifactClaim): Boolean {
+        currentCoroutineContext().ensureActive()
+        val settled = try {
+            if (!isMissingRestoredFailure(claim, dao.get(claim.owner.chapterId))) false else {
+                withContext(NonCancellable) {
+                    ownership.settle(claim) { record ->
+                        // Recheck after actual users drain, under the existing exclusive transition.
+                        // The repair already cleared metadata; no file cleanup or requeue is allowed.
+                        isMissingRestoredFailure(claim, record)
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false // Keep unknown custody for the next reconcile/explicit Retry in this same engine.
+        }
+        currentCoroutineContext().ensureActive()
+        return settled
+    }
+
+    private suspend fun isMissingRestoredFailure(claim: ChapterArtifactClaim, record: ChapterArtifactEntity?): Boolean {
+        if (claim.operation != ChapterArtifactOperation.DOWNLOAD || claim.pending != null ||
+            claim.conversionSourceRoster != null || record?.isOwnedBy(claim) != true || !record.retiring ||
+            record.ownsPendingPath || record.committedToken != null || record.committedRelativePath != null ||
+            record.retiredRelativePath != null
+        ) return false
+        val row = dao.download(claim.owner.chapterId) ?: return false
+        if (row.id != claim.downloadId || row.mangaId != claim.owner.mangaId || row.url != claim.owner.chapterUrl ||
+            row.state != DownloadingState.FAILED || row.errorMsg != null || row.progress != 0 || row.sizeBytes != 0L
+        ) return false
+        return commits.downloadOutcome(claim) == ChapterDownloadOutcome.INCOMPLETE
+    }
 
     /** Keep the Android service's existing path-write seams under the original publication fence. */
     suspend fun preparePaths(claim: ChapterArtifactClaim, action: suspend () -> Unit) {
@@ -153,6 +219,29 @@ class ChapterDownloadArtifacts(
             }
             total + size
         }
+    }
+}
+
+internal data class RestoredNativePages(val inFlight: Set<Int>, val recovered: Set<Int>)
+
+internal enum class RestoredDownloadAdmission { READY, DEFERRED, FAILED }
+
+private fun restoredAdmission(
+    media: RestoredDownloadMedia,
+    row: ChapterDownloadEntity,
+    manifest: DownloadManifest?,
+    native: RestoredNativePages,
+): RestoredDownloadAdmission = when (media) {
+    RestoredDownloadMedia.CompleteRoster -> RestoredDownloadAdmission.READY
+    RestoredDownloadMedia.CanonicalArchive -> if (row.state == DownloadingState.COMPRESSING && manifest != null) {
+        RestoredDownloadAdmission.READY
+    } else RestoredDownloadAdmission.DEFERRED
+    RestoredDownloadMedia.Unproven -> RestoredDownloadAdmission.DEFERRED
+    is RestoredDownloadMedia.Missing -> when {
+        !media.manifestMissing && media.pages.all { it in native.recovered } -> RestoredDownloadAdmission.READY
+        media.manifestMissing && native.inFlight.isNotEmpty() -> RestoredDownloadAdmission.DEFERRED
+        media.pages.any { it in native.inFlight } -> RestoredDownloadAdmission.DEFERRED
+        else -> RestoredDownloadAdmission.FAILED
     }
 }
 

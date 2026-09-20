@@ -12,6 +12,7 @@ import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterConversionRoster
 import me.manga.kira.data.local.entity.ChapterNotification
+import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.isOwnedBy
 import me.manga.kira.presentation.features.download.data.DownloadingState
@@ -36,6 +37,15 @@ interface ChapterArtifactCommitDao {
             "AND chapterUrl = :chapterUrl AND api = :api",
     )
     suspend fun notifications(chapterId: Long, mangaId: Long, chapterUrl: String, api: String): List<ChapterNotification>
+
+    @Query("SELECT id, api, url FROM saved_manga WHERE id = :mangaId")
+    suspend fun repairParent(mangaId: Long): ArtifactRepairParent?
+
+    @Query("SELECT * FROM history_items WHERE api = :api AND mangaUrl = :mangaUrl AND chapterUrl = :chapterUrl")
+    suspend fun repairHistory(api: String, mangaUrl: String, chapterUrl: String): List<HistoryItemD>
+
+    @Update(entity = HistoryItemD::class)
+    suspend fun writeHistory(update: ArtifactReadableUpdate): Int
 
     @Update(entity = SavedChapterEntity::class)
     suspend fun writeSaved(update: ArtifactReadableUpdate): Int
@@ -164,6 +174,15 @@ interface ChapterArtifactCommitDao {
         return true
     }
 
+    /** Capture active/legacy offline metadata under the caller's existing chapter file pin. */
+    @Transaction
+    suspend fun restoredDownloadSnapshot(claim: ChapterArtifactClaim): ArtifactRepairSnapshot? = restoredSnapshot(claim)
+
+    /** Absence-only repair rechecks owner/ledger/paths, then FAILED and revocation commit together. */
+    @Transaction
+    suspend fun failMissingRestoredDownload(claim: ChapterArtifactClaim, expected: ArtifactRepairSnapshot): Boolean =
+        clearMissingRestored(claim, expected)
+
     /** Files may only be compensated after this authoritative, token-bound read succeeds. */
     @Transaction
     suspend fun downloadOutcome(claim: ChapterArtifactClaim): ChapterDownloadOutcome {
@@ -273,14 +292,6 @@ interface ChapterArtifactCommitDao {
         return ChapterRestoreOutcome.NOT_COMMITTED
     }
 }
-
-/** Partial updates leave metadata, reading progress and notification identity untouched. */
-data class ArtifactReadableUpdate(val id: Long, val isDownloaded: Boolean, val localImagePaths: List<String>)
-
-/** Durable readback after the writer has unwound; a failed query is also UNKNOWN at the caller. */
-enum class ChapterRestoreOutcome { COMMITTED, NOT_COMMITTED, UNKNOWN }
-
-enum class ChapterDownloadOutcome { COMPLETE, INCOMPLETE, UNKNOWN }
 
 private fun referencesGeneration(paths: List<String>, claim: ChapterArtifactClaim, absolutePath: String): Boolean =
     paths.singleOrNull()?.let { it == absolutePath || it.endsWith("/${claim.relativePath}") } == true

@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /** Real iOS repository + file-backed Room; restart reconstruction, not an OS-kill/fsync claim. */
@@ -110,7 +111,7 @@ class IosManifestPersistenceTest {
     }
 
     @Test
-    fun committedRetryCountSurvivesReopenBeforeEnqueueAndStillEnforcesTheBound() = runTest {
+    fun committedRetryCountSurvivesReopenWithoutAuthorizingAutomaticReplacement() = runTest {
         val fixture = IosCbzFinalizationFixture()
         val host = SupervisorJob(coroutineContext[Job])
         val reopenedHost = SupervisorJob(coroutineContext[Job])
@@ -133,15 +134,27 @@ class IosManifestPersistenceTest {
             assertContentEquals(committed, fixture.system.read(path) { readByteArray() })
 
             val restarted = ArtifactTestTransport(fixture.operations, ready = true)
-            fixture.engine(CoroutineScope(coroutineContext + reopenedHost), restarted)
-            val request = restarted.requests.receive()
-            assertEquals(claim.token, request.attemptToken)
-            assertEquals(ledgerId, fixture.download(chapter).id)
-            assertEquals(2, fixture.manifest(chapter).pages.single().attempts, "Restart is not an explicit user Retry")
-            restarted.failPage(chapter, request.attemptToken).await()
-            assertEquals(3, fixture.manifest(chapter).pages.single().attempts)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + reopenedHost), restarted)
+            engine.reconcileInterruptedDownloads()
             assertEquals(DownloadingState.FAILED, fixture.download(chapter).state)
-            assertEquals(1, restarted.enqueued.size, "The third committed failure must not schedule another transfer")
+            assertEquals(ledgerId, fixture.download(chapter).id)
+            assertEquals(2, fixture.manifest(chapter).pages.single().attempts)
+            assertContentEquals(committed, fixture.system.read(path) { readByteArray() })
+            assertTrue(restarted.enqueued.isEmpty(), "A persisted token/count is not a live native transfer")
+            // Join the engine's actual retained settlement before testing explicit user admission.
+            reopenedHost.cancelAndJoin()
+            fixture.reopen()
+            val retryHost = SupervisorJob(coroutineContext[Job])
+            try {
+                val retryEngine = fixture.engine(CoroutineScope(coroutineContext + retryHost), restarted)
+                assertTrue(retryEngine.retryChapterDownload(fixture.download(chapter)))
+                val request = restarted.requests.receive()
+                assertNotEquals(claim.token, request.attemptToken)
+                assertNotEquals(ledgerId, fixture.download(chapter).id)
+                assertEquals(0, fixture.manifest(chapter).pages.single().attempts, "Only explicit Retry resets the durable budget")
+            } finally {
+                retryHost.cancelAndJoin()
+            }
         } finally {
             host.cancelAndJoin()
             reopenedHost.cancelAndJoin()

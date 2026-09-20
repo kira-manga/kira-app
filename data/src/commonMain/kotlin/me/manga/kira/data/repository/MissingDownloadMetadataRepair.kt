@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterArtifacts
+import me.manga.kira.data.download.artifacts.MissingDownloadedFiles
 import me.manga.kira.data.local.dao.ChapterArtifactRepairDao
 import me.manga.kira.platform.filesystem.AppFileSystem
 

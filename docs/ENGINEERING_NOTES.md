@@ -116,8 +116,8 @@ queue/page/attempt state persists across Room + manifest + the URLSession task l
 reconcile at launch); bounded retry (3 attempts, exp backoff 2 s/4 s cap 30 s); atomic
 `.cbz.part` → `.cbz` rename (interrupted encodes re-run, never corrupt). Force-quit cancels
 in-flight transfers and does not relaunch — **OS rule, not a bug**; next manual launch reconciles
-(pages on disk kept, missing re-enqueued). Best-effort only: background scraping of further
-chapters, BG task grant timing.
+without treating the persisted queue/token as permission to replace missing media. Best-effort only:
+background scraping of further chapters, BG task grant timing.
 
 **iOS backup scope (App26 partial remediation):** launch eagerly creates or re-marks only the
 stable `Documents/manga` directory with `NSURLIsExcludedFromBackupKey`. This covers chapter
@@ -126,8 +126,8 @@ existing data. Documents itself, Room/SQLite sidecars, settings, and credentials
 A failed directory/flag operation is logged and retried next launch, never treated as success
 or allowed to crash startup. Future replacement of the manga root must reapply the policy.
 Unlike Android's whole-persistence-graph backup exclusion, this is **not** a complete iOS restore
-policy: metadata-only restore can retain stale SUCCESS/downloaded/size state. App26 remains open
-for that reconciliation and physical-device backup-footprint/restore checks; native resource-value
+policy by itself: metadata-only restore can retain stale SUCCESS/downloaded/size state. App26 remains
+open for composed reconciliation and physical-device backup-footprint/restore checks; native resource-value
 tests alone do not prove either. Keep an external Kira ZIP for deliberate transfer of chapter copies.
 
 **Terminal offline-metadata repair (authored; validation pending):** after the existing engine
@@ -142,9 +142,29 @@ absent. Present CBZ candidates and complete extant loose rosters are preserved w
 I/O ambiguity, foreign paths and symlinks defer. This is not a corruption audit or proof of an old
 CBZ's original page count. Only a known iOS container-UUID move is accepted as a prior-container
 path. No files, library preferences or reading positions are removed.
-Active queue/resume policy above is unchanged, not solved by this terminal repair. Physical iPhone
-backup size, OS restore/SQLite-WAL consistency, upgrade and background/offline acceptance remain
-device requirements; a Room fixture reopen does not establish them.
+
+**Active iOS restored-download policy (authored; validation pending):** after native transport
+attachment and existing catalog/artifact readiness, all four active states (QUEUED, RUNNING,
+DOWNLOADED, COMPRESSING) are checked even when compression is deferred. A genuinely absent manifest
+or incomplete required media roster, with no applicable native ownership, becomes retained FAILED
+and requires explicit Retry. The same transaction rechecks owner, parent, ledger, paths and custody,
+clears only stale saved/notification/history offline fields and size, and revokes that exact token.
+Existing settlement drains actual file users and releases the token without deleting partial files
+or resetting the retained manifest's failure counts/policy refusals. A committed repair can outlive
+a failed/cancelled suspend return: the next reconcile or explicit Retry reads back the cached original
+claim's exact revoked FAILED ledger, then rechecks under existing exclusive settlement before release.
+Unknown, active, mismatched, explicit-cancellation or failed-cleanup custody is not taken over. Retry waits for
+actual users outside the engine mutex; a cancelled Retry cannot reserve replacement work.
+An empty native inventory is not proof that delegate/OS custody has drained; late old callbacks only
+dispose/acknowledge.
+Complete extant rosters, existing archive candidates, uncertain I/O, foreign paths and symlinks are
+not absence. Native ownership authorizes only its observed page indices, never another missing page
+or a replacement scrape. Fresh enqueue and explicit Retry authorize their exact process-local token;
+Retry alone resets ordinary page failure counts, never policy refusals. Startup still attaches the
+native transport before waiting for catalog/artifact admission; callback rechecks do not bypass
+existing retry delays. Android's whole-graph backup exclusion is unchanged.
+Physical iPhone backup size, OS restore/SQLite-WAL/manifests/artifacts consistency, upgrade and
+background/offline acceptance remain device requirements; a Room fixture reopen does not establish them.
 
 **Notification rule (load-bearing UX)**: user-facing "complete" means the CBZ exists. Silent
 per-page progress → silent "Finalizing chapter…" at `RUNNING→DOWNLOADED` → banner+sound only at

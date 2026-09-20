@@ -5,6 +5,7 @@ import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ArtifactReadableUpdate
+import me.manga.kira.data.local.dao.ArtifactRepairParent
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterArtifactDao
 import me.manga.kira.data.local.dao.ChapterDao
@@ -13,6 +14,7 @@ import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterNotification
+import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.media.PageMediaInspector
@@ -106,6 +108,11 @@ private class FakeArtifactRecords(
 
     override suspend fun notifications(chapterId: Long, mangaId: Long, chapterUrl: String, api: String) = emptyList<ChapterNotification>()
     override suspend fun writeNotification(update: ArtifactReadableUpdate): Int = error("No notifications in fake fixture")
+
+    override suspend fun repairParent(mangaId: Long): ArtifactRepairParent? = error("Restored-download repair requires real Room")
+    override suspend fun repairHistory(api: String, mangaUrl: String, chapterUrl: String): List<HistoryItemD> =
+        error("Restored-download repair requires real Room")
+    override suspend fun writeHistory(update: ArtifactReadableUpdate): Int = error("Restored-download repair requires real Room")
 
     override suspend fun removeDownload(chapterId: Long, downloadId: Long): Int {
         if (download(chapterId)?.id != downloadId) return 0
