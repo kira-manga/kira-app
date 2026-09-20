@@ -51,6 +51,8 @@ internal class InstallationDeletionHttp(
             !request.binding.work.isCurrent() ||
                 request.binding.record.state != InstallationCredentialState.DELETION_PENDING ->
                 request.failed(Failure.INVALIDATED)
+            // Restart continuation has no session gate; refuse before constructing its credential body.
+            !endpoint.acceptsDataScope(request.binding.record.material.dataScopeId) -> request.failed(Failure.CONTRACT)
             else -> {
                 val result = exchange(request)
                 currentCoroutineContext().ensureActive()

@@ -44,7 +44,7 @@ internal class InstallationDeletionFixture(
     val bodies = mutableListOf<String>()
     var keyCalls = 0
         private set
-    private val endpoint = assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL))
+    private val endpoint = assertNotNull(ComplaintBackendEndpoint.checked(SESSION_BASE_URL, settings.expectedDataScopeId))
     private val sessionEngine =
         historyMockEngine(scope) { request ->
             sessionRequests += request
@@ -100,6 +100,7 @@ internal class DeletionFixtureSettings(
     val clock: TestTimeSource = TestTimeSource(),
     val nextKey: () -> String = { Fixtures.KEY },
     val coordinator: InstallationCredentialCoordinator? = null,
+    val expectedDataScopeId: String? = null,
 )
 
 internal fun deletingRecord(
@@ -131,6 +132,7 @@ internal fun assertDeletionCompleted(result: AppResult<ComplaintInstallationDele
 /** A new owner after the previous fixture has closed; no enrollment/session/key fallback is permitted. */
 internal fun TestScope.deletionRestart(
     storage: InstallationCoordinatorFixture,
+    expectedDataScopeId: String? = null,
     deletionHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
         respond("", HttpStatusCode.NoContent, deletionHeaders())
     },
@@ -141,6 +143,7 @@ internal fun TestScope.deletionRestart(
         DeletionFixtureSettings(
             nextKey = { error("Restart must not allocate a key") },
             coordinator = storage.restart(),
+            expectedDataScopeId = expectedDataScopeId,
         ),
         sessionHandler = { error("Restart must not request a session") },
         deletionHandler = deletionHandler,

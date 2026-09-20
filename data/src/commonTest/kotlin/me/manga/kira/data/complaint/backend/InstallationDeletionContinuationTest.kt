@@ -14,6 +14,7 @@ import me.manga.kira.data.complaint.backend.InstallationCredentialCoordination.B
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
@@ -22,6 +23,7 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.TestTimeSource
 import me.manga.kira.core.complaint.ComplaintDeletionTransportPolicy as Policy
 import me.manga.kira.data.complaint.backend.InstallationCoordinatorFixtures as Fixtures
+import me.manga.kira.platform.storage.CredentialCleanupReason as Reason
 
 @OptIn(ExperimentalTime::class)
 class InstallationDeletionContinuationTest {
@@ -37,13 +39,68 @@ class InstallationDeletionContinuationTest {
                 } finally {
                     first.close()
                 }
-            val resumed = deletionRestart(first.storage)
+            val resumed = deletionRestart(first.storage, expectedDataScopeId = Fixtures.SCOPE)
             try {
                 assertDeletionCompleted(resumed.repository.continueDeletion())
                 assertEquals(listOf(original), resumed.bodies)
                 assertEquals(Fixtures.KEY, resumed.requests.single().headers[Policy.IDEMPOTENCY_HEADER])
                 resumed.assertNoNewIdentity()
                 resumed.storage.assertAbsent()
+            } finally {
+                resumed.close()
+            }
+        }
+
+    @Test
+    fun launchScopeMismatchOnRestartRetainsExactDeletionTupleWithoutAnyRequestOrMutation() =
+        runTest {
+            val record = deletingRecord()
+            val storage = InstallationCoordinatorFixture(record)
+            val slots = listOf(Fixtures.slot(1), Fixtures.slot(2))
+            storage.pending.slots += slots
+            val resumed = deletionRestart(storage, expectedDataScopeId = OTHER_SCOPE) {
+                error("A different launch scope must never receive the retained deletion credential")
+            }
+            try {
+                repeat(2) {
+                    val pending = assertDeletionPending(resumed.repository.continueDeletion())
+                    assertIs<AppError.Network.Serialization>(pending.error)
+                    assertNull(pending.retryAfterSeconds)
+                    resumed.assertRetained(record, slots)
+                    resumed.assertNoNewIdentity()
+                    assertTrue(resumed.requests.isEmpty() && resumed.bodies.isEmpty())
+                    assertTrue(storage.faults.mutations.isEmpty())
+                }
+            } finally {
+                resumed.close()
+            }
+        }
+
+    @Test
+    fun launchScopeMismatchDoesNotBlockAlreadyAuthorizedTerminalMarkerCleanupOnRestart() =
+        runTest {
+            val storage = InstallationCoordinatorFixture(deletingRecord())
+            storage.pending.slots += Fixtures.slot(1)
+            storage.faults.failAt(InstallationStoreStep.CLEANUP_BEFORE)
+            val first = InstallationDeletionFixture(this, storage)
+            try {
+                assertNotNull(assertDeletionPending(first.repository.continueDeletion()).error)
+                val marker = assertNotNull(storage.credentials.marker)
+                assertEquals(Reason.SERVER_TERMINAL_CONFIRMED, marker.reason)
+                assertEquals(deletingRecord().localGeneration, marker.expectedGeneration)
+                assertEquals(1, first.requests.size)
+                assertTrue(storage.pending.slots.isEmpty())
+            } finally {
+                first.close()
+            }
+            val resumed = deletionRestart(storage, expectedDataScopeId = OTHER_SCOPE) {
+                error("Authorized terminal-marker cleanup is local, even after a launch scope change")
+            }
+            try {
+                assertDeletionCompleted(resumed.repository.continueDeletion())
+                assertTrue(resumed.requests.isEmpty() && resumed.bodies.isEmpty())
+                resumed.assertNoNewIdentity()
+                storage.assertAbsent()
             } finally {
                 resumed.close()
             }
@@ -79,7 +136,7 @@ class InstallationDeletionContinuationTest {
     fun exactContinuationHasNoBearerOrIdsInUrl() =
         runTest {
             val storage = InstallationCoordinatorFixture(deletingRecord())
-            val fixture = InstallationDeletionFixture(this, storage)
+            val fixture = deletionRestart(storage, expectedDataScopeId = Fixtures.SCOPE)
             try {
                 assertDeletionCompleted(fixture.repository.continueDeletion())
                 assertDeletionWire(fixture)
@@ -109,6 +166,8 @@ class InstallationDeletionContinuationTest {
             }
         }
 }
+
+private const val OTHER_SCOPE = "66666666-6666-4666-8666-666666666666"
 
 private fun TestScope.unavailableDeletionFixture(): InstallationDeletionFixture =
     InstallationDeletionFixture(

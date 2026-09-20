@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintType
@@ -24,9 +25,14 @@ import me.manga.kira.navigation.routes.ActionHostCredentialReads
 import me.manga.kira.navigation.routes.ComplaintBackendDetailOpening
 import me.manga.kira.navigation.routes.ComplaintBackendRequestHostOwner
 import me.manga.kira.navigation.routes.ComplaintBackendRequestOpening
+import me.manga.kira.platform.storage.CleanupMarkerReadResult
+import me.manga.kira.platform.storage.CredentialReplaceResult
+import me.manga.kira.platform.storage.InstallationCredentialRecord
+import me.manga.kira.platform.storage.InstallationValueResult
 import me.manga.kira.presentation.complaint.ComplaintIntent
 import me.manga.kira.presentation.complaint.ComplaintViewModel
 import me.manga.kira.presentation.complaint.admin.AdminComplaintViewModel
+import me.manga.kira.presentation.settings.feedback.SettingsFeedbackDeletionState
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEffect
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackEntry
 import me.manga.kira.presentation.settings.feedback.SettingsFeedbackIntent
@@ -141,6 +147,69 @@ class ComplaintBackendRequestOwnershipTest {
                 retiredProcessRoute.close()
                 runCurrent()
                 app.close()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun processHostPendingDeletionCannotSendCredentialsToAnotherLaunchScope() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            try {
+                val fixture = ComplaintBackendGraphFixture(this)
+                val retained = assertIs<InstallationValueResult.Valid<InstallationCredentialRecord>>(
+                    fixture.credentials.record.beginDeletion(GRAPH_DELETION_KEY),
+                ).value
+                // Seed the old durable pending tuple before this process owner starts; no new consent or session.
+                fixture.credentials.allowDeletionReplacement = true
+                assertIs<CredentialReplaceResult.Stored>(
+                    fixture.credentials.replace(fixture.credentials.record.localGeneration, retained),
+                )
+                fixture.credentials.allowDeletionReplacement = false
+                val writesBeforeStartup = fixture.credentials.writes
+                val launch = graphLaunchInputs()
+                val record = launch.record.replace("mode=LIVE", "mode=TEST")
+                    .replace("dataScopeId=$GRAPH_SCOPE", "dataScopeId=66666666-6666-4666-8666-666666666666")
+                val inputs = launch.copy(
+                    record = record,
+                    binding = launch.binding.copy(approvedRecordSha256 = complaintLaunchSha256(record)),
+                )
+                val app = koinApplication { modules(fixture.hostModule(inputs)) }
+                try {
+                    val process = app.koin.get<ComplaintBackendHostOwner>()
+                    val candidate = assertIs<AppResult.Success<Koin>>(
+                        process.candidate(ComplaintBackendEntrypoint.SETTINGS),
+                    ).value
+                    val host = ComplaintBackendRequestHostOwner(candidate)
+                    try {
+                        host.request(SettingsFeedbackEntry.General)
+                        val vm = assertNotNull(host.requestOpening).viewModel
+                        runCurrent()
+                        assertNull(assertIs<SettingsFeedbackDeletionState.Pending>(vm.state.value.deletion).error)
+                        assertTrue(vm.state.value.canContinueRemoteDeletion)
+                        assertEquals(1, fixture.launchReads)
+                        assertTrue(fixture.events.none { it.startsWith("request:") })
+                        repeat(2) {
+                            vm.submit(SettingsFeedbackIntent.ContinueRemoteDeletion)
+                            runCurrent()
+                            val pending = assertIs<SettingsFeedbackDeletionState.Pending>(vm.state.value.deletion)
+                            assertIs<AppError.Network.Serialization>(pending.error)
+                            assertTrue(vm.state.value.canContinueRemoteDeletion)
+                            assertSame(retained, fixture.credentials.record)
+                            assertEquals(writesBeforeStartup, fixture.credentials.writes)
+                            assertEquals(0, fixture.pending.writes + fixture.generations + fixture.deletionKeyGenerations)
+                            assertEquals(0, fixture.reportIdentifierGenerations + fixture.reportMetadataReads)
+                            assertEquals(CleanupMarkerReadResult.Missing, fixture.credentials.readCleanupMarker())
+                            assertTrue(fixture.events.none { it.startsWith("request:") })
+                        }
+                    } finally {
+                        host.close()
+                        runCurrent()
+                    }
+                } finally {
+                    app.close()
+                }
+            } finally {
                 Dispatchers.resetMain()
             }
         }
