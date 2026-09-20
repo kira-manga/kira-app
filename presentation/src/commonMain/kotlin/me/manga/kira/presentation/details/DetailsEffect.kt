@@ -48,6 +48,12 @@ sealed interface DetailsEffect : MviEffect {
      */
     data class NavigateToBackupExport(val key: WorkLocator) : DetailsEffect
 
+    /** Ask the composition root to share this resolved source link once through its platform port. */
+    data class ShareManga(
+        val title: String,
+        val url: String,
+    ) : DetailsEffect
+
     /**
      * View should navigate to the WebView screen for [url], scoped to source [api].
      *
