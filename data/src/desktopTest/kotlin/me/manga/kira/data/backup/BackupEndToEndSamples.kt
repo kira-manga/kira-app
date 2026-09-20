@@ -21,9 +21,10 @@ internal suspend fun seedBackupManga(
     title: String,
     slug: String,
     withDownload: Boolean,
+    host: String = "current.test",
 ): SeededBackupManga {
-    val manga = source.parent(backupSourceManga(title, slug))
-    val chapter = source.chapter(backupSourceChapter(manga.id, slug, withDownload))
+    val manga = source.parent(backupSourceManga(title, slug, host))
+    val chapter = source.chapter(backupSourceChapter(manga.id, slug, withDownload, host))
     val locator = ChapterLocator(WorkLocator(manga.api, manga.url), chapter.url)
     val handle = source.native.beginSession(locator).progressValue().handle
     source.native.save(handle, 7).progressValue()
@@ -32,10 +33,10 @@ internal suspend fun seedBackupManga(
     return SeededBackupManga(manga, chapter)
 }
 
-private fun backupSourceManga(title: String, slug: String) = SavedMangaEntity(
+private fun backupSourceManga(title: String, slug: String, host: String) = SavedMangaEntity(
     api = "source",
     language = "ar",
-    url = "https://current.test/manga/$slug",
+    url = "https://$host/manga/$slug",
     imageUrl = "https://images.example/$slug-cover.webp",
     title = title,
     description = "$title description",
@@ -48,11 +49,11 @@ private fun backupSourceManga(title: String, slug: String) = SavedMangaEntity(
     isWatchingNow = true,
 )
 
-private fun backupSourceChapter(mangaId: Long, slug: String, withDownload: Boolean) = SavedChapterEntity(
+private fun backupSourceChapter(mangaId: Long, slug: String, withDownload: Boolean, host: String) = SavedChapterEntity(
     mangaId = mangaId,
     name = "Chapter 1",
     number = "1",
-    url = "https://current.test/chapter/$slug-1",
+    url = "https://$host/chapter/$slug-1",
     date = LocalDate(2026, 7, 18),
     isDownloaded = withDownload,
     isBookmarked = true,

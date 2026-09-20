@@ -94,6 +94,11 @@ class ScopedProgressAliasTest {
             assertTrue(f.native.beginSession(PROGRESS_CHAPTER).isFailure)
             assertEquals(before, f.oldSnapshot())
             assertNull(f.db.readerProgressDao().findWork(PROGRESS_WORK.api, PROGRESS_WORK.url))
+            f.execute("DROP TRIGGER reject_alias_chapter")
+            f.reopen()
+            assertEquals(9, f.native.beginSession(PROGRESS_CHAPTER).progressValue().pageIndex)
+            assertEquals(before, f.currentSnapshot())
+            assertNull(f.oldSnapshot())
         }
     }
 

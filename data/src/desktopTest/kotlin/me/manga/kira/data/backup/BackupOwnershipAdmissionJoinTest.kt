@@ -3,6 +3,8 @@ package me.manga.kira.data.backup
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.encodeToString
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.backup.model.BackupFile
 import me.manga.kira.data.backup.model.BackupHistoryItem
 import me.manga.kira.data.backup.model.BackupManga
@@ -16,9 +18,32 @@ import okio.use
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /** Source-join controls for typed ownership after whole-archive admission. */
 class BackupOwnershipAdmissionJoinTest {
+    @Test
+    fun ambiguousFormatOneAliasesFailBeforeImportingEitherWork() = runTest {
+        ProgressRuntimeFixture().use { runtime ->
+            val files = BackupTestFileSystem("ambiguous-alias")
+            try {
+                val first = twoWorks().mangas.first()
+                val document = BackupFile(formatVersion = 1, mangas = listOf(
+                    first, first.copy(url = first.url.replace("current.test", "old.test")),
+                ))
+                val repository = backupTestRepository(runtime.db, files, BackupMergeWriter(runtime.owners, runtime.legacySettings))
+                val result = assertIs<AppResult.Failure>(repository.importBackup(files.writeManifest(document)))
+                assertIs<AppError.Storage.Constraint>(result.error)
+                assertTrue(runtime.db.backupDao().getAllSavedManga().isEmpty())
+                assertTrue(runtime.db.readerProgressDao().worksForApi(first.api).isEmpty())
+                assertTrue(runtime.db.readerLegacyCleanupDao().allReceipts().isEmpty())
+            } finally {
+                files.cleanUp()
+            }
+        }
+    }
+
     @Test
     fun sameTitleDifferentPortableOwnersRemainDistinctAfterBoundedImport() = runTest {
         ProgressRuntimeFixture().use { runtime ->

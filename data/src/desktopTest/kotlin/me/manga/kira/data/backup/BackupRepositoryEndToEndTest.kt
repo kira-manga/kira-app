@@ -4,13 +4,18 @@
 package me.manga.kira.data.backup
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.repository.BackupRepositoryImpl
 import me.manga.kira.data.repository.libraryParent
 import me.manga.kira.data.repository.librarySavedChapter
 import me.manga.kira.data.repository.progress.ProgressRuntimeFixture
 import me.manga.kira.data.repository.progress.seedLegacy
+import me.manga.kira.data.repository.selection.StrictSourceSelectionMigration
+import me.manga.kira.data.repository.selection.strictRule
+import me.manga.kira.data.repository.selection.strictToken
 import me.manga.kira.domain.model.backup.BackupScope
 import me.manga.kira.domain.model.backup.BackupSelection
 import me.manga.kira.domain.model.identity.ChapterLocator
@@ -107,6 +112,75 @@ class BackupRepositoryEndToEndTest {
             assertEquals(first.chapter.url, history.getValue(first.manga.url).chapterUrl)
             assertEquals(7, history.getValue(first.manga.url).lastReadPage)
         }
+
+    @Test
+    fun oldHostPackage_mergesIntoCurrentHostWithoutDuplicatingOwnersOrPackedDownloads() = runTest {
+        val incoming = seedBackupManga(source, sourceFs, "Old title", "alias", true, host = "old.test")
+        val exported = sourceRepository.exportBackup(BackupScope.FullLibrary, includeDownloads = true).success()
+        val receiver = seedCurrentAliasReceiver(incoming)
+        val parents = targetDb.backupDao().getAllSavedManga()
+        val historyId = targetDb.backupDao().getAllHistoryOnce().single().id
+        val imported = targetRepository.importBackup(exported.archivePath).success()
+        assertEquals(0, imported.mangasAdded)
+        assertEquals(0, imported.chaptersAdded)
+        assertEquals(1, imported.downloadsRestored)
+        assertEquals(parents, targetDb.backupDao().getAllSavedManga())
+        val restored = assertImportedAliasState(receiver, historyId)
+        val mergedHistory = targetDb.backupDao().getAllHistoryOnce().single()
+        // Real nonempty SQL projection, not shipping worker/native exclusion evidence.
+        target.transactions.write {
+            StrictSourceSelectionMigration(targetDb.sourceSelectionMigrationDao(), targetDb.readerProgressDao())
+                .migrateInTransaction(strictToken(), listOf(strictRule(receiver.manga.api, "https://current.test")))
+        }
+        val repeated = targetRepository.importBackup(exported.archivePath).success()
+        assertEquals(0, repeated.mangasAdded)
+        assertEquals(0, repeated.chaptersAdded)
+        assertEquals(0, repeated.downloadsRestored)
+        assertEquals(restored, assertImportedAliasState(receiver, historyId))
+        assertEquals(mergedHistory, targetDb.backupDao().getAllHistoryOnce().single())
+        val work = WorkLocator(receiver.manga.api, receiver.manga.url)
+        val scope = BackupScope.Mangas(listOf(BackupSelection(work, receiver.manga.title)))
+        assertEquals(1, targetRepository.exportBackup(scope, includeDownloads = true).success().downloadCount)
+    }
+
+    private suspend fun seedCurrentAliasReceiver(incoming: SeededBackupManga): SeededBackupManga {
+        val occupied = target.parent(libraryParent(url = "https://current.test/occupied"))
+        target.chapter(librarySavedChapter(occupied))
+        val current = target.parent(incoming.manga.copy(
+            id = 0, url = "https://current.test/manga/alias", title = "Current title",
+        ))
+        val child = target.chapter(incoming.chapter.copy(
+            id = 0, mangaId = current.id, url = "https://current.test/chapter/alias-1",
+            isDownloaded = false, localImagePaths = emptyList(), lastReadDate = 0,
+        ))
+        val locator = ChapterLocator(WorkLocator(current.api, current.url), child.url)
+        target.native.save(target.native.beginSession(locator).success().handle, 2).success()
+        val history = source.db.backupDao().getAllHistoryOnce().single().copy(
+            id = 0, mangaId = current.id, mangaUrl = current.url, chapterUrl = child.url,
+            lastReadDate = LocalDateTime(2026, 7, 17, 12, 0), lastReadPage = 2,
+        )
+        check(targetDb.backupDao().insertHistoryRow(history) > 0)
+        return SeededBackupManga(current, child)
+    }
+
+    private suspend fun assertImportedAliasState(receiver: SeededBackupManga, historyId: Long): SavedChapterEntity {
+        val (current, child) = receiver
+        val restored = targetDb.backupDao().getChaptersForManga(current.id).single()
+        assertEquals(child.id, restored.id)
+        assertEquals(child.url, restored.url)
+        assertTrue(restored.isDownloaded)
+        val locator = ChapterLocator(WorkLocator(current.api, current.url), child.url)
+        assertEquals(7, target.native.readPosition(locator).success())
+        val history = targetDb.backupDao().getAllHistoryOnce().single()
+        assertEquals(historyId, history.id)
+        assertEquals(current.id, history.mangaId)
+        assertEquals(current.url, history.mangaUrl)
+        assertEquals(child.url, history.chapterUrl)
+        assertEquals(7, history.lastReadPage)
+        assertEquals(1, backupTestCbzReader(targetFs).pageCount(restored.localImagePaths.single().toPath()))
+        assertEquals(child.id, targetDb.backupDao().getDownloadRowByChapter(child.id)?.chapterId)
+        return restored
+    }
 
     @Test
     fun individualMangaPackage_restoresOnlyTheSelectedManga() =

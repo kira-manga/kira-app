@@ -25,8 +25,9 @@ class LibraryIdentityRuntimeTest {
     fun same_title_distinct_works_resolve_and_mutate_by_owner_only() = runTest {
         LibraryIdentityFixture().use { f ->
             val first = f.parent()
-            val second = f.parent(libraryParent("https://current.test/work/two"))
+            val second = f.parent(libraryParent("https://current.test/work/two").copy(language = "ar"))
             assertEquals(first.title, second.title)
+            assertNotEquals(first.language, second.language)
             assertNotEquals(first.id, second.id)
             assertEquals(first.id, f.repository.get(first.savedIdentity().locator).getOrNull()?.identity?.id)
             assertEquals(second.id, f.repository.get(second.savedIdentity().locator).getOrNull()?.identity?.id)

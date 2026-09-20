@@ -46,10 +46,8 @@ class DetailsWorkIdentityTest {
         override val io = dispatcher
         override val unconfined = dispatcher
     }
-
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
-
     @AfterTest
     fun tearDown() {
         store.clear()
@@ -77,6 +75,10 @@ class DetailsWorkIdentityTest {
         assertEquals("Renamed", f.vm.state.value.manga?.title)
         assertEquals(f.saved.owner, f.library.lastRefreshRequests.single().owner)
         assertEquals(f.saved.owner.locator, f.library.lastRefreshRequests.single().fetched.requested)
+        f.saved.saved.value = renamed.copy(chapters = renamed.chapters.map { it.copy(isRead = false) })
+        runCurrent()
+        assertEquals(f.saved.owner, f.vm.state.value.savedOwner)
+        assertFalse(assertNotNull(f.vm.state.value.details).chapters.single().isRead)
         f.vm.submit(DetailsIntent.OnEnter(manga(title = "Another nav title")))
         assertEquals(1, f.fetch.fetchCount, "a title change is not a new work")
         f.vm.submit(DetailsIntent.OnExportManga)
