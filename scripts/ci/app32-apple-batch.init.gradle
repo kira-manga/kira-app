@@ -1,0 +1,98 @@
+// Observe/bound the ordinary graph. No source/compiler/dependency replacement or schema replay.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.tasks.testing.AbstractTestTask
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def filters = new JsonSlurper().parseText(System.getenv('APP32_TEST_FILTERS'))
+def requested = new JsonSlurper().parseText(System.getenv('APP32_REQUESTED_TASKS'))
+def device = System.getenv('APP32_DEVICE')
+def work = new File(System.getenv('APP32_OWNED_ROOT')).canonicalFile
+def simulatorHome = System.getenv('APP32_SIMULATOR_HOME')
+def testPaths = [':data:iosSimulatorArm64Test']
+def compileTests = testPaths.collect { it.replace('iosSimulatorArm64Test', 'compileTestKotlinIosSimulatorArm64') }
+def links = testPaths.collect { it.replace('iosSimulatorArm64Test', 'linkDebugTestIosSimulatorArm64') }
+def observed = requested + compileTests + links
+def modules = [':composeApp', ':core', ':domain', ':data', ':data:local', ':data:remote', ':data:download',
+               ':platform', ':presentation', ':ui', ':sources:contracts', ':sources:engine', ':sources:config', ':sources:legacy']
+def mains = modules.collect { it + ':compileKotlinIosSimulatorArm64' }
+require(device == null && filters.keySet() == testPaths.toSet() && filters.values()*.size() == [13] &&
+    requested == testPaths, 'Only the bound App26 data unit tests; no repeated ComposeApp MAIN requests or custom device')
+
+def swiftpm = { task ->
+    // KGP 2.4 adds these ordinary EMPTY prerequisites to native test linking.
+    // Leave its onlyIf predicates intact. Actual generation/fetch/sync/build is forbidden.
+    task.doFirst {
+        if (task.name == 'serializeSwiftPMDependenciesMetadataForLockFiles') {
+            require(task.inputs.properties['importedSpmModules'].empty &&
+                task.transitiveSwiftPMDependencies.get().metadataByDependencyIdentifier.values().every { it.dependencies.empty },
+                'Nonempty SwiftPM metadata is outside this batch')
+        } else if (task.name == 'computeLocalPackageDependencyInputFiles') {
+            require(task.localPackages.get().empty, 'No SwiftPM local package input')
+        } else if (task.name.startsWith('convertSyntheticImportProjectIntoDefFile')) {
+            require(task.hasSwiftPMDependencies.get() == false, 'No SwiftPM cinterop/link input')
+        } else {
+            require(false, 'No SwiftPM generation, fetch, synchronization or build action: ' + task.path)
+        }
+    }
+}
+
+def selectTests = { task ->
+    // Keep the standard KGP device and standalone conventions; no custom create/boot lifecycle.
+    task.environment('HOME', simulatorHome)
+    task.environment('CFFIXED_USER_HOME', simulatorHome)
+    task.environment('KIRA_PACKAGES_READ_TOKEN', '') // Never give the resolver token to the Native executable.
+    task.filter.failOnNoMatchingTests = true
+    task.ignoreFailures = false
+    task.ignoreRunFailures = false
+    task.reports.junitXml.required.set(true)
+    task.reports.junitXml.outputLocation.set(new File(work, 'native-xml/' + task.project.name))
+    task.doFirst {
+        require(task.includePatterns == filters[task.path].toSet() && task.excludePatterns.empty && task.args.empty &&
+            !task.debugMode && !task.ignoreFailures && !task.ignoreRunFailures && task.filter.failOnNoMatchingTests,
+            'Exact thirteen task-adjacent native filters; no extra/excluded/ignored tests')
+        require(task.targetName == 'iosSimulatorArm64' &&
+            task.environment['HOME'] == simulatorHome && task.environment['CFFIXED_USER_HOME'] == simulatorHome &&
+            task.environment['KIRA_PACKAGES_READ_TOKEN'] == '', 'Ordinary KGP simulator unit tests, without package secret')
+    }
+}
+
+gradle.settingsEvaluated { settings ->
+    def s = gradle.startParameter
+    require(settings.settingsDir.canonicalPath == System.getenv('APP32_APP_ROOT') &&
+        gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21', 'Bound app / Gradle9.6.1 / JDK21')
+    require(!s.offline && !s.dryRun && s.excludedTaskNames.empty && s.maxWorkerCount == 1 &&
+        !s.parallelProjectExecutionEnabled && !s.buildCacheEnabled && !s.configurationCacheRequested &&
+        !s.configureOnDemand && s.taskNames.findAll { it.startsWith(':') } == requested, 'Ordinary single-worker uncached invocation')
+    require(gradle.gradleUserHomeDir.canonicalFile == new File(work, 'gradle') &&
+        System.getProperty('user.home') == new File(work, 'home').path &&
+        System.getenv('KONAN_DATA_DIR') == new File(work, 'konan').path, 'Owned fresh Gradle/Native homes')
+}
+gradle.projectsEvaluated {
+    require(gradle.includedBuilds.empty, 'Normal published package resolver only; no composite build')
+    gradle.rootProject.allprojects.each { project ->
+        require(['kotlin.native.home', 'kotlin.native.version', 'kotlin.native.distribution.type'].every {
+            project.findProperty(it) == null }, 'No Native home/version/distribution replacement')
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    require(graph.allTasks*.path.containsAll(observed) &&
+        graph.allTasks.findAll { it instanceof AbstractTestTask }*.path.toSet() == testPaths.toSet(),
+        'Only the selected data Native test compile/link/run closure')
+    graph.allTasks.each { task ->
+        require(task.project.path in modules + [':'] &&
+            !(task.name.toLowerCase() =~ /framework|swiftexport|xcode|publish|embedandsign|assemble|bundle/),
+            'No app host, UI, framework, Xcode, Store, publication or unrelated target work')
+        if (task.class.name.contains('KotlinNativeLink')) require(task.path in links, 'Only the selected data Native test link')
+        if (task.name.startsWith('compile') && task.name.contains('Kotlin') && !task.name.contains('Metadata'))
+            require(task.path in mains + compileTests, 'Only simulator MAIN prerequisites and the selected data test compiler')
+        if (task.class.name.startsWith('org.jetbrains.kotlin.gradle.plugin.mpp.apple.swiftimport.')) swiftpm(task)
+        if (task.path in testPaths) selectTests(task)
+    }
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.path in observed) logger.lifecycle('APP32_COMPLETE ' + JsonOutput.toJson([
+        path: task.path, executed: state.executed, didWork: state.didWork, skipped: state.skipped,
+        upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.class?.name,
+        nativeRuntime: task.path in testPaths ? [device: task.device.orNull, standalone: task.standalone.orNull] : null]))
+}
