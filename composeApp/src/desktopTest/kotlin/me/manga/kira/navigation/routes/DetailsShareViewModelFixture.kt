@@ -6,6 +6,7 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
 import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
@@ -52,7 +53,8 @@ internal class DetailsShareViewModelFixture : MangaDetailsRepository {
             chapters = emptyList(),
         )
     val requests = mutableListOf<Manga>()
-    val reads = DetailsShareReadPorts(owner.locator)
+    // Empty chapters still fetch, while the saved title/URL remain distinct from the response.
+    val reads = DetailsShareReadPorts(SavedWorkDetails(owner, resolved.copy(title = seed.title, url = seed.url)))
     val library = DetailsShareLibrary(owner, resolved)
     private val enqueue = EnqueueDownloadUseCase(DetailsShareDownloadActions)
     private val cancel = CancelDownloadUseCase(DetailsShareDownloadActions)

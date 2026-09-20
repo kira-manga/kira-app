@@ -96,7 +96,7 @@ class DetailsShareRouteTest {
         assertEquals(source.resolved.title, state.manga?.title)
         assertEquals(source.seed.url, state.manga?.url)
         assertEquals(source.owner, state.savedOwner)
-        assertEquals(listOf(source.owner.locator), source.library.observedKeys)
+        assertEquals(emptyList(), source.library.observedKeys, "The saved projection supplies the retained owner")
         assertEquals(source.owner, source.library.refreshRequests.single().owner)
         assertEquals(source.owner.locator, source.library.refreshRequests.single().fetched.requested)
         assertEquals(source.resolved, source.library.refreshRequests.single().fetched.details)

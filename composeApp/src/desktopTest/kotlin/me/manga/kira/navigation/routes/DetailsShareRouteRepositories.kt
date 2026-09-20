@@ -29,13 +29,14 @@ import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 
 /** Scoped in-memory observations for the real route ViewModel; no data/platform graph. */
 internal class DetailsShareReadPorts(
-    private val requested: WorkLocator,
+    private val saved: SavedWorkDetails,
 ) : AdultContentClassifier,
     SavedMangaDetailsRepository,
     DownloadsRepository,
     ConnectivityRepository,
     CompressionDeferralRepository,
     AnalyticsPort {
+    private val requested = saved.owner.locator
     val savedObservations = mutableListOf<WorkLocator>()
     val downloadObservations = mutableListOf<WorkLocator>()
 
@@ -44,7 +45,7 @@ internal class DetailsShareReadPorts(
     override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> {
         check(work == requested)
         savedObservations += work
-        return flowOf(AppResult.Success(null))
+        return flowOf(AppResult.Success(saved))
     }
 
     override fun observeForManga(manga: Manga): Flow<List<DownloadedChapter>> {
