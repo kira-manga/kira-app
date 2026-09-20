@@ -9,27 +9,16 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.LocalDate
-import me.manga.kira.core.dispatchers.DefaultDispatcherProvider
-import me.manga.kira.data.identity.AcceptedSourceAliasRule
-import me.manga.kira.data.identity.SourceAliasReadiness
-import me.manga.kira.data.identity.SourceAliasSnapshot
-import me.manga.kira.data.identity.SourceAliasSnapshotProvider
-import me.manga.kira.data.local.RoomMangaWriteTransaction
-import me.manga.kira.data.repository.LibraryMetadataRepositoryImpl
-import me.manga.kira.data.repository.library.LibraryMetadataWriter
-import me.manga.kira.data.repository.library.LibraryOwnerTransactions
-import me.manga.kira.sources.contracts.SelectedCatalogIdentity
-import me.manga.kira.sources.contracts.SelectedCatalogKind
-import me.manga.kira.sources.contracts.SourceSelectionToken
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.MangaDatabase
 import me.manga.kira.data.local.dao.ChapterDao
-import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
@@ -45,6 +34,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import me.manga.kira.domain.repository.LibraryRepository as OwnedLibraryRepository
 
 internal const val CHAPTER_NOTIFICATION_CHANNEL = "me.manga.kira.new_chapters"
 
@@ -69,6 +59,8 @@ internal class NotificationRoomFixture(
             runCatching(::releaseOwnedNative).exceptionOrNull()?.let(failure::addSuppressed)
             throw failure
         }
+    private val libraryRuntime = lazy { NotificationLibraryRuntime(context, db, File(nativeRoot, "library")) }
+    val ownedLibrary: OwnedLibraryRepository get() = libraryRuntime.value.library
 
     private fun stageOwnedNative() {
         check(System.getProperty("os.name") == "Linux") { "This pinned host fixture requires Linux x64" }
@@ -90,27 +82,13 @@ internal class NotificationRoomFixture(
         mangaDao = db.mangaDao(),
         chapterDao = chapters,
         libraryDeo = db.libraryDeo(),
-        metadata = metadata(),
+        metadata = libraryRuntime.value.metadata,
         fileService = FileService(UnusedFiles),
     )
 
-    /** Explicit fixture catalog; the real metadata writer still owns this same Room database. */
-    private fun metadata(): LibraryMetadataRepositoryImpl {
-        val token = SourceSelectionToken(1, SelectedCatalogIdentity(SelectedCatalogKind.SIGNED, 1, "a".repeat(64)), "b".repeat(64))
-        val snapshot = SourceAliasSnapshot(token, listOf(AcceptedSourceAliasRule("notification-fixture", "https://manga.example", emptyList())))
-        val aliases = object : SourceAliasSnapshotProvider {
-            override val readiness = flowOf<SourceAliasReadiness>(SourceAliasReadiness.Ready(token))
-            override suspend fun readInTransaction() = snapshot
-        }
-        return LibraryMetadataRepositoryImpl(
-            LibraryOwnerTransactions(RoomMangaWriteTransaction(db), aliases, db.mangaDao()),
-            LibraryMetadataWriter(db.mangaDao(), db.libraryDeo()), db.libraryDeo(), DefaultDispatcherProvider(),
-        )
-    }
-
     fun helper(
         covers: NotificationCovers,
-        discoveries: LibraryDeo = db.libraryDeo(),
+        discoveries: OwnedLibraryRepository = ownedLibrary,
         context: Context = this.context,
     ) = ChapterNotificationHelper(context, discoveries, covers)
 
@@ -156,6 +134,20 @@ internal class NotificationRoomFixture(
             .first()
             .sortedBy { it.id }
 
+    suspend fun assertStoredWithRealChapterIds(receipt: LibraryRefreshReceipt) {
+        val rows = receipt.notifications
+        val stored = updates().associateBy { it.id }
+        assertEquals(rows.map { it.notificationId }.toSet(), stored.keys)
+        assertEquals(receipt.addedChapters, rows.size)
+        val chapters = db.chapterDao().getChaptersByMangaIdR(receipt.owner.id).associateBy { it.url }
+        // Previously saved chapters need not have a discovery notification.
+        assertEquals(rows.size, chapters.values.count { chapter -> rows.any { it.chapterId == chapter.id } })
+        rows.forEach {
+            assertEquals(chapters.getValue(it.chapter.url).id, it.chapterId)
+            assertNotificationPayload(receipt.owner.id, it, stored.getValue(it.notificationId))
+        }
+    }
+
     suspend fun assertStoredWithRealChapterIds(rows: List<ChapterNotification>) {
         assertEquals(rows.sortedBy { it.id }, updates())
         val chapters = db.chapterDao().getChaptersByMangaIdR(rows.first().mangaId).associateBy { it.url }
@@ -166,6 +158,7 @@ internal class NotificationRoomFixture(
 
     override fun close() {
         // Callers join all Room users first. If close fails, retain native state for the owner.
+        if (libraryRuntime.isInitialized()) libraryRuntime.value.close()
         db.close()
         releaseOwnedNative()
     }
@@ -278,9 +271,10 @@ internal suspend fun persistenceFailure(
     helper: ChapterNotificationHelper,
     manga: SavedMangaEntity,
     chapters: List<SavedChapterEntity>,
-) = runCatching {
-    helper.displayNotifications(helper.persistNewChapterNotifications(manga, chapters))
-}.exceptionOrNull()
+): AppError = when (val result = helper.persistNewChapterNotifications(notificationRefreshRequest(manga, chapters))) {
+    is AppResult.Failure -> result.error
+    is AppResult.Success -> throw AssertionError("Expected a persistence refusal, got ${result.value}")
+}
 
 /** Only detects forbidden entry; does not model transport or capability decisions. */
 internal class CountingCovers : NotificationCovers {

@@ -8,9 +8,11 @@ import android.app.NotificationManager
 import android.database.sqlite.SQLiteException
 import kotlinx.coroutines.runBlocking
 import me.manga.kira.R
-import me.manga.kira.data.local.dao.LibraryDeo
-import me.manga.kira.data.local.entity.ChapterNotification
+import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.di.appKoinModule
+import me.manga.kira.domain.model.library.LibraryChapterNotification
+import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.locale.LocaleOnlyTestApplication
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -61,22 +63,25 @@ class ChapterNotificationHelperTest {
             room.db.chapterDao().insertChapters(chapters.take(3))
             val cover = NotificationNativeCoverWitness()
             val helper = room.helper(cover.loader)
-            val committed = helper.persistNewChapterNotifications(manga, chapters)
+            val receipt = helper.persistFixtureNotifications(manga, chapters)
+            val committed = receipt.notifications
+            assertEquals(6, receipt.addedChapters)
             assertEquals(6, committed.size)
-            assertEquals(setOf(manga.title), committed.map { it.mangaTitle }.toSet())
-            assertEquals(setOf(manga.imageUrl), committed.map { it.mangaImageUrl }.toSet())
-            room.assertStoredWithRealChapterIds(committed)
+            assertEquals(setOf(manga.title), committed.map { it.manga.title }.toSet())
+            assertEquals(setOf(manga.imageUrl), committed.map { it.manga.coverUrl }.toSet())
+            room.assertStoredWithRealChapterIds(receipt)
+            val beforeDisplay = room.updates()
             assertTrue(posting.posted.isEmpty())
             cover.assertIdle()
 
             helper.displayNotifications(committed)
 
             val expected =
-                (9 downTo 4).map { number -> committed.single { it.chapterNumber == number.toString() } }
-            assertEquals(expected.map { it.id.toInt() }, posting.posted.map { it.first })
+                (9 downTo 4).map { number -> committed.single { it.chapter.number == number.toString() } }
+            assertEquals(expected.map { it.notificationId.toInt() }, posting.posted.map { it.first })
             cover.assertSingleDecode()
             posting.posted.zip(expected).forEach { (record, row) -> assertNotificationContent(record.second, row) }
-            assertEquals(committed.sortedBy { it.id }, room.updates())
+            assertEquals(beforeDisplay, room.updates())
         }
 
     @Test
@@ -94,7 +99,7 @@ class ChapterNotificationHelperTest {
                 denyNotifications(denial)
                 try {
                     val manga = room.manga(denial)
-                    val rows = helper.persistNewChapterNotifications(manga, room.chapters(manga, 8))
+                    val rows = helper.persistFixtureNotifications(manga, room.chapters(manga, 8)).notifications
                     helper.displayNotifications(rows)
                     assertEquals(8, room.updates().count { it.mangaId == manga.id })
                     cover.assertIdle()
@@ -117,7 +122,7 @@ class ChapterNotificationHelperTest {
             val covers = CountingCovers()
             val helper = room.helper(covers)
 
-            val row = helper.persistNewChapterNotifications(target, listOf(stale)).single()
+            val row = helper.persistFixtureNotifications(target, listOf(stale)).notifications.single()
 
             val saved = checkNotNull(room.db.chapterDao().getChapterByIdSuspend(row.chapterId))
             assertEquals(target.id, saved.mangaId)
@@ -137,10 +142,11 @@ class ChapterNotificationHelperTest {
             val covers = CountingCovers()
             val helper = room.helper(covers)
 
-            val rows = helper.persistNewChapterNotifications(manga, listOf(chapter, chapter))
+            val receipt = helper.persistFixtureNotifications(manga, listOf(chapter, chapter))
+            val rows = receipt.notifications
             assertEquals(1, rows.size)
-            assertTrue(helper.persistNewChapterNotifications(manga, listOf(chapter)).isEmpty())
-            room.assertStoredWithRealChapterIds(rows)
+            assertTrue(helper.persistFixtureNotifications(manga, listOf(chapter)).notifications.isEmpty())
+            room.assertStoredWithRealChapterIds(receipt)
             assertEquals(1, room.sql.chapterInserts.get())
             assertEquals(1, room.sql.notificationInserts.get())
             assertEquals(0, covers.calls)
@@ -159,7 +165,7 @@ class ChapterNotificationHelperTest {
 
             val error = persistenceFailure(helper, manga, room.chapters(manga, 2))
 
-            assertTrue(error is SQLiteException)
+            assertTrue(error is AppError.Storage.Io && error.cause is SQLiteException)
             assertEquals(2, room.sql.chapterInserts.get())
             assertEquals(2, room.sql.notificationInserts.get())
             assertTrue(room.db.chapterDao().getChaptersByMangaIdR(manga.id).isEmpty())
@@ -178,7 +184,8 @@ class ChapterNotificationHelperTest {
             val covers = CountingCovers()
             val helper = room.helper(covers)
 
-            assertTrue(helper.persistNewChapterNotifications(old, room.chapters(old, 2)).isEmpty())
+            val result = helper.persistNewChapterNotifications(notificationRefreshRequest(old, room.chapters(old, 2)))
+            assertTrue(result is AppResult.Failure)
             assertTrue(room.db.chapterDao().getChaptersByMangaIdR(replacement.id).isEmpty())
             assertTrue(room.updates().isEmpty())
             assertEquals(0, room.sql.chapterInserts.get())
@@ -193,7 +200,7 @@ class ChapterNotificationHelperTest {
             val cover = NotificationNativeCoverWitness()
             val helper = room.helper(cover.loader, context = brokenContext)
             val manga = room.manga()
-            val rows = helper.persistNewChapterNotifications(manga, room.chapters(manga, 8))
+            val rows = helper.persistFixtureNotifications(manga, room.chapters(manga, 8)).notifications
             assertEquals(0, brokenContext.lookups)
 
             helper.displayNotifications(rows)
@@ -209,7 +216,7 @@ class ChapterNotificationHelperTest {
         runBlocking {
             val dependencies =
                 module {
-                    single<LibraryDeo> { room.db.libraryDeo() }
+                    single<LibraryRepository> { room.ownedLibrary }
                 }
             val app =
                 koinApplication {
@@ -220,10 +227,11 @@ class ChapterNotificationHelperTest {
                 assertTrue(app.koin.get<NotificationCovers>() is NotificationCoverLoader)
                 val helper = app.koin.get<ChapterNotificationHelper>()
                 val manga = room.manga(cover = "")
-                val rows = helper.persistNewChapterNotifications(manga, room.chapters(manga, 1))
+                val receipt = helper.persistFixtureNotifications(manga, room.chapters(manga, 1))
+                val rows = receipt.notifications
                 helper.displayNotifications(rows)
-                assertEquals(rows, room.updates())
-                assertEquals(rows.single().id.toInt(), posting.posted.single().first)
+                room.assertStoredWithRealChapterIds(receipt)
+                assertEquals(rows.single().notificationId.toInt(), posting.posted.single().first)
                 posting.assertTextOnly()
                 assertFalse(context is me.manga.kira.MyApp)
             } finally {
@@ -233,11 +241,11 @@ class ChapterNotificationHelperTest {
 
     private fun assertNotificationContent(
         notification: Notification,
-        row: ChapterNotification,
+        row: LibraryChapterNotification,
     ) {
-        assertEquals(row.mangaTitle, notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals(row.manga.title, notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
         assertEquals(
-            context.getString(R.string.chapter_is_available, row.chapterNumber),
+            context.getString(R.string.chapter_is_available, row.chapter.number),
             notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString(),
         )
         assertEquals(CHAPTER_NOTIFICATION_CHANNEL, notification.channelId)
