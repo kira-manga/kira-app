@@ -1,0 +1,111 @@
+// Bound the ordinary invocation and report its requested tasks; do not rewrite the source graph.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.testing.Test
+
+def require = { ok, message -> if (!ok) throw new GradleException(message.toString()) }
+def filters = new JsonSlurper().parseText(System.getenv('APP32_TEST_FILTERS'))
+def requested = new JsonSlurper().parseText(System.getenv('APP32_REQUESTED_TASKS'))
+def marker = '-Dapp32.owned.root=' + System.getenv('APP32_OWNED_ROOT')
+
+gradle.settingsEvaluated { settings ->
+    def s = gradle.startParameter
+    require(settings.settingsDir.canonicalPath == System.getenv('APP32_APP_ROOT'), 'Bound app root only')
+    require(gradle.gradleVersion == '9.6.1' && System.getProperty('java.specification.version') == '21',
+        'Gradle9.6.1 / installed JDK21 required')
+    require(!s.offline && !s.dryRun && s.excludedTaskNames.empty && s.maxWorkerCount == 1 &&
+        !s.parallelProjectExecutionEnabled && !s.buildCacheEnabled && !s.configurationCacheRequested &&
+        !s.configureOnDemand && s.taskNames.findAll { it.startsWith(':') } == requested,
+        'Exact ordinary online single-worker invocation; no exclusions/caches/configuration pruning')
+}
+gradle.projectsEvaluated {
+    require(gradle.includedBuilds.empty, 'Use the normal published package resolver, no composite build')
+    gradle.rootProject.allprojects.each { p ->
+        p.tasks.withType(Test).configureEach { t ->
+            t.setEnvironment(t.environment.findAll { key, value -> key != 'KIRA_PACKAGES_READ_TOKEN' })
+            if (filters.containsKey(t.path)) {
+                t.maxParallelForks = 1
+                t.forkEvery = 0
+                t.maxHeapSize = '1g'
+                t.filter.failOnNoMatchingTests = true
+                t.reports.junitXml.required.set(true)
+                t.jvmArgs('-XX:MaxMetaspaceSize=512m', '-XX:ActiveProcessorCount=2', marker)
+                t.systemProperty('java.awt.headless', 'true')
+                t.systemProperty('user.home', System.getenv('HOME'))
+                t.systemProperty('java.io.tmpdir', System.getenv('TMPDIR'))
+                t.doFirst {
+                    require(t.filter.commandLineIncludePatterns.toSet() == filters[t.path].toSet(),
+                        'Exact task-adjacent reviewed filters required: ' + t.path)
+                    require(t.maxParallelForks == 1 && t.maxHeapSize == '1g', 'Bounded test JVM only')
+                    // Functional-only drift guard, not App61 producer/provenance acceptance.
+                    def digest = { f -> MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+                    if (t.path == ':app:testDebugUnitTest') {
+                        // Inspect the same ordinary Android runtime configuration, without changing it.
+                        // Its two AARs must retain the recorded published identities. Their classes.jar
+                        // bytes must occur exactly once each on the actual transformed Test classpath.
+                        def artifacts = p.configurations.getByName('debugUnitTestRuntimeClasspath')
+                            .resolvedConfiguration.resolvedArtifacts.findAll {
+                                it.moduleVersion.id.group == 'me.manga.kira.source'
+                            }
+                        def expected = [
+                            'source-engine-android-0.1.0.aar': '94316feb00f9c4acb3c8268faa957f8609e04a85f9beecb59a4b1d99fb5fa651',
+                            'source-contract-android-0.1.0.aar': '00e18971d896a537afb6485b2919352848a028e7bfaca8e8ce9e955d9b8d1185'
+                        ]
+                        def actual = artifacts.collectEntries { [(it.file.name): digest(it.file)] }
+                        logger.lifecycle('APP29_HOST_ANDROID_INPUT ' + JsonOutput.toJson(actual))
+                        require(artifacts.size() == 2 && actual == expected && artifacts.every {
+                            it.moduleVersion.id.version == '0.1.0'
+                        }, 'Exact normal Android source-engine/contract AAR pair required')
+                        def classHashes = artifacts.collect { a ->
+                            new ZipFile(a.file).withCloseable { zip ->
+                                def entry = zip.getEntry('classes.jar')
+                                require(entry != null && entry.size > 0 && entry.size < 1024 * 1024,
+                                    'Bounded Android engine classes.jar required')
+                                zip.getInputStream(entry).withCloseable { stream ->
+                                    MessageDigest.getInstance('SHA-256').digest(stream.bytes).encodeHex().toString()
+                                }
+                            }
+                        }
+                        def testHashes = t.classpath.files.findAll { it.isFile() && it.name.endsWith('.jar') }.collect(digest)
+                        require(classHashes.toSet().size() == 2 && classHashes.every { h -> testHashes.count(h) == 1 },
+                            'Both published Android class payloads must be on the actual Test classpath exactly once')
+                        logger.lifecycle('APP29_HOST_ANDROID_CLASSES ' + JsonOutput.toJson(classHashes))
+                    } else {
+                        def jars = t.classpath.files.findAll {
+                            it.name.startsWith('source-engine-') || it.name.startsWith('source-contract-')
+                        }
+                        def selected = jars.collect { f -> [name: f.name, sha256: digest(f)] }
+                        def actual = selected.collectEntries { [(it.name): it.sha256] }
+                        def expected = t.path == ':composeApp:desktopTest' ? [
+                            'source-engine-jvm-0.1.0.jar': '764233f4a177970d6473559445221b02ff8a93f7d10ab3a42a2a20eceedb6460',
+                            'source-contract-jvm-0.1.0.jar': '817555990e1822c2ff33c45ea66af5af92b406a239d53bc120b211b5be83017d'
+                        ] : [:]
+                        require(t.path in [':composeApp:desktopTest', ':data:desktopTest', ':presentation:desktopTest'],
+                            'No unbound task-specific engine guard')
+                        logger.lifecycle("APP29_HOST_PUBLISHED_INPUT ${t.path} " + JsonOutput.toJson(selected))
+                        require(actual.size() == jars.size() && actual == expected,
+                            'Exact task-scoped published source-engine/contract Test artifacts required')
+                    }
+                }
+            }
+        }
+        [JavaExec, Exec].each { type ->
+            p.tasks.withType(type).configureEach { t ->
+                t.setEnvironment(t.environment.findAll { key, value -> key != 'KIRA_PACKAGES_READ_TOKEN' })
+            }
+        }
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    require(graph.allTasks.findAll { it instanceof Test }*.path.toSet() == filters.keySet(),
+        'Only the selected Test tasks; no UI automation or broad suite')
+}
+gradle.taskGraph.afterTask { task, state ->
+    if (task.path in requested) logger.lifecycle('APP32_COMPLETE ' + JsonOutput.toJson([
+        path: task.path, executed: state.executed, didWork: state.didWork, skipped: state.skipped,
+        upToDate: state.upToDate, noSource: state.noSource, failure: state.failure?.class?.name]))
+}
