@@ -49,17 +49,33 @@ jobs:
                       with opener.open(request, timeout=20) as response:
                           row['status'] = response.status
                           if response.status == 200:
+                              limit = 4 * 1024 * 1024
+                              declared = response.headers.get('Content-Length')
+                              if declared is not None:
+                                  if not declared.isascii() or not declared.isdecimal():
+                                      raise ValueError()
+                                  declared = int(declared)
+                                  if declared > limit:
+                                      raise ValueError()
                               digest = hashlib.sha256()
-                              while row['bytes'] < 4 * 1024 * 1024:
-                                  chunk = response.read(min(65536, 4 * 1024 * 1024 - row['bytes']))
+                              complete = False
+                              while row['bytes'] < limit:
+                                  chunk = response.read(min(65536, limit - row['bytes']))
                                   if not chunk:
-                                      row['sha256'] = digest.hexdigest()
-                                      row['expected_match'] = row['sha256'] == expected
+                                      complete = True
                                       break
                                   row['bytes'] += len(chunk)
                                   digest.update(chunk)
                               else:
-                                  row['status'] = 'SIZE_LIMIT'
+                                  # Accept exactly 4MiB only with known completed framing; never probe beyond it.
+                                  complete = declared == limit and not response.chunked
+                                  if not complete:
+                                      row['status'] = 'SIZE_LIMIT'
+                              if declared is not None and row['bytes'] != declared:
+                                  raise ValueError()
+                              if complete:
+                                  row['sha256'] = digest.hexdigest()
+                                  row['expected_match'] = row['sha256'] == expected
                   except urllib.error.HTTPError as error:
                       row['status'] = error.code
                       error.close()
