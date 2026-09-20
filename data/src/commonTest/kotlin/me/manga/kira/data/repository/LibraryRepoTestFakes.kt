@@ -12,7 +12,6 @@ import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.HistoryItemD
 import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 
@@ -181,22 +180,6 @@ class RecordingHistoryDao : HistoryDao {
         lastReadPage: Int,
         totalPages: Int,
     ) = Unit
-}
-
-/** Read-progress fake that records which chapter urls had their resume position cleared. */
-class RecordingReadProgressRepository : ReadProgressRepository {
-    val cleared = mutableListOf<String>()
-
-    override suspend fun save(
-        chapterUrl: String,
-        pageIndex: Int,
-    ) = Unit
-
-    override suspend fun load(chapterUrl: String): Int? = null
-
-    override suspend fun clear(chapterUrl: String) {
-        cleared += chapterUrl
-    }
 }
 
 /** In-memory [ChapterDownloadDao] exposing only the active-download lookup the purge path uses. */

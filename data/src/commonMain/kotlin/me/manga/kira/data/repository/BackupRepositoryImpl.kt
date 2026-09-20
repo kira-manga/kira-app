@@ -14,16 +14,20 @@ import me.manga.kira.core.result.appSuccess
 import me.manga.kira.data.backup.BackupExporter
 import me.manga.kira.data.backup.BackupFormatTooNew
 import me.manga.kira.data.backup.BackupImporter
+import me.manga.kira.data.backup.BackupOwnershipException
 import me.manga.kira.data.backup.BackupRun
 import me.manga.kira.data.backup.BackupStopped
+import me.manga.kira.data.repository.progress.ProgressIdentityException
 import me.manga.kira.domain.model.backup.BackupExportResult
 import me.manga.kira.domain.model.backup.BackupImportResult
 import me.manga.kira.domain.model.backup.BackupPhase
 import me.manga.kira.domain.model.backup.BackupProgress
 import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.model.backup.isValid
 import me.manga.kira.domain.repository.BackupRepository
 import me.manga.kira.platform.backup.ZipLimitExceededException
 import me.manga.kira.platform.backup.backupImportError
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import okio.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -37,6 +41,7 @@ class BackupRepositoryImpl(
     private val exporter: BackupExporter,
     private val importer: BackupImporter,
     private val dispatchers: DispatcherProvider,
+    private val operations: DownloadOperationExclusion,
 ) : BackupRepository {
     private val progress = MutableStateFlow(BackupProgress())
     private val shouldStop = MutableStateFlow(false)
@@ -48,6 +53,7 @@ class BackupRepositoryImpl(
         scope: BackupScope,
         includeDownloads: Boolean,
     ): AppResult<BackupExportResult> = runExclusive(BackupPhase.EXPORTING) { run ->
+        if (!scope.isValid) throw InvalidBackupScope()
         exporter.run(scope, includeDownloads, run).also { result ->
             progress.update { it.copy(isRunning = false, exportResult = result) }
         }
@@ -82,8 +88,12 @@ class BackupRepositoryImpl(
         shouldStop.value = false
         progress.value = BackupProgress(phase = phase, isRunning = true)
         return try {
-            withContext(dispatchers.io) {
-                appSuccess(block(BackupRun(progress, { shouldStop.value }, currentCoroutineContext())))
+            // No input/owner capture precedes admission; nested archive/restore cleanup finishes
+            // before this operation releases, including importer NonCancellable settlement.
+            operations.withOperation {
+                withContext(dispatchers.io) {
+                    appSuccess(block(BackupRun(progress, { shouldStop.value }, currentCoroutineContext())))
+                }
             }
         } catch (stopped: BackupStopped) {
             progress.update { it.copy(isRunning = false, wasStopped = true) }
@@ -101,6 +111,9 @@ class BackupRepositoryImpl(
 
     private fun mapFailure(failure: Throwable, phase: BackupPhase): AppError =
         when {
+            failure is InvalidBackupScope -> AppError.Validation.Format("backup_scope", failure)
+            failure is BackupOwnershipException || failure is ProgressIdentityException ->
+                AppError.Storage.Constraint("backup_ownership", failure)
             failure is BackupFormatTooNew -> AppError.Validation.OutOfRange("formatVersion", failure)
             failure is ZipLimitExceededException -> AppError.Validation.OutOfRange("backup_size", failure)
             phase == BackupPhase.IMPORTING -> backupImportError(failure)
@@ -108,3 +121,5 @@ class BackupRepositoryImpl(
             else -> AppError.Unexpected("backup operation failed", failure)
         }
 }
+
+private class InvalidBackupScope : IllegalArgumentException("Invalid backup scope")

@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
 /** Existing real iOS repository/Room fixture. No modeled state machine or OS-termination claim. */
 class IosManifestRecoverySafetyTest {
     @Test
-    fun startupAndReconcileWaitForRecoveryThenKeepAutomaticMissingManifestResolution() = runTest {
+    fun startupAttachesBeforeRecoveryButMutationStillWaitsForAdmission() = runTest {
         for (state in listOf(DownloadingState.QUEUED, DownloadingState.RUNNING)) {
             for (retainedToken in listOf(true, false)) {
                 val fixture = IosCbzFinalizationFixture()
@@ -66,7 +66,7 @@ class IosManifestRecoverySafetyTest {
                             return List(2) { DownloadPage("https://example.test/page-$it.png", emptyMap()) }
                         }
                     }
-                    val transport = ArtifactTestTransport(ready = true)
+                    val transport = ArtifactTestTransport(fixture.operations, ready = true)
                     var transportStarts = 0
                     val observedTransport = object : BackgroundTransport by transport {
                         override suspend fun ensureReady() {
@@ -82,7 +82,7 @@ class IosManifestRecoverySafetyTest {
                     val reconcile = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                         engine.reconcileInterruptedDownloads()
                     }
-                    assertEquals(0, transportStarts, "Startup and explicit reconcile must await before transport attachment")
+                    assertEquals(2, transportStarts, "Startup and explicit reconcile attach independently of artifact recovery")
                     assertEquals(0, resolutions)
                     assertFalse(reconcile.isCompleted)
                     assertTrue(transport.enqueued.isEmpty())
@@ -131,20 +131,24 @@ class IosManifestRecoverySafetyTest {
             // Hold the real coordinator independently of startup, including on the old callback path.
             recovering = launch(start = CoroutineStart.UNDISPATCHED) { runtime.ownership.read(chapter.saved.id) {} }
             recovery.entered.await()
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             val engine = fixture.engine(CoroutineScope(coroutineContext + host), transport, downloadArtifacts = runtime.downloads)
             val page = ReceiverPage(fixture, chapter, "readiness-complete", failPublication = false)
             val completed = CompletableDeferred<Unit>()
             val failed = CompletableDeferred<Unit>()
             var completionReceipts = 0
             var failureReceipts = 0
-            engine.onPageComplete(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, page.page) {
-                completionReceipts++
-                completed.complete(Unit)
+            fixture.operations.withOperation { operation ->
+                engine.onPageComplete(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, page.page, operation) {
+                    completionReceipts++
+                    completed.complete(Unit)
+                }
             }
-            engine.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 1, claim.token, "transfer failed") {
-                failureReceipts++
-                failed.complete(Unit)
+            fixture.operations.withOperation { operation ->
+                engine.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 1, claim.token, "transfer failed", operation) {
+                    failureReceipts++
+                    failed.complete(Unit)
+                }
             }
             // Both callbacks launch UNDISPATCHED: a bypass increments get() before Room can suspend.
             assertEquals(0, recovery.claimReads)
@@ -210,7 +214,7 @@ class IosManifestRecoverySafetyTest {
                     }
                 }
                 recovery.entered.await()
-                val transport = ArtifactTestTransport()
+                val transport = ArtifactTestTransport(fixture.operations)
                 val engine = fixture.engine(CoroutineScope(coroutineContext + host), transport, downloadArtifacts = runtime.downloads)
                 var discards = 0
                 val page = ReceiverPage(fixture, chapter, "readiness-aborted", failPublication = false, beforeDiscard = { discards++ })
@@ -218,13 +222,17 @@ class IosManifestRecoverySafetyTest {
                 val failed = CompletableDeferred<Unit>()
                 var completionReceipts = 0
                 var failureReceipts = 0
-                engine.onPageComplete(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, page.page) {
-                    completionReceipts++
-                    completed.complete(Unit)
+                fixture.operations.withOperation { operation ->
+                    engine.onPageComplete(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, page.page, operation) {
+                        completionReceipts++
+                        completed.complete(Unit)
+                    }
                 }
-                engine.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 1, claim.token, "transfer failed") {
-                    failureReceipts++
-                    failed.complete(Unit)
+                fixture.operations.withOperation { operation ->
+                    engine.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 1, claim.token, "transfer failed", operation) {
+                        failureReceipts++
+                        failed.complete(Unit)
+                    }
                 }
                 assertEquals(0, recovery.claimReads)
                 assertFalse(completed.isCompleted)
@@ -278,13 +286,15 @@ class IosManifestRecoverySafetyTest {
                 }
             }
             // The existing fixture keeps startup blocked, isolating the actual delegate callback.
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             val engine = fixture.engine(CoroutineScope(coroutineContext + host), transport, downloads = downloads)
             val acknowledged = CompletableDeferred<Unit>()
             var receipts = 0
-            engine.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, "transfer failed") {
-                receipts++
-                acknowledged.complete(Unit)
+            fixture.operations.withOperation { operation ->
+                engine.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, "transfer failed", operation) {
+                    receipts++
+                    acknowledged.complete(Unit)
+                }
             }
             acknowledged.await()
             host.cancelAndJoin() // runTest also rejects any unhandled exception from the callback job.
@@ -332,7 +342,7 @@ class IosManifestRecoverySafetyTest {
                         error("Retained bytes cannot authorize a new scrape")
                     }
                 }
-                val transport = ArtifactTestTransport(ready = true)
+                val transport = ArtifactTestTransport(fixture.operations, ready = true)
                 fixture.engine(CoroutineScope(coroutineContext + host), transport, files = files, pageProvider = provider)
                 fixture.dao.observeAllDownloads().first { rows ->
                     rows.any { it.chapterId == chapter.saved.id && it.state == DownloadingState.FAILED }
@@ -349,7 +359,7 @@ class IosManifestRecoverySafetyTest {
                 if (failure == "read") {
                     // Storage is healthy now. Only explicit user Retry may grant a fresh ordinary budget.
                     assertEquals(2, fixture.manifest(chapter).pages.single().attempts)
-                    val retryTransport = ArtifactTestTransport(ready = true)
+                    val retryTransport = ArtifactTestTransport(fixture.operations, ready = true)
                     val engine = fixture.engine(CoroutineScope(coroutineContext + retryHost), retryTransport, pageProvider = provider)
                     assertTrue(engine.retryChapterDownload(fixture.download(chapter)))
                     val request = retryTransport.requests.receive()
@@ -385,7 +395,7 @@ class IosManifestRecoverySafetyTest {
             listOf(orphan, unrelated, stageDirectory / "keep", otherChapter).forEach { file ->
                 fixture.system.write(file) { writeUtf8("retained fixture bytes") }
             }
-            val transport = ArtifactTestTransport(ready = true)
+            val transport = ArtifactTestTransport(fixture.operations, ready = true)
             fixture.engine(CoroutineScope(coroutineContext + host), transport)
             val request = transport.requests.receive()
             assertEquals(claim.token, request.attemptToken)

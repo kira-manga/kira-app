@@ -22,6 +22,8 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.presentation.details.ChapterDownloadProgress
 import me.manga.kira.presentation.details.DetailsIntent
 import me.manga.kira.presentation.details.DetailsState
@@ -33,6 +35,26 @@ import kotlin.test.assertSame
 
 @OptIn(ExperimentalTestApi::class)
 class DetailsScreenSelectionTest {
+    @Test
+    fun fullMangaEntryChangesWithRawAddressButNotDisplayMetadata() = runComposeUiTest {
+        val original = selectionState().manga ?: error("Details entry fixture must carry a manga")
+        val current = mutableStateOf(original)
+        val intents = mutableListOf<DetailsIntent>()
+        setContent { DetailsEntryEffect(current.value) { intents += it } }
+        awaitIdle()
+        assertEquals(listOf<DetailsIntent>(DetailsIntent.OnEnter(original)), intents)
+
+        val other = original.copy(url = "https://example.test/other-work")
+        runOnIdle { current.value = other }
+        awaitIdle()
+        val entries = listOf<DetailsIntent>(DetailsIntent.OnEnter(original), DetailsIntent.OnEnter(other))
+        assertEquals(entries, intents)
+
+        runOnIdle { current.value = other.copy(title = "New display title", language = "fr") }
+        awaitIdle()
+        assertEquals(entries, intents)
+    }
+
     @Test
     fun markThisAndBelowHasInclusiveLabelAndDispatchesOnlyForSingleSelection() {
         val previousLocale = Locale.getDefault()
@@ -138,7 +160,7 @@ class DetailsScreenSelectionTest {
                         onNavigateBack = {},
                         onNavigateToReader = { _, _ -> },
                         onNavigateToDownloads = {},
-                        onNavigateToBackupExport = { _, _, _ -> },
+                        onNavigateToBackupExport = {},
                         onOpenInWebView = { _, _ -> },
                     )
                 }
@@ -268,5 +290,6 @@ private fun selectionState(): DetailsState {
                 chapters = chapters,
             ),
         isInLibrary = true,
+        savedOwner = SavedWorkIdentity(1L, WorkLocator(manga.api, manga.url)),
     )
 }

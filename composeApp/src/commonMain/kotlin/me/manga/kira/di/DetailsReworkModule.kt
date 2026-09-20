@@ -130,7 +130,7 @@ val detailsReworkModule: Module = module {
     // impl reads the `:shared` Room DAOs (MangaDao + ChapterDao) directly — the same singletons the
     // download/resolver impls inject — bound `single` (stateless beyond those DAO refs).
     single<SavedMangaDetailsRepository> {
-        SavedMangaDetailsRepositoryImpl(mangaDao = get(), chapterDao = get(), dispatchers = get())
+        SavedMangaDetailsRepositoryImpl(owners = get(), chapterDao = get(), dispatchers = get())
     }
     factory { ObserveSavedMangaDetailsUseCase(get()) }
 
@@ -178,7 +178,7 @@ val detailsReworkModule: Module = module {
     //  - ChapterNewBadgeRepository (over the :shared ChapterDao single) clears isNew on open WITHOUT
     //    marking read; ClearChapterNewUseCase is the VM seam. Bound single (stateless DAO wrapper).
     factory { PersistNewChaptersUseCase(get()) }
-    single<ChapterNewBadgeRepository> { ChapterNewBadgeRepositoryImpl(chapterDao = get()) }
+    single<ChapterNewBadgeRepository> { ChapterNewBadgeRepositoryImpl(owners = get(), chapterDao = get()) }
     factory { ClearChapterNewUseCase(get()) }
 
     // Per-chapter "delete from database" (Details delete button): removes the saved_chapters row.

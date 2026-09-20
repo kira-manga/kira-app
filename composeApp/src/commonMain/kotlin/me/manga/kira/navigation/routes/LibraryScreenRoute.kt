@@ -194,7 +194,12 @@ fun LibraryScreenRoute(
                 Screen.BackupRework(
                     scopeJson =
                         encodeBackupScope(
-                            keys.map { BackupScopeKey(api = it.api, language = it.language, title = it.title) },
+                            keys.map { key ->
+                                val title =
+                                    viewModel.state.value.items
+                                        .singleOrNull { it.identity.locator == key }?.manga?.title.orEmpty()
+                                BackupScopeKey(api = key.api, url = key.url, title = title)
+                            },
                         ),
                 ),
             )

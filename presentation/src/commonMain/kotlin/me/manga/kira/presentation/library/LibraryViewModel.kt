@@ -15,14 +15,13 @@ import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.onFailure
 import me.manga.kira.core.result.onSuccess
 import me.manga.kira.domain.model.LibraryManga
-import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.library.GridDensity
 import me.manga.kira.domain.model.library.LibraryCategory
 import me.manga.kira.domain.model.library.LibraryFilter
 import me.manga.kira.domain.model.library.LibrarySort
 import me.manga.kira.domain.model.library.SortDirection
 import me.manga.kira.domain.model.downloads.DownloadState
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.library.BulkRemoveFromLibraryUseCase
 import me.manga.kira.domain.usecase.library.ObserveLibraryCategoryUseCase
@@ -314,8 +313,8 @@ class LibraryViewModel(
         when (intent) {
             LibraryIntent.OnEnter -> startObserving()
             LibraryIntent.OnRefresh -> onRefresh()
-            is LibraryIntent.OnItemClick -> onItemClick(intent.manga)
-            is LibraryIntent.OnItemLongClick -> onItemLongClick(intent.key)
+            is LibraryIntent.OnItemClick -> onItemClick(intent.item)
+            is LibraryIntent.OnItemLongClick -> onSelectionToggle(intent.key)
             is LibraryIntent.OnSelectionToggle -> onSelectionToggle(intent.key)
             LibraryIntent.OnSelectionClear -> updateState {
                 it.copy(selection = emptySet(), isInSelectionMode = false)
@@ -324,7 +323,7 @@ class LibraryViewModel(
             LibraryIntent.OnExportSelected -> {
                 // feature/backup: hand the selection to the scoped Backup screen and exit
                 // selection mode (the handoff consumes the selection, like the delete flow).
-                val keys = state.value.selection.toList()
+                val keys = state.value.selection.map { it.locator }
                 if (keys.isNotEmpty()) {
                     emit(LibraryEffect.NavigateToBackupExport(keys))
                     updateState { it.copy(selection = emptySet(), isInSelectionMode = false) }
@@ -379,28 +378,19 @@ class LibraryViewModel(
             .launchIn(viewModelScope)
     }
 
-    private suspend fun onItemClick(manga: Manga) {
+    private suspend fun onItemClick(item: LibraryManga) {
         val current = state.value
         if (current.isInSelectionMode) {
-            handle(LibraryIntent.OnSelectionToggle(manga.key()))
+            onSelectionToggle(item.identity)
             return
         }
+        val manga = item.manga
         FlowLog.log("Library", "openManga", "title=${manga.title} api=${manga.api} lang=${manga.language}")
         emit(LibraryEffect.NavigateToDetails(manga))
     }
 
-    private fun onItemLongClick(key: MangaKey) {
-        updateState {
-            val next = if (key in it.selection) it.selection - key else it.selection + key
-            it.copy(selection = next, isInSelectionMode = next.isNotEmpty())
-        }
-    }
-
-    private fun onSelectionToggle(key: MangaKey) {
-        updateState {
-            val next = if (key in it.selection) it.selection - key else it.selection + key
-            it.copy(selection = next, isInSelectionMode = next.isNotEmpty())
-        }
+    private fun onSelectionToggle(owner: SavedWorkIdentity) {
+        updateState { it.togglingSelection(owner) }
     }
 
     private fun onDeleteSelectedRequest() {
@@ -674,13 +664,12 @@ class LibraryViewModel(
      * naturally on the next frame.
      *
      * Failure surfaces through [LibraryEffect.ShowError]; success is silent (the flow
-     * re-emit covers it, same posture as [onToggleInLibrary]). The use case itself returns
-     * success even when the manga is not in the library (defensive no-op — see the use case
-     * KDoc), so we don't gate on a membership check here.
+     * re-emit covers it). The writer revalidates this exact retained owner; a removed/replaced
+     * parent or conflicting address fails rather than toggling a different row.
      *
      * §179 rung 19 (Task #345).
      */
-    private suspend fun onToggleLike(key: MangaKey) {
+    private suspend fun onToggleLike(key: SavedWorkIdentity) {
         toggleMangaLiked(key).onFailure { emit(LibraryEffect.ShowError(it)) }
     }
 
@@ -690,7 +679,7 @@ class LibraryViewModel(
      *
      * §179 rung 19 (Task #345).
      */
-    private suspend fun onToggleWatchingNow(key: MangaKey) {
+    private suspend fun onToggleWatchingNow(key: SavedWorkIdentity) {
         toggleMangaWatchingNow(key).onFailure { emit(LibraryEffect.ShowError(it)) }
     }
 
@@ -786,4 +775,3 @@ class LibraryViewModel(
     }
 }
 
-private fun Manga.key(): MangaKey = MangaKey(api = api, language = language, title = title)

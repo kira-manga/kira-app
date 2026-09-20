@@ -1,6 +1,8 @@
 package me.manga.kira.data.local.di
 
 import me.manga.kira.data.local.MangaDatabase
+import me.manga.kira.data.local.MangaWriteTransaction
+import me.manga.kira.data.local.RoomMangaWriteTransaction
 import me.manga.kira.data.local.buildMangaDatabase
 import me.manga.kira.data.local.dao.BackupDao
 import me.manga.kira.data.local.dao.ChapterDao
@@ -12,6 +14,10 @@ import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.dao.LibraryDeo
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.dao.NotificationDao
+import me.manga.kira.data.local.dao.ReaderLegacyCleanupDao
+import me.manga.kira.data.local.dao.ReaderProgressDao
+import me.manga.kira.data.local.dao.EffectiveSourceSelectionDao
+import me.manga.kira.data.local.dao.SourceSelectionMigrationDao
 import me.manga.kira.data.local.dao.SourceCatalogDao
 import me.manga.kira.data.local.dao.SourcesDao
 import me.manga.kira.data.local.dao.StatisticsDeo
@@ -34,6 +40,7 @@ import org.koin.dsl.module
  */
 fun databaseModule(): Module = module {
     single<MangaDatabase> { buildMangaDatabase() }
+    single<MangaWriteTransaction> { RoomMangaWriteTransaction(get()) }
     single<HistoryDao> { get<MangaDatabase>().historyDao() }
     single<LibraryDeo> { get<MangaDatabase>().libraryDeo() }
     single<NotificationDao> { get<MangaDatabase>().notificationDao() }
@@ -47,4 +54,8 @@ fun databaseModule(): Module = module {
     single<SourcesDao> { get<MangaDatabase>().sourcesDao() }
     single<SourceCatalogDao> { get<MangaDatabase>().sourceCatalogDao() }
     single<BackupDao> { get<MangaDatabase>().backupDao() }
+    single<ReaderProgressDao> { get<MangaDatabase>().readerProgressDao() }
+    single<ReaderLegacyCleanupDao> { get<MangaDatabase>().readerLegacyCleanupDao() }
+    single<EffectiveSourceSelectionDao> { get<MangaDatabase>().effectiveSourceSelectionDao() }
+    single<SourceSelectionMigrationDao> { get<MangaDatabase>().sourceSelectionMigrationDao() }
 }

@@ -3,14 +3,22 @@ package me.manga.kira.data.repository
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
+import me.manga.kira.data.download.selection.DownloadCatalogNotReady
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.platform.cbz.CbzWriter
 import me.manga.kira.platform.download.BackgroundScheduler
 import me.manga.kira.platform.download.BackgroundTransport
 import me.manga.kira.platform.download.BackgroundWorkSignal
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.download.StagedDownloadPage
 import me.manga.kira.platform.download.TransferListener
 import me.manga.kira.platform.download.TransferRequest
@@ -34,7 +42,9 @@ import me.manga.kira.presentation.features.download.domain.clean.ManifestPage
 import okio.ForwardingFileSystem
 import okio.IOException
 import okio.Path
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 internal suspend fun IosCbzFinalizationFixture.prepareAttempt(
     chapter: IosCbzChapter,
@@ -79,6 +89,7 @@ internal fun IosCbzFinalizationFixture.engine(
         scope, BackgroundScheduler.NoOp, BackgroundWorkSignal(), DownloadNotifier.NoOp,
     ),
     downloadArtifacts: ChapterDownloadArtifacts = artifacts,
+    catalog: DownloadCatalogAdmission = TestDownloadCatalogAdmission(operations),
     pageProvider: ChapterPageProvider = object : ChapterPageProvider {
         override suspend fun pagesOrNull(api: String, mangaUrl: String, mangaLanguage: String, chapterUrl: String): List<DownloadPage> =
             error("Persisted manifests must avoid a new resolve")
@@ -94,10 +105,47 @@ internal fun IosCbzFinalizationFixture.engine(
         host = host,
         dataStoreHelper = DataStoreHelper(MapSettings()),
         artifacts = downloadArtifacts,
+        operations = operations,
+        catalog = catalog,
     )
 
+/** Local refusal probe over the existing test seam and real gate; not Room selection proof. */
+internal class IosCatalogAdmissionProbe(operations: DownloadOperationExclusion, var ready: Boolean) {
+    var preparations = 0
+        private set
+    var checks = 0
+        private set
+    private val refused = CompletableDeferred<Unit>()
+    val admission = TestDownloadCatalogAdmission(
+        operations,
+        prepare = {
+            assertNull(currentCoroutineContext()[DownloadOperationExclusion.Operation])
+            preparations++
+        },
+        checkReady = {
+            checks++
+            if (!ready) {
+                refused.complete(Unit)
+                throw DownloadCatalogNotReady()
+            }
+        },
+    )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    suspend fun assertParked(scope: TestScope) {
+        refused.await()
+        scope.advanceTimeBy(20_000)
+        scope.runCurrent()
+        assertEquals(1, preparations)
+        assertEquals(1, checks, "Refusal must not manufacture another pump/retry")
+    }
+}
+
 /** Hold startup reconciliation independently so only the callback/reopen under test can pump. */
-internal class ArtifactTestTransport(private val ready: Boolean = false) : BackgroundTransport {
+internal class ArtifactTestTransport(
+    val operations: DownloadOperationExclusion,
+    private val ready: Boolean = false,
+) : BackgroundTransport {
     lateinit var receiver: TransferListener
     private val startup = CompletableDeferred<Unit>()
     val requests = Channel<TransferRequest>(Channel.UNLIMITED)
@@ -159,12 +207,14 @@ private object UnusedReceiverCbzWriter : CbzWriter {
     ): Path = error("No complete page roster in this receiver test")
 }
 
-internal fun ArtifactTestTransport.deliverPage(
+internal suspend fun ArtifactTestTransport.deliverPage(
     chapter: IosCbzChapter,
     token: String,
     page: StagedDownloadPage,
 ): CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { acknowledged ->
-    receiver.onPageComplete(chapter.saved.mangaId, chapter.saved.id, 0, token, page) {
-        acknowledged.complete(Unit)
+    operations.withOperation { operation ->
+        receiver.onPageComplete(chapter.saved.mangaId, chapter.saved.id, 0, token, page, operation) {
+            acknowledged.complete(Unit)
+        }
     }
 }

@@ -33,9 +33,9 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
         runTest {
             val a = seed(mangaA).single()
             val b = seed(mangaB).single()
-            val bookmarks = ChapterBookmarkRepositoryImpl(db.chapterDao())
-            val reads = MarkChapterReadRepositoryImpl(db.chapterDao())
-            val badges = ChapterNewBadgeRepositoryImpl(db.chapterDao())
+            val bookmarks = ChapterBookmarkRepositoryImpl(libraryRuntime().owners, db.chapterDao())
+            val reads = MarkChapterReadRepositoryImpl(libraryRuntime().owners, db.chapterDao())
+            val badges = ChapterNewBadgeRepositoryImpl(libraryRuntime().owners, db.chapterDao())
             val resolver = ChapterIdResolverImpl(db.chapterDao())
             val absent = manga("not-saved")
 
@@ -82,7 +82,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
             val requested = urls + urls.first() + "missing"
             val expected = b.associate { it.url to it.id }
             val resolver = ChapterIdResolverImpl(db.chapterDao())
-            val reads = MarkChapterReadRepositoryImpl(db.chapterDao())
+            val reads = MarkChapterReadRepositoryImpl(libraryRuntime().owners, db.chapterDao())
 
             assertEquals(expected, resolver.resolveChapterIds(mangaB, requested))
             assertEquals(
@@ -96,7 +96,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
 
             reads.markRead(mangaB, requested)
             reads.markRead(mangaB, requested)
-            ChapterBookmarkRepositoryImpl(db.chapterDao()).toggleBookmark(mangaB, requested)
+            ChapterBookmarkRepositoryImpl(libraryRuntime().owners, db.chapterDao()).toggleBookmark(mangaB, requested)
             assertEquals(a, db.backupDao().getChaptersForManga(a.first().mangaId))
             assertEquals(
                 b.map { it.copy(isRead = true, isBookmarked = true) },
@@ -110,7 +110,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
         runTest {
             val a = seed(mangaA, bookmarked = true).single()
             db.chapterDownloadingDao().insert(download(a))
-            val bookmarks = ChapterBookmarkRepositoryImpl(db.chapterDao())
+            val bookmarks = ChapterBookmarkRepositoryImpl(libraryRuntime().owners, db.chapterDao())
             val downloads =
                 DownloadsRepositoryImpl(
                     legacy = FakeDownloadRepository(),
@@ -241,6 +241,7 @@ class ChapterOwnershipRegressionTest : ChapterOwnershipFixture() {
                     DownloadedPageFiles(appFs, inspector),
                     artifactRuntime.ownership,
                     appFs,
+                    downloadOperations,
                 )
             val chapter = Chapter("1", "shared", CHAPTER_OWNERSHIP_URL, null, false, false)
 

@@ -15,12 +15,14 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.manga.kira.R
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.core.util.notification.ChapterNotificationHelper
 import me.manga.kira.core.util.runCatchingCancellable
-import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.data.local.entity.SavedMangaEntity
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryChapterNotification
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.platform.locale.localizedResourceSnapshot
 import me.manga.kira.platform.notification.ensureLocalizedChannel
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
@@ -136,19 +138,16 @@ class LibraryRefreshWorker(
 
         override fun source(api: String) = sourceRegistry.get(api)
 
-        override fun chapters(mangaId: Long) = libraryRepository.getChaptersByMangaId(mangaId)
-
         override suspend fun updateCover(
-            mangaId: Long,
+            owner: SavedWorkIdentity,
+            fetched: WorkLocator,
             coverUrl: String,
-        ) = libraryRepository.updateMangaImageUrlEverywhere(mangaId, coverUrl)
+        ): AppResult<Unit> = libraryRepository.updateMangaImageUrlEverywhere(owner, fetched, coverUrl)
 
-        override suspend fun persistNotifications(
-            manga: SavedMangaEntity,
-            chapters: List<SavedChapterEntity>,
-        ) = chapterNotificationHelper.persistNewChapterNotifications(manga, chapters)
+        override suspend fun persistNotifications(request: LibraryRefreshRequest) =
+            chapterNotificationHelper.persistNewChapterNotifications(request)
 
-        override suspend fun displayNotifications(notifications: List<ChapterNotification>) =
+        override suspend fun displayNotifications(notifications: List<LibraryChapterNotification>) =
             chapterNotificationHelper.displayNotifications(notifications)
 
         override suspend fun stampLastSuccess() {

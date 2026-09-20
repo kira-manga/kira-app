@@ -37,13 +37,13 @@ import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.core.util.notification.NotificationRoomFixture
 import me.manga.kira.core.util.notification.notificationCoverCalls
 import me.manga.kira.core.util.notification.startWorkExecutionJob
-import me.manga.kira.data.local.dao.LibraryDeo
-import me.manga.kira.data.local.entity.ChapterNotification
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.filters.FilterSelections
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.presentation.features.library.domain.LibraryRepository
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceRegistry
@@ -53,6 +53,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import me.manga.kira.domain.repository.LibraryRepository as OwnedLibraryRepository
 
 internal const val NOTIFICATION_WAIT_MILLIS = 5_000L
 private const val DECODE_RELEASE_SECONDS = 10L
@@ -71,10 +72,11 @@ internal fun notificationRefreshWorker(
         ).setForegroundUpdater(ImmediateRefreshForeground)
         .build()
 
-private fun refreshWorkerFactory(
+internal fun refreshWorkerFactory(
     repository: LibraryRepository,
     helper: ChapterNotificationHelper,
     registry: SourceRegistry,
+    prefs: SharedPrefsHelper = SharedPrefsHelper(MapSettings()),
 ): WorkerFactory =
     object : WorkerFactory() {
         override fun createWorker(
@@ -87,7 +89,7 @@ private fun refreshWorkerFactory(
                     appContext,
                     workerParameters,
                     repository,
-                    SharedPrefsHelper(MapSettings()),
+                    prefs,
                     helper,
                     registry,
                 )
@@ -96,9 +98,10 @@ private fun refreshWorkerFactory(
             }
     }
 
-private class RefreshSource(
+internal class RefreshSource(
     private val chapters: List<SavedChapterEntity>,
-    private val beforeDetails: suspend () -> Unit,
+    private val beforeDetails: suspend () -> Unit = {},
+    private val returnedDetails: (MangaDetails) -> MangaDetails = { it },
 ) : MangaSourceClient {
     override val api = "notification-fixture"
 
@@ -119,7 +122,7 @@ private class RefreshSource(
 
     override suspend fun details(manga: Manga): AppResult<MangaDetails> {
         beforeDetails()
-        return AppResult.Success(manga.fixtureDetails(chapters))
+        return AppResult.Success(returnedDetails(manga.fixtureDetails(chapters)))
     }
 }
 
@@ -141,7 +144,7 @@ private fun Manga.fixtureDetails(chapters: List<SavedChapterEntity>) =
             },
     )
 
-private fun fixtureRegistry(client: MangaSourceClient): SourceRegistry =
+internal fun fixtureRegistry(client: MangaSourceClient): SourceRegistry =
     object : SourceRegistry {
         override val catalog = flowOf(SourceCatalogSnapshot(1, emptyList()))
 
@@ -154,7 +157,7 @@ private fun fixtureRegistry(client: MangaSourceClient): SourceRegistry =
         override fun genericDescriptors(): List<RuntimeSourceDescriptor> = emptyList()
     }
 
-private object ImmediateRefreshForeground : ForegroundUpdater {
+internal object ImmediateRefreshForeground : ForegroundUpdater {
     override fun setForegroundAsync(
         context: Context,
         id: UUID,
@@ -267,19 +270,17 @@ internal class RefreshDeadlineWitness(
     val coverWaiting = CompletableDeferred<Unit>()
     val coverExpired = CompletableDeferred<Unit>()
     val attempts = AtomicInteger()
-    val discoveries = object : LibraryDeo by room.db.libraryDeo() {
-        override suspend fun persistChapterDiscoveries(
-            api: String,
-            mangaUrl: String,
-            chapters: List<SavedChapterEntity>,
-            expectedMangaId: Long?,
-        ): List<ChapterNotification> {
+    val discoveries = object : OwnedLibraryRepository by room.ownedLibrary {
+        override suspend fun refresh(
+            requests: List<LibraryRefreshRequest>,
+            notify: Boolean,
+        ): AppResult<List<LibraryRefreshReceipt>> {
             attempts.incrementAndGet()
             withContext(dispatcher) {
                 storageWaiting.complete(Unit)
                 delay(25_000)
             }
-            return room.db.libraryDeo().persistChapterDiscoveries(api, mangaUrl, chapters, expectedMangaId)
+            return room.ownedLibrary.refresh(requests, notify)
         }
     }
     val covers =

@@ -23,6 +23,7 @@ import me.manga.kira.core.util.notification.NotificationCovers
 import me.manga.kira.core.util.notification.NotificationPostingShadow
 import me.manga.kira.core.util.notification.NotificationRoomFixture
 import me.manga.kira.core.util.notification.notificationCoverCalls
+import me.manga.kira.core.util.notification.persistFixtureNotifications
 import me.manga.kira.locale.LocaleOnlyTestApplication
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -258,10 +259,10 @@ class LibraryRefreshNotificationTest {
     private suspend fun assertFollowingMangaCanPost(requests: AtomicInteger) {
         val following = room.manga("following")
         val helper = room.helper(NotificationCoverLoader(notificationCoverCalls(requests = requests)))
-        val rows = helper.persistNewChapterNotifications(following, room.chapters(following, 1))
+        val rows = helper.persistFixtureNotifications(following, room.chapters(following, 1)).notifications
         helper.displayNotifications(rows)
         assertEquals(2, requests.get())
-        assertEquals(rows.map { it.id.toInt() }, chapterPosts().map { it.first })
+        assertEquals(rows.map { it.notificationId.toInt() }, chapterPosts().map { it.first })
     }
 
     private suspend fun assertDeadlineSplit(

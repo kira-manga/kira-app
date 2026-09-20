@@ -1,5 +1,7 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
+import me.manga.kira.data.download.selection.DownloadCatalogNotReady
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
@@ -7,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
@@ -19,6 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.manga.kira.platform.filesystem.AppFileSystem
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.platform.background.BackgroundExecutionGuard
@@ -96,6 +100,8 @@ class CoroutineDownloadRepositoryImpl(
     host: CoroutineDownloadHost,
     stages: ChapterDownloadStages,
     private val artifacts: ChapterDownloadArtifacts,
+    private val operations: DownloadOperationExclusion,
+    private val catalog: DownloadCatalogAdmission,
 ) : DownloadRepository {
     private val httpClient: HttpClient = pageTransfer.httpClient
     private val mediaInspector: PageMediaInspector = pageTransfer.mediaInspector
@@ -132,19 +138,9 @@ class CoroutineDownloadRepositoryImpl(
         applicationScope.launch(Dispatchers.Default) {
             workerLoop()
         }
-        // Recover any QUEUED rows left over from a previous process. Same wake-up path as a fresh
-        // enqueue — the worker will pull them via getNextQueuedChapter(). Guarded so a transient
-        // DB read failure here cannot escape to applicationScope (an unhandled root-coroutine
-        // throwable terminates the app on Kotlin/Native); the worker still drains on later wake-ups.
-        applicationScope.launch {
-            runCatching {
-                val pending = dao.getAllQueuedChapterIds().first()
-                if (pending.isNotEmpty()) {
-                    log.i { "Recovered ${pending.size} queued chapter(s) on startup" }
-                    wakeups.trySend(Unit)
-                }
-            }.onFailure { log.e(it) { "Startup queue recovery failed: ${it.message}" } }
-        }
+        // One startup signal uses the same prepared/admitted drain as explicit actions. No DAO
+        // capture here and no second startup coroutine/preparation racing that drain.
+        wakeups.trySend(Unit)
     }
 
     // ---- DownloadRepository: observable streams (delegate to DAO) ----
@@ -157,20 +153,20 @@ class CoroutineDownloadRepositoryImpl(
         chapter: SavedChapterEntity,
         title: String,
         mangaApi: String,
-    ) {
+    ): Unit = operations.withOperation {
         if (artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title)) != null) {
             wakeups.trySend(Unit)
         }
     }
 
-    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean {
-        if (artifacts.retry(expected) == null) return false
+    override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = operations.withOperation {
+        if (artifacts.retry(expected) == null) return@withOperation false
         wakeups.trySend(Unit)
-        return true
+        true
     }
 
-    override suspend fun deleteDownload(chapterId: Long) {
-        val row = dao.getDownloadByChapter(chapterId) ?: return
+    override suspend fun deleteDownload(chapterId: Long): Unit = operations.withOperation {
+        val row = dao.getDownloadByChapter(chapterId) ?: return@withOperation
         try {
             check(artifacts.deleteAttempt(row) { claim ->
                 val job = activeJobMutex.withLock { activeJob.takeIf { activeClaim?.token == claim.token } }
@@ -181,8 +177,8 @@ class CoroutineDownloadRepositoryImpl(
         }
     }
 
-    override suspend fun onCancel(chapterId: Long) {
-        val claim = artifacts.cancel(chapterId, CANCELLED_BY_USER) ?: return
+    override suspend fun onCancel(chapterId: Long): Unit = operations.withOperation {
+        val claim = artifacts.cancel(chapterId, CANCELLED_BY_USER) ?: return@withOperation
         val job = activeJobMutex.withLock {
             activeJob.takeIf { activeClaim?.token == claim.token }
         }
@@ -198,7 +194,7 @@ class CoroutineDownloadRepositoryImpl(
         onCancel(chapterId)
     }
 
-    override suspend fun cancelAllDownloads() {
+    override suspend fun cancelAllDownloads(): Unit = operations.withOperation {
         val active = dao.observeAllDownloads().first().filter { DownloadRecovery.isActiveDownloadState(it.state) }
         val claims = active.mapNotNull { artifacts.cancel(it.chapterId, CANCELLED_BY_USER) }
         val job = activeJobMutex.withLock { activeJob.takeIf { activeClaim?.token in claims.map { it.token } } }
@@ -213,7 +209,7 @@ class CoroutineDownloadRepositoryImpl(
     // getNextQueuedChapter (the init-block recovery only handles rows already QUEUED). There is no
     // WorkManager equivalent on iOS/Desktop — the worker parks on `wakeups` and re-queries the DAO,
     // so once the orphaned rows are QUEUED again a single wake-up drains them.
-    override suspend fun reconcileInterruptedDownloads() {
+    override suspend fun reconcileInterruptedDownloads(): Unit = operations.withOperation {
         // Exclude the row the in-process worker may have just picked up and flipped to RUNNING (the
         // init-block QUEUED recovery can start draining at construction, moments before this runs);
         // resetting it would abort a live download and re-download it from page 0. Orphans from a
@@ -226,79 +222,92 @@ class CoroutineDownloadRepositoryImpl(
     // ---- Worker loop ----
 
     private suspend fun workerLoop() {
-        // Park on the UNLIMITED wake-up channel; any trySend issued before we reach receive() is
-        // buffered (never lost), and the inner drain re-queries the DAO per iteration so a single
-        // wake-up is enough to drain whatever is QUEUED. Serialized one-job-at-a-time processing
-        // (each job flips its row to RUNNING before work) makes duplicate wake-ups harmless.
         while (currentCoroutineContext().isActive) {
-            // Park until something signals there might be work.
             wakeups.receive()
-            // Process as many queued chapters as the DB has — each iteration re-queries so newly
-            // enqueued rows during a long download still get picked up without another wake-up.
-            // The drain body runs directly on this coroutine, so a throwable from the DAO pull or
-            // the await/mutex bookkeeping (transient I/O, disk pressure) would otherwise kill the
-            // lone worker for the process lifetime; we catch it, log, and break back to the park so
-            // the next wake-up retries. CancellationException still propagates (structured concurrency).
-            while (currentCoroutineContext().isActive) {
+            try {
+                // Once per external wake-up, outside the chapter operation and engine mutex.
+                catalog.prepareLocal()
+                while (currentCoroutineContext().isActive && processNextQueued()) { /* Drain admitted chapters. */ }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: DownloadCatalogNotReady) {
+                // No chapter was captured. Do not mark FAILED or manufacture another wake-up.
+            } catch (failure: Throwable) {
+                log.e(failure) { "Worker drain failed; parking until next wake-up" }
+            }
+        }
+    }
+
+    /** One capture and producer, rather than the backlog, holds selection exclusion. */
+    private suspend fun processNextQueued(): Boolean = catalog.withAdmittedOperation { operation ->
+        val admitted = artifacts.awaitNextQueued { dao.getQueuedChaptersForWorker() }
+            ?: return@withAdmittedOperation false
+        val next = admitted.chapter
+        val claim = admitted.claim
+        val childOperation = operation.retain()
+        val job = try {
+            applicationScope.launch(Dispatchers.Default + childOperation, start = CoroutineStart.LAZY) {
                 try {
-                    val admitted = artifacts.awaitNextQueued { dao.getQueuedChaptersForWorker() } ?: break
-                    val next = admitted.chapter
-                    val claim = admitted.claim
-                    val job =
-                        applicationScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
-                            try {
-                                // Hold an iOS background-task assertion for the chapter so it can keep
-                                // going briefly if the app is backgrounded (no-op on Desktop).
-                                artifacts.ownership.producing(claim) {
-                                    backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next, claim) }
-                                }
-                            } catch (ce: CancellationException) {
-                                log.w { "Job for chapter ${next.chapterId} cancelled" }
-                                runCatching { artifacts.fail(claim, CANCELLED_BY_USER) }
-                                throw ce
-                            } catch (t: Throwable) {
-                                log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
-                                runCatching { artifacts.fail(claim, t.message) }
-                            }
-                        }
-                    activeJobMutex.withLock {
-                        activeJob = job
-                        activeChapterId = next.chapterId
-                        activeClaim = claim
+                    // Hold an iOS background-task assertion for the chapter so it can keep
+                    // going briefly if the app is backgrounded (no-op on Desktop).
+                    artifacts.ownership.producing(claim) {
+                        backgroundGuard.runGuarded("dl-${next.chapterId}") { processJob(next, claim) }
                     }
-                    job.start()
-                    job.join()
-                    // Includes a lazy job cancelled before its body could run. Its registration
-                    // preceded start, so cancellation never misses a real network/file producer.
-                    artifacts.settle(claim)
-                    // Download-progress notification (iOS): alert on the terminal outcome. The
-                    // silent per-page progress is posted inside processJob; here we fire the
-                    // banner+sound completion/failure notice, or clear it on a user cancel.
-                    runCatching {
-                        val key = next.chapterId.toInt()
-                        val finished = dao.getDownloadByChapter(next.chapterId)
-                        when (NotifierRules.onJobFinished(finished?.state, finished?.errorMsg, CANCELLED_BY_USER)) {
-                            NotifierRules.TerminalNotification.COMPLETE -> downloadNotifier.onComplete(key, notifTitle(next))
-                            NotifierRules.TerminalNotification.FAILED -> downloadNotifier.onFailed(key, notifTitle(next))
-                            NotifierRules.TerminalNotification.CLEAR -> downloadNotifier.clear(key)
-                            NotifierRules.TerminalNotification.NONE -> { /* not terminal (still running / re-queued) — leave progress */ }
-                        }
-                    }
+                } catch (ce: CancellationException) {
+                    log.w { "Job for chapter ${next.chapterId} cancelled" }
+                    runCatching { artifacts.fail(claim, CANCELLED_BY_USER) }
+                    throw ce
+                } catch (t: Throwable) {
+                    log.e(t) { "Job for chapter ${next.chapterId} failed: ${t.message}" }
+                    runCatching { artifacts.fail(claim, t.message) }
+                }
+            }
+        } catch (failure: Throwable) {
+            childOperation.release()
+            throw failure
+        }
+        // Also runs for a lazy child whose cancelled parent prevents its body from starting.
+        job.invokeOnCompletion { childOperation.release() }
+        var settled = false
+        try {
+            activeJobMutex.withLock {
+                activeJob = job
+                activeChapterId = next.chapterId
+                activeClaim = claim
+            }
+            job.start()
+            job.join()
+            artifacts.settle(claim)
+            settled = true
+            runCatching {
+                val key = next.chapterId.toInt()
+                val finished = dao.getDownloadByChapter(next.chapterId)
+                when (NotifierRules.onJobFinished(finished?.state, finished?.errorMsg, CANCELLED_BY_USER)) {
+                    NotifierRules.TerminalNotification.COMPLETE -> downloadNotifier.onComplete(key, notifTitle(next))
+                    NotifierRules.TerminalNotification.FAILED -> downloadNotifier.onFailed(key, notifTitle(next))
+                    NotifierRules.TerminalNotification.CLEAR -> downloadNotifier.clear(key)
+                    NotifierRules.TerminalNotification.NONE -> { /* not terminal (still running / re-queued) — leave progress */ }
+                }
+            }
+        } finally {
+            // Cancelling this waiter is not a stopped file producer. Retain the parent operation
+            // until the child actually exits and original-token settlement has been attempted.
+            withContext(NonCancellable) {
+                job.cancelAndJoin()
+                try {
+                    if (!settled) artifacts.settle(claim)
+                } finally {
                     activeJobMutex.withLock {
-                        if (activeChapterId == next.chapterId) {
+                        if (activeClaim?.token == claim.token) {
                             activeJob = null
                             activeChapterId = null
                             activeClaim = null
                         }
                     }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (t: Throwable) {
-                    log.e(t) { "Worker drain failed: ${t.message}; parking until next wake-up" }
-                    break
                 }
             }
         }
+        true
     }
 
     private suspend fun processJob(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim) {

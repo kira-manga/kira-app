@@ -10,6 +10,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.platform.filesystem.AppFileSystem
@@ -111,6 +112,7 @@ internal class DownloadWorkerCancellationFixture(
             downloads,
             checkNotNull(koin).koin.get<ChapterDownloadService>(),
             rows.artifacts,
+            rows.operations,
         )
 
     fun uniqueDownloadWork(): List<WorkInfo> =
@@ -122,19 +124,20 @@ internal class DownloadWorkerCancellationFixture(
         rows.seed()
         storage.settings.setUseCbzFormat(false)
         val service = fixtureDownloadService(storage, rows, dao, transport, sender)
-        koin =
-            startKoin {
-                modules(
-                    module {
-                        single<ChapterDownloadDao> { dao }
-                        single<MangaDao> { rows.db.mangaDao() }
-                        single { service }
-                        single { rows.artifacts }
-                        single<ChapterPageProvider> { transport.provider }
-                        single<AppFileSystem> { storage.fileSystem }
-                    },
-                )
-            }
+        koin = startKoin {
+            modules(
+                module {
+                    single<ChapterDownloadDao> { dao }
+                    single<MangaDao> { rows.db.mangaDao() }
+                    single { service }
+                    single { rows.artifacts }
+                    single { rows.operations }
+                    single<DownloadCatalogAdmission> { rows.catalogAdmission }
+                    single<ChapterPageProvider> { transport.provider }
+                    single<AppFileSystem> { storage.fileSystem }
+                },
+            )
+        }
     }
 
     suspend fun start() {

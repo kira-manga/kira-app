@@ -8,7 +8,7 @@ import me.manga.kira.domain.model.library.LibraryDisplay
 import me.manga.kira.domain.model.library.LibraryFilter
 import me.manga.kira.domain.model.library.LibrarySort
 import me.manga.kira.domain.model.library.SortDirection
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.presentation.mvi.MviState
 
 /**
@@ -66,7 +66,7 @@ data class LibraryState(
     /** Whether the last observed unfiltered library contains manga; unaffected by view filters. */
     val hasLibraryItems: Boolean = false,
     val searchQuery: String = "",
-    val selection: Set<MangaKey> = emptySet(),
+    val selection: Set<SavedWorkIdentity> = emptySet(),
     val isInSelectionMode: Boolean = false,
     val isDeleteDialogVisible: Boolean = false,
     /**
@@ -81,7 +81,7 @@ data class LibraryState(
      * rework's pre-GAP-LIB-15 per-card delete fired `bulkRemoveFromLibrary` directly with no
      * confirmation — a destructive data-loss path. This field gates that delete behind a confirm.
      */
-    val pendingSingleDelete: MangaKey? = null,
+    val pendingSingleDelete: SavedWorkIdentity? = null,
     val isRefreshing: Boolean = false,
     val sort: LibrarySort = LibrarySort.ALPHABETIC,
     val sortDirection: SortDirection = SortDirection.ASCENDING,

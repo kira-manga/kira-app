@@ -33,18 +33,30 @@ internal class DetailsChapterRetractions {
         return true
     }
 
+    /** Build the writer's payload without releasing retractions before it confirms success. */
+    fun previewFetch(
+        fetched: MangaDetails,
+        beforeFetch: Map<String, Long>,
+    ): MangaDetails = fetched.withoutChapterUrls(retainedAfterFetch(fetched, beforeFetch).keys)
+
     fun acceptFetch(
         fetched: MangaDetails,
         beforeFetch: Map<String, Long>,
     ): MangaDetails {
+        versions = retainedAfterFetch(fetched, beforeFetch)
+        return fetched.withoutChapterUrls(urls)
+    }
+
+    private fun retainedAfterFetch(
+        fetched: MangaDetails,
+        beforeFetch: Map<String, Long>,
+    ): Map<String, Long> {
         // Saved emissions and an older in-flight refresh cannot undo the explicit action.
         // Filter the older payload before both rendering and offering it to persistence.
         val fetchedUrls = fetched.chapters.mapTo(HashSet()) { it.url }
-        versions =
-            versions.filterNot { (url, version) ->
-                url in fetchedUrls && beforeFetch[url] == version
-            }
-        return fetched.withoutChapterUrls(urls)
+        return versions.filterNot { (url, version) ->
+            url in fetchedUrls && beforeFetch[url] == version
+        }
     }
 }
 

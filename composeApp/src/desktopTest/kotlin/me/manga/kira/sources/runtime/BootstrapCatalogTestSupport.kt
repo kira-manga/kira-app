@@ -5,15 +5,11 @@ import kotlinx.serialization.json.Json
 import me.manga.kira.sources.contracts.HttpExecutor
 import me.manga.kira.sources.contracts.RemoteSourceCatalog
 import me.manga.kira.sources.contracts.SignedSourceCatalogManifest
-import me.manga.kira.sources.contracts.SourceCatalogAcceptanceFloor
 import me.manga.kira.sources.contracts.SourceCatalogEntry
 import me.manga.kira.sources.contracts.SourceCatalogManifestResult
-import me.manga.kira.sources.contracts.SourceCatalogStore
 import me.manga.kira.sources.contracts.SourceRequest
 import me.manga.kira.sources.contracts.SourceResponse
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
-import me.manga.kira.sources.contracts.StoredSourceCatalog
-import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
 /** Test-only outer envelope; signed payloads and metadata use the production consumer models. */
 @Serializable
@@ -52,40 +48,8 @@ internal data class BootstrapSignedCatalogFixture(
 }
 
 /** A complete in-memory tier, not a claim about Room transactions or process-death persistence. */
-internal class BootstrapCatalogMemoryStore : SourceCatalogStore {
-    private var active: StoredSourceCatalog? = null
-    private var floor: SourceCatalogAcceptanceFloor? = null
-    var activations = 0
-        private set
-    var bundledProjection: SourceConfigDocument? = null
-        private set
-
-    override fun readBundled(): String = CONFIG_BACKED_SOURCES_JSON
-
-    override suspend fun projectBundled(document: SourceConfigDocument) {
-        bundledProjection = document
-    }
-
-    override suspend fun readActive(): StoredSourceCatalog? = active
-
-    override suspend fun readAcceptanceFloor(): SourceCatalogAcceptanceFloor? = floor
-
-    override suspend fun readAcceptedManifest(): SignedSourceCatalogManifest? = active?.manifest
-
-    override suspend fun findSource(
-        api: String,
-        sourceRevision: Long,
-        checksum: String,
-    ): SourceRevisionArtifact? =
-        active?.sources?.singleOrNull {
-            it.api == api && it.sourceRevision == sourceRevision && it.checksum == checksum
-        }
-
-    override suspend fun activate(catalog: StoredSourceCatalog) {
-        active = catalog
-        floor = SourceCatalogAcceptanceFloor(catalog.manifest.metadata.revision, catalog.manifest.metadata.checksum)
-        activations++
-    }
+internal class BootstrapCatalogMemoryStore : SourceSelectionTestStore(CONFIG_BACKED_SOURCES_JSON) {
+    val activations: Int get() = activationCount
 }
 
 /** Returns the retained backend bytes, without re-encoding any signed body or metadata. */
@@ -94,10 +58,11 @@ internal class BootstrapCatalogRemote(
 ) : RemoteSourceCatalog {
     val requestedEtags = mutableListOf<String?>()
     val fetchedEntries = mutableListOf<SourceCatalogEntry>()
+    var deliverManifest = true
 
     override suspend fun fetchManifest(etag: String?): SourceCatalogManifestResult {
         requestedEtags += etag
-        return SourceCatalogManifestResult.Modified(fixture.manifest)
+        return if (deliverManifest) SourceCatalogManifestResult.Modified(fixture.manifest) else SourceCatalogManifestResult.Unavailable
     }
 
     override suspend fun fetchSource(entry: SourceCatalogEntry): SourceRevisionArtifact {

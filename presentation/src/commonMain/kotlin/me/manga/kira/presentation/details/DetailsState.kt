@@ -5,6 +5,7 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.presentation.mvi.MviState
 
 /**
@@ -102,8 +103,8 @@ data class ChapterDownloadProgress(
  *    content-warning chip / chapter-list gate) is a `:ui` surface slice that consumes this flag —
  *    out of scope for the VM-wiring step that introduced it.
  *  - **`isInLibrary: Boolean` mirrors the legacy `savedMangaTitles.contains(ApiTitle)` reactive
- *    gate.** Driven by the reactive `LibraryRepository.observeIsInLibrary` flow (Room `EXISTS`
- *    query) — the VM collects the flow keyed on the current manga identity and re-emits state on
+ *    gate.** Driven by the scoped saved-details flow with a transaction-resolved retained owner
+ *    and explicit resolution failures — the VM collects by requested work and re-emits state on
  *    every cross-screen library write, so the bookmark heart stays in sync with toggles dispatched
  *    from Library / Home / Updates without any manual refresh path. Default `false` is safe: it
  *    matches the "not yet observed" boot state and the "manga not in library" steady state,
@@ -165,6 +166,10 @@ data class DetailsState(
      */
     val adultGateStep: AdultGateStep = AdultGateStep.None,
     val isInLibrary: Boolean = false,
+    /** Retained local action fence; its locator is the raw requested address, not the returned title. */
+    val savedOwner: SavedWorkIdentity? = null,
+    /** Ownership/storage failure is distinct from a genuinely absent library entry. */
+    val libraryError: AppError? = null,
     val isTogglingBookmark: Boolean = false,
     /**
      * #4: device reachability, projected from `ObserveConnectivityUseCase`. Defaults to `true`

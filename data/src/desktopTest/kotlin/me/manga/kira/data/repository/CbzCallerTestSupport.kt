@@ -31,6 +31,7 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
                 files = appFileSystem,
                 artifacts = artifactRuntime.ownership,
                 commits = artifactRuntime.commits,
+                operations = downloadOperations,
             ),
         httpCache = HttpCacheClearer { },
     )
@@ -48,8 +49,7 @@ internal fun DownloadRecoveryFixture.finalizer(
                         mangaDao = db.mangaDao(),
                         chapterDao = db.chapterDao(),
                         libraryDeo = db.libraryDeo(),
-                        notificationDao = db.notificationDao(),
-                        historyDao = db.historyDao(),
+                        metadata = LibraryTestRuntime(db, appFileSystem, artifactRuntime.ownership).covers,
                         fileService = FileService(appFileSystem),
                     ),
                 notifications = db.notificationDao(),

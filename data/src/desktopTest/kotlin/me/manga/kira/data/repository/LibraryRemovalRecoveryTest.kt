@@ -1,10 +1,8 @@
 package me.manga.kira.data.repository
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import me.manga.kira.core.dispatchers.DispatcherProvider
-import me.manga.kira.domain.repository.MangaKey
-import me.manga.kira.domain.service.FileService
+import me.manga.kira.data.mapper.savedIdentity
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.filesystem.mangaDir
 import okio.ForwardingFileSystem
@@ -23,21 +21,21 @@ class LibraryRemovalRecoveryTest {
     @Test
     fun finalRootFailureRetainsOriginalLibraryKeyForRetryAfterReopen() = downloadRecoveryTest {
         val original = seed()
-        val key = libraryKey(original)
+        val owner = libraryOwner(original)
         val mangaId = original.saved.mangaId
         val directory = appFileSystem.mangaDir(mangaId)
         val failing = failDeleting(directory, IOException("injected root cleanup failure"))
 
-        val first = library(failing).removeFromLibrary(key.api, key.language, key.title)
+        val first = library(listOf(owner), failing).removeFromLibrary(owner)
 
         assertFalse(first.isSuccess)
         assertTrue(fs.exists(directory), "the final root is still owned despite partial file cleanup")
         reopen()
-        assertEquals(mangaId, db.mangaDao().getIdByApiAndTitle(key.api, key.title))
+        assertEquals(mangaId, db.mangaDao().getMangaById(owner.id)?.id)
 
-        assertTrue(library().removeFromLibrary(key.api, key.language, key.title).isSuccess)
+        assertTrue(library(listOf(owner)).removeFromLibrary(owner).isSuccess)
         assertFalse(fs.exists(directory))
-        assertNull(db.mangaDao().getIdByApiAndTitle(key.api, key.title))
+        assertNull(db.mangaDao().getMangaById(owner.id)?.id)
         assertNull(db.chapterDao().getChapterByIdSuspend(original.saved.id))
         assertNull(dao.getDownloadByChapter(original.saved.id))
     }
@@ -46,61 +44,51 @@ class LibraryRemovalRecoveryTest {
     fun bulkRetryCountsOnlyTheRemainingOriginalParentAfterRootFailure() = downloadRecoveryTest {
         val first = seed()
         val second = seed()
-        val firstKey = libraryKey(first)
-        val secondKey = libraryKey(second)
-        val keys = listOf(firstKey, secondKey)
+        val firstOwner = libraryOwner(first)
+        val secondOwner = libraryOwner(second)
+        val owners = listOf(firstOwner, secondOwner)
         val firstDirectory = appFileSystem.mangaDir(first.saved.mangaId)
         val secondDirectory = appFileSystem.mangaDir(second.saved.mangaId)
 
         val failing = failDeleting(secondDirectory, IOException("injected root cleanup failure"))
-        assertFalse(library(failing).removeAllFromLibrary(keys).isSuccess)
+        assertFalse(library(owners, failing).removeAllFromLibrary(owners).isSuccess)
         reopen()
-        assertNull(db.mangaDao().getIdByApiAndTitle(firstKey.api, firstKey.title))
+        assertNull(db.mangaDao().getMangaById(firstOwner.id)?.id)
         assertFalse(fs.exists(firstDirectory))
-        assertEquals(second.saved.mangaId, db.mangaDao().getIdByApiAndTitle(secondKey.api, secondKey.title))
+        assertEquals(second.saved.mangaId, db.mangaDao().getMangaById(secondOwner.id)?.id)
         assertTrue(fs.exists(secondDirectory))
 
-        assertEquals(1, library().removeAllFromLibrary(keys).getOrNull())
-        assertNull(db.mangaDao().getIdByApiAndTitle(secondKey.api, secondKey.title))
+        assertFalse(library(owners).removeAllFromLibrary(owners).isSuccess, "typed stale selections must be refreshed")
+        val remaining = listOf(secondOwner)
+        assertEquals(1, library(remaining).removeAllFromLibrary(remaining).getOrNull())
+        assertNull(db.mangaDao().getMangaById(secondOwner.id)?.id)
         assertFalse(fs.exists(secondDirectory))
     }
 
     @Test
     fun cancelledRootCleanupPropagatesAndRetainsOriginalParentAfterReopen() = downloadRecoveryTest {
         val original = seed()
-        val key = libraryKey(original)
+        val owner = libraryOwner(original)
         val directory = appFileSystem.mangaDir(original.saved.mangaId)
 
         assertFailsWith<CancellationException> {
-            library(failDeleting(directory, CancellationException("cancel cleanup")))
-                .removeFromLibrary(key.api, key.language, key.title)
+            library(listOf(owner), failDeleting(directory, CancellationException("cancel cleanup")))
+                .removeFromLibrary(owner)
         }
         reopen()
-        assertEquals(original.saved.mangaId, db.mangaDao().getIdByApiAndTitle(key.api, key.title))
+        assertEquals(original.saved.mangaId, db.mangaDao().getMangaById(owner.id)?.id)
         assertTrue(fs.exists(directory))
-        assertTrue(library().removeFromLibrary(key.api, key.language, key.title).isSuccess)
+        assertTrue(library(listOf(owner)).removeFromLibrary(owner).isSuccess)
         assertFalse(fs.exists(directory))
     }
 
-    private suspend fun DownloadRecoveryFixture.libraryKey(original: RetainedDownload): MangaKey {
-        val manga = assertNotNull(db.mangaDao().getMangaById(original.saved.mangaId))
-        return MangaKey(manga.api, manga.language, manga.title)
-    }
+    private suspend fun DownloadRecoveryFixture.libraryOwner(original: RetainedDownload): SavedWorkIdentity =
+        assertNotNull(db.mangaDao().getMangaById(original.saved.mangaId)).savedIdentity()
 
-    private fun DownloadRecoveryFixture.library(fileSystem: AppFileSystem = appFileSystem) =
-        LibraryRepositoryImpl(
-            mangaDao = db.mangaDao(),
-            libraryDeo = db.libraryDeo(),
-            chapterDao = db.chapterDao(),
-            notificationDao = db.notificationDao(),
-            historyDao = db.historyDao(),
-            chapterDownloadDao = dao,
-            downloadRepository = FakeDownloadRepository(),
-            fileService = FileService(fileSystem),
-            readProgress = RecordingReadProgressRepository(),
-            dispatchers = LibraryRemovalDispatchers,
-            artifacts = ArtifactTestRuntime(db, fileSystem).ownership,
-        )
+    private fun DownloadRecoveryFixture.library(
+        owners: List<SavedWorkIdentity>,
+        fileSystem: AppFileSystem = appFileSystem,
+    ) = LibraryTestRuntime(db, fileSystem, artifactRuntime.ownership).also { it.guard.grant(owners) }.repository
 
     private fun DownloadRecoveryFixture.failDeleting(blocked: Path, failure: Throwable): AppFileSystem {
         val failing = object : ForwardingFileSystem(fs) {
@@ -115,11 +103,3 @@ class LibraryRemovalRecoveryTest {
     }
 }
 
-/** These repository tests need real I/O dispatch, but do not install or exercise a UI Main loop. */
-private object LibraryRemovalDispatchers : DispatcherProvider {
-    override val main = Dispatchers.Default
-    override val mainImmediate = Dispatchers.Default
-    override val default = Dispatchers.Default
-    override val io = Dispatchers.IO
-    override val unconfined = Dispatchers.Unconfined
-}

@@ -1,18 +1,25 @@
 package me.manga.kira.sources.config
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
-import me.manga.kira.sources.contracts.ActiveSourceDiagnostics
+import me.manga.kira.sources.contracts.CommittedSourceSelection
 import me.manga.kira.sources.contracts.RemoteSourceCatalog
+import me.manga.kira.sources.contracts.SelectedCatalogKind
 import me.manga.kira.sources.contracts.SignedSourceCatalogManifest
 import me.manga.kira.sources.contracts.SourceCatalogAcceptanceFloor
 import me.manga.kira.sources.contracts.SourceCatalogDiagnostics
@@ -22,437 +29,251 @@ import me.manga.kira.sources.contracts.SourceCatalogManifest
 import me.manga.kira.sources.contracts.SourceCatalogManifestResult
 import me.manga.kira.sources.contracts.SourceCatalogSignatureVerifier
 import me.manga.kira.sources.contracts.SourceCatalogStore
-import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.SourceRevisionArtifact
+import me.manga.kira.sources.contracts.SourceSelectionExpectation
+import me.manga.kira.sources.contracts.SourceSelectionLimits
+import me.manga.kira.sources.contracts.SourceSelectionRead
+import me.manga.kira.sources.contracts.SourceSelectionUnavailable
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.StoredSourceCatalog
 import me.manga.kira.sources.contracts.UpdateState
-import me.manga.kira.sources.contracts.model.SourceConfig
+import me.manga.kira.sources.contracts.VerifiedSourceSelection
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 
-/**
- * Synchronizes a signed lightweight manifest and only its missing immutable source revisions.
- *
- * A candidate remains invisible until every active source verifies and [SourceCatalogStore.activate]
- * commits. Any failure retains the complete previous catalog tier.
- */
+/** Trusted bundle execution is synchronous; identity readiness requires a verified durable selection. */
 class IncrementalSourceCatalogManager(
     private val store: SourceCatalogStore,
-    private val verifier: SourceCatalogSignatureVerifier,
-    private val validator: SourceConfigValidator,
+    verifier: SourceCatalogSignatureVerifier,
+    validator: SourceConfigValidator,
     private val remote: RemoteSourceCatalog,
     private val onRejected: (String) -> Unit = {},
-) : SourceUpdateManager,
-    SourceCatalogDiagnosticsProvider {
-    private val bundled = requireBundledCatalog()
-    private val active = MutableStateFlow(bundled)
-    private val catalogDiagnostics =
-        MutableStateFlow(bundled.toDiagnostics(UpdateState.Origin.BUNDLED))
-    private val updateState =
-        MutableStateFlow<UpdateState>(
-            UpdateState.Active(bundled.revision, UpdateState.Origin.BUNDLED),
-        )
+) : SourceUpdateManager, SourceCatalogDiagnosticsProvider {
+    private val verification = SourceCatalogVerifier(store, verifier, validator, onRejected)
+    private val bundled = verification.bundle()
+    private val active = MutableStateFlow(bundled.document)
+    private val catalogDiagnostics = MutableStateFlow(catalogDiagnostics(bundled, UpdateState.Origin.BUNDLED))
+    private val updateState = MutableStateFlow<UpdateState>(UpdateState.Active(bundled.document.revision, UpdateState.Origin.BUNDLED))
     private val refreshLock = Mutex()
+    private var retained: SelectionPublication? = null
+    private var pending: SelectionPublication? = null
+    private var retainedReceipt: CommittedSourceSelection? = null
 
     override val state: StateFlow<UpdateState> = updateState.asStateFlow()
     override val acceptedDocument: StateFlow<SourceConfigDocument> = active.asStateFlow()
     override val diagnostics: StateFlow<SourceCatalogDiagnostics> = catalogDiagnostics.asStateFlow()
-
     override fun activeDocument(): SourceConfigDocument = active.value
 
-    override suspend fun refresh(): AppResult<SourceConfigDocument> =
+    override suspend fun refresh(): AppResult<SourceConfigDocument> = selectCatalog(fetchRemote = true)
+
+    /**
+     * Reverify and publish the local selection without requesting remote manifests or source artifacts.
+     * Shares refresh serialization and cancellation reconciliation; changed selections still require
+     * the store's guarded commit. Success is not a retained permission for a later download attempt.
+     */
+    suspend fun restoreLocalSelection(): AppResult<SourceConfigDocument> = selectCatalog(fetchRemote = false)
+
+    private suspend fun selectCatalog(fetchRemote: Boolean): AppResult<SourceConfigDocument> =
         refreshLock.withLock {
-            val previousState = updateState.value
             updateState.value = UpdateState.Refreshing
             try {
-                val acceptanceFloor = store.readAcceptanceFloor()
-                val cached = loadVerifiedCache()
-                val acceptedManifest =
-                    cached
-                        ?.takeIf {
-                            acceptanceFloor != null &&
-                                it.document.revision == acceptanceFloor.catalogRevision &&
-                                it.etag == acceptanceFloor.checksum
-                        }
-                        ?.manifest
-                        ?: loadAcceptedManifest(acceptanceFloor)
-                val current = active.value
-                val previousOrigin =
-                    (previousState as? UpdateState.Active)?.source
-                        ?: UpdateState.Origin.BUNDLED
-                val floor =
-                    cached
-                        ?.document
-                        ?.takeIf { it.revision > current.revision }
-                        ?: current
-                val origin =
-                    if (floor === current) previousOrigin else UpdateState.Origin.CACHE
-                active.value = floor
-                if (floor !== current) {
-                    catalogDiagnostics.value =
-                        requireNotNull(cached).toDiagnostics(UpdateState.Origin.CACHE)
+                val base = prepareBase(store.readSelection())
+                publishCommitted(base.publication, base.expected)
+                if (fetchRemote) {
+                    val result = remote.fetchManifest(base.publication.catalog.stored?.manifest?.metadata?.checksum)
+                    if (result is SourceCatalogManifestResult.Modified) acceptRemote(result.manifest)
                 }
-                if (floor.revision == bundled.revision) {
-                    // The bundle is a complete tier, not a merge base. Projecting it before any
-                    // network work removes obsolete rows even when the fetch later fails.
-                    store.projectBundled(bundled)
-                }
-
-                val result = remote.fetchManifest(cached?.etag)
-                val accepted =
-                    when (result) {
-                        SourceCatalogManifestResult.Unavailable -> null
-                        SourceCatalogManifestResult.NotModified -> null
-                        is SourceCatalogManifestResult.Modified ->
-                            acceptRemote(
-                                signed = result.manifest,
-                                acceptanceFloor = acceptanceFloor,
-                                acceptedManifest = acceptedManifest,
-                                previousManifest =
-                                    cached
-                                        ?.takeIf { it.document.revision == floor.revision }
-                                        ?.manifest,
-                                previousDocument = floor,
-                            )
-                    }
-                val effectiveDocument = accepted?.document ?: floor
-                active.value = effectiveDocument
-                if (accepted != null) {
-                    catalogDiagnostics.value = accepted.toDiagnostics(UpdateState.Origin.REMOTE)
-                }
-                updateState.value =
-                    UpdateState.Active(
-                        effectiveDocument.revision,
-                        if (accepted == null) origin else UpdateState.Origin.REMOTE,
-                    )
-                AppResult.Success(effectiveDocument)
+                updateState.value = UpdateState.Active(active.value.revision, checkNotNull(retained).origin)
+                AppResult.Success(active.value)
             } catch (cancelled: CancellationException) {
-                updateState.value = previousState
+                reconcileCancellation()
                 throw cancelled
             } catch (failure: Exception) {
-                onRejected("catalog refresh failed; retaining the complete previous catalog")
+                val failed = pending
+                val recovery = retained?.takeIf { failed != null && failed.candidate.payload != it.candidate.payload }
+                if (pending != null || failure is SourceSelectionUnavailable) store.invalidateSelection()
+                pending = null
+                onRejected("catalog refresh failed; retaining the complete previous execution catalog")
                 updateState.value = UpdateState.Failed(REFRESH_FAILED)
+                if (recovery != null) recoverRetainedReadiness(recovery)
                 AppResult.Failure(AppError.Unexpected(REFRESH_FAILED, failure))
             }
         }
 
-    private suspend fun acceptRemote(
+    private suspend fun prepareBase(read: SourceSelectionRead): SelectionPreparation {
+        val expected = read.expected ?: throw SourceSelectionUnavailable("generation allocator unavailable")
+        val warm = retained?.takeIf { read.selection?.token == retainedReceipt?.token }
+        val selected = warm?.catalog ?: selectedCatalog(read)?.takeIf { it.document.revision > bundled.document.revision }
+            ?: verifiedCache() ?: bundled
+        val previous = read.selection?.payload
+        val history = warm?.candidate?.proofs ?: verification.historical(previous?.let(::payloadReferences).orEmpty(), bundled)
+        val candidate = selectionCandidate(selected, previous, history, advancesFloor = false)
+        val origin = when {
+            warm != null -> warm.origin
+            selected.stored == null -> UpdateState.Origin.BUNDLED
+            else -> UpdateState.Origin.CACHE
+        }
+        return SelectionPreparation(SelectionPublication(selected, candidate, origin), expected)
+    }
+
+    private suspend fun selectedCatalog(read: SourceSelectionRead): VerifiedCatalog? {
+        val identity = read.selection?.payload?.identity ?: return null
+        if (identity.kind == SelectedCatalogKind.BUNDLED) return bundled.takeIf { it.identity == identity }
+        val signed = store.readAcceptedManifest(identity) ?: return null
+        return loadCatalog(signed)
+    }
+
+    private suspend fun verifiedCache(): VerifiedCatalog? = store.readActive()?.let(verification::stored)
+        ?.takeIf { it.document.revision > bundled.document.revision }
+
+    private suspend fun loadCatalog(signed: SignedSourceCatalogManifest): VerifiedCatalog? {
+        val manifest = verification.manifest(signed) ?: return null
+        val artifacts = mutableListOf<SourceRevisionArtifact>()
+        for (entry in manifest.sources.filter { it.lifecycle == "active" }) {
+            artifacts += store.findSource(entry.api, entry.sourceRevision, entry.checksum) ?: return null
+            requireArtifactBudget(artifacts, signed.payload)
+        }
+        return verification.stored(StoredSourceCatalog(signed, artifacts))
+    }
+
+    private suspend fun acceptRemote(signed: SignedSourceCatalogManifest) {
+        val read = store.readSelection()
+        val expected = read.expected ?: throw SourceSelectionUnavailable("generation allocator unavailable")
+        val current = requireNotNull(retained)
+        val manifest = verification.manifest(signed) ?: return
+        val floor = expected.signedFloor
+        val accepted = acceptedManifest(floor)
+        if (!eligible(signed, manifest, floor, accepted)) return
+        val evolutionBase = if (floor?.catalogRevision == manifest.catalogRevision) manifest else accepted ?: current.catalog.manifest
+        val errors = catalogEvolutionErrors(manifest, evolutionBase, current.catalog.document)
+        if (errors.isNotEmpty()) { onRejected(errors.joinToString()); return }
+        val artifacts = fetchRequiredSources(manifest.sources.filter { it.lifecycle == "active" }, signed.payload)
+        val catalog = verification.stored(StoredSourceCatalog(signed, artifacts)) ?: return
+        val candidate = selectionCandidate(catalog, current.candidate.payload, current.candidate.proofs, advancesFloor = true)
+        publishCommitted(SelectionPublication(catalog, candidate, UpdateState.Origin.REMOTE), expected)
+    }
+
+    private fun eligible(
         signed: SignedSourceCatalogManifest,
-        acceptanceFloor: SourceCatalogAcceptanceFloor?,
-        acceptedManifest: SourceCatalogManifest?,
-        previousManifest: SourceCatalogManifest?,
-        previousDocument: SourceConfigDocument,
-    ): VerifiedCatalog? {
-        val manifest = verifyManifest(signed) ?: return null
-        if (manifest.catalogRevision <= bundled.revision) return null
-        if (acceptanceFloor != null) {
-            when {
-                manifest.catalogRevision < acceptanceFloor.catalogRevision -> return null
-                manifest.catalogRevision == acceptanceFloor.catalogRevision -> {
-                    if (signed.metadata.checksum != acceptanceFloor.checksum) return null
-                }
-                acceptedManifest == null -> return null
-                !chainAdvances(signed, acceptanceFloor) -> return null
-            }
-        }
-        val evolutionBase =
-            when {
-                acceptanceFloor?.catalogRevision == manifest.catalogRevision -> manifest
-                acceptedManifest != null -> acceptedManifest
-                else -> previousManifest
-            }
-        val evolutionErrors = catalogEvolutionErrors(manifest, evolutionBase, previousDocument)
-        if (evolutionErrors.isNotEmpty()) return rejected(evolutionErrors.joinToString())
-
-        val activeEntries = manifest.sources.filter { it.lifecycle == LIFECYCLE_ACTIVE }
-        val artifacts = fetchRequiredSources(activeEntries)
-        val document = assembleDocument(manifest, activeEntries, artifacts) ?: return null
-        store.activate(StoredSourceCatalog(signed, artifacts))
-        return VerifiedCatalog(
-            document = document,
-            etag = signed.metadata.checksum,
-            manifest = manifest,
-            signedManifest = signed,
-        )
-    }
-
-    private suspend fun fetchRequiredSources(entries: List<SourceCatalogEntry>): List<SourceRevisionArtifact> =
-        coroutineScope {
-            entries.chunked(MAX_PARALLEL_DOWNLOADS).flatMap { chunk ->
-                chunk
-                    .map { entry ->
-                        async {
-                            val cached = store.findSource(entry.api, entry.sourceRevision, entry.checksum)
-                            cached?.takeIf { verifier.verifySource(entry, it) }
-                                ?: remote.fetchSource(entry).also { artifact ->
-                                    require(verifier.verifySource(entry, artifact)) {
-                                        "source revision signature verification failed"
-                                    }
-                                }
-                        }
-                    }.awaitAll()
-            }
-        }
-
-    private suspend fun loadVerifiedCache(): VerifiedCatalog? {
-        val stored = store.readActive() ?: return null
-        val manifest = verifyManifest(stored.manifest) ?: return null
-        val entries = manifest.sources.filter { it.lifecycle == LIFECYCLE_ACTIVE }
-        val artifactsByKey = stored.sources.associateBy { it.api to it.sourceRevision }
-        val artifacts =
-            entries.map { entry ->
-                artifactsByKey[entry.api to entry.sourceRevision]
-                    ?.takeIf { it.checksum == entry.checksum && verifier.verifySource(entry, it) }
-                    ?: return null
-            }
-        val document = assembleDocument(manifest, entries, artifacts) ?: return null
-        return VerifiedCatalog(
-            document = document,
-            etag = stored.manifest.metadata.checksum,
-            manifest = manifest,
-            signedManifest = stored.manifest,
-        )
-    }
-
-    private suspend fun loadAcceptedManifest(
-        acceptanceFloor: SourceCatalogAcceptanceFloor?,
-    ): SourceCatalogManifest? {
-        if (acceptanceFloor == null) return null
-        val signed = store.readAcceptedManifest() ?: return null
-        if (
-            signed.metadata.revision != acceptanceFloor.catalogRevision ||
-            signed.metadata.checksum != acceptanceFloor.checksum
-        ) {
-            return null
-        }
-        return verifyManifest(signed)
-    }
-
-    private fun verifyManifest(signed: SignedSourceCatalogManifest): SourceCatalogManifest? {
-        if (!verifier.verifyManifest(signed)) return rejected("manifest signature is invalid")
-        val manifest =
-            when (val parsed = SourceConfigParser.parseManifest(signed.payload)) {
-                is AppResult.Success -> parsed.value
-                is AppResult.Failure -> return rejected("manifest JSON is invalid")
-            }
-        val errors = manifestErrors(manifest, signed)
-        return manifest.takeIf { errors.isEmpty() } ?: rejected(errors.joinToString())
-    }
-
-    private fun manifestErrors(
         manifest: SourceCatalogManifest,
-        signed: SignedSourceCatalogManifest,
-    ): List<String> = buildList {
-        if (manifest.schemaVersion != MANIFEST_SCHEMA_VERSION) add("unsupported manifest schema")
-        if (manifest.sourceSchemaVersion != SOURCE_SCHEMA_VERSION) add("unsupported source schema")
-        if (manifest.catalogRevision <= 0) add("catalog revision must be positive")
-        if (manifest.catalogRevision != signed.metadata.revision) add("catalog revision metadata mismatch")
-        if (manifest.generatedAt != signed.metadata.createdAt) add("catalog timestamp metadata mismatch")
-        if (manifest.sources.map { it.api }.toSet().size != manifest.sources.size) add("duplicate source api")
-        if (manifest.sources.map { it.order } != manifest.sources.indices.toList()) add("source order is not contiguous")
-        if (manifest.removedSources.any { it.lifecycle != LIFECYCLE_REMOVED }) add("invalid removed tombstone")
-        val removedApis = manifest.removedSources.map { it.api }
-        if (removedApis.any(String::isBlank)) add("blank removed source api")
-        if (removedApis.toSet().size != removedApis.size) add("duplicate removed source api")
-        if (manifest.sources.any { it.api in removedApis }) add("source is both present and removed")
-        manifest.sources.forEach { entry ->
-            if (entry.api.isBlank() || entry.sourceRevision <= 0) add("invalid source identity")
-            if (!CHECKSUM.matches(entry.checksum)) add("invalid source checksum")
-            if (entry.lifecycle !in ENTRY_LIFECYCLES) add("invalid source lifecycle")
-            if (entry.engine != ENGINE_GENERIC) add("non-generic source is forbidden")
-            if (!KEY_ID.matches(entry.sourceSigningKeyId) || entry.sourceSignature.isBlank()) {
-                add("invalid source signature metadata")
-            }
-        }
-    }
-
-    private fun catalogEvolutionErrors(
-        candidate: SourceCatalogManifest,
-        previous: SourceCatalogManifest?,
-        previousDocument: SourceConfigDocument,
-    ): List<String> = buildList {
-        val candidateEntries = candidate.sources.associateBy { it.api }
-        val candidateTombstones = candidate.removedSources.mapTo(hashSetOf()) { it.api }
-        val previousEntries = previous?.sources?.associateBy { it.api }.orEmpty()
-        val previousApis =
-            previous
-                ?.sources
-                ?.mapTo(hashSetOf()) { it.api }
-                ?: previousDocument.sources.mapTo(hashSetOf()) { it.api }
-        val silentlyOmitted = previousApis - candidateEntries.keys - candidateTombstones
-        if (silentlyOmitted.isNotEmpty()) add("previous source is absent without a removed tombstone")
-
-        val previousTombstones = previous?.removedSources?.mapTo(hashSetOf()) { it.api }.orEmpty()
-        if (!candidateTombstones.containsAll(previousTombstones)) add("removed tombstone was discarded")
-        if (candidateEntries.keys.any { it in previousTombstones }) add("removed source was reintroduced")
-
-        previousEntries.forEach { (api, oldEntry) ->
-            val nextEntry = candidateEntries[api] ?: return@forEach
-            if (nextEntry.sourceRevision < oldEntry.sourceRevision) {
-                add("source revision rollback is forbidden")
-            }
-            if (
-                nextEntry.sourceRevision == oldEntry.sourceRevision &&
-                nextEntry.checksum != oldEntry.checksum
-            ) {
-                add("immutable source revision checksum changed")
-            }
-        }
-    }
-
-    private fun assembleDocument(
-        manifest: SourceCatalogManifest,
-        entries: List<SourceCatalogEntry>,
-        artifacts: List<SourceRevisionArtifact>,
-    ): SourceConfigDocument? {
-        if (entries.size != artifacts.size) return rejected("catalog is incomplete")
-        val configs =
-            entries.zip(artifacts).map { (entry, artifact) ->
-                if (!verifier.verifySource(entry, artifact)) return rejected("source verification failed")
-                val parsed =
-                    when (val result = SourceConfigParser.parseSource(artifact.payload)) {
-                        is AppResult.Success -> result.value
-                        is AppResult.Failure -> return rejected("source JSON is invalid")
-                    }
-                parsed.takeIf { it.api == entry.api && it.engine == ENGINE_GENERIC }
-                    ?.copy(lifecycle = entry.lifecycle, priority = entry.order)
-                    ?: return rejected("source payload identity is invalid")
-            }
-        val document =
-            SourceConfigDocument(
-                schemaVersion = manifest.sourceSchemaVersion,
-                generatedAt = manifest.generatedAt,
-                revision = manifest.catalogRevision,
-                sources = configs,
-            )
-        return document.takeIf { validator.validate(it).isValid } ?: rejected("catalog validation failed")
-    }
-
-    private fun chainAdvances(
-        signed: SignedSourceCatalogManifest,
-        acceptanceFloor: SourceCatalogAcceptanceFloor?,
+        floor: SourceCatalogAcceptanceFloor?,
+        accepted: SourceCatalogManifest?,
     ): Boolean {
-        if (acceptanceFloor == null) return true
-        val previous = signed.metadata.previousRevision ?: return false
-        return previous >= acceptanceFloor.catalogRevision &&
-            (
-                previous != acceptanceFloor.catalogRevision ||
-                    signed.metadata.previousChecksum == acceptanceFloor.checksum
-            )
+        if (manifest.catalogRevision <= bundled.document.revision) return false
+        if (floor == null) return true
+        if (manifest.catalogRevision < floor.catalogRevision) return false
+        if (manifest.catalogRevision == floor.catalogRevision) return signed.metadata.checksum == floor.checksum
+        return accepted != null && chainAdvances(signed, floor)
     }
 
-    private fun requireBundledCatalog(): SourceConfigDocument {
-        val raw = requireNotNull(store.readBundled()) { "bundled source catalog is missing" }
-        val document =
-            when (val parsed = SourceConfigParser.parse(raw)) {
-                is AppResult.Success -> parsed.value
-                is AppResult.Failure -> error("bundled source catalog is invalid")
+    private suspend fun acceptedManifest(floor: SourceCatalogAcceptanceFloor?): SourceCatalogManifest? {
+        if (floor == null) return null
+        val signed = store.readAcceptedManifest() ?: return null
+        if (signed.metadata.revision != floor.catalogRevision || signed.metadata.checksum != floor.checksum) return null
+        return verification.manifest(signed)
+    }
+
+    private suspend fun fetchRequiredSources(entries: List<SourceCatalogEntry>, manifest: String): List<SourceRevisionArtifact> = coroutineScope {
+        val artifacts = mutableListOf<SourceRevisionArtifact>()
+        for (chunk in entries.chunked(MAX_PARALLEL_DOWNLOADS)) {
+            val batch = chunk.map { entry -> async { fetchRequiredSource(entry) } }.awaitAll()
+            requireArtifactBudget(artifacts + batch, manifest)
+            artifacts += batch
+        }
+        artifacts
+    }
+
+    private suspend fun fetchRequiredSource(entry: SourceCatalogEntry): SourceRevisionArtifact {
+        val cached = store.findSource(entry.api, entry.sourceRevision, entry.checksum)
+        if (cached != null && verification.source(entry, cached) != null) return cached
+        return remote.fetchSource(entry).also {
+            require(verification.source(entry, it) != null) { "source revision signature verification failed" }
+        }
+    }
+
+    private suspend fun publishCommitted(publication: SelectionPublication, expected: SourceSelectionExpectation) {
+        pending = publication
+        val existing = store.adoptSelection(publication.candidate) { publishCatalog(publication, it) }
+        if (existing != null) {
+            pending = null
+            return
+        }
+        val committed = store.commitSelection(publication.candidate, expected)
+        val adopted = store.adoptSelection(publication.candidate) { receipt ->
+            if (receipt.token != committed.token) throw SourceSelectionUnavailable("selection changed before publication")
+            publishCatalog(publication, receipt)
+        }
+        if (adopted == null) throw SourceSelectionUnavailable("selection changed before publication")
+        pending = null
+    }
+
+    private fun publish(publication: SelectionPublication, receipt: CommittedSourceSelection) {
+        publishCatalog(publication, receipt)
+        updateState.value = UpdateState.Active(publication.catalog.document.revision, publication.origin)
+    }
+
+    private fun publishCatalog(publication: SelectionPublication, receipt: CommittedSourceSelection) {
+        retained = publication
+        retainedReceipt = receipt
+        active.value = publication.catalog.document
+        catalogDiagnostics.value = catalogDiagnostics(publication.catalog, publication.origin)
+    }
+
+    /** One read-only A recovery after a different pending B failed; never retry A's own failed adoption. */
+    private suspend fun recoverRetainedReadiness(publication: SelectionPublication) {
+        try {
+            val adopted = withTimeoutOrNull(RECONCILIATION_TIMEOUT_MS) {
+                val context = currentCoroutineContext()
+                store.adoptSelection(publication.candidate) { receipt ->
+                    context.ensureActive()
+                    publishCatalog(publication, receipt) // Keep the original failure visible; the store supplies a CURRENT receipt.
+                }.also { context.ensureActive() }
             }
-        require(document.sources.isNotEmpty())
-        require(document.sources.all(SourceConfig::isActiveGeneric))
-        require(validator.validate(document).isValid)
-        return document
+            currentCoroutineContext().ensureActive()
+            if (adopted == null) store.invalidateSelection()
+        } catch (cancelled: CancellationException) {
+            store.invalidateSelection()
+            throw cancelled // No second adoption via cancellation reconciliation for this new recovery.
+        } catch (_: Exception) {
+            store.invalidateSelection()
+            currentCoroutineContext().ensureActive()
+        }
     }
 
-    private fun <T> rejected(reason: String): T? {
-        onRejected(reason)
-        return null
+    /** One bounded durable reconciliation, including commit-before-receipt cancellation. No old-state reset. */
+    private suspend fun reconcileCancellation() {
+        val candidate = pending ?: retained
+        store.invalidateSelection()
+        updateState.value = UpdateState.Failed("catalog identity readiness unavailable")
+        withContext(NonCancellable) {
+            try {
+                withTimeout(RECONCILIATION_TIMEOUT_MS) {
+                    if (candidate != null) store.adoptSelection(candidate.candidate) { publish(candidate, it) }
+                }
+            } catch (_: Exception) {
+                store.invalidateSelection()
+            }
+        }
+        pending = null
     }
-
-    private fun SourceConfigDocument.toDiagnostics(origin: UpdateState.Origin): SourceCatalogDiagnostics =
-        SourceCatalogDiagnostics(
-            origin = origin,
-            catalogRevision = revision,
-            catalogSchemaVersion = schemaVersion,
-            sourceSchemaVersion = schemaVersion,
-            generatedAt = generatedAt,
-            manifestChecksum = null,
-            manifestSigningKeyId = null,
-            signatureAlgorithm = null,
-            signatureFormat = null,
-            previousCatalogRevision = null,
-            previousCatalogChecksum = null,
-            removedSourceCount = 0,
-            inactiveSourceCount = 0,
-            activeSources =
-                sources.mapIndexed { index, source ->
-                    source.toDiagnostics(
-                        order = source.priority.takeIf { it >= 0 } ?: index,
-                        sourceRevision = null,
-                        checksum = null,
-                        signingKeyId = null,
-                    )
-                },
-        )
-
-    private fun VerifiedCatalog.toDiagnostics(origin: UpdateState.Origin): SourceCatalogDiagnostics {
-        val configsByApi = document.sources.associateBy(SourceConfig::api)
-        val activeEntries = manifest.sources.filter { it.lifecycle == LIFECYCLE_ACTIVE }
-        return SourceCatalogDiagnostics(
-            origin = origin,
-            catalogRevision = manifest.catalogRevision,
-            catalogSchemaVersion = manifest.schemaVersion,
-            sourceSchemaVersion = manifest.sourceSchemaVersion,
-            generatedAt = manifest.generatedAt,
-            manifestChecksum = signedManifest.metadata.checksum,
-            manifestSigningKeyId = signedManifest.metadata.keyId,
-            signatureAlgorithm = signedManifest.metadata.algorithm,
-            signatureFormat = signedManifest.metadata.format,
-            previousCatalogRevision = signedManifest.metadata.previousRevision,
-            previousCatalogChecksum = signedManifest.metadata.previousChecksum,
-            removedSourceCount = manifest.removedSources.size,
-            inactiveSourceCount = manifest.sources.size - activeEntries.size,
-            activeSources =
-                activeEntries.map { entry ->
-                    requireNotNull(configsByApi[entry.api]).toDiagnostics(
-                        order = entry.order,
-                        sourceRevision = entry.sourceRevision,
-                        checksum = entry.checksum,
-                        signingKeyId = entry.sourceSigningKeyId,
-                    )
-                },
-        )
-    }
-
-    private fun SourceConfig.toDiagnostics(
-        order: Int,
-        sourceRevision: Long?,
-        checksum: String?,
-        signingKeyId: String?,
-    ): ActiveSourceDiagnostics =
-        ActiveSourceDiagnostics(
-            api = api,
-            displayName = displayName,
-            language = language,
-            baseUrl = baseUrl,
-            engine = engine,
-            lifecycle = lifecycle,
-            order = order,
-            sourceRevision = sourceRevision,
-            checksum = checksum,
-            signingKeyId = signingKeyId,
-        )
-
-    private data class VerifiedCatalog(
-        val document: SourceConfigDocument,
-        val etag: String,
-        val manifest: SourceCatalogManifest,
-        val signedManifest: SignedSourceCatalogManifest,
-    )
 
     private companion object {
         const val REFRESH_FAILED = "source catalog refresh failed"
-        const val MANIFEST_SCHEMA_VERSION = 1
-        const val SOURCE_SCHEMA_VERSION = 1
         const val MAX_PARALLEL_DOWNLOADS = 4
-        const val ENGINE_GENERIC = "generic"
-        const val LIFECYCLE_ACTIVE = "active"
-        const val LIFECYCLE_REMOVED = "removed"
-        val ENTRY_LIFECYCLES = setOf("active", "disabled", "retired")
-        val CHECKSUM = Regex("[0-9a-f]{64}")
-        val KEY_ID = Regex("[A-Za-z0-9._-]{1,64}")
+        const val RECONCILIATION_TIMEOUT_MS = 2_000L
     }
 }
 
-private fun SourceConfig.isActiveGeneric(): Boolean = engine == "generic" && lifecycle == "active"
+private data class SelectionPublication(
+    val catalog: VerifiedCatalog,
+    val candidate: VerifiedSourceSelection,
+    val origin: UpdateState.Origin,
+)
+
+private data class SelectionPreparation(val publication: SelectionPublication, val expected: SourceSelectionExpectation)
+
+private fun requireArtifactBudget(artifacts: List<SourceRevisionArtifact>, manifest: String) {
+    require(artifacts.all { bounded(it.payload, SourceSelectionLimits.ARTIFACT_BYTES) })
+    val bytes = manifest.encodeToByteArray().size.toLong() + artifacts.sumOf { it.payload.encodeToByteArray().size.toLong() }
+    require(bytes <= SourceSelectionLimits.EVIDENCE_BYTES)
+}

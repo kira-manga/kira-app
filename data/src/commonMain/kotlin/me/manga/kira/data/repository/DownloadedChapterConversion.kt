@@ -11,6 +11,7 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.cbz.CbzWriter
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.filesystem.AppFileSystem
 
 /**
@@ -27,12 +28,24 @@ class DownloadedChapterConversion(
     val files: AppFileSystem,
     private val artifacts: ChapterArtifacts,
     private val commits: ChapterArtifactCommitDao,
+    private val operations: DownloadOperationExclusion,
 ) {
-    /** Retry only drained/retiring receipts, before Settings reads its eligible chapter snapshot. */
-    suspend fun recover() = artifacts.recoverConversions()
+    /**
+     * Admit Settings' whole batch before recovery or chapter/active-row/title capture. Keep admission
+     * through every conversion and its final settlement; nested calls reuse this graph's real gate.
+     */
+    suspend fun <T> withConversionOperation(block: suspend () -> T): T = operations.withOperation { block() }
 
-    /** Retain both copies until the actual Room outcome is proved after all writer/file use. */
-    suspend fun convert(chapter: SavedChapterEntity): Boolean {
+    /** Retry only drained/retiring receipts, before Settings reads its eligible chapter snapshot. */
+    suspend fun recover() = operations.withOperation { artifacts.recoverConversions() }
+
+    /**
+     * Retain admission through real writer completion and durable settlement, including cancellation.
+     * Batch callers also hold this graph's operation before selecting their chapter/active-row roster.
+     */
+    suspend fun convert(chapter: SavedChapterEntity): Boolean = operations.withOperation { convertOwned(chapter) }
+
+    private suspend fun convertOwned(chapter: SavedChapterEntity): Boolean {
         val claim = artifacts.beginConversion(chapter) ?: return false
         var outcome = ChapterConversionOutcome.UNKNOWN
         try {

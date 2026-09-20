@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
@@ -20,6 +21,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -29,6 +33,8 @@ import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterDownloadE
 import me.manga.kira.core.util.runCatchingCancellable
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
 import me.manga.kira.data.download.artifacts.QueuedArtifactAdmission
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
+import me.manga.kira.data.download.selection.DownloadCatalogNotReady
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
 import me.manga.kira.platform.download.StagedDownloadPage
@@ -39,6 +45,7 @@ import me.manga.kira.platform.download.BackgroundScheduler
 import me.manga.kira.platform.download.BackgroundTransport
 import me.manga.kira.platform.download.BackgroundWorkSignal
 import me.manga.kira.platform.download.BgDownloadLog
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.download.TransferListener
 import me.manga.kira.platform.download.TransferRequest
 import me.manga.kira.platform.storage.DataStoreHelper
@@ -79,6 +86,8 @@ class BackgroundUrlSessionDownloadRepository(
     // The live store supplies fresh retry headers and the user's compression opt-in.
     private val dataStoreHelper: DataStoreHelper,
     private val artifacts: ChapterDownloadArtifacts,
+    private val operations: DownloadOperationExclusion,
+    private val catalog: DownloadCatalogAdmission,
 ) : DownloadRepository,
     TransferListener {
     private val dao: ChapterDownloadDao = storage.downloads
@@ -170,8 +179,7 @@ class BackgroundUrlSessionDownloadRepository(
             foregroundedAtMark = TimeSource.Monotonic.markNow()
             BgDownloadLog.log("lifecycle.didBecomeActive")
             applicationScope.launch {
-                runCatching {
-                    artifacts.ownership.awaitReady()
+                runCatalogContinuation("didBecomeActive") {
                     mutex.withLock { pumpLocked("didBecomeActive") }
                 }
             }
@@ -182,10 +190,13 @@ class BackgroundUrlSessionDownloadRepository(
         }
         applicationScope.launch {
             BgDownloadLog.log("lifecycle.launch startupReconcile")
-            runCatching {
-                artifacts.ownership.awaitReady()
+            runCatchingCancellable {
+                // Native recovery must attach even while source/artifact admission is still closed.
+                // Its own operation custody covers recovered tasks before they can deliver pages.
                 transport.ensureReady()
-                mutex.withLock { pumpLocked("startup") }
+                runCatalogContinuation("startup") {
+                    mutex.withLock { pumpLocked("startup") }
+                }
             }.onFailure { BgDownloadLog.error(it, "startup.pumpFailed") }
         }
         // Mirror queue state into the work signal (read synchronously by the iOS host's BG-task layer)
@@ -195,25 +206,30 @@ class BackgroundUrlSessionDownloadRepository(
             // conflate(): Room re-emits the whole-table flow on every write, so a bulk "Download all"
             // fires a burst of ~3N emissions. We only need the LATEST snapshot to refresh the signal —
             // conflate collapses the burst to one recompute instead of N, cutting enqueue-time churn.
-            dao.observeAllDownloads().conflate().collect { list ->
-                // One-chapter-at-a-time Live Activity inputs, computed by the pure WorkSignalRules:
-                // whole-queue percent = the LEAD chapter's progress (what the Live Activity actually
-                // shows), NOT a sum/active.size average — that average REGRESSED as the divisor shrank
-                // when a 100% chapter left the active set (B8).
-                val s = WorkSignalRules.compute(list)
-                workSignal.update(s.pending, s.progressPercent, s.chapterProgress, s.leadChapterId, s.hasTransferWork)
-                BgDownloadLog.log(
-                    "signal.update",
-                    "pending" to s.pending,
-                    "progress" to s.progressPercent,
-                    "activeChapters" to s.activeCount,
-                    "lead" to s.leadChapterId,
-                )
-                if (s.pending && !lastPending) {
-                    BgDownloadLog.log("scheduler.requestProcessing", "reason" to "workBecamePending")
-                    backgroundScheduler.scheduleProcessing()
+            dao.observeAllDownloads().conflate().collect {
+                // Treat the emission only as an invalidation. Never apply its pre-admission rows
+                // after a selection/removal writer; capture the advisory snapshot under the gate.
+                operations.withOperation {
+                    val list = dao.observeAllDownloads().first()
+                    // One-chapter-at-a-time Live Activity inputs, computed by the pure WorkSignalRules:
+                    // whole-queue percent = the LEAD chapter's progress (what the Live Activity actually
+                    // shows), NOT a sum/active.size average — that average REGRESSED as the divisor shrank
+                    // when a 100% chapter left the active set (B8).
+                    val s = WorkSignalRules.compute(list)
+                    workSignal.update(s.pending, s.progressPercent, s.chapterProgress, s.leadChapterId, s.hasTransferWork)
+                    BgDownloadLog.log(
+                        "signal.update",
+                        "pending" to s.pending,
+                        "progress" to s.progressPercent,
+                        "activeChapters" to s.activeCount,
+                        "lead" to s.leadChapterId,
+                    )
+                    if (s.pending && !lastPending) {
+                        BgDownloadLog.log("scheduler.requestProcessing", "reason" to "workBecamePending")
+                        backgroundScheduler.scheduleProcessing()
+                    }
+                    lastPending = s.pending
                 }
-                lastPending = s.pending
             }
         }
         // Compression-gate watcher — the SINGLE owner of deferred-finalize re-drives (the host bridge no
@@ -234,8 +250,12 @@ class BackgroundUrlSessionDownloadRepository(
             }.collect { deferred ->
                 if (wasDeferred && !deferred && workSignal.hasPendingWork) {
                     BgDownloadLog.log("compressionGate.clearedPump")
-                    runCatching { reconcileInterruptedDownloads() }
-                        .onFailure { BgDownloadLog.error(it, "compressionGate.pumpFailed") }
+                    runCatchingCancellable {
+                        transport.ensureReady()
+                        runCatalogContinuation("compressionGateCleared") {
+                            mutex.withLock { pumpLocked("compressionGateCleared") }
+                        }
+                    }.onFailure { BgDownloadLog.error(it, "compressionGate.pumpFailed") }
                 }
                 wasDeferred = deferred
             }
@@ -252,46 +272,51 @@ class BackgroundUrlSessionDownloadRepository(
         chapter: SavedChapterEntity,
         title: String,
         mangaApi: String,
-    ) = withContext(Dispatchers.Default) {
-        mutex.withLock {
-            val claim = artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
-                ?: return@withLock
-            attempts[chapter.id] = claim
-            clearChapterCaches(chapter.id)
-            artifacts.ownership.files(claim) { manifestStore.delete(chapter.mangaId, chapter.id) }
-            transport.ensureReady()
-            fillWindowLocked()
+    ): Unit = withContext(Dispatchers.Default) {
+        transport.ensureReady()
+        withCatalogAdmission {
+            mutex.withLock {
+                val claim = artifacts.enqueue(chapter, chapter.toChapterDownloadEntity(apiName = mangaApi, title = title))
+                    ?: return@withLock
+                attempts[chapter.id] = claim
+                clearChapterCaches(chapter.id)
+                artifacts.ownership.files(claim) { manifestStore.delete(chapter.mangaId, chapter.id) }
+                fillWindowLocked()
+            }
         }
     }
 
     override suspend fun retryChapterDownload(expected: ChapterDownloadEntity): Boolean = withContext(platformIoDispatcher) {
-        mutex.withLock {
-            val claim = artifacts.retry(expected) { token ->
-                // Atomic file publication precedes QUEUED visibility under the shared file pin.
-                // Failure/rollback leaves idle FAILED history; a committed retry always has its
-                // new-token roster, including durable media-policy refusals, even across restart.
-                manifestStore.cleanOrphanedStaging(expected.mangaId, expected.chapterId)
-                if (manifestStore.exists(expected.mangaId, expected.chapterId)) {
-                    val retained = checkNotNull(manifestStore.read(expected.mangaId, expected.chapterId)) {
-                        "Retained download manifest is unreadable"
-                    }
-                    check(retained.api == expected.api) { "Retained download manifest source changed" }
-                    manifestStore.write(retained.copy(
-                        attemptToken = token,
-                        pages = retained.pages.map { if (it.policyRejected) it else it.copy(attempts = 0) },
-                    ))
-                }
-            } ?: return@withLock false
-            attempts[expected.chapterId] = claim
-            clearChapterCaches(expected.chapterId)
-            transport.ensureReady()
-            fillWindowLocked()
-            true
+        transport.ensureReady()
+        withCatalogAdmission {
+            mutex.withLock {
+                val claim = artifacts.retry(expected) { token -> prepareRetryManifest(expected, token) }
+                    ?: return@withLock false
+                attempts[expected.chapterId] = claim
+                clearChapterCaches(expected.chapterId)
+                fillWindowLocked()
+                true
+            }
         }
     }
 
-    override suspend fun deleteDownload(chapterId: Long) {
-        val row = mutex.withLock { dao.getDownloadByChapter(chapterId) } ?: return
+    /** Atomic file publication precedes QUEUED visibility under the existing retry file pin. */
+    private fun prepareRetryManifest(expected: ChapterDownloadEntity, token: String) {
+        manifestStore.cleanOrphanedStaging(expected.mangaId, expected.chapterId)
+        if (!manifestStore.exists(expected.mangaId, expected.chapterId)) return
+        val retained = checkNotNull(manifestStore.read(expected.mangaId, expected.chapterId)) {
+            "Retained download manifest is unreadable"
+        }
+        check(retained.api == expected.api) { "Retained download manifest source changed" }
+        manifestStore.write(retained.copy(
+            attemptToken = token,
+            pages = retained.pages.map { if (it.policyRejected) it else it.copy(attempts = 0) },
+        ))
+    }
+
+    override suspend fun deleteDownload(chapterId: Long): Unit = operations.withOperation {
+        artifacts.ownership.awaitReady()
+        val row = mutex.withLock { dao.getDownloadByChapter(chapterId) } ?: return@withOperation
         try {
             check(artifacts.deleteAttempt(row) { claim ->
                 mutex.withLock {
@@ -301,17 +326,18 @@ class BackgroundUrlSessionDownloadRepository(
                 }
             }) { "Download cleanup could not be settled" }
         } finally {
-            mutex.withLock { fillWindowLocked() }
+            scheduleFollowups(ReceiverFollowups().apply { fillWindow = true })
         }
     }
 
-    override suspend fun onCancel(chapterId: Long) {
+    override suspend fun onCancel(chapterId: Long): Unit = operations.withOperation {
+        artifacts.ownership.awaitReady()
         val claim = mutex.withLock { cancelLocked(chapterId) }
         try {
             // Revoke is synchronous; observe cleanup outside the engine mutex after real users drain.
             if (claim != null) check(artifacts.settleCancelled(claim)) { "Download cleanup could not be settled" }
         } finally {
-            mutex.withLock { fillWindowLocked() }
+            scheduleFollowups(ReceiverFollowups().apply { fillWindow = true })
         }
     }
 
@@ -325,7 +351,8 @@ class BackgroundUrlSessionDownloadRepository(
 
     override suspend fun cancelARunningChapter(chapterId: Long, mangaId: Long) = onCancel(chapterId)
 
-    override suspend fun cancelAllDownloads() {
+    override suspend fun cancelAllDownloads(): Unit = operations.withOperation {
+        artifacts.ownership.awaitReady()
         val claims = mutex.withLock {
             dao.observeAllDownloads().first().filter { it.state in WorkSignalRules.ACTIVE_STATES }
                 .mapNotNull { cancelLocked(it.chapterId) }
@@ -336,35 +363,62 @@ class BackgroundUrlSessionDownloadRepository(
     }
 
     override suspend fun reconcileInterruptedDownloads() {
-        artifacts.ownership.awaitReady()
-        mutex.withLock {
-            BgDownloadLog.log("reconcile.requested")
-            transport.ensureReady()
-            pumpLocked("reconcileInterrupted")
+        transport.ensureReady()
+        withCatalogAdmission {
+            mutex.withLock {
+                BgDownloadLog.log("reconcile.requested")
+                pumpLocked("reconcileInterrupted")
+            }
+        }
+    }
+
+    /** Nested public calls may skip preparation, never the adapter's actual same-graph proof. */
+    private suspend fun <T> withCatalogAdmission(action: suspend () -> T): T {
+        if (currentCoroutineContext()[DownloadOperationExclusion.Operation] == null) catalog.prepareLocal()
+        return catalog.withAdmittedOperation {
+            artifacts.ownership.awaitReady()
+            action()
+        }
+    }
+
+    /** A refusal parks until an external edge; it is not a chapter failure or a retry signal. */
+    private suspend fun runCatalogContinuation(reason: String, action: suspend () -> Unit) {
+        try {
+            withCatalogAdmission(action)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: DownloadCatalogNotReady) {
+            BgDownloadLog.log("catalog.parked", "reason" to reason)
+        } catch (failure: Throwable) {
+            BgDownloadLog.error(failure, "catalog.continuationFailed", "reason" to reason)
         }
     }
 
     /**
      * Called only after the transport's admitted event window drains. Refreshes durable pending work
      * independently of the advisory collector, then requests continuation before completing on main.
-     * Only the fresh query has a short timeout; its expiry keeps work unknown, unlike parent cancellation.
+     * Admission and the fresh query have a short timeout; expiry keeps work unknown, unlike parent cancellation.
      * [requestProcessing] directly submits the host's BGProcessing request, without another async hop.
      * No reconciliation, retry delay, producer drain or CBZ encode is joined by this completion tail.
      */
     suspend fun completeBackgroundEventWindow(requestProcessing: () -> Unit, completionHandler: () -> Unit) {
         var pendingOrUnknown = true
         try {
-            val rows = withTimeoutOrNull(COMPLETION_REFRESH_TIMEOUT_MS) { dao.observeAllDownloads().first() }
-            if (rows == null) {
-                BgDownloadLog.warn("session.pendingWork.refreshTimedOut")
-                return
+            val refreshed = withTimeoutOrNull(COMPLETION_REFRESH_TIMEOUT_MS) {
+                operations.withOperation {
+                    val snapshot = WorkSignalRules.compute(dao.observeAllDownloads().first())
+                    workSignal.update(
+                        snapshot.pending, snapshot.progressPercent, snapshot.chapterProgress,
+                        snapshot.leadChapterId, snapshot.hasTransferWork,
+                    )
+                    snapshot.pending
+                }
             }
-            val snapshot = WorkSignalRules.compute(rows)
-            workSignal.update(
-                snapshot.pending, snapshot.progressPercent, snapshot.chapterProgress,
-                snapshot.leadChapterId, snapshot.hasTransferWork,
-            )
-            pendingOrUnknown = snapshot.pending
+            if (refreshed == null) {
+                BgDownloadLog.warn("session.pendingWork.refreshTimedOut")
+            } else {
+                pendingOrUnknown = refreshed
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -388,24 +442,31 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         attemptToken: String,
         page: StagedDownloadPage,
+        operation: DownloadOperationExclusion.Operation,
         acknowledge: () -> Unit,
     ) {
+        val followups = ReceiverFollowups()
         // Enter finally before the first suspension, including an already-cancelled application scope.
-        applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        launchRetainedOperation(operation) {
             try {
-                if (!awaitCallbackReadiness(chapterId)) return@launch
-                try {
-                    mutex.withLock {
-                        acceptReceivedPageLocked(mangaId, chapterId, pageIndex, attemptToken, page)
+                withContext(followups) {
+                    operations.withOperation {
+                        if (!awaitCallbackReadiness(chapterId)) return@withOperation
+                        try {
+                            mutex.withLock {
+                                acceptReceivedPageLocked(mangaId, chapterId, pageIndex, attemptToken, page)
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
+                            recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
+                        }
                     }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    BgDownloadLog.error(failure, "page.complete.failed", "chapterId" to chapterId)
-                    recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, failure.message)
                 }
             } finally {
                 disposeReceivedPage(chapterId, page, acknowledge)
+                scheduleFollowups(followups)
             }
         }
     }
@@ -447,15 +508,45 @@ class BackgroundUrlSessionDownloadRepository(
         pageIndex: Int,
         attemptToken: String,
         message: String?,
+        operation: DownloadOperationExclusion.Operation,
         acknowledge: () -> Unit,
     ) {
-        applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        val followups = ReceiverFollowups()
+        launchRetainedOperation(operation) {
             try {
-                if (awaitCallbackReadiness(chapterId)) {
-                    recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message)
+                withContext(followups) {
+                    operations.withOperation {
+                        if (awaitCallbackReadiness(chapterId)) {
+                            recordPageFailure(mangaId, chapterId, pageIndex, attemptToken, message)
+                        }
+                    }
                 }
             } finally {
                 acknowledge()
+                scheduleFollowups(followups)
+            }
+        }
+    }
+
+    /** Called after receiver ACK/owned cleanup; the application scope inherits no caller operation. */
+    private fun scheduleFollowups(followups: ReceiverFollowups) {
+        followups.retries.forEach(::scheduleRetry)
+        if (!followups.pump && !followups.fillWindow && !followups.prefetch &&
+            !followups.settleRetry && followups.finalizeChapterIds.isEmpty()
+        ) return
+        applicationScope.launch {
+            runCatalogContinuation("ownedFollowup") {
+                mutex.withLock {
+                    // Hints only: recapture under fresh admission, never an old row/manifest.
+                    if (followups.pump) pumpLocked("ownedFollowup")
+                    else if (followups.fillWindow) fillWindowLocked()
+                    followups.finalizeChapterIds.forEach { launchFinalize(it) }
+                    if (followups.prefetch && !followups.pump) maybePrefetchLocked()
+                    if (followups.settleRetry) {
+                        if (canCompressNow()) pumpLocked("settleRetry")
+                        else scheduleSettleRetryLocked()
+                    }
+                }
             }
         }
     }
@@ -551,20 +642,47 @@ class BackgroundUrlSessionDownloadRepository(
         return row.takeIf { artifacts.ownership.publish(claim) { true } == true }
     }
 
-    private fun launchOwned(
+    /** The captured parent's child survives a cancelled caller; only actual job completion releases it. */
+    private fun launchRetainedOperation(
+        operation: DownloadOperationExclusion.Operation,
+        completed: () -> Unit = {},
+        action: suspend () -> Unit,
+    ): Job {
+        val child = operation.retain()
+        val job = try {
+            applicationScope.launch(child, start = CoroutineStart.UNDISPATCHED) { action() }
+        } catch (failure: Throwable) {
+            child.release()
+            throw failure
+        }
+        job.invokeOnCompletion {
+            child.release()
+            completed()
+        }
+        return job
+    }
+
+    /** Internal callers already own admission before the engine/artifact mutex; never wait here. */
+    private suspend fun currentOperation(): DownloadOperationExclusion.Operation =
+        checkNotNull(currentCoroutineContext()[DownloadOperationExclusion.Operation]) {
+            "Download operation must be acquired before capturing engine inputs"
+        }
+
+    private suspend fun launchOwned(
         claim: ChapterArtifactClaim,
         finished: suspend () -> Unit = {},
         action: suspend () -> Unit,
     ) {
-        applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        val followups = ReceiverFollowups()
+        launchRetainedOperation(currentOperation(), completed = { scheduleFollowups(followups) }) {
             try {
-                artifacts.ownership.producing(claim, action)
+                withContext(followups) { artifacts.ownership.producing(claim, action) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
                 BgDownloadLog.error(failure, "artifact.producer.failed", "chapterId" to claim.owner.chapterId)
             } finally {
-                withContext(NonCancellable) {
+                withContext(NonCancellable + followups) {
                     // Runs even when revocation won BEFORE producing admitted the action. Guards
                     // set by the caller must never be left stuck by a skipped/cancelled launch.
                     runCatching { finished() }
@@ -588,6 +706,7 @@ class BackgroundUrlSessionDownloadRepository(
     // ---- locked internals (callers hold [mutex]) ----
 
     private suspend fun pumpLocked(reason: String) {
+        currentCoroutineContext()[ReceiverFollowups]?.let { it.pump = true; return }
         val all = dao.observeAllDownloads().first()
         BgDownloadLog.log(
             "pump.start",
@@ -643,6 +762,7 @@ class BackgroundUrlSessionDownloadRepository(
      * CPU-gated CBZ from ever stalling the queue). Still never two chapters transferring at once.
      */
     private suspend fun fillWindowLocked() {
+        currentCoroutineContext()[ReceiverFollowups]?.let { it.fillWindow = true; return }
         parentAdmissionWaiter?.cancel()
         parentAdmissionWaiter = null
         // Only an in-flight TRANSFER occupies the slot. A DOWNLOADED (readable, CBZ-pending) or COMPRESSING
@@ -682,23 +802,31 @@ class BackgroundUrlSessionDownloadRepository(
     /** One cancellable waiter, outside the engine mutex and every producer/file-use scope. */
     private fun resumeAfterParentReopen(admission: QueuedArtifactAdmission) {
         if (admission.parentReopens.isEmpty()) return
-        val waiter = applicationScope.launch(start = CoroutineStart.LAZY) {
-            try {
-                admission.awaitParentReopen()
-                val running = coroutineContext[Job]
+        val waiter = applicationScope.launch(start = CoroutineStart.LAZY) { resumeWindow(admission) }
+        parentAdmissionWaiter = waiter
+        waiter.start()
+    }
+
+    private suspend fun resumeWindow(admission: QueuedArtifactAdmission) {
+        val running = currentCoroutineContext()[Job]
+        try {
+            admission.awaitParentReopen()
+            runCatalogContinuation("parentReopened") {
                 mutex.withLock {
                     if (parentAdmissionWaiter !== running) return@withLock
                     parentAdmissionWaiter = null
                     fillWindowLocked()
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                BgDownloadLog.error(failure, "admission.resume.failed")
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            BgDownloadLog.error(failure, "admission.resume.failed")
+        } finally {
+            withContext(NonCancellable) {
+                mutex.withLock { if (parentAdmissionWaiter === running) parentAdmissionWaiter = null }
             }
         }
-        parentAdmissionWaiter = waiter
-        waiter.start()
     }
 
     private suspend fun prepareLocked(entity: ChapterDownloadEntity, admitted: ChapterArtifactClaim? = null): Boolean {
@@ -743,7 +871,7 @@ class BackgroundUrlSessionDownloadRepository(
      * fast manifest write + reconcile. The caller has already claimed the row RUNNING under the lock and
      * added it to [resolving]; this releases that guard in `finally`.
      */
-    private fun launchResolve(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
+    private suspend fun launchResolve(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
         launchOwned(claim, finished = {
             mutex.withLock { resolving.remove(entity.chapterId) }
         }) {
@@ -827,6 +955,7 @@ class BackgroundUrlSessionDownloadRepository(
      * one-chapter-at-a-time; a prefetched QUEUED chapter gets a manifest, never live transfers.
      */
     private suspend fun maybePrefetchLocked() {
+        currentCoroutineContext()[ReceiverFollowups]?.let { it.prefetch = true; return }
         if (RESOLVE_AHEAD_WINDOW <= 0 || prefetching.isNotEmpty()) return
         prefetchPausedAtMark?.let { paused ->
             if (paused.elapsedNow() < PREFETCH_FAILURE_BACKOFF) return
@@ -862,7 +991,7 @@ class BackgroundUrlSessionDownloadRepository(
      * prefetching. Header staleness is a non-issue: reconcile/retry overlay FRESH site headers (B3)
      * at enqueue time regardless of when the manifest was written.
      */
-    private fun launchPrefetchResolve(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
+    private suspend fun launchPrefetchResolve(entity: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
         launchOwned(claim, finished = {
             mutex.withLock {
                 prefetching.remove(entity.chapterId)
@@ -1138,7 +1267,7 @@ class BackgroundUrlSessionDownloadRepository(
                 fillWindowLocked()
             }
             // Bounded exponential backoff retry of just this page (outside the lock, after a delay).
-            is TransferRetryRules.Decision.Retry -> scheduleRetry(mangaId, chapterId, pageIndex, attempts, decision.delayMs, claim)
+            is TransferRetryRules.Decision.Retry -> scheduleRetry(chapterId, pageIndex, attempts, decision.delayMs, claim.token)
         }
     }
 
@@ -1159,24 +1288,37 @@ class BackgroundUrlSessionDownloadRepository(
         }
     }
 
-    private fun scheduleRetry(
-        mangaId: Long,
+    private suspend fun scheduleRetry(
         chapterId: Long,
         pageIndex: Int,
         attempts: Int,
         delayMs: Long,
-        claim: ChapterArtifactClaim,
+        attemptToken: String,
     ) {
+        val retry = PageRetry(chapterId, pageIndex, attempts, delayMs, attemptToken)
+        val followups = currentCoroutineContext()[ReceiverFollowups]
+        if (followups == null) scheduleRetry(retry) else followups.retries += retry
+    }
+
+    private fun scheduleRetry(retry: PageRetry) {
         BgDownloadLog.log(
             "retry.scheduled",
-            "chapterId" to chapterId,
-            "pageIndex" to pageIndex,
-            "attempt" to attempts,
-            "delayMs" to delayMs,
+            "chapterId" to retry.chapterId,
+            "pageIndex" to retry.pageIndex,
+            "attempt" to retry.attempts,
+            "delayMs" to retry.delayMs,
         )
-        launchOwned(claim) {
-            delay(delayMs)
-            runCatching { mutex.withLock { retryPageLocked(mangaId, chapterId, pageIndex, claim) } }
+        applicationScope.launch {
+            delay(retry.delayMs)
+            runCatalogContinuation("pageRetry") {
+                mutex.withLock {
+                    val row = dao.getDownloadByChapter(retry.chapterId) ?: return@withLock
+                    val claim = callbackClaimLocked(row.mangaId, row.chapterId, retry.attemptToken) ?: return@withLock
+                    artifacts.ownership.producing(claim) {
+                        retryPageLocked(row.mangaId, row.chapterId, retry.pageIndex, claim)
+                    }
+                }
+            }
         }
     }
 
@@ -1392,7 +1534,7 @@ class BackgroundUrlSessionDownloadRepository(
     private fun appSettled(): Boolean = foregroundedAtMark?.let { it.elapsedNow() >= FOREGROUND_SETTLE } ?: false
 
     /** One settle-retry pump armed at a time. (Guarded by [mutex].) */
-    private var settleRetryScheduled = false
+    private var settleRetryJob: Job? = null
 
     /**
      * One-shot re-pump at the [FOREGROUND_SETTLE] deadline, armed when finalize work was deferred while
@@ -1403,19 +1545,30 @@ class BackgroundUrlSessionDownloadRepository(
      * re-kick is owned by the compression-gate watcher in `init`, which re-drives finalize when the
      * deferral clears) or in background (the BG-task window path owns that), so this can never poll in a loop.
      */
-    private fun scheduleSettleRetryLocked() {
-        if (settleRetryScheduled || !appActive) return
+    private suspend fun scheduleSettleRetryLocked() {
+        currentCoroutineContext()[ReceiverFollowups]?.let { it.settleRetry = true; return }
+        if (settleRetryJob?.isActive == true || !appActive) return
         val remaining = foregroundedAtMark?.let { FOREGROUND_SETTLE - it.elapsedNow() } ?: return
         if (remaining.isNegative()) return // already settled → the deferral was stress/background, not settle
-        settleRetryScheduled = true
         BgDownloadLog.log("finalize.settleRetry.armed", "inMs" to remaining.inWholeMilliseconds)
-        applicationScope.launch {
+        val retry = applicationScope.launch(start = CoroutineStart.LAZY) { retryAfterSettle(remaining) }
+        settleRetryJob = retry
+        retry.start()
+    }
+
+    private suspend fun retryAfterSettle(remaining: Duration) {
+        val running = currentCoroutineContext()[Job]
+        try {
             delay(remaining + SETTLE_RETRY_SLACK)
-            runCatching {
+            runCatalogContinuation("settleRetry") {
                 mutex.withLock {
-                    settleRetryScheduled = false
+                    settleRetryJob = null
                     pumpLocked("settleRetry")
                 }
+            }
+        } finally {
+            withContext(NonCancellable) {
+                mutex.withLock { if (settleRetryJob === running) settleRetryJob = null }
             }
         }
     }
@@ -1431,6 +1584,7 @@ class BackgroundUrlSessionDownloadRepository(
      * "complete"; the chapter stays DOWNLOADED and re-finalizes on the next window/foreground.
      */
     private suspend fun launchFinalize(chapterId: Long) {
+        currentCoroutineContext()[ReceiverFollowups]?.let { it.finalizeChapterIds += chapterId; return }
         // Called under the engine mutex: capture once, before semaphore waits or native work.
         if (chapterId in finalizing) return
         val entity = dao.getDownloadByChapter(chapterId) ?: return
@@ -1537,7 +1691,7 @@ class BackgroundUrlSessionDownloadRepository(
         transport.cancelChapter(entity.chapterId, claim.token)
         clearChapterCaches(entity.chapterId)
         runCatching { downloadNotifier.onFailed(entity.chapterId.toInt(), notifTitle(entity)) }
-        applicationScope.launch { artifacts.settle(claim) }
+        launchRetainedOperation(currentOperation()) { artifacts.settle(claim) }
     }
 
     private suspend fun updateProgressLocked(
@@ -1675,6 +1829,26 @@ class BackgroundUrlSessionDownloadRepository(
 
     // Retry-vs-fail + backoff policy moved to the pure commonMain [TransferRetryRules] (test
     // hardening — the decision also stamps the Cloudflare sentinel on a challenge-class exhaustion).
+
+    private data class PageRetry(
+        val chapterId: Long,
+        val pageIndex: Int,
+        val attempts: Int,
+        val delayMs: Long,
+        val attemptToken: String,
+    )
+
+    /** Receiver/producer-local hints only; no captured row, locator, manifest or artifact claim. */
+    private class ReceiverFollowups : AbstractCoroutineContextElement(Key) {
+        var pump = false
+        var fillWindow = false
+        var prefetch = false
+        var settleRetry = false
+        val finalizeChapterIds = linkedSetOf<Long>()
+        val retries = mutableListOf<PageRetry>()
+
+        companion object Key : CoroutineContext.Key<ReceiverFollowups>
+    }
 
     private companion object {
         const val CANCELLED_BY_USER = "__cancelled_by_user__"

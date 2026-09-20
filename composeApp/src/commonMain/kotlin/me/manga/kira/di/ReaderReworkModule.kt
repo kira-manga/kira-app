@@ -5,16 +5,15 @@ import me.manga.kira.data.repository.ChapterPagesRepositoryImpl
 import me.manga.kira.data.repository.DownloadedPageFiles
 import me.manga.kira.data.repository.MarkChapterReadRepositoryImpl
 import me.manga.kira.data.repository.PageProgressRepositoryImpl
-import me.manga.kira.data.repository.ReadProgressRepositoryImpl
 import me.manga.kira.data.repository.ReadingModeRepositoryImpl
 import me.manga.kira.data.repository.ReadingSessionRepositoryImpl
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.domain.repository.MarkChapterReadRepository
 import me.manga.kira.domain.repository.PageProgressRepository
-import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.domain.repository.ReadingModeRepository
 import me.manga.kira.domain.repository.ReadingSessionRepository
+import me.manga.kira.domain.usecase.reader.BeginReadProgressSessionUseCase
 import me.manga.kira.domain.usecase.reader.EndReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ObserveChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ObservePageProgressUseCase
@@ -22,14 +21,15 @@ import me.manga.kira.domain.usecase.reader.ClearExtractedPagesUseCase
 import me.manga.kira.domain.usecase.reader.ClearPageProgressUseCase
 import me.manga.kira.domain.usecase.reader.FetchChapterPagesUseCase
 import me.manga.kira.domain.usecase.reader.ListChaptersUseCase
-import me.manga.kira.domain.usecase.reader.LoadPagePositionUseCase
 import me.manga.kira.domain.usecase.reader.MarkChapterReadUseCase
 import me.manga.kira.domain.usecase.reader.ObserveReadingModeUseCase
+import me.manga.kira.domain.usecase.reader.PrepareLegacyReadProgressUseCase
 import me.manga.kira.domain.usecase.reader.RecordHistoryUseCase
-import me.manga.kira.domain.usecase.reader.SavePagePositionUseCase
+import me.manga.kira.domain.usecase.reader.SaveScopedPagePositionUseCase
 import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.StartReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
+import me.manga.kira.presentation.reader.ReaderProgressSessions
 import me.manga.kira.presentation.reader.ReaderViewModel
 import me.manga.kira.reader.ReaderShareCoordinator
 import org.koin.core.module.Module
@@ -64,15 +64,9 @@ import org.koin.dsl.module
  *    transition, so the user's accumulated read-time stays consistent. Mirrors the
  *    [ChapterPagesRepositoryImpl] → `SourcesRepository` reuse posture. The legacy methods can
  *    be retired in Phase 9.x once the user-facing route swap promotes the rework Reader.
- *  - [ObservableSettings] (consumed by [ReadProgressRepositoryImpl]) is the same `single`
- *    [ReadingModeRepositoryImpl] already consumes. Phase 7.x.reader.resumeposition is a
- *    net-new persistence cell (not strangler-fig): the legacy `HistoryItemD.lastReadPage`
- *    column is dead-write — the legacy reader always passes `lastReadPage = 0` via
- *    `historyViewModel.updateHistoryItem(...)`, so there is no on-disk page-position cell to
- *    preserve. The rework writes a fresh `reader.last_page.<hash>` key directly via
- *    `ObservableSettings`, bypassing the legacy Room graph entirely. See the
- *    [ReadProgressRepository] class-level KDoc for the storage layout + collision-safety
- *    rationale.
+ *  - Scoped and legacy-progress domain ports are supplied by the shared Room runtime. This module
+ *    binds their Reader use cases, not another database, accepted-policy provider or cleanup owner.
+ *    Legacy preparation is explicit; the Reader no longer binds or writes the URL-only store.
  *
  * SRP (contract §6): one module = one feature slice.
  *
@@ -109,6 +103,7 @@ val readerReworkModule: Module =
                 pageFiles = get(),
                 artifacts = get(),
                 appFileSystem = get(),
+                operations = get(),
             )
         }
 
@@ -147,15 +142,11 @@ val readerReworkModule: Module =
         factory { StartReadingSessionUseCase(get()) }
         factory { EndReadingSessionUseCase(get()) }
 
-        // Per-chapter last-read-page persistence (Phase 7.x.reader.resumeposition). The impl writes
-        // a fresh `reader.last_page.<hash>` Settings cell — no strangler-fig delegation because the
-        // legacy `HistoryItemD.lastReadPage` column is dead-write (legacy reader always passes 0).
-        // `single` because the impl holds no per-call state and the backing `ObservableSettings` is
-        // itself a singleton; reconstructing per resolution would be wasteful. Use cases stay
-        // `factory` (stateless, matches the established slice pattern).
-        single<ReadProgressRepository> { ReadProgressRepositoryImpl(settings = get()) }
-        factory { SavePagePositionUseCase(get()) }
-        factory { LoadPagePositionUseCase(get()) }
+        // Same scoped Room runtime; per-VM coordinator owns its progress sessions and writes.
+        factory { PrepareLegacyReadProgressUseCase(get()) }
+        factory { BeginReadProgressSessionUseCase(get()) }
+        factory { SaveScopedPagePositionUseCase(get()) }
+        factory { ReaderProgressSessions(get(), get(), get()) }
 
         // Per-page download/decode progress (Phase 7.x.reader.modelayout.pageprogress). Pure-in-memory
         // [MutableStateFlow]-backed repository — no `ObservableSettings`, no Room, no on-disk cell.
@@ -179,7 +170,7 @@ val readerReworkModule: Module =
         // (which only forwarded these calls to the same DAO); the legacy repo STAYS for :app
         // (LibraryRefreshWorker + ChapterNotificationHelper). `single` (impl holds no per-call state,
         // backing DAO is itself a singleton); use cases `factory` per the slice pattern.
-        single<ChapterBookmarkRepository> { ChapterBookmarkRepositoryImpl(chapterDao = get()) }
+        single<ChapterBookmarkRepository> { ChapterBookmarkRepositoryImpl(owners = get(), chapterDao = get()) }
         factory { ObserveChapterBookmarkUseCase(get()) }
         factory { ToggleChapterBookmarkUseCase(get()) }
 
@@ -203,26 +194,25 @@ val readerReworkModule: Module =
         // this call to the same DAO); the legacy repo STAYS for :app. `single` (impl holds no per-call
         // state, backing DAO is itself a singleton); use case `factory` per the slice pattern. NOT
         // incognito-gated — read state is library progress, not a browsing trail (legacy parity).
-        single<MarkChapterReadRepository> { MarkChapterReadRepositoryImpl(chapterDao = get()) }
+        single<MarkChapterReadRepository> { MarkChapterReadRepositoryImpl(owners = get(), chapterDao = get()) }
         factory { MarkChapterReadUseCase(get()) }
 
         viewModel {
             ReaderViewModel(
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
+                fetchPages = get(),
+                observeReadingMode = get(),
+                setReadingMode = get(),
+                listChapters = get(),
+                startReadingSession = get(),
+                endReadingSession = get(),
+                progressSessions = get(),
+                observePageProgress = get(),
+                observeChapterBookmark = get(),
+                toggleChapterBookmark = get(),
+                recordHistory = get(),
+                markChapterRead = get(),
+                clearExtractedPages = get(),
+                clearPageProgress = get(),
             )
         }
     }

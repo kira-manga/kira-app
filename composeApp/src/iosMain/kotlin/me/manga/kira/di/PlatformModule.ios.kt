@@ -188,7 +188,7 @@ actual fun platformModule(): Module =
         // DownloadRepository engine-selector) moved to :data:download's downloadModule() (strangler-fig
         // Phase 4). The :platform background facades below stay here and resolve into that module by type.
         // Background-URLSession transport for the iOS engine (durable transfers across suspension).
-        single<BackgroundTransport> { IosBackgroundTransport(get(), get()) }
+        single<BackgroundTransport> { IosBackgroundTransport(get(), get(), recovery = get()) }
         // M4: BG-task CPU scheduling (BGProcessingTask / BGContinuedProcessingTask via the Swift host) +
         // a synchronous work-state snapshot the host reads to decide submission + drive the progress UI.
         single { IosBackgroundScheduler() }

@@ -17,5 +17,5 @@ fun sourcePersistenceModule(): Module =
     module {
         single<Set<BaseMangaRepository>> { emptySet() }
         single { SourcesRepository(get(), get<Set<BaseMangaRepository>>(), get(), get()) }
-        single { LibraryRepository(get(), get(), get(), get(), get(), get()) }
+        single { LibraryRepository(get(), get(), get(), get(), get()) }
     }

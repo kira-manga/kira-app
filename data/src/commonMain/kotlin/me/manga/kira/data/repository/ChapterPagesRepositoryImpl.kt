@@ -27,6 +27,7 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.platform.cbz.CbzReader
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.sources.contracts.SourceRegistry
 import okio.Path
@@ -68,6 +69,7 @@ class ChapterPagesRepositoryImpl(
     private val pageFiles: DownloadedPageFiles,
     private val artifacts: ChapterArtifacts,
     private val appFileSystem: AppFileSystem,
+    private val operations: DownloadOperationExclusion,
 ) : ChapterPagesRepository {
     // App-lifetime scope for fire-and-forget CBZ-extract cleanup. The repository is a Koin single,
     // so this scope outlives any reader ViewModel — letting cleanup be triggered from `onCleared()`
@@ -96,7 +98,9 @@ class ChapterPagesRepositoryImpl(
             // Downloaded-chapter fast path (native parity): serve local files instead of re-fetching
             // from the source when the chapter has been downloaded for offline reading. Falls through
             // to the network path when the chapter isn't downloaded or no readable local files exist.
-            val localPages = localPagesOrNull(manga, chapter)
+            // Admission precedes the first local locator and lasts through actual extraction.
+            // Emit in the flow's original context; returned URLs do not retain a reader-lifetime pin.
+            val localPages = operations.withOperation { localPagesOrNull(manga, chapter) }
             if (localPages != null) {
                 FlowLog.log("Reader", "resolve", "chapter=${chapter.url} source=downloaded pages=${localPages.size}")
                 emit(AppResult.Success(localPages))
@@ -236,13 +240,14 @@ class ChapterPagesRepositoryImpl(
             // reach the platform default handler and crash the process — wrap it (CancellationException
             // is rethrown by runCatchingCancellable, so structured cancellation still unwinds).
             runCatchingCancellable {
-                val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return@runCatchingCancellable
-                val entity = chapterDao.getChapterByIdSuspend(chapterId) ?: return@runCatchingCancellable
-                // Serialize against a concurrent re-extract of the same chapter (rapid Next->Prev /
-                // exit->reopen): both touch cacheDir/cbz_extract/<mangaId>/<chapterId>, so the recursive
-                // delete must not interleave with extractImages writing into that dir.
-                cleanupLockFor(chapterId).withLock {
-                    cbzReader.cleanupExtractedCache(entity.mangaId, chapterId)
+                // This independent root captures nothing from Room before fresh admission.
+                operations.withOperation {
+                    val chapterId = chapterDao.getChapterIdByUrl(manga.url, chapter.url) ?: return@withOperation
+                    val entity = chapterDao.getChapterByIdSuspend(chapterId) ?: return@withOperation
+                    // Serialize against re-extraction of the same chapter through real cleanup.
+                    cleanupLockFor(chapterId).withLock {
+                        cbzReader.cleanupExtractedCache(entity.mangaId, chapterId)
+                    }
                 }
             }.onFailure { FlowLog.log("Reader", "clearExtractedPages", "cleanup failed: ${it.message}") }
         }

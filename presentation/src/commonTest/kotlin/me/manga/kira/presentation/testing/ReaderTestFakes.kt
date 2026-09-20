@@ -1,13 +1,19 @@
 package me.manga.kira.presentation.testing
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.history.HistoryEntry
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.repository.ChapterBookmarkRepository
@@ -15,7 +21,6 @@ import me.manga.kira.domain.repository.ChapterPagesRepository
 import me.manga.kira.domain.repository.HistoryRepository
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.repository.MarkChapterReadRepository
-import me.manga.kira.domain.repository.ReadProgressRepository
 import me.manga.kira.domain.repository.ReadingModeRepository
 import me.manga.kira.domain.repository.ReadingSessionRepository
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
@@ -24,13 +29,11 @@ import me.manga.kira.domain.usecase.reader.ClearPageProgressUseCase
 import me.manga.kira.domain.usecase.reader.EndReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.FetchChapterPagesUseCase
 import me.manga.kira.domain.usecase.reader.ListChaptersUseCase
-import me.manga.kira.domain.usecase.reader.LoadPagePositionUseCase
 import me.manga.kira.domain.usecase.reader.MarkChapterReadUseCase
 import me.manga.kira.domain.usecase.reader.ObserveChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ObservePageProgressUseCase
 import me.manga.kira.domain.usecase.reader.ObserveReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.RecordHistoryUseCase
-import me.manga.kira.domain.usecase.reader.SavePagePositionUseCase
 import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.StartReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
@@ -77,10 +80,8 @@ private class FakeReaderMangaDetailsRepository(
 }
 
 private class FakeSavedDetailsRepository : SavedMangaDetailsRepository {
-    override fun observeSavedDetails(
-        api: String,
-        title: String,
-    ): Flow<MangaDetails?> = flowOf(null)
+    override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> =
+        flowOf(AppResult.Success(null))
 }
 
 /**
@@ -113,35 +114,14 @@ class RecordingReadingSessionRepository : ReadingSessionRepository {
     }
 }
 
-class RecordingReadProgressRepository : ReadProgressRepository {
-    /** Every (chapterUrl, withinChapterPageIndex) save, in order — for resume-position assertions. */
-    val saved = mutableListOf<Pair<String, Int>>()
-
-    /** Value returned by [load] (the resume seed); a test can set it before OnEnter. */
-    var loadValue: Int? = null
-    var loadGate: CompletableDeferred<Unit>? = null
-
-    override suspend fun save(
-        chapterUrl: String,
-        pageIndex: Int,
-    ) {
-        saved += chapterUrl to pageIndex
-    }
-
-    override suspend fun load(chapterUrl: String): Int? {
-        loadGate?.await()
-        return loadValue
-    }
-
-    override suspend fun clear(chapterUrl: String) = Unit
-}
-
 class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
-    /** Owner and chapter URL subscribed to, in order — `last()` is the active observed chapter. */
+    /** Captured owner and chapter URL; `last()` is the active observed chapter. */
     val observed = mutableListOf<Pair<Manga, String>>()
+    val streams = mutableMapOf<Pair<Manga, String>, Flow<Boolean>>()
 
-    /** Owner and chapter URL toggled, in order — for asserting the toggle targets the active chapter. */
+    /** Captured owner and chapter URL toggled, in order. */
     val toggled = mutableListOf<Pair<Manga, String>>()
+    var beforeToggle: suspend () -> Unit = {}
 
     /**
      * Whether [toggleBookmark] reports the chapter as in-library (#15). `true` (default) mimics a
@@ -150,27 +130,30 @@ class RecordingChapterBookmarkRepository : ChapterBookmarkRepository {
      */
     var inLibrary: Boolean = true
 
-    override fun observeBookmark(
-        manga: Manga,
-        chapterUrl: String,
-    ): Flow<Boolean> {
+    override fun observeBookmark(manga: Manga, chapterUrl: String): Flow<Boolean> {
         observed += manga to chapterUrl
-        return flowOf(false)
+        return streams[manga to chapterUrl] ?: flowOf(false)
     }
 
-    override suspend fun toggleBookmark(
-        manga: Manga,
-        chapterUrl: String,
-    ): Boolean {
+    override suspend fun toggleBookmark(manga: Manga, chapterUrl: String): Boolean {
         toggled += manga to chapterUrl
+        beforeToggle()
         return inLibrary
     }
 
-    override suspend fun toggleBookmark(
-        manga: Manga,
-        chapterUrls: List<String>,
-    ) {
+    override suspend fun toggleBookmark(manga: Manga, chapterUrls: List<String>) {
         toggled += chapterUrls.map { manga to it }
+    }
+}
+
+/** Delivers a late old-owner callback even after cancellation, to exercise the VM's local fence. */
+@OptIn(InternalCoroutinesApi::class)
+internal class DeferredReaderBookmarkFlow : Flow<Boolean> {
+    val late = CompletableDeferred<Boolean>()
+
+    override suspend fun collect(collector: FlowCollector<Boolean>) {
+        collector.emit(true)
+        withContext(NonCancellable) { collector.emit(late.await()) }
     }
 }
 
@@ -228,7 +211,8 @@ class ReaderTestEnv(
 ) {
     val pages = FakeChapterPagesRepository()
     val markRead = RecordingMarkChapterReadRepository()
-    val readProgress = RecordingReadProgressRepository()
+    val readProgress = RecordingReaderProgressRepository()
+    val legacyProgress = RecordingLegacyReaderProgressRepository()
     val bookmark = RecordingChapterBookmarkRepository()
     val history = RecordingHistoryRepository()
 
@@ -257,8 +241,7 @@ class ReaderTestEnv(
             listChapters = ListChaptersUseCase(FakeReaderMangaDetailsRepository(details), FakeSavedDetailsRepository()),
             startReadingSession = StartReadingSessionUseCase(readingSession),
             endReadingSession = EndReadingSessionUseCase(readingSession),
-            loadPagePosition = LoadPagePositionUseCase(readProgress),
-            savePagePosition = SavePagePositionUseCase(readProgress),
+            progressSessions = readerProgressSessions(readProgress, legacyProgress),
             observePageProgress = ObservePageProgressUseCase(pageProgress),
             observeChapterBookmark = ObserveChapterBookmarkUseCase(bookmark),
             toggleChapterBookmark = ToggleChapterBookmarkUseCase(bookmark),

@@ -23,15 +23,17 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.util.data_classes.HandelDataClasses.toChapterEntity
 import me.manga.kira.data.download.artifacts.ChapterDownloadArtifacts
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
+import me.manga.kira.data.download.selection.DownloadCatalogNotReady
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.MangaDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.data.local.entity.SavedChapterEntity
-import me.manga.kira.presentation.features.download.data.DownloadState
-import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.platform.locale.localizedResourceSnapshot
 import me.manga.kira.platform.notification.ensureLocalizedChannel
+import me.manga.kira.presentation.features.download.data.DownloadState
+import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.download.domain.ChapterDownloadService
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRules
@@ -88,6 +90,7 @@ class DownloadWorkerV2(
     // Routes downloads through the authoritative generic catalog. Missing sources fail closed.
     private val chapterPageProvider: ChapterPageProvider by lazy { koin.get() }
     private val artifacts: ChapterDownloadArtifacts by lazy { koin.get() }
+    private val catalogAdmission: DownloadCatalogAdmission by lazy { koin.get() }
     private var artifactClaim: ChapterArtifactClaim? = null
 
     private val koin get() = GlobalContext.get()
@@ -121,63 +124,55 @@ class DownloadWorkerV2(
 
     override suspend fun doWork(): Result =
         coroutineScope {
-            // The overall foreground notification content is static, so post it once at worker start
-            // instead of rebuilding and re-posting it through setForegroundAsync IPC on every collected
-            // state and inside every per-chapter notification update.
+            // Static overall notification: post once, not on every chapter/state update.
             updateOverallNotification()
-
-            var currentChapter: ChapterDownloadEntity? = null
-
             try {
-                while (true) {
-                    val admitted = artifacts.awaitNextQueued { chapterDownloadDao.getQueuedChaptersForWorker() } ?: break
-                    val chapter = admitted.chapter
-
-                    currentChapter = chapter
-
-                    try {
-                        processChapter(chapter, admitted.claim)
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (e: Exception) {
-                        // Per-chapter isolation (2026-07 audit): a failure escaping the per-state
-                        // handlers (repo.initSite()/DAO throw) used to end the whole worker with
-                        // Result.failure(), stalling every remaining QUEUED row for the session. Mark
-                        // just this chapter FAILED and continue with the next one.
-                        Log.w(TAG, "Chapter ${chapter.chapterId} failed: ${e.message}", e)
-                        handleErrorSafely(chapter, e)
-                    }
-                    // A stop/error while fetching the next job must not clean up the previous success.
-                    currentChapter = null
-                }
+                // Once per worker attempt, outside operation/Room/engine locks; never grants capture.
+                catalogAdmission.prepareLocal()
+                while (processNextChapter()) { /* Release between chapters, never between capture and settlement. */ }
                 Result.success()
+            } catch (_: DownloadCatalogNotReady) {
+                // Pre-capture refusal: no chapter state change, bootstrap loop or WorkManager retry.
+                Result.failure()
             } catch (e: CancellationException) {
-                // Cooperative cancellation (isStopped throw above, or WorkManager stopping the worker).
-                // The coroutine is already cancelled, so the cleanup MUST run under NonCancellable —
-                // the DAO/file suspend calls would otherwise throw immediately and silently skip.
-                // Clean up the in-flight chapter's files, then re-queue its row ONLY if it is still
-                // in-flight (2026-07 audit): a SYSTEM stop (constraint lost / quota) leaves the row
-                // RUNNING and WorkManager reschedules the worker — without the reset the re-run pulls
-                // only QUEUED rows and the chapter showed "downloading" forever until the next
-                // app-launch reconcile. A USER cancel writes FAILED to the row, which the state-guarded
-                // update never matches, so a cancel is never undone. Rethrow so the stop is not
-                // mistaken for a crash.
-                // processChapter retains the original token and drains flowOn before settlement.
+                // Original token/exclusion already spans producer unwind and NonCancellable cleanup.
                 throw e
             } catch (e: Exception) {
-                // Last-resort guard: a failure OUTSIDE the per-chapter isolation above (e.g.
-                // getNextQueuedChapter itself, or handleErrorSafely's own DAO write, failing). Mark the
-                // in-flight row FAILED so it leaves the RUNNING state instead of being blindly
-                // re-queued on every launch.
-                currentChapter?.let {
-                    handleErrorSafely(it, e)
-                }
+                // The final in-flight failure write already ran inside the original operation.
                 Log.w(TAG, "Worker failed: ${e.message}", e)
                 Result.failure()
             } finally {
                 clearAllDownloadNotifications()
             }
         }
+
+    /** Admission precedes capture; locator resolution, producer unwind and cleanup retain its operation. */
+    private suspend fun processNextChapter(): Boolean = catalogAdmission.withAdmittedOperation {
+        val admitted = artifacts.awaitNextQueued { chapterDownloadDao.getQueuedChaptersForWorker() }
+            ?: return@withAdmittedOperation false
+        try {
+            processIsolatedChapter(admitted.chapter, admitted.claim)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // Keep the last-resort failure write under this same pin, not after its release.
+            handleErrorSafely(admitted.chapter, failure)
+            throw failure
+        }
+        true
+    }
+
+    private suspend fun processIsolatedChapter(chapter: ChapterDownloadEntity, claim: ChapterArtifactClaim) {
+        try {
+            processChapter(chapter, claim)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // A single chapter failure must not strand the remaining QUEUED rows.
+            Log.w(TAG, "Chapter ${chapter.chapterId} failed: ${failure.message}", failure)
+            handleErrorSafely(chapter, failure)
+        }
+    }
 
     /**
      * One chapter's full download pass: RUNNING write → collect the download flow into DAO/

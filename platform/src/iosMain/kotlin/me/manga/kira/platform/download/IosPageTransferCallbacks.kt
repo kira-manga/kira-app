@@ -33,6 +33,7 @@ internal class IosPageTransferCallbacks(
         bytesWritten: Long,
         totalBytesWritten: Long,
         totalExpected: Long,
+        operation: DownloadOperationExclusion.Operation,
     ) {
         val d = IosTransferIdentity.decode(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
@@ -41,7 +42,7 @@ internal class IosPageTransferCallbacks(
             // when the terminal NSError is only NSURLErrorCancelled.
             outcome.failure =
                 PageByteLimitExceeded(pageBytePolicy.maxEncodedBytes, maxOf(totalBytesWritten, totalExpected)).message
-            withEvent { event ->
+            withEvent(operation) { event ->
                 reportFailureOnce(task, d, requireNotNull(outcome.failure), event)
                 task.cancel()
             }
@@ -59,11 +60,12 @@ internal class IosPageTransferCallbacks(
         task: NSURLSessionDownloadTask,
         location: NSURL,
         response: NSHTTPURLResponse?,
+        operation: DownloadOperationExclusion.Operation,
     ) {
         val d = IosTransferIdentity.decode(task.taskDescription) ?: return
         val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
         if (outcome.reported) return
-        withEvent { event ->
+        withEvent(operation) { event ->
             val failure = outcome.failure
             if (failure == null) {
                 finishUnreportedDownload(task, location, response, d, outcome, event)
@@ -137,8 +139,8 @@ internal class IosPageTransferCallbacks(
 
     private fun deliverPage(d: IosTransferIdentity, page: StagedDownloadPage, event: IosTransferEvent): Boolean {
         val receiver = listener() ?: return false
-        event.deliver { acknowledge ->
-            receiver.onPageComplete(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, page, acknowledge)
+        event.deliver { operation, acknowledge ->
+            receiver.onPageComplete(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, page, operation, acknowledge)
         }
         return true
     }
@@ -152,9 +154,10 @@ internal class IosPageTransferCallbacks(
     fun handleCompleted(
         task: NSURLSessionTask,
         error: NSError?,
+        operation: DownloadOperationExclusion.Operation,
     ) {
         val d = IosTransferIdentity.decode(task.taskDescription) ?: return
-        withEvent { event ->
+        withEvent(operation) { event ->
             try {
                 val outcome = outcomes.getOrPut(task.taskIdentifier) { PageOutcome() }
                 if (!outcome.reported) completeUnreported(task, d, outcome, error, event)
@@ -192,13 +195,13 @@ internal class IosPageTransferCallbacks(
         if (outcome.reported) return
         outcome.reported = true
         val receiver = listener() ?: return
-        event.deliver { acknowledge ->
-            receiver.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, reason, acknowledge)
+        event.deliver { operation, acknowledge ->
+            receiver.onPageFailed(d.mangaId, d.chapterId, d.pageIndex, d.attemptToken, reason, operation, acknowledge)
         }
     }
 
-    private inline fun withEvent(action: (IosTransferEvent) -> Unit) {
-        val event = IosTransferEvent(admitEvent())
+    private inline fun withEvent(operation: DownloadOperationExclusion.Operation, action: (IosTransferEvent) -> Unit) {
+        val event = IosTransferEvent(operation, admitEvent())
         try {
             action(event)
         } finally {

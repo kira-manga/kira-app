@@ -34,6 +34,7 @@ internal fun downloadRecoveryTest(block: suspend DownloadRecoveryFixture.() -> U
 /** Only this recovery suite owns these temporary files and the file-backed Room database. */
 internal class DownloadRecoveryFixture {
     private val root = Files.createTempDirectory("kira-download-recovery-").toString().toPath()
+    val downloadOperations = me.manga.kira.platform.download.DownloadOperationExclusion()
     private var nextManga = 0
     val fs: FileSystem = FileSystem.SYSTEM
     val appFileSystem: AppFileSystem =
@@ -92,6 +93,8 @@ internal class DownloadRecoveryFixture {
     ) = DownloadsActionRepositoryImpl(
         legacy = engine,
         storage = DownloadsActionStorage(downloadDao, db.chapterDao(), fileSystem, artifactRuntime.ownership, repairDao),
+        operations = downloadOperations,
+        catalog = TestDownloadCatalogAdmission(downloadOperations),
     )
 
     suspend fun seed(

@@ -3,6 +3,7 @@ package me.manga.kira.presentation.backup
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.backup.BackupProgress
 import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.model.backup.isValid
 import me.manga.kira.presentation.mvi.MviState
 
 /**
@@ -23,12 +24,12 @@ data class BackupState(
     val error: AppError? = null,
 ) : MviState {
     /** Scoped export (Details / Library selection) — the Import row is hidden in this mode. */
-    val isScoped: Boolean get() = scope is BackupScope.Mangas
+    val isScoped: Boolean get() = scope !is BackupScope.FullLibrary
 
     /** Titles to show for a scoped export (empty for a full-library backup). */
     val scopeTitles: List<String>
         get() = (scope as? BackupScope.Mangas)?.keys?.map { it.title }.orEmpty()
 
     /** No new run may start while one is in flight or the CBZ converter owns the chapter dirs. */
-    val canStartRun: Boolean get() = !progress.isRunning && !isCbzConversionRunning
+    val canStartRun: Boolean get() = scope.isValid && !progress.isRunning && !isCbzConversionRunning
 }

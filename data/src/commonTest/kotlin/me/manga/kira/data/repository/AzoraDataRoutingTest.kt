@@ -1,5 +1,6 @@
 package me.manga.kira.data.repository
 
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -124,6 +125,7 @@ class AzoraDataRoutingTest {
         DownloadedPageFiles(appFs, RecoveryFixtureInspector(appFs.fileSystem())),
         fakeArtifactRuntime(appFs, dao).ownership,
         appFs,
+        DownloadOperationExclusion(),
     )
 
     @Test

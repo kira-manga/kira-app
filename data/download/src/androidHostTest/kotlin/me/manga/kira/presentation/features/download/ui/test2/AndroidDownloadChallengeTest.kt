@@ -18,6 +18,7 @@ import org.robolectric.annotation.LooperMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Actual worker/service and existing generated Android Room fixture; no live HTTP/WorkManager claim. */
@@ -26,6 +27,33 @@ import kotlin.test.assertTrue
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AndroidDownloadChallengeTest {
+    @Test
+    fun workerCatalogRefusalDoesNotCaptureQueueOrInvokeService() = challengeCase {
+        rows.catalogAdmission.refuse = true
+        assertEquals(ListenableWorker.Result.failure(), runWorker(), "Refusal must not request a worker retry")
+        assertEquals(1, rows.catalogAdmission.preparations.get())
+        assertEquals(1, rows.catalogAdmission.attempts.get(), "No preparation/admission scheduling loop")
+        assertEquals(0, workerQueueReads.get(), "Admission must precede the first queued-row capture")
+        assertEquals(0, workerServiceResolutions.get(), "The worker must not even resolve its download service")
+        assertEquals(0, requests.get())
+        assertEquals(rows.original.download, rows.download(), "Keep the full QUEUED ledger, including prior error/progress")
+        assertEquals(rows.original.saved, rows.saved())
+        assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+        assertTrue(storage.mangaDirectory.walkTopDown().none { it.isFile })
+        rows.operations.withExclusive {} // Refusal must release its own operation without creating a claim.
+    }
+
+    @Test
+    fun workerPreparesOnceWhileEachQueuedScanNeedsAdmission() = challengeCase {
+        assertEquals(ListenableWorker.Result.success(), runWorker())
+        assertFailed(CHALLENGE)
+        assertEquals(1, rows.catalogAdmission.preparations.get())
+        assertEquals(2, rows.catalogAdmission.attempts.get(), "The processed row and final empty scan each require admission")
+        assertEquals(2, workerQueueReads.get())
+        assertEquals(1, workerServiceResolutions.get())
+        assertEquals(1, requests.get())
+    }
+
     @Test
     fun workerClassifiesResolveFailuresAndPreservesOrdinaryMessages() = challengeCase {
         // RegistryChapterPageProviderTest separately pins the real generic provider to this interface.

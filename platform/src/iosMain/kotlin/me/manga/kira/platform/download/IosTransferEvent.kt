@@ -6,21 +6,23 @@ import platform.Foundation.NSLock
 /** Holds one drain receipt until both native callback cleanup and every accepted receiver settle. */
 @OptIn(ExperimentalForeignApi::class)
 internal class IosTransferEvent(
+    operation: DownloadOperationExclusion.Operation,
     private val complete: () -> Unit,
 ) {
+    private val ownership = operation.retain()
     private val lock = NSLock()
     private var pending = 1
     private val deliveryAcknowledged = acknowledgement()
 
     /** A throwing receiver rejects ownership; the caller still owns its callback-local cleanup. */
-    fun deliver(receiver: (acknowledge: () -> Unit) -> Unit) {
+    fun deliver(receiver: (operation: DownloadOperationExclusion.Operation, acknowledge: () -> Unit) -> Unit) {
         locked {
             check(pending > 0)
             pending++
         }
         val acknowledge = acknowledgement()
         try {
-            receiver(acknowledge)
+            receiver(ownership, acknowledge)
         } catch (failure: Throwable) {
             acknowledge()
             throw failure
@@ -38,7 +40,13 @@ internal class IosTransferEvent(
                     acknowledged = true
                     --pending == 0
                 }
-            if (finished) complete()
+            if (finished) {
+                try {
+                    complete()
+                } finally {
+                    ownership.release()
+                }
+            }
         }
     }
 

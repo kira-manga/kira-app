@@ -69,6 +69,8 @@ class DownloadCleanupIoTest {
                         DownloadsActionStorage(
                             dao, db.chapterDao(), appFs, runtime.ownership, db.chapterArtifactRepairDao(),
                         ),
+                        operations = downloadOperations,
+                        catalog = TestDownloadCatalogAdmission(downloadOperations),
                     )
                     assertTrue(actions.reconcileInterrupted().isSuccess)
                     assertTrue(runtime.downloads.exactSize(completed.saved.localImagePaths) > 0)
@@ -103,6 +105,8 @@ class DownloadCleanupIoTest {
             DownloadsActionStorage(
                 dao, db.chapterDao(), appFs, runtime.ownership, db.chapterArtifactRepairDao(),
             ),
+            operations = downloadOperations,
+            catalog = TestDownloadCatalogAdmission(downloadOperations),
         )
         val failed = actions.deleteDownloadedChapter(blocked.saved.id)
         assertTrue(failed.isFailure)
@@ -164,6 +168,8 @@ class DownloadCleanupIoTest {
             DownloadsActionStorage(
                 dao, db.chapterDao(), appFs, runtime.ownership, db.chapterArtifactRepairDao(),
             ),
+            operations = downloadOperations,
+            catalog = TestDownloadCatalogAdmission(downloadOperations),
         )
         assertFailsWith<CancellationException> { actions.deleteDownloadedChapter(original.saved.id) }
         assertEquals(ChapterArtifactOperation.DELETE, runtime.dao.get(original.saved.id)?.operation)

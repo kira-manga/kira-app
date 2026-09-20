@@ -12,17 +12,17 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.todayIn
 import me.manga.kira.core.dispatchers.platformIoDispatcher
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.util.runCatchingCancellable
-import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
-import kotlin.time.Clock
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryChapterNotification
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 
 /** Observed mandatory chapter/Updates work and the worker's actual Result/stamp policy. */
 internal class LibraryRefreshWork(
@@ -126,13 +126,14 @@ internal class LibraryRefreshWork(
         runCatchingCancellable {
             withTimeoutOrNull(timeouts.itemMs) {
                 if (manga.id == 0L) return@withTimeoutOrNull ItemOutcome.Failed
+                val owner = SavedWorkIdentity(manga.id, WorkLocator(manga.api, manga.url))
                 val source = port.source(manga.api) ?: return@withTimeoutOrNull ItemOutcome.Failed
                 val details =
                     withTimeoutOrNull(timeouts.detailsMs) {
                         source.details(manga.toManga())
                     } ?: return@withTimeoutOrNull ItemOutcome.TimedOut
                 when (details) {
-                    is AppResult.Success -> reconcile(manga, details.value)
+                    is AppResult.Success -> reconcile(owner, details.value)
                     is AppResult.Failure -> {
                         log.w { "Generic refresh failed: ${details.error}" }
                         ItemOutcome.Failed
@@ -145,49 +146,34 @@ internal class LibraryRefreshWork(
         }
 
     private suspend fun reconcile(
-        manga: SavedMangaEntity,
+        owner: SavedWorkIdentity,
         details: MangaDetails,
     ): ItemOutcome {
-        reconcileCover(manga, details.coverUrl)
-        val local =
-            withTimeoutOrNull(timeouts.localReadMs) { port.chapters(manga.id).first() }
-                ?: return ItemOutcome.TimedOut
-        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
-        val fetchedAt = Clock.System.now().toEpochMilliseconds()
-        val chapters =
-            details.chapters
-                .filterNot { remote -> local.any { it.url == remote.url } }
-                .map { remote ->
-                    SavedChapterEntity(
-                        mangaId = manga.id,
-                        name = remote.name,
-                        number = remote.number,
-                        url = remote.url,
-                        date = remote.date ?: today,
-                        isNew = true,
-                        fetchedAt = fetchedAt,
-                    )
-                }.reversed()
-        return if (chapters.isEmpty()) ItemOutcome.Completed(0) else persistDiscoveries(manga, chapters)
-    }
-
-    private suspend fun persistDiscoveries(
-        manga: SavedMangaEntity,
-        chapters: List<SavedChapterEntity>,
-    ): ItemOutcome {
-        // The earlier local read is only an optimization. Another refresh may already have won;
-        // only the atomic persistence result can decide the count and what Android may display.
-        val notifications = port.persistNotifications(manga, chapters)
-        return ItemOutcome.Completed(notifications.size, notifications)
+        reconcileCover(owner, WorkLocator(details.api, details.url), details.coverUrl)
+        currentCoroutineContext().ensureActive()
+        // Cover was attempted best-effort. The mandatory writer must still validate both raw
+        // fetch addresses and the retained ID, even when no chapters are new or cover failed.
+        val request = LibraryRefreshRequest(owner, FetchedWorkDetails(owner.locator, details.copy(coverUrl = "")))
+        return when (val result = port.persistNotifications(request)) {
+            is AppResult.Success -> ItemOutcome.Completed(result.value.addedChapters, result.value.notifications)
+            is AppResult.Failure -> {
+                log.w { "Mandatory library discovery refused: ${result.error}" }
+                ItemOutcome.Failed
+            }
+        }
     }
 
     private suspend fun reconcileCover(
-        manga: SavedMangaEntity,
+        owner: SavedWorkIdentity,
+        fetched: WorkLocator,
         coverUrl: String,
     ) {
         if (coverUrl.isBlank()) return
         runCatchingCancellable {
-            port.updateCover(manga.id, coverUrl)
+            when (port.updateCover(owner, fetched, coverUrl)) {
+                is AppResult.Success -> Unit
+                is AppResult.Failure -> log.w { "Best-effort cover reconciliation refused" }
+            }
         }.onFailure { t ->
             log.w(t) { "Best-effort cover reconciliation failed" }
         }
@@ -204,7 +190,7 @@ internal class LibraryRefreshWork(
     internal sealed interface ItemOutcome {
         data class Completed(
             val newChapterCount: Int,
-            val notifications: List<ChapterNotification> = emptyList(),
+            val notifications: List<LibraryChapterNotification> = emptyList(),
         ) : ItemOutcome
 
         data object Failed : ItemOutcome
@@ -270,7 +256,7 @@ internal class LibraryRefreshWork(
 private fun SavedMangaEntity.toManga(): Manga = Manga(api, language, title, url, imageUrl, null, genres)
 
 private suspend fun displayBestEffort(
-    notifications: List<ChapterNotification>,
+    notifications: List<LibraryChapterNotification>,
     port: LibraryRefreshWorkPort,
     log: Logger,
 ) {

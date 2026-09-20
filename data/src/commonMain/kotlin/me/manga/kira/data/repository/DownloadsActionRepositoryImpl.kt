@@ -1,5 +1,6 @@
 package me.manga.kira.data.repository
 
+import me.manga.kira.data.download.selection.DownloadCatalogAdmission
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import me.manga.kira.core.dispatchers.platformIoDispatcher
@@ -10,6 +11,7 @@ import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.domain.repository.DownloadsActionRepository
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.presentation.features.download.domain.clean.DownloadRepository
 import okio.Path.Companion.toPath
 import okio.buffer
@@ -129,6 +131,8 @@ import okio.use
 class DownloadsActionRepositoryImpl(
     private val legacy: DownloadRepository,
     private val storage: DownloadsActionStorage,
+    private val operations: DownloadOperationExclusion,
+    private val catalog: DownloadCatalogAdmission,
 ) : DownloadsActionRepository {
     private val chapterDownloadDao get() = storage.downloads
     private val chapterDao get() = storage.chapters
@@ -140,7 +144,7 @@ class DownloadsActionRepositoryImpl(
         mangaTitle: String,
         api: String,
     ): Result<Unit> =
-        runCatchingCancellable {
+        catalogAdmitted {
             val savedChapter =
                 chapterDao.getChapterByIdSuspend(chapterId)
                     ?: error("chapter row not found")
@@ -152,7 +156,7 @@ class DownloadsActionRepositoryImpl(
         }
 
     override suspend fun retryDownload(chapterId: Long): Result<Unit> =
-        runCatchingCancellable {
+        catalogAdmitted {
             val row =
                 chapterDownloadDao.getDownloadByChapter(chapterId)
                     ?: error("download row not found")
@@ -160,19 +164,19 @@ class DownloadsActionRepositoryImpl(
         }
 
     override suspend fun cancelDownload(chapterId: Long): Result<Unit> =
-        runCatchingCancellable {
+        admitted {
             legacy.onCancel(chapterId)
         }
 
     override suspend fun cancelRunningDownload(
         chapterId: Long,
         mangaId: Long,
-    ): Result<Unit> = runCatchingCancellable { legacy.cancelARunningChapter(chapterId, mangaId) }
+    ): Result<Unit> = admitted { legacy.cancelARunningChapter(chapterId, mangaId) }
 
-    override suspend fun cancelAllDownloads(): Result<Unit> = runCatchingCancellable { legacy.cancelAllDownloads() }
+    override suspend fun cancelAllDownloads(): Result<Unit> = admitted { legacy.cancelAllDownloads() }
 
     override suspend fun deleteDownload(chapterId: Long): Result<Unit> =
-        runCatchingCancellable {
+        admitted {
             // SUCCESS stays history-only/readable. FAILED/active Delete settles only that captured
             // attempt's partial bytes before removing its row, preserving prior CBZ/restore files.
             // Full offline-artifact removal remains the separate deleteDownloadedChapter action.
@@ -180,7 +184,7 @@ class DownloadsActionRepositoryImpl(
         }
 
     override suspend fun deleteDownloadedChapter(chapterId: Long): Result<Unit> =
-        runCatchingCancellable {
+        admitted {
             val saved = chapterDao.getChapterByIdSuspend(chapterId) ?: error("chapter row not found")
             val removed = try {
                 artifacts.removeChapter(ChapterArtifactOwner.of(saved)) {
@@ -196,7 +200,7 @@ class DownloadsActionRepositoryImpl(
         }
 
     override suspend fun reconcileInterrupted(): Result<Unit> =
-        runCatchingCancellable {
+        catalogAdmitted {
             // 1) Reset rows orphaned in RUNNING / COMPRESSING by a killed process and re-trigger the
             //    engine (WorkManager re-enqueue on Android; worker-loop wake-up on iOS/Desktop).
             legacy.reconcileInterruptedDownloads()
@@ -233,6 +237,17 @@ class DownloadsActionRepositoryImpl(
             failures += repairCompletedDownloadFlags()
             check(failures == 0) { "Download maintenance could not be completed" }
         }
+
+    /** Preparation is outside ownership; only the subsequent checked operation authorizes capture. */
+    private suspend fun <T> catalogAdmitted(action: suspend () -> T): Result<T> =
+        runCatchingCancellable {
+            catalog.prepareLocal()
+            catalog.withAdmittedOperation { action() }
+        }
+
+    /** Gate precedes retained DAO/locator capture and remains through downstream file cleanup. */
+    private suspend fun <T> admitted(action: suspend () -> T): Result<T> =
+        runCatchingCancellable { operations.withOperation { action() } }
 
     private suspend fun repairCompletedDownloadFlags(): Int {
         var failures = 0

@@ -56,7 +56,7 @@ class ReaderPageProgressOwnershipTest {
             val request = assertNotNull(env.pageProgress.beginAttempt(old.first()))
             runCurrent()
             val gate = CompletableDeferred<Unit>()
-            env.readProgress.loadGate = gate
+            env.readProgress.beforeBegin = { gate.await() }
             env.pages.result = flowOf(AppResult.Success(listOf(readerPage("next"))))
             env.vm.submit(ReaderIntent.OnNextChapter)
             runCurrent()

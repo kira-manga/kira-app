@@ -71,7 +71,7 @@ class ChapterArtifactRepairDaoTest {
         assertEquals(target.notification.copy(isDownloaded = false, localImagePaths = emptyList()),
             db.notificationDao().getNotificationByChapterId(target.notification.chapterId))
         assertEquals(target.history.copy(isDownloaded = false, localImagePaths = emptyList()),
-            db.backupDao().getHistoryByMangaUrl(target.history.mangaUrl))
+            db.backupDao().getAllHistoryOnce().single { it.api == target.history.api && it.mangaUrl == target.history.mangaUrl })
         assertEquals(target.artifact.copy(committedToken = null, committedRelativePath = null),
             db.chapterArtifactDao().get(target.artifact.chapterId))
         assertEquals(target.download.download.copy(state = DownloadingState.FAILED, progress = 0, sizeBytes = 0, errorMsg = null),
@@ -132,7 +132,7 @@ private suspend fun ChapterDownloadCompletionFixture.repairTarget(): RepairTarge
         committedToken = REPAIR_TOKEN, committedRelativePath = "_restored/$REPAIR_TOKEN/chapter.cbz")
     db.chapterArtifactDao().insert(artifact)
     return RepairTarget(original, notification.copy(id = notificationId),
-        assertNotNull(db.backupDao().getHistoryByMangaUrl(parent.url)), artifact)
+        db.backupDao().getAllHistoryOnce().single { it.api == parent.api && it.mangaUrl == parent.url }, artifact)
 }
 
 private fun ChapterDownloadCompletionFixture.rejectLastRepairWrite(target: RepairTarget) {
@@ -153,7 +153,7 @@ private fun ChapterDownloadCompletionFixture.rejectLastRepairWrite(target: Repai
 private suspend fun ChapterDownloadCompletionFixture.assertRepairTargetUnchanged(target: RepairTarget) {
     assertUnchanged(target.download)
     assertEquals(target.notification, db.notificationDao().getNotificationByChapterId(target.notification.chapterId))
-    assertEquals(target.history, db.backupDao().getHistoryByMangaUrl(target.history.mangaUrl))
+    assertEquals(target.history, db.backupDao().getAllHistoryOnce().single { it.api == target.history.api && it.mangaUrl == target.history.mangaUrl })
     assertEquals(target.artifact, db.chapterArtifactDao().get(target.artifact.chapterId))
 }
 

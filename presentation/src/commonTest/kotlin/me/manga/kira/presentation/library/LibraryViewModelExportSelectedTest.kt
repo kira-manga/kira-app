@@ -7,7 +7,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.usecase.downloads.ObserveDownloadsUseCase
 import me.manga.kira.domain.usecase.library.BulkRemoveFromLibraryUseCase
 import me.manga.kira.domain.usecase.library.ObserveLibraryCategoryUseCase
@@ -52,7 +53,7 @@ import kotlin.test.assertTrue
 
 /**
  * feature/backup: [LibraryIntent.OnExportSelected] — the long-press multi-select "Export" action
- * must hand the selected [MangaKey]s to the scoped Backup screen via
+ * must hand the selected portable work locators to the scoped Backup screen via
  * [LibraryEffect.NavigateToBackupExport] and exit selection mode (the handoff consumes the
  * selection, mirroring the delete flow). Same harness as [LibraryViewModelApplyViewTest]; a
  * separate class so that file's baselined lint findings stay at their recorded lines.
@@ -105,8 +106,8 @@ class LibraryViewModelExportSelectedTest {
         )
     }
 
-    private val alphaKey = MangaKey(api = "api", language = "en", title = "Alpha")
-    private val bravoKey = MangaKey(api = "api", language = "en", title = "Bravo")
+    private val alphaKey = SavedWorkIdentity(1L, WorkLocator("api", "https://example.test/Alpha"))
+    private val bravoKey = SavedWorkIdentity(2L, WorkLocator("api", "https://example.test/Bravo"))
 
     @Test
     fun export_selected_hands_the_selection_to_backup_and_exits_selection_mode() =
@@ -122,7 +123,7 @@ class LibraryViewModelExportSelectedTest {
             vm.submit(LibraryIntent.OnExportSelected)
 
             val handoff = effects.filterIsInstance<LibraryEffect.NavigateToBackupExport>().single()
-            assertEquals(setOf(alphaKey, bravoKey), handoff.keys.toSet(), "effect carries the whole selection")
+            assertEquals(setOf(alphaKey.locator, bravoKey.locator), handoff.keys.toSet(), "effect carries the whole selection")
             assertTrue(
                 vm.state.value.selection
                     .isEmpty(),

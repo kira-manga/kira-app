@@ -114,7 +114,7 @@ class MissingDownloadMetadataRepairTest {
                 else -> history.copy(chapterUrl = "${history.chapterUrl}/other")
             }
             db.notificationDao().updateNotification(foreignNotification)
-            db.backupDao().updateHistoryRow(foreignHistory)
+            db.historyDao().updateHistory(foreignHistory)
             foreignNotification to foreignHistory
         }
         fs.deleteRecursively(appFileSystem.filesDir / "manga")

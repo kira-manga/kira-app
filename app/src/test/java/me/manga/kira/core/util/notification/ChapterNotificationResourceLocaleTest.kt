@@ -10,7 +10,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.MyApp
 import me.manga.kira.data.local.MangaDatabase
-import me.manga.kira.data.local.entity.ChapterNotification
+import me.manga.kira.domain.model.Chapter
+import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.library.LibraryChapterNotification
 import me.manga.kira.locale.RealApplicationLocaleTest
 import me.manga.kira.locale.assertOnlyChannelLabelsChanged
 import me.manga.kira.locale.seedUserChannel
@@ -116,17 +118,22 @@ class ChapterNotificationResourceLocaleTest : RealApplicationLocaleTest() {
         assertEquals(description, channel.description)
     }
 
-    private fun chapter() = ChapterNotification(
-        id = 31,
-        api = "fixture",
-        language = "en",
-        mangaId = 17,
-        mangaTitle = "Fixture manga",
-        mangaImageUrl = "https://example.invalid/unused-cover.png",
-        mangaUrl = "https://example.invalid/manga",
+    private fun chapter() = LibraryChapterNotification(
+        notificationId = 31,
         chapterId = 23,
-        chapterNumber = "7",
-        chapterUrl = "https://example.invalid/chapter/7",
+        manga = Manga(
+            api = "fixture",
+            language = "en",
+            title = "Fixture manga",
+            url = "https://example.invalid/manga",
+            coverUrl = "https://example.invalid/unused-cover.png",
+            rating = null,
+            genres = emptyList(),
+        ),
+        chapter = Chapter(
+            number = "7", name = "", url = "https://example.invalid/chapter/7",
+            date = null, isDownloaded = false, isBookmarked = false,
+        ),
     )
 
     private companion object {

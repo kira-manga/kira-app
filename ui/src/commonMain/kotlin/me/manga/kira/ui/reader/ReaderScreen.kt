@@ -437,7 +437,7 @@ internal fun ReaderScreenContent(
     // The latest-visibility guard also makes a retained action harmless once chrome is visible.
     var revealRequested by remember(state.isUiVisible) { mutableStateOf(false) }
 
-    LaunchedEffect(manga.api, manga.language, manga.title, chapter.url) {
+    LaunchedEffect(manga.api, manga.url, chapter.url) {
         onIntent(ReaderIntent.OnEnter(manga, chapter))
     }
 

@@ -1,5 +1,6 @@
 package me.manga.kira.presentation.reader
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -9,7 +10,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.presentation.testing.DeferredReaderBookmarkFlow
 import me.manga.kira.presentation.testing.readerChapter
+import me.manga.kira.presentation.testing.readerLocator
 import me.manga.kira.presentation.testing.readerManga
 import me.manga.kira.presentation.testing.readerPage
 import me.manga.kira.presentation.testing.readerTestEnv
@@ -17,6 +20,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -66,12 +71,13 @@ class ReaderViewModelActiveChapterTest {
         val env = enterAndAppend()
         env.vm.submit(ReaderIntent.OnPageChanged(2)) // ch2, first page
 
-        assertTrue(
-            env.readProgress.saved.contains("ch/2" to 0),
-            "resume saved for the ACTIVE chapter (ch/2) with within-chapter index 0; saved=${env.readProgress.saved}",
+        val requested = readerLocator(readerManga(), readerChapter("2"))
+        val handle = env.readProgress.snapshots.single { it.handle.chapter == requested }.handle
+        assertEquals(
+            listOf(handle to 0),
+            env.readProgress.saves,
+            "save the active chapter's acquired handle and within-chapter zero, never anchor/flat index 2",
         )
-        // It must NOT have saved the flat index (2) nor keyed it to the anchor chapter.
-        assertTrue(env.readProgress.saved.none { it == "ch/1" to 2 })
     }
 
     @Test
@@ -155,4 +161,104 @@ class ReaderViewModelActiveChapterTest {
                 "in-library bookmark toggle is silent: $effects",
             )
         }
+
+    @Test
+    fun delayedBookmarkToggleKeepsCapturedOwnerAndSuppressesLateHint() = runTest {
+        val env = ReaderActiveActionFixture(testScheduler)
+        val chapter = env.chapters.first()
+        val other = env.manga.copy(url = "https://x/other")
+        val gate = CompletableDeferred<Unit>()
+        val effects = mutableListOf<ReaderEffect>()
+        val job = launch(dispatcher) { env.vm.effects.collect { effects += it } }
+        env.details.lists[other] = env.chapters
+        env.bookmark.inLibrary = false
+        env.bookmark.beforeToggle = { gate.await() }
+        try {
+            env.dispatch(ReaderIntent.OnEnter(env.manga, chapter))
+            env.dispatch(ReaderIntent.OnToggleBookmark)
+            env.dispatch(ReaderIntent.OnEnter(other, chapter))
+            gate.complete(Unit)
+            testScheduler.runCurrent()
+            assertEquals(listOf(env.manga to chapter.url), env.bookmark.toggled)
+            assertEquals(listOf(env.manga to chapter), env.pages.cleared, "same chapter URL is not the same parent")
+            assertFalse(effects.any { it is ReaderEffect.ShowNotInLibrary })
+        } finally {
+            gate.complete(Unit)
+            job.cancel()
+            env.close()
+        }
+    }
+
+    @Test
+    fun delayedBookmarkFailureCannotReleasePendingReplacementOrAllowEarlyRetry() = runTest {
+        val env = ReaderActiveActionFixture(testScheduler)
+        val chapter = env.chapters.first()
+        val other = env.manga.copy(url = "https://x/other")
+        val actionGate = CompletableDeferred<Unit>()
+        val prepareGate = CompletableDeferred<Unit>()
+        var failureThrown = false
+        env.details.lists[other] = env.chapters
+        env.bookmark.beforeToggle = {
+            actionGate.await()
+            failureThrown = true
+            error("old-owner bookmark storage failure")
+        }
+        env.legacyProgress.beforePrepare = { if (it == readerLocator(other, chapter)) prepareGate.await() }
+        try {
+            env.dispatch(ReaderIntent.OnEnter(env.manga, chapter))
+            env.dispatch(ReaderIntent.OnToggleBookmark)
+            env.dispatch(ReaderIntent.OnEnter(other, chapter))
+            val pending = env.vm.state.value
+            actionGate.complete(Unit)
+            testScheduler.runCurrent()
+            assertTrue(failureThrown, "the captured action must resume and throw, not be dropped on replacement")
+            assertPendingReplacementUnaffectedByOldBookmark(env, pending)
+            prepareGate.complete(Unit)
+            testScheduler.runCurrent()
+            assertEquals(listOf(readerLocator(env.manga, chapter), readerLocator(other, chapter)), env.resume.begun)
+            assertEquals(listOf(env.manga to chapter, other to chapter), env.pages.requested)
+        } finally {
+            env.close()
+        }
+    }
+
+    private fun assertPendingReplacementUnaffectedByOldBookmark(env: ReaderActiveActionFixture, pending: ReaderState) {
+        val chapter = env.chapters.first()
+        assertTrue(pending.isLoading)
+        assertNull(pending.error)
+        assertTrue(pending.pages.isEmpty())
+        assertEquals(pending, env.vm.state.value, "old-owner failure cannot settle the pending entry")
+        assertEquals(2, env.legacyProgress.prepared.size)
+        assertEquals(listOf(readerLocator(env.manga, chapter)), env.resume.begun)
+        assertEquals(listOf(env.manga to chapter), env.pages.requested)
+        assertEquals(listOf(env.manga to chapter.url), env.bookmark.toggled)
+        val calls = env.callCounts()
+        env.dispatch(ReaderIntent.OnRetry)
+        assertEquals(pending, env.vm.state.value)
+        assertEquals(calls, env.callCounts(), "retry cannot fetch or begin before replacement preparation completes")
+    }
+
+    @Test
+    fun staleBookmarkEmissionCannotCrossApiAtTheSameWorkAndChapterUrls() = runTest {
+        val env = ReaderActiveActionFixture(testScheduler)
+        val chapter = env.chapters.first()
+        val other = env.manga.copy(api = "other-source")
+        val old = DeferredReaderBookmarkFlow()
+        env.details.lists[other] = env.chapters
+        env.bookmark.streams[env.manga to chapter.url] = old
+        try {
+            env.dispatch(ReaderIntent.OnEnter(env.manga, chapter))
+            assertTrue(env.vm.state.value.isBookmarked)
+            env.dispatch(ReaderIntent.OnEnter(other, chapter))
+            assertFalse(env.vm.state.value.isBookmarked)
+            old.late.complete(true)
+            testScheduler.runCurrent()
+            assertFalse(env.vm.state.value.isBookmarked, "late old-API state cannot cross the local entry fence")
+            assertEquals(other to chapter.url, env.bookmark.observed.last())
+            assertEquals(listOf(env.manga to chapter), env.pages.cleared)
+        } finally {
+            old.late.complete(false)
+            env.close()
+        }
+    }
 }

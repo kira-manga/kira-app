@@ -3,7 +3,7 @@ package me.manga.kira.presentation.details
 import me.manga.kira.core.error.AppError
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.presentation.mvi.MviEffect
 
 /**
@@ -46,7 +46,7 @@ sealed interface DetailsEffect : MviEffect {
      * Destination descriptor only: the `:composeApp` adapter is the sole layer that maps this to
      * `Screen.BackupRework(scopeJson)`.
      */
-    data class NavigateToBackupExport(val key: MangaKey) : DetailsEffect
+    data class NavigateToBackupExport(val key: WorkLocator) : DetailsEffect
 
     /**
      * View should navigate to the WebView screen for [url], scoped to source [api].

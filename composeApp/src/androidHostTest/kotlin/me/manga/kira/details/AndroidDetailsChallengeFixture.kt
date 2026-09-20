@@ -3,7 +3,6 @@ package me.manga.kira.details
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import androidx.work.ListenableWorker
-import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,14 +23,28 @@ import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.data.identity.AcceptedSourceAliasRule
+import me.manga.kira.data.identity.SourceAliasReadiness
+import me.manga.kira.data.identity.SourceAliasSnapshot
+import me.manga.kira.data.identity.SourceAliasSnapshotProvider
+import me.manga.kira.data.local.MangaWriteTransaction
+import me.manga.kira.data.local.RoomMangaWriteTransaction
 import me.manga.kira.data.repository.DownloadsRepositoryImpl
 import me.manga.kira.data.repository.LibraryRepositoryImpl
-import me.manga.kira.data.repository.ReadProgressRepositoryImpl
+import me.manga.kira.data.repository.library.LibraryChapterWriter
+import me.manga.kira.data.repository.library.LibraryMetadataWriter
+import me.manga.kira.data.repository.library.LibraryOwnerTransactions
+import me.manga.kira.data.repository.library.LibraryRemovalGuard
+import me.manga.kira.data.repository.library.LibraryRemovalStorage
+import me.manga.kira.data.repository.library.LibraryRemovalWriter
+import me.manga.kira.data.repository.library.LibraryWriteDependencies
+import me.manga.kira.data.repository.progress.ProgressStorage
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.domain.repository.MangaDetailsRepository
 import me.manga.kira.domain.service.FileService
 import me.manga.kira.presentation.details.DetailsEffect
@@ -40,6 +53,9 @@ import me.manga.kira.presentation.features.download.ui.test2.AndroidChallengeCas
 import me.manga.kira.presentation.features.download.ui.test2.CancellationFixtureStorage
 import me.manga.kira.presentation.features.download.ui.test2.DownloadWorkerCancellationRows
 import me.manga.kira.presentation.features.download.ui.test2.NativeCommitGate
+import me.manga.kira.sources.contracts.SelectedCatalogIdentity
+import me.manga.kira.sources.contracts.SelectedCatalogKind
+import me.manga.kira.sources.contracts.SourceSelectionToken
 import me.manga.kira.sources.runtime.DataStoreHeaderStore
 import org.koin.core.context.GlobalContext
 import org.robolectric.RuntimeEnvironment
@@ -101,19 +117,8 @@ internal class AndroidDetailsChallengeFixture(
         override val io = Dispatchers.IO
         override val unconfined = Dispatchers.Unconfined
     }
-    private val library = LibraryRepositoryImpl(
-        mangaDao = rows.db.mangaDao(),
-        libraryDeo = rows.db.libraryDeo(),
-        chapterDao = rows.db.chapterDao(),
-        notificationDao = rows.db.notificationDao(),
-        historyDao = rows.db.historyDao(),
-        chapterDownloadDao = rows.realDao,
-        downloadRepository = queue.engine,
-        fileService = FileService(android.storage.fileSystem),
-        readProgress = ReadProgressRepositoryImpl(MapSettings()),
-        dispatchers = dispatchers,
-        artifacts = rows.artifacts.ownership,
-    )
+    private val libraryRuntime = AndroidChallengeLibraryRuntime(android, dispatchers)
+    private val library = libraryRuntime.repository
     private val metadata = object : MangaDetailsRepository {
         override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
             assertEquals(this@AndroidDetailsChallengeFixture.manga, manga)
@@ -122,7 +127,11 @@ internal class AndroidDetailsChallengeFixture(
         }
     }
     private val vm = createDetailsRoomViewModel(
-        DetailsRoomEnvironment(rows.db, android.storage.fileSystem, rows.artifacts.ownership, dispatchers),
+        DetailsRoomEnvironment(
+            rows.db, android.storage.fileSystem, rows.artifacts.ownership, dispatchers,
+            owners = libraryRuntime.owners,
+            operations = rows.operations,
+        ),
         library, metadata, queue.engine,
     ).also { store.put("details", it) }
     private val observed = DownloadsRepositoryImpl(queue.engine, rows.realDao)
@@ -218,6 +227,63 @@ internal class AndroidDetailsChallengeFixture(
         genres = manga.genres,
         chapters = listOf(rows.original.saved.let { Chapter(it.number, it.name, it.url, null, false, it.isBookmarked) }),
     )
+}
+
+/**
+ * Real typed Room library adapters with an explicit finite test policy, not runtime selection
+ * bootstrap. These challenge tests exercise no library removal and grant no removal authority.
+ */
+private class AndroidChallengeLibraryRuntime(android: AndroidChallengeCase, dispatchers: DispatcherProvider) {
+    private val db = android.rows.db
+    private var insideWriter = false
+    private val actual = RoomMangaWriteTransaction(db)
+    private val writer = object : MangaWriteTransaction {
+        override suspend fun <T> write(block: suspend () -> T): T = actual.write {
+            check(!insideWriter)
+            insideWriter = true
+            try { block() } finally { insideWriter = false }
+        }
+    }
+    private val policy = SourceAliasSnapshot(
+        SourceSelectionToken(
+            1L, SelectedCatalogIdentity(SelectedCatalogKind.SIGNED, 1L, "a".repeat(64)), "b".repeat(64),
+        ),
+        listOf(AcceptedSourceAliasRule(android.rows.manga.api, "https://example.test", emptyList())),
+    )
+    private val snapshots = object : SourceAliasSnapshotProvider {
+        override val readiness = MutableStateFlow<SourceAliasReadiness>(SourceAliasReadiness.Ready(policy.token))
+
+        override suspend fun readInTransaction(): SourceAliasSnapshot {
+            check(insideWriter) { "Challenge fixture policy must be read inside the real writer" }
+            return policy
+        }
+    }
+    val owners = LibraryOwnerTransactions(writer, snapshots, db.mangaDao())
+    private val progress = ProgressStorage(
+        db.readerProgressDao(), db.readerLegacyCleanupDao(), db.mangaDao(), db.chapterDao(), db.backupDao(),
+    )
+    private val writes = LibraryWriteDependencies(
+        owners,
+        db.libraryDeo(),
+        LibraryMetadataWriter(db.mangaDao(), db.libraryDeo()),
+        LibraryChapterWriter(db.libraryDeo()),
+        LibraryRemovalWriter(
+            owners,
+            LibraryRemovalStorage(db.libraryDeo(), progress, db.chapterDownloadingDao()),
+            UnsupportedAndroidChallengeRemoval,
+            FileService(android.storage.fileSystem),
+            android.rows.artifacts.ownership,
+        ),
+    )
+    val repository = LibraryRepositoryImpl(db.mangaDao(), writes, dispatchers)
+}
+
+private object UnsupportedAndroidChallengeRemoval : LibraryRemovalGuard {
+    override suspend fun <T> withQuiescentWorks(owners: List<SavedWorkIdentity>, block: suspend () -> T): T =
+        error("Library removal is outside the Android challenge fixture")
+
+    override suspend fun checkInTransaction(owners: List<SavedWorkIdentity>): Unit =
+        error("No removal authority was granted by the Android challenge fixture")
 }
 
 private const val CASE_TIMEOUT_MILLIS = 60_000L

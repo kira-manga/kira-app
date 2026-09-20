@@ -3,8 +3,8 @@ package me.manga.kira.platform.download
 /**
  * A single page transfer the background-download engine wants performed **durably** — on iOS it
  * survives app suspension/termination via a background `NSURLSession`. Identified by
- * (mangaId, chapterId, pageIndex); the transport writes the bytes to the platform download layout
- * (`<files>/manga/<mangaId>/chapter_<chapterId>/image_<pageIndex>.<ext>`) and reports the outcome.
+ * (mangaId, chapterId, pageIndex, attemptToken). The transport validates and privately stages the
+ * bytes; the receiver may publish them only through the original attempt's file-ownership gate.
  */
 data class TransferRequest(
     val mangaId: Long,
@@ -26,6 +26,9 @@ data class TransferRequest(
  * and owned-file disposal, including stale/cancelled outcomes. A storage failure retains the existing
  * recoverable cleanup custody rather than claiming disposal succeeded. Do not wait for retry backoff,
  * future transfers or a whole archive encode. A throwing callback rejects the handoff to the transport.
+ * The supplied operation is borrowed native ownership, already held before staging. Retain it before
+ * launching asynchronous work and release that distinct child on actual completion; acknowledge only
+ * after immediate durable work/cleanup. A later pump must acquire fresh ownership before new captures.
  */
 interface TransferListener {
     /** The receiver owns this private staged page; only its original attempt may publish it. */
@@ -35,6 +38,7 @@ interface TransferListener {
         pageIndex: Int,
         attemptToken: String,
         page: StagedDownloadPage,
+        operation: DownloadOperationExclusion.Operation,
         acknowledge: () -> Unit,
     )
 
@@ -45,6 +49,7 @@ interface TransferListener {
         pageIndex: Int,
         attemptToken: String,
         message: String?,
+        operation: DownloadOperationExclusion.Operation,
         acknowledge: () -> Unit,
     )
 }
@@ -66,13 +71,13 @@ interface BackgroundTransport {
 
     suspend fun enqueue(requests: List<TransferRequest>)
 
-    /** Cancel every in-flight transfer for [chapterId] (e.g. the user cancelled the chapter). */
+    /** Requests cancellation only; native terminal callbacks and receiver acknowledgements still own work. */
     suspend fun cancelChapter(chapterId: Long, attemptToken: String)
 
-    /** Cancel every in-flight transfer across all chapters. */
+    /** Requests cancellation across chapters; does not wait for or claim native/receiver drain. */
     suspend fun cancelAll()
 
-    /** Page indices currently enqueued/running for [chapterId], recovered from the live session. */
+    /** Informational native page snapshot; absence never certifies terminal/native/receiver drain. */
     suspend fun inFlightPages(chapterId: Long, attemptToken: String): Set<Int>
 
     /** Re-attach to a background session the OS may have relaunched; recovers pending tasks. Idempotent. */

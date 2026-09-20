@@ -19,6 +19,8 @@ import org.koin.core.module.Module
  */
 fun allReworkModules(): List<Module> = listOf(
     coreReworkModule,
+    libraryOwnershipModule,
+    sourceSelectionModule,
     libraryReworkModule,
     detailsReworkModule,
     readerReworkModule,
