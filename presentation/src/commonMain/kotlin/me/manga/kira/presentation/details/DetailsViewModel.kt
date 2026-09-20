@@ -267,6 +267,7 @@ class DetailsViewModel(
                 }
             }
             DetailsIntent.OnDownloadAllClick -> onDownloadAllClick()
+            DetailsIntent.OnShare -> onShare()
             DetailsIntent.OnOpenInWebView -> onOpenInWebView()
             is DetailsIntent.OnToggleChapterRead -> onToggleChapterRead(intent.chapter)
             is DetailsIntent.OnToggleChapterBookmark -> onToggleChapterBookmark(intent.chapter)
@@ -606,6 +607,15 @@ class DetailsViewModel(
             ).onFailure { t ->
                 emit(DetailsEffect.ShowError(AppError.Unexpected(message = t.message ?: "action failed", cause = t)))
             }
+        }
+    }
+
+    private suspend fun onShare() {
+        val snapshot = state.value
+        val details = snapshot.details ?: return
+        if (!snapshot.isInLibrary || snapshot.isAdultGateActive) return
+        if (details.title.isNotBlank() && details.url.isNotBlank()) {
+            emit(DetailsEffect.ShareManga(title = details.title, url = details.url))
         }
     }
 

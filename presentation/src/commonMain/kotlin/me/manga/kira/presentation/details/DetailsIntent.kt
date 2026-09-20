@@ -332,6 +332,9 @@ sealed interface DetailsIntent : MviIntent {
      */
     data object OnToggleInLibrary : DetailsIntent
 
+    /** Share the loaded manga's title and source URL; the ViewModel resolves the payload. */
+    data object OnShare : DetailsIntent
+
     /**
      * User tapped the WebView action — either the top-bar ↗ glyph (success state) or the
      * "Open in WebView" button on the error pane (error state). Both surfaces dispatch the same

@@ -162,6 +162,7 @@ class DetailsScreenSelectionTest {
                         onNavigateToDownloads = {},
                         onNavigateToBackupExport = {},
                         onOpenInWebView = { _, _ -> },
+                        onShare = { _, _ -> },
                     )
                 }
             }

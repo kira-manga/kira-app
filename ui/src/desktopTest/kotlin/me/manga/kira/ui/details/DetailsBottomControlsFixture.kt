@@ -65,6 +65,7 @@ internal fun ComposeUiTest.showBottomControls(
                     onNavigateToDownloads = {},
                     onNavigateToBackupExport = {},
                     onOpenInWebView = { _, _ -> },
+                    onShare = { _, _ -> },
                 )
             }
         }
