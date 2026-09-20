@@ -1,0 +1,67 @@
+name: App29 Settings history targeted Linux verification
+
+on:
+  push:
+    branches: [remediation/app29-settings-history-linux-20260920-03]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app29-settings-history-targeted
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app29-settings-history-linux-20260920-03' &&
+      github.event.created == true && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      # Copies only: primary binds these to a fresh reviewed source-only parent, never old HEAD.
+      APP32_BRANCH: remediation/app29-settings-history-linux-20260920-03
+      APP32_SOURCE_SHA: 92c21e9c34b99b4c092aad04714937b8150e972d
+      APP32_SOURCE_TREE: f47467035115c917b9649641efd7ef1760c491f0
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        id: checkout
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: One normal selected-test invocation with prerequisites
+        timeout-minutes: 42
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: python3 -B scripts/ci/app32-linux-batch.py run
+
+      - name: Always stop and remove only this run's owned runtime and fresh outputs
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          # Redaction during interrupted-run report intake; stop is offline and receives no token.
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: python3 -B scripts/ci/app32-linux-batch.py cleanup
+
+      - name: Retain bounded validation evidence, including failures
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: app32-linux-${{ github.sha }}-attempt1
+          retention-days: 3
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            ${{ runner.temp }}/app32-linux-batch-01-${{ github.run_id }}-${{ github.run_attempt }}-evidence/*.json
+            ${{ runner.temp }}/app32-linux-batch-01-${{ github.run_id }}-${{ github.run_attempt }}-evidence/*.log
+            ${{ runner.temp }}/app32-linux-batch-01-${{ github.run_id }}-${{ github.run_attempt }}-evidence/reports/**/*.xml
+
+      - name: Discard owned local evidence after the upload attempt
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 1
+        run: python3 -B scripts/ci/app32-linux-batch.py discard
