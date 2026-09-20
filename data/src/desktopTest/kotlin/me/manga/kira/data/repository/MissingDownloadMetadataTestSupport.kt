@@ -34,8 +34,8 @@ internal suspend fun DownloadRecoveryFixture.offlineMirrors(original: RetainedDo
         localImagePaths = chapter.localImagePaths, lastReadDate = LocalDateTime(2024, 2, 3, 4, 5),
         lastReadPage = 7, totalPages = 19,
     )
-    db.backupDao().insertHistoryRow(history)
-    return notification.copy(id = id) to assertNotNull(db.backupDao().getHistoryByMangaUrl(manga.url))
+    val historyId = db.backupDao().insertHistoryRow(history)
+    return notification.copy(id = id) to db.backupDao().getAllHistoryOnce().single { it.id == historyId }
 }
 
 internal suspend fun DownloadRecoveryFixture.assertMissingMetadata(original: RetainedDownload, ledgerAbsent: Boolean = false) {
