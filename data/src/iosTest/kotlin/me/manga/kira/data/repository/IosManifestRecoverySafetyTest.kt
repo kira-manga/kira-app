@@ -30,26 +30,25 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Existing real iOS repository/Room fixture. No modeled state machine or OS-termination claim. */
 class IosManifestRecoverySafetyTest {
     @Test
     fun startupAttachesBeforeRecoveryButMutationStillWaitsForAdmission() = runTest {
-        for (state in listOf(DownloadingState.QUEUED, DownloadingState.RUNNING)) {
+        for (state in listOf(DownloadingState.QUEUED, DownloadingState.RUNNING, DownloadingState.DOWNLOADED, DownloadingState.COMPRESSING)) {
             for (retainedToken in listOf(true, false)) {
                 val fixture = IosCbzFinalizationFixture()
                 val host = SupervisorJob(coroutineContext[Job])
                 var held: HeldArtifactRecovery? = null
                 try {
                     val chapter = fixture.seed()
-                    val token = if (retainedToken) fixture.prepareAttempt(chapter, state).token else {
+                    if (retainedToken) fixture.prepareAttempt(chapter, state) else {
                         fixture.dao.updateStateChId(chapter.saved.id, state)
-                        null
                     }
                     val directory = fixture.appFileSystem.chapterDir(chapter.saved.mangaId, chapter.saved.id)
-                    chapter.pages.keys.forEach { fixture.system.delete(it) }
-                    fixture.system.delete(directory / "manifest.json", mustExist = false)
+                    fixture.system.deleteRecursively(fixture.appFileSystem.filesDir / "manga")
                     val expected = fixture.download(chapter)
                     fixture.reopen()
                     val recovery = HeldArtifactRecovery(fixture.db.chapterArtifactDao()).also { held = it }
@@ -91,15 +90,14 @@ class IosManifestRecoverySafetyTest {
 
                     recovery.release.complete(Unit)
                     reconcile.join()
-                    val request = transport.requests.receive()
                     host.cancelAndJoin()
-                    assertEquals(1, resolutions, "Readiness must not replace the existing automatic restart policy")
-                    assertEquals(expected.id, fixture.download(chapter).id)
-                    assertEquals(DownloadingState.RUNNING, fixture.download(chapter).state)
-                    assertTrue(request.attemptToken.isNotBlank())
-                    if (token != null) assertEquals(token, request.attemptToken)
-                    assertEquals(request.attemptToken, fixture.manifest(chapter).attemptToken)
-                    assertEquals(listOf(0, 0), fixture.manifest(chapter).pages.map { it.attempts })
+                    assertEquals(0, resolutions, "Readiness does not authorize replacement of excluded media ($state/$retainedToken)")
+                    assertTrue(transport.enqueued.isEmpty())
+                    assertEquals(expected.copy(state = DownloadingState.FAILED, progress = 0, sizeBytes = 0, errorMsg = null),
+                        fixture.download(chapter))
+                    assertFalse(fixture.system.exists(directory / "manifest.json"))
+                    assertFalse(fixture.system.exists(fixture.appFileSystem.filesDir / "manga"))
+                    assertNull(fixture.db.chapterArtifactDao().get(chapter.saved.id)?.token)
                 } finally {
                     held?.release?.complete(Unit)
                     host.cancelAndJoin()
@@ -376,7 +374,7 @@ class IosManifestRecoverySafetyTest {
     }
 
     @Test
-    fun startupReclaimsOnlyOwnedManifestStagesAndResumesTheUnchangedDurableBudget() = runTest {
+    fun recoveredNativePageReclaimsOnlyOwnedManifestStagesAndRetainsTheDurableBudget() = runTest {
         val fixture = IosCbzFinalizationFixture()
         val host = SupervisorJob(coroutineContext[Job])
         try {
@@ -396,13 +394,23 @@ class IosManifestRecoverySafetyTest {
                 fixture.system.write(file) { writeUtf8("retained fixture bytes") }
             }
             val transport = ArtifactTestTransport(fixture.operations, ready = true)
-            fixture.engine(CoroutineScope(coroutineContext + host), transport)
+            fixture.engine(CoroutineScope(coroutineContext + host), transport.observeRecoveredOnce(claim))
             val request = transport.requests.receive()
             assertEquals(claim.token, request.attemptToken)
             assertEquals(2, fixture.manifest(chapter).pages.single().attempts)
             assertContentEquals(before, fixture.system.read(manifest) { readByteArray() })
             assertFalse(fixture.system.exists(orphan))
             listOf(unrelated, stageDirectory / "keep", otherChapter).forEach { assertTrue(fixture.system.exists(it)) }
+            val failed = CompletableDeferred<Unit>()
+            fixture.operations.withOperation { operation ->
+                transport.receiver.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, "HTTP 500", operation) {
+                    failed.complete(Unit)
+                }
+            }
+            failed.await()
+            assertEquals(3, fixture.manifest(chapter).pages.single().attempts)
+            assertEquals(DownloadingState.FAILED, fixture.download(chapter).state)
+            assertEquals(1, transport.enqueued.size, "Recovered ownership must not reset the three-failure budget")
         } finally {
             host.cancelAndJoin()
             fixture.close()
