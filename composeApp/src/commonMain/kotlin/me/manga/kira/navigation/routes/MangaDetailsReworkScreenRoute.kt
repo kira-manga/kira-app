@@ -8,10 +8,12 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
+import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.details.DetailsIntent
 import me.manga.kira.presentation.details.DetailsViewModel
 import me.manga.kira.ui.details.DetailsScreen
 import me.manga.kira.ui.details.DetailsScreenByUrl
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -82,6 +84,7 @@ fun MangaDetailsReworkScreenRoute(
     backStackEntry: NavBackStackEntry,
 ) {
     val viewModel: DetailsViewModel = koinViewModel()
+    val intentLauncher: IntentLauncher = koinInject()
 
     val args = backStackEntry.toRoute<Screen.MangaDetailsRework>()
 
@@ -145,6 +148,7 @@ fun MangaDetailsReworkScreenRoute(
         // sibling precedent. No rework WebView screen exists yet; the rework adapter owning
         // the only call site means a future ownership flip is a one-file edit.
         onOpenInWebView = { url, api -> navController.safeNavigate(Screen.WebView(url = url, api = api)) },
+        onShare = { title, url -> intentLauncher.shareText(text = url, title = title) },
         // Bug #2 (legacy Handle403Error parity): a 403 fetch failure routes here to solve the
         // Cloudflare challenge, then auto-retries the fetch when control returns to Details.
         onSolveCloudflareChallenge = solveCloudflare,
@@ -205,6 +209,7 @@ fun MangaDetailsByUrlReworkScreenRoute(
     backStackEntry: NavBackStackEntry,
 ) {
     val viewModel: DetailsViewModel = koinViewModel()
+    val intentLauncher: IntentLauncher = koinInject()
 
     val args = backStackEntry.toRoute<Screen.MangaDetails>()
 
@@ -249,6 +254,7 @@ fun MangaDetailsByUrlReworkScreenRoute(
             )
         },
         onOpenInWebView = { url, api -> navController.safeNavigate(Screen.WebView(url = url, api = api)) },
+        onShare = { title, url -> intentLauncher.shareText(text = url, title = title) },
         // Bug #2 (legacy Handle403Error parity): a 403 fetch failure routes here to solve the
         // Cloudflare challenge, then auto-retries the fetch when control returns to Details.
         onSolveCloudflareChallenge = solveCloudflare,

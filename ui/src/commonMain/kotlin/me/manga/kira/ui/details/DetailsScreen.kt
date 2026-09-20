@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -95,6 +96,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -104,10 +106,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -159,6 +163,7 @@ import me.manga.kira.ui.generated.resources.dropdown_button_refresh
 import me.manga.kira.ui.generated.resources.add_library_title
 import me.manga.kira.ui.generated.resources.chapters_count_format
 import me.manga.kira.ui.generated.resources.details_chapter_selection_count
+import me.manga.kira.ui.generated.resources.details_copy_title
 import me.manga.kira.ui.generated.resources.details_download_chapter
 import me.manga.kira.ui.generated.resources.details_mark_read
 import me.manga.kira.ui.generated.resources.details_mark_unread
@@ -304,6 +309,8 @@ import me.manga.kira.ui.generated.resources.details_delete_chapter
  * and visual parity with the legacy `MangaDetailsScreen` land in subsequent micro-slices. The
  * legacy screen remains the user-facing binding in `:composeApp` until Phase 8.x ships the
  * guarded debug nav route to this one.
+ *
+ * [onShare] forwards the resolved title/source URL to the composition root's external-intent port.
  */
 @Composable
 fun DetailsScreen(
@@ -314,6 +321,7 @@ fun DetailsScreen(
     onNavigateToDownloads: () -> Unit,
     onNavigateToBackupExport: (WorkLocator) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
+    onShare: (title: String, url: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
 ) {
@@ -328,6 +336,7 @@ fun DetailsScreen(
         onNavigateToDownloads = onNavigateToDownloads,
         onNavigateToBackupExport = onNavigateToBackupExport,
         onOpenInWebView = onOpenInWebView,
+        onShare = onShare,
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         modifier = modifier,
     )
@@ -351,6 +360,7 @@ internal fun DetailsEntryEffect(manga: Manga, onIntent: (DetailsIntent) -> Unit)
  * stay untouched. ADR-7: full-tuple and URL-only entries coexist; the screen renders both via
  * the shared stateless [DetailsScreenContent], differing only in which intent the wrapper
  * dispatches in its [LaunchedEffect].
+ * [onShare] forwards only the resolved title/source URL, never the URL-only placeholder.
  */
 @Composable
 fun DetailsScreenByUrl(
@@ -362,6 +372,7 @@ fun DetailsScreenByUrl(
     onNavigateToDownloads: () -> Unit,
     onNavigateToBackupExport: (WorkLocator) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
+    onShare: (title: String, url: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
 ) {
@@ -382,6 +393,7 @@ fun DetailsScreenByUrl(
         onNavigateToDownloads = onNavigateToDownloads,
         onNavigateToBackupExport = onNavigateToBackupExport,
         onOpenInWebView = onOpenInWebView,
+        onShare = onShare,
         onSolveCloudflareChallenge = onSolveCloudflareChallenge,
         modifier = modifier,
     )
@@ -409,6 +421,7 @@ internal fun DetailsScreenContent(
     onNavigateToDownloads: () -> Unit,
     onNavigateToBackupExport: (WorkLocator) -> Unit,
     onOpenInWebView: (url: String, api: String) -> Unit,
+    onShare: (title: String, url: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
 ) {
@@ -517,6 +530,7 @@ internal fun DetailsScreenContent(
     // below (it's a non-composable suspend lambda), so the AppError→message mapping is resolved
     // here in composable scope and captured by the LaunchedEffect.
     val errorMessages = rememberAppErrorMessages()
+    val currentOnShare by rememberUpdatedState(onShare)
     LaunchedEffect(effects) {
         effects.collect { effect ->
             when (effect) {
@@ -527,6 +541,7 @@ internal fun DetailsScreenContent(
                 is DetailsEffect.NavigateToBackupExport ->
                     onNavigateToBackupExport(effect.key)
                 is DetailsEffect.NavigateToWebView -> onOpenInWebView(effect.url, effect.api)
+                is DetailsEffect.ShareManga -> currentOnShare(effect.title, effect.url)
                 // 403 Cloudflare interstitial → route to the WebView challenge-solver (legacy
                 // Handle403Error parity, bug #2). The `:composeApp` adapter navigates to the
                 // WebView and auto-retries the fetch when control returns to Details, so the
@@ -568,6 +583,8 @@ internal fun DetailsScreenContent(
                 onCancelAllDownloads = { onIntent(DetailsIntent.OnCancelAllDownloads) },
                 onDeleteAllDownloads = { onIntent(DetailsIntent.OnDeleteAllDownloads) },
                 onExportManga = { onIntent(DetailsIntent.OnExportManga) },
+                onShare = { onIntent(DetailsIntent.OnShare) },
+                shareEnabled = state.details?.let { it.title.isNotBlank() && it.url.isNotBlank() } == true,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -575,6 +592,7 @@ internal fun DetailsScreenContent(
         // Preserve selection's exclusive ownership of this region (including the existing FAB guard).
         bottomBar = {
             val isResumeAvailable = state.isInLibrary && state.hasDetails && !state.isAdultGateActive
+            val firstUnread = state.firstUnreadChapter
             if (state.isInChapterSelectionMode) {
                 ChapterSelectionBar(
                     selectedCount = state.selectedChapterUrls.size,
@@ -587,7 +605,7 @@ internal fun DetailsScreenContent(
                     onMarkRead = { onIntent(DetailsIntent.OnMarkSelectedRead) },
                     onClear = { onIntent(DetailsIntent.OnSelectionClear) },
                 )
-            } else if (isResumeAvailable) {
+            } else if (isResumeAvailable && firstUnread != null) {
                 val spacing = LocalSpacing.current
                 Box(
                     modifier =
@@ -598,11 +616,9 @@ internal fun DetailsScreenContent(
                     contentAlignment = Alignment.CenterEnd,
                 ) {
                     ResumeFab(
-                        firstUnread = state.firstUnreadChapter,
+                        firstUnread = firstUnread,
                         expanded = resumeFabExpanded,
-                        onClick = {
-                            state.firstUnreadChapter?.let { onIntent(DetailsIntent.OnChapterClick(it)) }
-                        },
+                        onClick = { onIntent(DetailsIntent.OnChapterClick(firstUnread)) },
                     )
                 }
             }
@@ -802,6 +818,8 @@ private fun DetailsTopBar(
     onCancelAllDownloads: () -> Unit,
     onDeleteAllDownloads: () -> Unit,
     onExportManga: () -> Unit,
+    onShare: () -> Unit,
+    shareEnabled: Boolean,
 ) {
     var overflowExpanded by remember { mutableStateOf(false) }
     TopAppBar(
@@ -900,13 +918,14 @@ private fun DetailsTopBar(
                             onRefresh()
                         },
                     )
-                    // Share — native menu item is a no-op stub (MangaTopAppBar.kt:91-96); kept as a
-                    // disabled-effect entry for native menu parity. A real share action is a
-                    // cross-cutting platform-share concern (recorded as NEEDS CROSS-CUTTING CHANGE).
                     DropdownMenuItem(
                         text = { Text(stringResource(Res.string.details_menu_share)) },
                         leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
-                        onClick = { overflowExpanded = false },
+                        enabled = shareEnabled,
+                        onClick = {
+                            overflowExpanded = false
+                            onShare()
+                        },
                     )
                 }
             }
@@ -1071,6 +1090,7 @@ private fun DetailsBody(
                         if (isInLibrary) onDownloadAllClick() else onRequestAddBookmark()
                     },
                     onCustomDownloadClick = onCustomDownloadClick,
+                    isCustomDownloadEnabled = chapters.isNotEmpty(),
                     onOpenInWebViewClick = onOpenInWebViewClick,
                     onTitleCopied = onTitleCopied,
                 )
@@ -1152,7 +1172,6 @@ private fun DetailsBody(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DetailsHeader(
     details: MangaDetails,
@@ -1168,6 +1187,7 @@ private fun DetailsHeader(
     onBookmarkClick: () -> Unit,
     onDownloadAllClick: () -> Unit,
     onCustomDownloadClick: () -> Unit,
+    isCustomDownloadEnabled: Boolean,
     onOpenInWebViewClick: () -> Unit,
     onTitleCopied: () -> Unit,
 ) {
@@ -1178,6 +1198,11 @@ private fun DetailsHeader(
     // expect/actual construction, out of scope for this source-only deprecation pass. Retained.
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
+    val copyTitleLabel = stringResource(Res.string.details_copy_title)
+    val copyTitle by rememberUpdatedState {
+        clipboardManager.setText(AnnotatedString(details.title))
+        onTitleCopied()
+    }
     // M-1 / L-6: the blurred parallax backdrop is now painted at SCREEN level (behind the whole
     // content + the transparent top bar), matching native DetailsContent.kt:116-123 — so the header
     // no longer reconstructs an inline `matchParentSize` backdrop here (that drew only behind the
@@ -1201,19 +1226,16 @@ private fun DetailsHeader(
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
                 textAlign = TextAlign.Center,
-                // Long-press the title to copy it to the clipboard — legacy parity with
-                // `HeaderSection`'s `combinedClickable { onLongClick = setText(...) }`. Uses the
-                // Compose-MP `LocalClipboardManager` (same pattern the complaint screens use), so
-                // no platform callback is threaded through the route adapter — the clipboard API
-                // is multiplatform and lives entirely inside `:ui`.
-                modifier = Modifier.combinedClickable(
-                    onClick = {},
-                    // GAP-DET-12: copy + confirmation snackbar (legacy `title_copied` toast).
-                    onLongClick = {
-                        clipboardManager.setText(AnnotatedString(details.title))
-                        onTitleCopied()
-                    },
-                ),
+                // Copy has a genuine touch/accessible long action, not an inert ordinary click.
+                modifier =
+                    Modifier
+                        .pointerInput(Unit) { detectTapGestures(onLongPress = { copyTitle() }) }
+                        .semantics {
+                            onLongClick(label = copyTitleLabel) {
+                                copyTitle()
+                                true
+                            }
+                        },
             )
             // Source / language / status line — native renders the single centered line
             // "${api} ${language} - ${status}" (HeaderSection.kt:97-102), bodyMedium @ onSurface .7
@@ -1255,7 +1277,6 @@ private fun DetailsHeader(
                     text = lastChapterDateLabel(newestChapterDate),
                     icon = Icons.Filled.Schedule,
                     color = actionColor,
-                    onClick = {},
                     modifier = Modifier.weight(1f),
                 )
                 // L-8 download menu — native `ActionsRow` download button opens a `DownloadMenu`
@@ -1293,6 +1314,7 @@ private fun DetailsHeader(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.details_custom_download)) },
+                            enabled = isCustomDownloadEnabled,
                             onClick = {
                                 downloadMenuExpanded = false
                                 onCustomDownloadClick()
@@ -1314,7 +1336,7 @@ private fun DetailsHeader(
             // "Resume <number>" (details_resume_chapter) and dispatches the identical
             // OnChapterClick(firstUnreadChapter) via [onResumeClick]; when every chapter is read it
             // shows the inert "You finished this manga" state (details_resume_finished, disabled),
-            // mirroring the FAB's finished posture. A plain Material3 Button's default container is
+            // while the redundant FAB is hidden. A plain Material3 Button's default container is
             // colorScheme.primary (#FF5B6E coral), matching the mockup's coral CTA — no new strings,
             // no new state, and the existing 4-action row above is left fully intact.
             //
@@ -1356,13 +1378,14 @@ private fun DetailsHeader(
  * (presentation/common/.../buttons/ActionButton.kt). A centered Column with a 24dp icon (or a 24dp
  * 2dp-stroke spinner while [isLoading]), a 4dp spacer, and a single-line 10sp centered caption,
  * tinted [color]. Used in the header's equal-weight 4-button row (native HeaderSection parity).
+ * With no [onClick], the same layout is informational and has no click action or ripple.
  */
 @Composable
 private fun DetailsActionButton(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     color: Color,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
 ) {
@@ -1370,7 +1393,7 @@ private fun DetailsActionButton(
         modifier = modifier
             .padding(horizontal = 4.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         color = Color.Transparent,
         tonalElevation = 0.dp,
     ) {
@@ -2167,24 +2190,20 @@ private fun ChapterSelectionBar(
 
 /**
  * Resume/continue extended FAB — native `AnimatedCircleExtendedFab` on the in-library detail screen
- * (LibraryMangaScreen.kt:225-235). Tapping jumps to the first unread chapter ([firstUnread]); when
- * every chapter is read, [firstUnread] is null and the FAB shows the "You finished this manga"
- * label and is inert. [expanded] mirrors native's scroll-direction-driven expand/collapse: expanded
+ * (LibraryMangaScreen.kt:225-235). Only rendered with an unread target; tapping opens [firstUnread].
+ * The header keeps the disabled finished label when no target exists.
+ * [expanded] mirrors native's scroll-direction-driven expand/collapse: expanded
  * renders the icon + text, collapsed renders an icon-only circular FAB.
  *
- * Native uses `Icons.Default.PlayArrow` and "Resume ${number}" / "You finished this manga".
+ * Native uses `Icons.Default.PlayArrow` and "Resume ${number}".
  */
 @Composable
 private fun ResumeFab(
-    firstUnread: Chapter?,
+    firstUnread: Chapter,
     expanded: Boolean,
     onClick: () -> Unit,
 ) {
-    val label = if (firstUnread != null) {
-        stringResource(Res.string.details_resume_chapter, firstUnread.number)
-    } else {
-        stringResource(Res.string.details_resume_finished)
-    }
+    val label = stringResource(Res.string.details_resume_chapter, firstUnread.number)
     val contentDescription = stringResource(Res.string.details_resume_cd)
     if (expanded) {
         ExtendedFloatingActionButton(
