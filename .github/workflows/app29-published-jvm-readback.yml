@@ -1,0 +1,75 @@
+name: App29 fixed published JVM byte readback
+on:
+  push:
+    branches: [remediation/app29-published-jvm-readback-20260920-01]
+permissions:
+  contents: read
+jobs:
+  readback:
+    if: >-
+      github.repository == 'kira-manga/kira-app' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/remediation/app29-published-jvm-readback-20260920-01' &&
+      github.event.created == true && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read only the two fixed published jars; retain no bodies
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PYCODE'
+          import base64, hashlib, json, os, signal, urllib.error, urllib.request
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          def expired(signum, frame):
+              raise TimeoutError()
+          signal.signal(signal.SIGALRM, expired)
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+          token = os.environ.pop('KIRA_PACKAGES_READ_TOKEN', '')
+          user = os.environ.get('GITHUB_ACTOR', '')
+          authorization = 'Basic ' + base64.b64encode((user + ':' + token).encode()).decode()
+          targets = (
+              ('source-engine-jvm-0.1.0.jar',
+               'https://maven.pkg.github.com/kira-manga/kira-source-engine/me/manga/kira/source/source-engine-jvm/0.1.0/source-engine-jvm-0.1.0.jar',
+               'e2a20c63ab115dabfc75fc6a0ea33a36fd6c272c6ee22ed17ef2aa9cab840a2d'),
+              ('source-contract-jvm-0.1.0.jar',
+               'https://maven.pkg.github.com/kira-manga/kira-source-engine/me/manga/kira/source/source-contract-jvm/0.1.0/source-contract-jvm-0.1.0.jar',
+               '9eeb54df5d09f14ebe612b1255721fa536c2517502b05cbd815e8b98370e0b7d'),
+          )
+          failed = False
+          for name, url, expected in targets:
+              row = dict(name=name, status='AUTH_UNAVAILABLE', bytes=0, sha256=None, expected_match=False)
+              if user and 0 < len(token) <= 512:
+                  signal.alarm(20)
+                  try:
+                      request = urllib.request.Request(url, headers={'Authorization': authorization})
+                      with opener.open(request, timeout=20) as response:
+                          row['status'] = response.status
+                          if response.status == 200:
+                              digest = hashlib.sha256()
+                              while row['bytes'] < 4 * 1024 * 1024:
+                                  chunk = response.read(min(65536, 4 * 1024 * 1024 - row['bytes']))
+                                  if not chunk:
+                                      row['sha256'] = digest.hexdigest()
+                                      row['expected_match'] = row['sha256'] == expected
+                                      break
+                                  row['bytes'] += len(chunk)
+                                  digest.update(chunk)
+                              else:
+                                  row['status'] = 'SIZE_LIMIT'
+                  except urllib.error.HTTPError as error:
+                      row['status'] = error.code
+                      error.close()
+                  except TimeoutError:
+                      row.update(status='TIMEOUT', sha256=None, expected_match=False)
+                  except Exception:
+                      row.update(status='READ_ERROR', sha256=None, expected_match=False)
+                  finally:
+                      signal.alarm(0)
+              failed |= row['status'] != 200 or row['sha256'] is None
+              print(json.dumps(row, separators=(',', ':')), flush=True)
+          raise SystemExit(1 if failed else 0)
+          PYCODE
