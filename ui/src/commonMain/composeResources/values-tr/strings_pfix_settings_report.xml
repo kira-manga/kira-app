@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">Taslak yalnızca bellekte tutulur. Sonuç belirsizse aynı bildirimi yeniden denemek için bu pencereyi açık tutun.</string>
+    <string name="settings_report_retry_same">Aynı bildirimi yeniden dene</string>
+    <string name="settings_report_new_draft">Yeni bildirim</string>
+    <string name="settings_report_recovery_title">Saklanan işlemler</string>
+    <string name="settings_report_refresh">Saklanan işlemleri denetle</string>
+    <string name="settings_report_recovery_empty">Bu denetim saklanan bir işlem bildirmedi.</string>
+    <string name="settings_report_pending_title">Saklanan bildirim %1$d</string>
+    <string name="settings_report_prepared">Yerel olarak hazırlandı; gönderilmedi.</string>
+    <string name="settings_report_may_have_sent">Sunucuya ulaşmış olabilir.</string>
+    <string name="settings_report_cancel_prepared">Gönderilmemiş bildirimi iptal et</string>
+    <string name="settings_report_request_reset">Yerel sıfırlamayı incele</string>
+    <string name="settings_report_reset_title">Bu cihazın bildirim kimliği sıfırlansın mı?</string>
+    <string name="settings_report_reset_warning">Bu işlem yerel bildirim kimliğinin tamamını ve saklanan TÜM bildirim işlemlerini unutur. Sunucudaki bildirimler SİLİNMEZ veya geri alınmaz. Geçmişlerine erişimi ve güvenle yeniden deneme olanağını kaybedebilirsiniz.</string>
+    <string name="settings_report_reset_confirm">Yerel bildirim verilerini sıfırla</string>
+    <string name="settings_report_prepared_cancelled">Gönderilmemiş bildirim iptal edildi.</string>
+    <string name="settings_report_reset_completed">Yerel bildirim kimliği ve saklanan işlemler temizlendi. Sunucudaki bildirimler silinmedi.</string>
+    <string name="settings_report_applied">Sunucu bu bildirimi kabul etti.</string>
+    <string name="settings_report_capacity_rejected">Sunucu, bildirim sınırına ulaşıldığı için bu bildirimi reddetti.</string>
+    <string name="settings_report_id_rejected">Sunucu, bildirim kimliği daha önce kullanıldığı için bu bildirimi reddetti.</string>
+    <string name="settings_report_unresolved">Sonuç henüz doğrulanmadı. Yerine yeni bir bildirim başlatmayın.</string>
+    <string name="settings_report_cleanup_pending">Sunucu sonucu biliniyor ancak yerel doğrulama tamamlanmadı.</string>
+    <string name="settings_report_invalid_subject">Konu uzunluğunu ve karakterlerini kontrol edin.</string>
+    <string name="settings_report_invalid_body">Metin uzunluğunu ve karakterlerini kontrol edin.</string>
+    <string name="settings_report_invalid_metadata">Cihaz ayrıntıları kabul edilemedi. Bildirim gönderimi kullanılamıyor.</string>
+    <string name="settings_report_pending_capacity">Yerel bekleyen işlem sınırına ulaşıldı. Yeniden bildirim göndermeden önce saklanan işlemleri çözümleyin.</string>
+    <string name="settings_report_receipt_expired">Güvenli alındı süresi sona erdi. Bu bildirim yeniden gönderilmeyecek.</string>
+    <string name="settings_report_live_required">Bellekteki özgün bildirim artık mevcut değil. Saklanan üst veriler yeniden göndermek için kullanılamaz.</string>
+    <string name="settings_report_unavailable">Bu yerel kimlik için bildirim veya kurtarma kullanılamıyor. Saklanan işlemler değiştirilmedi.</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Cet appareil n’a pas encore d’identité pour les signalements. Configurez l’historique avant l’envoi. Votre brouillon reste uniquement en mémoire.</string>
+    <string name="request_feedback_setup_history">Configurer l’historique des signalements</string>
+    <string name="request_feedback_history_ready">L’historique des signalements est prêt. Cette demande n’a pas été envoyée. Vérifiez-la et choisissez Envoyer.</string>
+    <string name="request_feedback_clean_start">Ce nouvel historique ne contient pas les signalements envoyés via le service précédent.</string>
+</resources>

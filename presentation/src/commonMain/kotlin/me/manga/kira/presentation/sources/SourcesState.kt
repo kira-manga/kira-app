@@ -77,6 +77,8 @@ data class SourcesState(
     val items: List<Source> = emptyList(),
     val complaintDialogOpen: Boolean = false,
     val isSubmittingComplaint: Boolean = false,
+    /** Candidate selection permanently retires legacy source requests for this retained VM. */
+    val legacyRequestRetired: Boolean = false,
 ) : MviState {
 
     /** Convenience: true when the snapshot is empty and we're not still loading. */

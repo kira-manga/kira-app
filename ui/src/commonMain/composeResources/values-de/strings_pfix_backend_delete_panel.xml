@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Nur den unten angezeigten Feedback-Eintrag löschen? Dies kann nicht rückgängig gemacht werden. Die Installationsidentität bleibt erhalten. Das Schließen dieses Dialogs macht eine gesendete Anfrage nicht rückgängig.</string>
+    <string name="backend_delete_conflict">Ein Versionskonflikt wurde gemeldet. Die ursprüngliche Löschung behält ihre ursprüngliche Version; sie wird nie auf eine aktualisierte Version übertragen.</string>
+    <string name="backend_delete_retry_same">Dieselbe Löschung prüfen oder erneut versuchen</string>
+    <string name="backend_delete_open_recovery">Einrichtung und Wiederherstellung öffnen</string>
+    <string name="backend_delete_unresolved">Die Löschung ist noch nicht bestätigt. Prüfe ihren Status, bevor du von einem Fehlschlag ausgehst.</string>
+    <string name="backend_delete_unavailable">Löschung oder Wiederherstellung ist nicht verfügbar. Prüfe gespeicherte Vorgänge über Einrichtung und Wiederherstellung; sie wurden nicht ersetzt.</string>
+    <string name="backend_delete_live_required">Diese Löschung kann nur über ihre ursprüngliche offene Bestätigung wiederholt werden. Die Wiederherstellung kann sie nicht neu erstellen.</string>
+    <string name="backend_delete_receipt_expired">Das Zeitfenster für den Löschbeleg ist abgelaufen. Das beweist nicht, dass die Löschung fehlgeschlagen ist.</string>
+</resources>

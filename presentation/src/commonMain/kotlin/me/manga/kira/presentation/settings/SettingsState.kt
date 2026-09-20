@@ -160,4 +160,6 @@ data class SettingsState(
     // flags (same visibility rule as native's dialog) — independent of `isCompressingDownloads`,
     // which only gates the trigger button.
     val cbzConversion: CbzConversionProgress = CbzConversionProgress(),
+    /** Once selected, candidate feedback permanently retires legacy feedback for this VM lifetime. */
+    val legacyFeedbackRetired: Boolean = false,
 ) : MviState

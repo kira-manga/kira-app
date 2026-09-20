@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">Política sobre contenido para adultos</string>
+    <string name="backend_notice_content_policy_body">Aquí no se permiten referencias a contenido para adultos / 18+. Asegúrate de que tus publicaciones respeten las normas de nuestra comunidad.</string>
+    <string name="backend_notice_source_requirements_subject">Requisitos para nuevos sitios de manga</string>
+    <string name="backend_notice_source_requirements_body">Todo nuevo sitio de manga debe ofrecer al menos 200 títulos, no exigir pasos de verificación antibots y justificar el esfuerzo de configuración. Añadir un sitio requiere mucho tiempo y trabajo.</string>
+</resources>

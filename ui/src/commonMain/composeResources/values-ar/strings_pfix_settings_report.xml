@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">يُحفظ نص المسودة في الذاكرة فقط. أبقِ هذا الحوار مفتوحًا لإعادة محاولة البلاغ نفسه إذا كانت نتيجته غير مؤكدة.</string>
+    <string name="settings_report_retry_same">إعادة محاولة البلاغ نفسه</string>
+    <string name="settings_report_new_draft">بلاغ جديد</string>
+    <string name="settings_report_recovery_title">العمليات المحتفظ بها</string>
+    <string name="settings_report_refresh">فحص العمليات المحتفظ بها</string>
+    <string name="settings_report_recovery_empty">لم يُظهر هذا الفحص أي عمليات محتفظ بها.</string>
+    <string name="settings_report_pending_title">البلاغ المحتفظ به %1$d</string>
+    <string name="settings_report_prepared">أُعدّ محليًا ولم يُرسل.</string>
+    <string name="settings_report_may_have_sent">ربما وصل إلى الخادم.</string>
+    <string name="settings_report_cancel_prepared">إلغاء البلاغ غير المرسل</string>
+    <string name="settings_report_request_reset">مراجعة إعادة الضبط المحلية</string>
+    <string name="settings_report_reset_title">إعادة ضبط هوية البلاغات لهذا الجهاز؟</string>
+    <string name="settings_report_reset_warning">سيؤدي ذلك إلى نسيان هوية البلاغات المحلية بالكامل وجميع عمليات البلاغات المحتفظ بها. لن تُحذف بلاغات الخادم ولن تُلغى آثارها. قد تفقد الوصول إلى سجلها وإمكانية إعادة محاولتها بأمان.</string>
+    <string name="settings_report_reset_confirm">إعادة ضبط بيانات البلاغات المحلية</string>
+    <string name="settings_report_prepared_cancelled">أُلغي البلاغ غير المرسل.</string>
+    <string name="settings_report_reset_completed">مُسحت هوية البلاغات المحلية والعمليات المحتفظ بها. لم تُحذف بلاغات الخادم.</string>
+    <string name="settings_report_applied">قبل الخادم هذا البلاغ.</string>
+    <string name="settings_report_capacity_rejected">رفض الخادم هذا البلاغ بسبب بلوغ الحد الأقصى للبلاغات.</string>
+    <string name="settings_report_id_rejected">رفض الخادم هذا البلاغ لأن معرّفه استُخدم من قبل.</string>
+    <string name="settings_report_unresolved">لم تتأكد النتيجة بعد. لا تبدأ بلاغًا بديلًا.</string>
+    <string name="settings_report_cleanup_pending">نتيجة الخادم معروفة، لكن التأكيد المحلي لم يكتمل.</string>
+    <string name="settings_report_invalid_subject">تحقق من طول العنوان وأحرفه.</string>
+    <string name="settings_report_invalid_body">تحقق من طول النص وأحرفه.</string>
+    <string name="settings_report_invalid_metadata">تعذّر قبول تفاصيل الجهاز. إرسال البلاغات غير متاح.</string>
+    <string name="settings_report_pending_capacity">بُلغ الحد المحلي للعمليات المعلقة. عالج العمليات المحتفظ بها قبل إرسال بلاغ آخر.</string>
+    <string name="settings_report_receipt_expired">انتهت فترة التحقق الآمن من الإيصال. لن يُرسل هذا البلاغ مرة أخرى.</string>
+    <string name="settings_report_live_required">لم يعد البلاغ الأصلي في الذاكرة متاحًا. لا يمكن استخدام البيانات الوصفية المحتفظ بها لإعادة إرساله.</string>
+    <string name="settings_report_unavailable">إرسال البلاغات أو استردادها غير متاح لهذه الهوية المحلية. لم تُستبدل العمليات المحتفظ بها.</string>
+</resources>

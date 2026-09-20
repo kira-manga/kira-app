@@ -2,6 +2,9 @@ package me.manga.kira.presentation.settings
 
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import me.manga.kira.domain.model.complaint.ComplaintType
@@ -159,6 +162,34 @@ class SettingsViewModel(
 ) : MviViewModel<SettingsState, SettingsIntent, SettingsEffect>(
     initialState = SettingsState(),
 ) {
+    private var feedbackJob: Job? = null
+
+    /**
+     * Settings UI consumes this stream so buffered, untagged legacy feedback results are dropped
+     * after retirement. Navigation is unaffected; the UI also fences already-consumed snackbars.
+     */
+    val screenEffects: Flow<SettingsEffect> =
+        effects.filter { effect ->
+            effect !is SettingsEffect.FeedbackResult || !state.value.legacyFeedbackRetired
+        }
+
+    /**
+     * Main/UI-confined, synchronous and irreversible for this retained VM. Retire before invoking
+     * a candidate callback, not through an asynchronously dispatched intent. Close even a busy
+     * legacy dialog first, then best-effort cancel our request; provider work may already have run.
+     */
+    fun retireLegacyFeedback() {
+        if (!state.value.legacyFeedbackRetired) {
+            updateState {
+                it.copy(
+                    legacyFeedbackRetired = true,
+                    feedbackDialogOpen = false,
+                    isSubmittingFeedback = false,
+                )
+            }
+        }
+        feedbackJob?.cancel()
+    }
 
     init {
         observeSettings()
@@ -206,10 +237,11 @@ class SettingsViewModel(
             }
             is SettingsIntent.OnClearCache -> handleClearCache()
             is SettingsIntent.OnNavigate -> emit(SettingsEffect.NavigateTo(intent.destination))
-            is SettingsIntent.OnOpenFeedbackDialog ->
-                updateState { it.copy(feedbackDialogOpen = true) }
+            is SettingsIntent.OnOpenFeedbackDialog -> {
+                if (!state.value.legacyFeedbackRetired) updateState { it.copy(feedbackDialogOpen = true) }
+            }
             is SettingsIntent.OnDismissFeedbackDialog -> {
-                if (state.value.isSubmittingFeedback) return
+                if (state.value.legacyFeedbackRetired || state.value.isSubmittingFeedback) return
                 updateState { it.copy(feedbackDialogOpen = false) }
             }
             is SettingsIntent.OnSubmitFeedback ->
@@ -288,31 +320,38 @@ class SettingsViewModel(
     }
 
     private fun handleSubmitFeedback(type: ComplaintType, subject: String, body: String) {
-        if (state.value.isSubmittingFeedback) return
+        if (state.value.legacyFeedbackRetired || state.value.isSubmittingFeedback) return
         updateState { it.copy(isSubmittingFeedback = true) }
         // #29: launchSafely so a throw routes to onUnhandledError, not a viewModelScope crash; the
         // flag reset lives in `finally` so a routed error still re-enables the Submit button.
-        launchSafely {
+        feedbackJob = launchSafely {
             try {
+                // The inner launch can still be queued when the candidate retires this producer.
+                if (state.value.legacyFeedbackRetired) return@launchSafely
                 // P2-SET (F9) — submit the localized category display name as the subject (resolved at
                 // the :ui layer and carried in the intent), matching native's
                 // `submit(it, it.getDisplayName(context), body, ...)`. Replaces the prior `type.name`
                 // enum-constant subject (a code identifier, not the user-facing category).
                 val result = submitFeedback(type = type, subject = subject, body = body)
+                if (state.value.legacyFeedbackRetired) return@launchSafely
                 if (result.isSuccess) {
                     updateState { it.copy(feedbackDialogOpen = false) }
-                    // GAP-SET-13 — typed result so :ui resolves the localized success string.
-                    emit(SettingsEffect.FeedbackResult(success = true))
                 } else {
                     // Backlog L8 (posture consistency with Sources/Language): the raw failure is
                     // LOGGED here, never carried in the effect — :ui shows the localized error
                     // string with a Retry action; effects stay payload-free beyond the flag.
                     Logger.withTag(TAG).w(result.exceptionOrNull()) { "feedback submit failed" }
-                    emit(SettingsEffect.FeedbackResult(success = false))
+                }
+                // Also fence synchronous retirement triggered by observing the success state.
+                if (!state.value.legacyFeedbackRetired) {
+                    emit(SettingsEffect.FeedbackResult(success = result.isSuccess))
                 }
             } finally {
-                updateState { it.copy(isSubmittingFeedback = false) }
+                if (!state.value.legacyFeedbackRetired) updateState { it.copy(isSubmittingFeedback = false) }
             }
+        }.also { job ->
+            // Main.immediate may enter the provider before assignment of the returned Job.
+            if (state.value.legacyFeedbackRetired) job.cancel()
         }
     }
 

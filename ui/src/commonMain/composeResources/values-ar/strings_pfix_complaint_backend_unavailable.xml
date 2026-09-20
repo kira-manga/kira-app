@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complaint_backend_unavailable_title">الملاحظات غير متاحة</string>
+    <string name="complaint_backend_unavailable_message">الملاحظات غير متاحة في هذا الإصدار. يمكنك الرجوع ومتابعة استخدام التطبيق.</string>
+    <string name="complaint_backend_unavailable_back">رجوع</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_notice_content_policy_subject">Richtlinie zu Inhalten für Erwachsene</string>
+    <string name="backend_notice_content_policy_body">Verweise auf Inhalte für Erwachsene / ab 18 Jahren sind hier nicht erlaubt. Bitte achte darauf, dass deine Beiträge unseren Community-Richtlinien entsprechen.</string>
+    <string name="backend_notice_source_requirements_subject">Anforderungen an neue Manga-Websites</string>
+    <string name="backend_notice_source_requirements_body">Jede neue Manga-Website muss mindestens 200 Titel anbieten, darf keine Prüfungen auf Bots erfordern und muss den Einrichtungsaufwand rechtfertigen. Das Hinzufügen einer Website kostet viel Zeit und Arbeit.</string>
+</resources>

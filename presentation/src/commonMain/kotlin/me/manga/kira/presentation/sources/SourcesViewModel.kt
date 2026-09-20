@@ -1,10 +1,12 @@
 package me.manga.kira.presentation.sources
 
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.usecase.feedback.SubmitFeedbackUseCase
 import me.manga.kira.domain.usecase.sources.EnableDefaultLanguageSourcesUseCase
@@ -139,6 +141,36 @@ class SourcesViewModel(
 ) : MviViewModel<SourcesState, SourcesIntent, SourcesEffect>(
     initialState = SourcesState(),
 ) {
+    private var requestJob: Job? = null
+
+    /**
+     * Screen-facing effects discard buffered legacy request outcomes after retirement. The UI
+     * also fences already-consumed outcomes and suspended Retry actions against their owner.
+     */
+    val screenEffects: Flow<SourcesEffect> =
+        effects.filter { effect ->
+            when (effect) {
+                SourcesEffect.RequestSubmitted, is SourcesEffect.RequestFailed -> !state.value.legacyRequestRetired
+            }
+        }
+
+    /**
+     * Main/UI-confined, synchronous and irreversible for this retained VM. Close even a busy
+     * legacy dialog before best-effort cancellation of our request. Call before the candidate,
+     * not via an asynchronous intent; already-started provider work cannot be undone.
+     */
+    fun retireLegacyRequest() {
+        if (!state.value.legacyRequestRetired) {
+            updateState {
+                it.copy(
+                    legacyRequestRetired = true,
+                    complaintDialogOpen = false,
+                    isSubmittingComplaint = false,
+                )
+            }
+        }
+        requestJob?.cancel()
+    }
 
     init {
         observeSources()
@@ -162,10 +194,11 @@ class SourcesViewModel(
                 // #29: launchSafely so a Room write throw routes to onUnhandledError, not a crash.
                 launchSafely { setLanguageEnabled(intent.language, intent.enabled) }
             }
-            is SourcesIntent.OnOpenComplaintDialog ->
-                updateState { it.copy(complaintDialogOpen = true) }
+            is SourcesIntent.OnOpenComplaintDialog -> {
+                if (!state.value.legacyRequestRetired) updateState { it.copy(complaintDialogOpen = true) }
+            }
             is SourcesIntent.OnDismissComplaintDialog -> {
-                if (state.value.isSubmittingComplaint) return
+                if (state.value.legacyRequestRetired || state.value.isSubmittingComplaint) return
                 updateState { it.copy(complaintDialogOpen = false) }
             }
             is SourcesIntent.OnSubmitComplaint ->
@@ -178,9 +211,11 @@ class SourcesViewModel(
     }
 
     private fun handleSubmitComplaint(body: String, subject: String) {
-        if (state.value.isSubmittingComplaint) return
+        if (state.value.legacyRequestRetired || state.value.isSubmittingComplaint) return
         updateState { it.copy(isSubmittingComplaint = true) }
-        viewModelScope.launch {
+        requestJob = launchSafely {
+            // Selection can retire this producer while the inner launch is still queued.
+            if (state.value.legacyRequestRetired) return@launchSafely
             // NP Phase 2 P2 (sources complaint subject): the subject is the localized
             // ComplaintType.SITES_ADD display name ("Add Manga Site"), resolved in `:ui` and
             // threaded down via the intent — matching native RepoSettingsScreen, which submits
@@ -188,22 +223,28 @@ class SourcesViewModel(
             // ("SITES_ADD") subject, a data divergence visible to whoever triages requests.
             val type = ComplaintType.SITES_ADD
             val result = submitFeedback(type = type, subject = subject, body = body)
-            if (result.isSuccess) {
+            if (state.value.legacyRequestRetired) return@launchSafely
+            val effect: SourcesEffect = if (result.isSuccess) {
                 updateState {
                     it.copy(
                         isSubmittingComplaint = false,
                         complaintDialogOpen = false,
                     )
                 }
-                emit(SourcesEffect.RequestSubmitted)
+                SourcesEffect.RequestSubmitted
             } else {
                 // NP Phase 2 (GAP-SRC-02 + GAP-SRC-03): the dialog stays open (typed text
                 // preserved) and the localized failure snackbar carries a Retry action that
                 // re-submits this exact body. Snackbar copy is resolved in `:ui` via
                 // stringResource — no English literal here.
                 updateState { it.copy(isSubmittingComplaint = false) }
-                emit(SourcesEffect.RequestFailed(body))
+                SourcesEffect.RequestFailed(body)
             }
+            // Keep legacy busy/dialog completion ordering, but recheck after state observers ran.
+            if (!state.value.legacyRequestRetired) emit(effect)
+        }.also { job ->
+            // Main.immediate may enter provider code before the returned Job can be retained.
+            if (state.value.legacyRequestRetired) job.cancel()
         }
     }
 }

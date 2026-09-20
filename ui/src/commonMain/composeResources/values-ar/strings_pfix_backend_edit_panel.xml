@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">يُحتفظ بمسودة النص في الذاكرة فقط. يؤدي إغلاق هذا المحرر إلى فقدانها، لكنه لا يمحو العمليات المحتفظ بها ولا يتراجع عنها.</string>
+    <string name="backend_edit_retry_same">التحقق من التعديل نفسه أو إعادة محاولته</string>
+    <string name="backend_edit_conflict">أُبلغ عن تعارض في الإصدار. بقيت مسودتك دون تغيير؛ وتستخدم أي إعادة محاولة الإصدار الأصلي، وليس إصدارًا محدّثًا.</string>
+    <string name="backend_edit_unresolved">لم تُؤكَّد نتيجة التعديل بعد. لا تبدأ تعديلًا بديلًا.</string>
+    <string name="backend_edit_open_recovery">إغلاق وفتح استرداد البلاغات</string>
+    <string name="backend_edit_live_required">لم يعد التعديل الأصلي الموجود في الذاكرة متاحًا. لا يمكن استخدام البيانات الوصفية المحتفظ بها لإعادة إرساله.</string>
+    <string name="backend_edit_receipt_expired">انتهت الفترة الآمنة لإيصال العملية. لن يُرسل هذا التعديل مرة أخرى.</string>
+</resources>

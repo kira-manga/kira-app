@@ -3,10 +3,15 @@ package me.manga.kira.navigation.routes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
-import me.manga.kira.admin.Admin
 import me.manga.kira.core.platform.backupPlatformName
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.di.ComplaintBackendEntrypoint
+import me.manga.kira.di.ComplaintBackendHostOwner
 import me.manga.kira.domain.model.sources.SourceAccessState
 import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.navigation.Screen
@@ -14,6 +19,7 @@ import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.settings.SettingsDestination
 import me.manga.kira.presentation.settings.SettingsViewModel
+import me.manga.kira.ui.complaint.ComplaintUnavailableDialog
 import me.manga.kira.ui.settings.SettingsScreen
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -142,36 +148,48 @@ import org.koin.compose.viewmodel.koinViewModel
  * record of the design lineage; the rework SettingsScreen continues to
  * surface the documented affordances through the legacy retire.
  */
+@Suppress("LongMethod") // Keep explicit selected/refused branches beside their ordinary Settings callbacks.
 @Composable
 fun SettingsRoute(
     navController: NavController,
     @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
     crashDiagnosticsEnabled: Boolean = false,
+    complaintHost: ComplaintBackendHostOwner = koinInject(),
 ) {
     val viewModel: SettingsViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
     val observeSourceAccess: ObserveSourceAccessUseCase = koinInject()
     val sourceAccessState by observeSourceAccess().collectAsState()
-    SettingsScreen(
-        viewModel = viewModel,
-        sourceAccessActivated = sourceAccessState == SourceAccessState.ACTIVATED,
-        // The "compress during Low Power Mode" toggle is an iOS-only concern (iOS Low Power Mode + the
-        // iOS background finalize engine); show it only there. `backupPlatformName()` is the app's
-        // canonical per-target platform-name seam (also used by BackupReworkModule).
-        lowPowerCompressionToggleVisible = backupPlatformName() == "ios",
-        crashDiagnosticsVisible = crashDiagnosticsEnabled,
-        onNavigate = navigate@{ destination ->
-            val target = settingsDestination(
-                destination = destination,
-                sourceAccessState = sourceAccessState,
-                crashDiagnosticsEnabled = crashDiagnosticsEnabled,
-            ) ?: return@navigate
-            navController.safeNavigate(target)
-        },
-        // GAP-SET-12 parity (#5) — wire the platform IntentLauncher so the Feedback dialog's social
-        // links open externally. (The admin "Testing Mode" toggle was removed per owner request.)
-        onOpenUrl = { url -> launcher.openUrl(url) },
-    )
+    val selection by complaintHost.selection.collectAsState()
+    var unavailable by remember(complaintHost) { mutableStateOf(false) }
+    val refuse: () -> Unit = remember(complaintHost) { { unavailable = true } }
+    val navigate: (SettingsDestination) -> Unit = navigate@{ destination ->
+        val target = settingsDestination(destination, sourceAccessState, crashDiagnosticsEnabled) ?: return@navigate
+        navController.safeNavigate(target)
+    }
+    when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.SETTINGS, selection)) {
+        is AppResult.Success -> ComplaintBackendGeneralSettingsRoute(
+            candidate = candidate.value,
+            viewModel = viewModel,
+            sourceAccessActivated = sourceAccessState == SourceAccessState.ACTIVATED,
+            lowPowerCompressionToggleVisible = backupPlatformName() == "ios",
+            crashDiagnosticsVisible = crashDiagnosticsEnabled,
+            onNavigate = navigate,
+            onOpenUrl = { launcher.openUrl(it) },
+        )
+        is AppResult.Failure -> SettingsScreen(
+            viewModel = viewModel,
+            sourceAccessActivated = sourceAccessState == SourceAccessState.ACTIVATED,
+            lowPowerCompressionToggleVisible = backupPlatformName() == "ios",
+            crashDiagnosticsVisible = crashDiagnosticsEnabled,
+            onNavigate = navigate,
+            onOpenUrl = { launcher.openUrl(it) },
+            // Non-null in both families: permanently retire the old producer and buffered effects.
+            onRequestFeedback = refuse,
+            onOpenComplaintHistory = refuse,
+        )
+    }
+    if (unavailable) ComplaintUnavailableDialog(onBack = { unavailable = false })
 }
 
 internal fun settingsDestination(
@@ -185,8 +203,7 @@ internal fun settingsDestination(
     SettingsDestination.STATISTICS -> Screen.StatisticsRework
     SettingsDestination.LANGUAGE -> Screen.LanguageRework
     SettingsDestination.ABOUT -> Screen.AboutRework
-    SettingsDestination.COMPLAINT ->
-        if (Admin.isAdmin) Screen.ComplaintAdminRework else Screen.ComplaintRework
+    SettingsDestination.COMPLAINT -> Screen.ComplaintRework
     SettingsDestination.WHATSNEW -> Screen.WhatsNewRework
     SettingsDestination.DOWNLOADS -> Screen.DownloadsRework
     SettingsDestination.BACKUP -> Screen.BackupRework()

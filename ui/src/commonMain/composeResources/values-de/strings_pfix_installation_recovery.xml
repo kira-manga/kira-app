@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_recovery_title">Lokale Wiederherstellung der Meldungsidentität</string>
+    <string name="settings_installation_review_unreadable">Wiederherstellbarkeit einer unlesbaren Identität prüfen</string>
+    <string name="settings_installation_review_abandonment">Lokalen Verzicht auf die Löschfortsetzung prüfen</string>
+    <string name="settings_installation_continue_cleanup">Autorisierte lokale Bereinigung prüfen oder fortsetzen</string>
+    <string name="settings_installation_abandon_title">Lokale Löschfortsetzung aufgeben?</string>
+    <string name="settings_installation_abandon_warning">Damit geben Sie die lokale Fortsetzung eines bestehenden Löschantrags auf. Möglicherweise können Sie ihn nicht mehr wiederholen oder sein Ergebnis prüfen. Ein bereits gesendeter Antrag wird dadurch nicht rückgängig gemacht; eine Löschung auf dem Server wird nicht bestätigt.</string>
+    <string name="settings_installation_abandon_confirm">Lokale Löschfortsetzung aufgeben</string>
+    <string name="settings_installation_abandon_completed">Die lokale Löschfortsetzung wurde aufgegeben. Dies bestätigt keine Löschung auf dem Server.</string>
+    <string name="settings_installation_cleanup_checked">Die Prüfung der lokalen Bereinigung ist abgeschlossen. Möglicherweise wurde nichts geändert. Dies bestätigt weder die Entfernung der Identität noch eine Löschung auf dem Server.</string>
+</resources>

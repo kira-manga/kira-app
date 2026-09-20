@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">يُحتفظ بنص الرد في الذاكرة فقط. إغلاق هذه اللوحة يتخلّص منه. أبقِ اللوحة مفتوحة لإعادة محاولة الرد نفسه إذا كانت نتيجته غير مؤكدة.</string>
+    <string name="backend_reply_retry_same">إعادة محاولة الرد نفسه</string>
+    <string name="backend_reply_open_recovery">إغلاق الرد وفتح الإعداد أو الاسترداد</string>
+    <string name="backend_reply_target_unavailable">الرد غير متاح لهذا العنصر.</string>
+    <string name="backend_reply_unresolved">لم تتأكد نتيجة الرد بعد. لا ترسل ردًا بديلًا.</string>
+    <string name="backend_reply_receipt_expired">انتهت مهلة الإيصال الآمنة. لن يُرسل هذا الرد مرة أخرى.</string>
+    <string name="backend_reply_live_required">لم يعد الرد الأصلي في الذاكرة متاحًا. لا يمكن استخدام البيانات الوصفية المحتفظ بها لإعادة إرساله.</string>
+</resources>

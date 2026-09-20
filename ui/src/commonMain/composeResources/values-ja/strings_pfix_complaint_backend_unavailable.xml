@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complaint_backend_unavailable_title">フィードバックは利用できません</string>
+    <string name="complaint_backend_unavailable_message">このビルドではフィードバックを利用できません。戻ってアプリの使用を続けることができます。</string>
+    <string name="complaint_backend_unavailable_back">戻る</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complaint_backend_unavailable_title">Feedback unavailable</string>
+    <string name="complaint_backend_unavailable_message">Feedback is not available in this build. You can go back and continue using the app.</string>
+    <string name="complaint_backend_unavailable_back">Back</string>
+</resources>

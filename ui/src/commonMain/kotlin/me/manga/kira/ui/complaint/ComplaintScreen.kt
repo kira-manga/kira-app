@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
+import me.manga.kira.domain.model.complaint.ComplaintHistory
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
 import me.manga.kira.presentation.complaint.ActionDialogMode
@@ -183,12 +184,16 @@ import org.jetbrains.compose.resources.stringResource
  * trail-preservation convention — the citations are historical record of
  * the design lineage; the screen continues to render correctly through the
  * legacy retire.
+ * Compose UI declarations use PascalCase, unlike ordinary Kotlin functions.
+ * [onBackendRowClick] is an optional explicit-candidate read callback; default routes supply none.
  */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 fun ComplaintScreen(
     viewModel: ComplaintViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBackendRowClick: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -205,14 +210,16 @@ fun ComplaintScreen(
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collectLatest { effect ->
-            val message = when (effect) {
-                is ComplaintEffect.ShowActionSuccess -> when (effect.action) {
-                    ComplaintAction.REPLY_SENT -> replySentMessage
-                    ComplaintAction.UPDATED -> updatedMessage
-                    ComplaintAction.DELETED -> deletedMessage
-                    ComplaintAction.BODY_COPIED -> bodyCopiedMessage
+            val message =
+                when (effect) {
+                    is ComplaintEffect.ShowActionSuccess ->
+                        when (effect.action) {
+                            ComplaintAction.REPLY_SENT -> replySentMessage
+                            ComplaintAction.UPDATED -> updatedMessage
+                            ComplaintAction.DELETED -> deletedMessage
+                            ComplaintAction.BODY_COPIED -> bodyCopiedMessage
+                        }
                 }
-            }
             scope.launch { snackbarHostState.showSnackbar(message) }
         }
     }
@@ -223,9 +230,12 @@ fun ComplaintScreen(
         onIntent = viewModel::submit,
         onBack = onBack,
         modifier = modifier,
+        onBackendRowClick = onBackendRowClick,
     )
 }
 
+// Keep this cohesive screen layout intact; Compose UI declarations use PascalCase.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ComplaintScreenContent(
@@ -234,6 +244,7 @@ internal fun ComplaintScreenContent(
     onIntent: (ComplaintIntent) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBackendRowClick: ((String) -> Unit)? = null,
 ) {
     val errorMessage = state.error
     Scaffold(
@@ -259,10 +270,11 @@ internal fun ComplaintScreenContent(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.background),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(MaterialTheme.colorScheme.background),
         ) {
             // GAP-CMP-26 / GAP-CMP-27 — reuse the shared design-system state views
             // (KiraLoadingState / KiraErrorState / KiraEmptyState) instead of the prior hand-rolled
@@ -270,6 +282,22 @@ internal fun ComplaintScreenContent(
             // Complaint surface in line with WhatsNew + the rest of the rework cluster (memory:
             // design-system) — richer error glyph + Retry button, icon + title empty state.
             when {
+                state.history is ComplaintHistory.Backend -> BackendComplaintHistory(state, onIntent, onBackendRowClick)
+                state.history is ComplaintHistory.Legacy -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        ComplaintHistoryRefreshStatus(state, onIntent)
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (state.all.isEmpty()) {
+                                KiraEmptyState(
+                                    title = stringResource(Res.string.np_no_feedback_title),
+                                    message = stringResource(Res.string.np_no_feedback_message),
+                                )
+                            } else {
+                                ComplaintList(state, onIntent)
+                            }
+                        }
+                    }
+                }
                 state.isLoading -> {
                     // GAP-CMP-U-LOAD — native `LoadingState.kt:26-91` renders a message
                     // ("Loading feedback…", native `loading_feedback`) under the spinner; the shared
@@ -309,7 +337,10 @@ internal fun ComplaintScreenContent(
             }
 
             val activeComplaint = state.activeComplaint
-            if (state.actionDialogMode != ActionDialogMode.NONE && activeComplaint != null) {
+            if (state.legacyActionsAllowed &&
+                state.actionDialogMode != ActionDialogMode.NONE &&
+                activeComplaint != null
+            ) {
                 ComplaintActionDialog(
                     complaint = activeComplaint,
                     mode = state.actionDialogMode,
@@ -322,6 +353,8 @@ internal fun ComplaintScreenContent(
     }
 }
 
+// Compose UI declarations use PascalCase.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ComplaintList(
@@ -370,9 +403,11 @@ private fun ComplaintList(
     }
 }
 
+// Keep the cohesive search/chip layout intact; Compose UI declarations use PascalCase.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchAndFilterSection(
+internal fun SearchAndFilterSection(
     searchQuery: String,
     selectedStatus: ComplaintStatus?,
     resultsCount: Int,
@@ -380,9 +415,10 @@ private fun SearchAndFilterSection(
 ) {
     val spacing = LocalSpacing.current
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.md),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         OutlinedTextField(
@@ -396,18 +432,19 @@ private fun SearchAndFilterSection(
                     contentDescription = null,
                 )
             },
-            trailingIcon = if (searchQuery.isNotEmpty()) {
-                {
-                    IconButton(onClick = { onIntent(ComplaintIntent.OnClearSearch) }) {
-                        Icon(
-                            imageVector = ComplaintClear,
-                            contentDescription = stringResource(Res.string.clear),
-                        )
+            trailingIcon =
+                if (searchQuery.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { onIntent(ComplaintIntent.OnClearSearch) }) {
+                            Icon(
+                                imageVector = ComplaintClear,
+                                contentDescription = stringResource(Res.string.clear),
+                            )
+                        }
                     }
-                }
-            } else {
-                null
-            },
+                } else {
+                    null
+                },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
         )
@@ -444,6 +481,8 @@ private fun SearchAndFilterSection(
     }
 }
 
+// Keep this cohesive row layout intact; Compose UI declarations use PascalCase.
+@Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ComplaintRow(
@@ -452,6 +491,7 @@ private fun ComplaintRow(
     onLongClickBody: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
+
     // LocalClipboardManager is deprecated in favor of LocalClipboard, but the replacement's
     // Clipboard.setClipEntry is suspend and ClipEntry has no common text factory in CMP 1.11.1
     // (only ClipEntry(nativeClipEntry), platform-specific) — migrating commonMain needs new
@@ -462,10 +502,11 @@ private fun ComplaintRow(
     // RoundedCornerShape(16.dp), default elevated surface container) rather than the prior
     // r12/surfaceVariant. Aligned to native across the whole cluster (user + admin + stats).
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.md)
-            .clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md)
+                .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(16.dp),
     ) {
@@ -538,13 +579,14 @@ private fun ComplaintRow(
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 10,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.combinedClickable(
-                    onClick = onClick,
-                    onLongClick = {
-                        clipboardManager.setText(AnnotatedString(complaint.body))
-                        onLongClickBody()
-                    },
-                ),
+                modifier =
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = {
+                            clipboardManager.setText(AnnotatedString(complaint.body))
+                            onLongClickBody()
+                        },
+                    ),
             )
             // GAP-CMP-02 — render the ClosureReasonCard on CLOSED / PINNED complaints that carry
             // a `reason` in metadata (threaded onto ComplaintSummary.reason by the :data mapper;
@@ -600,7 +642,9 @@ private fun ComplaintRow(
  * `:ui/components`, outside this slice's edit scope), so the message-bearing loading layout is
  * rendered here — the same posture the admin-side `AdminLoadingState` uses. Fills the parent and
  * centres its content like the shared state views.
+ * Compose UI declarations use PascalCase.
  */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
 private fun ComplaintLoadingState(message: String) {
     val spacing = LocalSpacing.current
@@ -625,9 +669,14 @@ private fun ComplaintLoadingState(message: String) {
  * `ComplaintComponents.kt:127-146` `InfoItem`. A 16.dp `onSurfaceVariant`-tinted [icon] followed
  * by a single-line ellipsized bodySmall [text]. Used for the Android-version and manufacturer
  * cells in [ComplaintRow]'s device row (GAP-CMP device-metadata parity).
+ * Compose UI declarations use PascalCase.
  */
+@Suppress("ktlint:standard:function-naming", "FunctionNaming")
 @Composable
-private fun ComplaintInfoItem(icon: ImageVector, text: String) {
+private fun ComplaintInfoItem(
+    icon: ImageVector,
+    text: String,
+) {
     val spacing = LocalSpacing.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -657,28 +706,29 @@ private fun ComplaintInfoItem(icon: ImageVector, text: String) {
  * resolve string resources, exactly like the native helper.
  */
 @Composable
-private fun apiLevelToAndroidVersion(apiLevel: Int): String = when (apiLevel) {
-    34 -> "Android 14"
-    33 -> "Android 13"
-    32 -> "Android 12L"
-    31 -> "Android 12"
-    30 -> "Android 11"
-    29 -> "Android 10"
-    28 -> "Android 9 (Pie)"
-    27 -> "Android 8.1 (Oreo)"
-    26 -> "Android 8.0 (Oreo)"
-    25 -> "Android 7.1.1 (Nougat)"
-    24 -> "Android 7.0 (Nougat)"
-    23 -> "Android 6.0 (Marshmallow)"
-    22 -> "Android 5.1 (Lollipop)"
-    21 -> "Android 5.0 (Lollipop)"
-    20 -> "Android 4.4W (KitKat Wear)"
-    19 -> "Android 4.4 (KitKat)"
-    18 -> "Android 4.3 (Jelly Bean)"
-    17 -> "Android 4.2 (Jelly Bean)"
-    16 -> "Android 4.1 (Jelly Bean)"
-    15 -> "Android 4.0.3 (Ice Cream Sandwich)"
-    14 -> "Android 4.0 (Ice Cream Sandwich)"
-    0 -> stringResource(Res.string.filter_all)
-    else -> stringResource(Res.string.unknown)
-}
+private fun apiLevelToAndroidVersion(apiLevel: Int): String =
+    when (apiLevel) {
+        34 -> "Android 14"
+        33 -> "Android 13"
+        32 -> "Android 12L"
+        31 -> "Android 12"
+        30 -> "Android 11"
+        29 -> "Android 10"
+        28 -> "Android 9 (Pie)"
+        27 -> "Android 8.1 (Oreo)"
+        26 -> "Android 8.0 (Oreo)"
+        25 -> "Android 7.1.1 (Nougat)"
+        24 -> "Android 7.0 (Nougat)"
+        23 -> "Android 6.0 (Marshmallow)"
+        22 -> "Android 5.1 (Lollipop)"
+        21 -> "Android 5.0 (Lollipop)"
+        20 -> "Android 4.4W (KitKat Wear)"
+        19 -> "Android 4.4 (KitKat)"
+        18 -> "Android 4.3 (Jelly Bean)"
+        17 -> "Android 4.2 (Jelly Bean)"
+        16 -> "Android 4.1 (Jelly Bean)"
+        15 -> "Android 4.0.3 (Ice Cream Sandwich)"
+        14 -> "Android 4.0 (Ice Cream Sandwich)"
+        0 -> stringResource(Res.string.filter_all)
+        else -> stringResource(Res.string.unknown)
+    }

@@ -2,6 +2,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 import java.security.KeyFactory
+import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import java.util.Properties
@@ -61,14 +62,111 @@ val sourceConfigAppVersion =
         .orElse(providers.environmentVariable("MOBILE_RELEASE_VERSION_NAME"))
         .orElse(providers.gradleProperty("kira.appVersion"))
         .orElse("1.0.5")
+
+// Public operator/build inputs only. Never inherit complaint activation from the source catalog,
+// the ignored release env file, a Debug flag, or allowUnconfiguredSourceRemote. No target is shipped.
+fun complaintInput(environment: String, property: String) =
+    providers.environmentVariable(environment).orElse(providers.gradleProperty(property)).orElse("")
+
+val complaintLaunchRecord = complaintInput("KIRA_COMPLAINT_LAUNCH_RECORD", "kira.complaintLaunchRecord")
+val complaintLaunchBindings = mapOf(
+    "APPROVED_LAUNCH_SHA256" to complaintInput("KIRA_COMPLAINT_APPROVED_LAUNCH_SHA256", "kira.complaintApprovedLaunchSha256"),
+    "DEPLOYMENT_SHA256" to complaintInput("KIRA_COMPLAINT_DEPLOYMENT_SHA256", "kira.complaintDeploymentSha256"),
+    "BUILD_INPUTS_SHA256" to complaintInput("KIRA_COMPLAINT_BUILD_INPUTS_SHA256", "kira.complaintBuildInputsSha256"),
+    "IOS_DEFAULT_ACCESS_GROUP" to complaintInput("KIRA_COMPLAINT_IOS_DEFAULT_ACCESS_GROUP", "kira.complaintIosDefaultAccessGroup"),
+    "IOS_ACCESS_GROUP_EVIDENCE_SHA256" to complaintInput(
+        "KIRA_COMPLAINT_IOS_ACCESS_GROUP_EVIDENCE_SHA256", "kira.complaintIosAccessGroupEvidenceSha256",
+    ),
+)
+
+// Exact record identity/equality is not a signature or external approval. Deployment identity must
+// reference approved image/config/bootstrap facts; build identity must reference the approved input
+// manifest. Those facts and iOS signing/group evidence are independently supplied/reviewed later.
+fun complaintLaunchSnapshot(): Map<String, String> {
+    val record = complaintLaunchRecord.get()
+    if (record.isEmpty() || record == "Disabled") {
+        return mapOf("LAUNCH_RECORD" to "Disabled") + complaintLaunchBindings.keys.associateWith { "" }
+    }
+    val bindings = complaintLaunchBindings.mapValues { it.value.get() }
+    validateComplaintLaunchRecord(record, bindings)
+    return mapOf("LAUNCH_RECORD" to record) + bindings
+}
+
+fun validateComplaintLaunchRecord(record: String, bindings: Map<String, String>) {
+    fun checkInput(accepted: Boolean, message: String) {
+        if (!accepted) throw GradleException("Complaint launch refused: $message")
+    }
+    val keys = listOf(
+        "platform", "sourceBackend", "contract", "mode", "dataScopeId", "deploymentSha256", "buildInputsSha256",
+        "iosDefaultAccessGroup", "iosAccessGroupEvidenceSha256",
+    )
+    checkInput(record.length in 1..4096 && record.all { it == '\n' || it in ' '..'~' }, "invalid record framing")
+    val lines = record.split('\n')
+    checkInput(lines.size == keys.size + 1 && lines.first() == "kira-complaint-launch-v1", "unsupported record")
+    val fields = keys.mapIndexed { index, key ->
+        checkInput(lines[index + 1].startsWith("$key="), "invalid, duplicate, or out-of-order field")
+        key to lines[index + 1].removePrefix("$key=")
+    }.toMap()
+    checkInput(fields.getValue("platform") in setOf("ANDROID", "IOS"), "unsupported platform")
+    checkInput(fields.getValue("contract") == "1", "unsupported contract")
+    val scope = fields.getValue("dataScopeId")
+    val scopeMatches = when (fields.getValue("mode")) {
+        "LIVE" -> scope == "00000000-0000-0000-0000-000000000000"
+        "TEST" -> Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}").matches(scope)
+        else -> false
+    }
+    checkInput(scopeMatches, "unsupported mode/scope binding")
+    val base = fields.getValue("sourceBackend")
+    checkInput(base == sourceConfigBaseUrl.get() && validComplaintLaunchBase(base), "source-backend origin/path mismatch")
+    val sha256 = Regex("[0-9a-f]{64}")
+    listOf("APPROVED_LAUNCH_SHA256", "DEPLOYMENT_SHA256", "BUILD_INPUTS_SHA256").forEach {
+        checkInput(sha256.matches(bindings.getValue(it)), "missing exact approved deployment/build input identity")
+    }
+    checkInput(fields.getValue("deploymentSha256") == bindings.getValue("DEPLOYMENT_SHA256"), "deployment identity mismatch")
+    checkInput(fields.getValue("buildInputsSha256") == bindings.getValue("BUILD_INPUTS_SHA256"), "build input identity mismatch")
+    val digest = MessageDigest.getInstance("SHA-256").digest(record.toByteArray(Charsets.UTF_8))
+        .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
+    checkInput(digest == bindings.getValue("APPROVED_LAUNCH_SHA256"), "exact launch record identity mismatch")
+    val group = fields.getValue("iosDefaultAccessGroup")
+    val evidence = fields.getValue("iosAccessGroupEvidenceSha256")
+    checkInput(group == bindings.getValue("IOS_DEFAULT_ACCESS_GROUP"), "default access group mismatch")
+    checkInput(evidence == bindings.getValue("IOS_ACCESS_GROUP_EVIDENCE_SHA256"), "access group evidence mismatch")
+    if (fields.getValue("platform") == "IOS") {
+        checkInput(
+            Regex("[A-Za-z0-9][A-Za-z0-9.-]{1,254}").matches(group) && group.split('.').all { it.isNotEmpty() } &&
+                sha256.matches(evidence),
+            "missing independently verified iOS default-group input/evidence",
+        )
+    } else {
+        checkInput(group.isEmpty() && evidence.isEmpty(), "iOS binding supplied to an Android launch")
+    }
+}
+
+fun validComplaintLaunchBase(value: String): Boolean {
+    if (value.length !in 1..2048 || !value.startsWith("https://") || value.any { it !in '!'..'~' || it in "\\@?#" }) return false
+    val uri = runCatching { URI(value) }.getOrNull() ?: return false
+    if (uri.host.isNullOrEmpty() || uri.userInfo != null || uri.query != null || uri.fragment != null ||
+        (uri.port != -1 && uri.port !in 1..65535)
+    ) return false
+    val path = uri.rawPath.orEmpty().removeSuffix("/")
+    return path.isEmpty() || path.startsWith('/') && path.drop(1).split('/').all {
+        it.isNotEmpty() && it != "." && it != ".." && Regex("[A-Za-z0-9._~-]+").matches(it)
+    }
+}
+
 val generateSourceRemoteConfig = tasks.register("generateSourceRemoteConfig") {
     inputs.property("baseUrl", sourceConfigBaseUrl)
     inputs.property("pinnedKeys", sourceConfigPinnedKeys)
     inputs.property("appVersion", sourceConfigAppVersion)
+    inputs.property("complaintLaunchRecord", complaintLaunchRecord)
+    complaintLaunchBindings.forEach { (name, value) -> inputs.property("complaint$name", value) }
     outputs.dir(generatedSourceRemoteDir)
     doLast {
         fun String.asKotlinLiteral(): String =
-            replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+            replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("$", "\\$")
+        val complaintConstants = complaintLaunchSnapshot().entries.joinToString("\n                ") { (name, value) ->
+            "const val COMPLAINT_$name: String = \"${value.asKotlinLiteral()}\""
+        }
         val packageDir = generatedSourceRemoteDir.get().dir("me/manga/kira/sources/runtime").asFile
         packageDir.mkdirs()
         packageDir.resolve("GeneratedSourceRemoteConfig.kt").writeText(
@@ -79,6 +177,7 @@ val generateSourceRemoteConfig = tasks.register("generateSourceRemoteConfig") {
                 const val BASE_URL: String = "${sourceConfigBaseUrl.get().asKotlinLiteral()}"
                 const val APP_VERSION: String = "${sourceConfigAppVersion.get().asKotlinLiteral()}"
                 const val PINNED_KEYS: String = "${sourceConfigPinnedKeys.get().asKotlinLiteral()}"
+                $complaintConstants
             }
             """.trimIndent() + "\n",
         )
@@ -95,6 +194,10 @@ gradle.taskGraph.whenReady {
     }
     val allowUnconfigured =
         providers.gradleProperty("allowUnconfiguredSourceRemote").orNull == "true"
+    // Also validate when the generated task is up-to-date. The source-only flag never bypasses this.
+    if (buildingRelease || allTasks.any { it.project.path == ":app" && it.name.contains("Release") }) {
+        complaintLaunchSnapshot()
+    }
     if (buildingRelease && !allowUnconfigured) {
         val baseUrl = sourceConfigBaseUrl.get()
         val pins = sourceConfigPinnedKeys.get()

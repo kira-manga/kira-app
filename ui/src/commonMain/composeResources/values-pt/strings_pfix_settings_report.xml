@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">O rascunho fica apenas na memória. Mantenha esta caixa de diálogo aberta para tentar o mesmo relato novamente se o resultado for incerto.</string>
+    <string name="settings_report_retry_same">Tentar o mesmo relato novamente</string>
+    <string name="settings_report_new_draft">Novo relato</string>
+    <string name="settings_report_recovery_title">Operações retidas</string>
+    <string name="settings_report_refresh">Verificar operações retidas</string>
+    <string name="settings_report_recovery_empty">Esta verificação não indicou operações retidas.</string>
+    <string name="settings_report_pending_title">Relato retido %1$d</string>
+    <string name="settings_report_prepared">Preparado localmente; não enviado.</string>
+    <string name="settings_report_may_have_sent">Pode ter chegado ao servidor.</string>
+    <string name="settings_report_cancel_prepared">Cancelar relato não enviado</string>
+    <string name="settings_report_request_reset">Revisar redefinição local</string>
+    <string name="settings_report_reset_title">Redefinir a identidade de relatos deste dispositivo?</string>
+    <string name="settings_report_reset_warning">Isso esquece toda a identidade local de relatos e TODAS as operações de relatos retidas. Os relatos no servidor NÃO são apagados nem desfeitos. Você pode perder o acesso ao histórico e a possibilidade de tentar novamente com segurança.</string>
+    <string name="settings_report_reset_confirm">Redefinir dados locais de relatos</string>
+    <string name="settings_report_prepared_cancelled">O relato não enviado foi cancelado.</string>
+    <string name="settings_report_reset_completed">A identidade local de relatos e as operações retidas foram apagadas. Os relatos no servidor não foram excluídos.</string>
+    <string name="settings_report_applied">O servidor aceitou este relato.</string>
+    <string name="settings_report_capacity_rejected">O servidor rejeitou este relato porque o limite de relatos foi atingido.</string>
+    <string name="settings_report_id_rejected">O servidor rejeitou este relato porque seu identificador já havia sido usado.</string>
+    <string name="settings_report_unresolved">O resultado ainda não foi confirmado. Não inicie um relato substituto.</string>
+    <string name="settings_report_cleanup_pending">O resultado do servidor é conhecido, mas a confirmação local está incompleta.</string>
+    <string name="settings_report_invalid_subject">Confira o tamanho e os caracteres do assunto.</string>
+    <string name="settings_report_invalid_body">Confira o tamanho e os caracteres do texto.</string>
+    <string name="settings_report_invalid_metadata">Os dados do dispositivo não foram aceitos. O envio de relatos está indisponível.</string>
+    <string name="settings_report_pending_capacity">O limite local de operações pendentes foi atingido. Resolva as operações retidas antes de enviar outro relato.</string>
+    <string name="settings_report_receipt_expired">O período seguro do recibo terminou. Este relato não será enviado novamente.</string>
+    <string name="settings_report_live_required">O relato original na memória não está mais disponível. Os metadados retidos não permitem reenviá-lo.</string>
+    <string name="settings_report_unavailable">O envio ou a recuperação estão indisponíveis para esta identidade local. As operações retidas não foram substituídas.</string>
+</resources>

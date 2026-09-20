@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Draft text is kept only in memory. Closing this editor discards it but does not erase or undo retained operations.</string>
+    <string name="backend_edit_retry_same">Check or retry the same edit</string>
+    <string name="backend_edit_conflict">A version conflict was reported. Your draft is unchanged; any retry uses the original version, never a refreshed version.</string>
+    <string name="backend_edit_unresolved">The edit outcome is not confirmed. Do not start a replacement edit.</string>
+    <string name="backend_edit_open_recovery">Close and open feedback recovery</string>
+    <string name="backend_edit_live_required">The original in-memory edit is no longer available. Retained metadata cannot be used to resend it.</string>
+    <string name="backend_edit_receipt_expired">The safe receipt window has ended. This edit will not be sent again.</string>
+</resources>

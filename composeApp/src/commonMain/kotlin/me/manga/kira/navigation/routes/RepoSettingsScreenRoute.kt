@@ -1,13 +1,22 @@
 package me.manga.kira.navigation.routes
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.di.ComplaintBackendEntrypoint
+import me.manga.kira.di.ComplaintBackendHostOwner
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safeNavigate
 import me.manga.kira.navigation.safePopBackStack
 import me.manga.kira.platform.intent.IntentLauncher
 import me.manga.kira.presentation.sources.SourcesViewModel
+import me.manga.kira.ui.complaint.ComplaintUnavailableDialog
 import me.manga.kira.ui.sources.SourcesScreen
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -113,25 +122,28 @@ import org.koin.compose.viewmodel.koinViewModel
 fun RepoSettingsScreenRoute(
     navController: NavController,
     @Suppress("UNUSED_PARAMETER") backStackEntry: NavBackStackEntry,
+    complaintHost: ComplaintBackendHostOwner = koinInject(),
 ) {
     val viewModel: SourcesViewModel = koinViewModel()
     val launcher: IntentLauncher = koinInject()
-
-    SourcesScreen(
-        viewModel = viewModel,
-        onImportFromStorage = {
-            navController.safeNavigate(Screen.BackupRework())
-        },
-        // Request-Source dialog social-media row forwards each brand URL to the platform
-        // IntentLauncher (fire-and-forget; same posture as SettingsReworkScreenRoute's onOpenUrl).
-        onOpenUrl = { url -> launcher.openUrl(url) },
-        // In-settings entry (the only live caller — HomeReworkScreenRoute → Screen.RepoSettings(false)):
-        // surface the rework Sources top-bar back arrow so the user can return to Home. safePopBackStack
-        // pops to the previous entry, falling back to Library if the back stack is unexpectedly empty.
-        // Onboarding no longer routes through this adapter — the wizard's Finish step completes in
-        // SourcesScreenRoute, which navigates straight to Library (4→3-step native-parity change) — so
-        // the former isFirstOpen=true onboarding arm (first_launch flip + popUpTo-inclusive Library nav)
-        // had no producer and was removed.
-        onBack = { navController.safePopBackStack() },
-    )
+    val selection by complaintHost.selection.collectAsState()
+    var unavailable by remember(complaintHost) { mutableStateOf(false) }
+    val refuse: (String) -> Unit = remember(complaintHost) { { unavailable = true } }
+    when (val candidate = complaintHost.candidate(ComplaintBackendEntrypoint.REPOSITORY_SETTINGS, selection)) {
+        is AppResult.Success -> ComplaintBackendSourcesRequestRoute(
+            candidate = candidate.value,
+            viewModel = viewModel,
+            onImportFromStorage = { navController.safeNavigate(Screen.BackupRework()) },
+            onBack = { navController.safePopBackStack() },
+            onOpenUrl = { launcher.openUrl(it) },
+        )
+        is AppResult.Failure -> SourcesScreen(
+            viewModel = viewModel,
+            onImportFromStorage = { navController.safeNavigate(Screen.BackupRework()) },
+            onBack = { navController.safePopBackStack() },
+            onOpenUrl = { launcher.openUrl(it) },
+            onRequestSource = refuse,
+        )
+    }
+    if (unavailable) ComplaintUnavailableDialog(onBack = { unavailable = false })
 }

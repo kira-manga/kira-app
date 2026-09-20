@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_reply_memory_only">Der Antworttext bleibt nur im Arbeitsspeicher. Beim Schließen dieses Fensters wird er verworfen. Lass das Fenster offen, um dieselbe Antwort erneut zu versuchen, wenn ihr Ergebnis ungewiss ist.</string>
+    <string name="backend_reply_retry_same">Dieselbe Antwort erneut versuchen</string>
+    <string name="backend_reply_open_recovery">Antwort schließen und Einrichtung oder Wiederherstellung öffnen</string>
+    <string name="backend_reply_target_unavailable">Für diesen Eintrag ist keine Antwort verfügbar.</string>
+    <string name="backend_reply_unresolved">Das Ergebnis der Antwort ist noch nicht bestätigt. Sende keinen Ersatz.</string>
+    <string name="backend_reply_receipt_expired">Die sichere Bestätigungsfrist ist abgelaufen. Diese Antwort wird nicht erneut gesendet.</string>
+    <string name="backend_reply_live_required">Die ursprüngliche Antwort im Arbeitsspeicher ist nicht mehr verfügbar. Gespeicherte Metadaten können nicht zum erneuten Senden verwendet werden.</string>
+</resources>

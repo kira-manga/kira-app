@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_edit_memory_only">Le brouillon reste uniquement en mémoire. Fermer cet éditeur l’abandonne, sans effacer ni annuler les opérations conservées.</string>
+    <string name="backend_edit_retry_same">Vérifier ou réessayer la même modification</string>
+    <string name="backend_edit_conflict">Un conflit de version a été signalé. Votre brouillon reste inchangé ; toute nouvelle tentative utilise la version d’origine, jamais une version actualisée.</string>
+    <string name="backend_edit_unresolved">Le résultat de la modification n’est pas confirmé. Ne lancez pas de modification de remplacement.</string>
+    <string name="backend_edit_open_recovery">Fermer et ouvrir la récupération des retours</string>
+    <string name="backend_edit_live_required">La modification d’origine en mémoire n’est plus disponible. Les métadonnées conservées ne permettent pas de la renvoyer.</string>
+    <string name="backend_edit_receipt_expired">La période de confirmation sûre a expiré. Cette modification ne sera pas renvoyée.</string>
+</resources>

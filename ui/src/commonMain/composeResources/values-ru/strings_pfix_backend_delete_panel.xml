@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">Удалить только показанный ниже отзыв? Это действие необратимо. Идентификатор установки сохранится. Закрытие этого окна не отменяет отправленный запрос.</string>
+    <string name="backend_delete_conflict">Сообщено о конфликте версий. Исходный запрос удаления сохраняет исходную версию и не переносится на обновлённую версию.</string>
+    <string name="backend_delete_retry_same">Проверить или повторить то же удаление</string>
+    <string name="backend_delete_open_recovery">Открыть настройку и восстановление</string>
+    <string name="backend_delete_unresolved">Удаление ещё не подтверждено. Проверьте его статус, прежде чем считать его неудачным.</string>
+    <string name="backend_delete_unavailable">Удаление или восстановление недоступно. Проверьте сохранённые операции в настройке и восстановлении; они не были заменены.</string>
+    <string name="backend_delete_live_required">Повторить это удаление можно только из исходного открытого окна подтверждения. Восстановление не может создать его заново.</string>
+    <string name="backend_delete_receipt_expired">Срок доступности квитанции удаления истёк. Это не доказывает, что удаление завершилось неудачно.</string>
+</resources>

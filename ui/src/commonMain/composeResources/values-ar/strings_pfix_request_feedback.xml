@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">لا يملك هذا الجهاز هوية للبلاغات بعد. أعدّ سجل البلاغات قبل الإرسال. تبقى مسودتك في الذاكرة فقط.</string>
+    <string name="request_feedback_setup_history">إعداد سجل البلاغات</string>
+    <string name="request_feedback_history_ready">سجل البلاغات جاهز. لم يُرسل هذا الطلب. راجعه ثم اختر «إرسال».</string>
+    <string name="request_feedback_clean_start">لا يتضمن سجل البلاغات الجديد البلاغات المُرسلة عبر الخدمة السابقة.</string>
+</resources>

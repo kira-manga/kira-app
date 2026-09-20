@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">下書きはメモリ内にのみ保持されます。結果が不明な場合に同じ報告を再試行できるよう、このダイアログを開いたままにしてください。</string>
+    <string name="settings_report_retry_same">同じ報告を再試行</string>
+    <string name="settings_report_new_draft">新しい報告</string>
+    <string name="settings_report_recovery_title">保持された操作</string>
+    <string name="settings_report_refresh">保持された操作を確認</string>
+    <string name="settings_report_recovery_empty">今回の確認では保持された操作は報告されませんでした。</string>
+    <string name="settings_report_pending_title">保持された報告 %1$d</string>
+    <string name="settings_report_prepared">端末内で準備済み・未送信です。</string>
+    <string name="settings_report_may_have_sent">サーバーに届いた可能性があります。</string>
+    <string name="settings_report_cancel_prepared">未送信の報告を取り消す</string>
+    <string name="settings_report_request_reset">ローカルリセットを確認</string>
+    <string name="settings_report_reset_title">この端末の報告用識別情報をリセットしますか？</string>
+    <string name="settings_report_reset_warning">端末内の報告用識別情報全体と、保持されたすべての報告操作が消去されます。サーバー上の報告は削除も取り消しもされません。履歴へのアクセスや安全な再試行ができなくなる可能性があります。</string>
+    <string name="settings_report_reset_confirm">端末内の報告データをリセット</string>
+    <string name="settings_report_prepared_cancelled">未送信の報告を取り消しました。</string>
+    <string name="settings_report_reset_completed">端末内の報告用識別情報と保持された操作を消去しました。サーバー上の報告は削除されていません。</string>
+    <string name="settings_report_applied">サーバーがこの報告を受け付けました。</string>
+    <string name="settings_report_capacity_rejected">報告数の上限に達したため、サーバーがこの報告を拒否しました。</string>
+    <string name="settings_report_id_rejected">報告IDが既に使われているため、サーバーがこの報告を拒否しました。</string>
+    <string name="settings_report_unresolved">結果はまだ確認できていません。代わりの報告を作成しないでください。</string>
+    <string name="settings_report_cleanup_pending">サーバー側の結果は判明していますが、端末内の確認処理は未完了です。</string>
+    <string name="settings_report_invalid_subject">件名の長さと文字を確認してください。</string>
+    <string name="settings_report_invalid_body">本文の長さと文字を確認してください。</string>
+    <string name="settings_report_invalid_metadata">端末情報を受け付けられませんでした。報告は利用できません。</string>
+    <string name="settings_report_pending_capacity">端末内の保留中操作の上限に達しました。保持された操作を解決してから次の報告を行ってください。</string>
+    <string name="settings_report_receipt_expired">受領結果を安全に確認できる期間が終了しました。この報告は再送されません。</string>
+    <string name="settings_report_live_required">メモリ内の元の報告はもう利用できません。保持されたメタデータで再送することはできません。</string>
+    <string name="settings_report_unavailable">この端末内の識別情報では報告または復旧を利用できません。保持された操作は置き換えられていません。</string>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_installation_deletion_title">حذف بيانات البلاغات</string>
+    <string name="settings_installation_deletion_active">يمكنك طلب حذف جميع بيانات البلاغات المرتبطة بهذا التثبيت للتطبيق من الخادم.</string>
+    <string name="settings_installation_deletion_checking">جارٍ فحص الحالة المحلية للبلاغات لهذا التثبيت…</string>
+    <string name="settings_installation_deletion_missing">لم يتم العثور على هوية بلاغات محلية أو عمليات محتفظ بها. لا يؤكد ذلك الحذف من الخادم.</string>
+    <string name="settings_installation_deletion_cleanup">يتطلب التنظيف المحلي للبلاغات تدخلك. استخدم إجراءات الاستعادة المحلية أدناه، ثم افحص الحالة المحلية مجددًا. لا يؤكد ذلك الحذف من الخادم.</string>
+    <string name="settings_installation_deletion_uncertain">حالة الحذف غير مؤكدة. ربما أُرسل طلب بالفعل. افحص الحالة المحلية قبل اتخاذ إجراء آخر.</string>
+    <string name="settings_installation_deletion_pending">لا يزال طلب الحذف أو التنظيف المحلي المرتبط به معلّقًا. لم يتم تأكيد الاكتمال. تابع الطلب الموجود ولا تنشئ طلبًا بديلًا.</string>
+    <string name="settings_installation_deletion_completed">اكتمل طلب الحذف من الخادم. تمت إزالة هوية البلاغات المحلية والعمليات المحتفظ بها لهذا التثبيت.</string>
+    <string name="settings_installation_deletion_request">مراجعة الحذف من الخادم</string>
+    <string name="settings_installation_deletion_check">فحص الحالة المحلية</string>
+    <string name="settings_installation_deletion_continue">متابعة الحذف الموجود</string>
+    <string name="settings_installation_deletion_warning_title">حذف بيانات البلاغات لهذا التثبيت؟</string>
+    <string name="settings_installation_deletion_warning">يطلب هذا حذف جميع بيانات البلاغات المرتبطة بهذا التثبيت من الخادم. يؤدي الاكتمال أيضًا إلى إزالة هوية البلاغات المحلية والعمليات المحتفظ بها. قد تفقد الوصول إلى سجل البلاغات. لا يمكن التراجع عن الحذف من الخادم.</string>
+    <string name="settings_installation_deletion_confirm">حذف بيانات البلاغات</string>
+    <string name="settings_installation_deletion_close_notice">قد تستمر معالجة طلب قبله الخادم بعد إغلاق هذا الحوار أو التطبيق.</string>
+    <string name="settings_installation_deletion_uninstall">إلغاء تثبيت التطبيق لا يحذف بيانات البلاغات من الخادم.</string>
+    <string name="settings_installation_deletion_local_only">الاستعادة المحلية أو التخلي المحلي لا يحذف بيانات الخادم ولا يؤكد حذفها ولا يتراجع عن طلب أُرسل بالفعل.</string>
+    <string name="settings_installation_deletion_retry_after">مدة الانتظار المقترحة من الخادم: %1$d ث. تابع يدويًا؛ لا توجد إعادة محاولة تلقائية.</string>
+    <string name="settings_installation_deletion_retry_failed">تعذر إكمال المحاولة الأخيرة. لا يزال طلب الحذف نفسه محفوظًا.</string>
+</resources>

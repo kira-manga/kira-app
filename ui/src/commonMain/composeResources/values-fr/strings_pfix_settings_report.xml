@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">Le brouillon reste uniquement en mémoire. Gardez cette boîte de dialogue ouverte pour réessayer le même signalement si son résultat est incertain.</string>
+    <string name="settings_report_retry_same">Réessayer le même signalement</string>
+    <string name="settings_report_new_draft">Nouveau signalement</string>
+    <string name="settings_report_recovery_title">Opérations conservées</string>
+    <string name="settings_report_refresh">Vérifier les opérations conservées</string>
+    <string name="settings_report_recovery_empty">Cette vérification n’a indiqué aucune opération conservée.</string>
+    <string name="settings_report_pending_title">Signalement conservé %1$d</string>
+    <string name="settings_report_prepared">Préparé localement ; non envoyé.</string>
+    <string name="settings_report_may_have_sent">A peut-être atteint le serveur.</string>
+    <string name="settings_report_cancel_prepared">Annuler le signalement non envoyé</string>
+    <string name="settings_report_request_reset">Examiner la réinitialisation locale</string>
+    <string name="settings_report_reset_title">Réinitialiser l’identité de signalement de cet appareil ?</string>
+    <string name="settings_report_reset_warning">Cela oublie toute l’identité locale de signalement et TOUTES les opérations de signalement conservées. Les signalements du serveur ne sont NI effacés NI annulés. Vous pouvez perdre l’accès à leur historique et la possibilité de les réessayer sans risque.</string>
+    <string name="settings_report_reset_confirm">Réinitialiser les données locales de signalement</string>
+    <string name="settings_report_prepared_cancelled">Le signalement non envoyé a été annulé.</string>
+    <string name="settings_report_reset_completed">L’identité locale de signalement et les opérations conservées ont été effacées. Les signalements du serveur n’ont pas été supprimés.</string>
+    <string name="settings_report_applied">Le serveur a accepté ce signalement.</string>
+    <string name="settings_report_capacity_rejected">Le serveur a refusé ce signalement car la limite de signalements est atteinte.</string>
+    <string name="settings_report_id_rejected">Le serveur a refusé ce signalement car son identifiant était déjà utilisé.</string>
+    <string name="settings_report_unresolved">Le résultat n’est pas encore confirmé. Ne créez pas de signalement de remplacement.</string>
+    <string name="settings_report_cleanup_pending">Le résultat du serveur est connu, mais la confirmation locale est incomplète.</string>
+    <string name="settings_report_invalid_subject">Vérifiez la longueur et les caractères de l’objet.</string>
+    <string name="settings_report_invalid_body">Vérifiez la longueur et les caractères du texte.</string>
+    <string name="settings_report_invalid_metadata">Les informations de l’appareil n’ont pas pu être acceptées. Le signalement est indisponible.</string>
+    <string name="settings_report_pending_capacity">La limite locale d’opérations en attente est atteinte. Résolvez les opérations conservées avant un nouveau signalement.</string>
+    <string name="settings_report_receipt_expired">La période sûre du reçu est terminée. Ce signalement ne sera pas renvoyé.</string>
+    <string name="settings_report_live_required">Le signalement d’origine en mémoire n’est plus disponible. Les métadonnées conservées ne permettent pas de le renvoyer.</string>
+    <string name="settings_report_unavailable">Le signalement ou la récupération est indisponible pour cette identité locale. Les opérations conservées n’ont pas été remplacées.</string>
+</resources>

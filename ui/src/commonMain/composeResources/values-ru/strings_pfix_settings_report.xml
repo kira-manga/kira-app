@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_report_memory_only">Черновик хранится только в памяти. Не закрывайте это окно, чтобы повторить то же обращение, если его результат неизвестен.</string>
+    <string name="settings_report_retry_same">Повторить то же обращение</string>
+    <string name="settings_report_new_draft">Новое обращение</string>
+    <string name="settings_report_recovery_title">Сохранённые операции</string>
+    <string name="settings_report_refresh">Проверить сохранённые операции</string>
+    <string name="settings_report_recovery_empty">Эта проверка не обнаружила сохранённых операций.</string>
+    <string name="settings_report_pending_title">Сохранённое обращение %1$d</string>
+    <string name="settings_report_prepared">Подготовлено локально; не отправлено.</string>
+    <string name="settings_report_may_have_sent">Могло достичь сервера.</string>
+    <string name="settings_report_cancel_prepared">Отменить неотправленное обращение</string>
+    <string name="settings_report_request_reset">Рассмотреть локальный сброс</string>
+    <string name="settings_report_reset_title">Сбросить идентификатор обращений этого устройства?</string>
+    <string name="settings_report_reset_warning">Будут забыты все локальные данные идентификации обращений и ВСЕ сохранённые операции с обращениями. Обращения на сервере НЕ удаляются и НЕ отменяются. Вы можете потерять доступ к их истории и возможность безопасно повторять их.</string>
+    <string name="settings_report_reset_confirm">Сбросить локальные данные обращений</string>
+    <string name="settings_report_prepared_cancelled">Неотправленное обращение отменено.</string>
+    <string name="settings_report_reset_completed">Локальные данные идентификации обращений и сохранённые операции очищены. Обращения на сервере не удалены.</string>
+    <string name="settings_report_applied">Сервер принял это обращение.</string>
+    <string name="settings_report_capacity_rejected">Сервер отклонил это обращение из-за достижения лимита обращений.</string>
+    <string name="settings_report_id_rejected">Сервер отклонил это обращение, поскольку его идентификатор уже использовался.</string>
+    <string name="settings_report_unresolved">Результат ещё не подтверждён. Не создавайте заменяющее обращение.</string>
+    <string name="settings_report_cleanup_pending">Результат сервера известен, но локальное подтверждение не завершено.</string>
+    <string name="settings_report_invalid_subject">Проверьте длину и символы темы.</string>
+    <string name="settings_report_invalid_body">Проверьте длину и символы текста.</string>
+    <string name="settings_report_invalid_metadata">Данные устройства не удалось принять. Отправка обращений недоступна.</string>
+    <string name="settings_report_pending_capacity">Достигнут локальный лимит ожидающих операций. Завершите сохранённые операции перед новым обращением.</string>
+    <string name="settings_report_receipt_expired">Безопасный срок действия квитанции истёк. Это обращение не будет отправлено снова.</string>
+    <string name="settings_report_live_required">Исходное обращение в памяти больше недоступно. Сохранённые метаданные нельзя использовать для повторной отправки.</string>
+    <string name="settings_report_unavailable">Отправка или восстановление недоступны для этой локальной идентификации. Сохранённые операции не были заменены.</string>
+</resources>

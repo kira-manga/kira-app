@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_delete_warning">¿Eliminar solo el comentario que se muestra abajo? No se puede deshacer. Se conserva la identidad de instalación. Cerrar este diálogo no anula una solicitud enviada.</string>
+    <string name="backend_delete_conflict">Se notificó un conflicto de versión. La eliminación original conserva su versión original; nunca se adapta a una versión actualizada.</string>
+    <string name="backend_delete_retry_same">Consultar o reintentar la misma eliminación</string>
+    <string name="backend_delete_open_recovery">Abrir configuración y recuperación</string>
+    <string name="backend_delete_unresolved">La eliminación aún no está confirmada. Consulta su estado antes de suponer que falló.</string>
+    <string name="backend_delete_unavailable">La eliminación o recuperación no está disponible. Revisa las operaciones guardadas en configuración y recuperación; no se han sustituido.</string>
+    <string name="backend_delete_live_required">Esta eliminación solo puede reintentarse desde su confirmación original abierta. La recuperación no puede recrearla.</string>
+    <string name="backend_delete_receipt_expired">El plazo del comprobante de eliminación terminó. Esto no demuestra que la eliminación fallara.</string>
+</resources>

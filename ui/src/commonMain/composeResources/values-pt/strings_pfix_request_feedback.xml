@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="request_feedback_missing_installation">Este dispositivo ainda não tem uma identidade para relatos. Configure o histórico antes de enviar. Seu rascunho fica apenas na memória.</string>
+    <string name="request_feedback_setup_history">Configurar histórico de relatos</string>
+    <string name="request_feedback_history_ready">O histórico de relatos está pronto. Esta solicitação não foi enviada. Revise-a e escolha Enviar.</string>
+    <string name="request_feedback_clean_start">Este novo histórico não inclui relatos enviados pelo serviço anterior.</string>
+</resources>

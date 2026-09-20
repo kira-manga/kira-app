@@ -80,16 +80,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -100,7 +102,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import me.manga.kira.domain.model.complaint.ComplaintType
 import me.manga.kira.domain.model.reader.ReadingMode
 import me.manga.kira.domain.model.settings.CbzConversionProgress
@@ -316,6 +320,12 @@ import org.jetbrains.compose.resources.stringResource
  * convention — the citation is historical record of the design lineage;
  * the rework SettingsScreen continues to render the Settings hub correctly
  * through the legacy retire.
+ *
+ * @param onRequestFeedback Optional candidate entry. Committing a non-null callback permanently
+ * retires this retained VM's legacy feedback producer, even without a click. Returning to null
+ * does not restore legacy feedback; an initially null callback preserves the legacy path.
+ * @param onOpenComplaintHistory Direct candidate-only history entry; buffered COMPLAINT navigation
+ * effects are ignored while selected so an old untagged effect cannot target a new candidate.
  */
 @Composable
 fun SettingsScreen(
@@ -332,11 +342,24 @@ fun SettingsScreen(
     lowPowerCompressionToggleVisible: Boolean = false,
     // Deliberate fatal-crash controls are present only in protected internal release builds.
     crashDiagnosticsVisible: Boolean = false,
+    onRequestFeedback: (() -> Unit)? = null,
+    onOpenComplaintHistory: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val requestFeedback: (() -> Unit)? = remember(viewModel, onRequestFeedback) {
+        onRequestFeedback?.let { request ->
+            {
+                viewModel.retireLegacyFeedback()
+                request()
+            }
+        }
+    }
+    SideEffect {
+        if (onRequestFeedback != null) viewModel.retireLegacyFeedback()
+    }
     SettingsScreenContent(
         state = state,
-        effects = viewModel.effects,
+        effects = viewModel.screenEffects,
         onIntent = viewModel::submit,
         onNavigate = onNavigate,
         modifier = modifier,
@@ -344,6 +367,9 @@ fun SettingsScreen(
         onOpenUrl = onOpenUrl,
         lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
         crashDiagnosticsVisible = crashDiagnosticsVisible,
+        onRequestFeedback = requestFeedback,
+        isLegacyFeedbackRetired = { viewModel.state.value.legacyFeedbackRetired },
+        onOpenComplaintHistory = onOpenComplaintHistory,
     )
 }
 
@@ -359,11 +385,36 @@ internal fun SettingsScreenContent(
     onOpenUrl: (String) -> Unit = {},
     lowPowerCompressionToggleVisible: Boolean = false,
     crashDiagnosticsVisible: Boolean = false,
+    onRequestFeedback: (() -> Unit)? = null,
+    isLegacyFeedbackRetired: () -> Boolean = { state.legacyFeedbackRetired },
+    onOpenComplaintHistory: (() -> Unit)? = null,
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
-    // Launch snackbars off the effect collector so showing one never blocks a later navigation
-    // effect for the snackbar's duration (the user couldn't leave a screen while a snackbar showed).
-    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember(effects) { SnackbarHostState() }
+    val snackbarJobs = remember(effects) { mutableSetOf<Job>() }
+    val feedbackOwner = remember(effects, onRequestFeedback, onOpenComplaintHistory, state.legacyFeedbackRetired) {
+        mutableStateOf(true)
+    }
+    val currentFeedbackOwner by rememberUpdatedState(feedbackOwner)
+    val currentRequestFeedback by rememberUpdatedState(onRequestFeedback)
+    val currentOnIntent by rememberUpdatedState(onIntent)
+    val currentOnNavigate by rememberUpdatedState(onNavigate)
+    val currentOnOpenComplaintHistory by rememberUpdatedState(onOpenComplaintHistory)
+    val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
+    val currentIsLegacyFeedbackRetired by rememberUpdatedState(isLegacyFeedbackRetired)
+
+    fun legacyFeedbackAllowed(owner: State<Boolean>): Boolean =
+        owner.value && owner === currentFeedbackOwner && currentRequestFeedback == null &&
+            !currentIsLegacyFeedbackRetired()
+
+    DisposableEffect(feedbackOwner) {
+        onDispose {
+            feedbackOwner.value = false
+            // Completion handlers remove jobs, so cancellation must iterate a snapshot.
+            snackbarJobs.toList().forEach { it.cancel() }
+            snackbarJobs.clear()
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
     // GAP-SET-13 — feedback success / failure copy + Retry action label resolved in composable
     // scope (stringResource can't run inside the effect-collector coroutine below). The error
     // snackbar offers a Retry action that re-opens the feedback dialog, with Long duration.
@@ -375,26 +426,37 @@ internal fun SettingsScreenContent(
     LaunchedEffect(effects) {
         effects.collect { effect ->
             when (effect) {
-                is SettingsEffect.NavigateTo -> onNavigate(effect.destination)
+                is SettingsEffect.NavigateTo ->
+                    if (effect.destination != SettingsDestination.COMPLAINT || currentOnOpenComplaintHistory == null) {
+                        currentOnNavigate(effect.destination)
+                    }
                 // GAP-SET-16 — the CBZ conversion terminal outcome is rendered by the
                 // CbzConversionDialog (driven by the progress Flow), not a snackbar, matching
                 // native which shows ONLY the dialog. No ConversionResult effect branch.
-                is SettingsEffect.FeedbackResult -> scope.launch {
-                    if (effect.success) {
-                        snackbarHostState.showSnackbar(
-                            message = feedbackSubmittedMessage,
-                            duration = SnackbarDuration.Short,
-                        )
-                    } else {
-                        val result = snackbarHostState.showSnackbar(
-                            message = feedbackFailedMessage,
-                            actionLabel = feedbackRetryLabel,
-                            duration = SnackbarDuration.Long,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            onIntent(SettingsIntent.OnOpenFeedbackDialog)
+                is SettingsEffect.FeedbackResult -> {
+                    val owner = currentFeedbackOwner
+                    if (!legacyFeedbackAllowed(owner)) return@collect
+                    // Children keep navigation collection live, but cannot outlive this collector.
+                    val job = launch {
+                        if (!legacyFeedbackAllowed(owner)) return@launch
+                        if (effect.success) {
+                            snackbarHostState.showSnackbar(
+                                message = feedbackSubmittedMessage,
+                                duration = SnackbarDuration.Short,
+                            )
+                        } else {
+                            val result = snackbarHostState.showSnackbar(
+                                message = feedbackFailedMessage,
+                                actionLabel = feedbackRetryLabel,
+                                duration = SnackbarDuration.Long,
+                            )
+                            if (result == SnackbarResult.ActionPerformed && legacyFeedbackAllowed(owner)) {
+                                currentOnIntent(SettingsIntent.OnOpenFeedbackDialog)
+                            }
                         }
                     }
+                    snackbarJobs += job
+                    job.invokeOnCompletion { snackbarJobs -= job }
                 }
             }
         }
@@ -425,6 +487,25 @@ internal fun SettingsScreenContent(
                 SettingsList(
                     state = state,
                     onIntent = onIntent,
+                    onRequestFeedback = {
+                        if (feedbackOwner.value && feedbackOwner === currentFeedbackOwner) {
+                            val request = currentRequestFeedback
+                            if (request != null) {
+                                request()
+                            } else if (legacyFeedbackAllowed(feedbackOwner)) {
+                                currentOnIntent(SettingsIntent.OnOpenFeedbackDialog)
+                            }
+                        }
+                    },
+                    onOpenComplaintHistory = {
+                        if (feedbackOwner.value && feedbackOwner === currentFeedbackOwner) {
+                            if (onOpenComplaintHistory != null) {
+                                onOpenComplaintHistory()
+                            } else {
+                                currentOnIntent(SettingsIntent.OnNavigate(SettingsDestination.COMPLAINT))
+                            }
+                        }
+                    },
                     sourceAccessActivated = sourceAccessActivated,
                     lowPowerCompressionToggleVisible = lowPowerCompressionToggleVisible,
                     crashDiagnosticsVisible = crashDiagnosticsVisible,
@@ -433,15 +514,21 @@ internal fun SettingsScreenContent(
         }
     }
 
-    if (state.feedbackDialogOpen) {
+    if (state.feedbackDialogOpen && legacyFeedbackAllowed(feedbackOwner)) {
         FeedbackDialog(
             isSubmitting = state.isSubmittingFeedback,
             // P2-SET (F9) — pass the localized category display name as the subject (native parity).
             onSubmit = { type, subject, body ->
-                onIntent(SettingsIntent.OnSubmitFeedback(type, subject, body))
+                if (legacyFeedbackAllowed(feedbackOwner)) {
+                    currentOnIntent(SettingsIntent.OnSubmitFeedback(type, subject, body))
+                }
             },
-            onDismiss = { onIntent(SettingsIntent.OnDismissFeedbackDialog) },
-            onOpenUrl = onOpenUrl,
+            onDismiss = {
+                if (legacyFeedbackAllowed(feedbackOwner)) currentOnIntent(SettingsIntent.OnDismissFeedbackDialog)
+            },
+            onOpenUrl = { url ->
+                if (legacyFeedbackAllowed(feedbackOwner)) currentOnOpenUrl(url)
+            },
         )
     }
 
@@ -470,6 +557,8 @@ internal fun SettingsScreenContent(
 private fun SettingsList(
     state: SettingsState,
     onIntent: (SettingsIntent) -> Unit,
+    onRequestFeedback: () -> Unit,
+    onOpenComplaintHistory: () -> Unit,
     sourceAccessActivated: Boolean = false,
     lowPowerCompressionToggleVisible: Boolean = false,
     crashDiagnosticsVisible: Boolean = false,
@@ -657,7 +746,7 @@ private fun SettingsList(
                 // nav-style row here (native places it in Navigation, not its own section).
                 NavRow(
                     label = settingsDestinationLabel(SettingsDestination.COMPLAINT),
-                    onClick = { onIntent(SettingsIntent.OnNavigate(SettingsDestination.COMPLAINT)) },
+                    onClick = onOpenComplaintHistory,
                     // SET-PFIX-01 — native ic_complaint vector (native SettingsScreen.kt:249).
                     leadingIcon = { RowIcon(Res.drawable.ic_complaint) },
                 )
@@ -736,7 +825,7 @@ private fun SettingsList(
                     // / bug") as a single line with no subtitle.
                     label = stringResource(Res.string.report_bug_feature_title),
                     description = stringResource(Res.string.report_bug_feature_desc),
-                    onClick = { onIntent(SettingsIntent.OnOpenFeedbackDialog) },
+                    onClick = onRequestFeedback,
                     // SET-PFIX-01 — native AutoMirrored.Outlined.Message icon (native
                     // SettingsScreen.kt:296).
                     leadingIcon = { RowIcon(Icons.AutoMirrored.Outlined.Message) },

@@ -1,5 +1,8 @@
 package me.manga.kira.presentation.complaint
 
+import me.manga.kira.core.error.AppError
+import me.manga.kira.domain.model.complaint.ComplaintHistory
+import me.manga.kira.domain.model.complaint.ComplaintOwnerRow
 import me.manga.kira.domain.model.complaint.ComplaintStatus
 import me.manga.kira.domain.model.complaint.ComplaintSummary
 import me.manga.kira.presentation.mvi.MviState
@@ -108,7 +111,9 @@ import me.manga.kira.presentation.mvi.MviState
  */
 data class ComplaintState(
     val isLoading: Boolean = true,
-    val error: String? = null,
+    val error: AppError? = null,
+    val history: ComplaintHistory? = null,
+    val backendItems: List<ComplaintOwnerRow> = emptyList(),
     val all: List<ComplaintSummary> = emptyList(),
     val filtered: List<ComplaintSummary> = emptyList(),
     val searchQuery: String = "",
@@ -117,7 +122,10 @@ data class ComplaintState(
     val activeComplaint: ComplaintSummary? = null,
     val isSubmittingAction: Boolean = false,
     val actionFailed: Boolean = false,
-) : MviState
+) : MviState {
+    val isStale: Boolean get() = history != null && error != null
+    val legacyActionsAllowed: Boolean get() = history is ComplaintHistory.Legacy
+}
 
 /**
  * Action-dialog substate selector — mirrors the legacy `DialogAction` enum
