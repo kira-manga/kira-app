@@ -77,7 +77,7 @@ private class DetailsRoomViewModelFactory(
 ) {
     private val dao = room.db.chapterDao()
     private val resolver = ChapterIdResolverImpl(dao)
-    private val reads = MarkChapterReadRepositoryImpl(dao)
+    private val reads = MarkChapterReadRepositoryImpl(room.owners, dao)
     private val downloads = roomDownloadActions(room, engine)
     private val enqueue = EnqueueDownloadUseCase(downloads)
     private val saved = SavedMangaDetailsRepositoryImpl(room.owners, dao, room.dispatchers)
@@ -93,7 +93,7 @@ private class DetailsRoomViewModelFactory(
             toggleInLibrary = ToggleInLibraryUseCase(library),
             enqueueAllChaptersDownload = EnqueueAllChaptersDownloadUseCase(resolver, enqueue, room.dispatchers),
             toggleChapterRead = ToggleChapterReadUseCase(reads),
-            toggleChapterBookmark = ToggleChapterBookmarkUseCase(ChapterBookmarkRepositoryImpl(dao)),
+            toggleChapterBookmark = ToggleChapterBookmarkUseCase(ChapterBookmarkRepositoryImpl(room.owners, dao)),
             markChaptersRead = MarkChaptersReadUseCase(reads),
             enqueueDownload = enqueue,
             cancelChapterDownload = CancelChapterDownloadUseCase(resolver, CancelDownloadUseCase(downloads)),
@@ -104,7 +104,7 @@ private class DetailsRoomViewModelFactory(
             resolveChapterId = ResolveChapterIdUseCase(resolver),
             markMangaOpened = MarkMangaOpenedUseCase(library),
             persistNewChapters = PersistNewChaptersUseCase(library),
-            clearChapterNew = ClearChapterNewUseCase(ChapterNewBadgeRepositoryImpl(dao)),
+            clearChapterNew = ClearChapterNewUseCase(ChapterNewBadgeRepositoryImpl(room.owners, dao)),
             deleteChapter = DeleteChapterUseCase(ChapterDeletionRepositoryImpl(dao)),
             observeConnectivity = ObserveConnectivityUseCase(DetailsRoomDevicePorts),
             logMangaOpen = LogMangaOpenUseCase(DetailsRoomDevicePorts),
