@@ -1,5 +1,6 @@
 package me.manga.kira.data.repository
 
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -196,7 +197,7 @@ class CompressExistingDownloadsTest {
      * encodes the id so a missing lookup is obvious. The rest of the DAO surface throws so an
      * accidental new dependency is caught loudly.
      */
-    private object FakeMangaDao : MangaDao {
+    private object FakeMangaDao : MangaDao by FailFastMangaDao {
         override suspend fun getMangaById(mangaId: Long): SavedMangaEntity? =
             SavedMangaEntity(
                 id = mangaId,
@@ -305,6 +306,7 @@ class CompressExistingDownloadsTest {
                     files = appFileSystem,
                     artifacts = artifacts.ownership,
                     commits = artifacts.commits,
+                    operations = DownloadOperationExclusion(),
                 ),
             httpCache = HttpCacheClearer { },
         )

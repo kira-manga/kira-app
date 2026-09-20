@@ -7,7 +7,10 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.repository.MangaDetailsRepository
-import me.manga.kira.domain.service.FileService
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
+import me.manga.kira.data.repository.progress.progressValue
 import me.manga.kira.domain.usecase.reader.ListChaptersUseCase
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,22 +33,18 @@ class SavedChapterOrderTest : ChapterOwnershipFixture() {
                         return AppResult.Success(original)
                     }
                 }
-            fun saved() = SavedMangaDetailsRepositoryImpl(db.mangaDao(), db.chapterDao(), dispatchers)
+            fun saved() = libraryRuntime().savedDetails
             fun reader() = ListChaptersUseCase(network, saved())
-            fun library() =
-                LibraryRepositoryImpl(
-                    db.mangaDao(), db.libraryDeo(), db.chapterDao(), db.notificationDao(),
-                    db.historyDao(), db.chapterDownloadingDao(), FakeDownloadRepository(),
-                    FileService(appFs), RecordingReadProgressRepository(), dispatchers, artifactRuntime.ownership,
-                )
+            fun library() = libraryRuntime().repository
+            val locator = WorkLocator(mangaA.api, mangaA.url)
 
             val before = assertIs<AppResult.Success<List<Chapter>>>(reader()(mangaA)).value
             assertEquals(1, networkCalls)
-            assertIs<AppResult.Success<Unit>>(library().addToLibrary(original))
+            val owner = library().addToLibrary(FetchedWorkDetails(locator, original)).progressValue()
             val after = assertIs<AppResult.Success<List<Chapter>>>(reader()(mangaA)).value
             assertEquals(before.map(Chapter::url), after.map(Chapter::url))
             assertEquals(1, networkCalls, "The saved Reader result must actually come from Room")
-            val savedDetails = assertNotNull(saved().observeSavedDetails(mangaA.api, mangaA.title).first())
+            val savedDetails = assertNotNull(saved().observeSavedDetails(locator).first().progressValue()).details
             assertEquals(original.chapters.map(Chapter::url), savedDetails.chapters.map(Chapter::url))
 
             val parent = assertNotNull(db.libraryDeo().getMangaIdByUrl(mangaA.url))
@@ -56,9 +55,9 @@ class SavedChapterOrderTest : ChapterOwnershipFixture() {
             db.chapterDao().toggleChapterBookmark(middle.id)
 
             val refreshed = listOf(chapter("20"), chapter("19")) + original.chapters
-            assertEquals(2, assertIs<AppResult.Success<Int>>(
-                library().persistNewChaptersAndNotify(mangaA, refreshed),
-            ).value)
+            val refreshedDetails = FetchedWorkDetails(locator, original.copy(chapters = refreshed))
+            val receipt = library().refresh(listOf(LibraryRefreshRequest(owner, refreshedDetails)), true).progressValue().single()
+            assertEquals(2, receipt.addedChapters)
             val projected = assertIs<AppResult.Success<List<Chapter>>>(reader()(mangaA)).value
             assertEquals(refreshed.map(Chapter::url), projected.map(Chapter::url))
             assertTrue(projected.single { it.number == "17" }.isRead)

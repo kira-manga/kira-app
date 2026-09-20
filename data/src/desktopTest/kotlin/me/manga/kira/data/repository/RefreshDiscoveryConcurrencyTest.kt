@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.mapper.toSavedChapterEntity
+import me.manga.kira.data.local.RoomMangaWriteTransaction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -23,12 +24,12 @@ class RefreshDiscoveryConcurrencyTest {
             val parent = fixture.parent()
             val existing = refreshChapter("1").toSavedChapterEntity(parent.id).copy(isRead = true, fetchedAt = 17)
             val existingId = fixture.db.chapterDao().insertChapters(listOf(existing)).single()
-            val barrier = RefreshDiscoveryBarrier(fixture.db.libraryDeo())
+            val barrier = LibraryConcurrentWriteBarrier(RoomMangaWriteTransaction(fixture.db))
             val fetched = listOf("3", "2", "2", "1").map(::refreshChapter)
             val results = withTimeout(10_000) {
                 List(2) {
                     async(Dispatchers.Default) {
-                        fixture.repository(barrier).persistNewChaptersAndNotify(parent.refreshManga(), fetched)
+                        fixture.repository(barrier).discover(parent, fetched)
                     }
                 }.awaitAll()
             }
@@ -43,7 +44,7 @@ class RefreshDiscoveryConcurrencyTest {
                 assertTrue(row.id > 0 && chapter.isNew && chapter.fetchedAt > 0)
             }
             assertEquals(existing.copy(id = existingId), fixture.db.chapterDao().getChapterByIdSuspend(existingId))
-            assertEquals(AppResult.Success(0), fixture.repository().persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(0), fixture.repository().discover(parent, fetched))
             fixture.reopen()
             assertEquals(rows, fixture.updates())
             assertEquals(3, fixture.db.chapterDao().getChaptersByMangaIdR(parent.id).size)
@@ -61,11 +62,11 @@ class RefreshDiscoveryConcurrencyTest {
                 """.trimIndent(),
             )
             val fetched = listOf(refreshChapter("2"), refreshChapter("1"))
-            assertEquals(AppResult.Success(1), fixture.repository().persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(1), fixture.repository().discover(parent, fetched))
             assertEquals(listOf("1"), fixture.updates().map { it.chapterNumber })
             assertEquals(listOf("1"), fixture.db.chapterDao().getChaptersByMangaIdR(parent.id).map { it.number })
             fixture.executeWhileClosed("DROP TRIGGER ignore_second_discovery")
-            assertEquals(AppResult.Success(1), fixture.repository().persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(1), fixture.repository().discover(parent, fetched))
             assertEquals(listOf("1", "2"), fixture.updates().map { it.chapterNumber })
         }
     }
@@ -75,7 +76,7 @@ class RefreshDiscoveryConcurrencyTest {
         RefreshDiscoveryFixture().use { fixture ->
             val parent = fixture.parent()
             val repo = fixture.repository()
-            assertEquals(AppResult.Success(1), repo.persistNewChaptersAndNotify(parent.refreshManga(), listOf(refreshChapter())))
+            assertEquals(AppResult.Success(1), repo.discover(parent, listOf(refreshChapter())))
             val before = fixture.updates()
             val beforeChapters = fixture.db.chapterDao().getChaptersByMangaIdR(parent.id)
             fixture.sql.beforeNotificationInsert = { ordinal ->
@@ -83,15 +84,15 @@ class RefreshDiscoveryConcurrencyTest {
             }
             val fetched = listOf("3", "2", "1").map(::refreshChapter)
 
-            assertTrue(repo.persistNewChaptersAndNotify(parent.refreshManga(), fetched) is AppResult.Failure)
+            assertTrue(repo.discover(parent, fetched) is AppResult.Failure)
             assertEquals(3, fixture.sql.notificationInserts.get(), "fault follows one earlier notification in the same transaction")
             assertEquals(before, fixture.updates())
             assertEquals(beforeChapters, fixture.db.chapterDao().getChaptersByMangaIdR(parent.id))
 
             fixture.sql.beforeNotificationInsert = {}
-            assertEquals(AppResult.Success(2), repo.persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(2), repo.discover(parent, fetched))
             assertEquals(3, fixture.updates().size)
-            assertEquals(AppResult.Success(0), repo.persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(0), repo.discover(parent, fetched))
         }
     }
 
@@ -102,7 +103,7 @@ class RefreshDiscoveryConcurrencyTest {
             val repo = fixture.repository()
             val fetched = listOf(refreshChapter("2"), refreshChapter("1"))
             val cancelled = async(Dispatchers.Default, start = CoroutineStart.LAZY) {
-                repo.persistNewChaptersAndNotify(parent.refreshManga(), fetched)
+                repo.discover(parent, fetched)
             }
             // Runs at real notification SQL, after chapter insertion, before transaction commit.
             fixture.sql.beforeNotificationInsert = { cancelled.cancel(CancellationException("worker_replaced")) }
@@ -115,9 +116,9 @@ class RefreshDiscoveryConcurrencyTest {
             assertTrue(fixture.updates().isEmpty())
 
             fixture.sql.beforeNotificationInsert = {}
-            assertEquals(AppResult.Success(2), repo.persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(2), repo.discover(parent, fetched))
             val committed = fixture.updates()
-            assertEquals(AppResult.Success(0), repo.persistNewChaptersAndNotify(parent.refreshManga(), fetched))
+            assertEquals(AppResult.Success(0), repo.discover(parent, fetched))
             fixture.reopen()
             assertEquals(committed, fixture.updates())
         }

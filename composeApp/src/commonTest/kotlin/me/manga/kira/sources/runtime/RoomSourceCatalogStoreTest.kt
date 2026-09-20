@@ -1,7 +1,6 @@
 package me.manga.kira.sources.runtime
 
 import me.manga.kira.data.local.entity.SourceRevisionArtifactEntity
-import me.manga.kira.sources.contracts.SourceRevisionArtifact
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -36,6 +35,9 @@ class RoomSourceCatalogStoreTest {
                 stored.toContract().copy(payload = """{"api":"Other"}"""),
             )
         }
+        assertFailsWith<IllegalArgumentException> {
+            requireSameImmutableSourceRevision(stored, stored.toContract().copy(canonVersion = "other"))
+        }
     }
 
     @Test
@@ -55,7 +57,4 @@ class RoomSourceCatalogStoreTest {
             ),
         )
     }
-
-    private fun SourceRevisionArtifactEntity.toContract(): SourceRevisionArtifact =
-        SourceRevisionArtifact(api, sourceRevision, checksum, canonVersion, rawPayload)
 }

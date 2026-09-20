@@ -4,11 +4,20 @@ import kotlin.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryActivity
+import me.manga.kira.domain.model.library.LibraryAffinity
+import me.manga.kira.domain.model.library.LibraryChapterCounts
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.model.library.GridDensity
 import me.manga.kira.domain.model.library.LibraryCategory
@@ -20,7 +29,6 @@ import me.manga.kira.domain.repository.DownloadsRepository
 import me.manga.kira.domain.repository.LibraryPrefsRepository
 import me.manga.kira.domain.repository.LibraryRefreshRepository
 import me.manga.kira.domain.repository.LibraryRepository
-import me.manga.kira.domain.repository.MangaKey
 
 /**
  * Hand fakes for the four repositories `LibraryViewModel`'s 25 use cases wrap, plus
@@ -51,86 +59,98 @@ fun sampleLibraryManga(
     addedAtEpochMillis: Long = 0L,
     lastReadAtEpochMillis: Long? = null,
     lastOpenedAtEpochMillis: Long = 0L,
+    id: Long = 1L,
 ): LibraryManga = LibraryManga(
     manga = sampleManga(title = title),
-    addedAt = Instant.fromEpochMilliseconds(addedAtEpochMillis),
-    unreadCount = unreadCount,
-    hasDownloads = hasDownloads,
-    totalChapters = totalChapters,
-    lastReadAt = lastReadAtEpochMillis?.let { Instant.fromEpochMilliseconds(it) },
-    lastOpenedAt = Instant.fromEpochMilliseconds(lastOpenedAtEpochMillis),
-    bookmarkedCount = bookmarkedCount,
-    downloadedCount = downloadedCount,
-    isLiked = isLiked,
-    isWatchingNow = isWatchingNow,
+    identity = SavedWorkIdentity(id, WorkLocator("api", "https://example.test/$title")),
+    activity = LibraryActivity(
+        Instant.fromEpochMilliseconds(addedAtEpochMillis),
+        Instant.fromEpochMilliseconds(lastOpenedAtEpochMillis),
+        lastReadAtEpochMillis?.let(Instant::fromEpochMilliseconds),
+    ),
+    counts = LibraryChapterCounts(totalChapters, unreadCount, maxOf(downloadedCount, if (hasDownloads) 1 else 0), bookmarkedCount),
+    affinity = LibraryAffinity(isLiked, isWatchingNow),
 )
 
+/** Explicit-address orchestration fake; persistence/aliases are covered by real-Room data tests. */
 class FakeLibraryRepository : LibraryRepository {
     private val library = MutableStateFlow<List<LibraryManga>>(emptyList())
-    private val inLibrary = MutableStateFlow(false)
-    val calls: MutableList<String> = mutableListOf()
-
-    fun emitLibrary(value: List<LibraryManga>) { library.value = value }
-
-    /** Lets a test drive the reactive membership affordance independently of persistence. */
-    fun emitInLibrary(value: Boolean) { inLibrary.value = value }
-
-    /** Chapters captured by the most recent [persistNewChapters] call (#3 refresh-persist test). */
+    private val membership = MutableStateFlow<Map<WorkLocator, AppResult<SavedWorkIdentity?>>>(emptyMap())
+    val calls = mutableListOf<String>()
     var lastPersistedNewChapters: List<Chapter> = emptyList()
         private set
-
-    override fun observeLibrary(): Flow<List<LibraryManga>> = library.asStateFlow()
-    override fun observeIsInLibrary(api: String, language: String, title: String): Flow<Boolean> =
-        inLibrary.asStateFlow()
-
-    override suspend fun get(api: String, language: String, title: String): AppResult<LibraryManga?> {
-        calls += "get($title)"
-        return AppResult.Success(library.value.firstOrNull { it.manga.title == title })
-    }
     var lastAddedDetails: MangaDetails? = null
         private set
+    var lastRemovedOwner: SavedWorkIdentity? = null
+        private set
+    var lastRefreshRequests: List<LibraryRefreshRequest> = emptyList()
+        private set
+    val refreshRequests = mutableListOf<List<LibraryRefreshRequest>>()
+    var lastBulkOwners: List<SavedWorkIdentity> = emptyList()
+        private set
+    var refreshResult: AppResult<List<LibraryRefreshReceipt>>? = null
+    var beforeRefresh: suspend (List<LibraryRefreshRequest>) -> Unit = {}
 
-    override suspend fun addToLibrary(details: MangaDetails): AppResult<Unit> {
-        calls += "addToLibrary(${details.title},chapters=${details.chapters.size})"
-        lastAddedDetails = details
+    fun emitLibrary(value: List<LibraryManga>) { library.value = value }
+    fun emitMembership(owner: SavedWorkIdentity) {
+        membership.value = membership.value + (owner.locator to AppResult.Success(owner))
+    }
+    fun emitMembershipFailure(work: WorkLocator, error: me.manga.kira.core.error.AppError) {
+        membership.value = membership.value + (work to AppResult.Failure(error))
+    }
+
+    override fun observeLibrary(): Flow<List<LibraryManga>> = library.asStateFlow()
+    override fun observeMembership(work: WorkLocator): Flow<AppResult<SavedWorkIdentity?>> =
+        combine(library, membership) { rows, overrides ->
+            overrides[work] ?: AppResult.Success(rows.singleOrNull { it.identity.locator == work }?.identity)
+        }
+
+    override suspend fun get(work: WorkLocator): AppResult<LibraryManga?> {
+        calls += "get($work)"
+        return AppResult.Success(library.value.singleOrNull { it.identity.locator == work })
+    }
+
+    override suspend fun addToLibrary(fetched: FetchedWorkDetails): AppResult<SavedWorkIdentity> {
+        calls += "addToLibrary(${fetched.details.title},chapters=${fetched.details.chapters.size})"
+        lastAddedDetails = fetched.details
+        return AppResult.Success(SavedWorkIdentity(1L, fetched.requested))
+    }
+
+    override suspend fun refresh(
+        requests: List<LibraryRefreshRequest>,
+        notify: Boolean,
+    ): AppResult<List<LibraryRefreshReceipt>> {
+        calls += "refresh(${requests.size},notify=$notify)"
+        lastRefreshRequests = requests
+        refreshRequests += requests
+        lastPersistedNewChapters = requests.flatMap { it.fetched.details.chapters }
+        beforeRefresh(requests)
+        return refreshResult ?: AppResult.Success(requests.map {
+            LibraryRefreshReceipt(it.owner, it.fetched.details.chapters.size, emptyList())
+        })
+    }
+
+    override suspend fun removeFromLibrary(owner: SavedWorkIdentity): AppResult<Unit> {
+        calls += "removeFromLibrary(${owner.id})"
+        lastRemovedOwner = owner
         return AppResult.Success(Unit)
     }
-    override suspend fun persistNewChapters(
-        api: String,
-        mangaUrl: String,
-        fetched: List<Chapter>,
-    ): AppResult<Int> {
-        calls += "persistNewChapters($api,$mangaUrl,fetched=${fetched.size})"
-        lastPersistedNewChapters = fetched
-        return AppResult.Success(fetched.size)
+    override suspend fun removeAllFromLibrary(owners: List<SavedWorkIdentity>): AppResult<Int> {
+        calls += "removeAllFromLibrary(${owners.size})"
+        lastBulkOwners = owners
+        return AppResult.Success(owners.distinct().size)
     }
-    override suspend fun persistNewChaptersAndNotify(manga: Manga, fetched: List<Chapter>): AppResult<Int> {
-        calls += "persistNewChaptersAndNotify(${manga.title},fetched=${fetched.size})"
-        lastPersistedNewChapters = fetched
-        return AppResult.Success(fetched.size)
+    override suspend fun toggleLiked(owner: SavedWorkIdentity): AppResult<Unit> {
+        calls += "toggleLiked(${owner.id})"
+        return AppResult.Success(Unit)
     }
-    override suspend fun updateCoverIfChanged(
-        api: String,
-        language: String,
-        title: String,
-        newCoverUrl: String,
-    ): AppResult<Unit> {
-        calls += "updateCoverIfChanged($title,$newCoverUrl)"; return AppResult.Success(Unit)
+    override suspend fun toggleWatchingNow(owner: SavedWorkIdentity): AppResult<Unit> {
+        calls += "toggleWatchingNow(${owner.id})"
+        return AppResult.Success(Unit)
     }
-    override suspend fun removeFromLibrary(api: String, language: String, title: String): AppResult<Unit> {
-        calls += "removeFromLibrary($title)"; return AppResult.Success(Unit)
-    }
-    override suspend fun removeAllFromLibrary(keys: List<MangaKey>): AppResult<Int> {
-        calls += "removeAllFromLibrary(${keys.size})"; return AppResult.Success(keys.size)
-    }
-    override suspend fun toggleLiked(key: MangaKey): AppResult<Unit> {
-        calls += "toggleLiked(${key.title})"; return AppResult.Success(Unit)
-    }
-    override suspend fun toggleWatchingNow(key: MangaKey): AppResult<Unit> {
-        calls += "toggleWatchingNow(${key.title})"; return AppResult.Success(Unit)
-    }
-    override suspend fun markOpened(api: String, language: String, title: String): AppResult<Unit> {
-        calls += "markOpened($title)"; return AppResult.Success(Unit)
+    override suspend fun markOpened(owner: SavedWorkIdentity): AppResult<Unit> {
+        calls += "markOpened(${owner.id})"
+        return AppResult.Success(Unit)
     }
 }
 

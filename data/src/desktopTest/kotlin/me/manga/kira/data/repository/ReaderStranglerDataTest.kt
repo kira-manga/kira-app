@@ -3,15 +3,12 @@ package me.manga.kira.data.repository
 import app.cash.turbine.test
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import me.manga.kira.data.local.dao.ChapterDao
-import me.manga.kira.data.local.dao.ChapterIdUrl
 import me.manga.kira.data.local.dao.HistoryDao
 import me.manga.kira.data.local.entity.HistoryItemD
-import me.manga.kira.data.local.entity.SavedChapterEntity
+import me.manga.kira.data.mapper.toDomainManga
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import kotlin.test.Test
@@ -19,231 +16,72 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * Behavioral tests for the Epic R reader-strangler `:data` impls
- * ([ChapterBookmarkRepositoryImpl], [MarkChapterReadRepositoryImpl], [HistoryRepositoryImpl]).
- *
- * These three impls already have `:domain` use-case delegation tests, but their own strangler
- * mapping / url→id branching logic was untested. This class exercises that logic directly.
- *
- * Test-double strategy — after RS-3 (task #738) re-pointed the reader-state seam straight at the
- * Room `ChapterDao`, [ChapterBookmarkRepositoryImpl] / [MarkChapterReadRepositoryImpl] take the
- * [ChapterDao] interface directly as a constructor param, so the tests pass the in-memory
- * [FakeChapterDao] straight in (no legacy `:shared` `LibraryRepository` wrapper, no other-DAO /
- * `FileService` scaffolding needed). [HistoryRepositoryImpl] likewise takes the Room [HistoryDao]
- * directly, so its tests pass a [FakeHistoryDao] straight in.
- *
- * Lives in `desktopTest` (not `commonTest`) to keep parity with the Epic T `:data:desktopTest`
- * gate, alongside the History cases.
- */
+/** Shared-mobile adapter contracts: real Room for ownership, unchanged history mapping fixtures. */
 class ReaderStranglerDataTest {
+    private val owner = libraryParent().toDomainManga()
 
-    private val owner =
-        Manga(
-            api = "src",
-            language = "en",
-            title = "Manga",
-            url = "https://src/manga",
-            coverUrl = "",
-            rating = null,
-            genres = emptyList(),
-        )
-
-    // --- ChapterDao fake (the seam the bookmark / mark-read impls now consume directly) ---------
-
-    /**
-     * In-memory [ChapterDao] fake. Backs the `saved_chapters`-keyed surface that
-     * [ChapterBookmarkRepositoryImpl] / [MarkChapterReadRepositoryImpl] consume directly post-RS-3:
-     *  - [getChapterIdByUrl] resolves url → Room `Long` id (null = not-in-library),
-     *  - [getChapterById] is the upstream flow the bookmark observer mirrors via `emitAll` + `map`,
-     *  - [toggleChapterBookmark] / [markChapterAsRead] are the mutation calls, recorded for asserts.
-     */
-    private class FakeChapterDao(
-        private val urlToId: Map<String, Long> = emptyMap(),
-        private val bookmarkFlow: MutableStateFlow<SavedChapterEntity?> = MutableStateFlow(null),
-    ) : ChapterDao {
-        val toggledBookmarkIds = mutableListOf<Long>()
-        val markedReadIds = mutableListOf<Long>()
-        val markedIsNewClearedIds = mutableListOf<Long>()
-        val resolved = mutableListOf<Pair<String, String>>()
-        val observed = mutableListOf<Pair<String, String>>()
-
-        override suspend fun getChapterIdByUrl(
-            mangaUrl: String,
-            url: String,
-        ): Long? {
-            resolved += mangaUrl to url
-            return urlToId[url]
+    @Test
+    fun observeBookmark_emits_false_when_chapter_not_in_library() = runTest {
+        LibraryIdentityFixture().use { f ->
+            ChapterBookmarkRepositoryImpl(f.owners, f.db.chapterDao()).observeBookmark(owner, "https://current.test/c1").test {
+                assertFalse(awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-
-        override suspend fun getChapterIdsByUrlsBatch(
-            mangaUrl: String,
-            urls: List<String>,
-        ): List<Long> = urls.mapNotNull { urlToId[it] }
-
-        override suspend fun getChapterIdUrlPairsBatch(
-            mangaUrl: String,
-            urls: List<String>,
-        ) = urls.mapNotNull { url -> urlToId[url]?.let { ChapterIdUrl(id = it, url = url) } }
-
-        override suspend fun getChapterIdUrlPairsForMangaBatch(
-            mangaId: Long,
-            urls: List<String>,
-        ) = urls.mapNotNull { url -> urlToId[url]?.let { ChapterIdUrl(id = it, url = url) } }
-
-        override fun getChapterById(chapterId: Long): Flow<SavedChapterEntity?> = bookmarkFlow
-
-        // url-keyed bookmark stream the post-r2-hot-8 observer mirrors: back it with bookmarkFlow
-        // when the seeded row is for this url, else an absent-row flow (null → false).
-        override fun getChapterByUrl(
-            mangaUrl: String,
-            url: String,
-        ): Flow<SavedChapterEntity?> {
-            observed += mangaUrl to url
-            return if (bookmarkFlow.value?.url == url) bookmarkFlow else flowOf(null)
-        }
-
-        override suspend fun toggleChapterBookmark(chapterId: Long) {
-            toggledBookmarkIds += chapterId
-        }
-
-        override suspend fun markChapterAsRead(
-            chapterId: Long,
-            currentTime: Long,
-        ) {
-            markedReadIds += chapterId
-        }
-
-        // --- unused by the impls under test: inert stubs -----------------------------------------
-        override suspend fun getAllDownloadedChapters(): List<SavedChapterEntity> = TODO()
-
-        override fun getChaptersByMangaId(mangaId: Long): Flow<List<SavedChapterEntity>> = TODO()
-
-        override suspend fun insertChapters(chapters: List<SavedChapterEntity>): List<Long> = TODO()
-
-        override suspend fun insertAll(chapters: List<SavedChapterEntity>) = TODO()
-
-        override suspend fun updateChapterLocalPaths(
-            chapterId: Long,
-            paths: List<String>,
-        ) = TODO()
-
-        override suspend fun markChapterDownloaded(chapterId: Long) = TODO()
-
-        // Used by MarkChapterReadRepositoryImpl.markRead (clear NEW-chapter flag on open) — record it.
-        override suspend fun markChapterIsNew(chapterId: Long) {
-            markedIsNewClearedIds += chapterId
-        }
-
-        override suspend fun getChapterByIdSuspend(chapterId: Long): SavedChapterEntity? = TODO()
-
-        override suspend fun markChaptersNotDownloaded(
-            ids: List<Long>,
-            emptyList: List<String>,
-        ) = TODO()
-
-        override suspend fun deleteChapterById(chapterId: Long) = TODO()
-
-        override suspend fun markChaptersReadBatch(chapterIds: List<Long>) = TODO()
-
-        override suspend fun toggleChaptersReadBatch(chapterIds: List<Long>) = TODO()
-
-        override suspend fun toggleChaptersBookmarkBatch(chapterIds: List<Long>) = TODO()
-
-        override suspend fun getChaptersByMangaIdR(mangaId: Long): List<SavedChapterEntity> = TODO()
-
-        override suspend fun updateChapter(chapter: SavedChapterEntity) = TODO()
     }
 
-    // --- ChapterBookmarkRepositoryImpl.observeBookmark / toggleBookmark -------------------------
-
     @Test
-    fun observeBookmark_emits_false_when_chapter_not_in_library() =
-        runTest {
-            // getChapterIdByUrl returns null → documented #217 not-in-library no-op behavior.
-            val dao = FakeChapterDao(urlToId = emptyMap())
-            val impl = ChapterBookmarkRepositoryImpl(dao)
-
-            impl.observeBookmark(owner, "https://src/c1").test {
+    fun observeBookmark_forwards_legacy_bookmark_flow_and_tracks_state_changes() = runTest {
+        LibraryIdentityFixture().use { f ->
+            val parent = f.parent()
+            val row = f.chapter(librarySavedChapter(parent).copy(isBookmarked = false))
+            ChapterBookmarkRepositoryImpl(f.owners, f.db.chapterDao()).observeBookmark(owner, row.url).test {
                 assertFalse(awaitItem())
-                // Don't pin the single-emit-then-complete behavior (open re-bind gap: the flow should
-                // stay alive and re-bind if the chapter row appears later, e.g. the manga is added to
-                // the library while the reader is open). Assert only the initial false here.
+                f.db.chapterDao().toggleChapterBookmark(row.id)
+                assertTrue(awaitItem())
                 cancelAndIgnoreRemainingEvents()
             }
         }
+    }
 
     @Test
-    fun observeBookmark_forwards_legacy_bookmark_flow_and_tracks_state_changes() =
-        runTest {
-            val url = "https://src/c1"
-            // url resolves to a real row id → impl must emitAll the legacy isChapterBookmarkedFlow.
-            val flow = MutableStateFlow<SavedChapterEntity?>(savedChapter(id = 42L, url = url, isBookmarked = false))
-            val dao = FakeChapterDao(urlToId = mapOf(url to 42L), bookmarkFlow = flow)
-            val impl = ChapterBookmarkRepositoryImpl(dao)
-
-            impl.observeBookmark(owner, url).test {
-                assertFalse(awaitItem()) // initial: not bookmarked
-                flow.value = savedChapter(id = 42L, url = url, isBookmarked = true)
-                assertTrue(awaitItem()) // passthrough tracks the legacy column flip
-                cancelAndIgnoreRemainingEvents()
-            }
-            assertEquals(listOf(owner.url to url), dao.observed)
+    fun toggleBookmark_is_noop_when_chapter_not_in_library() = runTest {
+        LibraryIdentityFixture().use { f ->
+            val impl = ChapterBookmarkRepositoryImpl(f.owners, f.db.chapterDao())
+            assertFalse(impl.toggleBookmark(owner, "https://current.test/missing"))
+            assertTrue(f.db.backupDao().getAllSavedManga().isEmpty())
         }
+    }
 
     @Test
-    fun toggleBookmark_is_noop_when_chapter_not_in_library() =
-        runTest {
-            val dao = FakeChapterDao(urlToId = emptyMap())
-            val impl = ChapterBookmarkRepositoryImpl(dao)
-
-            impl.toggleBookmark(owner, "https://src/missing")
-
-            assertTrue(dao.toggledBookmarkIds.isEmpty()) // legacy.toggleChapterBookmark never called
+    fun toggleBookmark_delegates_with_resolved_id() = runTest {
+        LibraryIdentityFixture().use { f ->
+            val row = f.chapter(librarySavedChapter(f.parent()).copy(isBookmarked = false))
+            val impl = ChapterBookmarkRepositoryImpl(f.owners, f.db.chapterDao())
+            assertTrue(impl.toggleBookmark(owner, row.url))
+            assertEquals(row.copy(isBookmarked = true), f.db.chapterDao().getChapterByIdSuspend(row.id))
         }
+    }
 
     @Test
-    fun toggleBookmark_delegates_with_resolved_id() =
-        runTest {
-            val url = "https://src/c1"
-            val dao = FakeChapterDao(urlToId = mapOf(url to 7L))
-            val impl = ChapterBookmarkRepositoryImpl(dao)
-
-            impl.toggleBookmark(owner, url)
-
-            assertEquals(listOf(owner.url to url), dao.resolved)
-            assertEquals(listOf(7L), dao.toggledBookmarkIds)
+    fun markRead_is_noop_when_chapter_not_in_library() = runTest {
+        LibraryIdentityFixture().use { f ->
+            MarkChapterReadRepositoryImpl(f.owners, f.db.chapterDao()).markRead(owner, "https://current.test/missing")
+            assertTrue(f.db.backupDao().getAllSavedManga().isEmpty())
         }
-
-    // --- MarkChapterReadRepositoryImpl.markRead -------------------------------------------------
+    }
 
     @Test
-    fun markRead_is_noop_when_chapter_not_in_library() =
-        runTest {
-            val dao = FakeChapterDao(urlToId = emptyMap())
-            val impl = MarkChapterReadRepositoryImpl(dao)
-
-            impl.markRead(owner, "https://src/missing")
-
-            assertTrue(dao.markedReadIds.isEmpty()) // legacy.markChapterAsRead never called
+    fun markRead_delegates_with_resolved_id() = runTest {
+        LibraryIdentityFixture().use { f ->
+            val row = f.chapter(librarySavedChapter(f.parent()).copy(isRead = false))
+            MarkChapterReadRepositoryImpl(f.owners, f.db.chapterDao()).markRead(owner, row.url)
+            val after = requireNotNull(f.db.chapterDao().getChapterByIdSuspend(row.id))
+            assertTrue(after.isRead)
+            assertFalse(after.isNew)
+            assertTrue(after.lastReadDate > row.lastReadDate)
         }
-
-    @Test
-    fun markRead_delegates_with_resolved_id() =
-        runTest {
-            val url = "https://src/c9"
-            val dao = FakeChapterDao(urlToId = mapOf(url to 99L))
-            val impl = MarkChapterReadRepositoryImpl(dao)
-
-            impl.markRead(owner, url)
-
-            assertEquals(listOf(owner.url to url), dao.resolved)
-            assertEquals(listOf(99L), dao.markedReadIds)
-            // Opening/reading a chapter also clears its NEW flag (native parity).
-            assertEquals(listOf(99L), dao.markedIsNewClearedIds)
-        }
-
-    // --- HistoryDao fake + HistoryRepositoryImpl ------------------------------------------------
+    }
 
     /** In-memory [HistoryDao] fake backing [HistoryRepositoryImpl] directly. */
     private class FakeHistoryDao(
@@ -433,21 +271,4 @@ class ReaderStranglerDataTest {
             assertEquals(1, dao.deleteAllCalls)
         }
 
-    // --- helpers --------------------------------------------------------------------------------
-
-    private fun savedChapter(
-        id: Long,
-        url: String,
-        isBookmarked: Boolean,
-    ): SavedChapterEntity =
-        SavedChapterEntity(
-            id = id,
-            mangaId = 1L,
-            number = "1",
-            name = "",
-            url = url,
-            isDownloaded = false,
-            isBookmarked = isBookmarked,
-            isRead = false,
-        )
 }

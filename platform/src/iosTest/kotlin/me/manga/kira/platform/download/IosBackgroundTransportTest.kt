@@ -39,7 +39,7 @@ class IosBackgroundTransportTest {
             h.transport.setListener(object : TransferListener {
                 override fun onPageComplete(
                     mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
-                    page: StagedDownloadPage, acknowledge: () -> Unit,
+                    page: StagedDownloadPage, operation: DownloadOperationExclusion.Operation, acknowledge: () -> Unit,
                 ) {
                     assertEquals(TEST_ATTEMPT_TOKEN, attemptToken)
                     staged = page
@@ -47,7 +47,7 @@ class IosBackgroundTransportTest {
                 }
                 override fun onPageFailed(
                     mangaId: Long, chapterId: Long, pageIndex: Int, attemptToken: String,
-                    message: String?, acknowledge: () -> Unit,
+                    message: String?, operation: DownloadOperationExclusion.Operation, acknowledge: () -> Unit,
                 ) {
                     error("Unexpected handoff failure: $message")
                 }

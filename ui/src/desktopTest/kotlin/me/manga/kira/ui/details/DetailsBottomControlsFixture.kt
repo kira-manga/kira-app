@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.presentation.details.DetailsIntent
 import me.manga.kira.presentation.details.DetailsState
 import me.manga.kira.ui.theme.KiraTheme
@@ -61,7 +63,7 @@ internal fun ComposeUiTest.showBottomControls(
                     onNavigateBack = {},
                     onNavigateToReader = { _, _ -> fixture.recordReaderNavigation() },
                     onNavigateToDownloads = {},
-                    onNavigateToBackupExport = { _, _, _ -> },
+                    onNavigateToBackupExport = {},
                     onOpenInWebView = { _, _ -> },
                 )
             }
@@ -88,6 +90,7 @@ private fun bottomControlsState(): DetailsState {
                 chapters = bottomControlsChapters(),
             ),
         isInLibrary = true,
+        savedOwner = SavedWorkIdentity(1L, WorkLocator(manga.api, manga.url)),
         sortAscending = false,
     )
 }

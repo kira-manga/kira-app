@@ -1,11 +1,11 @@
 package me.manga.kira.presentation.library
 
-import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.library.GridDensity
 import me.manga.kira.domain.model.library.LibraryCategory
 import me.manga.kira.domain.model.library.LibraryFilter
 import me.manga.kira.domain.model.library.LibrarySort
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 import me.manga.kira.presentation.mvi.MviIntent
 
 /**
@@ -59,13 +59,13 @@ sealed interface LibraryIntent : MviIntent {
     data object OnRefresh : LibraryIntent
 
     /** User tapped a row. View navigates to details via the emitted Effect. */
-    data class OnItemClick(val manga: Manga) : LibraryIntent
+    data class OnItemClick(val item: LibraryManga) : LibraryIntent
 
     /** User long-pressed a row. Enters multi-select mode and selects this row. */
-    data class OnItemLongClick(val key: MangaKey) : LibraryIntent
+    data class OnItemLongClick(val key: SavedWorkIdentity) : LibraryIntent
 
     /** User toggled selection state for one row while already in multi-select. */
-    data class OnSelectionToggle(val key: MangaKey) : LibraryIntent
+    data class OnSelectionToggle(val key: SavedWorkIdentity) : LibraryIntent
 
     /** User dismissed multi-select (back button / "X"). */
     data object OnSelectionClear : LibraryIntent
@@ -322,7 +322,7 @@ sealed interface LibraryIntent : MviIntent {
      * ([OnSingleDeleteRequest] → [OnSingleDeleteConfirm]) — the three together close the per-card
      * action row that the legacy MangaCard exposes.
      */
-    data class OnToggleLike(val key: MangaKey) : LibraryIntent
+    data class OnToggleLike(val key: SavedWorkIdentity) : LibraryIntent
 
     /**
      * User tapped the watch-later (clock) icon on a library card's per-card action row.
@@ -333,7 +333,7 @@ sealed interface LibraryIntent : MviIntent {
      *
      * §179 (Task #345 / rung 19).
      */
-    data class OnToggleWatchingNow(val key: MangaKey) : LibraryIntent
+    data class OnToggleWatchingNow(val key: SavedWorkIdentity) : LibraryIntent
 
     /**
      * User tapped the delete (trash) icon on a library card's per-card action row, requesting a
@@ -347,7 +347,7 @@ sealed interface LibraryIntent : MviIntent {
      * single-element list — same write path as the multi-select bulk-delete) runs only after the
      * user confirms, in [OnSingleDeleteConfirm].
      */
-    data class OnSingleDeleteRequest(val key: MangaKey) : LibraryIntent
+    data class OnSingleDeleteRequest(val key: SavedWorkIdentity) : LibraryIntent
 
     /**
      * User confirmed the per-card single-delete in the dialog (GAP-LIB-15). ViewModel clears

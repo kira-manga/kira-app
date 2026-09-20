@@ -1,12 +1,18 @@
 package me.manga.kira.presentation.reader
 
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.logging.FlowLog
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.ChapterLocator
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.domain.model.reader.PageDownloadProgress
 import me.manga.kira.domain.model.reader.PageProgressHandle
@@ -17,13 +23,11 @@ import me.manga.kira.domain.usecase.reader.ClearExtractedPagesUseCase
 import me.manga.kira.domain.usecase.reader.ClearPageProgressUseCase
 import me.manga.kira.domain.usecase.reader.FetchChapterPagesUseCase
 import me.manga.kira.domain.usecase.reader.ListChaptersUseCase
-import me.manga.kira.domain.usecase.reader.LoadPagePositionUseCase
 import me.manga.kira.domain.usecase.reader.MarkChapterReadUseCase
 import me.manga.kira.domain.usecase.reader.ObserveChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ObservePageProgressUseCase
 import me.manga.kira.domain.usecase.reader.ObserveReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.RecordHistoryUseCase
-import me.manga.kira.domain.usecase.reader.SavePagePositionUseCase
 import me.manga.kira.domain.usecase.reader.SetReadingModeUseCase
 import me.manga.kira.domain.usecase.reader.StartReadingSessionUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
@@ -55,12 +59,11 @@ import me.manga.kira.presentation.mvi.MviViewModel
  *    already been dispatched. The reducer runs on the main-thread-equivalent `viewModelScope`
  *    default, which is the right surface for `updateState` calls.
  *
- * Re-entry idempotence on [ReaderIntent.OnEnter]: if the in-state `(manga, chapter)` identity
- * already matches the intent's pair, the reducer no-ops. Same posture as
- * [me.manga.kira.presentation.details.DetailsViewModel]. To force a re-fetch the view submits
- * [ReaderIntent.OnRetry] explicitly. Identity comparison uses [matches] (manga api+language+title
- * triple) and chapter `url` (which is the legacy `Chapter` primary-key surrogate and the use
- * case's effective routing key).
+ * Re-entry idempotence on [ReaderIntent.OnEnter]: once a chapter is established for a requested
+ * work, another route entry for that work no-ops even if it carries the stale anchor chapter.
+ * To force a re-fetch the view submits [ReaderIntent.OnRetry] explicitly. Replay identity uses
+ * [matches] (requested api+work URL), independent of title/language metadata. Explicit Next/Prev
+ * replacement is separate from replay, so a remount cannot rewind its navigation or appended feed.
  *
  * Re-entrance guard on [ReaderIntent.OnRetry]: if a fetch is already in flight
  * (`state.value.isLoading == true`), the intent is dropped. This prevents concurrent fetches
@@ -113,15 +116,12 @@ import me.manga.kira.presentation.mvi.MviViewModel
  * brackets onto the MVI surface. Compose observes its lifecycle owner; native iOS combines
  * confirmed Reader visibility with its scene's activation and ends on attachment disposal.
  *
- * Resume-position pair (Phase 7.x.reader.resumeposition): [loadPagePosition] / [savePagePosition]
- * persist the user's last-viewed page index per chapter so the Reader can resume there on
- * re-entry. The load happens in [onEnter] before the page-list fetch runs — `state.currentPageIndex`
- * is seeded to the saved index (or 0 if none) so the subsequent Success branch of [runFetch]
- * clamps to the right page once `pages` arrives. The save happens in [onPageChanged], fire-and-
- * forget on [viewModelScope] (the reducer does not block on the suspending repo call). This is
- * net-new functionality — the legacy reader has a `HistoryItemD.lastReadPage` field but never
- * writes a non-zero value; see [me.manga.kira.domain.repository.ReadProgressRepository]
- * class-level KDoc for the strangler-fig analysis.
+ * Resume positions now use [ReaderProgressSessions]: captured scoped preparation and acquisition
+ * happen after local entry ownership is established, before the page fetch. A successful absent
+ * seed renders page zero without writing it. Typed failures leave reading usable without a writable
+ * handle. [onPageChanged] queues the captured active handle and within-chapter index in event order;
+ * retry, remount and scroll-back never open replacement handles. The historical audit below describes
+ * the superseded URL-only implementation, not the current persistence or replay-identity contract.
  *
  * SRP: orchestrates Reader presentation state for a SINGLE chapter and nothing else. Reading
  * mode, bookmarks, statistics session bracketing, multi-chapter feed are each handled by the
@@ -241,8 +241,7 @@ class ReaderViewModel(
     private val listChapters: ListChaptersUseCase,
     private val startReadingSession: StartReadingSessionUseCase,
     private val endReadingSession: EndReadingSessionUseCase,
-    private val loadPagePosition: LoadPagePositionUseCase,
-    private val savePagePosition: SavePagePositionUseCase,
+    private val progressSessions: ReaderProgressSessions,
     private val observePageProgress: ObservePageProgressUseCase,
     private val observeChapterBookmark: ObserveChapterBookmarkUseCase,
     private val toggleChapterBookmark: ToggleChapterBookmarkUseCase,
@@ -254,9 +253,15 @@ class ReaderViewModel(
     private val clearPageProgress: ClearPageProgressUseCase,
 ) : MviViewModel<ReaderState, ReaderIntent, ReaderEffect>(
     initialState = ReaderState(),
-    ) {
+) {
     // Main-confined reducer state, not UI state. Duplicate resumes must not reset the raw timer.
     private var readingSessionActive = false
+
+    /** Preparation/acquisition belongs to one locally established entry, before any suspension. */
+    private var entryJob: Job? = null
+    private var fetchRequest = 0L
+    private var appendRequest = 0L
+    private var bookmarkRequest = 0L
 
     /**
      * Tracked page-fetch coroutine. Cancelled at the start of every new [runFetch] so a prior
@@ -286,7 +291,6 @@ class ReaderViewModel(
     // Canonical ownership includes pages that never emitted a progress tick. Reducer-thread only.
     private val ownedPageProgress = mutableMapOf<String, PageProgressObservation>()
     private val pageProgressJobs = mutableMapOf<String, Job>()
-    private var chapterGeneration = 0L
 
     private val challengeRecovery = ReaderChallengeRecovery()
 
@@ -300,6 +304,11 @@ class ReaderViewModel(
     private var bookmarkJob: Job? = null
 
     init {
+        launchSafely {
+            progressSessions.writeQueued { entry, error ->
+                if (progressSessions.isCurrent(entry)) emit(ReaderEffect.ShowError(error))
+            }
+        }
         // Reading-mode preference is hot for the VM's lifetime — every emission lifts the new
         // value into state. Launched in `init` (not in `onEnter`) because the preference is
         // independent of which chapter is active, and we want the first emission to land as
@@ -380,12 +389,15 @@ class ReaderViewModel(
         val current = state.value
         val manga = current.manga ?: return
         val chapterUrl = current.activeChapterUrl ?: current.chapter?.url ?: return
-        launchSafely {
+        val entry = progressSessions.generation
+        launchCapturedEntryAction(entry) {
             // #15 — the toggle no-ops when the manga isn't in the library (no saved_chapters row).
             // Surface that as the native "add to Library first" hint instead of silently doing
             // nothing; an in-library toggle returns true and the observe collector updates the star.
             val toggled = toggleChapterBookmark(manga, chapterUrl)
-            if (!toggled) emit(ReaderEffect.ShowNotInLibrary)
+            if (!toggled && progressSessions.isCurrent(entry) && state.value.activeChapterUrl == chapterUrl) {
+                emit(ReaderEffect.ShowNotInLibrary)
+            }
         }
     }
 
@@ -398,35 +410,33 @@ class ReaderViewModel(
         setReadingMode(mode)
     }
 
-    private suspend fun onEnter(
+    private fun onEnter(
         manga: Manga,
         chapter: Chapter,
     ) {
         val current = state.value
-        // An established same-manga entry can replay stale navigation args after recomposition
-        // or WebView return. Do not rewind an appended feed or an explicit Next/Prev jump.
-        // A fresh VM or genuinely different manga still establishes a new chapter.
+        // Same-work route replay must not rewind an appended feed or explicit chapter navigation.
+        // Metadata changes do not change identity; a distinct requested (api, URL) establishes anew.
         if (current.chapter != null && current.manga?.matches(manga) == true) return
         replaceChapter(manga, chapter)
     }
 
-    private suspend fun replaceChapter(
+    private fun replaceChapter(
         manga: Manga,
         chapter: Chapter,
     ) {
         val current = state.value
-        val generation = ++chapterGeneration
+        val mangaChanged = current.manga?.matches(manga) != true
+        val entry = progressSessions.replaceFeed()
         // Revoke before any suspending resume read. Old fetches cannot reacquire removed slots,
         // and remembered requests keep only revoked handles, even if their cancellation is late.
-        fetchJob?.cancel()
-        appendJob?.cancel()
-        chaptersJob?.cancel()
-        bookmarkJob?.cancel()
+        cancelEntryJobs()
         revokePageProgress()
-        clearLoadedExtractedPages(current, exclude = chapter.url)
+        clearLoadedExtractedPages(current, exclude = chapter.url.takeUnless { mangaChanged })
         challengeRecovery.clearOwner()
-        val mangaChanged = current.manga?.matches(manga) != true
         FlowLog.log("Reader", "enter", "chapter=${chapter.url} num=${chapter.number} api=${manga.api}")
+        // Claim loading/identity before the suspending progress work. Duplicate OnEnter and rapid
+        // navigation now see this entry, while cancelled old collectors cannot repopulate its feed.
         updateState {
             it.copy(
                 manga = manga,
@@ -445,53 +455,77 @@ class ReaderViewModel(
                 pageProgress = emptyMap(),
             )
         }
-        // No image is shown until the resume seed is known. Another replacement may have won
-        // while this read suspended; it owns both the feed and the right to acquire progress.
-        val savedPage = loadPagePosition(chapter.url) ?: 0
-        if (generation != chapterGeneration) return
-        updateState { it.copy(currentPageIndex = savedPage) }
-        FlowLog.log("Reader", "resume", "chapter=${chapter.url} savedPage=$savedPage")
         if (mangaChanged || state.value.chapters.isEmpty()) {
             runListChapters(manga)
         }
         runObserveBookmark(manga, chapter.url)
-        // Reading-history record (Reader-convergence R3a). Fire on every chapter establish/change
-        // (open + Next/Prev) so the History screen reflects the user's progress — matching the
-        // legacy reader, which recorded history on chapter open. Fire-and-forget on viewModelScope:
-        // the reducer must not block on the suspending settings-read + DB upsert, and there is no
-        // error path the UI could act on. The incognito gate lives inside [RecordHistoryUseCase]
-        // (no-op when incognito is ON), so the call is unconditional here.
-        launchSafely { recordHistory(manga, chapter) }
-        runFetch(manga, chapter)
+        // History belongs to the captured work even if another entry wins before the write runs.
+        // The use case retains the incognito gate; only error delivery is fenced to this entry.
+        launchCapturedEntryAction(entry) { recordHistory(manga, chapter) }
+        // Resolve the scoped resume seed before fetching pages. A superseded entry may neither
+        // publish its seed nor acquire page-download ownership for its abandoned feed.
+        entryJob = launchForEntry(entry) {
+            when (val result = progressSessions.open(entry, manga.chapterLocator(chapter.url))) {
+                null -> return@launchForEntry
+                is AppResult.Success -> updateState { it.copy(currentPageIndex = result.value.pageIndex ?: 0) }
+                is AppResult.Failure -> emit(ReaderEffect.ShowError(result.error))
+            }
+            if (progressSessions.isCurrent(entry)) runFetch(manga, chapter)
+        }
+    }
+
+    private fun cancelEntryJobs() {
+        entryJob?.cancel()
+        fetchJob?.cancel()
+        appendJob?.cancel()
+        chaptersJob?.cancel()
+        bookmarkJob?.cancel()
+    }
+
+    private fun launchForEntry(entry: Long, block: suspend CoroutineScope.() -> Unit): Job = launchCapturedEntryAction(entry) {
+        if (progressSessions.isCurrent(entry)) block()
+    }
+
+    // Captured writes still run when replacement wins scheduling; only error delivery belongs to
+    // their captured entry. Callers fence normal-result UI/effects separately.
+    private fun launchCapturedEntryAction(entry: Long, block: suspend CoroutineScope.() -> Unit): Job = launchSafely {
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            currentCoroutineContext().ensureActive()
+            if (progressSessions.isCurrent(entry)) onUnhandledError(failure)
+        }
     }
 
     private fun runObserveBookmark(
         manga: Manga,
         chapterUrl: String,
     ) {
-        // Cancel the prior chapter's bookmark observer before starting a new one. Without this an
-        // intra-manga Next / Prev would leave the previous chapter's collector observing and
-        // writing into `state.isBookmarked` — same cancel-previous-on-change discipline as
-        // [runFetch] / [runListChapters]. Every emission lifts the latest bookmark state into
-        // [ReaderState.isBookmarked] (no `filter` / `distinctUntilChanged` here — the use case's
-        // backing flow already projects a `distinctUntilChanged` Boolean per chapter).
+        // Follow the active chapter, not just the anchor. A cancelled old collector cannot change
+        // the star even when its source ignores cancellation or a same-URL different work is open.
         bookmarkJob?.cancel()
-        bookmarkJob =
-            launchSafely {
-                observeChapterBookmark(manga, chapterUrl).collect { bookmarked ->
-                    updateState { current ->
-                        val activeUrl = current.activeChapterUrl ?: current.chapter?.url
-                        if (current.manga?.url == manga.url && activeUrl == chapterUrl) {
-                            current.copy(isBookmarked = bookmarked)
-                        } else {
-                            current
-                        }
+        val entry = progressSessions.generation
+        val request = ++bookmarkRequest
+        bookmarkJob = launchForEntry(entry) {
+            observeChapterBookmark(manga, chapterUrl).collect { bookmarked ->
+                currentCoroutineContext().ensureActive()
+                updateState { current ->
+                    val activeUrl = current.activeChapterUrl ?: current.chapter?.url
+                    if (progressSessions.isCurrent(entry) && request == bookmarkRequest &&
+                        current.manga?.matches(manga) == true && activeUrl == chapterUrl
+                    ) {
+                        current.copy(isBookmarked = bookmarked)
+                    } else {
+                        current
                     }
                 }
             }
+        }
     }
 
-    private suspend fun onNextChapter() {
+    private fun onNextChapter() {
         val current = state.value
         // Re-entrance guard (matches [ReaderIntent.OnNextChapter] KDoc): drop while the initial
         // fetch is in flight so a rapid double-dispatch can't advance twice and skip a chapter.
@@ -508,12 +542,12 @@ class ReaderViewModel(
         // chapter so a continuous-feed advance marks the appended segment in view, not the anchor.
         val leavingUrl = current.activeChapterUrl ?: current.chapter?.url
         if (leavingUrl != null) {
-            launchSafely { markChapterRead(manga, leavingUrl) }
+            launchCapturedEntryAction(progressSessions.generation) { markChapterRead(manga, leavingUrl) }
         }
         replaceChapter(manga, current.chapters[nextIdx])
     }
 
-    private suspend fun onPrevChapter() {
+    private fun onPrevChapter() {
         val current = state.value
         // Re-entrance guard (matches [ReaderIntent.OnPrevChapter] KDoc): drop while the initial
         // fetch is in flight — same posture as [onNextChapter].
@@ -526,7 +560,7 @@ class ReaderViewModel(
         // in-library-only, idempotent posture as [onNextChapter]. See [MarkChapterReadUseCase].
         val leavingUrl = current.activeChapterUrl ?: current.chapter?.url
         if (leavingUrl != null) {
-            launchSafely { markChapterRead(manga, leavingUrl) }
+            launchCapturedEntryAction(progressSessions.generation) { markChapterRead(manga, leavingUrl) }
         }
         replaceChapter(manga, current.chapters[prevIdx])
     }
@@ -560,7 +594,7 @@ class ReaderViewModel(
         FlowLog.log("Reader", "appendNext", "tail=$tailUrl next=${next.url} loaded=${current.loadedChapterUrls.size}")
         // Finishing the tail chapter marks it read (native marks-read on advance). Fire-and-forget,
         // in-library-only + idempotent — see [MarkChapterReadUseCase].
-        launchSafely { markChapterRead(manga, tailUrl) }
+        launchCapturedEntryAction(progressSessions.generation) { markChapterRead(manga, tailUrl) }
         appendChapterPages(manga, next)
     }
 
@@ -577,39 +611,45 @@ class ReaderViewModel(
         val operation = ReaderChallengeOperation(chapter.url, append = true)
         challengeRecovery.begin(operation)
         appendJob?.cancel()
-        val generation = chapterGeneration
-        appendJob =
-            launchSafely {
-                fetchPages(manga, chapter).collect { result ->
-                    if (generation != chapterGeneration) return@collect
-                    when (result) {
-                        is AppResult.Success -> {
-                            challengeRecovery.recovered(operation)
-                            val newPages = result.value
-                            if (newPages.isEmpty()) {
-                                // #4 (append path): an appended chapter that RESOLVED to zero pages must
-                                // not silently dead-end the feed. Record it as loaded (with no page tags)
-                                // so the NEXT append targets the chapter after it (tailIdx+2) instead of
-                                // re-attempting this one forever and re-marking it read on every retrigger,
-                                // and surface a non-blocking error so the user knows the chapter was empty.
-                                FlowLog.log("Reader", "appendNext", "chapter=${chapter.url} skipped=empty-next-chapter")
-                                recordEmptyAppend(chapter.url)
-                                return@collect
-                            }
-                            publishPageSnapshot(state.value.withAppendedChapterPages(chapter.url, newPages))
-                            FlowLog.log(
-                                "Reader",
-                                "appended",
-                                "chapter=${chapter.url} newPages=${newPages.size} feedTotal=${state.value.pages.size} chapters=${state.value.loadedChapterUrls.size}",
-                            )
+        val entry = progressSessions.generation
+        val request = ++appendRequest
+        appendJob = launchForEntry(entry) {
+            when (val result = progressSessions.open(entry, manga.chapterLocator(chapter.url))) {
+                // A prior cancelled append may have reserved this session. Refetch its pages
+                // without reacquisition; the entry/request fences below still reject old work.
+                null -> Unit
+                is AppResult.Failure -> emit(ReaderEffect.ShowError(result.error))
+                is AppResult.Success -> Unit // Append starts at its first page, not its saved seed.
+            }
+            if (!progressSessions.isCurrent(entry) || request != appendRequest) return@launchForEntry
+            fetchPages(manga, chapter).collect { result ->
+                currentCoroutineContext().ensureActive()
+                if (!progressSessions.isCurrent(entry) || request != appendRequest) return@collect
+                when (result) {
+                    is AppResult.Success -> {
+                        challengeRecovery.recovered(operation)
+                        val newPages = result.value
+                        if (newPages.isEmpty()) {
+                            // An empty chapter must not dead-end the feed; retain already resolved
+                            // pages and skip this chapter once when choosing the next append.
+                            FlowLog.log("Reader", "appendNext", "chapter=${chapter.url} skipped=empty-next-chapter")
+                            recordEmptyAppend(chapter.url)
+                            return@collect
                         }
-                        is AppResult.Failure -> {
-                            FlowLog.log("Reader", "appendError", "chapter=${chapter.url} error=${result.error::class.simpleName}")
-                            onPageFetchFailure(manga, operation, result.error)
-                        }
+                        publishPageSnapshot(state.value.withAppendedChapterPages(chapter.url, newPages))
+                        FlowLog.log(
+                            "Reader",
+                            "appended",
+                            "chapter=${chapter.url} newPages=${newPages.size} feedTotal=${state.value.pages.size} chapters=${state.value.loadedChapterUrls.size}",
+                        )
+                    }
+                    is AppResult.Failure -> {
+                        FlowLog.log("Reader", "appendError", "chapter=${chapter.url} error=${result.error::class.simpleName}")
+                        onPageFetchFailure(manga, operation, result.error)
                     }
                 }
             }
+        }
     }
 
     private suspend fun recordEmptyAppend(chapterUrl: String) {
@@ -632,17 +672,13 @@ class ReaderViewModel(
         // streaming in (a UI Pager that snaps to an index past the current list length should
         // settle once the list catches up, not flicker).
         if (current.pages.isEmpty()) return
+        val manga = current.manga ?: return
+        val entry = progressSessions.generation
         val clamped = pageIndex.coerceIn(0, current.pages.lastIndex)
         if (clamped == current.currentPageIndex) return
         updateState { it.copy(currentPageIndex = clamped) }
-        // Resume-position write (Phase 7.x.reader.resumeposition): persist the new page as the
-        // chapter's last-viewed position. Fire-and-forget on viewModelScope — the reducer must
-        // not block on the suspending settings write, and there's no error path the UI could
-        // act on if the write failed (see ReadProgressRepository class-level KDoc for the
-        // no-AppResult rationale). The chapter URL is the persistence key; if it's null
-        // (impossible after onEnter ran, since the chapter was just set) we silently drop the
-        // save. Repeated saves for the same `(chapterUrl, pageIndex)` are no-ops at the
-        // ObservableSettings layer.
+        // Capture the acquired scoped handle in user-event order, without suspending the reducer.
+        // A backward movement (including page zero) wins over an earlier forward movement.
         // #5: save the resume position against the chapter ACTUALLY in view (the appended segment, if
         // the user scrolled past a boundary) using the WITHIN-chapter page index, not the flat feed
         // index — so resume lands on the right page of the right chapter. For a single (non-appended)
@@ -659,7 +695,7 @@ class ReaderViewModel(
             "page",
             "flatIndex=$clamped/${current.pages.lastIndex} activeChapter=$activeUrl chapterPage=${withinIdx + 1} chapterIdx=${current.currentChapterIndex}",
         )
-        launchSafely { savePagePosition(activeUrl, withinIdx) }
+        progressSessions.pageChanged(entry, manga.chapterLocator(activeUrl), withinIdx)
         // #5 continuous reader: when the ACTIVE (viewed) chapter actually changes — the user scrolled
         // across a boundary into an appended segment — follow it so the rest of the reader tracks the
         // chapter on screen, not the anchor:
@@ -670,11 +706,10 @@ class ReaderViewModel(
         // observer or re-record history on every page — only the once-per-chapter crossing does.
         // Resume above already keys off the active chapter; this brings bookmark + history in line.
         if (activeUrl != current.activeChapterUrl) {
-            val manga = current.manga
-            if (manga != null) runObserveBookmark(manga, activeUrl)
+            runObserveBookmark(manga, activeUrl)
             val activeChapter = current.chapters.firstOrNull { it.url == activeUrl }
-            if (manga != null && activeChapter != null) {
-                launchSafely { recordHistory(manga, activeChapter) }
+            if (activeChapter != null) {
+                launchCapturedEntryAction(entry) { recordHistory(manga, activeChapter) }
             }
             FlowLog.log("Reader", "activeChapterChange", "active=$activeUrl idx=${state.value.currentChapterIndex}")
         }
@@ -717,6 +752,8 @@ class ReaderViewModel(
         if (state.value.isLoading) return
         val manga = state.value.manga ?: return
         val chapter = state.value.chapter ?: return
+        appendJob?.cancel()
+        appendRequest++
         updateState { it.copy(isLoading = true, error = null) }
         runFetch(manga, chapter)
     }
@@ -752,60 +789,48 @@ class ReaderViewModel(
     ) {
         val operation = ReaderChallengeOperation(chapter.url, append = false)
         challengeRecovery.begin(operation)
-        // Cancel the previous fetch before starting a new one. Critical for streaming sources
-        // (Prochan): without this, an intra-manga Next / Prev OnEnter would leave the prior
-        // chapter's flow still streaming pages and overwriting the new chapter's state. See
-        // class-level "Concurrent-fetch protection" KDoc.
+        // Cancellation alone cannot fence a late non-cooperative streaming emission.
         fetchJob?.cancel()
-        val generation = chapterGeneration
-        fetchJob =
-            launchSafely {
-                fetchPages(manga, chapter).collect { result ->
-                    if (generation != chapterGeneration) return@collect
-                    when (result) {
-                        is AppResult.Success -> {
-                            val pages = result.value
-                            if (pages.isEmpty()) {
-                                // #4: a chapter that RESOLVED to zero pages is a failure, not a silent
-                                // blank screen. Every source path delivers an empty list only as a
-                                // TERMINAL Success (piloted single-emit; legacy single-terminal; streaming
-                                // accumulate-after-add, whose first Success is already non-empty for a
-                                // non-empty chapter) — so classifying empty-as-error at this single point
-                                // where both engines converge is safe and needs no streaming gate. Routes
-                                // through the exact error+retry path a Failure uses, so the reader can
-                                // never render nothing.
-                                FlowLog.log("Reader", "emptyPages", "chapter=${chapter.url} -> error (no pages)")
-                                val error = AppError.Unexpected("This chapter returned no pages.")
-                                updateState { it.copy(isLoading = false, error = error) }
-                                emit(ReaderEffect.ShowError(error))
-                            } else {
-                                FlowLog.log("Reader", "pages", "chapter=${chapter.url} count=${pages.size}")
-                                val previous = state.value
-                                publishPageSnapshot(
-                                    previous.copy(
-                                        isLoading = false,
-                                        pages = pages,
-                                        pageChapters = List(pages.size) { chapter.url },
-                                        loadedChapterUrls = listOf(chapter.url),
-                                        currentPageIndex = previous.currentPageIndex.coerceIn(0, pages.lastIndex),
-                                        error = null,
-                                    ),
-                                )
-                                challengeRecovery.recovered(operation)
-                            }
-                        }
-                        is AppResult.Failure -> {
-                            FlowLog.log(
-                                "Reader",
-                                "error",
-                                "chapter=${chapter.url} error=${result.error::class.simpleName}",
+        val entry = progressSessions.generation
+        val request = ++fetchRequest
+        fetchJob = launchForEntry(entry) {
+            fetchPages(manga, chapter).collect { result ->
+                currentCoroutineContext().ensureActive()
+                if (!progressSessions.isCurrent(entry) || request != fetchRequest) return@collect
+                when (result) {
+                    is AppResult.Success -> {
+                        val pages = result.value
+                        if (pages.isEmpty()) {
+                            // A resolved empty anchor is an actionable failure, never a blank
+                            // successful reader. Appended empty segments use recordEmptyAppend.
+                            FlowLog.log("Reader", "emptyPages", "chapter=${chapter.url} -> error (no pages)")
+                            val error = AppError.Unexpected("This chapter returned no pages.")
+                            updateState { it.copy(isLoading = false, error = error) }
+                            emit(ReaderEffect.ShowError(error))
+                        } else {
+                            FlowLog.log("Reader", "pages", "chapter=${chapter.url} count=${pages.size}")
+                            val previous = state.value
+                            publishPageSnapshot(
+                                previous.copy(
+                                    isLoading = false,
+                                    pages = pages,
+                                    pageChapters = List(pages.size) { chapter.url },
+                                    loadedChapterUrls = listOf(chapter.url),
+                                    currentPageIndex = previous.currentPageIndex.coerceIn(0, pages.lastIndex),
+                                    error = null,
+                                ),
                             )
-                            updateState { it.copy(isLoading = false, error = result.error) }
-                            onPageFetchFailure(manga, operation, result.error)
+                            challengeRecovery.recovered(operation)
                         }
+                    }
+                    is AppResult.Failure -> {
+                        FlowLog.log("Reader", "error", "chapter=${chapter.url} error=${result.error::class.simpleName}")
+                        updateState { it.copy(isLoading = false, error = result.error) }
+                        onPageFetchFailure(manga, operation, result.error)
                     }
                 }
             }
+        }
     }
 
     /** Publish pages and their opaque ownership together, retaining observers for surviving URLs. */
@@ -828,9 +853,13 @@ class ReaderViewModel(
         }
         ownedPageProgress.forEach { (url, observation) ->
             if (url !in pageProgressJobs) {
+                val entry = progressSessions.generation
                 pageProgressJobs[url] =
-                    launchSafely {
-                        observation.progress.collect { status -> reducePageProgress(observation.handle, status) }
+                    launchForEntry(entry) {
+                        observation.progress.collect { status ->
+                            currentCoroutineContext().ensureActive()
+                            if (progressSessions.isCurrent(entry)) reducePageProgress(observation.handle, status)
+                        }
                     }
             }
         }
@@ -862,36 +891,32 @@ class ReaderViewModel(
     }
 
     private fun runListChapters(manga: Manga) {
-        // Cancel the previous chapter-list fetch before starting a new one. Protects against
-        // a stale fetch (e.g. previous manga's slow source) landing emissions on top of a new
-        // manga's state. Symmetric with [runFetch].
         chaptersJob?.cancel()
-        chaptersJob =
-            launchSafely {
-                when (val result = listChapters(manga)) {
-                    is AppResult.Success -> {
-                        updateState { it.copy(chapters = result.value) }
-                        val s = state.value
-                        FlowLog.log(
-                            "Reader",
-                            "chapterNav",
-                            "count=${s.chapters.size} activeIdx=${s.currentChapterIndex} " +
-                                "canNext=${s.canGoNext} canPrev=${s.canGoPrev} active=${s.activeChapterUrl}",
-                        )
-                    }
-                    is AppResult.Failure -> {
-                        // Silent failure — chapter-list fetch failure must NOT mask the page-fetch
-                        // happy path. The user can still read the chapter they opened; Next / Prev
-                        // just stay disabled via [ReaderState.canGoNext] / [ReaderState.canGoPrev].
-                        // Emitting [ReaderEffect.ShowError] here would surface a snackbar over a
-                        // successfully-rendered page, which is worse UX than silent disablement.
-                    }
+        val entry = progressSessions.generation
+        chaptersJob = launchForEntry(entry) {
+            val result = listChapters(manga)
+            currentCoroutineContext().ensureActive()
+            if (!progressSessions.isCurrent(entry)) return@launchForEntry
+            when (result) {
+                is AppResult.Success -> {
+                    updateState { it.copy(chapters = result.value) }
+                    val s = state.value
+                    FlowLog.log(
+                        "Reader",
+                        "chapterNav",
+                        "count=${s.chapters.size} activeIdx=${s.currentChapterIndex} " +
+                            "canNext=${s.canGoNext} canPrev=${s.canGoPrev} active=${s.activeChapterUrl}",
+                    )
+                }
+                is AppResult.Failure -> {
+                    // Failure must not mask readable pages. Next/Prev simply remain disabled.
                 }
             }
+        }
     }
 
     override fun onCleared() {
-        chapterGeneration++
+        progressSessions.close()
         challengeRecovery.clearOwner()
         revokePageProgress()
         updateState { it.copy(pageProgressHandles = emptyMap(), pageProgress = emptyMap()) }
@@ -949,11 +974,10 @@ private fun ReaderState.withAppendedChapterPages(
 }
 
 /**
- * Identity comparison on the rework's composite key (api + language + title). Mirrors the
- * legacy `SavedMangaEntity` primary-key composition documented on [Manga] and the matcher used
- * by [me.manga.kira.presentation.details.DetailsViewModel].
+ * Requested work identity. Title/language are metadata; only the data layer can prove URL aliases.
  */
 private fun Manga.matches(other: Manga): Boolean =
-    api == other.api &&
-        language == other.language &&
-        title == other.title
+    api == other.api && url == other.url
+
+private fun Manga.chapterLocator(chapterUrl: String): ChapterLocator =
+    ChapterLocator(WorkLocator(api, url), chapterUrl)

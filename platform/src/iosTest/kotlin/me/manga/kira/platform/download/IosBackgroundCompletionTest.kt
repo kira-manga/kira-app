@@ -33,7 +33,7 @@ class IosBackgroundCompletionTest {
     }
 
     @Test
-    fun throwingTerminalListenerStillReleasesThePerTaskOutcome() {
+    fun throwingTerminalListenerSettlesItsTaskWithoutReopeningItOnDuplicateCompletion() {
         withHarness { h ->
             val trace = CompletionTrace()
             h.transport.setSystemCompletionHandler { trace.record("throwing") }
@@ -43,8 +43,10 @@ class IosBackgroundCompletionTest {
             assertSame(failure, assertFailsWith<IllegalStateException> { h.transport.handleCompleted(task, null) })
             val reasons = mutableListOf<String?>()
             h.transport.setListener(FailureListener { reasons += it })
-            // A fresh completion for this identifier must not find the old reported marker.
+            // Terminal task identity is retired even when its listener throws; duplicates stay retired.
             h.transport.handleCompleted(task, null)
+            assertTrue(reasons.isEmpty())
+            h.transport.handleCompleted(h.task(1), null)
             assertEquals(listOf<String?>("Download completed without a page"), reasons)
             assertTrue(h.inspector.paths.isEmpty())
             h.transport.handleFinishedEvents()
@@ -191,6 +193,7 @@ private class FailureListener(
         pageIndex: Int,
         attemptToken: String,
         page: StagedDownloadPage,
+        operation: DownloadOperationExclusion.Operation,
         acknowledge: () -> Unit,
     ) = error("completion without a published page")
 
@@ -200,6 +203,7 @@ private class FailureListener(
         pageIndex: Int,
         attemptToken: String,
         message: String?,
+        operation: DownloadOperationExclusion.Operation,
         acknowledge: () -> Unit,
     ) {
         failed(message)

@@ -1,6 +1,9 @@
 package me.manga.kira.domain.usecase.library
 
 import kotlinx.coroutines.flow.Flow
+import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.domain.repository.LibraryRepository
 
 /**
@@ -12,9 +15,9 @@ import me.manga.kira.domain.repository.LibraryRepository
  * 2. Future composition (e.g. cross-feature joins, side-effecting reads) lives in the use case,
  *    not in the VM.
  *
- * Identity is the composite (api, language, title) triple — same key the underlying
- * `LibraryRepository.observeIsInLibrary` and the legacy `SavedMangaEntity` primary key use, so
- * cross-screen toggles (Library, Home, Details) round-trip through the same reactive store.
+ * A requested work locator resolves to a retained local owner or null under the accepted policy.
+ * Ambiguity, unsupported unowned locators and storage failures remain explicit AppResult failures;
+ * they are not silently reduced to "not saved" or resolved by title/language.
  *
  * Constructor injection per contract §6 DIP. Koin binds it as a factory in `:composeApp`
  * (see `detailsReworkModule.kt`).
@@ -63,6 +66,7 @@ import me.manga.kira.domain.repository.LibraryRepository
 class ObserveInLibraryUseCase(
     private val repository: LibraryRepository,
 ) {
-    operator fun invoke(api: String, language: String, title: String): Flow<Boolean> =
-        repository.observeIsInLibrary(api = api, language = language, title = title)
+    /** Observe the requested source/work address; failures must not be interpreted as missing. */
+    operator fun invoke(work: WorkLocator): Flow<AppResult<SavedWorkIdentity?>> =
+        repository.observeMembership(work)
 }

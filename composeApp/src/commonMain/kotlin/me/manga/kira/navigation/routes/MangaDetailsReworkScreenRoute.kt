@@ -125,12 +125,15 @@ fun MangaDetailsReworkScreenRoute(
         // documented in the slice's commit + ADR-3.
         onNavigateToDownloads = { navController.safeNavigate(Screen.DownloadsRework) },
         // feature/backup: single-manga export — Backup screen scoped to this manga's identity key.
-        onNavigateToBackupExport = { api, language, title ->
+        onNavigateToBackupExport = { key ->
+            val selection = BackupScopeKey(
+                api = key.api,
+                url = key.url,
+                title = viewModel.state.value.manga?.title.orEmpty(),
+            )
             navController.safeNavigate(
                 Screen.BackupRework(
-                    scopeJson = encodeBackupScope(
-                        listOf(BackupScopeKey(api = api, language = language, title = title)),
-                    ),
+                    scopeJson = encodeBackupScope(listOf(selection)),
                 ),
             )
         },
@@ -147,6 +150,7 @@ fun MangaDetailsReworkScreenRoute(
         onSolveCloudflareChallenge = solveCloudflare,
     )
 }
+
 
 /**
  * Route host for the URL-only entry shape (Phase 9.x.mangadetails.swap Slice 4 — ADR-6).
@@ -232,12 +236,15 @@ fun MangaDetailsByUrlReworkScreenRoute(
         },
         onNavigateToDownloads = { navController.safeNavigate(Screen.DownloadsRework) },
         // feature/backup: single-manga export — Backup screen scoped to this manga's identity key.
-        onNavigateToBackupExport = { api, language, title ->
+        onNavigateToBackupExport = { key ->
+            val selection = BackupScopeKey(
+                api = key.api,
+                url = key.url,
+                title = viewModel.state.value.manga?.title.orEmpty(),
+            )
             navController.safeNavigate(
                 Screen.BackupRework(
-                    scopeJson = encodeBackupScope(
-                        listOf(BackupScopeKey(api = api, language = language, title = title)),
-                    ),
+                    scopeJson = encodeBackupScope(listOf(selection)),
                 ),
             )
         },
@@ -247,4 +254,3 @@ fun MangaDetailsByUrlReworkScreenRoute(
         onSolveCloudflareChallenge = solveCloudflare,
     )
 }
-

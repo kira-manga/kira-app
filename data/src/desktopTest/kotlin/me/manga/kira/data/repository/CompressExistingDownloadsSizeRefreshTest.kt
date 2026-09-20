@@ -1,5 +1,6 @@
 package me.manga.kira.data.repository
 
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import com.russhwolf.settings.MapSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -8,7 +9,6 @@ import me.manga.kira.core.cache.HttpCacheClearer
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.storage.SharedPrefsHelper
 import me.manga.kira.data.local.dao.MangaDao
-import me.manga.kira.data.local.dao.MangaIdentityQueries
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.platform.cbz.CbzWriter
@@ -161,9 +161,7 @@ class CompressExistingDownloadsSizeRefreshTest {
         }
     }
 
-    private object InertMangaDao :
-        FailingMangaIdentityQueries(),
-        MangaDao {
+    private object InertMangaDao : MangaDao by FailFastMangaDao {
         override suspend fun getMangaById(mangaId: Long) = null
 
         override fun getAllChapterMetricsFlow() = error("unused")
@@ -217,6 +215,7 @@ class CompressExistingDownloadsSizeRefreshTest {
                     files = appFs,
                     artifacts = artifacts.ownership,
                     commits = artifacts.commits,
+                    operations = DownloadOperationExclusion(),
                 ),
             httpCache = HttpCacheClearer { },
         )
@@ -275,14 +274,3 @@ class CompressExistingDownloadsSizeRefreshTest {
 }
 
 /** Unused identity calls still fail immediately rather than becoming permissive fake lookups. */
-private open class FailingMangaIdentityQueries : MangaIdentityQueries {
-    override suspend fun getIdByApiAndTitle(
-        api: String,
-        title: String,
-    ): Long? = error("unused")
-
-    override suspend fun getIdByApiAndUrl(
-        api: String,
-        mangaUrl: String,
-    ): Long? = error("unused")
-}

@@ -117,6 +117,7 @@ kotlin {
                 // APP #21 joins the real LibraryRepositoryImpl to this module's worker fixture.
                 // Test-only: :data consumes download main; neither main artifact depends on tests.
                 implementation(project(":data"))
+                implementation(project(":sources:contracts"))
                 implementation(libs.junit)
                 implementation(libs.robolectric.runner)
                 implementation(libs.androidx.work.testing)

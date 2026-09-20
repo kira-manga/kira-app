@@ -2,11 +2,13 @@ package me.manga.kira.presentation.features.download.ui.test2
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.job
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.dao.NotificationDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
+import me.manga.kira.platform.download.DownloadOperationExclusion
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
@@ -51,9 +53,13 @@ internal class DownloadWorkerCancellationDao(
             }
         }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override suspend fun getQueuedChaptersForWorker(queuedState: DownloadingState): List<ChapterDownloadEntity> {
-        // Before entering Room: capture doWork's coroutineScope, not a nested Room/collector Job.
-        worker.capture(currentCoroutineContext().job)
+        // withOperation adds exactly one structured child before this capture. Observe its actual
+        // parent (doWork's stable coroutineScope), never substitute the per-chapter child's end.
+        val context = currentCoroutineContext()
+        checkNotNull(context[DownloadOperationExclusion.Operation]).retain().release()
+        worker.capture(checkNotNull(context.job.parent))
         val selected = rows.realDao.getQueuedChaptersForWorker(queuedState)
         if (seam == CancellationSeam.PRECLAIM_CANCEL && queuedSnapshot.complete(selected)) {
             // Return the actual captured Room rows after cancellation, not a new queue query.

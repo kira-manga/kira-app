@@ -15,6 +15,14 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryRefreshReceipt
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
+import me.manga.kira.domain.repository.LibraryMetadataRepository
+import me.manga.kira.domain.repository.MangaDetailsRepository
+import me.manga.kira.presentation.testing.FakeLibraryRepository
 import me.manga.kira.domain.model.library.LibraryRefreshCompleted
 import me.manga.kira.domain.repository.LibraryRepository
 import me.manga.kira.presentation.testing.sampleLibraryManga
@@ -43,8 +51,9 @@ class RefreshAllLibraryChaptersUseCaseTest {
                 LibraryRefreshCompleted(2, 3),
                 assertIs<AppResult.Success<LibraryRefreshCompleted>>(result).value,
             )
-            assertEquals(1, lib.calls.count { it == "persistNewChaptersAndNotify(A,fetched=2)" })
-            assertEquals(1, lib.calls.count { it == "persistNewChaptersAndNotify(B,fetched=1)" })
+            assertEquals(listOf("refresh(1,notify=true)", "refresh(1,notify=true)"), lib.calls)
+            assertEquals(listOf(1L, 2L), lib.refreshRequests.flatten().map { it.owner.id })
+            assertEquals(listOf(2, 1), lib.refreshRequests.flatten().map { it.fetched.details.chapters.size })
         }
 
     @Test
@@ -56,7 +65,7 @@ class RefreshAllLibraryChaptersUseCaseTest {
                 LibraryRefreshCompleted(0, 0),
                 assertIs<AppResult.Success<LibraryRefreshCompleted>>(result).value,
             )
-            assertTrue(lib.calls.none { it.startsWith("persistNewChaptersAndNotify") })
+            assertTrue(lib.refreshRequests.isEmpty())
         }
 
     @Test
@@ -76,7 +85,7 @@ class RefreshAllLibraryChaptersUseCaseTest {
                 assertEquals(error, assertIs<AppResult.Failure>(result).error)
                 assertEquals(
                     if (successfulSibling) 1 else 0,
-                    lib.calls.count { it.startsWith("persistNewChaptersAndNotify") },
+                    lib.refreshRequests.size,
                 )
             }
         }
@@ -87,10 +96,10 @@ class RefreshAllLibraryChaptersUseCaseTest {
             val error = AppError.Storage.Io()
             val lib =
                 object : LibraryRepository by library("A") {
-                    override suspend fun persistNewChaptersAndNotify(
-                        manga: Manga,
-                        fetched: List<Chapter>,
-                    ): AppResult<Int> = AppResult.Failure(error)
+                    override suspend fun refresh(
+                        requests: List<LibraryRefreshRequest>,
+                        notify: Boolean,
+                    ): AppResult<List<LibraryRefreshReceipt>> = AppResult.Failure(error)
                 }
             assertEquals(error, assertIs<AppResult.Failure>(useCase(lib)()).error)
         }
@@ -99,21 +108,27 @@ class RefreshAllLibraryChaptersUseCaseTest {
     fun coverFailure_isBestEffort_andNonemptyZeroNewChaptersStillCompletes() =
         runTest {
             val base = library("A")
-            val lib =
-                object : LibraryRepository by base {
-                    override suspend fun updateCoverIfChanged(
-                        api: String,
-                        language: String,
-                        title: String,
-                        newCoverUrl: String,
-                    ): AppResult<Unit> = AppResult.Failure(AppError.Storage.Io())
+            val covers = mutableListOf<Pair<SavedWorkIdentity, WorkLocator>>()
+            val metadata = object : LibraryMetadataRepository {
+                override suspend fun updateCoverIfChanged(
+                    owner: SavedWorkIdentity,
+                    fetched: WorkLocator,
+                    newCoverUrl: String,
+                ): AppResult<Unit> {
+                    covers += owner to fetched
+                    return AppResult.Failure(AppError.Storage.Io())
                 }
-            val result = useCase(lib)()
+            }
+            val result = useCase(base, libraryMetadata = metadata)()
             assertEquals(
                 LibraryRefreshCompleted(1, 0),
                 assertIs<AppResult.Success<LibraryRefreshCompleted>>(result).value,
             )
-            assertTrue(base.calls.contains("persistNewChaptersAndNotify(A,fetched=0)"))
+            val request = base.refreshRequests.single().single()
+            assertEquals(listOf(request.owner to request.fetched.requested), covers)
+            assertEquals("", request.fetched.details.coverUrl, "optional cover failure cannot re-enter the atomic writer")
+            assertTrue(request.fetched.details.chapters.isEmpty())
+            assertEquals(listOf("refresh(1,notify=true)"), base.calls)
         }
 
     @Test
@@ -142,7 +157,7 @@ class RefreshAllLibraryChaptersUseCaseTest {
                     AppResult.Success(details(manga, listOf(ch("1"))))
                 }()
             assertIs<AppError.Network.Timeout>(assertIs<AppResult.Failure>(result).error)
-            assertTrue(lib.calls.contains("persistNewChaptersAndNotify(A,fetched=1)"))
+            assertEquals(listOf("A"), lib.refreshRequests.flatten().map { it.fetched.details.title })
         }
 
     @Test
@@ -161,8 +176,8 @@ class RefreshAllLibraryChaptersUseCaseTest {
                 }()
             assertIs<AppError.Network.Timeout>(assertIs<AppResult.Failure>(result).error)
             assertEquals((0..164).toSet(), fetched.toSet())
-            assertTrue(lib.calls.contains("persistNewChaptersAndNotify(160,fetched=1)"))
-            assertEquals(161, lib.calls.count { it.startsWith("persistNewChaptersAndNotify") })
+            assertTrue(lib.refreshRequests.flatten().any { it.fetched.details.title == "160" })
+            assertEquals(161, lib.refreshRequests.size)
         }
 
     @Test
@@ -178,11 +193,21 @@ class RefreshAllLibraryChaptersUseCaseTest {
         suspend fun pause() = pauseRefresh(reached, settled)
 
         val lib = cancellingLibrary(stage, ::pause)
+        val metadata = object : LibraryMetadataRepository {
+            override suspend fun updateCoverIfChanged(
+                owner: SavedWorkIdentity,
+                fetched: WorkLocator,
+                newCoverUrl: String,
+            ): AppResult<Unit> {
+                if (stage == CancellationStage.COVER) pause()
+                return AppResult.Success(Unit)
+            }
+        }
         var terminal: AppResult<LibraryRefreshCompleted>? = null
         val job =
             launch {
                 terminal =
-                    useCase(lib) { manga ->
+                    useCase(lib, libraryMetadata = metadata) { manga ->
                         if (stage == CancellationStage.FETCH) pause()
                         AppResult.Success(details(manga))
                     }()
@@ -206,22 +231,12 @@ class RefreshAllLibraryChaptersUseCaseTest {
                     emit(listOf(sampleLibraryManga(title = "A")))
                 }
 
-            override suspend fun updateCoverIfChanged(
-                api: String,
-                language: String,
-                title: String,
-                newCoverUrl: String,
-            ): AppResult<Unit> {
-                if (stage == CancellationStage.COVER) pause()
-                return AppResult.Success(Unit)
-            }
-
-            override suspend fun persistNewChaptersAndNotify(
-                manga: Manga,
-                fetched: List<Chapter>,
-            ): AppResult<Int> {
+            override suspend fun refresh(
+                requests: List<LibraryRefreshRequest>,
+                notify: Boolean,
+            ): AppResult<List<LibraryRefreshReceipt>> {
                 if (stage == CancellationStage.PERSIST) pause()
-                return AppResult.Success(0)
+                return AppResult.Success(requests.map { LibraryRefreshReceipt(it.owner, 0, emptyList()) })
             }
         }
 
@@ -238,4 +253,135 @@ class RefreshAllLibraryChaptersUseCaseTest {
         COVER,
         PERSIST,
     }
+
+    @Test
+    fun networkFailure_skipsOnlyThatFetch_notTheSuccessfulBatch() = runTest {
+        val a = sampleLibraryManga(title = "A", id = 11L)
+        val b = sampleLibraryManga(title = "B", id = 22L)
+        val library = FakeLibraryRepository().apply { emitLibrary(listOf(a, b)) }
+        val details = RecordingDetailsRepository().apply {
+            respond = { manga ->
+                if (manga.url == a.manga.url) AppResult.Failure(AppError.Network.Timeout())
+                else AppResult.Success(fetched(manga, 1))
+            }
+        }
+
+        // A successful sibling commits, but a failed snapshot is never reported as success.
+        assertIs<AppError.Network.Timeout>(assertIs<AppResult.Failure>(useCase(library, fetch = details::fetchDetails)()).error)
+        assertEquals(listOf(b.identity), library.lastRefreshRequests.map { it.owner })
+        assertEquals(listOf("refresh(1,notify=true)"), library.calls)
+    }
+
+    @Test
+    fun identityStorageFailure_propagatesAndStopsLaterBatches() = runTest {
+        val rows = (1L..6L).map { sampleLibraryManga(title = "Work $it", id = it) }
+        val error = AppError.Storage.Constraint("ambiguous batch owner")
+        val library = FakeLibraryRepository().apply {
+            emitLibrary(rows)
+            refreshResult = AppResult.Failure(error)
+        }
+        val details = RecordingDetailsRepository()
+
+        assertEquals(AppResult.Failure(error), useCase(library, fetch = details::fetchDetails)())
+        assertEquals(rows.take(5).map { it.manga }, details.requests)
+        assertEquals(rows.take(5).map { it.identity }, library.refreshRequests.flatten().map { it.owner })
+        assertEquals(List(5) { "refresh(1,notify=true)" }, library.calls)
+    }
+
+    @Test
+    fun deleteReaddDuringFetch_doesNotSubstituteTheReplacementOwner() = runTest {
+        val original = sampleLibraryManga(title = "A", id = 11L)
+        val replacement = original.copy(identity = original.identity.copy(id = 99L))
+        val error = AppError.Storage.Constraint("stale owner")
+        val library = FakeLibraryRepository().apply {
+            emitLibrary(listOf(original))
+            refreshResult = AppResult.Failure(error)
+        }
+        val details = RecordingDetailsRepository().apply {
+            respond = { manga ->
+                library.emitLibrary(listOf(replacement))
+                AppResult.Success(fetched(manga, 1).copy(title = "Renamed"))
+            }
+        }
+
+        assertEquals(AppResult.Failure(error), useCase(library, fetch = details::fetchDetails)())
+        val request = library.lastRefreshRequests.single()
+        assertEquals(original.identity, request.owner)
+        assertEquals(original.identity.locator, request.fetched.requested)
+        assertEquals("Renamed", request.fetched.details.title)
+    }
+
+    @Test
+    fun refreshWritesOnlyBoundedSuccessfulFetchBatches() = runTest {
+        val rows = (1L..7L).map { sampleLibraryManga(title = "Work $it", id = it) }
+        val library = FakeLibraryRepository().apply { emitLibrary(rows) }
+        var active = 0
+        var peak = 0
+        val details = RecordingDetailsRepository().apply {
+            respond = { manga ->
+                active++
+                peak = maxOf(peak, active)
+                delay(10)
+                active--
+                AppResult.Success(fetched(manga, 1))
+            }
+        }
+
+        assertEquals(AppResult.Success(LibraryRefreshCompleted(7, 7)), useCase(library, fetch = details::fetchDetails)())
+        assertEquals(5, peak, "producer concurrency stays bounded while ready owners commit independently")
+        assertEquals(List(7) { "refresh(1,notify=true)" }, library.calls)
+        assertEquals(rows.map { it.manga }, details.requests)
+        assertEquals(rows.map { it.identity }, library.refreshRequests.flatten().map { it.owner })
+    }
+
+    @Test
+    fun duplicateSnapshotOwnersFailBeforeAnyFetchOrWrite() = runTest {
+        val a = sampleLibraryManga(title = "A", id = 7L)
+        val duplicates = listOf(
+            listOf(a, sampleLibraryManga(title = "B", id = 7L)),
+            listOf(a, a.copy(identity = a.identity.copy(id = 8L))),
+        )
+        for (rows in duplicates) {
+            val library = FakeLibraryRepository().apply { emitLibrary(rows) }
+            val details = RecordingDetailsRepository()
+            assertIs<AppError.Storage.Constraint>(
+                assertIs<AppResult.Failure>(useCase(library, fetch = details::fetchDetails)()).error,
+            )
+            assertTrue(details.requests.isEmpty())
+            assertTrue(library.refreshRequests.isEmpty())
+        }
+    }
 }
+
+private class RecordingDetailsRepository : MangaDetailsRepository {
+    val requests = mutableListOf<Manga>()
+    var respond: suspend (Manga) -> AppResult<MangaDetails> = { AppResult.Success(fetched(it, 1)) }
+
+    override suspend fun fetchDetails(manga: Manga): AppResult<MangaDetails> {
+        requests += manga
+        return respond(manga)
+    }
+}
+
+private fun fetched(manga: Manga, chapterCount: Int) = MangaDetails(
+    api = manga.api,
+    language = manga.language,
+    title = manga.title,
+    url = manga.url,
+    coverUrl = "",
+    description = "",
+    author = "",
+    rating = "",
+    status = "",
+    genres = emptyList(),
+    chapters = (1..chapterCount).map { chapter(manga.url, it) },
+)
+
+private fun chapter(workUrl: String, number: Int) = Chapter(
+    number = number.toString(),
+    name = "Chapter $number",
+    url = "$workUrl/chapter/$number",
+    date = null,
+    isDownloaded = false,
+    isBookmarked = false,
+)

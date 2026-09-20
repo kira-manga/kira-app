@@ -15,6 +15,7 @@ import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
 import me.manga.kira.platform.download.BackgroundScheduler
 import me.manga.kira.platform.download.BackgroundWorkSignal
+import me.manga.kira.platform.download.DownloadOperationBusy
 import me.manga.kira.platform.filesystem.chapterDir
 import me.manga.kira.platform.notification.DownloadNotifier
 import me.manga.kira.presentation.features.download.data.DownloadingState
@@ -46,12 +47,13 @@ class IosBackgroundEventSettlementTest {
         val chapter = fixture.seed()
         val claim = fixture.prepareAttempt(chapter, DownloadingState.RUNNING, pageCount = 2)
         fixture.dao.updateProgress(chapter.saved.id, 0)
-        val transport = ArtifactTestTransport()
+        val transport = ArtifactTestTransport(fixture.operations)
         fixture.engine(scope, transport, downloads = fixture.dao.holdProgressUpdate(gate))
         val page = ReceiverPage(fixture, chapter, "progress", failPublication = false)
         val acknowledged = transport.deliverPage(chapter, claim.token, page.page)
         gate.entered.await()
         assertFalse(acknowledged.isCompleted)
+        assertFailsWith<DownloadOperationBusy> { fixture.operations.withExclusive {} }
         assertEquals(0, fixture.download(chapter).progress)
         gate.release.complete(Unit)
         acknowledged.await()
@@ -90,7 +92,7 @@ class IosBackgroundEventSettlementTest {
     ) {
         val chapter = fixture.seed()
         val claim = fixture.prepareAttempt(chapter, DownloadingState.RUNNING)
-        val transport = ArtifactTestTransport()
+        val transport = ArtifactTestTransport(fixture.operations)
         fixture.engine(scope, transport.holdNextEnqueue(retry), files = fixture.holdManifestMove(manifest))
         val page = ReceiverPage(fixture, chapter, "retry", beforeDiscard = disposal::awaitRelease)
         val acknowledged = scope.async { transport.deliverPage(chapter, claim.token, page.page).await() }
@@ -102,6 +104,7 @@ class IosBackgroundEventSettlementTest {
         assertEquals(1, fixture.manifest(chapter).pages.single().attempts)
         assertTrue(fixture.system.exists(page.path))
         assertFalse(acknowledged.isCompleted)
+        assertFailsWith<DownloadOperationBusy> { fixture.operations.withExclusive {} }
         disposal.release.complete(Unit)
         acknowledged.await()
         assertTrue(page.discarded.isCompleted)
@@ -132,7 +135,7 @@ class IosBackgroundEventSettlementTest {
         val signal = BackgroundWorkSignal()
         val trace = EventSettlementTrace()
         val host = BackgroundDownloadHost(scope, BackgroundScheduler.NoOp, signal, DownloadNotifier.NoOp)
-        val engine = fixture.engine(scope, ArtifactTestTransport(), downloads = observation, host = host)
+        val engine = fixture.engine(scope, ArtifactTestTransport(fixture.operations), downloads = observation, host = host)
         observation.collecting.await()
         assertFalse(signal.hasPendingWork, "The cold advisory signal has never observed the stored queue")
         val completed = CompletableDeferred<Unit>()
@@ -157,13 +160,15 @@ class IosBackgroundEventSettlementTest {
             val chapter = fixture.seed()
             val claim = fixture.prepareAttempt(chapter, DownloadingState.RUNNING)
             hostJob.cancel()
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             fixture.engine(CoroutineScope(coroutineContext + hostJob), transport)
             val page = ReceiverPage(fixture, chapter, "cancelled-entry", failPublication = false)
             transport.deliverPage(chapter, claim.token, page.page).await()
             val failed = CompletableDeferred<Unit>()
-            transport.receiver.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, "network") {
-                failed.complete(Unit)
+            fixture.operations.withOperation { operation ->
+                transport.receiver.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, claim.token, "network", operation) {
+                    failed.complete(Unit)
+                }
             }
             failed.await()
             assertEquals(0, page.publications)
@@ -171,6 +176,8 @@ class IosBackgroundEventSettlementTest {
             assertFalse(fixture.system.exists(page.path))
             assertEquals(0, fixture.manifest(chapter).pages.single().attempts)
             assertEquals(DownloadingState.RUNNING, fixture.download(chapter).state)
+            hostJob.join()
+            fixture.operations.withExclusive {} // Both cancelled-before-start receiver children really ended.
         } finally {
             hostJob.cancelAndJoin()
             fixture.close()
@@ -185,7 +192,7 @@ class IosBackgroundEventSettlementTest {
             val dao = object : ChapterDownloadDao by fixture.dao {
                 override fun observeAllDownloads() = flow<List<ChapterDownloadEntity>> { throw IOException("Injected refresh failure") }
             }
-            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), ArtifactTestTransport(), downloads = dao)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), ArtifactTestTransport(fixture.operations), downloads = dao)
             val trace = EventSettlementTrace()
             val completed = CompletableDeferred<Unit>()
             val completion = launch(Dispatchers.Default) {
@@ -214,7 +221,7 @@ class IosBackgroundEventSettlementTest {
         val hostJob = SupervisorJob(coroutineContext[Job]).apply { cancel() }
         try {
             val observation = HeldFirstDownloadObservation(fixture.dao)
-            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), ArtifactTestTransport(), downloads = observation)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), ArtifactTestTransport(fixture.operations), downloads = observation)
             val trace = EventSettlementTrace()
             val completed = CompletableDeferred<Unit>()
             val completion = launch(Dispatchers.Default) {
@@ -246,7 +253,7 @@ class IosBackgroundEventSettlementTest {
                     try { awaitCancellation() } finally { exited.complete(Unit) }
                 }
             }
-            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), ArtifactTestTransport(), downloads = dao)
+            val engine = fixture.engine(CoroutineScope(coroutineContext + hostJob), ArtifactTestTransport(fixture.operations), downloads = dao)
             val trace = EventSettlementTrace()
             val completed = CompletableDeferred<Unit>()
             val completion = launch(Dispatchers.Default) {

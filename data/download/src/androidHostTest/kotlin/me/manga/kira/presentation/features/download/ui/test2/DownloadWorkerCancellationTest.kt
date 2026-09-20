@@ -1,21 +1,16 @@
 package me.manga.kira.presentation.features.download.ui.test2
 
-import android.content.Context
 import androidx.work.WorkInfo
-import com.russhwolf.settings.SharedPreferencesSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
-import me.manga.kira.core.dispatchers.DefaultDispatcherProvider
 import me.manga.kira.data.local.dao.ChapterDownloadDao
 import me.manga.kira.data.local.entity.ChapterArtifactOwner
 import me.manga.kira.data.local.entity.ChapterDownloadEntity
-import me.manga.kira.data.repository.LibraryRepositoryImpl
-import me.manga.kira.data.repository.ReadProgressRepositoryImpl
-import me.manga.kira.domain.service.FileService
+import me.manga.kira.platform.download.DownloadOperationBusy
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,6 +20,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -48,6 +44,7 @@ class DownloadWorkerCancellationTest {
                 withTimeout(GATE_TIMEOUT_MILLIS) { dao.queuedSnapshot.await() },
             )
             assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+            assertExclusiveBusy()
 
             repository.cancelAllDownloads()
             val captured = rows.download()
@@ -58,8 +55,10 @@ class DownloadWorkerCancellationTest {
             assertNull(rows.artifacts.ownership.currentClaim(captured.chapterId))
             assertTrue(uniqueDownloadWork().isEmpty())
             assertFalse(checkNotNull(worker.job).isCompleted)
+            assertExclusiveBusy()
             dao.releaseQueuedSnapshot.complete(Unit)
             joinSuccessfulWorker()
+            assertExclusiveAvailable()
             assertEquals(captured, rows.download())
 
             repository.deleteDownload(captured.chapterId)
@@ -80,6 +79,54 @@ class DownloadWorkerCancellationTest {
             assertNull(producer.job)
             assertFalse(checkNotNull(File(paths.first()).parentFile).exists())
             receipt("actual-Android-cancelAll-before-claim; completed-delete; stale-Retry-false; unique-work-empty")
+        }
+
+    @Test
+    fun androidDeleteWaitsForExclusiveBeforeCapturingItsRow() =
+        cancellationFixture(CancellationSeam.PRECLAIM_CANCEL) {
+            val captureEntered = CompletableDeferred<Unit>()
+            val captured = CompletableDeferred<ChapterDownloadEntity?>()
+            val releaseCapture = CompletableDeferred<Unit>()
+            val deleteDao = object : ChapterDownloadDao by rows.realDao {
+                override suspend fun getDownloadByChapter(chapterId: Long): ChapterDownloadEntity? {
+                    check(captureEntered.complete(Unit)) { "Delete must retain its original capture" }
+                    val selected = rows.realDao.getDownloadByChapter(chapterId)
+                    captured.complete(selected)
+                    releaseCapture.await() // Hold the real generated Room return, not a replacement row.
+                    return selected
+                }
+            }
+            val repository = androidRepository(deleteDao)
+            coroutineScope {
+                // Launch from the outside scope, not one inheriting the writer's exclusive context.
+                val caller = this
+                val deletion = rows.operations.withExclusive {
+                    val pending = caller.async(start = CoroutineStart.UNDISPATCHED) {
+                        repository.deleteDownload(rows.original.saved.id)
+                    }
+                    assertFalse(captureEntered.isCompleted, "Exclusive ownership must block the first DAO capture")
+                    assertFalse(pending.isCompleted)
+                    assertEquals(rows.original.download, rows.download())
+                    pending
+                }
+                try {
+                    assertEquals(rows.original.download, withTimeout(GATE_TIMEOUT_MILLIS) { captured.await() })
+                    assertFalse(deletion.isCompleted)
+                    assertExclusiveBusy()
+                    releaseCapture.complete(Unit)
+                    withTimeout(GATE_TIMEOUT_MILLIS) { deletion.await() }
+                } finally {
+                    releaseCapture.complete(Unit)
+                }
+            }
+            assertExclusiveAvailable()
+            assertNull(rows.realDao.getDownloadByChapter(rows.original.saved.id))
+            assertNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+            assertEquals(rows.original.saved, rows.saved())
+            assertTrue(uniqueDownloadWork().isEmpty())
+            assertNull(producer.job)
+            assertEquals(0, transport.requests.get())
+            receipt("actual-Android-Delete-blocked-before-first-capture; shared-gate-retained-through-cleanup")
         }
 
     @Test
@@ -252,18 +299,21 @@ class DownloadWorkerCancellationTest {
     @Test
     fun libraryRemovalWaitsForRealWorkerDrainAndFencesLateCompletion() =
         cancellationFixture(CancellationSeam.DELIVERED_SEND) {
-            val readProgress = ReadProgressRepositoryImpl(
-                SharedPreferencesSettings(storage.context.getSharedPreferences(storage.root.name, Context.MODE_PRIVATE)),
-            )
-            readProgress.save(rows.original.saved.url, rows.original.saved.lastReadPage)
-            val library = libraryRemovalRepository(readProgress)
+            val readProgress = rows.db.readerProgressDao()
+            val progressEpoch = readProgress.ensureSnapshot(rows.manga.api, rows.manga.url, rows.original.saved.url)
+            assertTrue(readProgress.savePosition(progressEpoch, rows.original.saved.lastReadPage))
+            val savedProgress = assertNotNull(readProgress.findSnapshot(rows.manga.api, rows.manga.url, rows.original.saved.url))
+            assertEquals(progressEpoch.copy(pageIndex = rows.original.saved.lastReadPage), savedProgress)
+            // Explicit lower-path regression control; this is not the production removal adapter.
+            val library = AndroidLibraryDrainRegression(this)
             start()
             awaitSuspendedCompleteSender()
             val claim = assertNotNull(rows.artifacts.ownership.currentClaim(rows.original.saved.id))
+            assertExclusiveBusy()
 
             coroutineScope {
                 val removal = async(start = CoroutineStart.UNDISPATCHED) {
-                    library.removeFromLibrary(rows.manga.api, rows.manga.language, rows.manga.title).also {
+                    library.repository.removeFromLibrary(library.owner).also {
                         assertTrue(checkNotNull(producer.job).isCompleted, "Library removal returned before the real producer drained")
                     }
                 }
@@ -281,7 +331,11 @@ class DownloadWorkerCancellationTest {
                     assertFalse(removal.isCompleted)
                     assertEquals(rows.manga, rows.db.mangaDao().getMangaById(rows.manga.id))
                     assertEquals(rows.original.saved, rows.saved())
-                    assertEquals(rows.original.saved.lastReadPage, readProgress.load(rows.original.saved.url))
+                    assertEquals(savedProgress, readProgress.findSnapshot(rows.manga.api, rows.manga.url, rows.original.saved.url))
+                    assertEquals(0, library.snapshotReads, "The removal writer cannot enter before the original worker joins")
+                    assertEquals(0, library.guardChecks)
+                    assertFalse(library.exclusiveHeld)
+                    assertExclusiveBusy()
                     storage.assertImages(paths)
 
                     // The real adapter requests WorkManager cancellation. Keep the independently
@@ -296,12 +350,14 @@ class DownloadWorkerCancellationTest {
                     assertFalse(removal.isCompleted, "Library removal must retain file custody until the real sender exits")
                     assertFalse(checkNotNull(worker.job).isCompleted)
                     assertFalse(checkNotNull(producer.job).isCompleted)
+                    assertExclusiveBusy()
                     storage.assertImages(paths)
 
                     sender.release()
                     assertTrue(withTimeout(GATE_TIMEOUT_MILLIS) { removal.await() }.isSuccess)
                     assertFalse(storage.mangaDirectory.exists())
                     joinSuccessfulWorker()
+                    assertExclusiveAvailable()
                 } finally {
                     dao.releaseProgress.complete(Unit)
                     sender.release()
@@ -315,15 +371,22 @@ class DownloadWorkerCancellationTest {
             assertEquals(FULL_BUFFER_PAGES, transport.requests.get())
             assertEquals(1, sender.retainedResumeCount.get())
             assertFalse(checkNotNull(producer.job).isCancelled)
+            assertNull(rows.db.mangaDao().getMangaById(library.owner.id))
             assertNull(rows.db.mangaDao().getIdByApiAndTitle(rows.manga.api, rows.manga.title))
             assertNull(rows.db.chapterDao().getChapterByIdSuspend(rows.original.saved.id))
             assertNull(rows.realDao.getDownloadByChapter(rows.original.saved.id))
             assertNull(rows.db.chapterArtifactDao().get(rows.original.saved.id))
             assertNull(rows.db.notificationDao().getNotificationByChapterId(rows.original.saved.id))
-            assertNull(readProgress.load(rows.original.saved.url))
+            val cleared = assertNotNull(readProgress.findSnapshot(rows.manga.api, rows.manga.url, rows.original.saved.url))
+            assertEquals(savedProgress.copy(workGeneration = savedProgress.workGeneration + 1L, pageIndex = null), cleared)
+            assertFalse(readProgress.savePosition(savedProgress, rows.original.saved.lastReadPage), "The old epoch cannot resurrect removed progress")
+            assertEquals(cleared, readProgress.findSnapshot(rows.manga.api, rows.manga.url, rows.original.saved.url))
+            assertEquals(2, library.snapshotReads)
+            assertEquals(2, library.guardChecks, "Preflight and final writer must both revalidate real drain and held exclusion")
+            assertFalse(library.exclusiveHeld)
             assertTrue(paths.none { File(it).exists() })
             assertFalse(storage.mangaDirectory.exists(), "No chapter or manga directory may reappear after both actual Jobs join")
-            receipt("real-Library-removal-retained-parent-until-drain; late-COMPLETE-fenced; actual-jobs-joined; no-rows-or-root-recreated")
+            receipt("lower-path-typed-Library-removal-retained-parent-until-original-drain; late-COMPLETE-fenced; progress-epoch-cleared; no-rows-or-root-recreated")
         }
 
     @Test
@@ -332,13 +395,16 @@ class DownloadWorkerCancellationTest {
             start()
             awaitSuspendedCompleteSender()
             awaitCommittedWithRetainedSend()
+            assertExclusiveBusy()
 
             stopAndObserveCancellation()
             producer.awaitCancellation()
             assertFalse(checkNotNull(producer.job).isCompleted)
+            assertExclusiveBusy()
             receipt("worker-and-producer-cancelled-before-send-resume-release")
             sender.release()
             joinJobs()
+            assertExclusiveAvailable()
             assertCommitted()
             assertEquals(rows.completedDownload(paths), dao.ownershipReadAfterCancellation.await())
             assertFalse(dao.completionCancelled.isCompleted)
@@ -356,13 +422,17 @@ class DownloadWorkerCancellationTest {
             storage.assertImages(paths)
             assertFalse(dao.completionReturned.isCompleted)
             assertFalse(dao.completionCancelled.isCompleted)
+            assertExclusiveBusy()
             receipt("native-outer-commit-held; independent-physical-reader-sees-both-committed-rows")
 
             stopAndObserveCancellation()
+            assertFalse(checkNotNull(worker.job).isCompleted)
+            assertExclusiveBusy()
             receipt("actual-worker-Job-cancelled-before-native-step-return-release")
             commit.release()
             withTimeout(GATE_TIMEOUT_MILLIS) { dao.completionCancelled.await() }
             joinJobs()
+            assertExclusiveAvailable()
             assertFalse(dao.completionReturned.isCompleted)
             assertCommitted()
             assertEquals(rows.completedDownload(paths), dao.ownershipReadAfterCancellation.await())
@@ -375,8 +445,10 @@ class DownloadWorkerCancellationTest {
         cancellationFixture(CancellationSeam.PARTIAL_SYSTEM) {
             start()
             partialCheckpoint()
+            assertExclusiveBusy()
             stopAndObserveCancellation()
             joinJobs()
+            assertExclusiveAvailable()
             assertPartialStopped(DownloadingState.QUEUED, rows.original.download.errorMsg)
             assertEquals(0, dao.completionCalls.get())
             assertEquals(1, dao.requeueCalls.get())
@@ -392,10 +464,12 @@ class DownloadWorkerCancellationTest {
             val failed = rows.download()
             assertEquals(DownloadingState.FAILED, failed.state)
             assertEquals(USER_CANCELLED, failed.errorMsg)
+            assertExclusiveBusy()
             receipt("real-user-FAILED-read-back-before-stop")
 
             stopAndObserveCancellation()
             joinJobs()
+            assertExclusiveAvailable()
             assertPartialStopped(DownloadingState.FAILED, USER_CANCELLED)
             assertEquals(failed, rows.download())
             assertEquals(0, dao.completionCalls.get())
@@ -403,20 +477,15 @@ class DownloadWorkerCancellationTest {
         }
 }
 
-private fun DownloadWorkerCancellationFixture.libraryRemovalRepository(readProgress: ReadProgressRepositoryImpl) =
-    LibraryRepositoryImpl(
-        mangaDao = rows.db.mangaDao(),
-        libraryDeo = rows.db.libraryDeo(),
-        chapterDao = rows.db.chapterDao(),
-        notificationDao = rows.db.notificationDao(),
-        historyDao = rows.db.historyDao(),
-        chapterDownloadDao = rows.realDao,
-        downloadRepository = androidRepository(),
-        fileService = FileService(storage.fileSystem),
-        readProgress = readProgress,
-        dispatchers = DefaultDispatcherProvider(),
-        artifacts = rows.artifacts.ownership,
-    )
+private suspend fun DownloadWorkerCancellationFixture.assertExclusiveBusy() {
+    assertFailsWith<DownloadOperationBusy> {
+        rows.operations.withExclusive { error("Exclusive writer entered while the actual operation remained owned") }
+    }
+}
+
+private suspend fun DownloadWorkerCancellationFixture.assertExclusiveAvailable() {
+    rows.operations.withExclusive { /* Actual gate acquisition, not a queue/Job-state inference. */ }
+}
 
 private suspend fun DownloadWorkerCancellationFixture.awaitSuspendedCompleteSender() {
     assertNull(System.getProperty("kotlinx.coroutines.channels.defaultBuffer"))

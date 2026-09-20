@@ -6,18 +6,19 @@ import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.SQLiteStatement
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.data.local.MangaDatabase
-import me.manga.kira.data.local.dao.LibraryDeo
-import me.manga.kira.data.local.entity.ChapterNotification
-import me.manga.kira.data.local.entity.SavedChapterEntity
+import me.manga.kira.core.result.map
+import me.manga.kira.data.local.MangaWriteTransaction
+import me.manga.kira.data.local.RoomMangaWriteTransaction
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
-import me.manga.kira.domain.service.FileService
+import me.manga.kira.data.mapper.savedIdentity
+import me.manga.kira.data.mapper.toDomainDetails
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
 import me.manga.kira.platform.filesystem.AppFileSystem
 import okio.FileSystem
 import okio.Path
@@ -44,15 +45,12 @@ internal class RefreshDiscoveryFixture : AutoCloseable {
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()
 
-    fun repository(library: LibraryDeo = db.libraryDeo()) = LibraryRepositoryImpl(
-        db.mangaDao(), library, db.chapterDao(), db.notificationDao(), db.historyDao(),
-        db.chapterDownloadingDao(), FakeDownloadRepository(), FileService(files),
-        RecordingReadProgressRepository(), IoDispatchers, artifactRuntime.ownership,
-    )
+    fun repository(boundary: MangaWriteTransaction = RoomMangaWriteTransaction(db)) =
+        LibraryTestRuntime(db, files, artifactRuntime.ownership, boundary = boundary).repository
 
     suspend fun parent(label: String = "one"): SavedMangaEntity {
         val manga = SavedMangaEntity(
-            api = "source", language = "en", url = "https://manga.test/$label",
+            api = "source", language = "en", url = "https://current.test/$label",
             imageUrl = "https://cover.test/$label", title = "Same title", description = "",
             status = "", rating = null, genres = emptyList(), savedTimestamp = 1, lastOpenTimestamp = 2,
         )
@@ -73,7 +71,7 @@ internal class RefreshDiscoveryFixture : AutoCloseable {
             BundledSQLiteDriver().open(root.resolve("refresh.db").toString()).use { it.execSQL(sql) }
         } finally {
             db = openDatabase()
-        artifactRuntime = ArtifactTestRuntime(db, files)
+            artifactRuntime = ArtifactTestRuntime(db, files)
         }
     }
 
@@ -87,13 +85,13 @@ internal fun refreshChapter(number: String = "1") = Chapter(number, "Chapter $nu
 
 internal fun SavedMangaEntity.refreshManga() = Manga(api, language, title, url, imageUrl, null, genres)
 
-private object IoDispatchers : DispatcherProvider {
-    override val main = Dispatchers.Default
-    override val mainImmediate = Dispatchers.Default
-    override val default = Dispatchers.Default
-    override val io = Dispatchers.IO
-    override val unconfined = Dispatchers.Unconfined
-}
+/** Supplies retained metadata explicitly to the typed refresh; there is no persist-only production API. */
+internal fun SavedMangaEntity.discoveryRequest(chapters: List<Chapter>) = LibraryRefreshRequest(
+    savedIdentity(), FetchedWorkDetails(savedIdentity().locator, toDomainDetails(emptyList()).copy(chapters = chapters)),
+)
+
+internal suspend fun LibraryRepositoryImpl.discover(parent: SavedMangaEntity, chapters: List<Chapter>) =
+    refresh(listOf(parent.discoveryRequest(chapters)), notify = true).map { it.single().addedChapters }
 
 internal class RefreshDiscoverySql(
     private val delegate: SQLiteDriver = BundledSQLiteDriver(),
@@ -121,19 +119,3 @@ internal class RefreshDiscoverySql(
     }
 }
 
-/** Releases two repository callers together, before either enters the real Room transaction. */
-internal class RefreshDiscoveryBarrier(private val real: LibraryDeo) : LibraryDeo by real {
-    private val entered = AtomicInteger()
-    private val ready = CompletableDeferred<Unit>()
-
-    override suspend fun persistChapterDiscoveries(
-        api: String,
-        mangaUrl: String,
-        chapters: List<SavedChapterEntity>,
-        expectedMangaId: Long?,
-    ): List<ChapterNotification> {
-        if (entered.incrementAndGet() == 2) ready.complete(Unit)
-        ready.await()
-        return real.persistChapterDiscoveries(api, mangaUrl, chapters, expectedMangaId)
-    }
-}

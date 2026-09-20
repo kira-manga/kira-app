@@ -86,35 +86,41 @@ interface RemoteSourceCatalog {
 }
 
 /**
- * Durable all-or-nothing catalog storage.
- *
- * Implementations may stage immutable source rows before activation, but [activate] must switch
- * the catalog pointer and its source projection in one transaction.
+ * Durable all-or-nothing catalog storage. Immutable SOURCE rows may be staged; historical manifest
+ * lookup exposes only successfully ACCEPTED manifests. No unchecked project/activate bypass exists.
  */
 interface SourceCatalogStore {
     fun readBundled(): String?
 
-    /** Atomically project the trusted bundled tier without changing the signed anti-rollback floor. */
-    suspend fun projectBundled(document: SourceConfigDocument)
+    /** Identity of the exact current embedded bytes, never of a historical unsigned DB copy. */
+    fun bundledIdentity(document: SourceConfigDocument): SelectedCatalogIdentity
 
     suspend fun readActive(): StoredSourceCatalog?
-
     suspend fun readAcceptanceFloor(): SourceCatalogAcceptanceFloor?
+    suspend fun readAcceptedManifest(): SignedSourceCatalogManifest?
+    suspend fun readAcceptedManifest(identity: SelectedCatalogIdentity): SignedSourceCatalogManifest?
+    suspend fun findSource(api: String, sourceRevision: Long, checksum: String): SourceRevisionArtifact?
+    suspend fun readSelection(): SourceSelectionRead
+
+    /** Call outside a transaction; expected state, queue/ownership and every durable write share one owning writer. */
+    suspend fun commitSelection(
+        candidate: VerifiedSourceSelection,
+        expected: SourceSelectionExpectation,
+    ): CommittedSourceSelection
 
     /**
-     * Returns the signed manifest selected by the durable active pointer even when one of its
-     * source payload rows is unreadable. Clients use it to preserve per-source revision and
-     * tombstone history across cache corruption; implementations must not synthesize a manifest.
+     * Call outside a transaction. Only matching process-verified committed bytes may be adopted.
+     * Invoke the non-suspending callback AFTER successful transaction completion, retaining the
+     * writer lease so a later winner cannot precede stale publication. Never bootstrap, suspend
+     * or call another repository from that callback.
      */
-    suspend fun readAcceptedManifest(): SignedSourceCatalogManifest?
+    suspend fun adoptSelection(
+        candidate: VerifiedSourceSelection,
+        publish: (CommittedSourceSelection) -> Unit,
+    ): CommittedSourceSelection?
 
-    suspend fun findSource(
-        api: String,
-        sourceRevision: Long,
-        checksum: String,
-    ): SourceRevisionArtifact?
-
-    suspend fun activate(catalog: StoredSourceCatalog)
+    /** Clears process readiness, not durable selection/floor. Must invalidate identity observers. */
+    fun invalidateSelection()
 }
 
 /** Verifies the manifest and each source revision against app-pinned Ed25519 keys. */

@@ -113,24 +113,8 @@ val libraryReworkModule: Module = module {
     single<LibraryRepository> {
         LibraryRepositoryImpl(
             mangaDao = get(),
-            libraryDeo = get(),
-            // chapterDao + notificationDao back persistNewChaptersAndNotify (refresh-all writes
-            // Notifications-screen rows for new chapters; cross-platform parity with the Android worker).
-            chapterDao = get(),
-            notificationDao = get(),
-            // historyDao backs updateCoverIfChanged (rotated-cover reconcile across saved_manga +
-            // history + notifications, mirroring the Android worker's updateMangaImageUrlEverywhere).
-            historyDao = get(),
-            // chapterDownloadDao + downloadRepository let purgeManga cancel an in-flight download of the
-            // manga being removed (so the engine can't write an orphan CBZ into the just-purged dir).
-            chapterDownloadDao = get(),
-            downloadRepository = get(),
-            fileService = get(),
-            // ReadProgressRepository (bound in readerReworkModule) — clears resume positions on
-            // removal; resolved cross-module by Koin's single graph.
-            readProgress = get(),
+            writes = get(),
             dispatchers = get(),
-            artifacts = get(),
         )
     }
 
@@ -151,7 +135,7 @@ val libraryReworkModule: Module = module {
             observeLibrary = get(),
             fetchDetails = get(),
             persistAndNotify = get(),
-            libraryRepo = get(),
+            libraryMetadata = get(),
             dispatchers = get(),
         )
     }

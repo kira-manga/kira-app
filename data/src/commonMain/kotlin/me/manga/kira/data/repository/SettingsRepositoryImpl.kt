@@ -274,85 +274,87 @@ class SettingsRepositoryImpl(
             shouldStop.value = false
             conversionProgress.value = CbzConversionProgress(isConverting = true)
             try {
-                withContext(dispatchers.io) {
-                    // Recovery can repair/settle an earlier commit. Select only AFTER that readback;
-                    // a previously captured loose roster must not enter the writer or count twice.
-                    conversion.recover()
-                    // B4: a chapter the background download engine is still transferring/finalizing shares this
-                    // chapter's dir (.cbz.part + loose pages); compressing it concurrently corrupts one of the two
-                    // writers. Skip any chapter with an active download row — the engine finalizes it on its own.
-                    val activeStates =
-                        setOf(
-                            DownloadingState.QUEUED,
-                            DownloadingState.RUNNING,
-                            DownloadingState.DOWNLOADED,
-                            DownloadingState.COMPRESSING,
-                        )
-                    val chapters =
-                        chapterDao.getAllDownloadedChapters().filter { chapter ->
-                            chapter.localImagePaths.isNotEmpty() &&
-                                !(
-                                    chapter.localImagePaths.size == 1 &&
-                                        chapter.localImagePaths.first().endsWith(".cbz")
-                                ) &&
-                                chapterDownloadDao.getDownloadByChapter(chapter.id)?.state !in activeStates
-                        }
-                    val total = chapters.size
-                    conversionProgress.update { it.copy(totalChapters = total) }
-
-                    if (total == 0) {
-                        // Nothing to convert — terminal Completed with zero counts (native's
-                        // "no_chapters_to_convert" success path collapses into the same Completed state;
-                        // the `:ui` renders the localized summary from the 0/0 counts).
-                        conversionProgress.value =
-                            CbzConversionProgress(
-                                isConverting = false,
-                                successMessage = TERMINAL_MARKER,
+                conversion.withConversionOperation {
+                    withContext(dispatchers.io) {
+                        // Recovery can repair/settle an earlier commit. Select only AFTER that readback;
+                        // a previously captured loose roster must not enter the writer or count twice.
+                        conversion.recover()
+                        // B4: a chapter the background download engine is still transferring/finalizing shares this
+                        // chapter's dir (.cbz.part + loose pages); compressing it concurrently corrupts one of the two
+                        // writers. Skip any chapter with an active download row — the engine finalizes it on its own.
+                        val activeStates =
+                            setOf(
+                                DownloadingState.QUEUED,
+                                DownloadingState.RUNNING,
+                                DownloadingState.DOWNLOADED,
+                                DownloadingState.COMPRESSING,
                             )
-                        return@withContext
-                    }
+                        val chapters =
+                            chapterDao.getAllDownloadedChapters().filter { chapter ->
+                                chapter.localImagePaths.isNotEmpty() &&
+                                    !(
+                                        chapter.localImagePaths.size == 1 &&
+                                            chapter.localImagePaths.first().endsWith(".cbz")
+                                    ) &&
+                                    chapterDownloadDao.getDownloadByChapter(chapter.id)?.state !in activeStates
+                            }
+                        val total = chapters.size
+                        conversionProgress.update { it.copy(totalChapters = total) }
 
-                    var converted = 0
-                    var failed = 0
-                    chapters.forEach { chapter ->
-                        if (shouldStop.value) {
-                            emitStopped(total = total, converted = converted, failed = failed)
+                        if (total == 0) {
+                            // Nothing to convert — terminal Completed with zero counts (native's
+                            // "no_chapters_to_convert" success path collapses into the same Completed state;
+                            // the `:ui` renders the localized summary from the 0/0 counts).
+                            conversionProgress.value =
+                                CbzConversionProgress(
+                                    isConverting = false,
+                                    successMessage = TERMINAL_MARKER,
+                                )
                             return@withContext
                         }
-                        val mangaTitle =
-                            runCatchingCancellable { mangaDao.getMangaById(chapter.mangaId)?.title }
-                                .getOrNull()
-                                .orEmpty()
-                        conversionProgress.update {
-                            it.copy(
-                                convertedChapters = converted,
-                                failedChapters = failed,
-                                currentMangaTitle = mangaTitle,
-                                currentChapterNumber = chapter.number,
-                            )
-                        }
-                        runCatchingCancellable {
-                            check(conversion.convert(chapter)) { "Chapter conversion lost artifact custody" }
-                        }.onSuccess { converted++ }
-                            .onFailure { failed++ }
-                        conversionProgress.update {
-                            it.copy(convertedChapters = converted, failedChapters = failed)
-                        }
-                    }
 
-                    // Re-check after the last chapter so a Stop pressed during the final convert still
-                    // surfaces the Stopped terminal state (native re-checks `shouldStopConversion` too).
-                    if (shouldStop.value) {
-                        emitStopped(total = total, converted = converted, failed = failed)
-                    } else {
-                        conversionProgress.value =
-                            CbzConversionProgress(
-                                isConverting = false,
-                                totalChapters = total,
-                                convertedChapters = converted,
-                                failedChapters = failed,
-                                successMessage = TERMINAL_MARKER,
-                            )
+                        var converted = 0
+                        var failed = 0
+                        chapters.forEach { chapter ->
+                            if (shouldStop.value) {
+                                emitStopped(total = total, converted = converted, failed = failed)
+                                return@withContext
+                            }
+                            val mangaTitle =
+                                runCatchingCancellable { mangaDao.getMangaById(chapter.mangaId)?.title }
+                                    .getOrNull()
+                                    .orEmpty()
+                            conversionProgress.update {
+                                it.copy(
+                                    convertedChapters = converted,
+                                    failedChapters = failed,
+                                    currentMangaTitle = mangaTitle,
+                                    currentChapterNumber = chapter.number,
+                                )
+                            }
+                            runCatchingCancellable {
+                                check(conversion.convert(chapter)) { "Chapter conversion lost artifact custody" }
+                            }.onSuccess { converted++ }
+                                .onFailure { failed++ }
+                            conversionProgress.update {
+                                it.copy(convertedChapters = converted, failedChapters = failed)
+                            }
+                        }
+
+                        // Re-check after the last chapter so a Stop pressed during the final convert still
+                        // surfaces the Stopped terminal state (native re-checks `shouldStopConversion` too).
+                        if (shouldStop.value) {
+                            emitStopped(total = total, converted = converted, failed = failed)
+                        } else {
+                            conversionProgress.value =
+                                CbzConversionProgress(
+                                    isConverting = false,
+                                    totalChapters = total,
+                                    convertedChapters = converted,
+                                    failedChapters = failed,
+                                    successMessage = TERMINAL_MARKER,
+                                )
+                        }
                     }
                 }
             } catch (ce: CancellationException) {

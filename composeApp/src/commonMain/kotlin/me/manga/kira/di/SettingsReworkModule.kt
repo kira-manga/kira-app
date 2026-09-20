@@ -130,6 +130,7 @@ val settingsReworkModule: Module =
                 files = get(),
                 artifacts = get(),
                 commits = get(),
+                operations = get(),
             )
         }
         single<SettingsRepository> {

@@ -1,77 +1,43 @@
 package me.manga.kira.platform.download
 
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.media.PageBytePolicy
 import me.manga.kira.platform.media.PageMediaInspector
-import platform.Foundation.NSBundle
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
-import platform.Foundation.NSURLSessionConfiguration
 import platform.Foundation.NSURLSessionDownloadTask
 import platform.Foundation.NSURLSessionTask
 import platform.Foundation.setValue
-import kotlin.coroutines.resume
 
 /**
- * iOS [BackgroundTransport] backed by a background `NSURLSession`.
- *
- * A single background session (fixed identifier [SESSION_ID]) downloads each page to its own OS-temp
- * file; the [IosBackgroundSessionDelegate] moves it atomically into the platform download layout
- * (`<files>/manga/<mangaId>/chapter_<chapterId>/image_<pageIndex>.<ext>`) and reports the outcome to
- * the engine via [TransferListener]. Because it is a *background* session the transfers keep running
- * while the app is suspended, and the OS relaunches the app to deliver completions; the host forwards
- * the relaunch's completion handler via [setSystemCompletionHandler].
- *
- * Per-page identity travels on each task's `taskDescription` (`"<mangaId>|<chapterId>|<pageIndex>"`)
- * so completions are matched back to chapters/pages even after a relaunch (recovered via
- * `getAllTasksWithCompletionHandler`). Every event is traced under the `KiraBgDownload` tag
- * ([BgDownloadLog]) — numeric local identifiers/status only, never URL/header/path or error text.
+ * Durable background transfers with one graph-owned exclusion and serial same-identifier sessions.
+ * The initial reservation precedes lazy attachment; each session keeps it through actual native
+ * invalidation, and task/event children retain terminal and receiver cleanup independently.
+ * Cancellation only requests native cancellation. [IosBackgroundEventDrain] still owns exactly one
+ * delivered system-completion window; it is not the session/task lifetime barrier.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosBackgroundTransport(
     appFileSystem: AppFileSystem,
     mediaInspector: PageMediaInspector,
+    recovery: DownloadOperationExclusion.Recovery,
     pageBytePolicy: PageBytePolicy = PageBytePolicy(),
 ) : BackgroundTransport {
+    private val operations = recovery.exclusion
+    private val initialLifetime = IosNativeSessionLifetime(recovery.takeOperation())
     private var listener: TransferListener? = null
     private val eventDrain = IosBackgroundEventDrain()
-    private val delegate = IosBackgroundSessionDelegate(this)
-    private val readiness = Mutex()
-    private var legacyTasksFenced = false
-
     private val callbacks =
         IosPageTransferCallbacks(appFileSystem, mediaInspector, pageBytePolicy, { listener }, ::admitEvent)
-
-    // The ONE background session. iOS persists its tasks across suspension/termination; recreating
-    // the SAME identifier on relaunch re-attaches us to receive the pending callbacks.
-    private val session: NSURLSession by lazy {
-        prepareStaging()
-        val config =
-            NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(SESSION_ID).apply {
-                sessionSendsLaunchEvents = true
-                discretionary = false
-                HTTPMaximumConnectionsPerHost = MAX_CONNECTIONS_PER_HOST
-                // DELIBERATELY no timeoutIntervalForResource override (OS default ≈ 7 days). The
-                // resource clock keeps running while a task merely WAITS for connectivity, so any
-                // tighter bound would expire offline-queued downloads (queue on airplane mode, come
-                // online hours later) — owner decision 2026-07-02. Accepted cost: a genuinely
-                // stalled-but-alive page can pin its chapter RUNNING for a long time. Follow-up after
-                // device QA: an engine-side PROGRESS-STALL watchdog (no didWriteData/completion
-                // movement for N minutes while connectivity is up → cancel + re-enqueue that page)
-                // instead of a wall-clock resource cap.
-            }
-        BgDownloadLog.log("session.created", "maxPerHost" to MAX_CONNECTIONS_PER_HOST)
-        NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
+    private val sessions = IosBackgroundSessions(initialLifetime, ::prepareStaging) { lifetime ->
+        IosBackgroundSessionDelegate(this, lifetime)
     }
 
-    /** Once, before native callbacks can arrive; also testable without starting a real session. */
+    /** Initial native ownership is already reserved, including direct suspended-task handler tests. */
     internal fun prepareStaging() = callbacks.prepareStaging()
 
     override fun setListener(listener: TransferListener) {
@@ -83,45 +49,60 @@ class IosBackgroundTransport(
         eventDrain.setCompletionHandler(handler)
     }
 
-    override suspend fun ensureReady() {
-        // Touch the lazy session so the delegate is attached and the OS can deliver pending events.
-        session
-        // Tokenless/v1 tasks have no publication authority after upgrade. Never adopt their callbacks.
-        readiness.withLock {
-            if (!legacyTasksFenced) {
-                allTasks().filter { IosTransferIdentity.decode(it.taskDescription) == null }.forEach { it.cancel() }
-                legacyTasksFenced = true
-            }
-        }
+    override suspend fun ensureReady() = operations.withOperation { operation ->
+        sessions.ensureReady(operation)
         BgDownloadLog.log("session.ensureReady")
     }
 
-    override suspend fun enqueue(requests: List<TransferRequest>) {
-        requests.forEach { enqueueRequest(it) }
+    override suspend fun enqueue(requests: List<TransferRequest>) = operations.withOperation { operation ->
+        val valid = requests.mapNotNull { request ->
+            val url = NSURL.URLWithString(request.url)
+            if (url == null) {
+                reportInvalidUrl(request, operation)
+                null
+            } else request to url
+        }
+        if (valid.isNotEmpty()) sessions.withSession(operation) { session, lifetime ->
+            valid.forEach { (request, url) -> enqueueRequest(request, url, session, lifetime, operation) }
+        }
     }
 
-    private fun enqueueRequest(req: TransferRequest) {
-        val url = NSURL.URLWithString(req.url)
-        if (url == null) {
-            BgDownloadLog.warn("task.enqueue.invalidUrl", "chapterId" to req.chapterId, "pageIndex" to req.pageIndex)
-            reportInvalidUrl(req)
-            return
-        }
+    private fun enqueueRequest(
+        req: TransferRequest,
+        url: NSURL,
+        session: NSURLSession,
+        lifetime: IosNativeSessionLifetime,
+        operation: DownloadOperationExclusion.Operation,
+    ) {
         val request = NSMutableURLRequest.requestWithURL(url)
         req.headers.forEach { (name, value) -> request.setValue(value, forHTTPHeaderField = name) }
-        val task = session.downloadTaskWithRequest(request)
-        task.taskDescription = IosTransferIdentity(req.mangaId, req.chapterId, req.pageIndex, req.attemptToken).encode()
-        logEnqueued(req, url, task)
-        task.resume()
+        val nativeOwnership = operation.retain() // Before native task creation, not merely before resume.
+        val task = try {
+            session.downloadTaskWithRequest(request)
+        } catch (failure: Throwable) {
+            nativeOwnership.release()
+            throw failure
+        }
+        lifetime.registerCreatedTask(task, nativeOwnership)
+        try {
+            task.taskDescription = IosTransferIdentity(req.mangaId, req.chapterId, req.pageIndex, req.attemptToken).encode()
+            logEnqueued(req, task)
+            task.resume()
+        } catch (failure: Throwable) {
+            task.cancel() // The registered handle remains until real terminal delivery.
+            throw failure
+        }
     }
 
-    private fun reportInvalidUrl(req: TransferRequest) {
-        val event = IosTransferEvent(admitEvent())
+    private fun reportInvalidUrl(req: TransferRequest, operation: DownloadOperationExclusion.Operation) {
+        BgDownloadLog.warn("task.enqueue.invalidUrl", "chapterId" to req.chapterId, "pageIndex" to req.pageIndex)
+        val event = IosTransferEvent(operation, admitEvent())
         try {
             val receiver = listener ?: return
-            event.deliver { acknowledge ->
+            event.deliver { callbackOperation, acknowledge ->
                 receiver.onPageFailed(
-                    req.mangaId, req.chapterId, req.pageIndex, req.attemptToken, "Invalid download URL", acknowledge,
+                    req.mangaId, req.chapterId, req.pageIndex, req.attemptToken, "Invalid download URL",
+                    callbackOperation, acknowledge,
                 )
             }
         } finally {
@@ -129,11 +110,7 @@ class IosBackgroundTransport(
         }
     }
 
-    private fun logEnqueued(
-        req: TransferRequest,
-        url: NSURL,
-        task: NSURLSessionTask,
-    ) {
+    private fun logEnqueued(req: TransferRequest, task: NSURLSessionTask) {
         BgDownloadLog.log(
             "task.enqueued",
             "chapterId" to req.chapterId,
@@ -143,11 +120,11 @@ class IosBackgroundTransport(
         )
     }
 
-    override suspend fun cancelChapter(chapterId: Long, attemptToken: String) {
+    override suspend fun cancelChapter(chapterId: Long, attemptToken: String) = operations.withOperation { operation ->
         var cancelled = 0
-        allTasks().forEach { task ->
-            val d = IosTransferIdentity.decode(task.taskDescription) ?: return@forEach
-            if (d.chapterId == chapterId && d.attemptToken == attemptToken) {
+        sessions.tasks(operation).forEach { task ->
+            val identity = IosTransferIdentity.decode(task.taskDescription) ?: return@forEach
+            if (identity.chapterId == chapterId && identity.attemptToken == attemptToken) {
                 task.cancel()
                 cancelled++
             }
@@ -155,70 +132,71 @@ class IosBackgroundTransport(
         BgDownloadLog.log("task.cancelChapter", "chapterId" to chapterId, "cancelled" to cancelled)
     }
 
-    override suspend fun cancelAll() {
-        val tasks = allTasks()
+    override suspend fun cancelAll() = operations.withOperation { operation ->
+        val tasks = sessions.tasks(operation)
         tasks.forEach { it.cancel() }
         BgDownloadLog.log("task.cancelAll", "cancelled" to tasks.size)
     }
 
-    override suspend fun inFlightPages(chapterId: Long, attemptToken: String): Set<Int> {
-        val out = mutableSetOf<Int>()
-        allTasks().forEach { task ->
-            val d = IosTransferIdentity.decode(task.taskDescription) ?: return@forEach
-            if (d.chapterId == chapterId && d.attemptToken == attemptToken) out += d.pageIndex
-        }
-        BgDownloadLog.log(
-            "session.getAllTasks",
-            "chapterId" to chapterId,
-            "inFlight" to out.size,
-        )
-        return out
-    }
-
-    private suspend fun allTasks(): List<NSURLSessionTask> =
-        suspendCancellableCoroutine { cont ->
-            session.getAllTasksWithCompletionHandler { tasks ->
-                cont.resume((tasks ?: emptyList<Any?>()).filterIsInstance<NSURLSessionTask>())
-            }
+    override suspend fun inFlightPages(chapterId: Long, attemptToken: String): Set<Int> =
+        operations.withOperation { operation ->
+            val pages = sessions.tasks(operation).mapNotNull { task ->
+                IosTransferIdentity.decode(task.taskDescription)?.takeIf {
+                    it.chapterId == chapterId && it.attemptToken == attemptToken
+                }?.pageIndex
+            }.toSet()
+            BgDownloadLog.log("session.getAllTasks", "chapterId" to chapterId, "inFlight" to pages.size)
+            pages
         }
 
-    // ---- invoked by the delegate (on the session's serial delegate queue) ----
-
-    /** Payload-independent receipt seam; callback owners must settle it after durable work/cleanup. */
     internal fun admitEvent(): () -> Unit = eventDrain.admitEvent()
 
+    // Default initial lifetime preserves the existing suspended-native-task handler seams. Actual
+    // delegates always pass their own generation, so a late old callback cannot borrow a successor.
     internal fun handleWroteData(
         task: NSURLSessionTask,
         bytesWritten: Long,
         totalBytesWritten: Long,
         totalExpected: Long,
-    ) {
-        callbacks.handleWroteData(task, bytesWritten, totalBytesWritten, totalExpected)
+        lifetime: IosNativeSessionLifetime = initialLifetime,
+    ) = withCallback(lifetime, task) { operation ->
+        callbacks.handleWroteData(task, bytesWritten, totalBytesWritten, totalExpected, operation)
     }
 
     internal fun handleFinishedDownload(
         task: NSURLSessionDownloadTask,
         location: NSURL,
-        // Keep the handler testable with suspended native tasks; the delegate uses task.response.
         response: NSHTTPURLResponse? = task.response as? NSHTTPURLResponse,
-    ) {
-        callbacks.handleFinishedDownload(task, location, response)
+        lifetime: IosNativeSessionLifetime = initialLifetime,
+    ) = withCallback(lifetime, task) { operation ->
+        callbacks.handleFinishedDownload(task, location, response, operation)
     }
 
     internal fun handleCompleted(
         task: NSURLSessionTask,
         error: NSError?,
+        lifetime: IosNativeSessionLifetime = initialLifetime,
+    ) = withCallback(lifetime, task, terminal = true) { operation ->
+        callbacks.handleCompleted(task, error, operation)
+    }
+
+    private inline fun withCallback(
+        lifetime: IosNativeSessionLifetime,
+        task: NSURLSessionTask,
+        terminal: Boolean = false,
+        action: (DownloadOperationExclusion.Operation) -> Unit,
     ) {
-        callbacks.handleCompleted(task, error)
+        val operation = lifetime.beginCallback(task, terminal) ?: return
+        try {
+            action(operation)
+        } finally {
+            operation.release()
+            if (terminal) lifetime.finishTask(task)
+        }
     }
 
     internal fun handleFinishedEvents() {
         BgDownloadLog.log("session.didFinishEvents")
         eventDrain.finishEvents()
-    }
-
-    private companion object {
-        val SESSION_ID = "${NSBundle.mainBundle.bundleIdentifier ?: "me.manga.kira.debug"}.download.transfers"
-        const val MAX_CONNECTIONS_PER_HOST: Long = 4
     }
 }

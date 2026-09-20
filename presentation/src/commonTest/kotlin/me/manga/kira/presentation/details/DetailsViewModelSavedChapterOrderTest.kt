@@ -62,7 +62,6 @@ class DetailsViewModelSavedChapterOrderTest {
     private fun fixture(fromSaved: Boolean): DetailsOwnerFixture =
         DetailsOwnerFixture(emptyMap(), dispatcher, chapters).also {
             store.put("details-$fromSaved", it.vm)
-            it.library.emitInLibrary(fromSaved)
             if (fromSaved) it.savedDetails.value = detailsFor(manga, chapters)
             it.vm.submit(DetailsIntent.OnEnter(manga))
             dispatcher.scheduler.runCurrent()

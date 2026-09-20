@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.backup.BackupScope
+import me.manga.kira.domain.model.backup.isValid
 import me.manga.kira.domain.usecase.settings.ObserveCbzConversionUseCase
 import me.manga.kira.presentation.mvi.MviViewModel
 
@@ -30,7 +31,9 @@ class BackupViewModel(
     private val files: BackupFileOperations,
     private val progressActions: BackupProgressOperations,
     observeCbzConversion: ObserveCbzConversionUseCase,
-) : MviViewModel<BackupState, BackupIntent, BackupEffect>(BackupState(scope = scope)) {
+) : MviViewModel<BackupState, BackupIntent, BackupEffect>(
+    BackupState(scope = scope, error = if (scope.isValid) null else AppError.Validation.Format("backup_scope")),
+) {
     init {
         launchSafely {
             progressActions.observe().collect { snapshot ->

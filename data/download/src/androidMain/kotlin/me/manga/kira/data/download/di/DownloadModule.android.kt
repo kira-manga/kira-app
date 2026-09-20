@@ -35,6 +35,7 @@ actual fun downloadModule(): Module =
                 dao = get(),
                 chapterDownloadService = get(),
                 artifacts = get(),
+                operations = get(),
             )
         }
     }

@@ -26,6 +26,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.emptyFlow
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.LibraryActivity
+import me.manga.kira.domain.model.library.LibraryAffinity
+import me.manga.kira.domain.model.library.LibraryChapterCounts
 import me.manga.kira.domain.model.library.LibraryCategory
 import me.manga.kira.domain.model.library.LibraryFilter
 import me.manga.kira.presentation.library.LibraryIntent
@@ -251,14 +256,8 @@ private fun savedManga(): LibraryManga =
                 rating = null,
                 genres = emptyList(),
             ),
-        addedAt = Instant.fromEpochMilliseconds(0),
-        unreadCount = 0,
-        hasDownloads = false,
-        totalChapters = 1,
-        lastReadAt = null,
-        lastOpenedAt = Instant.fromEpochMilliseconds(0),
-        bookmarkedCount = 0,
-        downloadedCount = 0,
-        isLiked = false,
-        isWatchingNow = false,
+        identity = SavedWorkIdentity(1L, WorkLocator("fixture", "https://example.invalid/manga")),
+        activity = LibraryActivity(Instant.fromEpochMilliseconds(0), Instant.fromEpochMilliseconds(0), null),
+        counts = LibraryChapterCounts(total = 1, unread = 0, downloaded = 0, bookmarked = 0),
+        affinity = LibraryAffinity(isLiked = false, isWatchingNow = false),
     )

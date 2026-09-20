@@ -16,6 +16,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.manga.kira.data.local.entity.ChapterArtifactEntity
 import me.manga.kira.data.local.entity.ChapterArtifactOperation
+import me.manga.kira.data.local.entity.ChapterConversionRoster
+import me.manga.kira.data.local.entity.ChapterConversionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -32,7 +34,9 @@ class ChapterArtifactSchema15Test {
         try {
             createExported14(path)
             val db = Room.databaseBuilder<MangaDatabase>(path.toString())
-                .addMigrations(MIGRATION_14_15, MIGRATION_15_16)
+                .addMigrations(MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                .addCallback(ReaderProgressConstraints)
+                .addCallback(EffectiveSourceSelectionSchema)
                 .setDriver(BundledSQLiteDriver())
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build()
@@ -64,7 +68,7 @@ class ChapterArtifactSchema15Test {
             BundledSQLiteDriver().open(path.toString()).use { connection ->
                 connection.prepare("PRAGMA user_version").use { statement ->
                     assertTrue(statement.step())
-                    assertEquals(16L, statement.getLong(0))
+                    assertEquals(17L, statement.getLong(0))
                 }
                 connection.prepare("PRAGMA foreign_key_list('chapter_artifacts')").use { assertFalse(it.step()) }
             }
@@ -98,7 +102,10 @@ class ChapterArtifactSchema15Test {
                     VALUES (11,7,'chapter','$TOKEN','convert',1,21,0)""")
             }
             val db = Room.databaseBuilder<MangaDatabase>(path.toString())
-                .addMigrations(MIGRATION_15_16).setDriver(BundledSQLiteDriver())
+                .addMigrations(MIGRATION_15_16, MIGRATION_16_17)
+                .addCallback(ReaderProgressConstraints)
+                .addCallback(EffectiveSourceSelectionSchema)
+                .setDriver(BundledSQLiteDriver())
                 .setQueryCoroutineContext(Dispatchers.IO).build()
             try {
                 val receipt = assertNotNull(db.chapterArtifactDao().get(11))
@@ -128,6 +135,75 @@ class ChapterArtifactSchema15Test {
         assertEquals(prior["primaryKey"], next["primaryKey"])
         assertEquals(prior["indices"], next["indices"])
         assertEquals(prior["foreignKeys"], next["foreignKeys"])
+    }
+
+    @Test
+    fun roomMigratesExported16RetainingExactCustodyAndConversionRoster() = runBlocking {
+        val root = Files.createTempDirectory("kira-reader-selection-upgrade-")
+        val path = root.resolve("migrated.db")
+        try {
+            createExported14(path, version = 16)
+            seedRetainedConversion(path)
+            repeat(2) {
+                val db = openVersion16Upgrade(path)
+                try {
+                    assertEquals(retainedConversion(), db.chapterArtifactDao().get(11))
+                    assertEquals(123L, db.chapterDownloadingDao().getDownloadByChapter(11)?.sizeBytes)
+                    assertEquals(0, db.effectiveSourceSelectionDao().selectionCount())
+                    assertEquals(1L, db.effectiveSourceSelectionDao().nextGeneration())
+                } finally {
+                    db.close()
+                }
+            }
+        } finally {
+            check(root.toFile().deleteRecursively())
+        }
+    }
+
+    private fun openVersion16Upgrade(path: Path): MangaDatabase =
+        Room.databaseBuilder<MangaDatabase>(path.toString())
+            .addMigrations(MIGRATION_16_17)
+            .addCallback(ReaderProgressConstraints)
+            .addCallback(EffectiveSourceSelectionSchema)
+            .setDriver(BundledSQLiteDriver())
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
+
+    private fun retainedConversion(): ChapterArtifactEntity =
+        ChapterArtifactEntity(
+            chapterId = 11,
+            mangaId = 7,
+            chapterUrl = "chapter",
+            token = TOKEN,
+            operation = ChapterArtifactOperation.CONVERT,
+            retiring = true,
+            downloadId = 21,
+            pendingRelativePath = "pending_11.cbz",
+            pendingSizeBytes = 456,
+            ownsPendingPath = true,
+            committedToken = COMMITTED_TOKEN,
+            committedRelativePath = "committed_11.cbz",
+            retiredRelativePath = "retired_11.cbz",
+            conversionSourceRoster = ChapterConversionRoster.encode(
+                listOf(ChapterConversionSource("/old-container/page.png", "page.png")),
+            ),
+        )
+
+    private fun seedRetainedConversion(path: Path) {
+        val roster = retainedConversion().conversionSourceRoster
+        BundledSQLiteDriver().open(path.toString()).use { connection ->
+            connection.execSQL(
+                """
+                INSERT INTO chapter_artifacts
+                    (chapterId, mangaId, chapterUrl, token, operation, retiring, downloadId,
+                     pendingRelativePath, pendingSizeBytes, ownsPendingPath, committedToken,
+                     committedRelativePath, retiredRelativePath, conversionSourceRoster)
+                VALUES (11, 7, 'chapter', '$TOKEN', 'convert', 1, 21,
+                        'pending_11.cbz', 456, 1, '$COMMITTED_TOKEN',
+                        'committed_11.cbz', 'retired_11.cbz', '$roster')
+                """.trimIndent(),
+            )
+        }
     }
 
     private fun createExported14(path: Path, version: Int = 14) {
@@ -176,5 +252,8 @@ class ChapterArtifactSchema15Test {
 
     private fun JsonObject.tableEntry() = getValue("tableName").jsonPrimitive.content to this
 
-    private companion object { const val TOKEN = "11111111-1111-4111-8111-111111111111" }
+    private companion object {
+        const val TOKEN = "11111111-1111-4111-8111-111111111111"
+        const val COMMITTED_TOKEN = "22222222-2222-4222-8222-222222222222"
+    }
 }

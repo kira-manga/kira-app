@@ -14,10 +14,14 @@ import me.manga.kira.data.download.artifacts.ChapterArtifacts
 import me.manga.kira.data.local.dao.ChapterArtifactCommitDao
 import me.manga.kira.data.local.dao.ChapterRestoreOutcome
 import me.manga.kira.data.local.entity.ChapterArtifactClaim
+import me.manga.kira.data.mapper.savedIdentity
 import me.manga.kira.data.repository.DownloadRecoveryFixture
 import me.manga.kira.data.repository.downloadRecoveryTest
 import me.manga.kira.data.repository.recoveryTestPng
+import me.manga.kira.data.repository.progress.progressValue
 import me.manga.kira.domain.model.backup.BackupProgress
+import me.manga.kira.domain.model.identity.ChapterLocator
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.platform.backup.BackupImportPolicy
 import me.manga.kira.platform.backup.BackupImportStaging
 import me.manga.kira.platform.backup.BackupJsonLimits
@@ -48,18 +52,20 @@ class BackupImporterAdmissionTest {
     fun invalidFinalCbzLeavesEarlierMangasResumeAndExistingArtifactsUntouched() = downloadRecoveryTest {
         val retained = seed(isDownloaded = true)
         val before = db.backupDao().getAllSavedManga()
-        val progress = BackupMemoryReadProgress()
-        progress.save(retained.saved.url, 4)
+        val progress = BackupTestProgressRuntime(db)
+        val retainedOwner = assertNotNull(db.mangaDao().getMangaById(retained.saved.mangaId)).savedIdentity()
+        val retainedLocator = ChapterLocator(retainedOwner.locator, retained.saved.url)
+        progress.native.save(progress.native.beginSession(retainedLocator).progressValue().handle, 4).progressValue()
         val selected = writeBackup(twoMangas(), recoveryTestPng(), "not an image".encodeToByteArray())
-        val repo = backupTestRepository(db, appFileSystem, progress)
+        val repo = backupTestRepository(db, appFileSystem, progress.mergeWriter)
         val error = assertIs<AppResult.Failure>(repo.importBackup(selected.toString())).error
         assertIs<AppError.Validation.Format>(error)
         assertEquals(before, db.backupDao().getAllSavedManga())
         assertEquals(retained.saved, saved(retained))
         assertEquals(retained.download, download(retained))
         assertNull(db.chapterArtifactDao().get(retained.saved.id))
-        assertEquals(4, progress.load(retained.saved.url))
-        assertNull(progress.load("imported-chapter-0"))
+        assertEquals(4, progress.native.readPosition(retainedLocator).progressValue())
+        assertNull(progress.native.readPosition(importedLocator(0)).progressValue())
         assertTrue(db.backupDao().getAllHistoryOnce().isEmpty())
         assertRetainedFiles(retained)
         assertTrue(fs.exists(selected))
@@ -70,7 +76,7 @@ class BackupImporterAdmissionTest {
     fun cancellingLastPageCleansPrivateSnapshotsAndResetsTheRunGate() = downloadRecoveryTest {
         val retained = seed(isDownloaded = true)
         val before = db.backupDao().getAllSavedManga()
-        val progress = BackupMemoryReadProgress()
+        val progress = BackupTestProgressRuntime(db)
         val cancelled = CancellationException("cancel final page")
         var inspected = 0
         val inspector = object : PageMediaInspector by native {
@@ -79,13 +85,13 @@ class BackupImporterAdmissionTest {
                 return native.inspect(encoded)
             }
         }
-        val repo = backupTestRepository(db, appFileSystem, progress, inspector)
+        val repo = backupTestRepository(db, appFileSystem, progress.mergeWriter, inspector)
         val selected = writeBackup(twoMangas(), recoveryTestPng(), recoveryTestPng())
         assertSame(cancelled, assertFailsWith<CancellationException> { repo.importBackup(selected.toString()) })
         assertEquals(before, db.backupDao().getAllSavedManga())
         assertEquals(retained.saved, saved(retained))
         assertEquals(retained.download, download(retained))
-        assertNull(progress.load("imported-chapter-0"))
+        assertNull(progress.native.readPosition(importedLocator(0)).progressValue())
         assertEquals(BackupProgress(), repo.observeProgress().first())
         assertRetainedFiles(retained)
         assertNoImportSnapshots()
@@ -103,13 +109,13 @@ class BackupImporterAdmissionTest {
                 return native.inspect(encoded)
             }
         }
-        val progress = BackupMemoryReadProgress()
-        val repo = backupTestRepository(db, appFileSystem, progress, inspector)
+        val progress = BackupTestProgressRuntime(db)
+        val repo = backupTestRepository(db, appFileSystem, progress.mergeWriter, inspector)
         stop = repo::stop
         val selected = writeBackup(twoMangas(), recoveryTestPng(), recoveryTestPng())
         assertIs<AppError.Cancelled>(assertIs<AppResult.Failure>(repo.importBackup(selected.toString())).error)
         assertEquals(before, db.backupDao().getAllSavedManga())
-        assertNull(progress.load("imported-chapter-0"))
+        assertNull(progress.native.readPosition(importedLocator(0)).progressValue())
         assertTrue(repo.observeProgress().first().wasStopped)
         assertFalse(repo.observeProgress().first().failed)
         assertNoImportSnapshots()
@@ -117,7 +123,7 @@ class BackupImporterAdmissionTest {
 
     @Test
     fun futureFormatPreservesItsSpecificTypedError() = downloadRecoveryTest {
-        val repo = backupTestRepository(db, appFileSystem, BackupMemoryReadProgress())
+        val repo = backupTestRepository(db, appFileSystem, BackupTestProgressRuntime(db).mergeWriter)
         val selected = writeBackup(BackupFile(formatVersion = BACKUP_FORMAT_VERSION + 1))
         val failure = assertIs<AppResult.Failure>(repo.importBackup(selected.toString()))
         assertEquals("formatVersion", assertIs<AppError.Validation.OutOfRange>(failure.error).field)
@@ -128,7 +134,7 @@ class BackupImporterAdmissionTest {
     @Test
     fun actualManifestLimitIsMappedBeforeAnyMetadataMerge() = downloadRecoveryTest {
         val policy = BackupImportPolicy(json = BackupJsonLimits(maxBytes = 16))
-        val repo = backupTestRepository(db, appFileSystem, BackupMemoryReadProgress(), policy = policy)
+        val repo = backupTestRepository(db, appFileSystem, BackupTestProgressRuntime(db).mergeWriter, policy = policy)
         val selected = writeBackup(twoMangas(), recoveryTestPng(), recoveryTestPng())
         val failure = assertIs<AppResult.Failure>(repo.importBackup(selected.toString()))
         assertEquals("backup_size", assertIs<AppError.Validation.OutOfRange>(failure.error).field)
@@ -142,13 +148,13 @@ class BackupImporterAdmissionTest {
         val importer = unknownSettlementImporter()
         val run = BackupRun(MutableStateFlow(BackupProgress()), { false }, currentCoroutineContext())
         assertFailsWith<IOException> { importer.run(selected.toString(), run) }
-        val manga = assertNotNull(db.backupDao().getMangaByUrl("imported-manga-0"))
-        val chapter = assertNotNull(db.backupDao().getChapterByMangaAndUrl(manga.id, "imported-chapter-0"))
+        val manga = assertNotNull(db.backupDao().getMangaByUrl(importedLocator(0).work.url))
+        val chapter = assertNotNull(db.backupDao().getChapterByMangaAndUrl(manga.id, importedLocator(0).chapterUrl))
         val record = assertNotNull(db.chapterArtifactDao().get(chapter.id))
         assertTrue(chapter.isDownloaded)
         assertTrue(fs.exists(chapter.localImagePaths.single().toPath()))
         assertNotNull(record.token, "uncertain publication keeps recovery custody")
-        assertNull(db.backupDao().getMangaByUrl("imported-manga-1"))
+        assertNull(db.backupDao().getMangaByUrl(importedLocator(1).work.url))
         assertNoImportSnapshots()
     }
 
@@ -166,15 +172,20 @@ class BackupImporterAdmissionTest {
         val artifacts = ChapterArtifacts(dao, recovery)
         val publisher = RestoredDownloadPublisher(artifacts, dao, commits, appFileSystem, recovery)
         val preflight = BackupArchivePreflight(appFileSystem, BackupImportStaging(appFileSystem), native)
-        return BackupImporter(db.backupDao(), BackupMemoryReadProgress(), preflight, publisher)
+        return BackupImporter(db.backupDao(), BackupTestProgressRuntime(db).mergeWriter, preflight, publisher)
     }
+
+    private fun importedLocator(index: Int) = ChapterLocator(
+        WorkLocator("source", "https://current.test/imported-manga-$index"),
+        "https://current.test/imported-chapter-$index",
+    )
 
     private fun twoMangas() = BackupFile(
         includesDownloads = true,
         mangas = (0..1).map { index ->
             BackupManga(
-                api = "source", url = "imported-manga-$index", title = "Imported $index",
-                chapters = listOf(BackupChapter(url = "imported-chapter-$index", resumePage = 8, downloadEntry = "downloads/$index.cbz")),
+                api = "source", url = importedLocator(index).work.url, title = "Imported $index",
+                chapters = listOf(BackupChapter(url = importedLocator(index).chapterUrl, resumePage = 8, downloadEntry = "downloads/$index.cbz")),
             )
         },
     )

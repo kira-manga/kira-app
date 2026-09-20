@@ -37,7 +37,7 @@ class IosManifestPersistenceTest {
                 chapter.pages.keys.forEach { fixture.system.delete(it) }
                 val directory = fixture.appFileSystem.chapterDir(chapter.saved.mangaId, chapter.saved.id)
                 val fault = ManifestWriteFault(fixture.system, directory, cut)
-                val transport = ArtifactTestTransport(ready = true)
+                val transport = ArtifactTestTransport(fixture.operations, ready = true)
                 var resolutions = 0
                 val provider = object : ChapterPageProvider {
                     override suspend fun pagesOrNull(api: String, mangaUrl: String, mangaLanguage: String, chapterUrl: String): List<DownloadPage> {
@@ -82,7 +82,7 @@ class IosManifestPersistenceTest {
                 val path = directory / "manifest.json"
                 val before = fixture.system.read(path) { readByteArray() }
                 val fault = ManifestWriteFault(fixture.system, directory, cut)
-                val transport = ArtifactTestTransport()
+                val transport = ArtifactTestTransport(fixture.operations)
                 fixture.engine(CoroutineScope(coroutineContext + host), transport, files = fixture.manifestFiles(fault))
                 transport.failPage(chapter, claim.token).await()
                 host.cancelAndJoin()
@@ -94,7 +94,7 @@ class IosManifestPersistenceTest {
                 assertTrue(fixture.system.list(directory).none { it.name.startsWith(".manifest-") })
 
                 fixture.reopen()
-                val restarted = ArtifactTestTransport(ready = true)
+                val restarted = ArtifactTestTransport(fixture.operations, ready = true)
                 val engine = fixture.engine(CoroutineScope(coroutineContext + reopenedHost), restarted)
                 engine.reconcileInterruptedDownloads()
                 assertEquals(DownloadingState.FAILED, fixture.download(chapter).state)
@@ -119,7 +119,7 @@ class IosManifestPersistenceTest {
             val chapter = fixture.seed()
             val claim = fixture.prepareAttempt(chapter, DownloadingState.RUNNING, failures = 1)
             chapter.pages.keys.forEach { fixture.system.delete(it) }
-            val transport = ArtifactTestTransport()
+            val transport = ArtifactTestTransport(fixture.operations)
             fixture.engine(CoroutineScope(coroutineContext + host), transport.holdNextEnqueue(handoff))
             transport.failPage(chapter, claim.token).await()
             handoff.entered.await()
@@ -132,7 +132,7 @@ class IosManifestPersistenceTest {
             fixture.reopen()
             assertContentEquals(committed, fixture.system.read(path) { readByteArray() })
 
-            val restarted = ArtifactTestTransport(ready = true)
+            val restarted = ArtifactTestTransport(fixture.operations, ready = true)
             fixture.engine(CoroutineScope(coroutineContext + reopenedHost), restarted)
             val request = restarted.requests.receive()
             assertEquals(claim.token, request.attemptToken)
@@ -194,9 +194,11 @@ private fun IosCbzFinalizationFixture.manifestFiles(fault: FileSystem): AppFileS
         override fun fileSystem(): FileSystem = fault
     }
 
-private fun ArtifactTestTransport.failPage(chapter: IosCbzChapter, token: String): CompletableDeferred<Unit> =
+private suspend fun ArtifactTestTransport.failPage(chapter: IosCbzChapter, token: String): CompletableDeferred<Unit> =
     CompletableDeferred<Unit>().also { acknowledgement ->
-        receiver.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, token, "HTTP 500") {
-            acknowledgement.complete(Unit)
+        operations.withOperation { operation ->
+            receiver.onPageFailed(chapter.saved.mangaId, chapter.saved.id, 0, token, "HTTP 500", operation) {
+                acknowledgement.complete(Unit)
+            }
         }
     }

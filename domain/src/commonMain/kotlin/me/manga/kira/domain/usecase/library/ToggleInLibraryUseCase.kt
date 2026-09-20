@@ -5,6 +5,9 @@ import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.result.flatMap
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.FetchedWorkDetails
 import me.manga.kira.domain.repository.LibraryRepository
 
 /**
@@ -17,11 +20,11 @@ import me.manga.kira.domain.repository.LibraryRepository
  * Returns the new membership state (`true` = now in library, `false` = now out of library) so
  * the caller can update UI without re-querying.
  *
- * Note: the check-then-act (`get` → add/remove) is NOT transactionally atomic. Two concurrent
- * invocations (e.g. a double-tap, since `MviViewModel.submit` launches a fresh coroutine per
- * intent) can both observe the same snapshot and collapse into a single net toggle. This is
- * benign — add is an upsert and remove is idempotent, so the returned Boolean always agrees with
- * the final DB state — but a rapid double-tap may not flip membership the second time.
+ * A displayed saved owner is retained across the call and revalidated by the writer. Without an
+ * owner, the locator read chooses add or remove; title/language never choose the target. Each
+ * repository mutation is atomic, but this check-then-act policy is not a concurrent-toggle queue.
+ * A deleted/replaced owner or ambiguous accepted alias fails; it never retargets or silently adds.
+ * Callers should gate duplicate taps and observe membership rather than assume a permanent result.
  *
  * **Audit-trail postscript** (Phase 9.x.cluster127.staleKdocSweep.cascade,
  * Task #583, 2026-05-28): classified as follows after recursive symbol
@@ -67,17 +70,23 @@ class ToggleInLibraryUseCase(
     suspend operator fun invoke(
         manga: Manga,
         details: MangaDetails? = null,
+        retainedOwner: SavedWorkIdentity? = null,
     ): AppResult<Boolean> {
-        val existing = repository.get(manga.api, manga.language, manga.title)
-        return existing.flatMap { current ->
-            if (current == null) {
+        val work = WorkLocator(manga.api, manga.url)
+        if (retainedOwner != null) {
+            return remove(retainedOwner)
+        }
+        return repository.get(work).flatMap { current ->
+            if (current != null) {
+                remove(current.identity.copy(locator = work))
+            } else {
                 val fetched = details
                     ?: return@flatMap AppResult.Failure(AppError.Validation.Required("mangaDetails"))
-                repository.addToLibrary(fetched).flatMap { AppResult.Success(true) }
-            } else {
-                repository.removeFromLibrary(manga.api, manga.language, manga.title)
-                    .flatMap { AppResult.Success(false) }
+                repository.addToLibrary(FetchedWorkDetails(work, fetched)).flatMap { AppResult.Success(true) }
             }
         }
     }
+
+    private suspend fun remove(owner: SavedWorkIdentity): AppResult<Boolean> =
+        repository.removeFromLibrary(owner).flatMap { AppResult.Success(false) }
 }

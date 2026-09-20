@@ -4,6 +4,9 @@ import kotlin.time.Instant
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.library.LibraryActivity
+import me.manga.kira.domain.model.library.LibraryAffinity
+import me.manga.kira.domain.model.library.LibraryChapterCounts
 
 /**
  * Entity ↔ domain mappers for the Library slice.
@@ -11,15 +14,9 @@ import me.manga.kira.domain.model.Manga
  * SRP (contract §6): one file owns the SavedMangaEntity ↔ Manga / LibraryManga translation.
  * Domain types stay free of Room/Compose, and the SavedMangaEntity stays free of domain types.
  *
- * Migration note (Phase 4 + Task #324): SavedMangaEntity carries Android-leaning fields the
- * domain intentionally does NOT expose (id, savedTimestamp, lastOpenTimestamp, description,
- * status, imageUrl). Those remain available to the legacy :shared code paths until each
- * downstream feature migrates to a domain-shaped equivalent. The `isLiked` / `isWatchingNow`
- * columns USED to be on that not-exposed list — Task #324's category-tabs foundation lifted
- * both into [LibraryManga] as pass-throughs, since the rework Library's `LibraryCategory`
- * axis filters by per-manga affinity. Mutation of the two flags is still owned by the legacy
- * code paths (Details-screen heart toggle, "watching now" mark) until a later slice ports
- * those toggles into `:domain`.
+ * [LibraryManga] retains the local ID/raw address for checked actions, plus grouped activity,
+ * chapter counts and affinity metadata. Plain [Manga] remains portable display/source data.
+ * Full saved content (description/author/status) is projected separately by the Details mapper.
  */
 internal fun SavedMangaEntity.toDomainManga(): Manga = Manga(
     api = api,
@@ -66,16 +63,19 @@ internal fun SavedMangaEntity.toLibraryManga(
     bookmarkedCount: Int,
 ): LibraryManga = LibraryManga(
     manga = toDomainManga(),
-    addedAt = Instant.fromEpochMilliseconds(savedTimestamp),
-    unreadCount = (totalChapters - readCount).coerceAtLeast(0),
-    hasDownloads = downloadedCount > 0,
-    totalChapters = totalChapters,
-    lastReadAt = lastReadTs?.takeIf { it > 0L }?.let(Instant::fromEpochMilliseconds),
-    lastOpenedAt = Instant.fromEpochMilliseconds(lastOpenTimestamp),
-    bookmarkedCount = bookmarkedCount,
-    downloadedCount = downloadedCount,
-    isLiked = isLiked,
-    isWatchingNow = isWatchingNow,
+    identity = savedIdentity(),
+    activity = LibraryActivity(
+        addedAt = Instant.fromEpochMilliseconds(savedTimestamp),
+        lastOpenedAt = Instant.fromEpochMilliseconds(lastOpenTimestamp),
+        lastReadAt = lastReadTs?.takeIf { it > 0L }?.let(Instant::fromEpochMilliseconds),
+    ),
+    counts = LibraryChapterCounts(
+        total = totalChapters,
+        unread = (totalChapters - readCount).coerceAtLeast(0),
+        downloaded = downloadedCount,
+        bookmarked = bookmarkedCount,
+    ),
+    affinity = LibraryAffinity(isLiked, isWatchingNow),
 )
 
 /**

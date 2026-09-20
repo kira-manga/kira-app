@@ -49,7 +49,7 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
         assertEquals(stale, row(stale.id), "Reader fallback itself remains non-destructive")
         val writer = CbzCallerWriter { _, _ -> error("all-stale legacy repair must not call writer") }
         val converter = DownloadedChapterConversion(db.chapterDao(), writer, db.mangaDao(), db.chapterDownloadingDao(),
-            appFs, artifactRuntime.ownership, artifactRuntime.commits)
+            appFs, artifactRuntime.ownership, artifactRuntime.commits, downloadOperations)
         assertTrue(converter.convert(stale))
         assertEquals(stale.copy(localImagePaths = listOf(archive.toString())), row(stale.id))
         assertEquals(2, assertIs<AppResult.Success<List<Page>>>(reader.fetchPages(mangaA, chapter).first()).value.size)
@@ -232,6 +232,7 @@ class ChapterPageRecoveryTest : ChapterOwnershipFixture() {
             DownloadedPageFiles(appFs, inspector),
             artifactRuntime.ownership,
             appFs,
+            downloadOperations,
         )
 
     private fun networkPages() = AppResult.Success(listOf(Page("${mangaA.url}/network-page", emptyMap())))

@@ -5,12 +5,16 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import me.manga.kira.domain.repository.AdultContentClassifier
@@ -68,12 +72,14 @@ internal class DetailsOwnerFixture(
     val chaptersByMangaUrl = mutableMapOf<String, List<Chapter>>()
     val fetchRequests = mutableListOf<Manga>()
 
-    // Single-owner overlay control only: the legacy saved port cannot distinguish identical metadata.
-    // Opposite-owner scenarios use the exact-URL fetch map instead of pretending this port can.
+    // Explicit fixture owners are scoped by requested (api, URL); snapshot metadata never chooses
+    // a parent. Resolver IDs below are chapter IDs, not these synthetic retained parent IDs.
     val savedDetails = MutableStateFlow<MangaDetails?>(null)
     var fetchGate: CompletableDeferred<Unit>? = null
     var fetchFailure: AppError? = null
-    val library = FakeLibraryRepository().apply { emitInLibrary(true) }
+    val library = FakeLibraryRepository()
+    private val knownWorkUrls = idsByMangaUrl.keys
+    private val owners = mutableMapOf<WorkLocator, SavedWorkIdentity>()
     private val reads = RecordingMarkChapterReadRepository()
     private val enqueue = EnqueueDownloadUseCase(actions)
     private val dispatchers =
@@ -95,10 +101,17 @@ internal class DetailsOwnerFixture(
         }
     private val saved =
         object : SavedMangaDetailsRepository {
-            override fun observeSavedDetails(
-                api: String,
-                title: String,
-            ): Flow<MangaDetails?> = savedDetails
+            override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> {
+                val owner = owners.getOrPut(work) { SavedWorkIdentity(owners.size + 1L, work) }
+                if (work.url in knownWorkUrls) library.emitMembership(owner)
+                return savedDetails.map { details ->
+                    AppResult.Success(
+                        details?.takeIf { it.api == work.api && it.url == work.url }?.let {
+                            SavedWorkDetails(owner, it)
+                        },
+                    )
+                }
+            }
         }
     private val classifier =
         object : AdultContentClassifier {

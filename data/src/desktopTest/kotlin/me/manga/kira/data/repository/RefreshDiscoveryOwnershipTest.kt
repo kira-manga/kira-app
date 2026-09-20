@@ -2,6 +2,8 @@ package me.manga.kira.data.repository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.core.result.map
+import me.manga.kira.domain.model.identity.WorkLocator
 import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.data.local.entity.SavedMangaEntity
 import me.manga.kira.domain.model.updates.UpdateEntry
@@ -21,9 +23,13 @@ class RefreshDiscoveryOwnershipTest {
             val b = fixture.parent("b")
             val repo = fixture.repository()
             val chapter = refreshChapter()
-            assertEquals(AppResult.Success(1), repo.persistNewChaptersAndNotify(a.refreshManga(), listOf(chapter)))
+            assertEquals(AppResult.Success(1), repo.discover(a, listOf(chapter)))
             val staleMetadata = b.refreshManga().copy(title = "old title", coverUrl = "old cover", language = "old")
-            assertEquals(AppResult.Success(1), repo.persistNewChaptersAndNotify(staleMetadata, listOf(chapter)))
+            val retained = b.discoveryRequest(listOf(chapter))
+            val request = retained.copy(fetched = retained.fetched.copy(
+                requested = WorkLocator(staleMetadata.api, staleMetadata.url),
+            ))
+            assertEquals(AppResult.Success(1), repo.refresh(listOf(request), true).map { it.single().addedChapters })
             val updates = UpdatesRepositoryImpl(fixture.db.notificationDao(), fixture.db.libraryDeo())
             val entries = updates.observeUpdates().first()
             val entryA = entries.single { it.mangaId == a.id }
@@ -55,12 +61,15 @@ class RefreshDiscoveryOwnershipTest {
                 requested += chapter
             }
         }
+        val operations = me.manga.kira.platform.download.DownloadOperationExclusion()
         val actions = DownloadsActionRepositoryImpl(
             downloads,
             DownloadsActionStorage(
                 fixture.db.chapterDownloadingDao(), fixture.db.chapterDao(), fixture.files,
                 fixture.artifactRuntime.ownership, fixture.db.chapterArtifactRepairDao(),
             ),
+            operations = operations,
+            catalog = TestDownloadCatalogAdmission(operations),
         )
         assertTrue(actions.enqueueDownload(b.chapterId, b.mangaTitle, b.api).isSuccess)
         assertEquals(listOf(savedB), requested, "download engine receives B's actual saved row")
@@ -70,10 +79,9 @@ class RefreshDiscoveryOwnershipTest {
     fun absentParentOrWrongApiNeverFallsBackToSameTitle() = runBlocking {
         RefreshDiscoveryFixture().use { fixture ->
             val parent = fixture.parent()
-            val manga = parent.refreshManga()
             val repo = fixture.repository()
-            assertEquals(AppResult.Success(0), repo.persistNewChaptersAndNotify(manga.copy(url = "https://manga.test/absent"), listOf(refreshChapter())))
-            assertEquals(AppResult.Success(0), repo.persistNewChaptersAndNotify(manga.copy(api = "other"), listOf(refreshChapter())))
+            assertTrue(repo.discover(parent.copy(url = "https://current.test/absent"), listOf(refreshChapter())).isFailure)
+            assertTrue(repo.discover(parent.copy(api = "other"), listOf(refreshChapter())).isFailure)
             assertTrue(fixture.updates().isEmpty())
             assertTrue(fixture.db.chapterDao().getChaptersByMangaIdR(parent.id).isEmpty())
         }
@@ -83,7 +91,7 @@ class RefreshDiscoveryOwnershipTest {
     fun uniquenessAndUndoPreserveTheNewerRowsIdentityAndUserState() = runBlocking {
         RefreshDiscoveryFixture().use { fixture ->
             val parent = fixture.parent()
-            fixture.repository().persistNewChaptersAndNotify(parent.refreshManga(), listOf(refreshChapter()))
+            fixture.repository().discover(parent, listOf(refreshChapter()))
             val dao = fixture.db.notificationDao()
             val updates = UpdatesRepositoryImpl(dao, fixture.db.libraryDeo())
             val stale = updates.observeUpdates().first().single()

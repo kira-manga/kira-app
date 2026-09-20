@@ -1,58 +1,36 @@
 package me.manga.kira.data.repository
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import me.manga.kira.core.dispatchers.DispatcherProvider
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.data.local.dao.ChapterDao
-import me.manga.kira.data.local.dao.MangaDao
+import me.manga.kira.data.mapper.savedIdentity
 import me.manga.kira.data.mapper.toDomainDetails
-import me.manga.kira.domain.model.MangaDetails
+import me.manga.kira.data.repository.library.LibraryOwnerTransactions
+import me.manga.kira.data.repository.library.libraryStorageFailures
+import me.manga.kira.data.repository.library.libraryStorageResult
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 
-/**
- * Room-backed [SavedMangaDetailsRepository]: the offline/local Details projection.
- *
- * SRP (contract §6): owns ONE rule — "resolve a saved manga by `(api, title)` and emit its saved
- * details (manga row + reactive chapter list with persisted read/downloaded/bookmark state), or
- * `null` when it isn't in the library". Source routing / network fetch stays in
- * [MangaDetailsRepositoryImpl]; this impl never touches the network.
- *
- * Strangler-fig boundary: depends directly on the `:shared` Room DAOs ([MangaDao], [ChapterDao]) —
- * the same cell-of-truth other rework `:data` impls inject (e.g. DownloadsActionRepositoryImpl,
- * ChapterIdResolverImpl) — rather than the heavyweight legacy `LibraryRepository` facade. Mapping
- * lives in `:data`'s [toDomainDetails] mapper.
- *
- * Threading: the DAO reads run on [DispatcherProvider.io] via [flowOn]; the returned [Flow] is cold
- * and membership-reactive — it observes the saved-manga table and (re)attaches the reactive chapter
- * flow whenever the `(api, title)` row appears or disappears, so a Details screen opened on a
- * non-library manga that the user later adds starts emitting saved details without re-collection.
- */
+/** Cold local projection; never pairs a parent from one transaction with another owner's chapters. */
 class SavedMangaDetailsRepositoryImpl(
-    private val mangaDao: MangaDao,
+    private val owners: LibraryOwnerTransactions,
     private val chapterDao: ChapterDao,
     private val dispatchers: DispatcherProvider,
 ) : SavedMangaDetailsRepository {
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    override fun observeSavedDetails(api: String, title: String): Flow<MangaDetails?> =
-        mangaDao.getAllSavedMangaFlow()
-            .map { list -> list.firstOrNull { it.api == api && it.title == title } }
-            .distinctUntilChanged()
-            .flatMapLatest { manga ->
-                if (manga == null) {
-                    flowOf(null)
-                } else {
-                    chapterDao.getChaptersByMangaId(manga.id).map { chapters ->
-                        // Save/discovery insert source chapters in reverse order (id ASC).
-                        // Restore the domain's source order for BOTH Details and Reader.
-                        manga.toDomainDetails(chapters.asReversed())
-                    }
+    override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> =
+        owners.invalidations().map {
+            libraryStorageResult {
+                owners.write {
+                    val parent = resolve(work) ?: return@write null
+                    // Discovery stores oldest first; readers and Details consume source (newest-first) order.
+                    val chapters = chapterDao.getChaptersByMangaIdR(parent.id).sortedByDescending { it.id }
+                    SavedWorkDetails(parent.savedIdentity(), parent.toDomainDetails(chapters))
                 }
             }
-            .flowOn(dispatchers.io)
+        }.libraryStorageFailures().distinctUntilChanged().flowOn(dispatchers.io)
 }

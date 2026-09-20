@@ -31,6 +31,7 @@ internal fun DownloadRecoveryFixture.settingsConverter(writer: CbzWriter): Setti
                 files = appFileSystem,
                 artifacts = artifactRuntime.ownership,
                 commits = artifactRuntime.commits,
+                operations = downloadOperations,
             ),
         httpCache = HttpCacheClearer { },
     )

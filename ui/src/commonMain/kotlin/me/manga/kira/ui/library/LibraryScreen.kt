@@ -181,13 +181,14 @@ import me.manga.kira.ui.generated.resources.years_ago
 import me.manga.kira.ui.generated.resources.yesterday
 import me.manga.kira.domain.model.LibraryManga
 import me.manga.kira.domain.model.Manga
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.identity.WorkLocator
 import androidx.compose.ui.unit.Dp
 import me.manga.kira.domain.model.library.GridDensity
 import me.manga.kira.domain.model.library.LibraryCategory
 import me.manga.kira.domain.model.library.LibraryDisplay
 import me.manga.kira.domain.model.library.LibraryFilter
 import me.manga.kira.domain.model.library.LibrarySort
-import me.manga.kira.domain.repository.MangaKey
 import me.manga.kira.presentation.library.LibraryEffect
 import me.manga.kira.presentation.library.LibraryIntent
 import me.manga.kira.presentation.library.LibraryState
@@ -245,7 +246,7 @@ fun LibraryScreen(
     viewModel: LibraryViewModel,
     onNavigateToDetails: (Manga) -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onNavigateToBackupExport: (List<MangaKey>) -> Unit,
+    onNavigateToBackupExport: (List<WorkLocator>) -> Unit,
     modifier: Modifier = Modifier,
     // #32: optional source-aware cover model. The :composeApp route adapter supplies an
     // ImageRequest carrying per-source Cloudflare auth headers (via rememberSourceImageRequest);
@@ -279,7 +280,7 @@ internal fun LibraryScreenContent(
     onIntent: (LibraryIntent) -> Unit,
     onNavigateToDetails: (Manga) -> Unit,
     onNavigateToDownloads: () -> Unit,
-    onNavigateToBackupExport: (List<MangaKey>) -> Unit,
+    onNavigateToBackupExport: (List<WorkLocator>) -> Unit,
     modifier: Modifier = Modifier,
     // #32: source-aware cover model slot (see [LibraryScreen]).
     coverModel: @Composable ((LibraryManga) -> Any?)? = null,
@@ -1138,7 +1139,7 @@ private fun formatRelativeTime(past: Instant, now: Instant): String {
 @Composable
 private fun LibraryGrid(
     items: List<LibraryManga>,
-    selection: Set<MangaKey>,
+    selection: Set<SavedWorkIdentity>,
     isInSelectionMode: Boolean,
     gridDensity: GridDensity,
     itemsPerRow: Int,
@@ -1188,14 +1189,12 @@ private fun LibraryGrid(
         ) {
             items(
                 items = items,
-                // Key by the DB-unique `url` (SavedMangaEntity has `unique = true` on url). The
-                // (api,language,title) tuple is NOT unique, so two saved manga with the same title
-                // but different URLs would collide and crash LazyVerticalGrid with duplicate keys.
-                key = { it.manga.url },
+                // A retained local row ID survives metadata/accepted-address changes.
+                key = { it.identity.id },
             ) { item ->
                 LibraryCard(
                     item = item,
-                    isSelected = item.manga.toKey() in selection,
+                    isSelected = item.identity in selection,
                     isInSelectionMode = isInSelectionMode,
                     display = display,
                     onIntent = onIntent,
@@ -1232,8 +1231,8 @@ private fun LibraryCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { onIntent(LibraryIntent.OnItemClick(item.manga)) },
-                onLongClick = { onIntent(LibraryIntent.OnItemLongClick(item.manga.toKey())) },
+                onClick = { onIntent(LibraryIntent.OnItemClick(item)) },
+                onLongClick = { onIntent(LibraryIntent.OnItemLongClick(item.identity)) },
             ),
     ) {
         Column {
@@ -1340,16 +1339,16 @@ private fun LibraryCard(
                             .padding(spacing.xs)
                             .padding(top = if (badgeShown) buttonSize + spacing.xs else 0.dp),
                         onToggleWatchingNow = {
-                            onIntent(LibraryIntent.OnToggleWatchingNow(item.manga.toKey()))
+                            onIntent(LibraryIntent.OnToggleWatchingNow(item.identity))
                         },
                         onToggleLike = {
-                            onIntent(LibraryIntent.OnToggleLike(item.manga.toKey()))
+                            onIntent(LibraryIntent.OnToggleLike(item.identity))
                         },
                         onSingleDelete = {
                             // GAP-LIB-15: route through the per-card delete-CONFIRMATION step rather
                             // than deleting directly. Mirrors the legacy route-level delete-confirm
                             // AlertDialog; the actual removal is gated behind OnSingleDeleteConfirm.
-                            onIntent(LibraryIntent.OnSingleDeleteRequest(item.manga.toKey()))
+                            onIntent(LibraryIntent.OnSingleDeleteRequest(item.identity))
                         },
                     )
                 }
@@ -1610,7 +1609,6 @@ private fun CardActionButton(
     }
 }
 
-private fun Manga.toKey(): MangaKey = MangaKey(api = api, language = language, title = title)
 
 /**
  * Pre-resolves all [AppError] user-facing messages in composable scope and returns a pure

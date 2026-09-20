@@ -3,20 +3,27 @@ package me.manga.kira.presentation.details
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.job
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.logging.FlowLog
+import me.manga.kira.core.result.AppResult
 import me.manga.kira.core.result.onFailure
-import me.manga.kira.core.result.onSuccess
 import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
+import me.manga.kira.domain.model.library.FetchedWorkDetails
+import me.manga.kira.domain.model.library.LibraryRefreshRequest
+import me.manga.kira.domain.model.library.SavedWorkDetails
 import me.manga.kira.domain.usecase.analytics.LogMangaOpenUseCase
 import me.manga.kira.domain.usecase.connectivity.ObserveConnectivityUseCase
 import me.manga.kira.domain.usecase.details.ClearChapterNewUseCase
@@ -42,8 +49,6 @@ import me.manga.kira.domain.usecase.reader.ToggleChapterBookmarkUseCase
 import me.manga.kira.domain.usecase.reader.ToggleChapterReadUseCase
 import me.manga.kira.presentation.cloudflare.isCloudflareChallenge
 import me.manga.kira.presentation.mvi.MviViewModel
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
 
 /**
  * Details screen ViewModel.
@@ -80,7 +85,7 @@ import kotlin.time.ExperimentalTime
  * reading-progress writes are handled by their own future ViewModels.
  *
  * Re-entry idempotence: [DetailsIntent.OnEnter] is a no-op when the in-state manga already
- * matches the intent's identity (api + language + title triple). This means a configuration
+ * matches the intent's requested work (api + raw URL), regardless of title/language changes. This means a configuration
  * change re-attaching the screen to a fresh host does NOT re-trigger the network fetch —
  * the StateFlow re-emission to the new host already carries the previously-fetched details.
  * To force a re-fetch, the view submits [DetailsIntent.OnRetry] explicitly.
@@ -92,9 +97,8 @@ import kotlin.time.ExperimentalTime
  * a saved chapter list, the open renders purely from the offline saved-details flow and fires no
  * network fetch; a not-in-library manga (or an in-library one with no cached chapters yet) still
  * fetches. [DetailsIntent.OnRetry] always fetches regardless of membership (pull-to-refresh parity).
- * Every successful fetch offers its chapters to [PersistNewChaptersUseCase], including URL-only
- * entries and saved manga without cached chapters. The repository's exact request-parent api/URL
- * lookup, not fetched metadata or membership-observer timing, decides whether chapters can be written.
+ * Fetched results for a saved owner are re-resolved and persisted under the library writer before
+ * rendering. A deleted/replaced owner or conflicting alias is an explicit failure, never a re-add.
  *
  * Re-entrance guard on [DetailsIntent.OnRetry]: if a fetch is already in flight
  * (`state.value.isLoading == true`), the intent is dropped. This prevents concurrent fetches
@@ -147,8 +151,8 @@ class DetailsViewModel(
     // Bumps the manga's last-open timestamp on Details open (native parity), driving the Library
     // LAST_READ sort. No-op when the manga isn't in the library.
     private val markMangaOpened: MarkMangaOpenedUseCase,
-    // #3: on a refresh of an in-library manga, persist newly-discovered chapters (isNew=true +
-    // fetchedAt=now) so they survive nav-away and gain the NEW badge. No-op when not in library.
+    // On a saved-owner refresh, await newly-discovered chapters (isNew=true + fetchedAt=now)
+    // and metadata commit. A missing/replaced owner fails; an unsaved fetch does not call this.
     private val persistNewChapters: PersistNewChaptersUseCase,
     // #3: clear a chapter's NEW badge the moment it is opened (without marking it read).
     private val clearChapterNew: ClearChapterNewUseCase,
@@ -163,15 +167,16 @@ class DetailsViewModel(
     // independent of the platform signal and settings implementation.
     private val observeCompressionDeferred: ObserveCompressionDeferredUseCase,
 ) : MviViewModel<DetailsState, DetailsIntent, DetailsEffect>(
-        initialState = DetailsState(),
-    ) {
-    /**
-     * Library-membership flow collector job. Restarted on every identity change in [onEnter] so
-     * the heart in the top bar reflects the *current* manga's bookmark state, not a stale one
-     * from the previous screen visit. Cancelled implicitly when [viewModelScope] is cancelled on
-     * `onCleared`. Same posture as `LibraryViewModel.observeJob` (Phase 6.2).
-     */
-    private var libraryMembershipJob: Job? = null
+    initialState = DetailsState(),
+) {
+
+    private val requestFence = DetailsRequestFence()
+    private var fetchedSnapshot: MangaDetails? = null
+    private var savedSnapshot: SavedWorkDetails? = null
+    private var libraryObservation = 0L
+
+    /** Cancel the previous request before any new work can reuse this ViewModel. */
+    private var fetchJob: Job? = null
 
     /**
      * Offline/local saved-details collector job (regression fix, 2026-05-31). Restarted on every
@@ -256,7 +261,7 @@ class DetailsViewModel(
                 if (state.value.isInLibrary && manga != null) {
                     emit(
                         DetailsEffect.NavigateToBackupExport(
-                            MangaKey(api = manga.api, language = manga.language, title = manga.title),
+                            state.value.savedOwner?.locator ?: return,
                         ),
                     )
                 }
@@ -284,368 +289,263 @@ class DetailsViewModel(
         }
     }
 
-    private suspend fun onEnter(manga: Manga) {
-        if (state.value.manga?.matches(manga) == true) return
+    private suspend fun onEnter(manga: Manga) = enterWork(manga, logAnalytics = true)
+
+    private suspend fun enterWork(manga: Manga, logAnalytics: Boolean) {
+        val request = requestFence.enter(manga) ?: return
+        fetchJob?.cancel()
+        fetchJob = null
+        savedDetailsJob?.cancel()
+        fetchedSnapshot = null
+        savedSnapshot = null
         chapterRetractions.clearVisit()
-        FlowLog.log("Details", "open", "title=${manga.title} api=${manga.api} lang=${manga.language}")
-        // #11: native manga_open — fired once per opened identity (this method early-returns on a
-        // same-identity re-enter). Full-tuple entry (Home/Library/Search/Details) has the title; the
-        // URL-only onEnterByUrl deep-link path has no title at entry, so it does not fire here.
-        logMangaOpen(api = manga.api, title = manga.title)
-        // Tentative classification from nav-arg genres (may be empty → false). The fetched
-        // details refine this in runFetch().onSuccess.
-        val tentativeAdult = isAdultContent(manga)
-        updateState {
-            it.copy(
-                manga = manga,
-                isLoading = true,
-                details = null,
-                error = null,
-                isAdult = tentativeAdult,
-                // P0-ADULT: arm the hard-block gate at AdultWarning the moment the manga classifies
-                // adult; otherwise None. Re-derived on the fetched genres in runFetch.
-                //
-                // INTENTIONALLY-DIFFERENT (not native parity): native gated adult content only on the
-                // search/home MangaDetailsScreen, NOT on the library MangaDetailsScreen — an in-library
-                // adult title opened from the Library rendered ungated there. The rework folds both
-                // entry points into one DetailsScreen and gates ALL of them. This deliberate
-                // over-block (more restrictive, aligned with Play-policy / cultural guidelines) is
-                // kept on purpose; we do NOT suppress the gate for in-library adult manga, because
-                // doing so would re-expose explicit content the gate is meant to block.
-                adultGateStep = if (tentativeAdult) AdultGateStep.AdultWarning else AdultGateStep.None,
-                // Reset to the conservative default until the new identity's first flow
-                // emission lands — prevents a stale "in library" heart from the previous manga
-                // flashing on the new screen between OnEnter and the first ObserveInLibrary
-                // re-emission (typically same frame, but the reset guarantees correctness even
-                // when the Room query coldstart takes a tick).
-                isInLibrary = false,
-                chapterDownloads = emptyMap(),
-                selectedChapterUrls = emptySet(),
-            )
-        }
+        updateState { it.enteringWork(manga, isAdultContent(manga)) }
         startObservingDownloads(manga)
-        startObservingLibraryMembership(manga)
-        startObservingSavedDetails(manga)
-        // Native parity (LibraryDetailsViewModel reads chapters from Room; the source is only hit on
-        // an explicit pull-to-refresh): decide cache-vs-network for THIS open based on library
-        // membership + whether a saved chapter list already exists.
-        if (!shouldOpenFromCache(manga)) {
-            FlowLog.log("Details", "openMode", "title=${manga.title} mode=network")
-            runFetch(manga)
-        } else {
-            FlowLog.log("Details", "openMode", "title=${manga.title} mode=cache-only (no fetch on open)")
+        if (logAnalytics) logMangaOpen(api = manga.api, title = manga.title)
+        withLoadingRequest(request) {
+            val cached = shouldOpenFromCache(request)
+            if (!requestFence.accepts(request)) return@withLoadingRequest
+            startObservingSavedDetails(request)
+            if (!cached) runFetch(request, manga)
         }
-        // else: the saved (Room) details flow above already rendered the cached chapter list and
-        // cleared the spinner; no network fetch is fired on open. The user can force a refresh via
-        // OnRetry (pull-to-refresh parity), which always fetches regardless of membership.
     }
 
-    /**
-     * Cache-first open decision (native parity). Returns `true` when this open should render purely
-     * from the local Room store WITHOUT a network fetch — i.e. the manga is in the library AND it
-     * already has a saved chapter list. Performs a one-shot read of the saved-details flow keyed on
-     * the manga identity (the same flow the reactive [startObservingSavedDetails] observer drives):
-     *  - saved + non-empty chapters → cache-only (no fetch on open). Mirrors native's
-     *    `LibraryMangaScreen`, which reads `getChaptersByMangaId` and never fetches on open.
-     *  - saved + empty chapters (e.g. added before this fix, or via an empty-chapter entry point) →
-     *    fetch once so the list isn't empty, then offer the chapters to the saved-row-gated repository.
-     *  - not saved (`null`) → fetch (fresh network open, as before).
-     *
-     * Best-effort: any failure resolving the local store falls back to fetching (returns `false`),
-     * so a flaky storage read never strands the screen on an empty cache. [CancellationException] is
-     * rethrown so structured concurrency / re-entry cancellation works.
-     */
-    private suspend fun shouldOpenFromCache(manga: Manga): Boolean {
-        if (manga.title.isBlank()) return false
-        return try {
-            val saved = observeSavedDetails(api = manga.api, title = manga.title).firstOrNull()
-            saved != null && saved.chapters.isNotEmpty()
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (_: Throwable) {
+    /** Cache-only requires a successful scoped read with chapters, not a display-title match. */
+    private suspend fun shouldOpenFromCache(request: DetailsRequestToken): Boolean =
+        try {
+            val saved = observeSavedDetails(request.work).firstOrNull()
+            currentCoroutineContext().ensureActive()
+            if (saved == null || !requestFence.accepts(request)) {
+                false
+            } else {
+                acceptSavedDetails(request, saved)
+                (saved as? AppResult.Success)?.value?.details?.chapters?.isNotEmpty() == true
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            libraryFailure(request, AppError.Storage.Io(failure))
             false
         }
+
+    private fun startObservingSavedDetails(request: DetailsRequestToken) {
+        savedDetailsJob?.cancel()
+        savedDetailsJob = observeSavedDetails(request.work)
+            .onEach {
+                currentCoroutineContext().ensureActive()
+                acceptSavedDetails(request, it)
+            }
+            .catch { failure ->
+                if (failure is CancellationException) throw failure
+                libraryFailure(request, AppError.Storage.Io(failure))
+            }
+            .launchIn(viewModelScope)
     }
 
-    /**
-     * Offline-first local Details path (regression fix, 2026-05-31). Subscribes to
-     * [ObserveSavedMangaDetailsUseCase] keyed on `(api, title)`. The first non-null emission means
-     * the manga is saved: render its chapter list (with read/downloaded/bookmark marks) and clear
-     * the spinner IMMEDIATELY — before, and independently of, the network fetch. This is what makes
-     * a Library-opened manga show as the saved/local manga rather than "looking fresh", and it
-     * keeps the chapter list visible even when the source fetch fails or the device is offline.
-     *
-     * Once network details land ([runFetch]), the saved read-state is overlaid onto the fresh list
-     * (see [MangaDetails.overlaidWith]) so a refresh never wipes read progress; subsequent local
-     * writes re-emit here and re-overlay onto whatever details are currently shown.
-     *
-     * No-op for URL-only entries (blank title) — the `(api, title)` key isn't resolvable yet; the
-     * deferred subscription starts in [runFetch]'s success path once the title is enriched.
-     */
-    private fun startObservingSavedDetails(manga: Manga) {
-        savedDetailsJob?.cancel()
-        if (manga.title.isBlank()) return
-        savedDetailsJob =
-            observeSavedDetails(api = manga.api, title = manga.title)
-                .onEach { saved ->
-                    if (saved == null) return@onEach
-                    // Cancellation of the previous Room collector and the next identity's OnEnter can
-                    // race by one emission. Never let a saved payload from the previous screen make a
-                    // newly Home-opened manga look like that library entry.
-                    if (state.value.manga?.matches(manga) != true) return@onEach
-                    FlowLog.log(
-                        "Details",
-                        "savedLoaded",
-                        "title=${manga.title} chapters=${saved.chapters.size} new=${saved.chapters.count { it.isNew }}",
-                    )
-                    updateState { current ->
-                        val net = current.details
-                        val merged =
-                            (if (net != null) net.overlaidWith(saved) else saved)
-                                .withoutChapterUrls(chapterRetractions.urls)
-                                .expireNewBadges(nowMs())
-                        // P0-ADULT (compliance): a cache-first open suppresses runFetch, so this is the
-                        // only place the gate gets re-classified for an in-library manga. Classify from
-                        // the saved/merged genres (the nav-arg genres may be empty — History/Updates
-                        // pass `genres = emptyList()`) and arm the hard-block gate exactly as
-                        // runFetch.onSuccess does: arm at AdultWarning when adult (preserving an
-                        // already-advanced step), else clear to None. Without this, an adult title opened
-                        // from cache would render fully ungated.
-                        val refreshedAdult = isAdultContent(manga.copy(genres = merged.genres))
-                        current.copy(
-                            details = merged,
-                            isLoading = false,
-                            error = null,
-                            isAdult = refreshedAdult,
-                            adultGateStep =
-                                when {
-                                    !refreshedAdult -> AdultGateStep.None
-                                    current.adultGateStep == AdultGateStep.None -> AdultGateStep.AdultWarning
-                                    else -> current.adultGateStep
-                                },
-                        )
-                    }
-                    // A saved manga's chapter list just landed/changed — re-derive each chapter's live
-                    // download status+progress (PFIX-DLPROGRESS).
-                    recomputeChapterDownloads()
-                }.catch { /* Offline read is best-effort; the network refresh path still runs. */ }
-                .launchIn(viewModelScope)
-    }
-
-    /**
-     * URL-only entry handler (Phase 9.x.mangadetails.swap Slice 4 — ADR-6).
-     *
-     * Built a *tentative* [Manga] with the two known nav-arg fields ([api] + [mangaUrl]) and
-     * sentinel placeholders for the rest. The existing [runFetch] path uses only those two fields
-     * for routing — the source repositories look up by `(api, url)`, never by language/title —
-     * so the tentative manga is enough to dispatch a successful fetch.
-     *
-     * **Re-entry guard** is keyed on `(api, mangaUrl)` rather than the (api, language, title)
-     * triple used by [onEnter], because at OnEnterByUrl-time the language/title are not yet
-     * known. A config-change replay or a `LaunchedEffect` re-fire for the same URL → no-op; once
-     * the fetch lands and [runFetch] enriches the in-state manga's language/title from the
-     * fetched [me.manga.kira.domain.model.MangaDetails], a subsequent OnEnterByUrl with the
-     * same URL still no-ops (the enriched state's manga.url still matches).
-     *
-     * **Library subscription deferral**: [startObservingLibraryMembership] is keyed on the
-     * (api, language, title) triple, which is incomplete at OnEnterByUrl-time. The
-     * `wasUrlOnly`-gated branch inside [runFetch].onSuccess subscribes after the fetch lands and
-     * enriches the identity — until then, [DetailsState.isInLibrary] stays `false`, and the
-     * `:ui` bookmark IconButton's `bookmarkEnabled` gate already binds on
-     * `state.manga?.title?.isNotBlank() == true` to prevent the user from toggling a junk
-     * `("", "", api)` Library row before identity resolves.
-     */
-    private suspend fun onEnterByUrl(
-        api: String,
-        mangaUrl: String,
-    ) {
-        val current = state.value.manga
-        if (current?.api == api && current.url == mangaUrl) return
-        chapterRetractions.clearVisit()
-        val tentative =
-            Manga(
-                api = api,
-                language = "",
-                title = "",
-                url = mangaUrl,
-                coverUrl = "",
-                rating = null,
-                genres = emptyList(),
-            )
-        // Tentative classification — no genres yet, so isAdult is false. Re-classified in
-        // runFetch.onSuccess on the fetched details (matches the onEnter posture).
-        val tentativeAdult = isAdultContent(tentative)
-        // Cancel any pre-existing library-membership subscription from a previous manga visit —
-        // OnEnterByUrl can't restart it here (the identity isn't known yet); the gap is closed
-        // by runFetch.onSuccess on the first successful fetch (see the wasUrlOnly branch).
-        libraryMembershipJob?.cancel()
-        // Cancel any saved-details observer from a previous visit; OnEnterByUrl can't restart it
-        // (no title yet) — the runFetch success path re-attaches it once the title is enriched.
-        savedDetailsJob?.cancel()
-        updateState {
-            it.copy(
-                manga = tentative,
-                isLoading = true,
-                details = null,
-                error = null,
-                isAdult = tentativeAdult,
-                // P0-ADULT: tentative manga carries no genres → not adult yet; gate stays None
-                // and is re-armed in runFetch.onSuccess once the fetched genres classify adult.
-                adultGateStep = if (tentativeAdult) AdultGateStep.AdultWarning else AdultGateStep.None,
-                isInLibrary = false,
-                chapterDownloads = emptyMap(),
-                selectedChapterUrls = emptySet(),
-            )
+    private fun acceptSavedDetails(request: DetailsRequestToken, result: AppResult<SavedWorkDetails?>) {
+        if (!requestFence.accepts(request)) return
+        when (result) {
+            is AppResult.Failure -> libraryFailure(request, result.error)
+            is AppResult.Success -> acceptSavedSnapshot(request, result.value)
         }
-        startObservingDownloads(tentative)
-        runFetch(tentative)
     }
 
-    /**
-     * Subscribe to [ObserveInLibraryUseCase] keyed on the active manga identity. Cancels any
-     * previously-running collector so a screen revisit to a different title doesn't leak its
-     * predecessor's emissions onto the new state. SRP-clean: this method owns ONE rule —
-     * "the [DetailsState.isInLibrary] flag mirrors the reactive `EXISTS` query for the
-     * currently-displayed manga".
-     *
-     * No `emit(ShowError)` on flow failure: library membership is a *secondary* affordance on
-     * the Details screen — the cover, chapter list, and bookmark action all work fine when
-     * the flag is `false`. A toast every time the user opens Details on a flaky storage host
-     * would be noise, not signal. The catch swallows the throw so it can't crash the scope; an
-     * upstream throw still completes the flow (Flow.catch does not resubscribe), so on failure the
-     * collector stops and the flag keeps its last value until the screen is re-entered.
-     */
-    private fun startObservingLibraryMembership(manga: Manga) {
-        libraryMembershipJob?.cancel()
-        libraryMembershipJob =
-            observeInLibrary(
-                api = manga.api,
-                language = manga.language,
-                title = manga.title,
-            ).onEach { inLibrary ->
-                // A cancelled membership flow may already have one Room emission queued. Scope it
-                // to the identity that started this collector before touching the shared VM state.
-                updateState { current ->
-                    if (current.manga?.matches(manga) == true) {
-                        current.copy(isInLibrary = inLibrary)
-                    } else {
-                        current
-                    }
-                }
-            }.catch { /* See KDoc — secondary affordance, defaulting to false is safe. */ }
-                .launchIn(viewModelScope)
+    private fun acceptSavedSnapshot(request: DetailsRequestToken, snapshot: SavedWorkDetails?) {
+        val previous = state.value
+        val previousOwner = savedSnapshot?.owner ?: previous.savedOwner
+        val ownerChanged = snapshot?.owner?.id != previousOwner?.id
+        if (ownerChanged) {
+            fetchedSnapshot = null
+            chapterRetractions.clearVisit()
+        }
+        // A hidden row must not remain in the flag cache and return when rediscovery releases it.
+        val saved = snapshot?.let { it.copy(details = it.details.withoutChapterUrls(chapterRetractions.urls)) }
+        if (saved != null && saved == savedSnapshot && previous.libraryError == null) return
+        libraryObservation++
+        savedSnapshot = saved
+        updateState { it.withLibraryOwner(saved?.owner?.copy(locator = request.work)) }
+        if (saved != null) displaySavedDetails(saved.details, previous.details.takeUnless { ownerChanged })
+    }
+
+    private fun displaySavedDetails(saved: MangaDetails, previous: MangaDetails?) {
+        val network = fetchedSnapshot
+        val details = when {
+            network != null -> network.overlaidWith(saved)
+            saved.chapters.isEmpty() && previous != null -> saved.overlaidWith(previous)
+            else -> saved
+        }
+        displayDetails(details)
+    }
+
+    private suspend fun onEnterByUrl(api: String, mangaUrl: String) = enterWork(
+        Manga(
+            api = api,
+            language = "",
+            title = "",
+            url = mangaUrl,
+            coverUrl = "",
+            rating = null,
+            genres = emptyList(),
+        ),
+        logAnalytics = false,
+    )
+
+    private fun libraryFailure(request: DetailsRequestToken, failure: AppError) {
+        if (!requestFence.accepts(request)) return
+        libraryObservation++
+        updateState { it.withLibraryFailure(failure) }
+    }
+
+    private fun displayDetails(details: MangaDetails) {
+        val manga = state.value.manga ?: return
+        val visible = details.withoutChapterUrls(chapterRetractions.urls)
+        val adult = isAdultContent(manga.copy(genres = visible.genres))
+        updateState { it.showWorkDetails(visible, adult).copy(isLoading = fetchJob?.isActive == true) }
+        recomputeChapterDownloads()
     }
 
     private suspend fun onRetry() {
-        // Re-entrance guard: if a fetch is already in flight, drop this OnRetry. Two concurrent
-        // runFetch coroutines for the same identity would race on `updateState`, and the second
-        // one to land would overwrite the first's payload — flicker risk for the user, no
-        // benefit. The :ui top-bar refresh button is also gated by `refreshEnabled = !state.isLoading`
-        // (§49.5), but any other dispatcher (intent replay, programmatic OnRetry, future
-        // pull-to-refresh, etc.) lacks that surface — the guard here closes the gap at the VM
-        // boundary. Same reasoning would apply to OnEnter, but OnEnter has its own idempotence
-        // guard on the in-state manga identity (see `onEnter`), so the loading flag isn't the
-        // right discriminator there.
-        if (state.value.isLoading) return
+        if (state.value.isLoading || fetchJob?.isActive == true) return
+        val request = requestFence.current ?: return
         val manga = state.value.manga ?: return
-        // Explicit refresh retains its existing download retry, but cannot reset that batch's budget.
-        retryCloudflareFailedDownloads()
-        updateState { it.copy(isLoading = true, error = null) }
-        runFetch(manga)
+        withLoadingRequest(request) {
+            // Reserve loading before a download retry can suspend. It does not replenish either
+            // operation's solver budget, and a second refresh cannot overlap this request.
+            retryCloudflareFailedDownloads(request)
+            currentCoroutineContext().ensureActive()
+            if (requestFence.accepts(request)) runFetch(request, manga)
+        }
     }
 
-    private suspend fun runFetch(manga: Manga) {
+    private suspend fun withLoadingRequest(request: DetailsRequestToken, block: suspend () -> Unit) {
+        if (!requestFence.accepts(request)) return
+        val job = currentCoroutineContext().job
+        fetchJob = job
+        updateState { it.copy(isLoading = true, error = null) }
+        try {
+            block()
+        } finally {
+            if (requestFence.accepts(request) && fetchJob == job) {
+                fetchJob = null
+                updateState { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    private suspend fun runFetch(request: DetailsRequestToken, manga: Manga) {
         challengeRecovery.begin(DetailsChallengeOperation.Metadata)
-        val generation = downloadsGeneration
-        FlowLog.log("Details", "refresh", "title=${manga.title} api=${manga.api}")
-        // Capture the stable identity this fetch was started for. `(api, url)` survives the
-        // onSuccess enrichment (unlike language/title, which onEnterByUrl fills only afterwards),
-        // so we can detect a stale landing: if a different identity has taken over the in-state
-        // manga while this fetch was in flight (same-VM OnEnter/OnEnterByUrl for another manga),
-        // its onSuccess/onFailure must NOT write over the newer identity's state.
-        val fetchApi = manga.api
-        val fetchUrl = manga.url
+        val membership = retainedOwner(request)
+        currentCoroutineContext().ensureActive()
+        if (!requestFence.accepts(request)) return
+        val owner = when (membership) {
+            is AppResult.Success -> membership.value
+            is AppResult.Failure -> {
+                libraryFailure(request, membership.error)
+                fetchFailed(request, membership.error)
+                return
+            }
+        }
         val retractedBeforeFetch = chapterRetractions.snapshot
-        fetchDetails(manga)
-            .onSuccess { fetched ->
-                val active = state.value.manga
-                if (generation != downloadsGeneration || active == null || active.api != fetchApi || active.url != fetchUrl) {
-                    FlowLog.log("Details", "refreshStale", "dropped stale fetch for api=$fetchApi url=$fetchUrl")
-                    return@onSuccess
-                }
-                val details = chapterRetractions.acceptFetch(fetched, retractedBeforeFetch)
-                FlowLog.log("Details", "refreshOk", "title=${details.title} chapters=${details.chapters.size}")
-                // Re-classify with the authoritative genres from the fetched details — matches
-                // legacy isPlus18(info.genres, api). manga.copy() keeps the original api +
-                // language + title; only the genres are replaced.
-                val classifierInput = manga.copy(genres = details.genres)
-                val refreshedAdult = isAdultContent(classifierInput)
-                // Detect URL-only entry: title was blank pre-enrichment (set by onEnterByUrl
-                // with sentinel placeholders). After the state update below, this branch is
-                // also the trigger for the deferred library-membership subscription.
-                val wasUrlOnly =
-                    state.value.manga
-                        ?.title
-                        .isNullOrBlank()
-                // Overlay the locally-persisted read/downloaded/bookmark state (currently shown
-                // from the saved projection, if any) onto the fresh network chapter list so a
-                // refresh never wipes the user's read marks (regression fix, 2026-05-31). Idempotent
-                // when there's no saved snapshot or on a re-fetch.
-                val savedSnapshot = state.value.details
-                updateState { current ->
-                    current.withFetchedDetails(details, savedSnapshot, refreshedAdult)
-                }
-                // Library-membership subscription deferral close-out (URL-only entry path). The
-                // OnEnterByUrl handler can't subscribe up-front because the (api, language, title)
-                // triple isn't known until the fetch lands. This branch fires exactly once per
-                // URL-only entry — the first successful fetch — and starts the same flow collector
-                // OnEnter already starts up-front. Full-tuple OnEnter entries skip this branch
-                // because their pre-fetch title was non-blank.
-                if (wasUrlOnly) {
-                    val enriched = state.value.manga
-                    if (enriched != null && enriched.title.isNotBlank()) {
-                        startObservingLibraryMembership(enriched)
-                        // Now that the title is known, attach the offline saved-details observer too
-                        // (URL-only History/Updates entries also benefit from local read-state merge).
-                        startObservingSavedDetails(enriched)
+        val result = fetchDetails(manga)
+        currentCoroutineContext().ensureActive()
+        if (!requestFence.accepts(request)) return
+        // The same requested address can now belong to a different saved parent. Neither an
+        // old fetch failure/solver effect nor its success may repaint that replacement.
+        if (state.value.libraryError != null || state.value.savedOwner?.id != owner?.id) return
+        when (result) {
+            is AppResult.Success -> acceptFetchedDetails(request, owner, result.value, retractedBeforeFetch)
+            is AppResult.Failure -> fetchFailed(request, result.error)
+        }
+    }
+
+    private suspend fun retainedOwner(request: DetailsRequestToken): AppResult<SavedWorkIdentity?> =
+        try {
+            val current = state.value
+            val error = current.libraryError
+            val owner = current.savedOwner
+            when {
+                error != null -> AppResult.Failure(error)
+                owner != null -> AppResult.Success(owner)
+                else -> {
+                    // UI membership is not authority: await an explicit scoped owner before the
+                    // fetch. A newer saved observation wins over this suspended one-shot lookup.
+                    val observed = libraryObservation
+                    val result = observeInLibrary(request.work).first()
+                    currentCoroutineContext().ensureActive()
+                    if (requestFence.accepts(request)) {
+                        if (observed != libraryObservation) {
+                            state.value.libraryError?.let { AppResult.Failure(it) }
+                                ?: AppResult.Success(state.value.savedOwner)
+                        } else {
+                            if (result is AppResult.Success) updateState { it.withLibraryOwner(result.value) }
+                            result
+                        }
+                    } else {
+                        result
                     }
                 }
-                // Network chapter list landed — re-derive per-chapter download status (PFIX-DLPROGRESS).
-                recomputeChapterDownloads()
-                // Offer every successful fetch using its captured request parent. The membership observer
-                // can still be awaiting its first emission (especially after OnEnterByUrl); it is a
-                // UI affordance, not persistence authority. The repository resolves that exact api/URL,
-                // never a same-titled row or a parent address supplied by the fetched payload.
-                launchSafely {
-                    persistNewChapters(fetchApi, fetchUrl, details.chapters)
-                }
-                challengeRecovery.metadataRecovered()
-            }.onFailure { error ->
-                val active = state.value.manga
-                if (generation != downloadsGeneration || active == null || active.api != fetchApi || active.url != fetchUrl) {
-                    FlowLog.log("Details", "refreshStale", "dropped stale failure for api=$fetchApi url=$fetchUrl")
-                    return@onFailure
-                }
-                FlowLog.log("Details", "refreshError", "title=${manga.title} error=${error::class.simpleName}")
-                updateState { it.copy(isLoading = false, error = error) }
-                if (error.isCloudflareChallenge() && challengeRecovery.request(DetailsChallengeOperation.Metadata)) {
-                    emit(DetailsEffect.SolveCloudflareChallenge(url = manga.url, api = manga.api))
-                } else {
-                    emit(DetailsEffect.ShowError(error))
-                }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            AppResult.Failure(AppError.Storage.Io(failure))
+        }
+
+    private suspend fun acceptFetchedDetails(
+        request: DetailsRequestToken,
+        owner: SavedWorkIdentity?,
+        fetched: MangaDetails,
+        retractedBeforeFetch: Map<String, Long>,
+    ) {
+        currentCoroutineContext().ensureActive()
+        if (!requestFence.accepts(request)) return
+        if (state.value.libraryError != null || state.value.savedOwner?.id != owner?.id) return
+        val prepared = chapterRetractions.previewFetch(fetched, retractedBeforeFetch)
+        val refreshed = owner?.let {
+            persistNewChapters(LibraryRefreshRequest(it, FetchedWorkDetails(request.work, prepared)))
+        }
+        currentCoroutineContext().ensureActive()
+        if (!requestFence.accepts(request)) return
+        // Neither old-owner outcome may alter an already-observed replacement or failure.
+        if (state.value.libraryError != null || state.value.savedOwner?.id != owner?.id) return
+        if (refreshed is AppResult.Failure) {
+            libraryFailure(request, refreshed.error)
+            fetchFailed(request, refreshed.error)
+            return
+        }
+        // Release rediscovery only after an accepted commit. Recheck versions because a newer
+        // explicit deletion may have completed while the writer was suspended.
+        val details = chapterRetractions.acceptFetch(fetched, retractedBeforeFetch)
+        val previous = fetchedSnapshot ?: state.value.details
+        val network = if (details.chapters.isEmpty() && previous != null) details.overlaidWith(previous) else details
+        fetchedSnapshot = network
+        val saved = savedSnapshot?.takeIf { owner == null || it.owner.id == owner.id }?.details
+        displayDetails(if (saved == null) network else network.overlaidWith(saved))
+        challengeRecovery.metadataRecovered()
+    }
+
+    private suspend fun fetchFailed(request: DetailsRequestToken, error: AppError) {
+        currentCoroutineContext().ensureActive()
+        if (!requestFence.accepts(request)) return
+        updateState { it.copy(isLoading = false, error = error) }
+        val manga = state.value.manga ?: return
+        if (error.isCloudflareChallenge() && challengeRecovery.request(DetailsChallengeOperation.Metadata)) {
+            emit(DetailsEffect.SolveCloudflareChallenge(url = manga.url, api = manga.api))
+        } else {
+            emit(DetailsEffect.ShowError(error))
+        }
     }
 
     private suspend fun onCloudflareSolverReturned(requestId: String) {
+        val request = requestFence.current ?: return
         when (challengeRecovery.consume(requestId)) {
             DetailsChallengeOperation.Metadata -> {
-                if (state.value.isLoading) return
+                if (state.value.isLoading || fetchJob?.isActive == true) return
                 val manga = state.value.manga ?: return
-                updateState { it.copy(isLoading = true, error = null) }
-                runFetch(manga)
+                withLoadingRequest(request) { runFetch(request, manga) }
             }
-            DetailsChallengeOperation.Downloads -> retryCloudflareFailedDownloads()
-            null -> Unit // An old owner, recovered operation or already-consumed return owns no work.
+            DetailsChallengeOperation.Downloads -> retryCloudflareFailedDownloads(request)
+            null -> Unit // An old owner, recovered operation or consumed return owns no work.
         }
     }
 
@@ -658,9 +558,9 @@ class DetailsViewModel(
         )
         // Native parity (LibraryMangaRoute.onChapterClick → updateLastOpen): bump the manga's
         // last-open timestamp when the user opens a chapter to read — NOT on mere Details viewing.
-        // This drives the Library LAST_READ sort. Fire-and-forget; markOpened no-ops when the manga
-        // isn't in the library (no saved_manga row to bump).
-        launchSafely { markMangaOpened(manga.api, manga.language, manga.title) }
+        // This drives the Library LAST_READ sort. Only a captured saved owner can be updated;
+        // the writer rejects removal/replacement rather than looking up by display title.
+        state.value.savedOwner?.let { owner -> launchSafely { markMangaOpened(owner) } }
         // #3 NEW-badge parity: clear the badge the instant the chapter is OPENED (native clears on
         // chapter click), not later when the reader advances past it. Does NOT mark the chapter read
         // (opening != reading). Fire-and-forget; no-op for a non-saved chapter. The saved-details
@@ -730,13 +630,13 @@ class DetailsViewModel(
 
     /**
      * Bookmark toggle handler. Reads identity from `state.manga`, calls [ToggleInLibraryUseCase],
-     * lets the [ObserveInLibraryUseCase] flow re-emission drive [DetailsState.isInLibrary] —
+     * lets the scoped saved-details flow re-emission drive [DetailsState.isInLibrary] —
      * matches the [me.manga.kira.presentation.library.LibraryViewModel] reactive posture.
      *
      * Race gate ([DetailsState.isTogglingBookmark], per `DetailsState` KDoc + §253 plan): the
-     * use case is non-atomic at the domain boundary (read `repository.get` THEN add/remove). A
-     * rapid double-tap could fire two concurrent invocations before the reactive flow snaps
-     * `isInLibrary`, with the second call observing the post-first-call state and toggling BACK.
+     * retained owner goes directly to removal; an unsaved request checks membership before adding.
+     * A rapid double-tap could otherwise fire concurrent invocations before the saved flow snaps
+     * `isInLibrary`, racing opposite user actions against the owning writer.
      * The flag is raised before the call and reset in a `finally` so a use-case failure (or any
      * thrown exception in `.onSuccess`/`.onFailure`) doesn't leave the flag permanently stuck.
      * The guard is VM-side only — the handler drops a re-entrant intent synchronously (the
@@ -748,18 +648,19 @@ class DetailsViewModel(
      * tapping in a state transition window where state was reset), the intent is a no-op.
      */
     private suspend fun onToggleInLibrary() {
-        val manga = state.value.manga ?: return
-        if (state.value.isTogglingBookmark) return
+        val request = requestFence.current ?: return
+        val snapshot = state.value
+        val manga = snapshot.manga ?: return
+        if (snapshot.isTogglingBookmark) return
+        snapshot.libraryError?.let { emit(DetailsEffect.ShowError(it)); return }
         updateState { it.copy(isTogglingBookmark = true) }
         try {
-            // Native parity: persist the manga WITH its fetched chapter list at add-time
-            // (saveMangaWithChapters) so an in-library manga renders from Room on subsequent opens
-            // without a network re-fetch. The fetched details are ignored on the removal branch.
-            toggleInLibrary(manga, state.value.details)
-                .onFailure { error -> emit(DetailsEffect.ShowError(error)) }
-                .onSuccess { /* Flow re-emission flips isInLibrary; no extra state work. */ }
+            toggleInLibrary(manga, snapshot.details, snapshot.savedOwner)
+                .onFailure { error ->
+                    if (requestFence.accepts(request)) emit(DetailsEffect.ShowError(error))
+                }
         } finally {
-            updateState { it.copy(isTogglingBookmark = false) }
+            if (requestFence.accepts(request)) updateState { it.copy(isTogglingBookmark = false) }
         }
     }
 
@@ -776,7 +677,7 @@ class DetailsViewModel(
         downloadsJob =
             observeDownloads(manga)
                 .onEach { rows ->
-                    if (generation != downloadsGeneration || state.value.manga?.url != manga.url) return@onEach
+                    if (generation != downloadsGeneration || state.value.manga?.matches(manga) != true) return@onEach
                     downloadRowsByUrl = rows.toProgressByUrl()
                     recomputeChapterDownloads()
                     // FAILED stays out of the UI map, but this owner's challenge failures can request
@@ -811,7 +712,7 @@ class DetailsViewModel(
         val byUrl = chapterDownloadsFor(chapters, rowsByUrl)
         if (byUrl != current.chapterDownloads) {
             updateState { latest ->
-                if (generation == downloadsGeneration && latest.manga?.url == current.manga?.url) {
+                if (generation == downloadsGeneration && latest.manga?.let { current.manga?.matches(it) } == true) {
                     latest.copy(chapterDownloads = byUrl)
                 } else {
                     latest
@@ -848,7 +749,7 @@ class DetailsViewModel(
         val latest = state.value
         // Cached details remain loaded during refresh; a new entry's null-details shell does not.
         val snapshot =
-            if (latest.manga?.url == captured.manga?.url && latest.details != null) latest else captured
+            if (latest.manga?.let { captured.manga?.matches(it) } == true && latest.details != null) latest else captured
         return snapshot.isChapterDownloaded(chapterUrl)
     }
 
@@ -879,7 +780,7 @@ class DetailsViewModel(
         rows: List<DownloadedChapter>,
     ) {
         val current = state.value
-        if (current.manga?.url != manga.url) return
+        if (current.manga?.matches(manga) != true) return
         val displayed = current.details?.chapters?.mapTo(HashSet()) { it.url } ?: return
         if (!challengeRecovery.observeDownloads(rows, displayed)) return
         if (challengeRecovery.request(DetailsChallengeOperation.Downloads)) {
@@ -895,30 +796,36 @@ class DetailsViewModel(
      * unresolved chapters actually complete or leave this owner. Empty pending work is a no-op.
      * Recovered chapters are skipped against current state even if this retry captured an older list.
      */
-    private fun retryCloudflareFailedDownloads() {
+    private suspend fun retryCloudflareFailedDownloads(request: DetailsRequestToken) {
         val urls = challengeRecovery.failedDownloadUrls
-        if (urls.isEmpty()) return
+        if (urls.isEmpty() || !requestFence.accepts(request)) return
         val current = state.value
         val manga = current.manga ?: return
         val title = current.details?.title ?: return
         challengeRecovery.begin(DetailsChallengeOperation.Downloads)
         val generation = downloadsGeneration
-        cloudflareRetryJob?.cancel()
-        cloudflareRetryJob =
-            launchSafely {
-                val idsByUrl = resolveChapterId(manga, urls)
-                urls.forEach { url ->
-                    val latest = state.value
-                    if (generation != downloadsGeneration || latest.manga?.url != manga.url) return@launchSafely
-                    val chapterId = idsByUrl[url] ?: return@forEach
-                    if (latest.isChapterDownloaded(url)) {
-                        challengeRecovery.downloadRecovered(url)
-                        return@forEach
-                    }
-                    enqueueDownload(chapterId = chapterId, mangaTitle = title, api = manga.api)
-                        .onFailure { /* best-effort; the row stays FAILED (and pending) if it can't re-queue */ }
+        val job = currentCoroutineContext().job
+        cloudflareRetryJob?.takeUnless { it == job }?.cancel()
+        cloudflareRetryJob = job
+        try {
+            val idsByUrl = resolveChapterId(manga, urls)
+            urls.forEach { url ->
+                currentCoroutineContext().ensureActive()
+                val latest = state.value
+                if (!requestFence.accepts(request) || generation != downloadsGeneration ||
+                    latest.manga?.matches(manga) != true
+                ) return
+                val chapterId = idsByUrl[url] ?: return@forEach
+                if (latest.isChapterDownloaded(url)) {
+                    challengeRecovery.downloadRecovered(url)
+                    return@forEach
                 }
+                enqueueDownload(chapterId = chapterId, mangaTitle = title, api = manga.api)
+                    .onFailure { /* best-effort; the row stays FAILED if it cannot re-queue */ }
             }
+        } finally {
+            if (cloudflareRetryJob == job) cloudflareRetryJob = null
+        }
     }
 
     /**
@@ -1099,7 +1006,10 @@ class DetailsViewModel(
                 }
             // 2) Delete the saved_chapters record itself.
             deleteChapter(id)
+            if (state.value.savedOwner?.id != current.savedOwner?.id) return@launchSafely
             if (!chapterRetractions.retractIfOwned(manga, state.value.manga, chapter.url)) return@launchSafely
+            fetchedSnapshot = fetchedSnapshot?.withoutChapterUrls(chapterRetractions.urls)
+            savedSnapshot = savedSnapshot?.let { it.copy(details = it.details.withoutChapterUrls(chapterRetractions.urls)) }
             updateState { it.withoutDeletedChapter(chapter.url, chapterRetractions.urls) }
         }
     }
@@ -1171,52 +1081,6 @@ class DetailsViewModel(
     }
 }
 
-private fun DetailsState.withFetchedDetails(
-    details: MangaDetails,
-    savedSnapshot: MangaDetails?,
-    refreshedAdult: Boolean,
-): DetailsState {
-    // Enrich the in-state Manga with the authoritative identity fields from the
-    // fetched details. For full-tuple OnEnter entries this overwrites identical
-    // fields with the freshly-fetched values (cover/genres may have been refreshed
-    // server-side since the user last loaded the parent list). For OnEnterByUrl
-    // entries this fills the sentinel placeholders (`language=""`, `title=""`,
-    // `coverUrl=""`, `genres=[]`) with the real values for the first time. Skip
-    // `rating` — Manga.rating is Int? while MangaDetails.rating is String
-    // (heterogeneous source formats kept opaque per MangaDetails KDoc); the screen
-    // reads details.rating directly anyway.
-    val enrichedManga =
-        manga?.copy(
-            language = details.language,
-            title = details.title,
-            coverUrl = details.coverUrl,
-            genres = details.genres,
-        )
-    return copy(
-        isLoading = false,
-        manga = enrichedManga,
-        details =
-            (if (savedSnapshot != null) details.overlaidWith(savedSnapshot) else details)
-                .expireNewBadges(nowMs()),
-        error = null,
-        isAdult = refreshedAdult,
-        // P0-ADULT: arm/keep the hard-block gate from the AUTHORITATIVE fetched
-        // genres (mirrors native isPlus18(info.genres, api) on the fetched info).
-        // This is the path that catches URL-only / search-result entries whose
-        // nav-arg carried no genres. If adult, ensure the gate is active —
-        // preserve an already-advanced step (e.g. the user is mid-chain when a
-        // refresh lands) and otherwise arm at AdultWarning; if not adult, clear to
-        // None. Compliance-critical: a fetch that reveals adult genres can never
-        // leave the gate at None, so the body stays blocked.
-        adultGateStep =
-            when {
-                !refreshedAdult -> AdultGateStep.None
-                adultGateStep == AdultGateStep.None -> AdultGateStep.AdultWarning
-                else -> adultGateStep
-            },
-    )
-}
-
 private fun List<DownloadedChapter>.toProgressByUrl(): Map<String, ChapterDownloadProgress> =
     filter { it.state != DownloadState.FAILED }
         .associate {
@@ -1245,84 +1109,7 @@ private fun chapterDownloadsFor(
     }
 
 /**
- * Preserve the screen's metadata checks while also requiring the exact persisted parent URL.
- * Distinct saved manga may share api, language and title, but must not share this screen's state.
+ * Requested owner identity; title/language are metadata, and aliases require data-layer proof.
  */
 private fun Manga.matches(other: Manga): Boolean =
-    api == other.api && language == other.language && title == other.title && url == other.url
-
-/**
- * Overlay the locally-persisted chapter state from [saved] onto this (network) [MangaDetails],
- * matching chapters by [me.manga.kira.domain.model.Chapter.url]. The network list stays the
- * base (its ordering + any newly-published chapters win); for each network chapter that also
- * exists in [saved], the user-state flags (`isRead` / `isDownloaded` / `isBookmarked` / `isNew`)
- * are taken **directly** from the saved Room row, which is the source of truth. Chapters absent
- * from [saved] keep their network defaults. Used so a network refresh never discards local read
- * progress (regression fix, 2026-05-31).
- *
- * These flags are assigned directly (NOT OR-ed with the base). The collector overlays each saved
- * re-emission onto `current.details` — which is itself the *previously-overlaid* result — so OR-ing
- * made `isDownloaded` / `isBookmarked` / `isNew` "sticky": once true they could never go back to
- * false on a later re-emission, so deleting a download (or un-bookmarking, or opening a NEW chapter)
- * didn't update the row until the screen was left and re-entered with a fresh fetch. Saved Room
- * state is authoritative for all four flags (the network DTO always leaves them false), so a direct
- * assignment is both correct and reactive (regression fix, 2026-06-02).
- * Saved read time likewise replaces any previous value, including decreases and resets.
- */
-private fun MangaDetails.overlaidWith(saved: MangaDetails): MangaDetails {
-    if (saved.chapters.isEmpty()) return this
-    // An empty successful transport payload must not erase a non-empty last-known-good list on
-    // screen. Azora exposed this when chapters became opt-in: refresh showed zero chapters, while
-    // reopening restored the Room list. Keep fresh metadata, but retain prior chapters until a
-    // verified non-empty list arrives. Explicit local chapter deletion remains a separate action.
-    val networkOrLastKnownGood =
-        if (chapters.isEmpty()) saved.chapters else chapters
-    val savedByUrl = saved.chapters.associateBy { it.url }
-    return copy(
-        chapters =
-            networkOrLastKnownGood.map { chapter ->
-                val s = savedByUrl[chapter.url] ?: return@map chapter
-                chapter.copy(
-                    isRead = s.isRead,
-                    isDownloaded = s.isDownloaded,
-                    isBookmarked = s.isBookmarked,
-                    // Persisted NEW-chapter flag from Room (the network chapter is always isNew=false).
-                    // The library-refresh worker sets it; ChapterDao.markChapterIsNew clears it on open.
-                    // (native LibraryDetails likewise shows NEW from the saved row.)
-                    isNew = s.isNew,
-                    // Discovery timestamp from the saved row, driving the 4-day badge expiry below.
-                    fetchedAt = s.fetchedAt,
-                    lastReadAtEpochMillis = s.lastReadAtEpochMillis,
-                )
-            },
-    )
-}
-
-/** 4 days in milliseconds — the window the NEW badge stays visible after discovery if unopened. */
-internal const val NEW_BADGE_WINDOW_MS: Long = 4L * 24 * 60 * 60 * 1000
-
-/**
- * Read-time NEW-badge expiry (#3, deliberate deviation from native, which has no expiry). Forces
- * `isNew = false` on any chapter whose discovery timestamp ([Chapter.fetchedAt]) is older than
- * [NEW_BADGE_WINDOW_MS] (or unknown, i.e. `0`), so the badge auto-disappears 4 days after discovery
- * even if the chapter was never opened. The persisted `isNew` flag is untouched (the badge is
- * re-evaluated against the clock on every emission); an explicit clear-on-open still wins immediately.
- */
-internal fun MangaDetails.expireNewBadges(nowMs: Long): MangaDetails {
-    if (chapters.none { it.isNew }) return this
-    return copy(
-        chapters =
-            chapters.map { c ->
-                if (c.isNew && !isWithinNewWindow(c.fetchedAt, nowMs)) c.copy(isNew = false) else c
-            },
-    )
-}
-
-private fun isWithinNewWindow(
-    fetchedAt: Long,
-    nowMs: Long,
-): Boolean = fetchedAt > 0L && (nowMs - fetchedAt) in 0L until NEW_BADGE_WINDOW_MS
-
-/** Current wall-clock in epoch-millis for the read-time badge-expiry evaluation. */
-@OptIn(ExperimentalTime::class)
-private fun nowMs(): Long = Clock.System.now().toEpochMilliseconds()
+    api == other.api && url == other.url

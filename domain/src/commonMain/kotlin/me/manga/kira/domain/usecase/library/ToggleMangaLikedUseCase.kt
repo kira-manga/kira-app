@@ -2,7 +2,7 @@ package me.manga.kira.domain.usecase.library
 
 import me.manga.kira.core.result.AppResult
 import me.manga.kira.domain.repository.LibraryRepository
-import me.manga.kira.domain.repository.MangaKey
+import me.manga.kira.domain.model.identity.SavedWorkIdentity
 
 /**
  * Flip the `isLiked` affinity flag on a library entry.
@@ -65,5 +65,5 @@ import me.manga.kira.domain.repository.MangaKey
 class ToggleMangaLikedUseCase(
     private val repository: LibraryRepository,
 ) {
-    suspend operator fun invoke(key: MangaKey): AppResult<Unit> = repository.toggleLiked(key)
+    suspend operator fun invoke(key: SavedWorkIdentity): AppResult<Unit> = repository.toggleLiked(key)
 }
