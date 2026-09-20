@@ -155,7 +155,7 @@ class LanguageViewModelTest {
 
                 release.complete(Unit)
                 runCurrent()
-                val expectedEffects = if (success) listOf(LanguageEffect.RequestSubmitted) else emptyList()
+                val expectedEffects: List<LanguageEffect> = if (success) listOf(LanguageEffect.RequestSubmitted) else emptyList()
                 assertEquals(expectedEffects, effects, "failure stays in the dialog, never an effect")
                 assertEquals(!success, model.state.value.requestFailed)
                 assertFalse(model.state.value.requestSubmitting)
