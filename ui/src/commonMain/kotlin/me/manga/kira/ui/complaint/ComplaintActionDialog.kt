@@ -32,7 +32,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,9 +85,9 @@ import org.jetbrains.compose.resources.stringResource
  * a pure projection.
  *
  * **Stateless except for form input**:
- *  - `replyText`, `editedSubject`, `editedText` use [rememberSaveable] (transient typed-input
- *    state — survives config changes but isn't part of the VM contract; the VM only sees the
- *    final value via `OnSubmitReply` / `OnSubmitEdit`).
+ *  - `replyText`, `editedSubject`, `editedBody` use [remember] keyed by complaint ID. Prose stays
+ *    available during same-opening recomposition/retry, but never enters saved state. The VM
+ *    only sees the final value via `OnSubmitReply` / `OnSubmitEdit`.
  *  - Submit-button loading state comes from [me.manga.kira.presentation.complaint.ComplaintState.isSubmittingAction]
  *    — legacy's local `var isLoading by remember { mutableStateOf(false) }` would split the
  *    source of truth (the VM also tracks it for the in-flight guard), so the rework drops the
@@ -360,7 +359,7 @@ private fun ReplyContent(
 ) {
     val spacing = LocalSpacing.current
     val maxChars = 500
-    var replyText by rememberSaveable(complaint.id) { mutableStateOf("") }
+    var replyText by remember(complaint.id) { mutableStateOf("") }
 
     Column(
         modifier = Modifier.padding(24.dp),
@@ -500,8 +499,8 @@ private fun EditContent(
 ) {
     val spacing = LocalSpacing.current
     val maxChars = 1000
-    var editedSubject by rememberSaveable(complaint.id) { mutableStateOf(complaint.subject) }
-    var editedBody by rememberSaveable(complaint.id) { mutableStateOf(complaint.body) }
+    var editedSubject by remember(complaint.id) { mutableStateOf(complaint.subject) }
+    var editedBody by remember(complaint.id) { mutableStateOf(complaint.body) }
     // GAP-CMP-U-EDIT — native EditComplaintDialog (StatusChangeDialog.kt:124-126/278) gates Save on
     // `hasChanges` (the edited subject/body must differ from the original) so an unchanged complaint
     // can't be re-submitted, avoiding a redundant write. Matches the admin-side EditContent guard.
