@@ -1390,9 +1390,9 @@ private fun settingsDestinationLabel(destination: SettingsDestination): String =
 
 /**
  * [Saver] for the nullable [ComplaintType] staged in [FeedbackDialog], so the picked category
- * survives Android activity recreation alongside the body text (the dialog's open flag lives in
- * MVI state). Stored by enum `name` (a Bundle-safe `String`); `null` round-trips as the empty
- * string sentinel.
+ * survives Android activity recreation; body text is deliberately memory-only. The dialog's
+ * open flag lives in MVI state. Stored by enum `name` (a Bundle-safe `String`); `null` round-trips
+ * as the empty string sentinel.
  */
 private val complaintTypeSaver: Saver<ComplaintType?, String> = Saver(
     save = { it?.name ?: "" },
@@ -1428,12 +1428,10 @@ private fun complaintTypeLabel(type: ComplaintType): String = when (type) {
  * [me.manga.kira.ui.complaint.ComplaintActionDialog]).
  *
  * **Local state, not MVI**: the dropdown selection ([selectedType]) and body text ([body]) live
- * in `rememberSaveable { mutableStateOf(...) }` in the composable, NOT in [SettingsState]. Matches
- * the §95 OnSubmitReply / OnSubmitEdit established posture — payloads ride along with the submit
- * intent rather than being mirrored into MVI state. Keeps the MVI state surface narrow
- * (2 fields: open + in-flight) and avoids per-keystroke intents. `rememberSaveable` (with
- * [complaintTypeSaver] for the enum) keeps the staged category + body across activity recreation,
- * since the dialog's open flag is MVI state that survives the same recreation.
+ * in the composable, NOT in [SettingsState]. Body text uses [remember] so same-opening retry
+ * retains prose without saved-state serialization. Only the staged category uses [rememberSaveable]
+ * with [complaintTypeSaver]. Payloads ride along with the submit intent rather than being mirrored
+ * into MVI state, keeping its surface narrow (open + in-flight) without per-keystroke intents.
  *
  * **Submit gating**: matches the legacy `submitEnabled = selectedTypeState != null &&
  * feedbackBody.length >= 5` exactly. Native-parity reconciliation (GAP-SET-11, 2026-05-31):
@@ -1468,7 +1466,7 @@ private fun FeedbackDialog(
     var selectedType by rememberSaveable(stateSaver = complaintTypeSaver) {
         mutableStateOf<ComplaintType?>(null)
     }
-    var body by rememberSaveable { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
 
     // P2-SET (F9) — localized display name for the staged category (null until one is picked),
