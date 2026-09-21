@@ -67,7 +67,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1210,7 +1209,8 @@ private fun RequestSourceDialog(
 ) {
     val spacing = LocalSpacing.current
     val scrollState = rememberScrollState()
-    var body by rememberSaveable { mutableStateOf("") }
+    // Keep request prose in this live opening, never in saved/process-restoration state.
+    var body by remember { mutableStateOf("") }
 
     val submitEnabled = body.length >= 5 && !isSubmitting
 
