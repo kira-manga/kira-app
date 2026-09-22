@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Удалить данные обращений</string>
-    <string name="settings_installation_deletion_active">Вы можете запросить удаление с сервера всех данных обращений, связанных с этой установкой приложения.</string>
+    <string name="settings_installation_deletion_active">Вы можете запросить удаление содержимого обращений, связанных с этой установкой приложения, с рабочего сервера.</string>
     <string name="settings_installation_deletion_checking">Проверка локального состояния обращений этой установки…</string>
     <string name="settings_installation_deletion_missing">Локальный идентификатор обращений и сохранённые операции не найдены. Это не подтверждает удаление на сервере.</string>
     <string name="settings_installation_deletion_cleanup">Локальная очистка обращений требует внимания. Используйте действия локального восстановления ниже, затем снова проверьте локальное состояние. Это не подтверждает удаление на сервере.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Проверить локальное состояние</string>
     <string name="settings_installation_deletion_continue">Продолжить существующее удаление</string>
     <string name="settings_installation_deletion_warning_title">Удалить данные обращений этой установки?</string>
-    <string name="settings_installation_deletion_warning">Это запрос на удаление с сервера всех данных обращений, связанных с этой установкой. После завершения также удаляются локальный идентификатор обращений и сохранённые операции. Вы можете потерять доступ к истории обращений. Удаление на сервере нельзя отменить.</string>
+    <string name="settings_installation_deletion_warning">Это запрос на удаление содержимого обращений, связанных с этой установкой, с рабочего сервера. После завершения также удаляются локальный идентификатор обращений и сохранённые операции. Вы можете потерять доступ к истории обращений. Удаление на сервере нельзя отменить. Резервные копии могут сохранять содержимое до истечения срока их хранения. Некоторые записи об идентификаторах и удалении, не включающие содержимое обращений, сохраняются бессрочно, чтобы предотвратить восстановление удалённого содержимого или повторное использование идентификаторов.</string>
     <string name="settings_installation_deletion_confirm">Удалить данные обращений</string>
     <string name="settings_installation_deletion_close_notice">Запрос, принятый сервером, может выполняться и после закрытия этого диалога или приложения.</string>
     <string name="settings_installation_deletion_uninstall">Удаление приложения не удаляет данные обращений на сервере.</string>

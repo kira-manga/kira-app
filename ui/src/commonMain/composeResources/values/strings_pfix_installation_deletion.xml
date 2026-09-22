@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Delete complaint data</string>
-    <string name="settings_installation_deletion_active">You can request server deletion of all complaint data linked to this app installation.</string>
+    <string name="settings_installation_deletion_active">You can request deletion of live complaint content linked to this app installation.</string>
     <string name="settings_installation_deletion_checking">Checking this installation’s local complaint state…</string>
     <string name="settings_installation_deletion_missing">No local complaint identity or retained operations were found. This does not confirm server deletion.</string>
     <string name="settings_installation_deletion_cleanup">Local complaint cleanup needs attention. Use the local recovery actions below, then check local status again. This does not confirm server deletion.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Check local status</string>
     <string name="settings_installation_deletion_continue">Continue existing deletion</string>
     <string name="settings_installation_deletion_warning_title">Delete this installation’s complaint data?</string>
-    <string name="settings_installation_deletion_warning">This requests deletion of all complaint data linked to this installation on the server. Completion also clears the local complaint identity and retained operations. You may lose access to complaint history. Server deletion cannot be undone.</string>
+    <string name="settings_installation_deletion_warning">This requests deletion of live complaint content linked to this installation on the server. Completion also clears the local complaint identity and retained operations. You may lose access to complaint history. Server deletion cannot be undone. Backups may retain copies until they expire. Some content-free identifier and deletion records remain permanently to prevent deleted content from being restored or identifiers from being reused.</string>
     <string name="settings_installation_deletion_confirm">Delete complaint data</string>
     <string name="settings_installation_deletion_close_notice">A request accepted by the server may continue after you close this dialog or the app.</string>
     <string name="settings_installation_deletion_uninstall">Uninstalling the app does not delete complaint data on the server.</string>

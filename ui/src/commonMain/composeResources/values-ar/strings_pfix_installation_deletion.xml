@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">حذف بيانات البلاغات</string>
-    <string name="settings_installation_deletion_active">يمكنك طلب حذف جميع بيانات البلاغات المرتبطة بهذا التثبيت للتطبيق من الخادم.</string>
+    <string name="settings_installation_deletion_active">يمكنك طلب حذف محتوى البلاغات المرتبط بهذا التثبيت للتطبيق من الخادم قيد التشغيل.</string>
     <string name="settings_installation_deletion_checking">جارٍ فحص الحالة المحلية للبلاغات لهذا التثبيت…</string>
     <string name="settings_installation_deletion_missing">لم يتم العثور على هوية بلاغات محلية أو عمليات محتفظ بها. لا يؤكد ذلك الحذف من الخادم.</string>
     <string name="settings_installation_deletion_cleanup">يتطلب التنظيف المحلي للبلاغات تدخلك. استخدم إجراءات الاستعادة المحلية أدناه، ثم افحص الحالة المحلية مجددًا. لا يؤكد ذلك الحذف من الخادم.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">فحص الحالة المحلية</string>
     <string name="settings_installation_deletion_continue">متابعة الحذف الموجود</string>
     <string name="settings_installation_deletion_warning_title">حذف بيانات البلاغات لهذا التثبيت؟</string>
-    <string name="settings_installation_deletion_warning">يطلب هذا حذف جميع بيانات البلاغات المرتبطة بهذا التثبيت من الخادم. يؤدي الاكتمال أيضًا إلى إزالة هوية البلاغات المحلية والعمليات المحتفظ بها. قد تفقد الوصول إلى سجل البلاغات. لا يمكن التراجع عن الحذف من الخادم.</string>
+    <string name="settings_installation_deletion_warning">يطلب هذا حذف محتوى البلاغات المرتبط بهذا التثبيت من الخادم قيد التشغيل. يؤدي الاكتمال أيضًا إلى إزالة هوية البلاغات المحلية والعمليات المحتفظ بها. قد تفقد الوصول إلى سجل البلاغات. لا يمكن التراجع عن الحذف من الخادم. قد تحتفظ النسخ الاحتياطية بنسخ من المحتوى حتى انتهاء صلاحيتها. تبقى بعض سجلات المعرّفات والحذف الخالية من المحتوى محفوظة بشكل دائم لمنع استعادة المحتوى المحذوف أو إعادة استخدام المعرّفات.</string>
     <string name="settings_installation_deletion_confirm">حذف بيانات البلاغات</string>
     <string name="settings_installation_deletion_close_notice">قد تستمر معالجة طلب قبله الخادم بعد إغلاق هذا الحوار أو التطبيق.</string>
     <string name="settings_installation_deletion_uninstall">إلغاء تثبيت التطبيق لا يحذف بيانات البلاغات من الخادم.</string>

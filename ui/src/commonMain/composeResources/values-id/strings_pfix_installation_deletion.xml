@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Hapus data laporan</string>
-    <string name="settings_installation_deletion_active">Anda dapat meminta penghapusan semua data laporan yang terkait dengan instalasi aplikasi ini dari server.</string>
+    <string name="settings_installation_deletion_active">Anda dapat meminta penghapusan konten laporan yang terkait dengan instalasi aplikasi ini dari server aktif.</string>
     <string name="settings_installation_deletion_checking">Memeriksa status laporan lokal untuk instalasi ini…</string>
     <string name="settings_installation_deletion_missing">Tidak ditemukan identitas laporan lokal atau operasi yang tersimpan. Ini tidak memastikan penghapusan di server.</string>
     <string name="settings_installation_deletion_cleanup">Pembersihan laporan lokal perlu ditangani. Gunakan tindakan pemulihan lokal di bawah, lalu periksa status lokal lagi. Ini tidak memastikan penghapusan di server.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Periksa status lokal</string>
     <string name="settings_installation_deletion_continue">Lanjutkan penghapusan yang ada</string>
     <string name="settings_installation_deletion_warning_title">Hapus data laporan untuk instalasi ini?</string>
-    <string name="settings_installation_deletion_warning">Ini meminta penghapusan semua data laporan yang terkait dengan instalasi ini dari server. Setelah selesai, identitas laporan lokal dan operasi yang tersimpan juga dihapus. Anda mungkin kehilangan akses ke riwayat laporan. Penghapusan di server tidak dapat dibatalkan.</string>
+    <string name="settings_installation_deletion_warning">Ini meminta penghapusan konten laporan yang terkait dengan instalasi ini dari server aktif. Setelah selesai, identitas laporan lokal dan operasi yang tersimpan juga dihapus. Anda mungkin kehilangan akses ke riwayat laporan. Penghapusan di server tidak dapat dibatalkan. Cadangan dapat menyimpan salinan hingga masa berlakunya habis. Beberapa catatan pengenal dan penghapusan tanpa konten laporan tetap disimpan secara permanen untuk mencegah pemulihan konten yang telah dihapus atau penggunaan ulang pengenal.</string>
     <string name="settings_installation_deletion_confirm">Hapus data laporan</string>
     <string name="settings_installation_deletion_close_notice">Permintaan yang diterima server dapat terus diproses setelah Anda menutup dialog ini atau aplikasi.</string>
     <string name="settings_installation_deletion_uninstall">Menghapus instalasi aplikasi tidak menghapus data laporan di server.</string>

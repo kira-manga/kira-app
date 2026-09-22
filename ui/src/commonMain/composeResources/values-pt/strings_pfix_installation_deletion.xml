@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Excluir dados dos relatos</string>
-    <string name="settings_installation_deletion_active">Você pode solicitar a exclusão do servidor de todos os dados dos relatos vinculados a esta instalação do aplicativo.</string>
+    <string name="settings_installation_deletion_active">Você pode solicitar que o conteúdo dos relatos vinculados a esta instalação do aplicativo seja excluído do servidor em operação.</string>
     <string name="settings_installation_deletion_checking">Verificando o estado local dos relatos desta instalação…</string>
     <string name="settings_installation_deletion_missing">Não foi encontrada nenhuma identidade local de relatos nem operações mantidas. Isso não confirma a exclusão no servidor.</string>
     <string name="settings_installation_deletion_cleanup">A limpeza local dos relatos precisa de atenção. Use as ações de recuperação local abaixo e verifique o estado local novamente. Isso não confirma a exclusão no servidor.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Verificar estado local</string>
     <string name="settings_installation_deletion_continue">Continuar a exclusão existente</string>
     <string name="settings_installation_deletion_warning_title">Excluir os dados dos relatos desta instalação?</string>
-    <string name="settings_installation_deletion_warning">Isso solicita a exclusão do servidor de todos os dados dos relatos vinculados a esta instalação. Ao concluir, a identidade local de relatos e as operações mantidas também são removidas. Você pode perder o acesso ao histórico de relatos. A exclusão no servidor não pode ser desfeita.</string>
+    <string name="settings_installation_deletion_warning">Isso solicita que o conteúdo dos relatos vinculados a esta instalação seja excluído do servidor em operação. Ao concluir, a identidade local de relatos e as operações mantidas também são removidas. Você pode perder o acesso ao histórico de relatos. A exclusão no servidor não pode ser desfeita. Os backups podem manter cópias até expirarem. Alguns registros de identificadores e de exclusão, sem conteúdo dos relatos, são mantidos permanentemente para impedir a restauração do conteúdo excluído ou a reutilização dos identificadores.</string>
     <string name="settings_installation_deletion_confirm">Excluir dados dos relatos</string>
     <string name="settings_installation_deletion_close_notice">Uma solicitação aceita pelo servidor pode continuar após você fechar esta janela ou o aplicativo.</string>
     <string name="settings_installation_deletion_uninstall">Desinstalar o aplicativo não exclui os dados dos relatos no servidor.</string>
