@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Eliminar datos de informes</string>
-    <string name="settings_installation_deletion_active">Puedes solicitar que se eliminen del servidor todos los datos de informes vinculados a esta instalación de la aplicación.</string>
+    <string name="settings_installation_deletion_active">Puedes solicitar que se elimine del servidor activo el contenido de los informes vinculados a esta instalación de la aplicación.</string>
     <string name="settings_installation_deletion_checking">Comprobando el estado local de los informes de esta instalación…</string>
     <string name="settings_installation_deletion_missing">No se encontró ninguna identidad local de informes ni operaciones conservadas. Esto no confirma la eliminación en el servidor.</string>
     <string name="settings_installation_deletion_cleanup">La limpieza local de informes necesita atención. Usa las acciones de recuperación local de abajo y vuelve a comprobar el estado local. Esto no confirma la eliminación en el servidor.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Comprobar el estado local</string>
     <string name="settings_installation_deletion_continue">Continuar la eliminación existente</string>
     <string name="settings_installation_deletion_warning_title">¿Eliminar los datos de informes de esta instalación?</string>
-    <string name="settings_installation_deletion_warning">Esto solicita eliminar del servidor todos los datos de informes vinculados a esta instalación. Al finalizar también se borran la identidad local de informes y las operaciones conservadas. Puedes perder el acceso al historial de informes. La eliminación en el servidor no se puede deshacer.</string>
+    <string name="settings_installation_deletion_warning">Esto solicita eliminar del servidor activo el contenido de los informes vinculados a esta instalación. Al finalizar también se borran la identidad local de informes y las operaciones conservadas. Puedes perder el acceso al historial de informes. La eliminación en el servidor no se puede deshacer. Las copias de seguridad pueden conservar el contenido hasta que caduquen. Algunos registros de identificadores y de eliminación, sin contenido de informes, se conservan de forma permanente para impedir que se restaure el contenido eliminado o se reutilicen los identificadores.</string>
     <string name="settings_installation_deletion_confirm">Eliminar datos de informes</string>
     <string name="settings_installation_deletion_close_notice">Una solicitud aceptada por el servidor puede continuar después de cerrar este diálogo o la aplicación.</string>
     <string name="settings_installation_deletion_uninstall">Desinstalar la aplicación no elimina los datos de informes del servidor.</string>

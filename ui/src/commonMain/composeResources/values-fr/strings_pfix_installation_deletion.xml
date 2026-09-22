@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Supprimer les données des signalements</string>
-    <string name="settings_installation_deletion_active">Vous pouvez demander la suppression sur le serveur de toutes les données des signalements liées à cette installation de l’application.</string>
+    <string name="settings_installation_deletion_active">Vous pouvez demander la suppression du contenu des signalements liés à cette installation de l’application sur le serveur en service.</string>
     <string name="settings_installation_deletion_checking">Vérification de l’état local des signalements de cette installation…</string>
     <string name="settings_installation_deletion_missing">Aucune identité locale de signalement ni opération conservée n’a été trouvée. Cela ne confirme aucune suppression sur le serveur.</string>
     <string name="settings_installation_deletion_cleanup">Le nettoyage local des signalements nécessite votre attention. Utilisez les actions de récupération locale ci-dessous, puis vérifiez à nouveau l’état local. Cela ne confirme aucune suppression sur le serveur.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Vérifier l’état local</string>
     <string name="settings_installation_deletion_continue">Poursuivre la suppression existante</string>
     <string name="settings_installation_deletion_warning_title">Supprimer les données des signalements de cette installation ?</string>
-    <string name="settings_installation_deletion_warning">Cela demande la suppression sur le serveur de toutes les données des signalements liées à cette installation. Une fois l’opération terminée, l’identité locale des signalements et les opérations conservées sont également effacées. Vous risquez de perdre l’accès à l’historique des signalements. La suppression sur le serveur est irréversible.</string>
+    <string name="settings_installation_deletion_warning">Cela demande la suppression du contenu des signalements liés à cette installation sur le serveur en service. Une fois l’opération terminée, l’identité locale des signalements et les opérations conservées sont également effacées. Vous risquez de perdre l’accès à l’historique des signalements. La suppression sur le serveur est irréversible. Les sauvegardes peuvent conserver des copies jusqu’à leur expiration. Certains enregistrements d’identifiants et de suppression, sans contenu de signalement, sont conservés de façon permanente pour empêcher la restauration du contenu supprimé ou la réutilisation des identifiants.</string>
     <string name="settings_installation_deletion_confirm">Supprimer les données des signalements</string>
     <string name="settings_installation_deletion_close_notice">Une demande acceptée par le serveur peut se poursuivre après la fermeture de ce dialogue ou de l’application.</string>
     <string name="settings_installation_deletion_uninstall">Désinstaller l’application ne supprime pas les données des signalements sur le serveur.</string>

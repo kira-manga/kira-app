@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">Bildirim verilerini sil</string>
-    <string name="settings_installation_deletion_active">Bu uygulama kurulumuna bağlı tüm bildirim verilerinin sunucudan silinmesini isteyebilirsiniz.</string>
+    <string name="settings_installation_deletion_active">Bu uygulama kurulumuna bağlı bildirim içeriklerinin çalışan sunucudan silinmesini isteyebilirsiniz.</string>
     <string name="settings_installation_deletion_checking">Bu kurulumun yerel bildirim durumu denetleniyor…</string>
     <string name="settings_installation_deletion_missing">Yerel bildirim kimliği veya saklanan işlem bulunamadı. Bu, sunucuda silme yapıldığını doğrulamaz.</string>
     <string name="settings_installation_deletion_cleanup">Yerel bildirim temizliği ilgilenmenizi gerektiriyor. Aşağıdaki yerel kurtarma işlemlerini kullanın, ardından yerel durumu yeniden denetleyin. Bu, sunucuda silme yapıldığını doğrulamaz.</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">Yerel durumu denetle</string>
     <string name="settings_installation_deletion_continue">Mevcut silme işlemini sürdür</string>
     <string name="settings_installation_deletion_warning_title">Bu kurulumun bildirim verileri silinsin mi?</string>
-    <string name="settings_installation_deletion_warning">Bu işlem, bu kuruluma bağlı tüm bildirim verilerinin sunucudan silinmesini ister. Tamamlandığında yerel bildirim kimliği ve saklanan işlemler de temizlenir. Bildirim geçmişine erişiminizi kaybedebilirsiniz. Sunucudan silme işlemi geri alınamaz.</string>
+    <string name="settings_installation_deletion_warning">Bu işlem, bu kuruluma bağlı bildirim içeriklerinin çalışan sunucudan silinmesini ister. Tamamlandığında yerel bildirim kimliği ve saklanan işlemler de temizlenir. Bildirim geçmişine erişiminizi kaybedebilirsiniz. Sunucudan silme işlemi geri alınamaz. Yedekler, süreleri dolana kadar kopyaları saklayabilir. Bildirim içeriği barındırmayan bazı tanımlayıcı ve silme kayıtları, silinen içeriğin geri yüklenmesini veya tanımlayıcıların yeniden kullanılmasını önlemek için kalıcı olarak saklanır.</string>
     <string name="settings_installation_deletion_confirm">Bildirim verilerini sil</string>
     <string name="settings_installation_deletion_close_notice">Sunucunun kabul ettiği bir istek, bu iletişim kutusunu veya uygulamayı kapattıktan sonra da işlenmeye devam edebilir.</string>
     <string name="settings_installation_deletion_uninstall">Uygulamayı kaldırmak, sunucudaki bildirim verilerini silmez.</string>

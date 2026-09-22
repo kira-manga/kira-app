@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_installation_deletion_title">報告データを削除</string>
-    <string name="settings_installation_deletion_active">このアプリのインストールに紐づくすべての報告データをサーバーから削除するようリクエストできます。</string>
+    <string name="settings_installation_deletion_active">このアプリのインストールに紐づく報告の内容を、運用中のサーバーから削除するようリクエストできます。</string>
     <string name="settings_installation_deletion_checking">このインストールの端末内の報告状態を確認中…</string>
     <string name="settings_installation_deletion_missing">端末内に報告用識別情報や保持された操作は見つかりませんでした。これはサーバー上での削除を確認するものではありません。</string>
     <string name="settings_installation_deletion_cleanup">端末内の報告データのクリーンアップに対応が必要です。下のローカル復旧操作を行い、端末内の状態を再確認してください。これはサーバー上での削除を確認するものではありません。</string>
@@ -12,7 +12,7 @@
     <string name="settings_installation_deletion_check">端末内の状態を確認</string>
     <string name="settings_installation_deletion_continue">既存の削除を続行</string>
     <string name="settings_installation_deletion_warning_title">このインストールの報告データを削除しますか？</string>
-    <string name="settings_installation_deletion_warning">このインストールに紐づくすべての報告データをサーバーから削除するようリクエストします。完了時には端末内の報告用識別情報と保持された操作も消去されます。報告履歴にアクセスできなくなる場合があります。サーバー上での削除は取り消せません。</string>
+    <string name="settings_installation_deletion_warning">このインストールに紐づく報告の内容を、運用中のサーバーから削除するようリクエストします。完了時には端末内の報告用識別情報と保持された操作も消去されます。報告履歴にアクセスできなくなる場合があります。サーバー上での削除は取り消せません。バックアップには、有効期限が切れるまでコピーが残る場合があります。削除した内容の復元や識別子の再利用を防ぐため、報告内容を含まない一部の識別子の記録や削除記録は恒久的に保持されます。</string>
     <string name="settings_installation_deletion_confirm">報告データを削除</string>
     <string name="settings_installation_deletion_close_notice">サーバーが受け付けたリクエストは、このダイアログやアプリを閉じた後も処理が続く場合があります。</string>
     <string name="settings_installation_deletion_uninstall">アプリをアンインストールしても、サーバー上の報告データは削除されません。</string>
