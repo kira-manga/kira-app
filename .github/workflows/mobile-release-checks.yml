@@ -55,7 +55,7 @@ jobs:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
         run: |
           trap './gradlew --stop' EXIT
-          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
+          ./gradlew --continue --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
             -Pkotlin.compiler.execution.strategy=in-process \
             :core:desktopTest :domain:desktopTest :data:desktopTest \
             :data:local:desktopTest :data:remote:desktopTest :data:download:desktopTest \
