@@ -221,7 +221,7 @@ class DetailsDeferredDownloadOwnershipTest {
             fixture.vm.submit(DetailsIntent.OnEnter(mangaB))
             fixture.assertLoadedOwner(mangaB)
             val reload = CompletableDeferred<Unit>()
-            fixture.fetchGate = reload
+            fixture.savedReadGate = reload
             fixture.vm.submit(DetailsIntent.OnEnter(mangaA))
             val shell = fixture.vm.state.value
             assertEquals(mangaA.url, shell.manga?.url)

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -17,6 +19,9 @@ import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.MangaDetails
 import me.manga.kira.domain.model.downloads.DownloadState
 import me.manga.kira.domain.model.downloads.DownloadedChapter
+import me.manga.kira.domain.model.identity.WorkLocator
+import me.manga.kira.domain.model.library.SavedWorkDetails
+import me.manga.kira.domain.repository.SavedMangaDetailsRepository
 import me.manga.kira.domain.usecase.details.ObserveSavedMangaDetailsUseCase
 import me.manga.kira.presentation.testing.FakeLibraryRepository
 import kotlin.test.AfterTest
@@ -570,13 +575,18 @@ class DetailsViewModelRegressionTest {
     @Test
     fun refresh_capturesTypedOwner_evenWhenSavedDetailsObserverHasNoRow() =
         runTest {
-            val saved = FakeSavedMangaDetailsRepository(savedOwner()) // no saved-details row emitted yet
+            // No local emission is different from Success(null), which confirms an absent parent.
+            val saved = object : SavedMangaDetailsRepository {
+                val owner = savedOwner()
+                override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> = emptyFlow()
+            }
             val libraryRepo = FakeLibraryRepository().apply { emitMembership(saved.owner) }
             val (vm, _) =
-                vmWithFetchFake(
+                createVmWithFetchFake(
                     fetch = AppResult.Success(details(listOf(chapter("c/1"), chapter("c/2")))),
                     saved = saved,
                     options = VmFixtureOptions().apply { this.libraryRepo = libraryRepo },
+                    testDispatchers = testDispatchers,
                 )
 
             vm.submit(DetailsIntent.OnEnter(manga())) // no cache: resolve the owner before fetching
