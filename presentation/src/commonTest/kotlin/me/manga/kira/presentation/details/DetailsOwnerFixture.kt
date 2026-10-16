@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import me.manga.kira.core.dispatchers.DispatcherProvider
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
@@ -75,6 +76,7 @@ internal class DetailsOwnerFixture(
     // Explicit fixture owners are scoped by requested (api, URL); snapshot metadata never chooses
     // a parent. Resolver IDs below are chapter IDs, not these synthetic retained parent IDs.
     val savedDetails = MutableStateFlow<MangaDetails?>(null)
+    var savedReadGate: CompletableDeferred<Unit>? = null
     var fetchGate: CompletableDeferred<Unit>? = null
     var fetchFailure: AppError? = null
     val library = FakeLibraryRepository()
@@ -102,17 +104,30 @@ internal class DetailsOwnerFixture(
     private val saved =
         object : SavedMangaDetailsRepository {
             override fun observeSavedDetails(work: WorkLocator): Flow<AppResult<SavedWorkDetails?>> {
+                if (work.url !in knownWorkUrls) return flowOf(AppResult.Success(null))
                 val owner = owners.getOrPut(work) { SavedWorkIdentity(owners.size + 1L, work) }
-                if (work.url in knownWorkUrls) library.emitMembership(owner)
+                library.emitMembership(owner)
                 return savedDetails.map { details ->
-                    AppResult.Success(
-                        details?.takeIf { it.api == work.api && it.url == work.url }?.let {
-                            SavedWorkDetails(owner, it)
-                        },
-                    )
-                }
+                    // A retained parent has a projection even without chapters; null means no parent.
+                    val scoped = details?.takeIf { it.api == work.api && it.url == work.url } ?: emptySavedDetails(work)
+                    AppResult.Success(SavedWorkDetails(owner, scoped))
+                }.onStart { savedReadGate?.await() }
             }
         }
+
+    private fun emptySavedDetails(work: WorkLocator): MangaDetails = detailsFor(
+        Manga(
+            api = work.api,
+            language = "",
+            title = "",
+            url = work.url,
+            coverUrl = "",
+            rating = null,
+            genres = emptyList(),
+        ),
+        emptyList(),
+    )
+
     private val classifier =
         object : AdultContentClassifier {
             override fun isAdultContent(
