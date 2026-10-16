@@ -19,6 +19,7 @@ import me.manga.kira.data.local.entity.SourcesEntity
 import me.manga.kira.sources.contracts.SelectedCatalogKind
 import me.manga.kira.sources.contracts.SourceSelectionLimits
 import me.manga.kira.sources.contracts.SourceSelectionUnavailable
+import me.manga.kira.sources.contracts.UpdateState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -173,11 +174,15 @@ class EffectiveSourceSelectionRoomTest {
             assertIs<AppResult.Success<*>>(f.manager().refresh())
             f.db.sourcesDao().insert(SourcesEntity("fixture-sentinel", priority = 99, language = "en", imageBaseUrl = "", imageUrlVersion = 0))
             val before = f.state()
+            val retainedToken = f.writer { f.provider.readInTransaction().token }
             f.execute("CREATE TRIGGER fixture_fail_selection BEFORE INSERT ON effective_source_selection " +
                 "WHEN NEW.generation = 2 BEGIN SELECT RAISE(ABORT, 'fixture late failure'); END")
-            assertIs<AppResult.Failure>(f.manager(BootstrapCatalogRemote(BootstrapSignedCatalogFixture.load())).refresh())
+            val manager = f.manager(BootstrapCatalogRemote(BootstrapSignedCatalogFixture.load()))
+            // Retained-A readoption uses a bounded real Room read, not runTest's virtual clock.
+            withContext(Dispatchers.Default) { assertIs<AppResult.Failure>(manager.refresh()) }
             assertEquals(before, f.state())
-            assertFailsWith<SourceSelectionUnavailable> { f.writer { f.provider.readInTransaction() } }
+            assertIs<UpdateState.Failed>(manager.state.value)
+            assertEquals(retainedToken, f.writer { f.provider.readInTransaction().token })
         }
     }
 
@@ -186,15 +191,19 @@ class EffectiveSourceSelectionRoomTest {
         EffectiveSourceSelectionRoomFixture().use { f ->
             assertIs<AppResult.Success<*>>(f.manager().refresh())
             val before = f.state()
+            val retainedToken = f.writer { f.provider.readInTransaction().token }
             f.migration.insideWriter = { candidate ->
                 if (candidate.advancesSignedFloor) {
                     f.execute("DELETE FROM sources")
                     error("fixture strict rejection")
                 }
             }
-            assertIs<AppResult.Failure>(f.manager(emptySelectionRemote()).refresh())
+            val manager = f.manager(emptySelectionRemote())
+            // B must roll back; verified A may be readopted without retrying either commit.
+            withContext(Dispatchers.Default) { assertIs<AppResult.Failure>(manager.refresh()) }
             assertEquals(before, f.state())
-            assertFailsWith<SourceSelectionUnavailable> { f.writer { f.provider.readInTransaction() } }
+            assertIs<UpdateState.Failed>(manager.state.value)
+            assertEquals(retainedToken, f.writer { f.provider.readInTransaction().token })
         }
     }
 
