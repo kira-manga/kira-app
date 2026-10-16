@@ -16,6 +16,7 @@ class ToolchainInputsTest < Minitest::Test
     scripts/release/cleanup-xcodegen.sh
     .github/workflows/ci.yml .github/workflows/android-internal-testing.yml
     .github/workflows/testflight.yml .github/workflows/internal-testing-release.yml
+    .github/workflows/mobile-release-checks.yml
     iosApp/Package.resolved iosApp/project.yml
   ].freeze
   GENERATED_LOCK = "iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved".freeze

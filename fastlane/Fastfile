@@ -325,7 +325,7 @@ platform :ios do
 end
 
 platform :android do
-  desc "Upload the signed Android App Bundle to Internal testing before Open testing publication"
+  desc "Upload the signed Android App Bundle to Internal testing"
   lane :upload_internal do
     aab_path = protected_env("KIRA_ANDROID_AAB_PATH")
     UI.user_error!("Signed Android App Bundle is unavailable") unless File.file?(aab_path)
@@ -339,7 +339,8 @@ platform :android do
     # Inspect the exact selected binary AAB before any uploader/network call. This task uses AGP's
     # existing protobuf decoder and does not rebuild when an explicit artifact path is supplied.
     root = File.expand_path("..", __dir__)
-    sh(File.join(root, "gradlew"), "--project-dir", root, ":app:verifyReleaseBundleIdentity",
+    sh(File.join(root, "gradlew"), "--project-dir", root, "--no-daemon", "--max-workers=2",
+       "-Dorg.gradle.jvmargs=-Xmx3g", "-Pkotlin.compiler.execution.strategy=in-process", ":app:verifyReleaseBundleIdentity",
        "-Pkira.releaseBundleToVerify=#{File.expand_path(aab_path)}")
 
     upload_to_play_store(

@@ -1,12 +1,14 @@
 name: Internal Testing Release
 
 on:
+  push:
+    branches: [internal-testing]
   workflow_dispatch:
     inputs:
       platform:
         description: Platform to release
         required: true
-        default: android
+        default: both
         type: choice
         options:
           - android
@@ -33,16 +35,37 @@ jobs:
             exit 1
           fi
 
+  checks:
+    name: Shared app tests before either Store upload
+    needs: validate-request
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (!contains(github.event.head_commit.message || '', '[skip both]') &&
+           (!contains(github.event.head_commit.message || '', '[skip android]') ||
+            !contains(github.event.head_commit.message || '', '[skip ios]'))) }}
+    uses: ./.github/workflows/mobile-release-checks.yml
+    secrets: inherit
+
   android:
     name: Android Internal Testing
-    needs: validate-request
-    if: ${{ inputs.platform == 'android' || inputs.platform == 'both' }}
+    needs: [validate-request, checks]
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' &&
+           (inputs.platform == 'android' || inputs.platform == 'both')) ||
+          (github.event_name == 'push' &&
+           !contains(github.event.head_commit.message || '', '[skip android]') &&
+           !contains(github.event.head_commit.message || '', '[skip both]')) }}
     uses: ./.github/workflows/android-internal-testing.yml
     secrets: inherit
 
   ios:
     name: iOS TestFlight
-    needs: validate-request
-    if: ${{ inputs.platform == 'ios' || inputs.platform == 'both' }}
+    needs: [validate-request, checks]
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' &&
+           (inputs.platform == 'ios' || inputs.platform == 'both')) ||
+          (github.event_name == 'push' &&
+           !contains(github.event.head_commit.message || '', '[skip ios]') &&
+           !contains(github.event.head_commit.message || '', '[skip both]')) }}
     uses: ./.github/workflows/testflight.yml
     secrets: inherit

@@ -4,6 +4,8 @@
 
 - Git branch: `internal-testing`.
 - Workflow: choose `ios` or `both` in `Internal Testing Release` on `internal-testing`;
+  shared app tests must pass before either platform upload starts. The parent owns the only
+  release push trigger, preventing duplicate uploads. Manual dispatch uses the chosen platform;
   `.github/workflows/testflight.yml` is the reusable implementation. For push-triggered releases,
   use `[skip ios]` for Android-only, `[skip android]` for iOS-only, or `[skip both]` to skip both.
 - App Store Connect app: `6792232678`.
@@ -27,6 +29,15 @@ The workflow does not create a public TestFlight link, add tester addresses, cre
 or submit a review. This avoids accidentally distributing an unreviewed build. The separately
 invoked external lane creates an empty, non-distributing internal group only if App Store Connect
 requires one before it permits the external group.
+
+## Candidate readiness
+
+`Mobile release checks (no Store upload)` can validate a candidate without signing or Store
+credentials. Its existing common/Android tests do not qualify Apple native dependencies, signed
+archives or physical-device behavior. Do not promote a candidate to `internal-testing` while the
+recorded App61 supplier/native dependency or App29 complaint release holds remain unresolved.
+The existing pinned toolchain, SwiftPM, signed artifact, Crashlytics and Store checks remain mandatory.
+A new upload uses the next Store build number; it does not require an arbitrary marketing-version bump.
 
 ## Protected local inputs
 

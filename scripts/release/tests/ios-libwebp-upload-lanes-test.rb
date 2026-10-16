@@ -127,7 +127,8 @@ class IosLibwebpUploadLanesTest < Minitest::Test
     with_android_lane_environment do |path|
       harness = FastfileHarness.new
       harness.run_lane(:upload_internal, platform: :android)
-      command = [File.join(ROOT, "gradlew"), "--project-dir", ROOT, ":app:verifyReleaseBundleIdentity",
+      command = [File.join(ROOT, "gradlew"), "--project-dir", ROOT, "--no-daemon", "--max-workers=2",
+                 "-Dorg.gradle.jvmargs=-Xmx3g", "-Pkotlin.compiler.execution.strategy=in-process", ":app:verifyReleaseBundleIdentity",
                  "-Pkira.releaseBundleToVerify=#{path}"]
       assert_equal [[:artifact_inspection, command], :upload], harness.calls
       assert_equal path, harness.uploads.fetch(0).fetch(:aab)

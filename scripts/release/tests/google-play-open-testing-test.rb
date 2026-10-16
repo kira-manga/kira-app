@@ -6,32 +6,43 @@ require_relative "../google-play-open-testing"
 
 class GooglePlayOpenTestingTest < Minitest::Test
   class FakeClient
-    attr_reader :deleted_edits
+    attr_reader :deleted_edits, :calls
 
     def initialize(bundles:, apks:, tracks:)
       @bundles = bundles
       @apks = apks
       @tracks = tracks
       @deleted_edits = []
+      @calls = []
     end
 
     def create_edit
+      @calls << [:create_edit]
       "discarded-edit"
     end
 
-    def list_bundles(_edit_id)
+    def get_track(edit_id, track)
+      @calls << [:get_track, edit_id, track]
+      @tracks.fetch(0)
+    end
+
+    def list_bundles(edit_id)
+      @calls << [:list_bundles, edit_id]
       @bundles
     end
 
-    def list_apks(_edit_id)
+    def list_apks(edit_id)
+      @calls << [:list_apks, edit_id]
       @apks
     end
 
-    def list_tracks(_edit_id)
+    def list_tracks(edit_id)
+      @calls << [:list_tracks, edit_id]
       @tracks
     end
 
     def delete_edit(edit_id)
+      @calls << [:delete_edit, edit_id]
       @deleted_edits << edit_id
     end
   end
@@ -110,6 +121,100 @@ class GooglePlayOpenTestingTest < Minitest::Test
     assert_raises(SystemExit) do
       KiraGooglePlay.verify_version_code_unused(client, 1005)
     end
+    assert_equal ["discarded-edit"], client.deleted_edits
+  end
+
+  def test_internal_preflight_only_checks_read_access_without_requiring_a_release
+    client = FakeClient.new(bundles: [], apks: [], tracks: [{"track" => "internal"}])
+
+    output, = capture_io { KiraGooglePlay.preflight_internal(client) }
+
+    assert_match "Internal Testing is readable", output
+    assert_match "upload/commit permissions are not verified", output
+    assert_read_only_internal_edit(client)
+  end
+
+  def test_internal_verification_requires_the_selected_completed_version
+    client = FakeClient.new(bundles: [], apks: [], tracks: [
+      {"track" => "internal", "releases" => [
+        {"status" => "completed", "versionCodes" => ["1005", "1007"]},
+        {"status" => "draft", "versionCodes" => ["1008"]}
+      ]}
+    ])
+
+    output, = capture_io { KiraGooglePlay.verify_internal(client, 1007) }
+
+    assert_match "version code 1007 is completed on Google Play Internal Testing", output
+    assert_read_only_internal_edit(client)
+  end
+
+  def test_internal_verification_rejects_a_version_only_on_open_testing
+    client = FakeClient.new(bundles: [], apks: [], tracks: [
+      {"track" => "internal", "releases" => [{"status" => "completed", "versionCodes" => ["1006"]}]},
+      {"track" => "beta", "releases" => [{"status" => "completed", "versionCodes" => ["1007"]}]}
+    ])
+
+    capture_io { assert_raises(SystemExit) { KiraGooglePlay.verify_internal(client, 1007) } }
+
+    assert_read_only_internal_edit(client)
+  end
+
+  def test_internal_verification_rejects_noncompleted_releases
+    ["draft", "inProgress", "halted", nil].each do |status|
+      client = FakeClient.new(bundles: [], apks: [], tracks: [
+        {"track" => "internal", "releases" => [
+          {"status" => "completed", "versionCodes" => ["1006"]},
+          {"status" => status, "versionCodes" => ["1007"]}
+        ]}
+      ])
+
+      capture_io { assert_raises(SystemExit) { KiraGooglePlay.verify_internal(client, 1007) } }
+
+      assert_read_only_internal_edit(client)
+    end
+  end
+
+  def test_internal_verification_rejects_an_empty_track
+    client = FakeClient.new(bundles: [], apks: [], tracks: [{"track" => "internal", "releases" => []}])
+
+    capture_io { assert_raises(SystemExit) { KiraGooglePlay.verify_internal(client, 1007) } }
+
+    assert_read_only_internal_edit(client)
+  end
+
+  def test_internal_checks_reject_a_response_for_a_different_track
+    ["beta", "production"].each do |track|
+      [[:preflight_internal], [:verify_internal, 1007]].each do |method, *arguments|
+        client = FakeClient.new(bundles: [], apks: [], tracks: [
+          {"track" => track, "releases" => [{"status" => "completed", "versionCodes" => ["1007"]}]}
+        ])
+
+        capture_io { assert_raises(SystemExit) { KiraGooglePlay.public_send(method, client, *arguments) } }
+
+        assert_read_only_internal_edit(client)
+      end
+    end
+  end
+
+  def test_internal_verification_rejects_invalid_version_input_before_api_access
+    [0, -1, "1007", 1007.0, nil].each do |version_code|
+      client = FakeClient.new(bundles: [], apks: [], tracks: [])
+
+      capture_io { assert_raises(SystemExit) { KiraGooglePlay.verify_internal(client, version_code) } }
+
+      assert_empty client.calls
+    end
+  end
+
+  private
+
+  def assert_read_only_internal_edit(client)
+    # Unexpected update/validate/commit calls are unsupported by the fake and also fail the test.
+    assert_equal [
+      [:create_edit],
+      [:get_track, "discarded-edit", "internal"],
+      [:delete_edit, "discarded-edit"]
+    ], client.calls
     assert_equal ["discarded-edit"], client.deleted_edits
   end
 end

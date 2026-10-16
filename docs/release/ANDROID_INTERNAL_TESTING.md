@@ -1,21 +1,28 @@
-# Android Internal and Open Testing release
+# Android Internal Testing release
 
-This repository contains a fail-closed reusable workflow at
-`.github/workflows/android-internal-testing.yml`. Start it through the `Internal Testing Release`
-workflow on `internal-testing`, or push to `internal-testing` without `[skip android]` or
-`[skip both]`. One signed AAB is published first to Internal Testing and then assigned to Open
-Testing with the same version code. Production is never updated.
+Start **Internal Testing Release** on `internal-testing`, selecting `android` or `both`.
+The parent runs the shared app tests first, then calls `.github/workflows/android-internal-testing.yml`
+for lint, R8, exact signed AAB checks, and Google Play **Internal** upload/readback. It does not
+promote to Open, Closed or Production tracks. The reusable child has no independent push trigger.
 
-## Audit result
+Push skip tags are preserved by the parent: `[skip ios]` is Android only, `[skip android]` is iOS
+only, `[skip both]` uploads neither. Manual dispatch uses the explicit platform selection.
+Do not push an unqualified candidate to this auto-release branch. In particular, unresolved
+App61 supplier/dependency and App29 complaint readiness holds are not waived by a green build.
 
-- Application id: `me.manga.kira`; app name: Kira Manga.
-- Internal Testing currently contains version code `1002`; Open Testing is empty.
-- The validated GitHub Environment secrets and source-config variables are installed.
-- `https://api.kiramanga.me/api/v1/source-config/document` returns a signed HTTPS document using
-  key ID `prod-2026-01`.
-- Google Play currently reports Kira as a **Draft app**. A completed Open Testing release is blocked
-  until the Play Console setup is complete and the account has production access. The workflow
-  checks this before building and fails without uploading when Open Testing is unavailable.
+## Verification and limits
+
+- Package is `me.manga.kira`; build number is selected above all uploaded APK/AAB/track versions
+  and rechecked immediately before upload. The existing upload keystore is retained.
+- The internal preflight proves API read access only; Google Play may still reject the completed
+  release because of app/account setup or permissions. Such rejection is a failure, not success.
+- Success requires readback of that exact version code in a **completed Internal** release.
+- Signed AAB and R8 mapping are retained even if upload/readback fails, provided the build passed.
+- TestFlight and Play uploads are independent transactions: if one Store later rejects its
+  upload, do not duplicate the already-successful upload to the other Store.
+- Physical-device checks remain in the existing manual checklist. This pipeline does not add UI
+  automation or claim public-release readiness. Open-testing qualification is not required for
+  this internal-only workflow; legacy explicit Open-promotion helpers remain available but unused.
 
 ## Required values
 
@@ -38,9 +45,8 @@ The workflow also requires these release inputs:
 - `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`: the complete JSON key for the Play-only service account,
   stored verbatim as an Actions secret in the `google-play-internal` environment. Fastlane consumes
   it through `json_key_data` and never writes it to the workspace.
-- `ANDROID_BUILD_NUMBER_OFFSET` (optional): a non-negative repository variable, default `1000`.
-  The workflow computes `offset + github.run_number`, so every workflow run gets a higher Play
-  `versionCode` without modifying the development fallback in `release/version.properties`.
+- Build numbers come from the existing Store-wide highest-version query plus one, not
+  `github.run_number`. The legacy `ANDROID_BUILD_NUMBER_OFFSET` variable is unused.
 
 ## Upload key ceremony
 
@@ -100,7 +106,7 @@ the Base64 X.509 Ed25519 serialization.
 ## Play Console service account
 
 Create the app manually in Play Console as **Kira Manga**, package `me.manga.kira`, then configure
-the **Internal testing** and **Open testing** tracks. In Play Console → **Account details**, note the linked Google Cloud
+the **Internal testing** track. In Play Console → **Account details**, note the linked Google Cloud
 Project. In Google Cloud Console, enable **Google Play Android Developer API**, create a dedicated
 service account such as `kira-play-internal`, and copy its email. In Play Console → **Users and
 permissions**, invite that email with app-only access to Kira and grant only:
@@ -118,14 +124,12 @@ Environment secrets** (or the repository Actions secrets page if the environment
 configured). Do not commit it or upload it as an artifact. Fastlane 2.235.0 is already
 pinned in `Gemfile.lock`; the workflow validates the JSON before building and does not add a
 marketplace Play-upload action. It reuses the repository's existing official checkout, Java,
-Gradle, Ruby, and artifact actions with the same major-version pins as the TestFlight workflow;
-the workflow grants only `contents: read`.
+Gradle, Ruby, and artifact actions with the same full-commit pins as the TestFlight workflow;
+the workflow grants only `contents: read` and `packages: read`.
 
-Before enabling Open Testing, finish the store listing, app-content declarations, data-safety form,
-country availability, pricing, and required testing/production-access process in Play Console.
-Open Testing makes the test listing discoverable and is available only after production access is
-granted. The workflow uses the `beta` API track for Open Testing and the `internal` API track for
-Internal Testing; it never writes to `production`.
+Open Testing is separate public distribution and requires a separate explicit release decision
+and its Play Console prerequisites. This workflow uses only the `internal` API track; it never
+writes to `beta` or `production`.
 
 For push-triggered releases, include `[skip ios]` in the commit message to run Android only, or
 `[skip both]` to prevent both store workflows from running. Use `[skip android]` when releasing

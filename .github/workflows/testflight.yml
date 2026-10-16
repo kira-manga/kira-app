@@ -1,9 +1,6 @@
 name: TestFlight Upload
 
 on:
-  push:
-    branches:
-      - internal-testing
   workflow_call:
 
 permissions:
@@ -18,7 +15,8 @@ jobs:
   build-and-upload:
     name: Signed iOS archive and TestFlight upload
     if: >-
-      ${{ github.ref == 'refs/heads/internal-testing' &&
+      ${{ github.workflow == 'Internal Testing Release' &&
+          github.ref == 'refs/heads/internal-testing' &&
           !contains(github.event.head_commit.message || '', '[skip ios]') &&
           !contains(github.event.head_commit.message || '', '[skip both]') }}
     runs-on: macos-latest
@@ -79,6 +77,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-read-only: true
 
       - name: Set up Ruby and pinned Fastlane
         uses: ruby/setup-ruby@bec3f19a76460dbe12f60def7d1a77585f07516c # v1
@@ -235,7 +235,12 @@ jobs:
       - name: Compile iOS targets and link the Release framework
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-        run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
+        run: |
+          trap './gradlew --stop' EXIT
+          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 \
+            :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
 
       - name: Archive the signed App Store build
         id: archive
@@ -245,6 +250,7 @@ jobs:
         run: |
           set +x
           /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+          trap './gradlew --stop' EXIT
           log="$RUNNER_TEMP/xcode-archive.log"
           if ! xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release -destination 'generic/platform=iOS' -archivePath "$KIRA_ARCHIVE_PATH" -derivedDataPath "$RUNNER_TEMP/DerivedData" -clonedSourcePackagesDirPath "$RUNNER_TEMP/DerivedData/SourcePackages" -packageCachePath "$RUNNER_TEMP/kira-swiftpm-cache" -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates -xcconfig "$KIRA_XCCONFIG_PATH" -quiet archive >"$log" 2>&1; then
             ruby release/ios/safe_xcode_log.rb "$log"
@@ -358,4 +364,14 @@ jobs:
               paths << installed_path_file
             end
             paths.compact.each { |path| FileUtils.rm_rf(path) }
+          '
+
+      - name: Clean disposable build outputs and Xcode intermediates
+        if: ${{ always() }}
+        run: |
+          python3 -B scripts/release/clean-mobile-build.py
+          ruby -rfileutils -e '
+            %w[DerivedData kira-swiftpm-cache].each do |name|
+              FileUtils.rm_rf(File.join(ENV.fetch("RUNNER_TEMP"), name))
+            end
           '

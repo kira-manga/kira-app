@@ -170,6 +170,27 @@ module KiraGooglePlay
     end
   end
 
+  def preflight_internal(client)
+    with_discarded_edit(client) do |edit_id|
+      track = client.get_track(edit_id, INTERNAL_TRACK)
+      abort "FAIL unexpected Internal Testing track" unless track["track"] == INTERNAL_TRACK
+    end
+    puts "PASS Google Play Internal Testing is readable; upload/commit permissions are not verified"
+  end
+
+  def verify_internal(client, version_code)
+    abort "FAIL KIRA_BUILD_NUMBER must be a positive integer" unless version_code.is_a?(Integer) && version_code.positive?
+    with_discarded_edit(client) do |edit_id|
+      track = client.get_track(edit_id, INTERNAL_TRACK)
+      abort "FAIL unexpected Internal Testing track" unless track["track"] == INTERNAL_TRACK
+      completed = Array(track["releases"]).select { |release| release["status"] == "completed" }
+      unless version_codes("releases" => completed).include?(version_code)
+        abort "FAIL expected version code is not completed on Internal Testing"
+      end
+    end
+    puts "PASS version code #{version_code} is completed on Google Play Internal Testing"
+  end
+
   def preflight(client, version_name)
     with_discarded_edit(client) do |edit_id|
       internal = client.get_track(edit_id, INTERNAL_TRACK)
@@ -257,9 +278,8 @@ end
 if $PROGRAM_NAME == __FILE__
   begin
     mode = ARGV.fetch(0, "")
-    allowed_modes = %w[select-version-code verify-version-code-unused preflight publish]
-    usage = "select-version-code|verify-version-code-unused|preflight|publish"
-    abort "Usage: google-play-open-testing.rb #{usage}" unless allowed_modes.include?(mode)
+    allowed_modes = %w[select-version-code verify-version-code-unused preflight-internal verify-internal preflight publish]
+    abort "Usage: google-play-open-testing.rb #{allowed_modes.join('|')}" unless allowed_modes.include?(mode)
 
     service_account_json = ENV.fetch("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", "")
     abort "FAIL GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is missing" if service_account_json.empty?
@@ -267,23 +287,20 @@ if $PROGRAM_NAME == __FILE__
     package_name = ENV.fetch("KIRA_ANDROID_PACKAGE_NAME", KiraGooglePlay::PACKAGE_NAME)
     abort "FAIL unexpected Android package name" unless package_name == KiraGooglePlay::PACKAGE_NAME
 
+    version_name = ENV.fetch("KIRA_VERSION_NAME", "")
+    abort "FAIL KIRA_VERSION_NAME is missing" if %w[preflight publish].include?(mode) && version_name.empty?
+    if %w[verify-version-code-unused verify-internal publish].include?(mode)
+      version_code = Integer(ENV.fetch("KIRA_BUILD_NUMBER"), 10)
+      abort "FAIL KIRA_BUILD_NUMBER must be positive" unless version_code.positive?
+    end
     client = KiraGooglePlay::Client.new(service_account_json)
-    if mode == "select-version-code"
-      KiraGooglePlay.select_next_version_code(client, ENV.fetch("KIRA_BUILD_NUMBER_FILE", ""))
-    elsif mode == "verify-version-code-unused"
-      version_code = Integer(ENV.fetch("KIRA_BUILD_NUMBER"), 10)
-      abort "FAIL KIRA_BUILD_NUMBER must be positive" unless version_code.positive?
-      KiraGooglePlay.verify_version_code_unused(client, version_code)
-    elsif mode == "preflight"
-      version_name = ENV.fetch("KIRA_VERSION_NAME", "")
-      abort "FAIL KIRA_VERSION_NAME is missing" if version_name.empty?
-      KiraGooglePlay.preflight(client, version_name)
-    else
-      version_name = ENV.fetch("KIRA_VERSION_NAME", "")
-      abort "FAIL KIRA_VERSION_NAME is missing" if version_name.empty?
-      version_code = Integer(ENV.fetch("KIRA_BUILD_NUMBER"), 10)
-      abort "FAIL KIRA_BUILD_NUMBER must be positive" unless version_code.positive?
-      KiraGooglePlay.publish(client, version_code, version_name)
+    case mode
+    when "select-version-code" then KiraGooglePlay.select_next_version_code(client, ENV.fetch("KIRA_BUILD_NUMBER_FILE", ""))
+    when "verify-version-code-unused" then KiraGooglePlay.verify_version_code_unused(client, version_code)
+    when "preflight-internal" then KiraGooglePlay.preflight_internal(client)
+    when "verify-internal" then KiraGooglePlay.verify_internal(client, version_code)
+    when "preflight" then KiraGooglePlay.preflight(client, version_name)
+    when "publish" then KiraGooglePlay.publish(client, version_code, version_name)
     end
   rescue KeyError, ArgumentError
     abort "FAIL required Google Play release input is missing or invalid"

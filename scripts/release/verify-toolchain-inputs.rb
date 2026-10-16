@@ -28,6 +28,7 @@ class ToolchainInputVerifier
   LOCKED_ARCHIVE_COMMAND = <<~'SH'.strip.freeze
     set +x
     /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+    trap './gradlew --stop' EXIT
     log="$RUNNER_TEMP/xcode-archive.log"
     if ! xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release -destination 'generic/platform=iOS' -archivePath "$KIRA_ARCHIVE_PATH" -derivedDataPath "$RUNNER_TEMP/DerivedData" -clonedSourcePackagesDirPath "$RUNNER_TEMP/DerivedData/SourcePackages" -packageCachePath "$RUNNER_TEMP/kira-swiftpm-cache" -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates -xcconfig "$KIRA_XCCONFIG_PATH" -quiet archive >"$log" 2>&1; then
       ruby release/ios/safe_xcode_log.rb "$log"
@@ -40,7 +41,7 @@ class ToolchainInputVerifier
     gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar
     gradle/wrapper/gradle-wrapper.properties
   ].freeze
-  WORKFLOWS = %w[ci.yml android-internal-testing.yml testflight.yml internal-testing-release.yml].freeze
+  WORKFLOWS = %w[ci.yml android-internal-testing.yml testflight.yml internal-testing-release.yml mobile-release-checks.yml].freeze
   # This one inline branch gate reads no checkout files and receives no secrets.
   # Any changed command or job shape requires review, not a shell-only exemption.
   INLINE_RELEASE_REQUEST_JOB = {
