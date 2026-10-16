@@ -10,6 +10,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import me.manga.kira.core.error.AppError
+import me.manga.kira.core.result.AppResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -100,8 +101,9 @@ class InstallationDeletionHttpTest {
             val fixture = InstallationDeletionFixture(this, InstallationCoordinatorFixture(deletingRecord()))
             try {
                 fixture.http.close()
+                // Closed ownership refuses admission before reading or dispatching durable intent.
                 assertIs<AppError.Platform.FeatureUnavailable>(
-                    assertDeletionPending(fixture.repository.continueDeletion()).error,
+                    assertIs<AppResult.Failure>(fixture.repository.continueDeletion()).error,
                 )
                 fixture.assertRetained(deletingRecord())
                 fixture.assertNoNewIdentity()
