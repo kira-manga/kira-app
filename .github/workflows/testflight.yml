@@ -112,6 +112,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
           /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
 
+      - name: Build verified libffi source and select the private Kotlin distribution
+        run: python3 -B scripts/release/prepare-libffi-source.py prepare
+
       - name: Verify protected value names are present
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -236,11 +239,14 @@ jobs:
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
         run: |
+          python3 -B scripts/release/prepare-libffi-source.py verify
           trap './gradlew --stop' EXIT
-          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
             -Pkotlin.compiler.execution.strategy=in-process \
             :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 \
             :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
+          ./gradlew --stop
+          python3 -B scripts/release/prepare-libffi-source.py verify
 
       - name: Archive the signed App Store build
         id: archive
@@ -250,12 +256,15 @@ jobs:
         run: |
           set +x
           /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+          python3 -B scripts/release/prepare-libffi-source.py verify
           trap './gradlew --stop' EXIT
           log="$RUNNER_TEMP/xcode-archive.log"
           if ! xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release -destination 'generic/platform=iOS' -archivePath "$KIRA_ARCHIVE_PATH" -derivedDataPath "$RUNNER_TEMP/DerivedData" -clonedSourcePackagesDirPath "$RUNNER_TEMP/DerivedData/SourcePackages" -packageCachePath "$RUNNER_TEMP/kira-swiftpm-cache" -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates -xcconfig "$KIRA_XCCONFIG_PATH" -quiet archive >"$log" 2>&1; then
             ruby release/ios/safe_xcode_log.rb "$log"
             exit 1
           fi
+          ./gradlew --stop
+          python3 -B scripts/release/prepare-libffi-source.py verify
           /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
           echo "Signed App Store archive created; Crashlytics upload is the next mandatory gate"
 
@@ -375,3 +384,16 @@ jobs:
               FileUtils.rm_rf(File.join(ENV.fetch("RUNNER_TEMP"), name))
             end
           '
+
+      - name: Remove the owned native source build and private compiler
+        if: ${{ always() }}
+        run: python3 -B scripts/release/prepare-libffi-source.py cleanup
+
+      - name: Preserve native source provenance
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: libffi-source-provenance-${{ github.sha }}
+          path: ${{ runner.temp }}/kira-libffi-provenance.json
+          retention-days: 7
+          if-no-files-found: warn

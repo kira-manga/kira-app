@@ -127,6 +127,35 @@ class ToolchainInputsTest < Minitest::Test
     end
   end
 
+  def test_verified_libffi_source_is_mandatory_before_credentials_and_native_execution
+    %i[missing ignored_failure late unchecked_native].each do |mutation|
+      with_checkout do |root|
+        mutate_workflow(root, "testflight.yml") do |workflow|
+          steps = workflow.fetch("jobs").fetch("build-and-upload").fetch("steps")
+          index = steps.index { |step| step["run"] == "python3 -B scripts/release/prepare-libffi-source.py prepare" }
+          case mutation
+          when :missing then steps.delete_at(index)
+          when :ignored_failure then steps[index]["continue-on-error"] = true
+          when :late
+            installer = steps.delete_at(index)
+            protected_index = steps.index { |step| step.fetch("env", {}).key?("APP_STORE_CONNECT_KEY_ID") }
+            steps.insert(protected_index + 1, installer)
+          when :unchecked_native
+            compile = steps.find { |step| step["name"] == "Compile iOS targets and link the Release framework" }
+            compile["run"].sub!("python3 -B scripts/release/prepare-libffi-source.py verify\n", "")
+          end
+        end
+        expected = case mutation
+        when :missing then "requires one verified libffi source bootstrap"
+        when :ignored_failure then "libffi source bootstrap cannot be skipped"
+        when :late then "protected input precedes verified libffi source bootstrap"
+        else "native compilation must verify the private source dependency"
+        end
+        assert_rejected(verify(root), expected)
+      end
+    end
+  end
+
   def test_cleanup_must_always_immediately_follow_project_generation
     %i[missing late success_only ignored_failure].each do |mutation|
       with_checkout do |root|

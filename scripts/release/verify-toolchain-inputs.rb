@@ -11,6 +11,8 @@ class ToolchainInputVerifier
   COMMAND = "/usr/bin/ruby scripts/release/verify-toolchain-inputs.rb".freeze
   INSTALL_COMMAND = "bash scripts/release/install-xcodegen.sh".freeze
   CLEANUP_COMMAND = "bash scripts/release/cleanup-xcodegen.sh".freeze
+  LIBFFI_PREPARE_COMMAND = "python3 -B scripts/release/prepare-libffi-source.py prepare".freeze
+  LIBFFI_VERIFY_COMMAND = "python3 -B scripts/release/prepare-libffi-source.py verify".freeze
   SWIFTPM_LOCK = "iosApp/Package.resolved".freeze
   GENERATED_SWIFTPM_LOCK = "iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved".freeze
   SWIFTPM_PREFLIGHT_COMMAND = <<~'SH'.strip.freeze
@@ -28,12 +30,15 @@ class ToolchainInputVerifier
   LOCKED_ARCHIVE_COMMAND = <<~'SH'.strip.freeze
     set +x
     /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+    python3 -B scripts/release/prepare-libffi-source.py verify
     trap './gradlew --stop' EXIT
     log="$RUNNER_TEMP/xcode-archive.log"
     if ! xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release -destination 'generic/platform=iOS' -archivePath "$KIRA_ARCHIVE_PATH" -derivedDataPath "$RUNNER_TEMP/DerivedData" -clonedSourcePackagesDirPath "$RUNNER_TEMP/DerivedData/SourcePackages" -packageCachePath "$RUNNER_TEMP/kira-swiftpm-cache" -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates -xcconfig "$KIRA_XCCONFIG_PATH" -quiet archive >"$log" 2>&1; then
       ruby release/ios/safe_xcode_log.rb "$log"
       exit 1
     fi
+    ./gradlew --stop
+    python3 -B scripts/release/prepare-libffi-source.py verify
     /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
     echo "Signed App Store archive created; Crashlytics upload is the next mandatory gate"
   SH
@@ -244,6 +249,7 @@ class ToolchainInputVerifier
         "mandatory bootstrap verification must immediately follow checkout: #{name}")
       installer_index = nil
       swiftpm_index = nil
+      libffi_index = nil
       if File.basename(file) == "testflight.yml"
         installers = steps.each_index.select { |index| steps[index]["run"].to_s.strip == INSTALL_COMMAND }
         check!(installers.length == 1 && installers.first > 1, "TestFlight requires one verified XcodeGen installer")
@@ -268,6 +274,17 @@ class ToolchainInputVerifier
         check!(swiftpm_index == steps.index(generator) + 2 && preflight.keys.sort == %w[name run] &&
           preflight["run"].strip == SWIFTPM_PREFLIGHT_COMMAND,
           "locked SwiftPM preflight must follow generation/cleanup without skips or update fallback")
+        native_installers = steps.each_index.select { |index| steps[index]["run"].to_s.strip == LIBFFI_PREPARE_COMMAND }
+        check!(native_installers.length == 1 && native_installers.first > swiftpm_index,
+          "TestFlight requires one verified libffi source bootstrap")
+        libffi_index = native_installers.first
+        check!(steps[libffi_index].keys.sort == %w[name run], "libffi source bootstrap cannot be skipped or ignore failure")
+        native_compile = steps.find { |step| step["name"] == "Compile iOS targets and link the Release framework" }
+        check!(native_compile && steps.index(native_compile) > libffi_index &&
+          !native_compile.key?("if") && !native_compile.key?("continue-on-error") &&
+          native_compile["run"].to_s.lines.map(&:strip).first == LIBFFI_VERIFY_COMMAND &&
+          native_compile["run"].to_s.lines.map(&:strip).last == LIBFFI_VERIFY_COMMAND,
+          "native compilation must verify the private source dependency before and after execution")
         archives = steps.select { |step| step["id"] == "archive" }
         check!(archives.length == 1 && archives.first.keys.sort == %w[env id name run] &&
           steps.index(archives.first) > swiftpm_index && archives.first["run"].strip == LOCKED_ARCHIVE_COMMAND,
@@ -280,6 +297,7 @@ class ToolchainInputVerifier
         check!(index > 1, "protected input precedes bootstrap verification: #{name}")
         check!(!installer_index || index > installer_index, "protected input precedes verified XcodeGen installation")
         check!(!swiftpm_index || index > swiftpm_index, "protected input precedes locked SwiftPM preflight")
+        check!(!libffi_index || index > libffi_index, "protected input precedes verified libffi source bootstrap")
       end
     end
   end

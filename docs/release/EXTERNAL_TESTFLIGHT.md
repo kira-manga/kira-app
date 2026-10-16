@@ -39,6 +39,33 @@ recorded App61 supplier/native dependency or App29 complaint release holds remai
 The existing pinned toolchain, SwiftPM, signed artifact, Crashlytics and Store checks remain mandatory.
 A new upload uses the next Store build number; it does not require an arbitrary marketing-version bump.
 
+## Verified libffi source bootstrap
+
+TestFlight builds the macOS ARM64 host dependency from the **official Kotlin 2.4.0 source recipe**,
+not the conflicting JetBrains `libffi-3.3-1-macos-arm64.tar.gz` prebuilt. That download disagrees
+with both its published SHA-256 and its detached Kotlin release-key signature. Do not accept it by
+changing its checksum. Stable Kotlin 2.4.10/2.4.20/2.4.21 still select the same dependency.
+
+`release/libffi-source.json` pins the upstream libffi 3.3 source archive, the exact Apple ARM patch
+named by JetBrains, and the official Kotlin/Native 2.4.0 distribution. The source checksum is also
+corroborated by NixOS 20.09's libffi expression. The upstream recipe is
+`JetBrains/kotlin@add726ca8c82922b6ab4cb2a27ae738d6a780817:kotlin-native/tools/libffi/build_for_macos.sh`;
+the patch is from `Homebrew/formula-patches@06252df03c68aee70856e5842f85f20b259e5250`.
+
+Before signing credentials are exposed, the bootstrap verifies the pinned downloads, builds the
+static ARM64 library, and runs an actual host calling-convention/closure smoke check. Only a private
+verified compiler distribution receives the supported local dependency profile
+`libffi-3.3-1-macos-arm64.default=<verified install>`. The inherited `GRADLE_OPTS` native-home setting
+also applies to Xcode's Gradle invocation; `KONAN_DATA_DIR` isolates the job's caches. This does not
+forge Kotlin extraction markers, edit global caches, switch architecture, or change Kotlin version.
+
+The private library/configuration is rechecked around native compilation and the signed archive.
+Source/build intermediates are removed once no longer needed; the private compiler/library are
+removed after the job, retaining the small provenance receipt alongside normal release evidence.
+Missing hashes, source drift, ABI smoke failures or unexpected downloaded libffi fail the release.
+This replacement requires actual native/archive/signing validation; source tests alone are not a
+TestFlight release or closure of the broader App61 dependency campaign.
+
 ## Protected local inputs
 
 Place binary files anywhere under the workspace; keep them gitignored. Place one value, with no
