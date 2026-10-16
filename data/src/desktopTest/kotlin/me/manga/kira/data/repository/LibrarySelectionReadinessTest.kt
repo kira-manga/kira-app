@@ -7,6 +7,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
@@ -65,7 +66,10 @@ class LibrarySelectionReadinessTest {
     fun a_queued_library_writer_rechecks_readiness_after_acquiring_the_real_writer() = runTest {
         LibraryIdentityFixture().use { f ->
             val parent = f.parent()
-            val result = withTimeout(5_000) { f.revokeWhileQueued { f.repository.toggleLiked(parent.savedIdentity()) } }
+            // Room runs on Dispatchers.Default, outside runTest's virtual clock.
+            val result = withContext(Dispatchers.Default) {
+                withTimeout(5_000) { f.revokeWhileQueued { f.repository.toggleLiked(parent.savedIdentity()) } }
+            }
             assertUnavailable(result)
             assertFalse(f.transactions.insideWriter)
             assertEquals(1, f.snapshots.readCount)
@@ -77,7 +81,10 @@ class LibrarySelectionReadinessTest {
     fun not_ready_reads_unwind_the_writer_without_waiting_for_bootstrap() = runTest {
         LibraryIdentityFixture().use { f ->
             f.snapshots.invalidate()
-            val result = withTimeout(2_000) { f.repository.get(WorkLocator(LIBRARY_TEST_API, LIBRARY_CURRENT_URL)) }
+            // Room runs on Dispatchers.Default, outside runTest's virtual clock.
+            val result = withContext(Dispatchers.Default) {
+                withTimeout(2_000) { f.repository.get(WorkLocator(LIBRARY_TEST_API, LIBRARY_CURRENT_URL)) }
+            }
             assertUnavailable(result)
             assertFalse(f.transactions.insideWriter, "mapping happens after the owning transaction unwinds")
             assertEquals(1, f.snapshots.readCount)

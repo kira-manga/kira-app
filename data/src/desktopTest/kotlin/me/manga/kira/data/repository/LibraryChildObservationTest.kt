@@ -2,6 +2,8 @@ package me.manga.kira.data.repository
 
 import app.cash.turbine.test
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CopyableThrowable
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -105,12 +107,27 @@ class LibraryChildObservationTest {
             val child = f.chapter(librarySavedChapter(parent))
             val flow = ChapterBookmarkRepositoryImpl(f.owners, f.db.chapterDao())
                 .observeBookmark(parent.toDomainManga(), child.url)
-            val failure = IllegalStateException("controlled unexpected writer failure")
+            val failure = BookmarkWriterFailure()
             f.transactions.beforeCommit = { throw failure }
             assertSame(failure, assertFailsWith<IllegalStateException> { flow.first() })
-            val cancelled = CancellationException("controlled writer cancellation")
+            val cancelled = BookmarkWriterCancellation()
             f.transactions.beforeCommit = { throw cancelled }
             assertSame(cancelled, assertFailsWith<CancellationException> { flow.first() })
         }
     }
+}
+
+/** Keep the identity assertions about application propagation, not coroutine debug-stack copies. */
+@OptIn(ExperimentalCoroutinesApi::class)
+private class BookmarkWriterFailure :
+    IllegalStateException("controlled unexpected writer failure"),
+    CopyableThrowable<BookmarkWriterFailure> {
+    override fun createCopy(): BookmarkWriterFailure? = null
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private class BookmarkWriterCancellation :
+    CancellationException("controlled writer cancellation"),
+    CopyableThrowable<BookmarkWriterCancellation> {
+    override fun createCopy(): BookmarkWriterCancellation? = null
 }
