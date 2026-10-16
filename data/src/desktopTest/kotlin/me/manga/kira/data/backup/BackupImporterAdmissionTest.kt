@@ -1,5 +1,7 @@
 package me.manga.kira.data.backup
 
+import kotlinx.coroutines.CopyableThrowable
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -77,7 +79,7 @@ class BackupImporterAdmissionTest {
         val retained = seed(isDownloaded = true)
         val before = db.backupDao().getAllSavedManga()
         val progress = BackupTestProgressRuntime(db)
-        val cancelled = CancellationException("cancel final page")
+        val cancelled = FinalPageCancellation()
         var inspected = 0
         val inspector = object : PageMediaInspector by native {
             override fun inspect(encoded: ByteArray): PageInspection {
@@ -213,4 +215,12 @@ class BackupImporterAdmissionTest {
             if (fs.exists(path)) assertTrue(fs.list(path).isEmpty())
         }
     }
+}
+
+/** Keep the identity assertion about application propagation, not coroutine debug-stack copies. */
+@OptIn(ExperimentalCoroutinesApi::class)
+private class FinalPageCancellation :
+    CancellationException("cancel final page"),
+    CopyableThrowable<FinalPageCancellation> {
+    override fun createCopy(): FinalPageCancellation? = null
 }
