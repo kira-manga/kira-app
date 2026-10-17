@@ -112,11 +112,13 @@ internal enum class CatalogRoute(
 internal suspend fun <T> TestScope.withCatalogClient(
     handler: MockRequestHandler,
     cacheResponses: Boolean = false,
+    followRedirects: Boolean = true,
     block: suspend (HttpClient) -> T,
 ): T {
     val testDispatcher = StandardTestDispatcher(testScheduler)
     val client =
         HttpClient(MockEngine) {
+            this.followRedirects = followRedirects
             engine {
                 dispatcher = testDispatcher
                 addHandler(handler)

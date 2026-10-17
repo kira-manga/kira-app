@@ -21,9 +21,10 @@ import kotlin.native.Platform
 @OptIn(ExperimentalNativeApi::class)
 actual val isHttpLoggingEnabled: Boolean = Platform.isDebugBinary
 
-actual fun createHttpClient(cacheResponses: Boolean): HttpClient {
+actual fun createHttpClient(cacheResponses: Boolean, followRedirects: Boolean): HttpClient {
     val cache = if (cacheResponses) ManagedHttpCache() else null
     return HttpClient(Darwin) {
+        this.followRedirects = followRedirects
         install(ContentNegotiation) { json(DefaultJson) }
         // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
         // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.

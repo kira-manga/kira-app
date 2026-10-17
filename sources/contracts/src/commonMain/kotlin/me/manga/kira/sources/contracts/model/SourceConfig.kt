@@ -191,6 +191,8 @@ data class EndpointSpec(
      * JSON `has_next`; loop while true).
      */
     val lastPageLocator: String = "",
+    /** Finite home/featured/search feed: fetch only [PaginationSpec.start]; false preserves ordinary paging. */
+    val singlePage: Boolean = false,
 )
 
 /**

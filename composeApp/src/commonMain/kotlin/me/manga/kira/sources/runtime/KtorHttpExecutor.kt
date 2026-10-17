@@ -1,6 +1,7 @@
 package me.manga.kira.sources.runtime
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpRedirect
 import io.ktor.client.plugins.cache.HttpCache
 import io.ktor.client.plugins.pluginOrNull
 import io.ktor.client.request.HttpRequestBuilder
@@ -31,8 +32,9 @@ import me.manga.kira.sources.contracts.SourceResponse
 
 /**
  * The Ktor-backed [HttpExecutor], bounding decoded response bodies to 4 MiB before text decoding.
- * Borrows an uncached [HttpClient] with the app's logging, timeout, and content-negotiation policy;
+ * Borrows an uncached, nonredirecting [HttpClient] with the app's timeout/content-negotiation policy;
  * the caller owns its lifetime. HttpCache is refused because it can buffer before this reader runs.
+ * HttpRedirect is refused so the shared source engine chooses headers before each destination/hop.
  *
  * Living here (the composition root) rather than in `:sources:engine` is deliberate: it keeps the
  * engine free of any HTTP-library dependency, so the engine stays unit-testable with a fake executor.
@@ -44,18 +46,33 @@ class KtorHttpExecutor(
 ) : HttpExecutor {
     init {
         require(client.pluginOrNull(HttpCache) == null) { "generic sources require an uncached HTTP client" }
+        require(client.pluginOrNull(HttpRedirect) == null) { "generic sources require a single-hop HTTP client" }
     }
 
     override suspend fun execute(request: SourceRequest): SourceResponse =
         client.prepareRequest(request.url) { applyRequest(request) }.execute { response ->
+            val responseHeaders = response.sourceHeaders()
             SourceResponse(
                 status = response.status.value,
                 body = response.boundedBody(),
-                // Preserve the existing comma-joined port; Set-Cookie must not be parsed from it
-                // because cookie Expires dates also contain commas.
-                headers = response.headers.entries().associate { (key, values) -> key to values.joinToString(", ") },
+                headers = responseHeaders,
             )
         }
+
+    private fun HttpResponse.sourceHeaders(): Map<String, String> {
+        if (status.value in REDIRECT_STATUSES) {
+            val locations =
+                headers.entries().filter { it.key.equals(HttpHeaders.Location, ignoreCase = true) }.flatMap { it.value }
+            // Native engines can fold repeated fields into a single comma-separated string. Reject
+            // raw commas conservatively, even in otherwise valid URI references; %2C stays intact.
+            if (locations.size > 1 || locations.any { ',' in it }) {
+                throw SerializationException("generic source redirect has an ambiguous Location")
+            }
+        }
+        // Location is now unambiguous on redirect responses. Preserve the existing representation
+        // for other statuses/headers; Set-Cookie must not be parsed from this comma-joined port.
+        return headers.entries().associate { (key, values) -> key to values.joinToString(", ") }
+    }
 
     private fun HttpRequestBuilder.applyRequest(request: SourceRequest) {
         request.headers.forEach { (key, value) -> header(key, value) }
@@ -106,6 +123,7 @@ class KtorHttpExecutor(
     }
 
     private companion object {
+        val REDIRECT_STATUSES = setOf(301, 302, 303, 307, 308)
         const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
         const val READ_CHUNK_BYTES = 8 * 1024
     }

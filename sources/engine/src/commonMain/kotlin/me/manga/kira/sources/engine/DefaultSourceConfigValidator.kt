@@ -1,5 +1,6 @@
 package me.manga.kira.sources.engine
 
+import me.manga.kira.source.engine.SourceDeclarationCapabilities
 import me.manga.kira.sources.contracts.SourceConfigValidator
 import me.manga.kira.sources.contracts.StrategyRegistry
 import me.manga.kira.sources.contracts.ValidationResult
@@ -8,12 +9,14 @@ import me.manga.kira.sources.contracts.model.IconSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import me.manga.kira.sources.engine.internal.HeaderNamePolicy
+import me.manga.kira.source.contracts.StrategyRegistry as SharedStrategyRegistry
 
 /**
  * Schema + referential validator. Runs after signature verification, before any source is trusted.
- * Two jobs: (1) the document is structurally sane (supported schema, non-blank keys, URL-shaped
+ * Checks that (1) the document is structurally sane (supported schema, non-blank keys, URL-shaped
  * base), and (2) every strategy/transform/date/pagination name a `generic` source references is one
- * this build ships (via [StrategyRegistry]). Archived descriptors remain parseable for migration
+ * this build ships (via [StrategyRegistry]), with (3) consumed declarations checked by the pinned
+ * shared [SourceDeclarationCapabilities]. Archived descriptors remain parseable for migration
  * tooling, but the shipping catalog manager independently rejects every non-generic entry.
  *
  * Errors are collected (not fail-fast) and keyed by api so a whole batch can be diagnosed at once.
@@ -21,6 +24,19 @@ import me.manga.kira.sources.engine.internal.HeaderNamePolicy
 class DefaultSourceConfigValidator(
     private val strategies: StrategyRegistry,
 ) : SourceConfigValidator {
+    private val declarationCapabilities =
+        SourceDeclarationCapabilities(
+            object : SharedStrategyRegistry {
+                override fun hasTransform(name: String): Boolean = strategies.hasTransform(name)
+
+                override fun hasImageStrategy(name: String): Boolean = strategies.hasImageStrategy(name)
+
+                override fun hasDateStrategy(name: String): Boolean = strategies.hasDateStrategy(name)
+
+                override fun hasPagination(name: String): Boolean = strategies.hasPagination(name)
+            },
+        )
+
     override fun validate(document: SourceConfigDocument): ValidationResult {
         val errors = mutableListOf<String>()
 
@@ -156,6 +172,9 @@ class DefaultSourceConfigValidator(
         validateEndpoints(source, tag, errors)
         validateFields(source, tag, errors)
         validateSearchFilters(source, tag, errors)
+        declarationCapabilities.validate(source.toSharedConfig()).forEach { finding ->
+            errors += "$tag ${finding.path}: [${finding.code}] ${finding.message}"
+        }
     }
 
     private fun validateLifecycleMetadata(
@@ -200,6 +219,9 @@ class DefaultSourceConfigValidator(
         errors: MutableList<String>,
     ) {
         for ((verb, spec) in source.endpoints) {
+            if (spec.singlePage && verb !in setOf("home", "featured", "search")) {
+                errors += "$tag endpoint '$verb' singlePage is only supported for list feeds"
+            }
             if (spec.url.isBlank()) errors += "$tag endpoint '$verb' has a blank url"
             // The raw {query} var is the UNENCODED search term — legitimate only in formBody
             // values (the executor form-encodes those). In a URL it must be {queryEncoded} and in
@@ -662,6 +684,7 @@ class DefaultSourceConfigValidator(
                 "queryJson",
                 "itemUrl",
                 "chapterUrl",
+                "chapterId",
                 "id",
             )
     }

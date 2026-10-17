@@ -25,6 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KtorHttpExecutorTest {
@@ -35,11 +36,12 @@ class KtorHttpExecutorTest {
                 withCatalogClient({ wire ->
                     assertRequest(method, wire)
                     respond(byteArrayOf(0xe9.toByte()), HttpStatusCode.ServiceUnavailable, latin1Headers())
-                }) { client ->
+                }, followRedirects = false) { client ->
                     val response = KtorHttpExecutor(client).execute(request(method))
                     assertEquals(503, response.status)
                     assertEquals("é", response.body)
                     assertEquals("first, second", response.headers["X-Values"])
+                    assertEquals("/first, /second", response.headers[HttpHeaders.Location])
                 }
             }
         }
@@ -51,7 +53,7 @@ class KtorHttpExecutorTest {
                 withCatalogClient({ wire ->
                     assertEquals(expected, wire.body.toByteArray().decodeToString())
                     respond("é") // No declared charset: bodyAsText's UTF-8 fallback is preserved.
-                }) { client ->
+                }, followRedirects = false) { client ->
                     assertEquals("é", KtorHttpExecutor(client).execute(SourceRequest(URL, method)).body)
                 }
             }
@@ -64,10 +66,73 @@ class KtorHttpExecutorTest {
             withCatalogClient({
                 requests++
                 respond("")
-            }, cacheResponses = true) { client ->
+            }, cacheResponses = true, followRedirects = false) { client ->
                 val failure = assertFailsWith<IllegalArgumentException> { KtorHttpExecutor(client) }
                 assertEquals("generic sources require an uncached HTTP client", failure.message)
                 assertEquals(0, requests)
+            }
+        }
+
+    @Test
+    fun redirecting_clients_are_refused_before_any_request() =
+        runTest {
+            var requests = 0
+            withCatalogClient({
+                requests++
+                respond("")
+            }) { client ->
+                val failure = assertFailsWith<IllegalArgumentException> { KtorHttpExecutor(client) }
+                assertEquals("generic sources require a single-hop HTTP client", failure.message)
+                assertEquals(0, requests)
+            }
+        }
+
+    @Test
+    fun redirect_responses_are_one_hop_for_every_method() =
+        runTest {
+            for (method in SourceHttpMethod.entries) {
+                for (status in listOf(301, 302, 303, 307, 308)) {
+                    var requests = 0
+                    val headers = locationHeaders("/next%2Cpart")
+                    withCatalogClient({ wire ->
+                        requests++
+                        assertRequest(method, wire)
+                        respond("redirect", HttpStatusCode.fromValue(status), headers)
+                    }, followRedirects = false) { client ->
+                        val response = KtorHttpExecutor(client).execute(request(method))
+                        assertEquals(status, response.status)
+                        assertEquals("redirect", response.body)
+                        assertEquals("/next%2Cpart", response.headers[HttpHeaders.Location])
+                        assertEquals(1, requests)
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun shared_engine_preserves_finite_feeds_and_reselects_headers_across_redirects() =
+        runTest {
+            val requests = mutableListOf<HttpRequestData>()
+            withCatalogClient({ wire ->
+                requests += wire
+                when (requests.size) {
+                    1 -> respond("", HttpStatusCode.Found, locationHeaders("//foreign.test/step"))
+                    2 -> respond("", HttpStatusCode.TemporaryRedirect, locationHeaders("https://images.test/final"))
+                    else -> respond("""<div class="item"><a href="/manga/retry">Retry</a></div>""")
+                }
+            }, followRedirects = false) { client ->
+                val source =
+                    GenericSourceClient(
+                        config(singlePage = true).copy(imageBase = "https://images.test", headers = mapOf("X-Static" to "static")),
+                        KtorHttpExecutor(client),
+                        NoopHeaderStore(mapOf(HttpHeaders.Cookie to "fixture=example", "X-Captured" to "captured")),
+                    )
+                val result = assertIs<AppResult.Success<List<HomeFeedItem>>>(source.home(1))
+                assertEquals("Retry", result.value.single().title)
+                assertEquals("https://source.test/manga/retry", result.value.single().url)
+                val later = assertIs<AppResult.Success<List<HomeFeedItem>>>(source.home(2))
+                assertTrue(later.value.isEmpty())
+                assertRedirectHeaders(requests)
             }
         }
 
@@ -77,7 +142,10 @@ class KtorHttpExecutorTest {
             for (method in SourceHttpMethod.entries) {
                 val body = ByteChannel()
                 try {
-                    withCatalogClient({ respond(body, headers = lengthHeaders(RESPONSE_LIMIT + 1)) }) { client ->
+                    withCatalogClient(
+                        { respond(body, headers = lengthHeaders(RESPONSE_LIMIT + 1)) },
+                        followRedirects = false,
+                    ) { client ->
                         assertFailsWith<SerializationException> { KtorHttpExecutor(client).execute(request(method)) }
                         assertTrue(body.isClosedForWrite, "early rejection must release the unread response")
                     }
@@ -100,7 +168,7 @@ class KtorHttpExecutorTest {
                         oversize -> respond("", headers = lengthHeaders(RESPONSE_LIMIT + 1))
                         else -> respond(broken)
                     }
-                }) { client ->
+                }, followRedirects = false) { client ->
                     assertFailedThenRetry(client, oversize)
                     assertEquals(2, requests)
                     assertTrue(broken.isClosedForRead)
@@ -130,6 +198,16 @@ class KtorHttpExecutorTest {
         }
     }
 
+    private fun assertRedirectHeaders(requests: List<HttpRequestData>) {
+        assertEquals(listOf(URL, "https://foreign.test/step", "https://images.test/final"), requests.map { it.url.toString() })
+        val headers = mapOf("X-Static" to "static", HttpHeaders.Cookie to "fixture=example", "X-Captured" to "captured")
+        requests.forEachIndexed { index, request ->
+            headers.forEach { (name, value) ->
+                if (index == 1) assertNull(request.headers[name]) else assertEquals(value, request.headers[name])
+            }
+        }
+    }
+
     private suspend fun assertFailedThenRetry(
         client: HttpClient,
         oversize: Boolean,
@@ -155,13 +233,13 @@ class KtorHttpExecutorTest {
             jsonBody = """{"query":"a&b"}""",
         )
 
-    private fun config() =
+    private fun config(singlePage: Boolean = false) =
         SourceConfig(
             api = "fixture",
             language = "en",
             baseUrl = "https://source.test",
             engine = "generic",
-            endpoints = mapOf("home" to EndpointSpec(URL, listSelector = ".item")),
+            endpoints = mapOf("home" to EndpointSpec(URL, listSelector = ".item", singlePage = singlePage)),
             fields =
                 mapOf(
                     "item.title" to FieldSpec(selector = "a"),
@@ -174,9 +252,13 @@ class KtorHttpExecutorTest {
             append(HttpHeaders.ContentType, "text/html; charset=ISO-8859-1")
             append("X-Values", "first")
             append("X-Values", "second")
+            append(HttpHeaders.Location, "/first")
+            append(HttpHeaders.Location, "/second")
         }
 
     private fun lengthHeaders(length: Int) = Headers.build { append(HttpHeaders.ContentLength, length.toString()) }
+
+    private fun locationHeaders(value: String) = Headers.build { append(HttpHeaders.Location, value) }
 
     private companion object {
         const val RESPONSE_LIMIT = 4 * 1024 * 1024

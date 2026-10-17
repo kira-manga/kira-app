@@ -186,11 +186,11 @@ private val configBridgeJson =
     }
 
 /**
- * The app and shared engine deliberately use separate contract packages. Their current serialized
- * SourceConfig shape is covered by cross-repository tests, so the boundary conversion uses that
- * shape instead of maintaining a second, error-prone hand-written field map.
+ * The app and shared engine deliberately use separate contract packages. Execution and declaration
+ * validation share this strict conversion instead of a second hand-written field map. Package and
+ * mirror changes must be qualified together; unknown fields are not silently discarded here.
  */
-private fun SourceConfig.toSharedConfig(): SharedSourceConfig {
+internal fun SourceConfig.toSharedConfig(): SharedSourceConfig {
     val raw = configBridgeJson.encodeToString(SourceConfig.serializer(), this)
     return configBridgeJson.decodeFromString(SharedSourceConfig.serializer(), raw)
 }

@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.cancel
@@ -33,6 +34,33 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KtorHttpExecutorStreamingTest {
+    @Test
+    fun ambiguous_redirect_locations_reject_before_reading_and_release_the_body() =
+        runTest {
+            val ambiguous =
+                listOf(
+                    listOf("/first", "/second"),
+                    listOf("/same", "/same"),
+                    listOf("/first,/second"),
+                    listOf("/first, /second"),
+                    listOf("/valid,comma"),
+                )
+            for (values in ambiguous) {
+                val headers = Headers.build { values.forEach { append(HttpHeaders.Location, it) } }
+                val body = ByteChannel()
+                try {
+                    withCatalogClient({ respond(body, HttpStatusCode.Found, headers) }, followRedirects = false) { client ->
+                        val failure =
+                            assertFailsWith<SerializationException> { KtorHttpExecutor(client).execute(SourceRequest(URL)) }
+                        assertEquals("generic source redirect has an ambiguous Location", failure.message)
+                        assertTrue(body.isClosedForWrite, "ambiguous redirects must release the unread response")
+                    }
+                } finally {
+                    body.cancel()
+                }
+            }
+        }
+
     @Test
     fun exact_byte_limit_accepts_split_utf8_with_absent_understated_or_exact_length() =
         runTest {
@@ -113,7 +141,7 @@ class KtorHttpExecutorStreamingTest {
                         return body.awaitContent(min)
                     }
                 }
-            withCatalogClient({ respond(observed) }) { client ->
+            withCatalogClient({ respond(observed) }, followRedirects = false) { client ->
                 assertCallerCancellation(KtorHttpExecutor(client), reading, body)
             }
         }
@@ -161,7 +189,7 @@ class KtorHttpExecutorStreamingTest {
     ) {
         val body = ByteChannel(autoFlush = true)
         val headers = Headers.build { length?.let { append(HttpHeaders.ContentLength, it.toString()) } }
-        withCatalogClient({ respond(body, headers = headers) }) { client ->
+        withCatalogClient({ respond(body, headers = headers) }, followRedirects = false) { client ->
             val producer = launchProducer(body, write)
             try {
                 block(KtorHttpExecutor(client), body, producer, client)

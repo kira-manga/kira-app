@@ -39,6 +39,7 @@ import org.koin.dsl.module
 import org.koin.dsl.onClose
 
 internal val sourceCatalogHttpClientQualifier = named("source-catalog-http")
+internal val genericSourceHttpClientQualifier = named("generic-source-http")
 
 /**
  * Assembles the generic-sources subsystem at the composition root and binds the
@@ -56,8 +57,9 @@ internal val sourceCatalogHttpClientQualifier = named("source-catalog-http")
  *    Ed25519 verification with pinned keys.
  *  - The real [DataStoreHeaderStore] lets the generic clients reuse captured Cloudflare headers.
  *
- * [DataStoreHelper] comes from the merged graph. This module owns one uncached [HttpClient]
- * shared by bounded generic responses and catalog downloads, closing it with Koin.
+ * [DataStoreHelper] comes from the merged graph. This module owns separate uncached [HttpClient]s
+ * for catalog downloads and single-hop generic responses, closing both with Koin. Only the shared
+ * source engine follows generic redirects; catalog downloads retain their ordinary redirect policy.
  */
 val sourcesGenericModule =
     module {
@@ -67,7 +69,7 @@ val sourcesGenericModule =
         single<SourceConfigValidator> { DefaultSourceConfigValidator(get()) }
 
         // Ports (composition-root implementations of :sources:contracts interfaces).
-        single<HttpExecutor> { KtorHttpExecutor(get<HttpClient>(sourceCatalogHttpClientQualifier)) }
+        single<HttpExecutor> { KtorHttpExecutor(get<HttpClient>(genericSourceHttpClientQualifier)) }
         single<HeaderStore> { DataStoreHeaderStore(get<DataStoreHelper>()) }
         single<SourceCatalogStore> {
             RoomSourceCatalogStore(
@@ -82,6 +84,9 @@ val sourcesGenericModule =
         }
         single<HttpClient>(sourceCatalogHttpClientQualifier) {
             createHttpClient(cacheResponses = false)
+        } onClose { it?.close() }
+        single<HttpClient>(genericSourceHttpClientQualifier) {
+            createHttpClient(cacheResponses = false, followRedirects = false)
         } onClose { it?.close() }
         single<RemoteSourceCatalog> {
             KtorRemoteSourceCatalog(get<HttpClient>(sourceCatalogHttpClientQualifier), get())

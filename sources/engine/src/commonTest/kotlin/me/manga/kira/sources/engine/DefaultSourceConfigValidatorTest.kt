@@ -3,6 +3,8 @@ package me.manga.kira.sources.engine
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.model.EndpointSpec
 import me.manga.kira.sources.contracts.model.FieldSpec
+import me.manga.kira.sources.contracts.model.FilterDefinition
+import me.manga.kira.sources.contracts.model.FilterRequestSpec
 import me.manga.kira.sources.contracts.model.IconSpec
 import me.manga.kira.sources.contracts.model.SourceConfig
 import me.manga.kira.sources.contracts.model.SourceConfigDocument
@@ -97,6 +99,71 @@ class DefaultSourceConfigValidatorTest {
     fun generic_source_without_home_or_popular_is_rejected() {
         val doc = SourceConfigDocument(schemaVersion = 1, sources = listOf(genericSource(endpoints = emptyMap())))
         assertFalse(validator.validate(doc).isValid)
+    }
+
+    @Test
+    fun single_page_is_admitted_only_for_finite_list_feeds() {
+        val feedVerbs = setOf("home", "featured", "search")
+        val endpoint = EndpointSpec("{baseUrl}/feed", root = "items")
+        for (verb in listOf("home", "featured", "search", "details", "chapters", "pages", "other")) {
+            for (singlePage in listOf(false, true)) {
+                val source =
+                    genericSource(endpoints = mapOf("home" to endpoint, verb to endpoint.copy(singlePage = singlePage)))
+                val result = validator.validate(SourceConfigDocument(schemaVersion = 1, sources = listOf(source)))
+                val expected = !singlePage || verb in feedVerbs
+                assertEquals(expected, result.isValid, "$verb singlePage=$singlePage")
+                if (!expected) assertTrue(result.errors.any { "endpoint '$verb' singlePage" in it })
+            }
+        }
+    }
+
+    @Test
+    fun shared_declaration_admission_rejects_invalid_templates_and_locators_for_the_whole_document() {
+        val home = EndpointSpec("{baseUrl}/feed", root = "items")
+        val endpoints =
+            mapOf(
+                "home" to home,
+                "pages" to EndpointSpec("{baseUrl}/chapters/{chapterId}", root = "pages"),
+            )
+        val source = genericSource(endpoints = endpoints)
+        assertTrue(validator.validate(SourceConfigDocument(schemaVersion = 1, sources = listOf(source))).isValid)
+        val invalid =
+            listOf(
+                home.copy(url = "{baseUrl}/{unsupported}") to "template.variable.unsupported",
+                home.copy(url = "{baseUrl}/{chapterId}") to "template.variable.unsupported",
+                home.copy(root = "items[?(@.visible)]") to "locator.json.unsupported",
+            )
+        for ((endpoint, code) in invalid) {
+            val bad = source.copy(api = "invalid", endpoints = source.endpoints + ("home" to endpoint))
+            val result = validator.validate(SourceConfigDocument(schemaVersion = 1, sources = listOf(source, bad)))
+            assertFalse(result.isValid)
+            assertTrue(result.errors.any { it.startsWith("source 'invalid': endpoints[home]") && "[$code]" in it })
+        }
+    }
+
+    @Test
+    fun filter_placeholders_cannot_shadow_the_reserved_chapter_identity() {
+        for (param in listOf("choice", "chapterId")) {
+            val filter =
+                FilterDefinition(
+                    id = "choice",
+                    label = "Choice",
+                    type = "text",
+                    default = "fixture",
+                    request = FilterRequestSpec(target = "path", param = param),
+                )
+            val endpoints =
+                mapOf(
+                    "home" to EndpointSpec("{baseUrl}/feed", root = "items"),
+                    "search" to EndpointSpec("{baseUrl}/search/{$param}", root = "items"),
+                )
+            val source = genericSource(endpoints = endpoints).copy(filters = listOf(filter))
+            val result = validator.validate(SourceConfigDocument(schemaVersion = 1, sources = listOf(source)))
+            assertEquals(param == "choice", result.isValid)
+            if (param == "chapterId") {
+                assertTrue(result.errors.any { "'chapterId' shadows a reserved engine template var" in it })
+            }
+        }
     }
 
     @Test

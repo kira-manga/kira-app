@@ -25,9 +25,10 @@ private object HttpLoggingFlag
 
 actual val isHttpLoggingEnabled: Boolean = HttpLoggingFlag::class.java.desiredAssertionStatus()
 
-actual fun createHttpClient(cacheResponses: Boolean): HttpClient {
+actual fun createHttpClient(cacheResponses: Boolean, followRedirects: Boolean): HttpClient {
     val cache = if (cacheResponses) createPersistentHttpCache(httpCacheDirectory()) else null
     return HttpClient(CIO) {
+        this.followRedirects = followRedirects
         install(ContentNegotiation) { json(DefaultJson) }
         // Network request/response logging intentionally OFF (LogLevel.NONE) — debug the reader/library
         // FLOW via FlowLog (tag "KiraFlow"), not request bodies. Bump to HEADERS/BODY to debug networking.

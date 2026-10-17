@@ -1,0 +1,268 @@
+import groovy.json.JsonOutput
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+import org.gradle.api.GradleException
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+import org.gradle.api.tasks.testing.Test
+
+// Check-only consumer of an independently admitted, promoted owned-Maven cohort.
+// Required environment: KIRA_SOURCE_COHORT_REPOSITORY (absolute directory),
+// KIRA_SOURCE_COHORT_INVENTORY (original inventory.tsv), and its selected
+// KIRA_SOURCE_COHORT_INVENTORY_SHA256. Admission/provenance and cleanup belong to
+// the orchestrator, not this adapter. No package acquisition or version override.
+def group = 'me.manga.kira.source'
+def version = '0.2.0'
+def require = { condition, message ->
+    if (!condition) throw new GradleException('Source cohort refused: ' + message)
+}
+def emit = { event, value -> logger.lifecycle('KIRA_SOURCE_COHORT_' + event + ' ' + JsonOutput.toJson(value)) }
+def hashStream = { stream ->
+    def digest = MessageDigest.getInstance('SHA-256')
+    byte[] buffer = new byte[65536]
+    int count
+    while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+    digest.digest().encodeHex().toString()
+}
+def sha = { File file -> file.withInputStream { stream -> hashStream(stream) } }
+def absoluteInput = { name ->
+    def raw = System.getenv(name)
+    require(raw && new File(raw).isAbsolute(), 'Missing absolute input: ' + name)
+    def path = new File(raw).toPath()
+    require(path == path.normalize() && path == path.toRealPath(), 'Noncanonical input: ' + name)
+    path
+}
+def repository = absoluteInput('KIRA_SOURCE_COHORT_REPOSITORY')
+def inventoryFile = absoluteInput('KIRA_SOURCE_COHORT_INVENTORY').toFile()
+def inventorySha = System.getenv('KIRA_SOURCE_COHORT_INVENTORY_SHA256')
+require(Files.isDirectory(repository, LinkOption.NOFOLLOW_LINKS), 'Owned repository is absent')
+require(inventorySha ==~ /[0-9a-f]{64}/, 'Missing selected inventory digest')
+require(inventoryFile.isFile() && inventoryFile.length() in 1..(2 * 1024 * 1024), 'Inventory size/type')
+require(sha(inventoryFile) == inventorySha, 'Inventory digest differs from selection')
+
+// Original Engine inventory columns: project, publication, group, artifactId,
+// version, kind, Maven-relative path, size, SHA-256. Never create Maven metadata.
+def lines = inventoryFile.readLines('UTF-8')
+require(lines.size() in 1..1024, 'Inventory entry bound')
+long inventoryBytes = 0
+def rows = lines.collect { line ->
+    def cells = line.split('\t', -1)
+    require(cells.size() == 9, 'Inventory columns')
+    require(cells[0] in [':source-contract', ':source-engine', ':source-testkit'] &&
+        cells[2] == group && cells[4] == version, 'Inventory coordinate/version')
+    require(cells[3] ==~ /source-(contract|engine|testkit)(-(jvm|android|iosarm64|iossimulatorarm64))?/,
+        'Inventory module')
+    require(cells[7] ==~ /[1-9][0-9]{0,8}/ && cells[8] ==~ /[0-9a-f]{64}/, 'Inventory facts')
+    def prefix = group.replace('.', '/') + '/' + cells[3] + '/' + version + '/'
+    require(cells[6].startsWith(prefix) && !cells[6].substring(prefix.length()).contains('/') &&
+        !cells[6].contains('\\'), 'Inventory Maven path')
+    def path = repository.resolve(cells[6])
+    require(path == path.normalize() && path.startsWith(repository) && path == path.toRealPath() &&
+        Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS), 'Missing or redirected inventory file')
+    long size = cells[7].toLong()
+    inventoryBytes += size
+    require(inventoryBytes <= 256 * 1024 * 1024, 'Inventory byte bound')
+    require(size <= 64 * 1024 * 1024 && Files.size(path) == size && sha(path.toFile()) == cells[8],
+        'Owned repository bytes differ from inventory')
+    [project: cells[0], publication: cells[1], module: cells[3], kind: cells[5],
+     path: cells[6], size: size, sha256: cells[8]]
+}
+require(rows.collect { it.path }.toSet().size() == rows.size(), 'Duplicate inventory entries')
+
+def linuxRoots = [':sources:engine:desktopTest', ':composeApp:desktopTest', ':composeApp:compileAndroidMain']
+def appleRoots = [':composeApp:compileKotlinIosArm64', ':composeApp:compileKotlinIosSimulatorArm64']
+// Gradle 9.6.1 taskNames includes task options. Observe --tests without changing
+// Gradle's own task-scoped filters; do not mistake a filter argument for a root.
+def arguments = gradle.startParameter.taskNames
+def roots = []
+def selectors = [:].withDefault { [] }
+for (int index = 0; index < arguments.size(); index++) {
+    def argument = arguments[index]
+    if (argument == '--tests') {
+        require(roots && roots.last() in linuxRoots.take(2) && index + 1 < arguments.size(), 'Task-scoped test filter required')
+        def selector = arguments[++index]
+        require(selector.size() <= 256 && selector ==~ /me\.manga\.kira\.[A-Za-z0-9_.*$]+/, 'Public App test selector required')
+        selectors[roots.last()].add(selector)
+    } else {
+        require(argument in linuxRoots + appleRoots, 'Unexpected task root/option')
+        roots.add(argument)
+    }
+}
+def linux = roots.size() == linuxRoots.size() && roots.toSet() == linuxRoots.toSet()
+require(linux || (roots.size() == appleRoots.size() && roots.toSet() == appleRoots.toSet()),
+    'Only the focused Linux or both-Apple root scope is allowed')
+require(!linux || linuxRoots.take(2).every { !selectors[it].isEmpty() }, 'Both JVM suites require explicit test filters')
+require(gradle.startParameter.excludedTaskNames.isEmpty(), 'Task exclusions are not this consumer scope')
+require(gradle.startParameter.dependencyVerificationMode.name() == 'STRICT', 'Normal strict verification required')
+require(!gradle.startParameter.configurationCacheRequested, 'This witness adapter requires configuration cache off')
+def targets = linux ? [
+    desktop: [publication: 'jvm', platform: 'jvm'],
+    android: [publication: 'android', platform: 'androidJvm'],
+] : [
+    iosArm64: [publication: 'iosArm64', platform: 'native', nativeTarget: 'ios_arm64'],
+    iosSimulatorArm64: [publication: 'iosSimulatorArm64', platform: 'native', nativeTarget: 'ios_simulator_arm64'],
+]
+def expectedTasks = new LinkedHashSet()
+def observedTasks = Collections.synchronizedSet(new LinkedHashSet())
+def attrs = { values -> values.keySet().sort { it.name }.collectEntries {
+    [(it.name): values.getAttribute(it).toString()]
+} }
+
+gradle.settingsEvaluated { settings ->
+    require(settings.providers.gradleProperty('kiraUseMavenLocal').orNull != 'true', 'Maven local is not admitted')
+    def repositories = settings.dependencyResolutionManagement.repositories
+    repositories.exclusiveContent {
+        forRepository {
+            repositories.maven {
+                name = 'KiraSourceCohort'
+                url = repository.toUri()
+                metadataSources { gradleMetadata(); mavenPom() }
+            }
+        }
+        filter { includeGroup(group) }
+    }
+    emit('INPUT', [version: version, inventorySha256: inventorySha, files: rows.size(), requestedRoots: roots, selectors: selectors])
+}
+gradle.beforeProject { project ->
+    project.configurations.configureEach { configuration ->
+        configuration.resolutionStrategy.eachDependency { dependency ->
+            if (dependency.requested.group == group) {
+                require(dependency.requested.version == version, 'Mixed/dynamic requested source version')
+            }
+        }
+    }
+}
+
+def wantedBinaries = { target ->
+    // Native publications also admit metadata.jar as kind=artifact. Only the
+    // admitted .klib role can witness a Native compiler library; verify both in intake.
+    def wanted = rows.findAll {
+        it.project in [':source-contract', ':source-engine'] && it.kind == 'artifact' && it.publication == target.publication &&
+            (target.platform != 'native' || it.path.endsWith('.klib'))
+    }
+    require(wanted.size() == 2 && wanted.collect { it.project }.toSet().size() == 2, 'Missing selected module binaries')
+    wanted
+}
+def resolvedBinaries = { configuration, target ->
+    require(configuration.canBeResolved, 'Actual compilation/runtime configuration is not resolvable')
+    def configurationAttributes = attrs(configuration.attributes)
+    require(configurationAttributes['org.jetbrains.kotlin.platform.type'] == target.platform, 'Configuration platform')
+    if (target.nativeTarget) {
+        require(configurationAttributes['org.jetbrains.kotlin.native.target'] == target.nativeTarget, 'Configuration Native target')
+    }
+    def view = configuration.incoming.artifactView {
+        componentFilter { id -> id instanceof ModuleComponentIdentifier && id.group == group }
+        if (target.platform == 'androidJvm') {
+            attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'aar')
+        }
+        lenient = false
+    }
+    def resolved = view.artifacts.artifacts
+    require(resolved.size() == 2, 'Missing or additional resolved source binaries')
+    [attributes: configurationAttributes, artifacts: resolved]
+}
+def selectedBinary = { row, resolved, target ->
+    def matches = resolved.findAll { artifact ->
+        def id = artifact.id.componentIdentifier
+        id.version == version && id.module in [row.module, row.project.substring(1)] &&
+            artifact.file.isFile() && artifact.file.length() == row.size && sha(artifact.file) == row.sha256
+    }
+    require(matches.size() == 1, 'Actual source artifact is not the selected binary: ' + row.project)
+    def artifact = matches[0]
+    def variant = attrs(artifact.variant.attributes)
+    require(variant['org.jetbrains.kotlin.platform.type'] == target.platform, 'Selected variant platform')
+    if (target.nativeTarget) {
+        require(variant['org.jetbrains.kotlin.native.target'] == target.nativeTarget, 'Selected variant Native target')
+    }
+    artifact
+}
+def inputRelation = { artifact, row, target, inputs ->
+    def inputSha = row.sha256
+    def inputSize = row.size
+    def relation = 'exact resolved binary'
+    if (target.platform == 'androidJvm') {
+        new ZipFile(artifact.file).withCloseable { zip ->
+            def entries = zip.entries().findAll { it.name == 'classes.jar' }
+            require(entries.size() == 1 && entries[0].size in 1..(32 * 1024 * 1024), 'AAR classes.jar bound/identity')
+            inputSize = entries[0].size
+            inputSha = zip.getInputStream(entries[0]).withCloseable { stream -> hashStream(stream) }
+        }
+        relation = 'exact classes.jar bytes in admitted AAR; no transformed-byte waiver'
+    }
+    def used = inputs.findAll { file -> file.isFile() && file.length() == inputSize && sha(file) == inputSha }
+    require(used.size() == 1, 'Compiler/Test input does not contain the exact selected bytes: ' + row.project)
+    [inputPath: used[0].path, inputSize: inputSize, inputSha256: inputSha, inputRelation: relation]
+}
+def selectedSupport = { configuration ->
+    def components = configuration.incoming.resolutionResult.allComponents.collect { it.id }
+        .findAll { it instanceof ModuleComponentIdentifier }
+    require(components.findAll { it.group == group }.every { it.version == version }, 'Mixed resolved source version')
+    components.findAll {
+        it.group == 'com.fleeksoft.ksoup' ||
+            (it.group == 'org.jetbrains.kotlin' && it.module.startsWith('kotlin-stdlib')) ||
+            (it.group == 'org.jetbrains.kotlinx' && it.module.startsWith('kotlinx-serialization'))
+    }.collect { it.displayName }.sort()
+}
+def witness = { task, configuration, target, inputFiles ->
+    require(sha(inventoryFile) == inventorySha, 'Selected inventory changed')
+    def wanted = wantedBinaries(target)
+    def resolved = resolvedBinaries(configuration, target)
+    def inputs = inputFiles.collect { it.canonicalFile }.toSet()
+    def artifacts = wanted.collect { row ->
+        def artifact = selectedBinary(row, resolved.artifacts, target)
+        [component: artifact.id.componentIdentifier.displayName, variant: artifact.variant.displayName,
+         attributes: attrs(artifact.variant.attributes), mavenPath: row.path, resolvedPath: artifact.file.canonicalPath,
+         size: row.size, sha256: row.sha256] + inputRelation(artifact, row, target, inputs)
+    }
+    emit('WITNESS', [task: task.path, configuration: task.project.path + ':' + configuration.name,
+        attributes: resolved.attributes, artifacts: artifacts, selectedSupportComponents: selectedSupport(configuration)])
+    observedTasks.add(task.path)
+}
+def bindCompilerWitnesses = { engine, kotlin ->
+    targets.each { name, target ->
+        // The external implementation is owned here, not on Compose's public API classpath.
+        def compilation = kotlin.targets.getByName(name).compilations.getByName('main')
+        def configuration = engine.configurations.getByName(compilation.compileDependencyConfigurationName)
+        def provider = compilation.compileTaskProvider
+        expectedTasks.add(engine.path + ':' + provider.name)
+        provider.configure { task ->
+            task.doFirst { witness(task, configuration, target, task.libraries.files) }
+        }
+    }
+}
+gradle.projectsEvaluated {
+    def root = gradle.rootProject
+    def engine = root.project(':sources:engine')
+    def kotlin = engine.extensions.getByName('kotlin')
+    def main = kotlin.sourceSets.getByName('commonMain')
+    def declared = engine.configurations.getByName(main.implementationConfigurationName).dependencies
+        .findAll { it.group == group }
+    require(declared.size() == 1 && declared[0].name == 'source-engine' && declared[0].version == version,
+        'The actual App resolver must declare source-engine:0.2.0 without testkit injection')
+    bindCompilerWitnesses(engine, kotlin)
+    if (linux) {
+        [':sources:engine', ':composeApp'].each { path ->
+            def project = root.project(path)
+            def task = project.tasks.getByName('desktopTest')
+            require(task instanceof Test, 'Expected actual JVM Test task')
+            expectedTasks.add(task.path)
+            def configuration = project.configurations.getByName('desktopTestRuntimeClasspath')
+            task.doFirst { witness(task, configuration, targets.desktop, task.classpath.files) }
+        }
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    emit('GRAPH', [tasks: graph.allTasks.collect { it.path }])
+    require(expectedTasks.every { graph.hasTask(it) }, 'Owning compiler/Test witnesses absent from requested graph')
+    def tests = graph.allTasks.findAll { it instanceof Test }.collect { it.path }.toSet()
+    require(tests == (linux ? [':sources:engine:desktopTest', ':composeApp:desktopTest'].toSet() : [].toSet()),
+        'Additional/missing Test task in focused graph')
+}
+gradle.buildFinished { result ->
+    if (result.failure == null) {
+        require(observedTasks == expectedTasks, 'Some witnesses did not execute; cached/skipped tasks are not fresh evidence')
+        emit('COMPLETE', [version: version, inventorySha256: inventorySha, witnessedTasks: observedTasks.toList().sort()])
+    }
+}

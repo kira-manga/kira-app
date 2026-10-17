@@ -51,9 +51,10 @@ private object HttpLoggingFlag
 
 actual val isHttpLoggingEnabled: Boolean = HttpLoggingFlag::class.java.desiredAssertionStatus()
 
-actual fun createHttpClient(cacheResponses: Boolean): HttpClient {
+actual fun createHttpClient(cacheResponses: Boolean, followRedirects: Boolean): HttpClient {
     val cache = if (cacheResponses) createPersistentHttpCache(httpCacheDirectory()) else null
     return HttpClient(OkHttp) {
+        this.followRedirects = followRedirects
         install(ContentNegotiation) { json(DefaultJson) }
         // HTTP logging is gated on isHttpLoggingEnabled (debug/dev only, like native's BuildConfig.DEBUG
         // HttpLoggingInterceptor); HEADERS keeps the leak-sensitive request/response BODY out of the

@@ -30,8 +30,10 @@ val DefaultJson: Json =
  * Only explicitly fresh text/JSON/XML metadata is retained. This is a retention budget, not a
  * transfer ceiling: Ktor HttpCache buffers responses before storage admission. Chapter downloads,
  * catalog streaming and other one-shot bodies must opt out before their bounded readers run.
+ * @param followRedirects Keep ordinary Ktor redirects by default. Generic sources opt out so the
+ * shared engine can validate each destination and select source headers before every hop.
  */
-expect fun createHttpClient(cacheResponses: Boolean = true): HttpClient
+expect fun createHttpClient(cacheResponses: Boolean = true, followRedirects: Boolean = true): HttpClient
 
 /**
  * Whether HTTP request/response logging should be installed on the Ktor client.
