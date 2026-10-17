@@ -9,6 +9,7 @@ import me.manga.kira.domain.model.Manga
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.presentation.features.download.domain.clean.DownloadHttpStatusFailure
 import me.manga.kira.presentation.features.download.domain.clean.DownloadPage
+import me.manga.kira.presentation.features.download.domain.clean.DownloadHeaderPolicy
 import me.manga.kira.sources.contracts.SourceRegistry
 
 /**
@@ -39,6 +40,12 @@ class GenericPagesFailedException(
 class RegistryChapterPageProvider(
     private val sourceRegistry: SourceRegistry,
 ) : ChapterPageProvider {
+
+    override fun headerPolicy(api: String): DownloadHeaderPolicy {
+        val descriptor = sourceRegistry.descriptor(api)?.takeIf { it.siteState == "WORKING" }
+            ?: return DownloadHeaderPolicy()
+        return DownloadHeaderPolicy(descriptor.usesCapturedHeaders, descriptor.headers)
+    }
 
     override suspend fun pagesOrNull(
         api: String,

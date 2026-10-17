@@ -51,6 +51,8 @@ data class RuntimeSourceDescriptor(
      * source exposes no advanced filters (plain search only).
      */
     val filters: List<SourceFilter> = emptyList(),
+    /** Media requests may reuse per-api captures only when the signed source explicitly allows it. */
+    val usesCapturedHeaders: Boolean = true,
 ) {
     val isGeneric: Boolean get() = engine == ENGINE_GENERIC
 
@@ -76,6 +78,7 @@ fun SourceConfig.toRuntimeDescriptor(): RuntimeSourceDescriptor =
         blacklistGenres = blacklistGenres,
         headers = headers,
         filters = filters.map { it.toSourceFilter() },
+        usesCapturedHeaders = usesCapturedHeaders,
     )
 
 /**

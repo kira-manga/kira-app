@@ -19,6 +19,34 @@ import me.manga.kira.domain.model.downloads.DownloadedChapter
  */
 object HeaderRefreshRules {
 
+    /** Read once per pending batch, only with current catalog permission. Never swallow cancellation. */
+    suspend fun readCapturedHeaders(
+        policy: DownloadHeaderPolicy,
+        read: suspend () -> Map<String, String>,
+    ): Map<String, String> {
+        if (!policy.usesCapturedHeaders) return emptyMap()
+        return try {
+            read()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    /**
+     * Opt-out must remove old captured values too: overlaying an empty map leaves them frozen.
+     * Retain only exact current static pairs already admitted for this page; do not inject static
+     * credentials into a destination whose original page header map deliberately omitted them.
+     */
+    fun headersForPolicy(
+        policy: DownloadHeaderPolicy,
+        frozen: Map<String, String>,
+        fresh: Map<String, String>,
+    ): Map<String, String> =
+        if (policy.usesCapturedHeaders) overlayFreshHeaders(frozen, fresh)
+        else frozen.filter { (name, value) -> policy.staticHeaders[name] == value }
+
     /**
      * Overlays FRESH per-source site headers (cf_clearance/Cookie/User-Agent from the live store —
      * the store a WebView re-solve writes) onto a manifest page's FROZEN headers: on a key collision

@@ -40,6 +40,6 @@ enum ReaderPerfLog {
         return result
     }
 
-    /// Short, log-friendly tail of a URL.
-    static func tail(_ url: String) -> String { String(url.suffix(40)) }
+    /// Image URLs can contain short-lived credentials, including in their paths. Never log them.
+    static func tail(_: String) -> String { "<image>" }
 }

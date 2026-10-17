@@ -20,6 +20,7 @@ import me.manga.kira.domain.model.home.FeaturedManga
 import me.manga.kira.domain.model.home.HomeFeedItem
 import me.manga.kira.domain.model.reader.Page
 import me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRules
+import me.manga.kira.presentation.features.download.domain.clean.DownloadHeaderPolicy
 import me.manga.kira.sources.contracts.MangaSourceClient
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.contracts.UpdateState
@@ -47,9 +48,9 @@ class RegistryChapterPageProviderTest {
     private class FakeUpdateManager(private val document: SourceConfigDocument) : SourceUpdateManager {
         private val _state = MutableStateFlow<UpdateState>(UpdateState.Active(document.revision, UpdateState.Origin.BUNDLED))
         override val state: StateFlow<UpdateState> = _state.asStateFlow()
-        override val acceptedDocument: StateFlow<SourceConfigDocument> = MutableStateFlow(document)
-        override fun activeDocument(): SourceConfigDocument = document
-        override suspend fun refresh(): AppResult<SourceConfigDocument> = AppResult.Success(document)
+        override val acceptedDocument = MutableStateFlow(document)
+        override fun activeDocument(): SourceConfigDocument = acceptedDocument.value
+        override suspend fun refresh(): AppResult<SourceConfigDocument> = AppResult.Success(activeDocument())
     }
 
     /** Generic client returning fixed pages (or failing), so a generic-routed result is distinguishable. */
@@ -95,6 +96,22 @@ class RegistryChapterPageProviderTest {
             StubGenericPagesClient(config.api, genericPages, failure = if (genericFailing) AppError.Network.Http(403) else null)
         },
     )
+
+    @Test
+    fun downloadHeaderPolicy_tracksCurrentCatalog_andDoesNotFallBackToAnotherSource() {
+        val document = genericDoc("Azora")
+        val original = document.sources.single().copy(headers = mapOf("Referer" to "https://azora.test"))
+        val updates = FakeUpdateManager(document.copy(sources = listOf(original)))
+        val provider = RegistryChapterPageProvider(DefaultSourceRegistry(updates) { StubGenericPagesClient(it.api, genericPages) })
+        assertEquals(DownloadHeaderPolicy(true, original.headers), provider.headerPolicy("Azora"))
+        updates.acceptedDocument.value = document.copy(sources = listOf(original.copy(usesCapturedHeaders = false)))
+        assertEquals(DownloadHeaderPolicy(false, original.headers), provider.headerPolicy("Azora"))
+        assertEquals(DownloadHeaderPolicy(), provider.headerPolicy("absent"))
+        updates.acceptedDocument.value = document.copy(sources = listOf(original.copy(siteState = "UNDER_MAINTENANCE")))
+        assertEquals(DownloadHeaderPolicy(), provider.headerPolicy("Azora"))
+        updates.acceptedDocument.value = document.copy(sources = listOf(original.copy(lifecycle = "retired")))
+        assertEquals(DownloadHeaderPolicy(), provider.headerPolicy("Azora"))
+    }
 
     @Test
     fun piloted_download_uses_generic_client_and_does_not_call_legacy_scraper() = runTest {

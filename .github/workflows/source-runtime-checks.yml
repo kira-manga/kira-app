@@ -1,0 +1,122 @@
+name: Source runtime checks (no publication or Store access)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [remediation/app-priority-sources-20261017]
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: kira-source-runtime-checks-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  headers:
+    if: ${{ github.ref == 'refs/heads/remediation/app-priority-sources-20261017' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      KIRA_PACKAGES_USER: ${{ github.actor }}
+    steps:
+      - name: Check out exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify existing toolchain pins
+        run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+      - name: Set up Java 21
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Reuse dependencies without writing shared caches
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-read-only: true
+      - name: Verify image and download header boundaries and compile Android
+        id: verify
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: |
+          stop_owned() {
+            local home="${GRADLE_USER_HOME:-$HOME/.gradle}" launcher
+            for launcher in "$home"/wrapper/dists/gradle-9.6.1-bin/*/gradle-9.6.1/bin/gradle; do
+              [[ -x "$launcher" && ! -L "$launcher" ]] || continue
+              timeout 60s "$launcher" --offline --stop
+              return $?
+            done
+            [[ ! -d "$home/daemon" ]]
+          }
+          finish() {
+            local build_status=$? stop_status=0
+            trap - EXIT
+            stop_owned || stop_status=$?
+            if [[ "$stop_status" == 0 ]]; then
+              echo 'workers_stopped=true' >> "$GITHUB_OUTPUT"
+            else
+              echo '::error::Owned Gradle shutdown failed; not reported clean.'
+            fi
+            [[ "$build_status" == 0 ]] || exit "$build_status"
+            exit "$stop_status"
+          }
+          echo 'workers_stopped=false' >> "$GITHUB_OUTPUT"
+          trap finish EXIT
+          ./gradlew --continue --no-daemon --no-build-cache --no-configuration-cache \
+            --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :composeApp:desktopTest \
+            --tests 'me.manga.kira.sources.runtime.SourceImageHeadersTest' \
+            --tests 'me.manga.kira.sources.runtime.CoilSourceHeaderInterceptorTest' \
+            --tests 'me.manga.kira.sources.runtime.RegistryChapterPageProviderTest' \
+            :data:download:desktopTest \
+            --tests 'me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRulesTest' \
+            :composeApp:compileAndroidMain --stacktrace
+      - name: Retain small XML evidence outside disposable build directories
+        if: ${{ always() }}
+        run: |
+          python3 -B - <<'PY'
+          import os, pathlib, shutil
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'source-runtime-evidence'
+          target.mkdir(mode=0o700)
+          (target / 'source-sha.txt').write_text(os.environ['GITHUB_SHA'] + '\n')
+          for module in ('composeApp', 'data/download'):
+              files = list(pathlib.Path(module, 'build/test-results/desktopTest').glob('*.xml'))
+              assert len(files) <= 20
+              for source in files:
+                  assert source.is_file() and not source.is_symlink() and source.stat().st_size <= 2 * 1024 * 1024
+                  destination = target / module / source.name
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(source, destination)
+          PY
+      - name: Preserve focused test evidence
+        id: evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-tests-${{ github.sha }}
+          path: ${{ runner.temp }}/source-runtime-evidence
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Clean owned disposable outputs
+        if: ${{ always() }}
+        env:
+          WORKERS_STOPPED: ${{ steps.verify.outputs.workers_stopped }}
+        run: |
+          [[ "$WORKERS_STOPPED" != false ]] || { echo '::error::Refusing to delete live workers outputs'; exit 1; }
+          python3 -B scripts/release/clean-mobile-build.py
+      - name: Remove the uploaded local evidence copy
+        if: ${{ always() && steps.evidence.outcome == 'success' }}
+        run: |
+          python3 -B - <<'PY'
+          import os, pathlib, shutil
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'source-runtime-evidence'
+          assert not target.is_symlink()
+          shutil.rmtree(target)
+          PY

@@ -41,14 +41,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.disk.DiskCache
-import coil3.intercept.Interceptor
 import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
-import coil3.request.ImageResult
 import coil3.request.maxBitmapSize
 import coil3.size.Size
-import io.ktor.http.Url
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import me.manga.kira.platform.filesystem.AppFileSystem
 import me.manga.kira.platform.image.ImageDecoderRegistry
@@ -79,6 +74,8 @@ import me.manga.kira.domain.usecase.sourceaccess.ActivateSourceAccessUseCase
 import me.manga.kira.domain.usecase.sourceaccess.ObserveSourceAccessUseCase
 import me.manga.kira.sources.contracts.SourceUpdateManager
 import me.manga.kira.sources.runtime.ConfigHostTrust
+import me.manga.kira.sources.runtime.sourceImageHeaders
+import me.manga.kira.sources.runtime.CoilSourceHeaderInterceptor
 import me.manga.kira.locale.LocalAppLocale
 import me.manga.kira.navigation.Screen
 import me.manga.kira.navigation.safePopBackStack
@@ -295,56 +292,6 @@ import org.koin.compose.viewmodel.koinViewModel
  * `composeApp/commonMain`'s classpath); re-add temporary `println`s locally if this path needs
  * debugging again.
  */
-private class CoilSourceHeaderInterceptor(
-    private val configHostTrust: ConfigHostTrust,
-    private val sourceRegistry: SourceRegistry,
-    private val dataStore: DataStoreHelper,
-) : Interceptor {
-    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-        val req = chain.request
-        // xcut-dup-9: request-level header attachment is authoritative. When the call site already
-        // attached non-empty NetworkHeaders (rememberSourceImageRequest passes the fetch-time
-        // Page.headers / per-api hydrated headers, which for the generic-config-backed sources can differ
-        // from the matched legacy repo's static defaultHeaders), don't clobber them — proceed as-is.
-        if (req.httpHeaders.asMap().isNotEmpty()) {
-            return chain.proceed()
-        }
-        val urlString = req.data as? String ?: req.data.toString()
-        val host = runCatching { Url(urlString).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() }
-        if (host == null) return chain.proceed()
-        // MangaSource decoupling (2026-07): CONFIG-FIRST host→api resolution. A config-backed
-        // source's hosts (baseUrl/imageBase/previousHosts/previousImageHosts/trustedHosts) resolve
-        // through the validated document, and its headers come from the same stores the generic
-        // engine uses — the stanza's static headers merged UNDER the captured per-api headers
-        // (cookies/UA/cf_clearance). Works with NO compiled legacy repo; previously a config-only
-        // source's plain-URL cover loads went out header-less (403 on Cloudflare-gated sources).
-        val configApi = configHostTrust.apiForHost(host)
-        if (configApi != null && sourceRegistry.isConfigBacked(configApi)) {
-            val static = sourceRegistry.descriptor(configApi)?.headers.orEmpty()
-            val captured =
-                try {
-                    dataStore.getHeadersForApi(configApi).orEmpty()
-                } catch (c: CancellationException) {
-                    throw c
-                } catch (_: Throwable) {
-                    emptyMap()
-                }
-            val merged = static + captured
-            if (merged.isNotEmpty()) {
-                val configHeaders =
-                    NetworkHeaders
-                        .Builder()
-                        .apply {
-                            merged.forEach { (k, v) -> add(k, v) }
-                        }.build()
-                return chain.withRequest(req.newBuilder().httpHeaders(configHeaders).build()).proceed()
-            }
-            // Nothing to inject (no static headers and nothing captured yet) → use the raw URL.
-            return chain.proceed()
-        }
-        return chain.proceed()
-    }
-}
 
 /**
  * Resolves and runs non-visual launch work only after Compose has presented its first frame.
@@ -455,7 +402,16 @@ fun App(crashDiagnosticsEnabled: Boolean = false) {
                 networkFetcherFactory?.let { add(it) }
                 decoderFactories.forEach { add(it) }
                 add(PageProgressInterceptor(pageProgressRepository))
-                add(CoilSourceHeaderInterceptor(coilConfigHostTrust, coilSourceRegistry, coilHeaderStore))
+                add(CoilSourceHeaderInterceptor { host ->
+                    val api = coilConfigHostTrust.apiForHost(host)
+                    if (api != null && coilSourceRegistry.isConfigBacked(api)) {
+                        sourceImageHeaders(coilSourceRegistry.descriptor(api)) {
+                            coilHeaderStore.getHeadersForApi(api).orEmpty()
+                        }
+                    } else {
+                        emptyMap()
+                    }
+                })
             }.diskCache { DiskCache.Builder().directory(imageCacheDir).build() }
             // Disable the default 4096×4096 maxBitmapSize cap. Coil 3.3+ tightened how this cap
             // applies to tall manga / webtoon pages (PR #3259), causing aggressive downsampling

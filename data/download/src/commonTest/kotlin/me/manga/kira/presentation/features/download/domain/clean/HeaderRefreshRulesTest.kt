@@ -1,6 +1,7 @@
 package me.manga.kira.presentation.features.download.domain.clean
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 import me.manga.kira.domain.model.downloads.DownloadedChapter
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,6 +16,43 @@ import kotlin.test.assertTrue
  * Cloudflare-challenge message classification that routes a resolve failure to the WebView solver.
  */
 class HeaderRefreshRulesTest {
+
+    @Test
+    fun captureOptOut_neverReadsStore_andRemovesFrozenCapturesWithoutWideningDestinations() = runTest {
+        val policy = DownloadHeaderPolicy(staticHeaders = mapOf("Referer" to "https://source.test", "X-Static" to "signed"))
+        var reads = 0
+        val fresh = HeaderRefreshRules.readCapturedHeaders(policy) {
+            reads++
+            mapOf("Cookie" to "fresh-secret")
+        }
+        assertEquals(0, reads)
+        val frozen = mapOf("Cookie" to "old-secret", "Referer" to "https://source.test", "X-Static" to "captured-override")
+        assertEquals(
+            mapOf("Referer" to "https://source.test"),
+            HeaderRefreshRules.headersForPolicy(policy, frozen, fresh),
+        )
+        // Even an already-read capture map cannot undo opt-out; static pairs are not added to a CDN.
+        assertEquals(emptyMap(), HeaderRefreshRules.headersForPolicy(policy, emptyMap(), mapOf("Cookie" to "fresh-secret")))
+        assertEquals(emptyMap(), HeaderRefreshRules.headersForPolicy(DownloadHeaderPolicy(), frozen, fresh))
+    }
+
+    @Test
+    fun allowedRefresh_preservesOverlayAndCancellation_butNewOptOutDiscardsTheRead() = runTest {
+        val allowed = DownloadHeaderPolicy(usesCapturedHeaders = true)
+        val frozen = mapOf("Referer" to "https://source.test", "Cookie" to "old-secret")
+        var reads = 0
+        val fresh = HeaderRefreshRules.readCapturedHeaders(allowed) {
+            reads++
+            mapOf("Cookie" to "fresh-secret")
+        }
+        assertEquals(1, reads)
+        assertEquals(frozen + fresh, HeaderRefreshRules.headersForPolicy(allowed, frozen, fresh))
+        val nowOptedOut = DownloadHeaderPolicy(staticHeaders = mapOf("Referer" to "https://source.test"))
+        assertEquals(mapOf("Referer" to "https://source.test"), HeaderRefreshRules.headersForPolicy(nowOptedOut, frozen, fresh))
+        assertEquals(emptyMap(), HeaderRefreshRules.readCapturedHeaders(allowed) { throw IllegalStateException("unavailable") })
+        val cancelled = CancellationException("fixture")
+        assertSame(cancelled, assertFailsWith<CancellationException> { HeaderRefreshRules.readCapturedHeaders(allowed) { throw cancelled } })
+    }
 
     // ---- (i) overlayFreshHeaders ----
 

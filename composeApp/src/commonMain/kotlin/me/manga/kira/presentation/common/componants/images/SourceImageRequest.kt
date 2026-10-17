@@ -1,21 +1,23 @@
 package me.manga.kira.presentation.common.componants.images
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import coil3.compose.LocalPlatformContext
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.maxBitmapSize
 import coil3.size.Dimension
 import coil3.size.Size
-import kotlinx.coroutines.CancellationException
 import me.manga.kira.platform.storage.DataStoreHelper
 import me.manga.kira.sources.contracts.SourceRegistry
+import me.manga.kira.sources.runtime.sourceImageHeaders
+import me.manga.kira.sources.runtime.resolvedSourceHeaders
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.koin.compose.koinInject
 
 /**
@@ -40,12 +42,9 @@ fun rememberSourceImageRequest(
 ): ImageRequest {
     val context = LocalPlatformContext.current
     return remember(url, headers, screenWidthPx) {
-        val networkHeaders = NetworkHeaders.Builder().apply {
-            headers.forEach { (key, value) -> add(key, value) }
-        }.build()
         ImageRequest.Builder(context)
             .data(url)
-            .httpHeaders(networkHeaders)
+            .resolvedSourceHeaders(headers)
             // Coil 3 defaults `maxBitmapSize` to `Size(4096, 4096)` and the loader-level override
             // in `App.kt` doesn't propagate to every request. Webtoon strips are typically
             // 800×~14000; with the default cap, aspect-preservation collapses width to ~234 px
@@ -86,33 +85,28 @@ fun rememberSourceImageRequest(
     val context = LocalPlatformContext.current
     val sourceRegistry: SourceRegistry = koinInject()
     val dataStore: DataStoreHelper = koinInject()
-    val catalogBacked = sourceRegistry.get(api) != null
+    val descriptor by remember(sourceRegistry, api) {
+        sourceRegistry.catalog.map { snapshot ->
+            snapshot.descriptors.firstOrNull { it.api == api && it.siteState == "WORKING" }
+        }.distinctUntilChanged()
+    }.collectAsState(initial = sourceRegistry.descriptor(api)?.takeIf { it.siteState == "WORKING" })
+    val catalogBacked = descriptor != null
     val localUrl = url.startsWith("file://") || url.startsWith("/")
     val requestUrl = if (catalogBacked || localUrl) url else ""
-    var headersSnapshot by remember(api, catalogBacked) {
-        mutableStateOf(sourceRegistry.descriptor(api)?.headers.orEmpty())
+    var headersSnapshot by remember(api, descriptor) {
+        mutableStateOf(descriptor?.headers.orEmpty())
     }
 
-    LaunchedEffect(api, catalogBacked) {
-        if (catalogBacked) {
-            try {
-                val captured = dataStore.getHeadersForApi(api).orEmpty()
-                if (captured.isNotEmpty()) headersSnapshot = headersSnapshot + captured
-            } catch (c: CancellationException) {
-                throw c
-            } catch (_: Throwable) {
-                // static-only (or empty) headers; raw-URL fallback
-            }
+    LaunchedEffect(api, descriptor) {
+        headersSnapshot = sourceImageHeaders(descriptor) {
+            dataStore.getHeadersForApi(api).orEmpty()
         }
     }
 
     return remember(requestUrl, headersSnapshot, screenWidthPx) {
-        val networkHeaders = NetworkHeaders.Builder().apply {
-            headersSnapshot.forEach { (key, value) -> add(key, value) }
-        }.build()
         ImageRequest.Builder(context)
             .data(requestUrl)
-            .httpHeaders(networkHeaders)
+            .resolvedSourceHeaders(headersSnapshot)
             // Coil 3 defaults `maxBitmapSize` to `Size(4096, 4096)` and the loader-level override
             // in `App.kt` doesn't propagate to every request. Webtoon strips are typically
             // 800×~14000; with the default cap, aspect-preservation collapses width to ~234 px

@@ -9,6 +9,12 @@ data class DownloadPage(
     val headers: Map<String, String>,
 )
 
+/** Current catalog permission to refresh captured headers; an unavailable policy denies captures. */
+data class DownloadHeaderPolicy(
+    val usesCapturedHeaders: Boolean = false,
+    val staticHeaders: Map<String, String> = emptyMap(),
+)
+
 /**
  * Sources Migration — Phase 3. The download engines' routing seam to the `SourceRegistry`.
  *
@@ -25,6 +31,9 @@ data class DownloadPage(
  * failure must all fail the queued download rather than activating a legacy scraper.
  */
 interface ChapterPageProvider {
+    /** Resolve current signed policy without fetching pages or trusting a saved manifest's headers. */
+    fun headerPolicy(api: String): DownloadHeaderPolicy = DownloadHeaderPolicy()
+
     suspend fun pagesOrNull(
         api: String,
         mangaUrl: String,

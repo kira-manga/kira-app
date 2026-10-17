@@ -25,6 +25,8 @@ class ChapterPageResolver(
     private val chapterPageProvider: ChapterPageProvider,
 ) {
 
+    fun headerPolicy(api: String): DownloadHeaderPolicy = chapterPageProvider.headerPolicy(api)
+
     suspend fun resolve(entity: ChapterDownloadEntity): ResolvedChapter {
         val manga = mangaDao.getMangaById(entity.mangaId)
         return ResolvedChapter(

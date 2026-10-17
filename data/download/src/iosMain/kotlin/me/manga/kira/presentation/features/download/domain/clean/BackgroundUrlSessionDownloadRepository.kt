@@ -1266,14 +1266,15 @@ class BackgroundUrlSessionDownloadRepository(
                 markDownloadedAndMaybeFinalizeLocked(entity.chapterId)
             plan.toEnqueue.isNotEmpty() -> {
                 val byIndex = manifest.pages.associateBy { it.index }
-                // B3: overlay FRESH cookies/UA from the live store onto the frozen manifest headers (one
-                // read per reconcile, not per page) so a WebView re-solve is honored on the next request
-                // instead of replaying the cookie baked in at resolve time.
-                val live = freshSiteHeaders(manifest.api)
+                // Refresh only when the current catalog permits captures. Opt-out also strips old
+                // captured values from the saved manifest; read at most once for this batch.
+                val live = freshSiteHeaders(manifest.api, chapterPageResolver.headerPolicy(manifest.api))
+                // A capture-store read can suspend across a catalog replacement.
+                val headerPolicy = chapterPageResolver.headerPolicy(manifest.api)
                 val requests =
                     plan.toEnqueue.filter { mayReplacePage(claim, it) }.mapNotNull { idx ->
                         val mp = byIndex[idx] ?: return@mapNotNull null
-                        val headers = HeaderRefreshRules.overlayFreshHeaders(frozen = mp.headers, fresh = live)
+                        val headers = HeaderRefreshRules.headersForPolicy(headerPolicy, frozen = mp.headers, fresh = live)
                         TransferRequest(entity.mangaId, entity.chapterId, idx, mp.url, headers, claim.token)
                     }
                 BgDownloadLog.log("reconcile.enqueue", "chapterId" to entity.chapterId, "pages" to plan.toEnqueue.size)
@@ -1496,8 +1497,9 @@ class BackgroundUrlSessionDownloadRepository(
             fillWindowLocked()
         } else {
             // Retry overlays fresh cookies/UA only after the durable refusal check.
-            val live = freshSiteHeaders(manifest.api)
-            val headers = HeaderRefreshRules.overlayFreshHeaders(frozen = mp.headers, fresh = live)
+            val live = freshSiteHeaders(manifest.api, chapterPageResolver.headerPolicy(manifest.api))
+            val headerPolicy = chapterPageResolver.headerPolicy(manifest.api)
+            val headers = HeaderRefreshRules.headersForPolicy(headerPolicy, frozen = mp.headers, fresh = live)
             BgDownloadLog.log("retry.enqueue", "chapterId" to entity.chapterId, "pageIndex" to pageIndex)
             artifacts.ownership.publish(claim) {
                 transport.enqueue(listOf(TransferRequest(mangaId, entity.chapterId, pageIndex, mp.url, headers, claim.token)))
@@ -1926,10 +1928,10 @@ class BackgroundUrlSessionDownloadRepository(
     // Page-name parsing (`image_<n>.<ext>` → n) moved to the pure commonMain [PageFileNames]
     // (test hardening — the parsed index decides finalize page order + reconcile membership).
 
-    private suspend fun freshSiteHeaders(api: String?): Map<String, String> {
-        val a = api?.takeIf { it.isNotBlank() } ?: return emptyMap()
-        return runCatching { dataStoreHelper.getHeadersForApi(a) }.getOrNull().orEmpty()
-    }
+    private suspend fun freshSiteHeaders(api: String, policy: DownloadHeaderPolicy): Map<String, String> =
+        HeaderRefreshRules.readCapturedHeaders(policy) {
+            dataStoreHelper.getHeadersForApi(api).orEmpty()
+        }
 
     private fun notifTitle(entity: ChapterDownloadEntity): String {
         val base = entity.mangaTitle?.takeIf { it.isNotBlank() } ?: "Download"
