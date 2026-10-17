@@ -1269,16 +1269,17 @@ class BackgroundUrlSessionDownloadRepository(
                 // Refresh only when the current catalog permits captures. Opt-out also strips old
                 // captured values from the saved manifest; read at most once for this batch.
                 val live = freshSiteHeaders(manifest.api, chapterPageResolver.headerPolicy(manifest.api))
-                // A capture-store read can suspend across a catalog replacement.
-                val headerPolicy = chapterPageResolver.headerPolicy(manifest.api)
-                val requests =
-                    plan.toEnqueue.filter { mayReplacePage(claim, it) }.mapNotNull { idx ->
-                        val mp = byIndex[idx] ?: return@mapNotNull null
-                        val headers = HeaderRefreshRules.headersForPolicy(headerPolicy, frozen = mp.headers, fresh = live)
-                        TransferRequest(entity.mangaId, entity.chapterId, idx, mp.url, headers, claim.token)
-                    }
+                val pendingPages = plan.toEnqueue.filter { mayReplacePage(claim, it) }.mapNotNull(byIndex::get)
                 BgDownloadLog.log("reconcile.enqueue", "chapterId" to entity.chapterId, "pages" to plan.toEnqueue.size)
-                if (requests.isNotEmpty()) artifacts.ownership.publish(claim) { transport.enqueue(requests) }
+                if (pendingPages.isNotEmpty()) artifacts.ownership.publish(claim) {
+                    // Both the store read and ownership admission can suspend across catalog changes.
+                    val headerPolicy = chapterPageResolver.headerPolicy(manifest.api)
+                    val requests = pendingPages.map { mp ->
+                        val headers = HeaderRefreshRules.headersForPolicy(headerPolicy, frozen = mp.headers, fresh = live)
+                        TransferRequest(entity.mangaId, entity.chapterId, mp.index, mp.url, headers, claim.token)
+                    }
+                    transport.enqueue(requests)
+                }
             }
             else -> BgDownloadLog.log("reconcile.waitInFlight", "chapterId" to entity.chapterId, "inFlight" to inFlight.size)
         }
@@ -1498,10 +1499,10 @@ class BackgroundUrlSessionDownloadRepository(
         } else {
             // Retry overlays fresh cookies/UA only after the durable refusal check.
             val live = freshSiteHeaders(manifest.api, chapterPageResolver.headerPolicy(manifest.api))
-            val headerPolicy = chapterPageResolver.headerPolicy(manifest.api)
-            val headers = HeaderRefreshRules.headersForPolicy(headerPolicy, frozen = mp.headers, fresh = live)
             BgDownloadLog.log("retry.enqueue", "chapterId" to entity.chapterId, "pageIndex" to pageIndex)
             artifacts.ownership.publish(claim) {
+                val headerPolicy = chapterPageResolver.headerPolicy(manifest.api)
+                val headers = HeaderRefreshRules.headersForPolicy(headerPolicy, frozen = mp.headers, fresh = live)
                 transport.enqueue(listOf(TransferRequest(mangaId, entity.chapterId, pageIndex, mp.url, headers, claim.token)))
             }
         }
