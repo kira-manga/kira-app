@@ -39,8 +39,18 @@ def verified_app
   app
 end
 
-def ensure_testflight_groups(app)
+def ensure_testflight_groups(app, existing_only: false)
   groups = app.get_beta_groups
+  if existing_only
+    expected_id = protected_env("KIRA_EXPECTED_TESTFLIGHT_GROUP_ID")
+    matching = groups.select { |group| group.name == EXTERNAL_GROUP_NAME }
+    valid = groups.any?(&:is_internal_group) && matching.length == 1 &&
+      matching.first.is_internal_group == false && matching.first.public_link_enabled == true &&
+      matching.first.id == expected_id
+    UI.user_error!("Expected existing public TestFlight group changed; refusing group creation") unless valid
+    return matching.first
+  end
+
   unless groups.any?(&:is_internal_group)
     UI.message("Creating the non-distributing internal group required by App Store Connect")
     app.create_beta_group(
@@ -231,7 +241,7 @@ platform :ios do
   lane :finalize_external do
     api_key = connect_api_key
     app = verified_app
-    ensure_testflight_groups(app)
+    ensure_testflight_groups(app, existing_only: true)
 
     build_number = protected_env("KIRA_BUILD_NUMBER")
     UI.user_error!("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)

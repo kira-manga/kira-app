@@ -1,1 +1,3 @@
 Test first launch and Start Reading, Library, Home/Search/Details with the configured testing source catalog, user-provided imports, chapter downloads and reading, Kira backup import/restore, library refresh, push/deep links, and Arabic RTL navigation. Confirm Settings does not expose an internal crash-diagnostics entry. Please report crashes, stuck navigation, missing content, source failures, or layout problems.
+
+Known beta limitation: in-app complaints/feedback security is still under remediation. Please do not use that feature or submit personal or sensitive information through it. Report beta issues through TestFlight feedback instead.
