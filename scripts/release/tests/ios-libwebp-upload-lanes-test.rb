@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require_relative "libwebp-notice-fixtures"
+require_relative "../../../release/version"
 
 class IosLibwebpUploadLanesTest < Minitest::Test
   include LibwebpNoticeFixtures
@@ -158,7 +159,7 @@ class IosLibwebpUploadLanesTest < Minitest::Test
       File.write(mapping, "fixture")
       with_environment({
         "KIRA_ANDROID_AAB_PATH" => path, "KIRA_ANDROID_MAPPING_PATH" => mapping,
-        "KIRA_BUILD_NUMBER" => "7", "KIRA_VERSION_NAME" => "1.0.5",
+        "KIRA_BUILD_NUMBER" => "7", "KIRA_VERSION_NAME" => KiraRelease::Version.committed_name(ROOT),
         "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" => "fixture-not-credentials"
       }) { yield path }
     end
@@ -192,7 +193,7 @@ class IosLibwebpUploadLanesTest < Minitest::Test
   def common_upload_options(path)
     {
       api_key: :fixture_api_key, apple_id: "6792232678", app_identifier: "me.manga.kira",
-      app_platform: "ios", app_version: "1.0.5", build_number: "7", ipa: path,
+      app_platform: "ios", app_version: KiraRelease::Version.committed_name(ROOT), build_number: "7", ipa: path,
       skip_waiting_for_build_processing: false, wait_processing_interval: 30,
       wait_processing_timeout_duration: 3_600, uses_non_exempt_encryption: false,
       expire_previous_builds: false

@@ -4,6 +4,7 @@ require "minitest/autorun"
 require "open3"
 require "rbconfig"
 require_relative "libwebp-notice-fixtures"
+require_relative "../../../release/version"
 
 class IosLibwebpArtifactsTest < Minitest::Test
   include LibwebpNoticeFixtures
@@ -194,7 +195,7 @@ class IosLibwebpArtifactsTest < Minitest::Test
 
   def app_info
     {
-      "CFBundleIdentifier" => "me.manga.kira", "CFBundleShortVersionString" => "1.0.5",
+      "CFBundleIdentifier" => "me.manga.kira", "CFBundleShortVersionString" => KiraRelease::Version.committed_name(ROOT),
       "CFBundleDisplayName" => "Kira Manga", "KiraFirebaseServicesEnabled" => true,
       "CFBundleVersion" => "7", "CFBundleExecutable" => "Kira", "KiraAppStoreID" => "6792232678",
       "KiraCrashDiagnosticsEnabled" => false, "ITSAppUsesNonExemptEncryption" => false
