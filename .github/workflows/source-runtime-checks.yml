@@ -2,8 +2,13 @@ name: Source runtime checks (no publication or Store access)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [remediation/app-priority-sources-20261017]
+    inputs:
+      scope:
+        description: Focused affected checks; no Store or publication
+        type: choice
+        required: true
+        default: headers
+        options: [headers, coil, ios, coil-and-ios]
 
 permissions:
   contents: read
@@ -15,7 +20,7 @@ concurrency:
 
 jobs:
   headers:
-    if: ${{ github.ref == 'refs/heads/remediation/app-priority-sources-20261017' }}
+    if: ${{ github.ref == 'refs/heads/remediation/app-priority-sources-20261017' && inputs.scope != 'ios' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -44,6 +49,7 @@ jobs:
         id: verify
         env:
           KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+          CHECK_SCOPE: ${{ inputs.scope }}
         run: |
           stop_owned() {
             local home="${GRADLE_USER_HOME:-$HOME/.gradle}" launcher
@@ -68,16 +74,17 @@ jobs:
           }
           echo 'workers_stopped=false' >> "$GITHUB_OUTPUT"
           trap finish EXIT
+          tasks=(:composeApp:desktopTest --tests 'me.manga.kira.sources.runtime.CoilSourceHeaderInterceptorTest')
+          if [[ "$CHECK_SCOPE" == headers ]]; then
+            tasks+=(--tests 'me.manga.kira.sources.runtime.SourceImageHeadersTest'
+              --tests 'me.manga.kira.sources.runtime.RegistryChapterPageProviderTest'
+              :data:download:desktopTest
+              --tests 'me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRulesTest'
+              :composeApp:compileAndroidMain)
+          fi
           ./gradlew --continue --no-daemon --no-build-cache --no-configuration-cache \
             --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
-            -Pkotlin.compiler.execution.strategy=in-process \
-            :composeApp:desktopTest \
-            --tests 'me.manga.kira.sources.runtime.SourceImageHeadersTest' \
-            --tests 'me.manga.kira.sources.runtime.CoilSourceHeaderInterceptorTest' \
-            --tests 'me.manga.kira.sources.runtime.RegistryChapterPageProviderTest' \
-            :data:download:desktopTest \
-            --tests 'me.manga.kira.presentation.features.download.domain.clean.HeaderRefreshRulesTest' \
-            :composeApp:compileAndroidMain --stacktrace
+            -Pkotlin.compiler.execution.strategy=in-process "${tasks[@]}" --stacktrace
       - name: Retain small XML evidence outside disposable build directories
         if: ${{ always() }}
         run: |
@@ -119,4 +126,113 @@ jobs:
           target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'source-runtime-evidence'
           assert not target.is_symlink()
           shutil.rmtree(target)
+          PY
+
+  ios:
+    if: ${{ github.ref == 'refs/heads/remediation/app-priority-sources-20261017' && (inputs.scope == 'ios' || inputs.scope == 'coil-and-ios') }}
+    runs-on: macos-latest
+    timeout-minutes: 65
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      KIRA_PACKAGES_USER: ${{ github.actor }}
+    steps:
+      - name: Check out exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify existing toolchain pins
+        run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+      - name: Set up Java 21
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Prepare authenticated libffi source and private compiler
+        id: bootstrap
+        timeout-minutes: 15
+        run: python3 -B scripts/release/prepare-libffi-source.py prepare
+      - name: Select isolated Gradle location
+        run: printf 'GRADLE_USER_HOME=%s/source-runtime-native/gradle\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Verify Native repository regressions and compile reader log redaction
+        id: verify
+        timeout-minutes: 43
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: python3 -B scripts/release/check-source-runtime-ios.py
+      - name: Verify the private compiler after Native use
+        if: ${{ always() && steps.bootstrap.outcome == 'success' }}
+        run: python3 -B scripts/release/prepare-libffi-source.py verify
+      - name: Remove private compiler and source bootstrap outputs
+        if: ${{ always() && steps.verify.outputs.workers_stopped != 'false' }}
+        run: python3 -B scripts/release/prepare-libffi-source.py cleanup
+      - name: Clean owned build outputs and Native scratch
+        if: ${{ always() && steps.verify.outputs.workers_stopped != 'false' }}
+        run: |
+          python3 -B scripts/release/clean-mobile-build.py
+          python3 -B - <<'PY'
+          import json, os, pathlib, shutil
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'source-runtime-native'
+          assert not root.is_symlink()
+          if root.exists():
+              owner = {k: os.environ[k] for k in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_SHA')}
+              assert json.loads((root / 'owner.json').read_text()) == owner
+              shutil.rmtree(root)
+          PY
+      - name: Admit only this run's small evidence for upload
+        id: admit_evidence
+        if: ${{ always() }}
+        run: |
+          python3 -B - <<'PY'
+          import json, os, pathlib
+          temp = pathlib.Path(os.environ['RUNNER_TEMP'])
+          evidence = temp / 'source-runtime-ios-evidence'
+          assert not evidence.is_symlink()
+          if evidence.exists():
+              source = evidence / 'source.json'
+              assert not source.is_symlink() and source.stat().st_size <= 131072
+              owner = {k: os.environ[k] for k in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_SHA')}
+              assert json.loads(source.read_text()) == owner
+          provenance = temp / 'kira-libffi-provenance.json'
+          assert not provenance.is_symlink()
+          if provenance.exists():
+              assert provenance.stat().st_size <= 131072
+              owner = json.loads(provenance.read_text())['owner']
+              assert owner['repository'] == os.environ['GITHUB_REPOSITORY']
+              assert owner['run_id'] == os.environ['GITHUB_RUN_ID'] and owner['run_attempt'] == os.environ['GITHUB_RUN_ATTEMPT']
+              assert owner['root'] == str(temp / 'kira-libffi-source')
+          PY
+      - name: Preserve focused Native evidence and bootstrap receipt
+        id: evidence
+        if: ${{ always() && steps.admit_evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-ios-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/source-runtime-ios-evidence
+            ${{ runner.temp }}/kira-libffi-provenance.json
+          retention-days: 3
+          if-no-files-found: warn
+      - name: Remove the uploaded local evidence copy
+        if: ${{ always() && steps.evidence.outcome == 'success' }}
+        run: |
+          python3 -B - <<'PY'
+          import json, os, pathlib, shutil
+          temp = pathlib.Path(os.environ['RUNNER_TEMP'])
+          evidence = temp / 'source-runtime-ios-evidence'
+          assert not evidence.is_symlink()
+          if evidence.exists():
+              owner = {k: os.environ[k] for k in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_SHA')}
+              assert json.loads((evidence / 'source.json').read_text()) == owner
+              shutil.rmtree(evidence)
+          provenance = temp / 'kira-libffi-provenance.json'
+          assert not provenance.is_symlink()
+          if provenance.exists():
+              owner = json.loads(provenance.read_text())['owner']
+              assert owner['repository'] == os.environ['GITHUB_REPOSITORY']
+              assert owner['run_id'] == os.environ['GITHUB_RUN_ID'] and owner['run_attempt'] == os.environ['GITHUB_RUN_ATTEMPT']
+              assert owner['root'] == str(temp / 'kira-libffi-source')
+              provenance.unlink()
           PY

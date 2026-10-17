@@ -53,10 +53,10 @@ class CoilSourceHeaderInterceptorTest {
             assertEquals(emptyMap(), observed.last())
             loader.execute(request.newBuilder().resolvedSourceHeaders(mapOf("Referer" to "explicit")).build())
             assertEquals(0, hostReads)
-            assertEquals(mapOf("Referer" to "explicit"), observed.last())
+            assertEquals(mapOf("referer" to "explicit"), observed.last())
             loader.execute(request)
             assertEquals(1, hostReads)
-            assertEquals(mapOf("Cookie" to "other-source-fixture"), observed.last())
+            assertEquals(mapOf("cookie" to "other-source-fixture"), observed.last())
         } finally {
             loader.shutdown()
         }

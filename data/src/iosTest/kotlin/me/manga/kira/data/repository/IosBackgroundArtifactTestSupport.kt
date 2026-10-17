@@ -94,6 +94,7 @@ internal fun IosCbzFinalizationFixture.engine(
         override suspend fun pagesOrNull(api: String, mangaUrl: String, mangaLanguage: String, chapterUrl: String): List<DownloadPage> =
             error("Persisted manifests must avoid a new resolve")
     },
+    dataStore: DataStoreHelper = DataStoreHelper(MapSettings()),
 ) =
     BackgroundUrlSessionDownloadRepository(
         storage = BackgroundDownloadStorage(downloads, DownloadManifestStore(files), files),
@@ -103,7 +104,7 @@ internal fun IosCbzFinalizationFixture.engine(
         ),
         pageTransfer = BackgroundPageTransfer(transport, IosPageMediaInspector(system = system)),
         host = host,
-        dataStoreHelper = DataStoreHelper(MapSettings()),
+        dataStoreHelper = dataStore,
         artifacts = downloadArtifacts,
         operations = operations,
         catalog = catalog,
