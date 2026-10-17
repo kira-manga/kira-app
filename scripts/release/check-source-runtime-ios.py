@@ -16,8 +16,8 @@ def run(args, timeout=30):
     return subprocess.run(args, check=True, timeout=timeout)
 
 
-def capture(args):
-    return subprocess.check_output(args, text=True, timeout=30).strip()
+def capture(args, timeout=30):
+    return subprocess.check_output(args, text=True, timeout=timeout).strip()
 
 
 def output(value):
@@ -99,7 +99,7 @@ class NativeGate:
         (self.evidence / "simulator.json").write_text(json.dumps(self.reservation, indent=2) + "\n")
 
     def compile_swift(self):
-        sdk = capture(["/usr/bin/xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"])
+        sdk = capture(["/usr/bin/xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], timeout=120)
         run(["/usr/bin/xcrun", "--sdk", "iphonesimulator", "swiftc", "-swift-version", "5",
              "-target", "arm64-apple-ios15.0-simulator", "-sdk", sdk, "-parse-as-library",
              "-module-cache-path", str(self.root / "swift-cache"), "-emit-object",
@@ -178,8 +178,8 @@ class NativeGate:
     def execute(self):
         try:
             self.require_inputs()
+            self.attempt("Swift object compilation", self.compile_swift)
             self.create_simulator()
-            self.compile_swift()
             self.test()
         finally:
             self.attempt("Gradle shutdown", self.stop_workers)
