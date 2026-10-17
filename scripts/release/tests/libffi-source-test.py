@@ -322,6 +322,25 @@ class SourceBootstrapTests(unittest.TestCase):
         self.assertTrue(self.root.exists())
         self.assertEqual(json.loads(evidence.read_text()), {"owner": "unrelated"})
 
+    def test_xcode_tool_preserves_multicall_alias_but_rejects_external_target(self):
+        developer = self.temp / "Developer"
+        developer.mkdir()
+        target = developer / "libtool"
+        target.write_text("trusted fixture")
+        target.chmod(0o700)
+        alias = developer / "ranlib"
+        alias.symlink_to(target)
+        with mock.patch.object(libffi, "run", return_value=str(alias)):
+            self.assertEqual(libffi.xcode_tool("ranlib", developer, {}), alias)
+            self.assertNotEqual(alias, target)
+            alias.unlink()
+            external = self.temp / "outside-libtool"
+            external.write_text("outside selected Xcode")
+            external.chmod(0o700)
+            alias.symlink_to(external)
+            with self.assertRaises(libffi.BootstrapError):
+                libffi.xcode_tool("ranlib", developer, {})
+
     def test_command_timeout_reaps_its_owned_process_group(self):
         # Tiny Python processes only. The child writes proof on TERM; its parent
         # reaps it, avoiding even a leftover zombie from this negative test.

@@ -404,6 +404,15 @@ def apply_cfi_backport(source, upstream, pin, repo, env):
     return digest(assembly)
 
 
+def xcode_tool(name, developer, env):
+    tool = Path(run(["/usr/bin/xcrun", "--sdk", "macosx", "--find", name], env=env))
+    check(tool.is_absolute() and tool.name == name and
+          tool.resolve(strict=True).is_relative_to(developer) and os.access(tool, os.X_OK),
+          f"{name} is not from the selected Xcode")
+    # ranlib is a libtool alias: validate its target, but preserve argv[0]'s mode.
+    return tool
+
+
 def build_library(root, source, patch, repo, pin):
     work = root / "work"
     for name in ("home", "tmp"):
@@ -414,11 +423,7 @@ def build_library(root, source, patch, repo, pin):
     check(str(developer).startswith("/Applications/") and str(developer).endswith(".app/Contents/Developer"),
           "the selected developer directory must be a hosted Xcode application")
     env["DEVELOPER_DIR"] = str(developer)
-    tools = {}
-    for name in ("clang", "ar", "ranlib", "lipo", "otool"):
-        tool = Path(run(["/usr/bin/xcrun", "--sdk", "macosx", "--find", name], env=env)).resolve(strict=True)
-        check(tool.is_relative_to(developer) and os.access(tool, os.X_OK), f"{name} is not from the selected Xcode")
-        tools[name] = tool
+    tools = {name: xcode_tool(name, developer, env) for name in ("clang", "ar", "ranlib", "lipo", "otool")}
     env.update(CC=str(tools["clang"]), AR=str(tools["ar"]), RANLIB=str(tools["ranlib"]),
                SDKROOT=run(["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"], env=env),
                PATH=str(tools["clang"].parent) + ":" + env["PATH"])
