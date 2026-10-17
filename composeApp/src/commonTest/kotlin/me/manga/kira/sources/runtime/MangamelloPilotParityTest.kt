@@ -29,14 +29,22 @@ class MangamelloPilotParityTest {
     private val apis = listOf("Mangamello", "Mangamello Plus")
     private val lang = "(AR)"
     private val base = "https://plus.mangamello.com"
+    private val downloadHeaders = mapOf(
+        "accept" to "application/json",
+        "authorization" to "Bearer null",
+        "content-type" to "application/json",
+        "installer" to "com.google.android.packageinstaller",
+        "user-agent" to "Dart/3.3 (dart:io)",
+        "vsesion" to "1.1.7",
+    )
 
     private fun config(api: String): SourceConfig {
         val doc = (SourceConfigParser.parse(CONFIG_BACKED_SOURCES_JSON) as AppResult.Success).value
         return doc.sources.first { it.api == api }
     }
 
-    private fun client(api: String) =
-        GenericSourceClient(config(api), MapFakeHttp(MELLO_RESPONSES), NoopHeaderStore())
+    private fun client(api: String, source: SourceConfig = config(api)) =
+        GenericSourceClient(source, MapFakeHttp(MELLO_RESPONSES), NoopHeaderStore())
 
     private fun <T> AppResult<T>.valueOrFail(): T = when (this) {
         is AppResult.Success -> value
@@ -128,18 +136,8 @@ class MangamelloPilotParityTest {
     }
 
     @Test
-    fun pages_carry_static_download_headers() = runTest {
-        // Download parity (Phase 4): the API fingerprints the Dart UA + accept/auth headers, so the
-        // page image GETs must carry them. usesCapturedHeaders=false → the headers are exactly the
-        // static config set (no header-store read). Every page carries the same set.
-        val expected = mapOf(
-            "accept" to "application/json",
-            "authorization" to "Bearer null",
-            "content-type" to "application/json",
-            "installer" to "com.google.android.packageinstaller",
-            "user-agent" to "Dart/3.3 (dart:io)",
-            "vsesion" to "1.1.7",
-        )
+    fun pages_confine_static_download_headers_to_declared_hosts() = runTest {
+        // Static-only maps are sensitive too; a public foreign image does not inherit API headers.
         for (api in apis) {
             val manga = Manga(api, lang, "x", "$base/api/v1/mangas/19829", "", null, emptyList())
             val chapter = Chapter(
@@ -149,7 +147,11 @@ class MangamelloPilotParityTest {
             )
             val pages = client(api).pages(manga, chapter).first().valueOrFail()
             assertTrue(pages.isNotEmpty(), api)
-            assertTrue(pages.all { it.headers == expected }, api)
+            assertTrue(pages.all { it.headers.isEmpty() }, api)
+            val declared = config(api).copy(trustedHosts = listOf("dilar.tube")) // Test-only CDN declaration.
+            val authorized = client(api, declared).pages(manga, chapter).first().valueOrFail()
+            assertEquals(pages.map { it.url }, authorized.map { it.url }, api)
+            assertTrue(authorized.all { it.headers == downloadHeaders }, api)
         }
     }
 }

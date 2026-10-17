@@ -20,11 +20,12 @@ import kotlin.test.fail
  *    carousel title concatenation).
  *  - Mangabuddy: all five verbs generic via the clean api.mangak.io JSON (the site was rebuilt to a
  *    Next.js SPA); only the reader pages still come from the __NEXT_DATA__ island.
- *  - Zazamanga: all five verbs generic (Madara; page images need the static Referer header).
+ *  - Zazamanga: all five verbs generic (Madara; historical page-header expectations are scoped below).
  *
  * Also exercises advanced Ksoup selectors the configs rely on: `:not([src*=…])` (Demonicscans page ad
  * filter), `:has(li:contains(…)) li:nth-child(2)` (Demonicscans author/status), `ownText` (clean chapter
  * number where the date span is nested in the anchor), and `>` child combinator (Zazamanga genres).
+ * Header/URI cases follow the shared security contract; test-only CDN trust is not live parity proof.
  */
 class EnglishSourcesPilotParityTest {
 
@@ -33,7 +34,12 @@ class EnglishSourcesPilotParityTest {
         return doc.sources.first { it.api == api }
     }
 
-    private fun client(api: String) = GenericSourceClient(config(api), MapFakeHttp(EN_RESPONSES), NoopHeaderStore())
+    private fun client(
+        api: String,
+        responses: Map<String, String> = EN_RESPONSES,
+        captured: Map<String, String> = emptyMap(),
+        source: SourceConfig = config(api),
+    ) = GenericSourceClient(source, MapFakeHttp(responses), NoopHeaderStore(captured))
 
     private fun <T> AppResult<T>.valueOrFail(): T = when (this) {
         is AppResult.Success -> value
@@ -81,29 +87,37 @@ class EnglishSourcesPilotParityTest {
     fun demonicscans_pages_filter_ad_image_via_not_selector() = runTest {
         val manga = Manga("Demonicscans", "(EN)", "x", "https://demonicscans.org/manga/Solo-Leveling", "", null, emptyList())
         val chapter = Chapter("1", "Chapter 1", "https://demonicscans.org/chaptered.php?manga=6&chapter=1", null, false, false)
-        val pages = client("Demonicscans").pages(manga, chapter).first().valueOrFail().map { it.url }
+        // Preserve the historical raw-space input: unsafe image references are not repaired.
+        assertTrue(client("Demonicscans").pages(manga, chapter).first().valueOrFail().isEmpty())
+        // Separate encoded-reference variant tests extraction/filtering, not a production URL rewrite.
+        val encoded = DS_PAGES.replace("/Solo Leveling/", "/Solo%20Leveling/")
+        val pages = client("Demonicscans", responses = EN_RESPONSES + (chapter.url to encoded))
+            .pages(manga, chapter).first().valueOrFail()
         assertEquals(
             listOf(
-                "https://mangareadon.org/Solo Leveling/1/1.jpg",
-                "https://mangareadon.org/Solo Leveling/1/2.jpg",
+                "https://mangareadon.org/Solo%20Leveling/1/1.jpg",
+                "https://mangareadon.org/Solo%20Leveling/1/2.jpg",
             ),
-            pages, // the leading /img/free_ads.jpg ad is excluded by the :not([src*='free_ads.jpg']) selector
+            pages.map { it.url }, // the leading ad is still excluded by the :not selector
         )
+        assertTrue(pages.all { it.headers.isEmpty() })
     }
 
     @Test
-    fun demonicscans_pages_carry_captured_headers_for_download() = runTest {
-        // Download parity (Phase 4): Demonicscans is usesCapturedHeaders=true with NO static headers, so
-        // its page image GETs carry whatever the (Cloudflare) WebView captured. Seed the header store and
-        // assert those captured headers flow into Page.headers — the capture→download path. (Cold-start,
-        // i.e. empty store, yields no headers — same as the legacy download, not a regression.)
+    fun demonicscans_pages_confine_captured_headers_to_declared_download_hosts() = runTest {
         val captured = mapOf("Cookie" to "cf_clearance=abc123", "User-Agent" to "Mozilla/5.0 (captured)")
-        val client = GenericSourceClient(config("Demonicscans"), MapFakeHttp(EN_RESPONSES), NoopHeaderStore(captured))
         val manga = Manga("Demonicscans", "(EN)", "x", "https://demonicscans.org/manga/Solo-Leveling", "", null, emptyList())
         val chapter = Chapter("1", "Chapter 1", "https://demonicscans.org/chaptered.php?manga=6&chapter=1", null, false, false)
-        val pages = client.pages(manga, chapter).first().valueOrFail()
-        assertTrue(pages.isNotEmpty())
-        assertTrue(pages.all { it.headers == captured })
+        // In-memory encoded test variant; the original raw-space fixture remains the negative above.
+        val responses = EN_RESPONSES + (chapter.url to DS_PAGES.replace("/Solo Leveling/", "/Solo%20Leveling/"))
+        val pages = client("Demonicscans", responses, captured).pages(manga, chapter).first().valueOrFail()
+        assertEquals(2, pages.size)
+        assertTrue(pages.all { it.headers.isEmpty() }) // The actual bundle does not authorize this CDN.
+        // Explicit test-only declaration: never enlarge the real bundled source's credential authority.
+        val declared = config("Demonicscans").copy(trustedHosts = listOf("mangareadon.org"))
+        val authorized = client("Demonicscans", responses, captured, declared).pages(manga, chapter).first().valueOrFail()
+        assertEquals(pages.map { it.url }, authorized.map { it.url })
+        assertTrue(authorized.all { it.headers == captured })
     }
 
     @Test
@@ -157,15 +171,16 @@ class EnglishSourcesPilotParityTest {
     }
 
     @Test
-    fun mangabuddy_pages_carry_referer_download_header() = runTest {
-        // Download parity (Phase 4): Mangabuddy declares a static Referer (https://mangak.io/) — the
-        // image CDN needs it. Every page image GET the download path issues must carry it (config
-        // headers apply with or without a captured cookie).
+    fun mangabuddy_pages_confine_referer_to_declared_download_hosts() = runTest {
         val manga = Manga("Mangabuddy", "(EN)", "x", "https://api.mangak.io/titles/VYPXkPYz", "", null, emptyList())
         val chapter = Chapter("748", "Chapter 700.5", "https://mangak.io/naruto/chapter-700-5", null, false, false)
         val pages = client("Mangabuddy").pages(manga, chapter).first().valueOrFail()
         assertTrue(pages.isNotEmpty())
-        assertTrue(pages.all { it.headers["Referer"] == "https://mangak.io/" })
+        assertTrue(pages.all { it.headers.isEmpty() })
+        val declared = config("Mangabuddy").copy(trustedHosts = listOf("rx.qvzrd.org")) // Test-only trust.
+        val authorized = client("Mangabuddy", source = declared).pages(manga, chapter).first().valueOrFail()
+        assertEquals(pages.map { it.url }, authorized.map { it.url })
+        assertTrue(authorized.all { it.headers == mapOf("Referer" to "https://mangak.io/") })
     }
 
     // --- Zazamanga --------------------------------------------------------------------------------
@@ -202,7 +217,7 @@ class EnglishSourcesPilotParityTest {
     }
 
     @Test
-    fun zazamanga_pages_carry_referer_header() = runTest {
+    fun zazamanga_pages_confine_referer_to_declared_download_hosts() = runTest {
         val manga = Manga("Zazamanga", "(EN)", "x", "https://www.zazamanga.com/manga/the-berserkers-second-playthrough", "", null, emptyList())
         val chapter = Chapter("30", "Chapter 30", "https://www.zazamanga.com/manga/the-berserkers-second-playthrough/chapter-30", null, false, false)
         val pages = client("Zazamanga").pages(manga, chapter).first().valueOrFail()
@@ -213,161 +228,10 @@ class EnglishSourcesPilotParityTest {
             ),
             pages.map { it.url },
         )
-        // the static Referer is load-bearing — the CDN 403s without it
-        assertEquals("https://www.zazamanga.com/", pages[0].headers["Referer"])
+        assertTrue(pages.all { it.headers.isEmpty() })
+        val declared = config("Zazamanga").copy(trustedHosts = listOf("cdn4.zinmanga1.com")) // Test-only trust.
+        val authorized = client("Zazamanga", source = declared).pages(manga, chapter).first().valueOrFail()
+        assertEquals(pages.map { it.url }, authorized.map { it.url })
+        assertTrue(authorized.all { it.headers == mapOf("Referer" to "https://www.zazamanga.com/") })
     }
 }
-
-// ---- Demonicscans real captured HTML ----
-private const val DS_HOME = """
-<html><body><div id="updates-container">
-<div class="updates-element border-box"><div class="flex flex-row">
-  <div class="thumb"><a href="/manga/Mr-Devourer%252C-Please-Act-Like-a-Final-Boss" title="Mr Devourer, Please Act Like a Final Boss"><img src="https://readermc.org/images/thumbnails/Mr Devourer, Please Act Like a Final Boss.webp"/></a></div>
-  <div class="updates-element-info ml flex flex-col justify-space-between full-width">
-    <h2 style="font-size:16px;"><a href="/manga/Mr-Devourer%252C-Please-Act-Like-a-Final-Boss" title="Mr Devourer, Please Act Like a Final Boss">Mr Devourer, Please Act Like a Final ...</a></h2>
-    <div>
-      <div class="flex flex-row chap-date justify-space-between"><div><a class="chplinks" href="chaptered.php?manga=12094&chapter=129">Chapter 129</a></div><div><a class="chplinks" href="chaptered.php?manga=12094&chapter=129">2026-06-05</a></div></div>
-      <div class="flex flex-row chap-date justify-space-between"><div><a class="chplinks" href="chaptered.php?manga=12094&chapter=128">Chapter 128</a></div><div><a class="chplinks" href="chaptered.php?manga=12094&chapter=128">2026-05-29</a></div></div>
-    </div></div></div></div>
-</div></body></html>
-"""
-
-private const val DS_SEARCH = """
-<html><body>
-<a href="/manga/Solo-Leveling"><li class="flex flex-row">
-  <img src="https://readermc.org/images/thumbnails/Solo Leveling.webp" class="search-thumb"/>
-  <div class="flex flex-col seach-right justify-space-between"><div>Solo Leveling</div><div style="font-size:12px;">8942671</div></div>
-</li></a>
-</body></html>
-"""
-
-private const val DS_DETAILS = """
-<html><body>
-<div id="manga-page"><img src="https://readermc.org/images/thumbnails/Solo Leveling.webp"/></div>
-<div id="manga-info-rightColumn"><h1>Solo Leveling</h1><div class="white-font">10 years ago, after the Gate opened...</div></div>
-<div id="R-V-B"><span class="RVB">9.85</span><span class="RVB">8.49m</span><span class="RVB">4.06k</span></div>
-<div id="manga-info-stats">
-  <div class="flex flex-row"><li style="width:150px;">Author</li><li>Chugong,H-goon,KI Soryeong</li></div>
-  <div class="flex flex-row"><li>Rating</li><li>100%</li></div>
-  <div class="flex flex-row"><li>Status</li><li>Completed</li></div>
-  <div class="flex flex-row"><li>Last Update</li><li>2024-07-13</li></div>
-</div>
-<ul class="genres-list"><li>Shounen</li><li>Fantasy</li><li>Action</li></ul>
-<ul id="chapters-list">
-  <li><a class="chplinks" href="/chaptered.php?manga=6&chapter=200.5" title="Solo Leveling 200.5">Chapter 200.5<span style="float:right;text-align: right;">2024-07-13</span></a></li>
-  <li><a class="chplinks" href="/chaptered.php?manga=6&chapter=200" title="Solo Leveling 200">Chapter 200<span style="float:right;text-align: right;">2024-07-06</span></a></li>
-</ul>
-</body></html>
-"""
-
-private const val DS_FEATURED = """
-<html><body><div id="carousel">
-<div class="owl-element"><a href="/manga/Reformation-Of-The-Deadbeat-Noble" title="Reformation Of The Deadbeat Noble"><img src="https://readermc.org/images/thumbnails/The lazy prince becomes a genius.webp" alt="Reformation Of The Deadbeat Noble"/><div class="shadowimg"></div><h1>Reformation Of The Deadbeat Noble<br/><div>5090054</div></h1></a></div>
-</div></body></html>
-"""
-
-private const val DS_PAGES = """
-<html><body>
-<img class="imgholder" src="/img/free_ads.jpg"/>
-<img class="imgholder" src="https://mangareadon.org/Solo Leveling/1/1.jpg"/>
-<img class="imgholder" src="https://mangareadon.org/Solo Leveling/1/2.jpg"/>
-</body></html>
-"""
-
-// ---- Mangabuddy / mangak.io real API shapes ----
-// /titles/home serves both home (data.latest.items — an {items,pagination} object) and featured
-// (data.popular — a BARE LIST, matching the live API; it is NOT wrapped in {items:[...]}).
-private const val MB_HOME = """
-{ "data": {
-  "latest":  { "items": [ { "id": "p2qOKyBY", "name": "Shoot Through a Different World", "cover": "https://rx.resmk.org/covers/10.webp", "genres": [ { "name": "Action" } ] } ] },
-  "popular": [ { "id": "VYPXkPYz", "name": "Naruto", "cover": "https://rx.resmk.org/covers/nar.webp", "genres": [ { "name": "Action" } ] } ]
-} }
-"""
-
-private const val MB_SEARCH = """
-{ "data": { "items": [ { "id": "VYPXkPYz", "name": "Naruto", "cover": "https://rx.resmk.org/covers/nar.webp", "genres": [ { "name": "Action" } ] } ] } }
-"""
-
-private const val MB_DETAILS = """
-{ "data": { "title": { "name": "Naruto", "cover": "https://rx.resmk.org/covers/nar.webp", "status": "Completed",
-  "summary": "Ninja story.", "genres": [ { "name": "Action" }, { "name": "Adventure" } ] } } }
-"""
-
-private const val MB_CHAPTERS = """
-{ "data": { "chapters": [
-  { "id": "WYXlbzbY", "url": "/naruto/chapter-700-5", "name": "Chapter 700.5", "chapter_number": 748, "updated_at": "2019-08-25T02:08:00.000Z" },
-  { "id": "abc", "url": "/naruto/chapter-700", "name": "Chapter 700", "chapter_number": 747, "updated_at": "2019-08-20T00:00:00.000Z" }
-] } }
-"""
-
-private const val MB_READER = """
-<html><body><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"initialChapter":{"images":["https://rx.qvzrd.org/a.webp","https://rx.qvzrd.org/b.webp"]}}}}</script></body></html>
-"""
-
-// ---- Zazamanga real captured HTML (Madara) ----
-private const val ZZ_HOME = """
-<html><body>
-<div class="page-item-detail manga">
-  <div class="item-thumb hover-details" data-post-id="75718"><a href="https://www.zazamanga.com/manga/the-berserkers-second-playthrough" title="Read The Berserker’s Second Playthrough"><img alt="The Berserker’s Second Playthrough" class="img-responsive" src="https://cdn4.zinmanga1.com/thumb/the-berserkers-second-playthrough.webp"/></a></div>
-  <div class="item-summary">
-    <div><div class="post-title font-title"><h3 class="h5"><a href="https://www.zazamanga.com/manga/the-berserkers-second-playthrough">The Berserker’s Second Playthrough</a></h3></div></div>
-    <div class="tags"><span><a href="/manga-genre/action" rel="tag">Action</a></span><span><a href="/manga-genre/adventure" rel="tag">Adventure</a></span><span><a href="/manga-genre/drama" rel="tag">Drama</a></span><span><a href="/manga-genre/fantasy" rel="tag">Fantasy</a></span><span><a href="/manga-genre/seinen" rel="tag">Seinen</a></span></div>
-    <div class="list-chapter"><div class="chapter"><div class="chapter-detail"><a class="btn-link" href="/manga/the-berserkers-second-playthrough/chapter-30"> Chapter 30 </a></div><span class="post-on">50 minutes ago</span></div></div>
-  </div>
-</div>
-</body></html>
-"""
-
-private const val ZZ_DETAILS = """
-<html><body>
-<div class="summary_image"><img class="img-comic effect-fade" data-backup="https://cdn4.zinmanga1.com/thumb/the-berserkers-second-playthrough.webp" src="/image/dflazy.jpg"/></div>
-<h1 class="post-title font-title">The Berserker’s Second Playthrough</h1>
-<div class="post-content"><div class="tags"><a href="/manga-genre/action" rel="tag">Action</a><a href="/manga-genre/adventure" rel="tag">Adventure</a><a href="/manga-genre/drama" rel="tag">Drama</a><a href="/manga-genre/fantasy" rel="tag">Fantasy</a><a href="/manga-genre/seinen" rel="tag">Seinen</a></div></div>
-<span id="averagerate">3.5</span>
-<div class="description-summary"><div class="summary__content">About The Berserker’s Second Playthrough story.</div></div>
-<ul>
-<li class="wp-manga-chapter"><a href="https://www.zazamanga.com/manga/the-berserkers-second-playthrough/chapter-30">Chapter 30</a><span class="chapter-release-date"><i>51 minutes ago</i></span></li>
-<li class="wp-manga-chapter"><a href="https://www.zazamanga.com/manga/the-berserkers-second-playthrough/chapter-29">Chapter 29</a><span class="chapter-release-date"><i>1 week ago</i></span></li>
-</ul>
-</body></html>
-"""
-
-private const val ZZ_PAGES = """
-<html><body>
-<img id="manga-image-0" class="wp-manga-chapter-img effect-fade" src="https://cdn4.zinmanga1.com/the-berserkers-second-playthrough/30/0.webp"/>
-<img id="manga-image-1" class="wp-manga-chapter-img effect-fade" src="https://cdn4.zinmanga1.com/the-berserkers-second-playthrough/30/1.webp"/>
-</body></html>
-"""
-
-// Zazamanga page-2 home with a blacklisted ("Yaoi") item + a clean item — verifies blacklistGenres filtering.
-private const val ZZ_HOME_BL = """
-<html><body>
-<div class="page-item-detail manga">
-  <div class="item-thumb"><a href="https://www.zazamanga.com/manga/blacklisted-one" title="x"><img src="https://cdn4.zinmanga1.com/thumb/blacklisted.webp"/></a></div>
-  <div class="item-summary"><div><div class="post-title font-title"><h3 class="h5"><a href="https://www.zazamanga.com/manga/blacklisted-one">Blacklisted One</a></h3></div></div>
-    <div class="tags"><span><a href="/manga-genre/romance" rel="tag">Romance</a></span><span><a href="/manga-genre/yaoi" rel="tag">Yaoi</a></span></div></div>
-</div>
-<div class="page-item-detail manga">
-  <div class="item-thumb"><a href="https://www.zazamanga.com/manga/clean-series" title="x"><img src="https://cdn4.zinmanga1.com/thumb/clean.webp"/></a></div>
-  <div class="item-summary"><div><div class="post-title font-title"><h3 class="h5"><a href="https://www.zazamanga.com/manga/clean-series">Clean Series</a></h3></div></div>
-    <div class="tags"><span><a href="/manga-genre/action" rel="tag">Action</a></span></div></div>
-</div>
-</body></html>
-"""
-
-private val EN_RESPONSES: Map<String, String> = mapOf(
-    "https://www.zazamanga.com/manga?orderby=latest&page=2" to ZZ_HOME_BL,
-    "https://demonicscans.org/lastupdates.php?list=1" to DS_HOME,
-    "https://demonicscans.org/search.php?manga=solo" to DS_SEARCH,
-    "https://demonicscans.org/manga/Solo-Leveling" to DS_DETAILS,
-    "https://demonicscans.org/" to DS_FEATURED,
-    "https://demonicscans.org/chaptered.php?manga=6&chapter=1" to DS_PAGES,
-    "https://api.mangak.io/titles/home" to MB_HOME,
-    "https://api.mangak.io/titles/search?q=naruto" to MB_SEARCH,
-    "https://api.mangak.io/titles/VYPXkPYz" to MB_DETAILS,
-    "https://api.mangak.io/titles/VYPXkPYz/chapters" to MB_CHAPTERS,
-    "https://mangak.io/naruto/chapter-700-5" to MB_READER,
-    "https://www.zazamanga.com/manga?orderby=latest&page=1" to ZZ_HOME,
-    "https://www.zazamanga.com/manga/the-berserkers-second-playthrough" to ZZ_DETAILS,
-    "https://www.zazamanga.com/manga/the-berserkers-second-playthrough/chapter-30" to ZZ_PAGES,
-)

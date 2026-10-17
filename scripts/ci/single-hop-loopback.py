@@ -84,7 +84,6 @@ def simulator(root):
     run(["/usr/bin/xcrun", "simctl", "bootstatus", udid, "-b"], root, 540)
     run(["/usr/bin/xcrun", "simctl", "keychain", udid, "add-root-cert", str(root / "ca.pem")], root)
     return udid
-
 def prepare(mode):
     root, owner = owned(mode)
     root.mkdir(mode=0o700)
@@ -139,7 +138,6 @@ class WireHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, *args):
         pass  # Never log request headers or certificate/private-key material.
-
     def count(self, name):
         with self.server.lock:
             self.server.counts[name] += 1
@@ -170,14 +168,12 @@ class WireHandler(http.server.BaseHTTPRequestHandler):
         if self.headers.get("X-Kira-Fixture") != self.server.fixture_id:
             self.count("bad_requests")
             return self.reply(b"refused", 403)
-        if self.path == "/ready":
-            return self.reply(self.server.fixture_id.encode())
+        if self.path in ("/ready", "/ok"):
+            return self.reply(self.server.fixture_id.encode() if self.path == "/ready" else b"ok")
         if self.path == "/state":
             with self.server.lock:
                 body = "".join(key + "=" + str(value) + "\n" for key, value in self.server.counts.items())
             return self.reply(body.encode())
-        if self.path == "/ok":
-            return self.reply(b"ok")
         if self.path == "/stall":
             return self.reply(b"x", stall=True)
         if self.path == "/redirect/get":
@@ -230,14 +226,18 @@ def serve(root):
         save(root / "stats.json", server.counts)
 
 def server_pids(root):
-    # Exact command also recovers interruption before server-ready.json is persisted.
-    output = run(["/bin/ps", "-axo", "pid=,stat=,command="], root, 10)
+    output = run(["/bin/ps", "-ww", "-axo", "pid=,stat=,command="], root, 10)
     assert len(output) <= 2 * 1024 * 1024
-    expected = " ".join([sys.executable, "-I", "-B", str(SCRIPT), "serve", str(root)])
+    suffix = " -I -B " + str(SCRIPT) + " serve " + str(root)
     rows = (row.split(None, 2) for row in output.splitlines())
-    matches = [int(cells[0]) for cells in rows
-               if len(cells) == 3 and cells[2] == expected and not cells[1].startswith("Z")]
+    live = {int(cells[0]): cells[2] for cells in rows if len(cells) == 3 and not cells[1].startswith("Z")}
+    matches = [pid for pid, command in live.items() if command.endswith(suffix) and
+               re.fullmatch(r"/\S*/(?:python3(?:\.[0-9]+)?|Python)", command[:-len(suffix)])]
     assert len(matches) <= 1 and all(pid > 1 for pid in matches)
+    if (root / "server-ready.json").exists():
+        recorded = read(root / "server-ready.json")["server_pid"]
+        assert type(recorded) is int and recorded > 1
+        assert matches in ([], [recorded]) and (recorded not in live or matches == [recorded]), "Owned server PID/arguments differ"
     return matches
 
 def stop_server(root):

@@ -67,7 +67,7 @@ require(rows.collect { it.path }.toSet().size() == rows.size(), 'Duplicate inven
 def androidTest = ':composeApp:testAndroidHostTest'
 def nativeTest = ':composeApp:iosSimulatorArm64Test'
 def linuxRoots = [':sources:engine:desktopTest', ':composeApp:desktopTest', ':composeApp:compileAndroidMain', androidTest]
-def appleRoots = [':composeApp:compileKotlinIosArm64', ':composeApp:compileKotlinIosSimulatorArm64', nativeTest]
+def appleRoots = [':composeApp:compileKotlinIosSimulatorArm64', nativeTest]
 // Gradle 9.6.1 taskNames includes options; observe without changing task-scoped filters.
 def arguments = gradle.startParameter.taskNames
 def roots = []
@@ -92,7 +92,7 @@ for (int index = 0; index < arguments.size(); index++) {
 }
 def linux = roots.size() == linuxRoots.size() && roots.toSet() == linuxRoots.toSet()
 require(linux || (roots.size() == appleRoots.size() && roots.toSet() == appleRoots.toSet()),
-    'Only the focused Linux or both-Apple root scope is allowed')
+    'Only the focused Linux or owned-simulator root scope is allowed')
 require(!linux || linuxRoots.take(2).every { !selectors[it].isEmpty() }, 'Both JVM suites require explicit test filters')
 require(selectors[linux ? androidTest : nativeTest] == ['me.manga.kira.sources.runtime.' +
     (linux ? 'Android' : 'Ios') + 'GenericSingleHopTest'], 'Only the three platform transport scenarios are admitted')
@@ -108,7 +108,6 @@ def targets = linux ? [
     desktop: [publication: 'jvm', platform: 'jvm'],
     android: [publication: 'android', platform: 'androidJvm'],
 ] : [
-    iosArm64: [publication: 'iosArm64', platform: 'native', nativeTarget: 'ios_arm64'],
     iosSimulatorArm64: [publication: 'iosSimulatorArm64', platform: 'native', nativeTarget: 'ios_simulator_arm64'],
 ]
 def expectedTasks = new LinkedHashSet()
@@ -259,12 +258,13 @@ def bindJvmWitnesses = { root ->
 def bindNativeWitness = { root ->
     def task = root.tasks.getByPath(nativeTest)
     require(task.class.name.startsWith('org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest'), 'Actual Native test task required')
+    task.standalone.set(false)
     task.environment('SIMCTL_CHILD_KIRA_SINGLE_HOP_ORIGIN', origin)
     task.environment('SIMCTL_CHILD_KIRA_SINGLE_HOP_FIXTURE_ID', fixtureId)
     expectedTasks.add(task.path)
     task.doFirst {
-        require(task.device.get() == selectedDevice && task.executable.isFile(), 'Exact Native test executable/device required')
-        emit('NATIVE_TEST', [task: task.path, device: selectedDevice, executableSha256: sha(task.executable)])
+        require(task.device.get() == selectedDevice && !task.standalone.get() && task.executable.isFile(), 'Exact booted Native test device required')
+        emit('NATIVE_TEST', [task: task.path, device: selectedDevice, standalone: task.standalone.get(), executableSha256: sha(task.executable)])
         observedTasks.add(task.path)
     }
 }

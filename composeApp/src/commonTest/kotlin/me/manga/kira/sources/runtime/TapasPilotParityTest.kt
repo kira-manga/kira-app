@@ -28,7 +28,7 @@ class TapasPilotParityTest {
         return doc.sources.first { it.api == "Tapas" }
     }
 
-    private fun client() = GenericSourceClient(config(), MapFakeHttp(TAPAS_RESPONSES), NoopHeaderStore())
+    private fun client(source: SourceConfig = config()) = GenericSourceClient(source, MapFakeHttp(TAPAS_RESPONSES), NoopHeaderStore())
 
     private fun <T> AppResult<T>.valueOrFail(): T = when (this) {
         is AppResult.Success -> value
@@ -94,19 +94,20 @@ class TapasPilotParityTest {
     }
 
     @Test
-    fun pages_carry_static_referer_and_user_agent_download_headers() = runTest {
-        // Download parity (Phase 4): Tapas declares a static Referer + Firefox User-Agent the CDN needs.
-        // Every page image GET must carry both (config headers apply with or without a captured cookie).
+    fun pages_confine_static_referer_and_user_agent_to_declared_download_hosts() = runTest {
         val manga = Manga("Tapas", "(EN)", "x", "https://tapas.io/series/327057", "", null, emptyList())
         val chapter = Chapter("1", "Episode 1", "https://tapas.io/episode/3842182", null, false, false)
         val pages = client().pages(manga, chapter).first().valueOrFail()
         assertTrue(pages.isNotEmpty())
-        assertTrue(
-            pages.all {
-                it.headers["Referer"] == "https://m.tapas.io" &&
-                    it.headers["User-Agent"] == "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0"
-            },
+        assertTrue(pages.all { it.headers.isEmpty() })
+        val declared = config().copy(trustedHosts = listOf("us-a.tapas.io")) // Test-only CDN declaration.
+        val authorized = client(declared).pages(manga, chapter).first().valueOrFail()
+        assertEquals(pages.map { it.url }, authorized.map { it.url })
+        val expected = mapOf(
+            "Referer" to "https://m.tapas.io",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0",
         )
+        assertTrue(authorized.all { it.headers == expected })
     }
 }
 
