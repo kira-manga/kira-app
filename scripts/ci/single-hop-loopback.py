@@ -82,7 +82,7 @@ def simulator(root):
     save(root / "simulator.json", dict(reservation, udid=udid))
     run(["/usr/bin/xcrun", "simctl", "boot", udid], root)
     run(["/usr/bin/xcrun", "simctl", "bootstatus", udid, "-b"], root, 540)
-    run(["/usr/bin/xcrun", "simctl", "keychain", udid, "add-root-cert", str(root / "ca.pem")], root)
+    run(["/usr/bin/xcrun", "simctl", "keychain", udid, "add-root-cert", str(root / "ca.pem")], root, timeout=120)
     return udid
 def prepare(mode):
     root, owner = owned(mode)
