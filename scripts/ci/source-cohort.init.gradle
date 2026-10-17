@@ -7,12 +7,8 @@ import org.gradle.api.GradleException
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.tasks.testing.Test
-
-// Check-only consumer of an independently admitted, promoted owned-Maven cohort.
-// Required environment: KIRA_SOURCE_COHORT_REPOSITORY (absolute directory),
-// KIRA_SOURCE_COHORT_INVENTORY (original inventory.tsv), and its selected
-// KIRA_SOURCE_COHORT_INVENTORY_SHA256. Admission/provenance and cleanup belong to
-// the orchestrator, not this adapter. No package acquisition or version override.
+// Check-only consumer of an independently admitted, promoted owned-Maven cohort;
+// acquisition/provenance and cleanup belong to the caller. No version override.
 def group = 'me.manga.kira.source'
 def version = '0.2.0'
 def require = { condition, message ->
@@ -41,9 +37,7 @@ require(Files.isDirectory(repository, LinkOption.NOFOLLOW_LINKS), 'Owned reposit
 require(inventorySha ==~ /[0-9a-f]{64}/, 'Missing selected inventory digest')
 require(inventoryFile.isFile() && inventoryFile.length() in 1..(2 * 1024 * 1024), 'Inventory size/type')
 require(sha(inventoryFile) == inventorySha, 'Inventory digest differs from selection')
-
-// Original Engine inventory columns: project, publication, group, artifactId,
-// version, kind, Maven-relative path, size, SHA-256. Never create Maven metadata.
+// Original inventory: project, publication, group, artifactId, version, kind, path, size, SHA-256.
 def lines = inventoryFile.readLines('UTF-8')
 require(lines.size() in 1..1024, 'Inventory entry bound')
 long inventoryBytes = 0
@@ -70,21 +64,27 @@ def rows = lines.collect { line ->
      path: cells[6], size: size, sha256: cells[8]]
 }
 require(rows.collect { it.path }.toSet().size() == rows.size(), 'Duplicate inventory entries')
-
-def linuxRoots = [':sources:engine:desktopTest', ':composeApp:desktopTest', ':composeApp:compileAndroidMain']
-def appleRoots = [':composeApp:compileKotlinIosArm64', ':composeApp:compileKotlinIosSimulatorArm64']
-// Gradle 9.6.1 taskNames includes task options. Observe --tests without changing
-// Gradle's own task-scoped filters; do not mistake a filter argument for a root.
+def androidTest = ':composeApp:testAndroidHostTest'
+def nativeTest = ':composeApp:iosSimulatorArm64Test'
+def linuxRoots = [':sources:engine:desktopTest', ':composeApp:desktopTest', ':composeApp:compileAndroidMain', androidTest]
+def appleRoots = [':composeApp:compileKotlinIosArm64', ':composeApp:compileKotlinIosSimulatorArm64', nativeTest]
+// Gradle 9.6.1 taskNames includes options; observe without changing task-scoped filters.
 def arguments = gradle.startParameter.taskNames
 def roots = []
 def selectors = [:].withDefault { [] }
+def selectedDevice = null
 for (int index = 0; index < arguments.size(); index++) {
     def argument = arguments[index]
     if (argument == '--tests') {
-        require(roots && roots.last() in linuxRoots.take(2) && index + 1 < arguments.size(), 'Task-scoped test filter required')
+        require(roots && roots.last() in linuxRoots.take(2) + [androidTest, nativeTest] && index + 1 < arguments.size(),
+            'Task-scoped test filter required')
         def selector = arguments[++index]
         require(selector.size() <= 256 && selector ==~ /me\.manga\.kira\.[A-Za-z0-9_.*$]+/, 'Public App test selector required')
         selectors[roots.last()].add(selector)
+    } else if (argument == '--device') {
+        require(roots && roots.last() == nativeTest && selectedDevice == null && index + 1 < arguments.size(), 'Owned simulator only')
+        selectedDevice = arguments[++index]
+        require(selectedDevice ==~ /[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}/, 'Exact simulator UUID required')
     } else {
         require(argument in linuxRoots + appleRoots, 'Unexpected task root/option')
         roots.add(argument)
@@ -94,6 +94,13 @@ def linux = roots.size() == linuxRoots.size() && roots.toSet() == linuxRoots.toS
 require(linux || (roots.size() == appleRoots.size() && roots.toSet() == appleRoots.toSet()),
     'Only the focused Linux or both-Apple root scope is allowed')
 require(!linux || linuxRoots.take(2).every { !selectors[it].isEmpty() }, 'Both JVM suites require explicit test filters')
+require(selectors[linux ? androidTest : nativeTest] == ['me.manga.kira.sources.runtime.' +
+    (linux ? 'Android' : 'Ios') + 'GenericSingleHopTest'], 'Only the three platform transport scenarios are admitted')
+require(linux ? selectedDevice == null : selectedDevice == System.getenv('KIRA_SINGLE_HOP_SIMULATOR'), 'Simulator selection differs')
+def origin = System.getenv('KIRA_SINGLE_HOP_ORIGIN')
+def fixtureId = System.getenv('KIRA_SINGLE_HOP_FIXTURE_ID')
+require(origin ==~ /https:\/\/localhost:[1-9][0-9]{0,4}/ && origin.tokenize(':').last().toInteger() <= 65535 &&
+    fixtureId ==~ /[0-9a-f]{32}/, 'Owned localhost fixture required')
 require(gradle.startParameter.excludedTaskNames.isEmpty(), 'Task exclusions are not this consumer scope')
 require(gradle.startParameter.dependencyVerificationMode.name() == 'STRICT', 'Normal strict verification required')
 require(!gradle.startParameter.configurationCacheRequested, 'This witness adapter requires configuration cache off')
@@ -109,7 +116,6 @@ def observedTasks = Collections.synchronizedSet(new LinkedHashSet())
 def attrs = { values -> values.keySet().sort { it.name }.collectEntries {
     [(it.name): values.getAttribute(it).toString()]
 } }
-
 gradle.settingsEvaluated { settings ->
     require(settings.providers.gradleProperty('kiraUseMavenLocal').orNull != 'true', 'Maven local is not admitted')
     def repositories = settings.dependencyResolutionManagement.repositories
@@ -134,10 +140,8 @@ gradle.beforeProject { project ->
         }
     }
 }
-
 def wantedBinaries = { target ->
-    // Native publications also admit metadata.jar as kind=artifact. Only the
-    // admitted .klib role can witness a Native compiler library; verify both in intake.
+    // Only .klib witnesses Native input; intake also verifies the admitted metadata.jar.
     def wanted = rows.findAll {
         it.project in [':source-contract', ':source-engine'] && it.kind == 'artifact' && it.publication == target.publication &&
             (target.platform != 'native' || it.path.endsWith('.klib'))
@@ -222,7 +226,6 @@ def witness = { task, configuration, target, inputFiles ->
 }
 def bindCompilerWitnesses = { engine, kotlin ->
     targets.each { name, target ->
-        // The external implementation is owned here, not on Compose's public API classpath.
         def compilation = kotlin.targets.getByName(name).compilations.getByName('main')
         def configuration = engine.configurations.getByName(compilation.compileDependencyConfigurationName)
         def provider = compilation.compileTaskProvider
@@ -230,6 +233,39 @@ def bindCompilerWitnesses = { engine, kotlin ->
         provider.configure { task ->
             task.doFirst { witness(task, configuration, target, task.libraries.files) }
         }
+    }
+}
+def bindJvmWitnesses = { root ->
+    [':sources:engine:desktopTest', ':composeApp:desktopTest', androidTest].each { path ->
+        def task = root.tasks.getByPath(path)
+        def project = task.project
+        require(task instanceof Test, 'Expected actual JVM Test task')
+        expectedTasks.add(task.path)
+        def android = path == androidTest
+        def configuration = project.configurations.getByName(android ? 'androidHostTestRuntimeClasspath' : 'desktopTestRuntimeClasspath')
+        task.doFirst { witness(task, configuration, android ? targets.android : targets.desktop, task.classpath.files) }
+        if (android) {
+            def truststore = absoluteInput('KIRA_SINGLE_HOP_TRUSTSTORE').toFile()
+            require(truststore.isFile() && truststore.length() in 1..65536 &&
+                sha(truststore) == System.getenv('KIRA_SINGLE_HOP_TRUSTSTORE_SHA256'), 'Private test truststore differs')
+            task.systemProperty('javax.net.ssl.trustStore', truststore.path)
+            task.systemProperty('javax.net.ssl.trustStoreType', 'PKCS12')
+            task.systemProperty('javax.net.ssl.trustStorePassword', 'single-hop-test-only')
+            task.environment('KIRA_SINGLE_HOP_ORIGIN', origin)
+            task.environment('KIRA_SINGLE_HOP_FIXTURE_ID', fixtureId)
+        }
+    }
+}
+def bindNativeWitness = { root ->
+    def task = root.tasks.getByPath(nativeTest)
+    require(task.class.name.startsWith('org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest'), 'Actual Native test task required')
+    task.environment('SIMCTL_CHILD_KIRA_SINGLE_HOP_ORIGIN', origin)
+    task.environment('SIMCTL_CHILD_KIRA_SINGLE_HOP_FIXTURE_ID', fixtureId)
+    expectedTasks.add(task.path)
+    task.doFirst {
+        require(task.device.get() == selectedDevice && task.executable.isFile(), 'Exact Native test executable/device required')
+        emit('NATIVE_TEST', [task: task.path, device: selectedDevice, executableSha256: sha(task.executable)])
+        observedTasks.add(task.path)
     }
 }
 gradle.projectsEvaluated {
@@ -241,24 +277,20 @@ gradle.projectsEvaluated {
         .findAll { it.group == group }
     require(declared.size() == 1 && declared[0].name == 'source-engine' && declared[0].version == version,
         'The actual App resolver must declare source-engine:0.2.0 without testkit injection')
+    root.project(':composeApp').extensions.getByName('kotlin').sourceSets.getByName(linux ? 'androidHostTest' : 'iosTest').kotlin
+        .srcDir(linux ? 'src/qualificationAndroidHostTest/kotlin' : 'src/qualificationIosTest/kotlin')
     bindCompilerWitnesses(engine, kotlin)
-    if (linux) {
-        [':sources:engine', ':composeApp'].each { path ->
-            def project = root.project(path)
-            def task = project.tasks.getByName('desktopTest')
-            require(task instanceof Test, 'Expected actual JVM Test task')
-            expectedTasks.add(task.path)
-            def configuration = project.configurations.getByName('desktopTestRuntimeClasspath')
-            task.doFirst { witness(task, configuration, targets.desktop, task.classpath.files) }
-        }
-    }
+    if (linux) bindJvmWitnesses(root) else bindNativeWitness(root)
 }
 gradle.taskGraph.whenReady { graph ->
     emit('GRAPH', [tasks: graph.allTasks.collect { it.path }])
     require(expectedTasks.every { graph.hasTask(it) }, 'Owning compiler/Test witnesses absent from requested graph')
     def tests = graph.allTasks.findAll { it instanceof Test }.collect { it.path }.toSet()
-    require(tests == (linux ? [':sources:engine:desktopTest', ':composeApp:desktopTest'].toSet() : [].toSet()),
+    require(tests == (linux ? [':sources:engine:desktopTest', ':composeApp:desktopTest', androidTest].toSet() : [].toSet()),
         'Additional/missing Test task in focused graph')
+    def nativeTests = graph.allTasks.findAll { it.class.name.startsWith('org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNative') &&
+        it.name.endsWith('Test') }.collect { it.path }.toSet()
+    require(nativeTests == (linux ? [].toSet() : [nativeTest].toSet()), 'Additional/missing Native test task')
 }
 gradle.buildFinished { result ->
     if (result.failure == null) {
