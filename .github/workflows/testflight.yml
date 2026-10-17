@@ -34,6 +34,9 @@ jobs:
       FASTLANE_HIDE_CHANGELOG: "1"
       FASTLANE_DISABLE_COLORS: "1"
       CI: "true"
+      # Keep Release LTO's existing 6 GiB project heap and serialize Gradle work,
+      # including the wrapper invoked by Xcode, rather than running native jobs together.
+      GRADLE_OPTS: "-Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1"
 
     steps:
       - name: Check out internal-testing
@@ -241,7 +244,9 @@ jobs:
         run: |
           python3 -B scripts/release/prepare-libffi-source.py verify
           trap './gradlew --stop' EXIT
-          ./gradlew --no-daemon --no-build-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g \
+          printf 'Hosted physical RAM bytes: '; sysctl -n hw.memsize
+          df -h "$RUNNER_TEMP"
+          ./gradlew --no-daemon --no-build-cache \
             -Pkotlin.compiler.execution.strategy=in-process \
             :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 \
             :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
