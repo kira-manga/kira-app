@@ -30,10 +30,7 @@ jobs:
       FASTLANE_DISABLE_COLORS: "1"
       CI: "true"
       BUNDLE_FROZEN: "true"
-      BUNDLE_PATH: ${{ runner.temp }}/kira-beta-gems
-      APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/kira-beta-key/AuthKey.p8
       KIRA_BUILD_NUMBER: "2"
-      KIRA_TESTFLIGHT_STATUS_FILE: ${{ runner.temp }}/kira-beta-reports/testflight-status.json
 
     steps:
       - name: Check out only the reviewed existing-build submission change
@@ -41,6 +38,14 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+
+      - name: Initialize owned runtime paths
+        run: |
+          {
+            printf 'BUNDLE_PATH=%s/kira-beta-gems\n' "$RUNNER_TEMP"
+            printf 'APP_STORE_CONNECT_KEY_PATH=%s/kira-beta-key/AuthKey.p8\n' "$RUNNER_TEMP"
+            printf 'KIRA_TESTFLIGHT_STATUS_FILE=%s/kira-beta-reports/testflight-status.json\n' "$RUNNER_TEMP"
+          } >> "$GITHUB_ENV"
 
       - name: Confirm the existing successful release (no rebuild)
         env:
