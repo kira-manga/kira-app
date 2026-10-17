@@ -1,5 +1,7 @@
 require "cgi"
+require_relative "../version"
 
+version_name = KiraRelease::Version.selected_name
 build_number = File.read(ENV.fetch("KIRA_BUILD_NUMBER_FILE")).strip
 profile_uuid = File.read(ENV.fetch("KIRA_PROFILE_UUID_FILE")).strip
 abort("Build number must be a positive integer") unless build_number.match?(/\A[1-9]\d*\z/)
@@ -10,7 +12,8 @@ xcconfig = <<~XCCONFIG
   KIRA_CODE_SIGN_IDENTITY = Apple Distribution
   KIRA_PROVISIONING_PROFILE_SPECIFIER = #{profile_uuid}
   KIRA_OTHER_CODE_SIGN_FLAGS = --keychain #{ENV.fetch("KIRA_KEYCHAIN_PATH")}
-  MARKETING_VERSION = 1.0.5
+  MARKETING_VERSION = #{version_name}
+  KIRA_APP_VERSION = #{version_name}
   CURRENT_PROJECT_VERSION = #{build_number}
   KIRA_APP_STORE_ID = 6792232678
   KIRA_CRASH_DIAGNOSTICS_ENABLED = NO
@@ -51,4 +54,4 @@ PLIST
 File.write(ENV.fetch("KIRA_EXPORT_OPTIONS_PATH"), export_options)
 File.chmod(0o600, ENV.fetch("KIRA_EXPORT_OPTIONS_PATH"))
 
-puts "Release configuration generated for version 1.0.5 build #{build_number} with crash diagnostics disabled"
+puts "Release configuration generated for version #{version_name} build #{build_number} with crash diagnostics disabled"

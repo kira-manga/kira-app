@@ -1,13 +1,14 @@
 require "json"
 require "rubygems"
 require_relative "../release/ios/lib/libwebp_ipa_notices"
+require_relative "../release/version"
 
 opt_out_usage
 default_platform(:ios)
 
 APP_IDENTIFIER = "me.manga.kira"
 APP_STORE_ID = "6792232678"
-MARKETING_VERSION = "1.0.5"
+MARKETING_VERSION = KiraRelease::Version.selected_name
 EXTERNAL_GROUP_NAME = "External Testing"
 INTERNAL_PREREQUISITE_GROUP_NAME = "Internal Prerequisite"
 

@@ -4,6 +4,7 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "yaml"
+require_relative "../../../release/version"
 
 class IosUploadOnlyWorkflowTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
@@ -63,10 +64,14 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
   end
 
   def test_release_version_is_consistent
-    assert_includes FASTFILE, 'MARKETING_VERSION = "1.0.5"'
-    assert_includes RELEASE_CONFIGURATION, "MARKETING_VERSION = 1.0.5"
-    assert_includes ARTIFACT_VALIDATOR, 'EXPECTED_VERSION = "1.0.5"'
-    assert_includes TESTFLIGHT_WORKFLOW, "name: kira-ios-1.0.5-"
+    version = KiraRelease::Version.selected_name(environment: {})
+    settings = YAML.safe_load(XCODE_PROJECT, aliases: false).fetch("targets").fetch("iosApp").fetch("settings")
+    assert_equal version, settings.fetch("base").fetch("MARKETING_VERSION")
+    assert_includes FASTFILE, "MARKETING_VERSION = KiraRelease::Version.selected_name"
+    assert_includes RELEASE_CONFIGURATION, 'MARKETING_VERSION = #{version_name}'
+    assert_includes RELEASE_CONFIGURATION, 'KIRA_APP_VERSION = #{version_name}'
+    assert_includes ARTIFACT_VALIDATOR, "EXPECTED_VERSION = KiraRelease::Version.selected_name"
+    assert_includes TESTFLIGHT_WORKFLOW, 'name: kira-ios-${{ env.KIRA_VERSION_NAME }}-${{ env.KIRA_BUILD_NUMBER }}'
   end
 
   def test_generated_release_xcconfig_disables_diagnostics
@@ -89,11 +94,88 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
       assert system(environment, RbConfig.ruby, script, out: File::NULL)
 
       generated = File.read(xcconfig_path)
-      assert_includes generated, "MARKETING_VERSION = 1.0.5"
+      version = KiraRelease::Version.selected_name(environment: {})
+      assert_includes generated, "MARKETING_VERSION = #{version}"
+      assert_includes generated, "KIRA_APP_VERSION = #{version}"
       assert_includes generated, "CURRENT_PROJECT_VERSION = 7"
       assert_includes generated, "KIRA_CRASH_DIAGNOSTICS_ENABLED = NO"
       refute_includes generated, "KIRA_CRASH_DIAGNOSTICS_ENABLED = YES"
     end
+  end
+
+  def test_committed_version_requires_one_bounded_canonical_value
+    with_version_fixture do |root|
+      assert_equal "9.0.1", KiraRelease::Version.selected_name(root: root, environment: {})
+      invalid = ["", "VERSION_CODE=1\n", "VERSION_NAME=9.0.1\nVERSION_NAME=9.0.1\n",
+                 "VERSION_NAME=09.0.1\n", "VERSION_NAME=9.0.1-beta\n", "VERSION_NAME=9.0.1 \n",
+                 "VERSION_NAME=#{'9' * 65}.0.1\n", "#" * (16 * 1024 + 1)]
+      invalid.each do |contents|
+        File.write(File.join(root, "release/version.properties"), contents)
+        assert_raises(KiraRelease::Version::Error) { KiraRelease::Version.selected_name(root: root, environment: {}) }
+      end
+    end
+  end
+
+  def test_explicit_release_inputs_must_agree_without_trimming_or_precedence_bypass
+    with_version_fixture do |root|
+      selected = KiraRelease::Version::ENVIRONMENT_KEYS.to_h { |key| [key, "9.0.1"] }
+      assert_equal "9.0.1", KiraRelease::Version.selected_name(root: root, environment: selected)
+      KiraRelease::Version::ENVIRONMENT_KEYS.product(["", " 9.0.1", "9.0.2", "9.0.1+build"]).each do |key, value|
+        failure = assert_raises(KiraRelease::Version::Error) do
+          KiraRelease::Version.selected_name(root: root, environment: selected.merge(key => value))
+        end
+        assert_equal "Explicit release version conflicts with the committed version", failure.message
+      end
+    end
+  end
+
+  def test_generated_verifier_requires_exact_current_single_declaration
+    with_version_fixture do |root|
+      verify = -> { KiraRelease::Version.verify_generated(root: root, environment: {}) }
+      assert_raises(KiraRelease::Version::Error, &verify)
+      path = File.join(root, KiraRelease::Version::GENERATED_PATH)
+      FileUtils.mkdir_p(File.dirname(path))
+      current = "  const val APP_VERSION: String = \"9.0.1\"\n"
+      File.write(path, current)
+      assert_equal "9.0.1", verify.call
+      ["", current * 2, current.sub("9.0.1", "9.0.2"), "#" * (64 * 1024 + 1)].each do |contents|
+        File.write(path, contents)
+        assert_raises(KiraRelease::Version::Error, &verify)
+      end
+    end
+  end
+
+  def test_both_approved_workflows_select_wire_and_marketing_before_build_or_store_preflight
+    %w[android-internal-testing testflight].each do |name|
+      text = File.read(File.join(ROOT, ".github/workflows/#{name}.yml"))
+      steps = YAML.safe_load(text, aliases: false).fetch("jobs").fetch("build-and-upload").fetch("steps")
+      selections = steps.select { |step| step["name"] == "Select committed release and source-catalog version" }
+      assert_equal 1, selections.length
+      selection = selections.first
+      assert_equal %w[name run], selection.keys.sort
+      assert_includes selection.fetch("run"), 'version_name="$(/usr/bin/ruby release/version.rb)"'
+      %w[KIRA_VERSION_NAME KIRA_APP_VERSION].each do |key|
+        assert_includes selection.fetch("run"), "printf '#{key}=%s\\n' \"$version_name\""
+      end
+      assert_includes selection.fetch("run"), '>> "$GITHUB_ENV"'
+      boundaries = steps.select { |step| step["run"].to_s.match?(/\.\/gradlew |select-version-code|prepare_testflight/) }
+      refute_empty boundaries
+      boundaries.each { |step| assert_operator steps.index(selection), :<, steps.index(step) }
+      assert_includes text, "ruby release/version.rb verify-generated"
+    end
+  end
+
+  def test_ios_verifies_generation_before_archive_and_again_after_xcode
+    steps = YAML.safe_load(TESTFLIGHT_WORKFLOW, aliases: false).fetch("jobs").fetch("build-and-upload").fetch("steps")
+    compilation = steps.find { |step| step["name"] == "Compile iOS targets and link the Release framework" }
+    archive = steps.find { |step| step["id"] == "archive" }
+    verification = steps.find { |step| step["name"] == "Verify the Xcode-generated source-catalog version" }
+    assert_includes compilation.fetch("run"), "ruby release/version.rb verify-generated"
+    assert_equal %w[name run], verification.keys.sort
+    assert_equal "ruby release/version.rb verify-generated", verification.fetch("run")
+    assert_operator steps.index(compilation), :<, steps.index(archive)
+    assert_operator steps.index(archive), :<, steps.index(verification)
+    assert_operator steps.index(verification), :<, steps.index(steps.find { |step| step["id"] == "testflight-upload" })
   end
 
   def test_ci_and_testflight_receive_source_authority_configuration
@@ -169,6 +251,14 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
   end
 
   private
+
+  def with_version_fixture
+    Dir.mktmpdir("kira-release-version") do |root|
+      FileUtils.mkdir_p(File.join(root, "release"))
+      File.write(File.join(root, "release/version.properties"), "VERSION_NAME=9.0.1\nVERSION_CODE=1\n")
+      yield root
+    end
+  end
 
   def lane_body(name)
     match = FASTFILE.match(/lane :#{Regexp.escape(name)} do\n(?<body>.*?)(?=^  lane :|^end\s*$)/m)

@@ -24,6 +24,13 @@ class IosDebugIsolationTest < Minitest::Test
     end
   end
 
+  def test_project_marketing_version_cannot_drift_from_the_committed_release
+    with_configuration do |root|
+      change_project(root) { |text| text.sub(/MARKETING_VERSION: "[^"]+"/, 'MARKETING_VERSION: "9.0.1"') }
+      assert_refused(root, "Project marketing versions differ from the committed release")
+    end
+  end
+
   def test_debug_cannot_inherit_store_identity_team_plist_or_entitlements
     {
       "PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira.debug" => "PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira",
@@ -78,6 +85,7 @@ class IosDebugIsolationTest < Minitest::Test
     with_source_fixture do |root|
       FileUtils.mkdir_p(File.join(root, "release/ios"))
       FileUtils.cp(File.join(ROOT, "release/ios/validate_project_configuration.rb"), File.join(root, "release/ios"))
+      %w[version.rb version.properties].each { |name| FileUtils.cp(File.join(ROOT, "release", name), File.join(root, "release")) }
       FileUtils.cp_r(File.join(ROOT, "release/ios/lib"), File.join(root, "release/ios"))
       %w[Info.plist Info-Debug.plist iosApp.entitlements iosApp-nopush.entitlements].each do |name|
         FileUtils.cp(File.join(ROOT, "iosApp/iosApp", name), File.join(root, "iosApp/iosApp", name))

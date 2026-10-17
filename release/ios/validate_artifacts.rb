@@ -4,11 +4,12 @@ require "open3"
 require "tmpdir"
 require_relative "lib/plist_reader"
 require_relative "lib/libwebp_notices"
+require_relative "../version"
 
 EXPECTED_APP_STORE_ID = "6792232678"
 EXPECTED_BUNDLE_ID = "me.manga.kira"
 EXPECTED_TEAM_ID = "7CGZ2343AA"
-EXPECTED_VERSION = "1.0.5"
+EXPECTED_VERSION = KiraRelease::Version.selected_name
 EXPECTED_DOMAIN = "applinks:kiramanga.me"
 
 archive_path = ENV.fetch("KIRA_ARCHIVE_PATH")

@@ -47,6 +47,14 @@ jobs:
       - name: Verify pinned bootstrap inputs
         run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
 
+      - name: Select committed release and source-catalog version
+        run: |
+          version_name="$(/usr/bin/ruby release/version.rb)"
+          {
+            printf 'KIRA_VERSION_NAME=%s\n' "$version_name"
+            printf 'KIRA_APP_VERSION=%s\n' "$version_name"
+          } >> "$GITHUB_ENV"
+
       - name: Initialize protected temporary paths
         run: |
           set +x
@@ -251,6 +259,7 @@ jobs:
             :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 \
             :composeApp:linkReleaseFrameworkIosArm64 --stacktrace
           ./gradlew --stop
+          ruby release/version.rb verify-generated
           python3 -B scripts/release/prepare-libffi-source.py verify
 
       - name: Archive the signed App Store build
@@ -272,6 +281,9 @@ jobs:
           python3 -B scripts/release/prepare-libffi-source.py verify
           /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
           echo "Signed App Store archive created; Crashlytics upload is the next mandatory gate"
+
+      - name: Verify the Xcode-generated source-catalog version
+        run: ruby release/version.rb verify-generated
 
       - name: Upload and confirm the archived app dSYM in Crashlytics
         id: crashlytics-dsym
@@ -348,7 +360,7 @@ jobs:
         if: ${{ always() && steps.artifact-validation.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: kira-ios-1.0.5-${{ env.KIRA_BUILD_NUMBER }}
+          name: kira-ios-${{ env.KIRA_VERSION_NAME }}-${{ env.KIRA_BUILD_NUMBER }}
           path: |
             ${{ env.KIRA_IPA_PATH }}
             ${{ runner.temp }}/Kira.xcarchive.zip

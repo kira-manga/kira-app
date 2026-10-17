@@ -14,6 +14,15 @@ actions remain. Android and iOS are the only shipping targets.
   queries App Store Connect before selecting the next unused build number.
 - Increase the marketing version intentionally; never reuse an uploaded Android version code or
   App Store Connect build number.
+- Approved Android/TestFlight jobs select the exact canonical `VERSION_NAME` through
+  `ruby release/version.rb` and supply it as both `KIRA_VERSION_NAME` and `KIRA_APP_VERSION` before
+  any app compilation. Explicit marketing/wire overrides must agree with the committed value.
+  Fastlane, the iOS xcconfig and artifact validator use the same selection; the project validator
+  rejects a stale local Xcode marketing pin. Both binary-producing paths check the actual generated
+  Kotlin wire value with `ruby release/version.rb verify-generated` (iOS also after Xcode archive).
+  Local/debug Gradle override precedence is unchanged. A Store build-number increment does not
+  create a new source-catalog client cohort; distinct engine capabilities require a deliberately
+  selected, independently qualified wire/marketing version.
 
 ## Android release
 

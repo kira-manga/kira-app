@@ -1,8 +1,10 @@
 require "yaml"
 require_relative "lib/plist_reader"
 require_relative "lib/libwebp_notices"
+require_relative "../version"
 
 root = File.expand_path("../..", __dir__)
+version_name = KiraRelease::Version.selected_name
 project_path = File.join(root, "iosApp/project.yml")
 info_path = File.join(root, "iosApp/iosApp/Info.plist")
 entitlements_path = File.join(root, "iosApp/iosApp/iosApp.entitlements")
@@ -19,6 +21,8 @@ effective = %w[Debug Release].to_h do |configuration|
 end
 debug = effective.fetch("Debug")
 release = effective.fetch("Release")
+abort("Project marketing versions differ from the committed release") unless
+  [debug, release].all? { |settings| settings["MARKETING_VERSION"] == version_name }
 abort("Release must use only the canonical Store bundle ID") unless release["PRODUCT_BUNDLE_IDENTIFIER"] == "me.manga.kira"
 abort("Debug must use the isolated bundle ID") unless debug["PRODUCT_BUNDLE_IDENTIFIER"] == "me.manga.kira.debug"
 abort("Debug must not select the production signing team") unless debug["DEVELOPMENT_TEAM"] == ""
@@ -41,7 +45,6 @@ abort("Release-only Firebase resource selection is missing") unless copy_script 
 
 required_project_lines = [
   "PRODUCT_BUNDLE_IDENTIFIER: me.manga.kira",
-  "MARKETING_VERSION: \"1.0.5\"",
   "KIRA_APP_STORE_ID: \"6792232678\"",
   "KIRA_CRASH_DIAGNOSTICS_ENABLED: \"NO\"",
   "exactVersion: \"12.15.0\"",
@@ -119,6 +122,6 @@ abort("Associated Domains entitlement is missing kiramanga.me") unless domains.i
 
 KiraRelease::LibwebpNotices.validate_repository!(root)
 
-puts "Committed iOS configuration verified: app 6792232678, bundle me.manga.kira, team 7CGZ2343AA, version 1.0.5"
+puts "Committed iOS configuration verified: app 6792232678, bundle me.manga.kira, team 7CGZ2343AA, version #{version_name}"
 puts "Ordinary Debug isolation verified: distinct identity/name, no production team, Firebase, APNs or associations"
 puts "Vendored libwebp version/digests, legal notices and whole Settings resource configuration verified"
