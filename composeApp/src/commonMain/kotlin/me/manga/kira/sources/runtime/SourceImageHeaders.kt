@@ -45,7 +45,7 @@ internal class CoilSourceHeaderInterceptor(
 ) : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val request = chain.request
-        if (request.extras[sourceHeadersResolved] || request.httpHeaders.asMap().isNotEmpty()) return chain.proceed()
+        if (request.extras[sourceHeadersResolved] == true || request.httpHeaders.asMap().isNotEmpty()) return chain.proceed()
         val data = request.data as? String ?: request.data.toString()
         val host = runCatching { Url(data).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: return chain.proceed()
