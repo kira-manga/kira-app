@@ -6,8 +6,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.tasks.testing.Test
-// Check-only consumer of an independently admitted, promoted owned-Maven cohort;
-// acquisition/provenance and cleanup belong to the caller. No version override.
+// Check-only admitted owned-Maven cohort; caller owns acquisition, provenance and cleanup. No version override.
 def group = 'me.manga.kira.source'
 def version = '0.2.0'
 def require = { condition, message ->
@@ -66,7 +65,7 @@ require(rows.collect { it.path }.toSet().size() == rows.size(), 'Duplicate inven
 def androidTest = ':composeApp:testAndroidHostTest'
 def nativeTest = ':composeApp:iosSimulatorArm64Test'
 def linuxRoots = [':sources:engine:desktopTest', ':composeApp:desktopTest', ':composeApp:compileAndroidMain', androidTest]
-def appleRoots = [':composeApp:compileKotlinIosSimulatorArm64', nativeTest]
+def appleRoots = [':composeApp:compileKotlinIosArm64', ':composeApp:compileKotlinIosSimulatorArm64', nativeTest]
 // Gradle 9.6.1 taskNames includes options; observe without changing task-scoped filters.
 def arguments = gradle.startParameter.taskNames
 def roots = []
@@ -107,6 +106,7 @@ def targets = linux ? [
     desktop: [publication: 'jvm', platform: 'jvm'],
     android: [publication: 'android', platform: 'androidJvm'],
 ] : [
+    iosArm64: [publication: 'iosArm64', platform: 'native', nativeTarget: 'ios_arm64'],
     iosSimulatorArm64: [publication: 'iosSimulatorArm64', platform: 'native', nativeTarget: 'ios_simulator_arm64'],
 ]
 def expectedTasks = new LinkedHashSet()
