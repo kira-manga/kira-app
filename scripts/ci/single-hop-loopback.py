@@ -14,27 +14,27 @@ import subprocess
 import sys
 import threading
 import time
-
 SCRIPT = Path(__file__).resolve()
 PASSWORD = "single-hop-test-only"
 SECRET_FILES = ("ca.key", "ca.pem", "server.key", "server.pem", "server.csr", "tls.cnf", "truststore.p12")
-
 def save(path, value):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, sort_keys=True) + "\n")
     temporary.replace(path)
-
 def read(path):
     assert path.is_file() and not path.is_symlink() and path.stat().st_size <= 65536
     return json.loads(path.read_text())
-
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 def run(args, root, timeout=30):
     env = {key: os.environ[key] for key in ("PATH", "HOME", "DEVELOPER_DIR") if key in os.environ}
     env["TMPDIR"] = str(root)
-    return subprocess.check_output(args, env=env, stderr=subprocess.STDOUT, timeout=timeout, text=True).strip()
+    try:
+        return subprocess.check_output(args, env=env, stderr=subprocess.STDOUT, timeout=timeout, text=True).strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        print("Fixture tool failure: " + " ".join(args[:3]) + " " + type(error).__name__, flush=True)
+        raise
 
 def owned(mode):
     assert mode in ("android", "ios") and os.environ.get("GITHUB_ACTIONS") == "true"

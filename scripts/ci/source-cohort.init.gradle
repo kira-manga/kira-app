@@ -35,7 +35,7 @@ def inventoryFile = absoluteInput('KIRA_SOURCE_COHORT_INVENTORY').toFile()
 def inventorySha = System.getenv('KIRA_SOURCE_COHORT_INVENTORY_SHA256')
 require(Files.isDirectory(repository, LinkOption.NOFOLLOW_LINKS), 'Owned repository is absent')
 require(inventorySha ==~ /[0-9a-f]{64}/, 'Missing selected inventory digest')
-require(inventoryFile.isFile() && inventoryFile.length() in 1..(2 * 1024 * 1024), 'Inventory size/type')
+require(inventoryFile.isFile() && inventoryFile.length() >= 1L && inventoryFile.length() <= 2L * 1024 * 1024, 'Inventory size/type')
 require(sha(inventoryFile) == inventorySha, 'Inventory digest differs from selection')
 // Original inventory: project, publication, group, artifactId, version, kind, path, size, SHA-256.
 def lines = inventoryFile.readLines('UTF-8')
@@ -189,7 +189,7 @@ def inputRelation = { artifact, row, target, inputs ->
     if (target.platform == 'androidJvm') {
         new ZipFile(artifact.file).withCloseable { zip ->
             def entries = zip.entries().findAll { it.name == 'classes.jar' }
-            require(entries.size() == 1 && entries[0].size in 1..(32 * 1024 * 1024), 'AAR classes.jar bound/identity')
+            require(entries.size() == 1 && entries[0].size >= 1L && entries[0].size <= 32L * 1024 * 1024, 'AAR classes.jar bound/identity')
             inputSize = entries[0].size
             inputSha = zip.getInputStream(entries[0]).withCloseable { stream -> hashStream(stream) }
         }
@@ -246,7 +246,7 @@ def bindJvmWitnesses = { root ->
         task.doFirst { witness(task, configuration, android ? targets.android : targets.desktop, task.classpath.files) }
         if (android) {
             def truststore = absoluteInput('KIRA_SINGLE_HOP_TRUSTSTORE').toFile()
-            require(truststore.isFile() && truststore.length() in 1..65536 &&
+            require(truststore.isFile() && truststore.length() >= 1L && truststore.length() <= 65536L &&
                 sha(truststore) == System.getenv('KIRA_SINGLE_HOP_TRUSTSTORE_SHA256'), 'Private test truststore differs')
             task.systemProperty('javax.net.ssl.trustStore', truststore.path)
             task.systemProperty('javax.net.ssl.trustStoreType', 'PKCS12')
