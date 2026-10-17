@@ -14,7 +14,6 @@ import me.manga.kira.data.local.entity.SavedChapterEntity
 import me.manga.kira.platform.download.BackgroundTransport
 import me.manga.kira.platform.download.TransferRequest
 import me.manga.kira.platform.filesystem.chapterDir
-import me.manga.kira.platform.storage.StorageKeys
 import me.manga.kira.presentation.features.download.data.DownloadingState
 import me.manga.kira.presentation.features.download.domain.clean.ChapterPageProvider
 import me.manga.kira.presentation.features.download.domain.clean.DownloadHeaderPolicy
@@ -126,7 +125,7 @@ internal class HeaderReadSettings(private val backing: ObservableSettings = MapS
     val captureReads: Int get() = reads.value
     fun onNextCaptureRead(action: () -> Unit) { check(afterRead.compareAndSet(null, action)) }
     override fun getString(key: String, defaultValue: String): String = backing.getString(key, defaultValue).also {
-        if (key.startsWith("headers.") || key == StorageKeys.HEADERS_MAP_JSON) {
+        if (key.startsWith("headers.") || key == "headers_map_json") {
             reads.update { count -> count + 1 }
             afterRead.getAndUpdate { null }?.invoke()
         }
