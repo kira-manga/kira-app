@@ -87,12 +87,8 @@ class EnglishSourcesPilotParityTest {
     fun demonicscans_pages_filter_ad_image_via_not_selector() = runTest {
         val manga = Manga("Demonicscans", "(EN)", "x", "https://demonicscans.org/manga/Solo-Leveling", "", null, emptyList())
         val chapter = Chapter("1", "Chapter 1", "https://demonicscans.org/chaptered.php?manga=6&chapter=1", null, false, false)
-        // Preserve the historical raw-space input: unsafe image references are not repaired.
-        assertTrue(client("Demonicscans").pages(manga, chapter).first().valueOrFail().isEmpty())
-        // Separate encoded-reference variant tests extraction/filtering, not a production URL rewrite.
-        val encoded = DS_PAGES.replace("/Solo Leveling/", "/Solo%20Leveling/")
-        val pages = client("Demonicscans", responses = EN_RESPONSES + (chapter.url to encoded))
-            .pages(manga, chapter).first().valueOrFail()
+        // Exercise the original raw-space HTML directly; no fixture-side URL preprocessing.
+        val pages = client("Demonicscans").pages(manga, chapter).first().valueOrFail()
         assertEquals(
             listOf(
                 "https://mangareadon.org/Solo%20Leveling/1/1.jpg",
@@ -108,14 +104,13 @@ class EnglishSourcesPilotParityTest {
         val captured = mapOf("Cookie" to "cf_clearance=abc123", "User-Agent" to "Mozilla/5.0 (captured)")
         val manga = Manga("Demonicscans", "(EN)", "x", "https://demonicscans.org/manga/Solo-Leveling", "", null, emptyList())
         val chapter = Chapter("1", "Chapter 1", "https://demonicscans.org/chaptered.php?manga=6&chapter=1", null, false, false)
-        // In-memory encoded test variant; the original raw-space fixture remains the negative above.
-        val responses = EN_RESPONSES + (chapter.url to DS_PAGES.replace("/Solo Leveling/", "/Solo%20Leveling/"))
-        val pages = client("Demonicscans", responses, captured).pages(manga, chapter).first().valueOrFail()
+        // Original raw-space input; path encoding must not grant credential authority to its CDN.
+        val pages = client("Demonicscans", captured = captured).pages(manga, chapter).first().valueOrFail()
         assertEquals(2, pages.size)
         assertTrue(pages.all { it.headers.isEmpty() }) // The actual bundle does not authorize this CDN.
         // Explicit test-only declaration: never enlarge the real bundled source's credential authority.
         val declared = config("Demonicscans").copy(trustedHosts = listOf("mangareadon.org"))
-        val authorized = client("Demonicscans", responses, captured, declared).pages(manga, chapter).first().valueOrFail()
+        val authorized = client("Demonicscans", captured = captured, source = declared).pages(manga, chapter).first().valueOrFail()
         assertEquals(pages.map { it.url }, authorized.map { it.url })
         assertTrue(authorized.all { it.headers == captured })
     }

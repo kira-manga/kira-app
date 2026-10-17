@@ -2,7 +2,6 @@ import groovy.json.JsonOutput
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.security.MessageDigest
-import java.util.zip.ZipFile
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
@@ -155,16 +154,15 @@ def resolvedBinaries = { configuration, target ->
     if (target.nativeTarget) {
         require(configurationAttributes['org.jetbrains.kotlin.native.target'] == target.nativeTarget, 'Configuration Native target')
     }
-    def view = configuration.incoming.artifactView {
-        componentFilter { id -> id instanceof ModuleComponentIdentifier && id.group == group }
-        if (target.platform == 'androidJvm') {
-            attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'aar')
-        }
-        lenient = false
+    def views = (target.platform == 'androidJvm' ? ['aar', 'android-classes-jar'] : [null]).collect { type ->
+        configuration.incoming.artifactView {
+            componentFilter { id -> id instanceof ModuleComponentIdentifier && id.group == group }
+            if (type != null) attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, type)
+            lenient = false
+        }.artifacts.artifacts
     }
-    def resolved = view.artifacts.artifacts
-    require(resolved.size() == 2, 'Missing or additional resolved source binaries')
-    [attributes: configurationAttributes, artifacts: resolved]
+    require(views.every { it.size() == 2 }, 'Missing or additional resolved source binaries')
+    [attributes: configurationAttributes, artifacts: views[0], transformed: views.last()]
 }
 def selectedBinary = { row, resolved, target ->
     def matches = resolved.findAll { artifact ->
@@ -181,22 +179,24 @@ def selectedBinary = { row, resolved, target ->
     }
     artifact
 }
-def inputRelation = { artifact, row, target, inputs ->
-    def inputSha = row.sha256
-    def inputSize = row.size
-    def relation = 'exact resolved binary'
-    if (target.platform == 'androidJvm') {
-        new ZipFile(artifact.file).withCloseable { zip ->
-            def entries = zip.entries().findAll { it.name == 'classes.jar' }
-            require(entries.size() == 1 && entries[0].size >= 1L && entries[0].size <= 32L * 1024 * 1024, 'AAR classes.jar bound/identity')
-            inputSize = entries[0].size
-            inputSha = zip.getInputStream(entries[0]).withCloseable { stream -> hashStream(stream) }
-        }
-        relation = 'exact classes.jar bytes in admitted AAR; no transformed-byte waiver'
-    }
-    def used = inputs.findAll { file -> file.isFile() && file.length() == inputSize && sha(file) == inputSha }
+def inputRelation = { artifact, row, target, inputs, transformed ->
+    def android = target.platform == 'androidJvm'
+    def matches = android ? transformed.findAll { candidate ->
+        candidate.id.componentIdentifier == artifact.id.componentIdentifier &&
+            attrs(candidate.variant.attributes).findAll { key, value -> key != 'artifactType' } ==
+            attrs(artifact.variant.attributes).findAll { key, value -> key != 'artifactType' }
+    } : [artifact]
+    require(matches.size() == 1, 'Android transform component/variant differs')
+    def path = matches[0].file.toPath()
+    def inputSize = android ? Files.size(path) : row.size
+    require(!android || (path == path.toRealPath() && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) &&
+        inputSize >= 1L && inputSize <= 32L * 1024 * 1024), 'Android transform path/type/bound')
+    def inputSha = android ? sha(path.toFile()) : row.sha256
+    def used = inputs.findAll { file -> (!android || file.toPath() == path) &&
+        file.isFile() && file.length() == inputSize && sha(file) == inputSha }
     require(used.size() == 1, 'Compiler/Test input does not contain the exact selected bytes: ' + row.project)
-    [inputPath: used[0].path, inputSize: inputSize, inputSha256: inputSha, inputRelation: relation]
+    [inputPath: used[0].path, inputSize: inputSize, inputSha256: inputSha,
+     inputRelation: android ? 'same-component android-classes-jar from admitted AAR' : 'exact resolved binary']
 }
 def selectedSupport = { configuration ->
     def components = configuration.incoming.resolutionResult.allComponents.collect { it.id }
@@ -212,12 +212,12 @@ def witness = { task, configuration, target, inputFiles ->
     require(sha(inventoryFile) == inventorySha, 'Selected inventory changed')
     def wanted = wantedBinaries(target)
     def resolved = resolvedBinaries(configuration, target)
-    def inputs = inputFiles.collect { it.canonicalFile }.toSet()
+    def inputs = inputFiles.collect { target.platform == 'androidJvm' ? it : it.canonicalFile }.toSet()
     def artifacts = wanted.collect { row ->
         def artifact = selectedBinary(row, resolved.artifacts, target)
         [component: artifact.id.componentIdentifier.displayName, variant: artifact.variant.displayName,
          attributes: attrs(artifact.variant.attributes), mavenPath: row.path, resolvedPath: artifact.file.canonicalPath,
-         size: row.size, sha256: row.sha256] + inputRelation(artifact, row, target, inputs)
+         size: row.size, sha256: row.sha256] + inputRelation(artifact, row, target, inputs, resolved.transformed)
     }
     emit('WITNESS', [task: task.path, configuration: task.project.path + ':' + configuration.name,
         attributes: resolved.attributes, artifacts: artifacts, selectedSupportComponents: selectedSupport(configuration)])

@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -71,7 +72,7 @@ class IosGenericSingleHopTest {
                 assertEquals(fixture.id, fixture.execute("/ready").body)
                 withTimeout(40_000) { block(fixture) }
             } finally {
-                closeClient(fixture.client)
+                closeClient(fixture.client, "fixture-client-close")
             }
         }
     }
@@ -98,14 +99,13 @@ class IosGenericSingleHopTest {
                 "ambiguous=$ambiguous status=${response?.status} failure=${failure?.let { it::class.simpleName }}")
             fixture.assertNoUnrequestedTraffic(fixture.state())
         } finally {
-            closeClient(client)
+            closeClient(client, "location-client-close")
         }
     }
 
     private suspend fun cancelStalledResponse(fixture: WireFixture) = coroutineScope {
-        val headers = CompletableDeferred<List<String>>()
         val cancelled = CompletableDeferred<Unit>()
-        val client = observingClient("/stall", headers)
+        val client = createHttpClient(cacheResponses = false, followRedirects = false)
         val request = launch {
             try {
                 KtorHttpExecutor(client).execute(fixture.request("/stall"))
@@ -116,17 +116,17 @@ class IosGenericSingleHopTest {
             }
         }
         try {
-            withTimeout(5_000) { headers.await() }
+            fixture.awaitStarted() // Native engines need not expose headers for a one-byte incomplete body.
             assertFalse(request.isCompleted)
             request.cancel(CancellationException("single-hop fixture caller cancellation"))
-            withTimeout(5_000) { request.join(); cancelled.await() }
+            boundedPhase("request-cancel-join") { request.join(); cancelled.await() }
             fixture.awaitDisconnected() // Prove caller cancellation before owner close can release the socket.
         } finally {
             withContext(NonCancellable) {
                 try {
-                    withTimeout(5_000) { request.cancelAndJoin() }
+                    boundedPhase("request-finally-join") { request.cancelAndJoin() }
                 } finally {
-                    closeClient(client)
+                    closeClient(client, "cancel-client-close")
                 }
             }
         }
@@ -144,10 +144,10 @@ class IosGenericSingleHopTest {
         return client
     }
 
-    private suspend fun closeClient(client: HttpClient) = withContext(NonCancellable + Dispatchers.Default) {
+    private suspend fun closeClient(client: HttpClient, phase: String) = withContext(NonCancellable + Dispatchers.Default) {
         client.close() // Graceful: callers cancel active requests before asking the owner to close.
         try {
-            withTimeout(5_000) {
+            boundedPhase(phase) {
                 client.coroutineContext.job.join()
                 client.engine.coroutineContext.job.join()
             }
@@ -193,7 +193,14 @@ class IosGenericSingleHopTest {
             assertEquals(0, state["bad_requests"])
         }
 
-        suspend fun awaitDisconnected() = withTimeout(5_000) {
+        suspend fun awaitStarted() = boundedPhase("server-start") {
+            while (state()["streams_started"] != 1) delay(25)
+            val state = state()
+            assertEquals(0, state["streams_closed"])
+            assertEquals(0, state["streams_timed_out"])
+        }
+
+        suspend fun awaitDisconnected() = boundedPhase("socket-disconnect-before-close") {
             while (state()["streams_closed"] != 1) delay(25)
             val state = state()
             assertEquals(1, state["streams_started"])
@@ -205,6 +212,15 @@ class IosGenericSingleHopTest {
         .singleOrNull { it.key.equals(HttpHeaders.Location, ignoreCase = true) }?.value
 
     private companion object {
+        suspend fun <T> boundedPhase(phase: String, block: suspend () -> T): T {
+            try {
+                return withTimeout(5_000) { block() }
+            } catch (cause: TimeoutCancellationException) {
+                println("KIRA_SINGLE_HOP_TIMEOUT phase=$phase")
+                throw cause
+            }
+        }
+
         fun setting(name: String): String = checkNotNull(NSProcessInfo.processInfo.environment[name] as? String) { "Missing owned single-hop fixture" }
     }
 }
