@@ -1,0 +1,51 @@
+name: Verified libffi source bootstrap (no Store access)
+
+on:
+  push:
+    branches: [remediation/app-61-verified-libffi-source-20261016]
+    paths:
+      - .github/workflows/libffi-source-check.yml
+      - release/libffi-source.json
+      - scripts/release/prepare-libffi-source.py
+      - scripts/release/libffi-source-smoke.c
+      - scripts/release/libffi-cfi-startproc.patch
+      - scripts/release/tests/libffi-source-test.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kira-libffi-source-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    if: ${{ github.ref == 'refs/heads/remediation/app-61-verified-libffi-source-20261016' }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify pinned bootstrap inputs
+        run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+      - name: Build and smoke-test authenticated libffi source
+        run: python3 -B scripts/release/prepare-libffi-source.py prepare
+      - name: Verify the private compiler profile and source-built dependency
+        run: python3 -B scripts/release/prepare-libffi-source.py verify
+      - name: Remove owned build outputs and private compiler
+        if: ${{ always() }}
+        run: python3 -B scripts/release/prepare-libffi-source.py cleanup
+      - name: Preserve source-build provenance
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: libffi-bootstrap-${{ github.sha }}
+          path: ${{ runner.temp }}/kira-libffi-provenance.json
+          retention-days: 7
+          if-no-files-found: warn

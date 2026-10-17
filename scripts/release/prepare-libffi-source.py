@@ -95,13 +95,14 @@ def write_json(path, value, replace=False):
 def pins(repo=ROOT):
     value = read_json(repo / "release/libffi-source.json")
     check(set(value) == {"schema_version", "kotlin_version", "host", "dependency", "source", "patch",
-                         "recipe", "compiler", "provenance"}, "unexpected source pin schema")
+                         "cfi_upstream", "cfi_backport", "recipe", "compiler", "provenance"}, "unexpected source pin schema")
     check(value["schema_version"] == 1 and value["kotlin_version"] == VERSION and
           value["host"] == "macos_arm64" and value["dependency"] == DEPENDENCY,
           "only the reviewed Kotlin 2.4.0 Apple ARM64 recipe is supported")
     routes = {
         "source": ("https://github.com/libffi/libffi/releases/download/v3.3/libffi-3.3.tar.gz", 1305466),
         "patch": ("https://raw.githubusercontent.com/Homebrew/formula-patches/06252df03c68aee70856e5842f85f20b259e5250/libffi/libffi-3.3-arm64.patch", 284504),
+        "cfi_upstream": ("https://github.com/libffi/libffi/commit/8308bed5b2423878aa20d7884a99cf2e30b8daf7.patch", 1315),
         "recipe": ("https://raw.githubusercontent.com/JetBrains/kotlin/add726ca8c82922b6ab4cb2a27ae738d6a780817/kotlin-native/tools/libffi/build_for_macos.sh", 933),
         "compiler": (f"https://github.com/JetBrains/kotlin/releases/download/v{VERSION}/kotlin-native-prebuilt-macos-aarch64-{VERSION}.tar.gz", 259007716),
     }
@@ -109,6 +110,11 @@ def pins(repo=ROOT):
         pin = value[name]
         check(pin["url"] == url and pin["bytes"] == size and
               re.fullmatch(r"[0-9a-f]{64}", pin["sha256"]), f"invalid {name} pin")
+    backport = value["cfi_backport"]
+    check(backport["path"] == "scripts/release/libffi-cfi-startproc.patch" and backport["bytes"] == 692 and
+          all(re.fullmatch(r"[0-9a-f]{64}", backport[key]) for key in ("sha256", "input_sha256", "output_sha256")),
+          "invalid reviewed CFI backport pin")
+    verify_download(repo / backport["path"], backport)
     check(value["source"]["archive_root"] == "libffi-3.3" and
           value["compiler"]["archive_root"] == f"kotlin-native-prebuilt-macos-aarch64-{VERSION}",
           "unexpected archive layout")
@@ -381,7 +387,24 @@ def run(args, *, env, cwd=None, timeout=30):
     return output.strip()
 
 
-def build_library(root, source, patch, repo):
+def apply_cfi_backport(source, upstream, pin, repo, env):
+    # Upstream PR857 has newer BTI/PAC context, so its raw patch cannot apply at
+    # zero fuzz to 3.3. Authenticate that authority and the reviewed three-move
+    # backport, then require the exact post-Homebrew input and resulting source.
+    verify_download(upstream, pin["cfi_upstream"])
+    backport = pin["cfi_backport"]
+    local_patch = repo / backport["path"]
+    verify_download(local_patch, backport)
+    assembly = source / "src/aarch64/sysv.S"
+    check(digest(assembly) == backport["input_sha256"], "CFI backport input assembly differs from its reviewed hash")
+    args = ["/usr/bin/patch", "-p1", "--ignore-whitespace", "--fuzz=0", "--batch", "--forward", "-i", local_patch]
+    run(args + ["--dry-run"], env=env, cwd=source, timeout=60)
+    run(args, env=env, cwd=source, timeout=60)
+    check(digest(assembly) == backport["output_sha256"], "CFI backport output assembly differs from its reviewed hash")
+    return digest(assembly)
+
+
+def build_library(root, source, patch, repo, pin):
     work = root / "work"
     for name in ("home", "tmp"):
         (work / name).mkdir(mode=0o700)
@@ -404,6 +427,7 @@ def build_library(root, source, patch, repo):
     patch_args = ["/usr/bin/patch", "-p1", "--ignore-whitespace", "--fuzz=0", "--batch", "--forward", "-i", patch]
     run(patch_args + ["--dry-run"], env=env, cwd=source, timeout=60)
     run(patch_args, env=env, cwd=source, timeout=60)
+    cfi_sha256 = apply_cfi_backport(source, root / "downloads/cfi_upstream", pin, repo, env)
     configure = [str(source / "configure"), f"--prefix={root / 'install'}", "--disable-docs", "--enable-shared=no"]
     run(configure, env=env, cwd=source, timeout=180)
     run(["/usr/bin/make", "-j2", "install"], env=env, cwd=source, timeout=600)
@@ -422,6 +446,7 @@ def build_library(root, source, patch, repo):
           "libffi source smoke passed: arm64 integer/floating/aggregate calls and closure", "smoke did not confirm all checks")
     return {"compiler": compiler, "xcode": run(["/usr/bin/xcodebuild", "-version"], env=env),
             "configure": configure[1:], "make_jobs": 2, "patch_fuzz": 0, "static_arch": "arm64",
+            "cfi_backport_output_sha256": cfi_sha256,
             "smoke": "integer/floating/aggregate ffi_call and executable callback closure passed"}
 
 
@@ -470,6 +495,7 @@ def no_prebuilt(data):
 def state_inputs(repo, pin):
     return {"pins": pin, "manifest_sha256": digest(repo / "release/libffi-source.json"),
             "helper_sha256": digest(repo / "scripts/release/prepare-libffi-source.py"),
+            "cfi_backport_sha256": digest(repo / pin["cfi_backport"]["path"]),
             "smoke_source_sha256": digest(repo / "scripts/release/libffi-source-smoke.c")}
 
 
@@ -491,14 +517,14 @@ def prepare(env, repo=ROOT):
         write_json(root / STATE, state)
         for name in ("downloads", "work", "data"):
             (root / name).mkdir(mode=0o700)
-        for name in ("source", "patch", "recipe"):
+        for name in ("source", "patch", "recipe", "cfi_upstream"):
             download(pin[name], root / "downloads" / name)
         source = extract_verified(root / "downloads/source", pin["source"], root / "work/source", source=True)
-        state["build"] = build_library(root, source, root / "downloads/patch", repo)
+        state["build"] = build_library(root, source, root / "downloads/patch", repo, pin)
         state["installed_files"] = install_hashes(root / "install")
         # The original recipe is provenance, not executed: it lacks our intake/cleanup guards.
         shutil.rmtree(root / "work")
-        for name in ("source", "patch", "recipe"):
+        for name in ("source", "patch", "recipe", "cfi_upstream"):
             (root / "downloads" / name).unlink()
         state["source_intermediates_removed"] = True
         write_json(root / STATE, state, replace=True)

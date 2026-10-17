@@ -117,6 +117,49 @@ class SourceBootstrapTests(unittest.TestCase):
         with self.assertRaises(libffi.BootstrapError):
             libffi.HTTPSRedirect().redirect_request(None, None, 302, "redirect", {}, "http://example.invalid/")
 
+    def test_cfi_backport_authenticates_authority_patch_input_and_output(self):
+        source = self.temp / "cfi-source"
+        assembly = source / "src/aarch64/sysv.S"
+        assembly.parent.mkdir(parents=True)
+        before, after = b"reviewed input\n", b"reviewed corrected output\n"
+        upstream = self.temp / "upstream.patch"
+        upstream_bytes = b"authenticated upstream authority fixture\n"
+        upstream.write_bytes(upstream_bytes)
+        reviewed = libffi.pins()["cfi_backport"]
+        local_patch = self.repo / reviewed["path"]
+        local_patch.parent.mkdir(parents=True)
+        patch_bytes = (REPO / reviewed["path"]).read_bytes()
+        local_patch.write_bytes(patch_bytes)
+        pin = {"cfi_upstream": {"bytes": len(upstream_bytes), "sha256": libffi.digest(upstream)},
+               "cfi_backport": dict(reviewed, input_sha256=hashlib.sha256(before).hexdigest(),
+                                    output_sha256=hashlib.sha256(after).hexdigest())}
+
+        def apply(args, **kwargs):
+            self.assertIn("--fuzz=0", args)
+            self.assertEqual(kwargs["cwd"], source)
+            if "--dry-run" not in args:
+                assembly.write_bytes(after)
+
+        assembly.write_bytes(before)
+        with mock.patch.object(libffi, "run", side_effect=apply) as command:
+            self.assertEqual(libffi.apply_cfi_backport(source, upstream, pin, self.repo, {}),
+                             hashlib.sha256(after).hexdigest())
+            self.assertEqual(command.call_count, 2)
+            self.assertIn("--dry-run", command.call_args_list[0].args[0])
+        for path, original in ((upstream, upstream_bytes), (local_patch, patch_bytes), (assembly, before)):
+            with self.subTest(path=path.name):
+                assembly.write_bytes(before)
+                path.write_bytes(b"changed")
+                with mock.patch.object(libffi, "run") as command:
+                    with self.assertRaises(libffi.BootstrapError):
+                        libffi.apply_cfi_backport(source, upstream, pin, self.repo, {})
+                    command.assert_not_called()
+                path.write_bytes(original)
+        with mock.patch.object(libffi, "run") as command:
+            with self.assertRaisesRegex(libffi.BootstrapError, "output assembly"):
+                libffi.apply_cfi_backport(source, upstream, pin, self.repo, {})
+            self.assertEqual(command.call_count, 2)
+
     def test_archive_inventory_rejects_unsafe_entries_before_writes(self):
         cases = [
             [("sample/../escape", "file", "bad")],

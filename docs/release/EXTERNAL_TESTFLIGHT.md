@@ -51,6 +51,12 @@ named by JetBrains, and the official Kotlin/Native 2.4.0 distribution. The sourc
 corroborated by NixOS 20.09's libffi expression. The upstream recipe is
 `JetBrains/kotlin@add726ca8c82922b6ab4cb2a27ae738d6a780817:kotlin-native/tools/libffi/build_for_macos.sh`;
 the patch is from `Homebrew/formula-patches@06252df03c68aee70856e5842f85f20b259e5250`.
+Modern Apple assemblers also require the upstream libffi CFI-label ordering fix
+(`libffi/libffi@8308bed5b2423878aa20d7884a99cf2e30b8daf7`, PR857). The manifest authenticates
+that upstream patch and the small 3.3 backport, including exact assembly pre/post hashes.
+Only three `cfi_startproc` directives move after their entry labels; instructions and unwind
+directives are preserved. The no-secrets `libffi-source-check.yml` job qualifies bootstrap
+corrections on the issue branch without repeating unrelated app tests or accessing Stores.
 
 Before signing credentials are exposed, the bootstrap verifies the pinned downloads, builds the
 static ARM64 library, and runs an actual host calling-convention/closure smoke check. Only a private
