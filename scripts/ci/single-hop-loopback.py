@@ -225,31 +225,37 @@ def serve(root):
         server.server_close()
         save(root / "stats.json", server.counts)
 
-def server_pids(root):
+def server_pids(root, waiting_for=None):
     output = run(["/bin/ps", "-ww", "-axo", "pid=,stat=,command="], root, 10)
     assert len(output) <= 2 * 1024 * 1024
     suffix = " -I -B " + str(SCRIPT) + " serve " + str(root)
     rows = (row.split(None, 2) for row in output.splitlines())
-    live = {int(cells[0]): cells[2] for cells in rows if len(cells) == 3 and not cells[1].startswith("Z")}
+    live = {int(cells[0]): cells[2] if len(cells) == 3 else ""
+            for cells in rows if len(cells) >= 2 and not cells[1].startswith("Z")}
     matches = [pid for pid, command in live.items() if command.endswith(suffix) and
                re.fullmatch(r"/\S*/(?:python3(?:\.[0-9]+)?|Python)", command[:-len(suffix)])]
     assert len(matches) <= 1 and all(pid > 1 for pid in matches)
+    assert waiting_for is None or (type(waiting_for) is int and waiting_for > 1 and matches in ([], [waiting_for]))
     if (root / "server-ready.json").exists():
         recorded = read(root / "server-ready.json")["server_pid"]
-        assert type(recorded) is int and recorded > 1
-        assert matches in ([], [recorded]) and (recorded not in live or matches == [recorded]), "Owned server PID/arguments differ"
-    return matches
+        assert type(recorded) is int and recorded > 1 and (waiting_for is None or recorded == waiting_for)
+        assert matches in ([], [recorded]) and (recorded not in live or matches == [recorded] or
+                                               waiting_for == recorded), "Owned server PID/arguments differ"
+    return ([waiting_for] if waiting_for in live else []) if waiting_for is not None else matches
 
 def stop_server(root):
+    signalled = None
     for sig in (signal.SIGTERM, signal.SIGKILL):
         for pid in server_pids(root):
+            assert signalled is None or pid == signalled
             try:
                 os.kill(pid, sig)
+                signalled = pid  # Only a successful exact-owned signal admits wait-only argv transitions.
             except ProcessLookupError:
                 pass
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
-            if not server_pids(root):
+            if not server_pids(root, signalled):
                 return
             time.sleep(0.1)
     raise RuntimeError("Owned fixture server remains")
