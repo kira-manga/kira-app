@@ -47,8 +47,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":sources:contracts"))
-            // INCOMPLETE candidate: prospective 0.2.0 requires genuine package/consumer qualification before integration.
-            implementation("me.manga.kira.source:source-engine:0.2.0")
+            // INCOMPLETE candidate: prospective 0.2.1 requires genuine package/consumer qualification before integration.
+            implementation("me.manga.kira.source:source-engine:0.2.1")
             // JSON config parsing + JSON-API response extraction.
             implementation(libs.kotlinx.serialization.json)
             // HTML response extraction (CSS selectors) — KMP, same parser the legacy sources use.
