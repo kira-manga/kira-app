@@ -1,9 +1,9 @@
-name: Finalize existing TestFlight 1.0.5 (2)
+name: Finalize existing TestFlight 1.0.6 (1)
 
 # Owner-authorized existing-build submission only. No build, signing, or binary upload.
 on:
   push:
-    branches: [remediation/app-testflight-existing-2-20261017]
+    branches: [remediation/app-testflight-existing-106-1-20261019]
     paths: [.github/workflows/testflight-existing-build.yml]
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   finalize:
-    if: ${{ github.ref == 'refs/heads/remediation/app-testflight-existing-2-20261017' }}
+    if: ${{ github.ref == 'refs/heads/remediation/app-testflight-existing-106-1-20261019' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -30,7 +30,7 @@ jobs:
       FASTLANE_DISABLE_COLORS: "1"
       CI: "true"
       BUNDLE_FROZEN: "true"
-      KIRA_BUILD_NUMBER: "2"
+      KIRA_BUILD_NUMBER: "1"
 
     steps:
       - name: Check out only the reviewed existing-build submission change
@@ -49,35 +49,77 @@ jobs:
             printf 'KIRA_TESTFLIGHT_STATUS_FILE=%s/kira-beta-reports/testflight-status.json\n' "$RUNNER_TEMP"
           } >> "$GITHUB_ENV"
 
-      - name: Confirm the existing successful release (no rebuild)
+      - name: Confirm the exact successful Apple upload and isolated Android failure (no rebuild)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/kira-beta-reports"
-          gh api repos/kira-manga/kira-app/actions/runs/38987093148 > "$RUNNER_TEMP/kira-beta-reports/release-run.json"
-          gh api repos/kira-manga/kira-app/actions/jobs/117263207210 > "$RUNNER_TEMP/kira-beta-reports/release-job.json"
+          gh api repos/kira-manga/kira-app/actions/runs/39222881008/attempts/1 > "$RUNNER_TEMP/kira-beta-reports/release-run.json"
+          gh api 'repos/kira-manga/kira-app/actions/runs/39222881008/attempts/1/jobs?per_page=100' > "$RUNNER_TEMP/kira-beta-reports/release-jobs.json"
+          gh api repos/kira-manga/kira-app/actions/artifacts/12176742648 > "$RUNNER_TEMP/kira-beta-reports/release-artifact.json"
           python3 - <<'PY'
           import json, os, subprocess
           from pathlib import Path
-          base = 'ea579142f271e3d9480ab9cbeb4f88d13142f047'
+          base = '7b1caf321462adfca918e25ba4c9a5b6f6fdaca2'
           if subprocess.run(['git', 'cat-file', '-e', base], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
               subprocess.run(['git', 'fetch', '--no-tags', '--depth=1', 'origin', base], check=True)
-          changed = subprocess.check_output(['git', 'diff', '--name-only', 'ea579142f271e3d9480ab9cbeb4f88d13142f047', 'HEAD'], text=True).splitlines()
-          assert set(changed) <= {'.github/workflows/testflight-existing-build.yml', 'fastlane/Fastfile', 'release/testflight/what-to-test.txt'}, 'Unrelated source/dependency changes'
+          changed = subprocess.check_output(['git', 'diff', '--name-only', base, 'HEAD'], text=True).splitlines()
+          assert set(changed) <= {'.github/workflows/testflight-existing-build.yml'}, 'Unrelated source/dependency changes'
           p = Path(os.environ['RUNNER_TEMP']) / 'kira-beta-reports'
           r = json.loads((p / 'release-run.json').read_text())
-          j = json.loads((p / 'release-job.json').read_text())
-          assert r['id'] == 38987093148 and r['head_sha'] == 'ea579142f271e3d9480ab9cbeb4f88d13142f047'
-          assert r['head_branch'] == 'internal-testing' and r['event'] == 'push'
-          assert r['status'] == 'completed' and r['conclusion'] == 'success'
-          assert j['id'] == 117263207210 and j['run_id'] == r['id'] and j['conclusion'] == 'success'
+          page = json.loads((p / 'release-jobs.json').read_text())
+          a = json.loads((p / 'release-artifact.json').read_text())
+          assert r['id'] == 39222881008 and r['run_attempt'] == 1 and r['head_sha'] == base
+          assert r['repository']['id'] == 1289256257 and r['repository']['full_name'] == 'kira-manga/kira-app'
+          assert r['workflow_id'] == 319592317 and r['path'] == '.github/workflows/internal-testing-release.yml'
+          assert r['head_branch'] == 'internal-testing' and r['event'] == 'workflow_dispatch'
+          assert r['status'] == 'completed' and r['conclusion'] == 'failure'
+          expected = {
+              117962103813: ('Validate release request', 'success'),
+              117962144694: ('Shared app tests before either Store upload / Existing shared tests and Android integration checks', 'success'),
+              117965634276: ('Android Internal Testing / Validate, sign, and upload Android Internal testing', 'failure'),
+              117965634278: ('iOS TestFlight / Signed iOS archive and TestFlight upload', 'success'),
+          }
+          assert page['total_count'] == 4 and len(page['jobs']) == 4
+          jobs = {job['id']: job for job in page['jobs']}
+          assert set(jobs) == set(expected), 'Unexpected release jobs'
+          for job_id, job in jobs.items():
+              assert job['run_id'] == r['id'] and job['run_attempt'] == 1 and job['head_sha'] == base
+              assert job['head_branch'] == 'internal-testing' and job['status'] == 'completed'
+              assert (job['name'], job['conclusion']) == expected[job_id]
+              assert all(step['status'] == 'completed' for step in job['steps'])
+              if job_id != 117965634276:
+                  assert all(step['conclusion'] == 'success' for step in job['steps'])
+          def require_step(job_id, name, conclusion='success'):
+              matches = [step for step in jobs[job_id]['steps'] if step['name'] == name]
+              assert len(matches) == 1 and matches[0]['conclusion'] == conclusion, name
+          require_step(117962103813, 'Require the internal-testing branch')
+          require_step(117962144694, 'Run existing shared, persistence, transport and Android tests in one batch')
+          require_step(117962144694, 'Clean disposable build outputs')
           for name in [
               'Validate the signed archive, IPA, entitlements, and dSYM UUIDs',
               'Upload to TestFlight without external distribution or review submission',
               'Query final App Store Connect state',
           ]:
-              matches = [s for s in j['steps'] if s['name'] == name]
-              assert len(matches) == 1 and matches[0]['conclusion'] == 'success', name
+              require_step(117965634278, name)
+          android = jobs[117965634276]
+          failure = 'Validate protected inputs and select the next unused Play version code'
+          assert [step['name'] for step in android['steps'] if step['conclusion'] == 'failure'] == [failure]
+          assert all(step['conclusion'] in {'success', 'failure', 'skipped'} for step in android['steps'])
+          for name in [
+              'Run Android lint, R8, and signed AAB verification',
+              'Upload the signed AAB to Google Play Internal testing',
+              'Verify the exact completed Google Play Internal release',
+          ]:
+              require_step(117965634276, name, 'skipped')
+          require_step(117965634276, 'Remove temporary release credentials and Firebase configuration')
+          require_step(117965634276, 'Clean disposable build outputs')
+          assert a['id'] == 12176742648 and a['name'] == 'kira-ios-1.0.6-1' and a['expired'] is False
+          assert a['size_in_bytes'] == 117164352
+          assert a['digest'] == 'sha256:173f35a5f5cc81449d92d2af3b9ce26060971d0b68a889f11d00c3fa2651caec'
+          ar = a['workflow_run']
+          assert ar['id'] == r['id'] and ar['head_sha'] == base and ar['head_branch'] == 'internal-testing'
+          assert ar['repository_id'] == 1289256257 and ar['head_repository_id'] == 1289256257
           print('Exact existing signed release and Apple upload gates verified; no binary rebuild/upload')
           PY
 
@@ -121,12 +163,12 @@ jobs:
           )
           app = Spaceship::ConnectAPI::App.find('me.manga.kira')
           abort('Wrong App Store Connect application') unless app && app.id.to_s == '6792232678' && app.bundle_id == 'me.manga.kira'
-          builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '1.0.5', build_number: '2',
+          builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '1.0.6', build_number: '1',
             platform: Spaceship::ConnectAPI::Platform::IOS,
             includes: 'app,buildBetaDetail,preReleaseVersion,betaAppReviewSubmission')
-          abort('Expected exactly one existing build 1.0.5 (2)') unless builds.length == 1
+          abort('Expected exactly one existing build 1.0.6 (1)') unless builds.length == 1
           build = builds.first
-          abort('Existing build is not eligible') unless build.version == '2' && build.app_version == '1.0.5' && build.processing_state == 'VALID' && build.expired == false
+          abort('Existing build is not eligible') unless build.version == '1' && build.app_version == '1.0.6' && build.processing_state == 'VALID' && build.expired == false
           groups = app.get_beta_groups
           abort('Existing internal prerequisite group missing; refusing group creation') unless groups.any? { |g| g.is_internal_group == true }
           named = groups.select { |g| g.name == 'External Testing' }
@@ -190,7 +232,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: testflight-existing-1.0.5-2-status
+          name: testflight-existing-1.0.6-1-status
           path: ${{ runner.temp }}/kira-beta-reports
           retention-days: 7
           if-no-files-found: warn
