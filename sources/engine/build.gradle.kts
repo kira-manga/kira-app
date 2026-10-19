@@ -47,8 +47,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":sources:contracts"))
-            // Candidate 0.2.2 requires protected publication and ordinary registry consumer qualification before delivery.
-            implementation("me.manga.kira.source:source-engine:0.2.2")
+            // Candidate 0.2.3 requires protected publication and ordinary registry consumer qualification before delivery.
+            implementation("me.manga.kira.source:source-engine:0.2.3")
             // JSON config parsing + JSON-API response extraction.
             implementation(libs.kotlinx.serialization.json)
             // HTML response extraction (CSS selectors) — KMP, same parser the legacy sources use.
