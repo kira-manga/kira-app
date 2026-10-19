@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  * stub clients to prove routing/mapping) by proving the real config + engine produce correct download
  * pages: page ORDER (CBZ ordering), URL absolutization, and per-page download HEADERS.
  *
- * Two representative sources: Azora (JSON, `page.order`, header-free) and Zazamanga (HTML, static Referer).
+ * Two representative sources: Azora (JSON, `page.order`, header-free) and Zazamanga (HTML, host-scoped Referer).
  */
 class DownloadPageSeamParityTest {
 
@@ -52,14 +52,22 @@ class DownloadPageSeamParityTest {
 
     /** The real registry assembly (mirrors `DefaultSourceRegistryTest.realRegistry`) but with a real
      *  `GenericSourceClient` factory over the canned page fixtures. */
-    private fun provider(): RegistryChapterPageProvider {
+    private fun provider(trustZazaFixtureCdn: Boolean = false): RegistryChapterPageProvider {
         val document =
             when (val parsed = SourceConfigParser.parse(CONFIG_BACKED_SOURCES_JSON)) {
                 is AppResult.Success -> parsed.value
                 is AppResult.Failure -> error("bundled config must parse: ${parsed.error}")
             }
+        // Explicit test-only trust; the shipping bundle must not authorize an unrelated CDN implicitly.
+        val selectedDocument = if (trustZazaFixtureCdn) {
+            document.copy(sources = document.sources.map { source ->
+                if (source.api == "Zazamanga") {
+                    source.copy(trustedHosts = source.trustedHosts + "cdn4.zinmanga1.com")
+                } else source
+            })
+        } else document
         val registry = DefaultSourceRegistry(
-            updateManager = StaticSourceUpdateManager(document),
+            updateManager = StaticSourceUpdateManager(selectedDocument),
             genericClientFactory = { cfg -> GenericSourceClient(cfg, MapFakeHttp(fixtures), NoopHeaderStore()) },
         )
         return RegistryChapterPageProvider(registry)
@@ -87,7 +95,7 @@ class DownloadPageSeamParityTest {
     }
 
     @Test
-    fun zazamanga_download_pages_carry_referer_header() = runTest {
+    fun zazamanga_download_pages_confine_referer_to_declared_hosts() = runTest {
         val pages = provider().pagesOrNull(
             api = "Zazamanga",
             mangaUrl = "https://www.zazamanga.com/manga/x",
@@ -99,8 +107,16 @@ class DownloadPageSeamParityTest {
             listOf("https://cdn4.zinmanga1.com/x/0.webp", "https://cdn4.zinmanga1.com/x/1.webp"),
             pages.map { it.url },
         )
-        // the static Referer is load-bearing — the CDN 403s without it on the download GET
-        assertTrue(pages.all { it.headers["Referer"] == "https://www.zazamanga.com/" })
+        assertTrue(pages.all { it.headers.isEmpty() })
+        val authorized = provider(trustZazaFixtureCdn = true).pagesOrNull(
+            api = "Zazamanga",
+            mangaUrl = "https://www.zazamanga.com/manga/x",
+            mangaLanguage = "(EN)",
+            chapterUrl = zazaChapterUrl,
+        )
+        assertNotNull(authorized)
+        assertEquals(pages.map { it.url }, authorized.map { it.url })
+        assertTrue(authorized.all { it.headers == mapOf("Referer" to "https://www.zazamanga.com/") })
     }
 
     @Test
