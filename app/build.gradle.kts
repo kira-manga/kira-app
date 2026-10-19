@@ -275,6 +275,7 @@ dependencies {
 
     // Tests
     testImplementation(project(":data")) // Same-Room metadata writer in NotificationRoomFixture.
+    testImplementation(project(":sources:engine"))
     testImplementation(libs.junit)
     testImplementation(libs.koin.test)
     testImplementation(libs.robolectric.runner)
