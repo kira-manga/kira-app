@@ -3,12 +3,16 @@ package me.manga.kira.sources.engine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
+import me.manga.kira.core.error.AppError
 import me.manga.kira.core.result.AppResult
+import me.manga.kira.domain.model.Chapter
 import me.manga.kira.domain.model.Manga
 import me.manga.kira.sources.contracts.SourceConfigParser
 import me.manga.kira.sources.contracts.model.SourceConfig
+import me.manga.kira.sources.contracts.model.SourceConfigDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -66,6 +70,39 @@ class GenericSourceClientHtmlGoldenTest {
         assertEquals(2, pages.size)
         assertEquals("https://html.example.com/op/1/1.webp", pages[0].url)
         assertEquals("https://html.example.com/op/1/2.webp", pages[1].url)
+    }
+
+    @Test
+    fun home_only_source_has_no_featured_request_or_failure() = runTest {
+        val source = htmlSource()
+        assertNull(source.endpoints["featured"])
+        val document = SourceConfigDocument(schemaVersion = 1, sources = listOf(source))
+        val validation = DefaultSourceConfigValidator(DefaultStrategyRegistry()).validate(document)
+        assertTrue(validation.isValid, validation.errors.joinToString())
+        val http = FakeHttpExecutor(HTML_RESPONSES)
+        val client = GenericSourceClient(source, http, FakeHeaderStore())
+
+        assertTrue(client.featured(1).valueOrFail().isEmpty())
+        assertTrue(http.requested.isEmpty(), "An omitted optional endpoint must not issue HTTP")
+        assertEquals(listOf("One Piece", "Naruto"), client.home(1).valueOrFail().map { it.title })
+        assertEquals(listOf("https://html.example.com/"), http.requested)
+    }
+
+    @Test
+    fun empty_or_unusable_reader_images_map_to_typed_failure() = runTest {
+        val manga = Manga("example-html", "en", "One Piece", "https://html.example.com/manga/op", "", null, emptyList())
+        val chapter = Chapter("1", "Chapter 1", "https://html.example.com/manga/op/1", null, false, false)
+        val bodies = listOf(
+            "<html><body><p>Age confirmation required</p></body></html>",
+            "<html><body><img class='page' src='javascript:invalid'></body></html>",
+        )
+        for (body in bodies) {
+            val http = FakeHttpExecutor(mapOf(chapter.url to body))
+            val client = GenericSourceClient(htmlSource(), http, FakeHeaderStore())
+            val result = assertIs<AppResult.Failure>(client.pages(manga, chapter).first())
+            assertIs<AppError.Network.Serialization>(result.error)
+            assertEquals(listOf(chapter.url), http.requested)
+        }
     }
 
     @Test

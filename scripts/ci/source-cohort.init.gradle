@@ -8,7 +8,7 @@ import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.tasks.testing.Test
 // Check-only admitted owned-Maven cohort; caller owns acquisition, provenance and cleanup. No version override.
 def group = 'me.manga.kira.source'
-def version = '0.2.1'
+def version = '0.2.7'
 def require = { condition, message ->
     if (!condition) throw new GradleException('Source cohort refused: ' + message)
 }
@@ -276,7 +276,7 @@ gradle.projectsEvaluated {
     def declared = engine.configurations.getByName(main.implementationConfigurationName).dependencies
         .findAll { it.group == group }
     require(declared.size() == 1 && declared[0].name == 'source-engine' && declared[0].version == version,
-        'The actual App resolver must declare source-engine:0.2.1 without testkit injection')
+        'The actual App resolver must declare source-engine:0.2.7 without testkit injection')
     root.project(':composeApp').extensions.getByName('kotlin').sourceSets.getByName(linux ? 'androidHostTest' : 'iosTest').kotlin
         .srcDir(linux ? 'src/qualificationAndroidHostTest/kotlin' : 'src/qualificationIosTest/kotlin')
     bindCompilerWitnesses(engine, kotlin)
