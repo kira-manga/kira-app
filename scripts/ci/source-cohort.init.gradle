@@ -256,6 +256,29 @@ def bindJvmWitnesses = { root ->
     }
 }
 def bindNativeWitness = { root ->
+    def app = root.project(':composeApp')
+    def target = app.extensions.getByName('kotlin').targets.getByName('iosSimulatorArm64')
+    def compilation = target.compilations.getByName('test')
+    def testSets = compilation.allKotlinSourceSets
+    require(testSets.collect { it.name }.toSet() ==
+        ['commonTest', 'nativeTest', 'appleTest', 'iosTest', 'iosSimulatorArm64Test'].toSet() &&
+        Collections.disjoint(testSets, target.compilations.getByName('main').allKotlinSourceSets),
+        'Expected isolated Native test source hierarchy')
+    def relativeSource = 'me/manga/kira/sources/runtime/IosGenericSingleHopTest.kt'
+    def source = app.file('src/qualificationIosTest/kotlin/' + relativeSource)
+    require(source.isFile() && source.toPath() == source.toPath().toRealPath(), 'Canonical Native qualification source required')
+    // --tests filters execution, not the otherwise whole-App Native test compilation/link.
+    testSets.each { it.kotlin.setIncludes([relativeSource]) }
+    def compiler = compilation.compileTaskProvider
+    expectedTasks.add(app.path + ':' + compiler.name)
+    compiler.configure { task ->
+        task.doFirst {
+            require(task.sources.files == [source].toSet(), 'Only the selected Native qualification source may compile')
+            emit('NATIVE_TEST_SOURCE', [task: task.path, path: 'src/qualificationIosTest/kotlin/' + relativeSource,
+                sha256: sha(source)])
+            observedTasks.add(task.path)
+        }
+    }
     def task = root.tasks.getByPath(nativeTest)
     require(task.class.name.startsWith('org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest'), 'Actual Native test task required')
     task.standalone.set(false)
