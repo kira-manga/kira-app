@@ -63,12 +63,12 @@ def certificates(root, mode):
         run([str(keytool), "-importcert", "-noprompt", "-alias", "fixture", "-file", str(root / "ca.pem"),
              "-keystore", str(root / "truststore.p12"), "-storetype", "PKCS12", "-storepass", PASSWORD], root)
 
-def devices(root):
-    return json.loads(run(["/usr/bin/xcrun", "simctl", "list", "devices", "--json"], root))["devices"]
+def devices(root, timeout=30):
+    return json.loads(run(["/usr/bin/xcrun", "simctl", "list", "devices", "--json"], root, timeout=timeout))["devices"]
 
 def simulator(root):
     assert platform.system() == "Darwin" and platform.machine() == "arm64"
-    current = devices(root)
+    current = devices(root, timeout=120)
     choices = [(runtime, device) for runtime, group in current.items()
                if re.fullmatch(r"com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+", runtime)
                for device in group if device.get("isAvailable") and
