@@ -1,5 +1,6 @@
 package me.manga.kira.ui.details
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -52,6 +53,7 @@ internal class DetailsBottomControlsFixture {
 internal fun ComposeUiTest.showBottomControls(
     fixture: DetailsBottomControlsFixture,
     direction: LayoutDirection,
+    contentWindowInsets: WindowInsets = WindowInsets(0, 0, 0, 0),
 ) {
     setContent {
         KiraTheme(darkTheme = false) {
@@ -66,6 +68,7 @@ internal fun ComposeUiTest.showBottomControls(
                     onNavigateToBackupExport = {},
                     onOpenInWebView = { _, _ -> },
                     onShare = { _, _ -> },
+                    contentWindowInsets = contentWindowInsets,
                 )
             }
         }

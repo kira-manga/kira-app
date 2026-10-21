@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -73,6 +76,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -110,6 +114,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -427,6 +432,7 @@ internal fun DetailsScreenContent(
     onShare: (title: String, url: String) -> Unit,
     modifier: Modifier = Modifier,
     onSolveCloudflareChallenge: (url: String, api: String) -> Unit = onOpenInWebView,
+    contentWindowInsets: WindowInsets = ScaffoldDefaults.contentWindowInsets,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // GAP-DET-12: title-copied confirmation. The long-press copy lives down in DetailsHeader
@@ -563,6 +569,7 @@ internal fun DetailsScreenContent(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = contentWindowInsets,
         topBar = {
             DetailsTopBar(
                 // Title fallback chain: fetched details title (authoritative) → in-state Manga
@@ -628,6 +635,17 @@ internal fun DetailsScreenContent(
             }
         },
     ) { padding ->
+        // A scrolling Details page may draw behind the system bottom area. Keep that inset at
+        // the scroll end instead of clipping every chapter above a permanently empty strip.
+        // Selection chrome and non-scrolling loading/error/gated content keep their safe bounds.
+        val scrollsToBottom = state.hasDetails && !state.isAdultGateActive && !state.isInChapterSelectionMode
+        val layoutDirection = LocalLayoutDirection.current
+        val bodyPadding = PaddingValues(
+            start = padding.calculateStartPadding(layoutDirection),
+            top = padding.calculateTopPadding(),
+            end = padding.calculateEndPadding(layoutDirection),
+            bottom = if (scrollsToBottom) 0.dp else padding.calculateBottomPadding(),
+        )
         // Native parity (DetailsContent.kt:116-123 / LibraryMangaScreen.kt:251-259): the whole
         // screen is a Box; the 250dp blurred parallax backdrop is painted FIRST (behind everything,
         // including under the transparent top bar so it shows through). Only the interactive body
@@ -648,7 +666,7 @@ internal fun DetailsScreenContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(bodyPadding)
                     .consumeWindowInsets(padding),
             ) {
             // Capture nullable state props into locals — public-API smart casts across modules
@@ -680,12 +698,13 @@ internal fun DetailsScreenContent(
                 details != null -> DetailsBody(
                     details = details,
                     listState = listState,
-                    resumeFabClearance =
-                        if (resumeChapter != null) {
+                    bottomContentPadding =
+                        (if (scrollsToBottom) padding.calculateBottomPadding() else 0.dp) +
+                        (if (resumeChapter != null) {
                             with(density) { resumeFabHeightPx.toDp() } + spacing.lg
                         } else {
                             0.dp
-                        },
+                        }),
                     chapters = state.displayChapters,
                     // Redesign 2026-06: header CTA target + action — identical to the Resume FAB
                     // (same firstUnreadChapter, same OnChapterClick dispatch). When finished
@@ -1026,7 +1045,7 @@ private fun DetailsHelpDialog(
 private fun DetailsBody(
     details: MangaDetails,
     listState: LazyListState,
-    resumeFabClearance: Dp,
+    bottomContentPadding: Dp,
     chapters: List<Chapter>,
     // Redesign 2026-06: the header's prominent reading CTA target + action — the same resume target
     // (DetailsState.firstUnreadChapter) and click the Resume FAB uses, threaded down to DetailsHeader.
@@ -1087,7 +1106,7 @@ private fun DetailsBody(
                     start = spacing.lg,
                     top = spacing.lg,
                     end = spacing.lg,
-                    bottom = spacing.lg + resumeFabClearance,
+                    bottom = spacing.lg + bottomContentPadding,
                 ),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {

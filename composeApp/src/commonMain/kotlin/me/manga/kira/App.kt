@@ -55,6 +55,7 @@ import me.manga.kira.presentation.common.componants.images.platformNetworkFetche
 import me.manga.kira.domain.repository.PageProgressRepository
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -511,10 +512,11 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean, complaintHost: Complain
         shouldShowBottomBar(
             currentDestination?.hierarchy?.map { it.route } ?: emptySequence(),
         )
-    // Full-bleed immersive routes (the reader) draw the page edge-to-edge under the system bars, so
-    // they get NO root bottom inset (the screen re-applies its own chrome insets). Derived from the
-    // current route so no per-route plumbing is needed — both reader routes contain "ChapterImages".
-    val fullBleed = currentDestination?.route?.contains("ChapterImages") == true
+    // Reader and Details own their bottom insets: reserve safety around their controls/scroll end,
+    // not by shortening the whole viewport above the system navigation area.
+    val fullBleed = currentDestination?.route?.contains("ChapterImages") == true ||
+        currentDestination?.hasRoute<Screen.MangaDetails>() == true ||
+        currentDestination?.hasRoute<Screen.MangaDetailsRework>() == true
 
     // ---- Push-notification deep linking ----
     // A tapped push notification lands a PushDestination in the NotificationRouter (put there by the
@@ -623,8 +625,8 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean, complaintHost: Complain
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        // Nav visible → full-bleed (capsule floats over content). Immersive reader →
-                        // full-bleed (it owns its chrome insets). Other non-tab screens (Details/…) keep
+                        // Tabs, Reader and Details draw full-height and own their chrome insets.
+                        // Other non-tab screens keep
                         // the system-bottom inset. Consume only that applied padding so their own
                         // Scaffolds/bottom bars do not reserve the same system inset a second time.
                         .padding(contentPadding)

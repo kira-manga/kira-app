@@ -1,16 +1,43 @@
 package me.manga.kira.ui.details
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.v2.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class DetailsScreenBottomControlsTest {
+    @Test
+    fun unsavedDetailsUsesFullViewportAndKeepsLastChapterAboveBottomInset() =
+        runSkikoComposeUiTest(size = Size(PHONE_WIDTH_PX, PHONE_HEIGHT_PX), density = Density(TEST_DENSITY)) {
+            val fixture = DetailsBottomControlsFixture()
+            fixture.state.value = fixture.state.value.copy(isInLibrary = false, savedOwner = null)
+            val bottomInset = 34
+            showBottomControls(fixture, LayoutDirection.Ltr, WindowInsets(bottom = bottomInset))
+            awaitIdle()
+
+            val screenBottom = onRoot().fetchSemanticsNode().boundsInRoot.bottom
+            val list = onNode(hasScrollToIndexAction())
+            assertEquals(screenBottom, list.fetchSemanticsNode().boundsInRoot.bottom)
+            list.performScrollToIndex(fixture.finalChapterIndex)
+            awaitIdle()
+            val finalRow = onNode(hasText(fixture.finalChapter.number) and hasAnyAncestor(hasScrollToIndexAction()))
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue(finalRow.height > 0f)
+            assertTrue(finalRow.bottom <= screenBottom - bottomInset, "Scroll-end padding must protect the last chapter")
+        }
+
     @Test
     fun phoneLtrKeepsDeleteAndCancelTouchable() = runCase(Size(PHONE_WIDTH_PX, PHONE_HEIGHT_PX), LayoutDirection.Ltr)
 
