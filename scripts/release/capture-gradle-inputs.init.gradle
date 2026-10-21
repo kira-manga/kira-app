@@ -14,15 +14,24 @@ import org.gradle.api.artifacts.result.UnresolvedDependencyResult
 def require = { condition, message -> if (!condition) throw new GradleException(message) }
 def platform = System.getenv('KIRA_APP61_PLATFORM')
 def phase = System.getenv('KIRA_APP61_PHASE')
+def scope = System.getenv('KIRA_APP61_SCOPE') ?: 'graph'
 def root = new File(System.getenv('KIRA_APP61_ROOT')).canonicalFile
 def task = ':captureReleaseDependencyInputs'
 require(platform in ['linux', 'apple'], 'Explicit input-capture platform is required')
 require(phase in ['acquire', 'consume'], 'Explicit input-capture phase is required')
+require(scope in ['graph', 'lint-models'], 'Only the fixed graph or Android lint-model scope is permitted')
 require(gradle.gradleVersion == '9.6.1', 'This capture is for the selected Gradle 9.6.1')
 require(gradle.startParameter.dependencyVerificationMode.name() == 'STRICT', 'Native strict verification is required')
 require(gradle.startParameter.taskNames == [task], 'Only the fixed dependency-resolution task is permitted')
 require(gradle.startParameter.offline == (phase == 'consume'), 'Only acquisition may access package repositories')
 require(root.isDirectory() && new File(root, 'owner').isFile(), 'An owned capture root is required')
+if (scope == 'lint-models') {
+    require(platform == 'linux' && System.getProperty('os.name') == 'Linux' &&
+        System.getProperty('os.arch') == 'amd64', 'Lint-model intake is only for the shipping Linux Android host')
+    require(gradle.startParameter.writeDependencyVerifications.isEmpty(), 'Lint-model intake never writes verification metadata')
+    require(gradle.startParameter.writeDependencyLocks == (phase == 'acquire'), 'Only lint-model acquisition writes native locks')
+    require(gradle.startParameter.continueOnFailure, 'Collect all fixed model-root failures before failing the batch')
+}
 
 def kmp = [':composeApp', ':core', ':domain', ':data', ':data:local', ':data:remote',
     ':data:download', ':platform', ':presentation', ':ui', ':sources:contracts',
@@ -57,10 +66,18 @@ if (platform == 'linux') {
     configurations[':data:local'] += ['kspKotlinIosArm64ProcessorClasspath', 'kspKotlinIosSimulatorArm64ProcessorClasspath',
         'kspPluginClasspath', 'kspPluginClasspathNonEmbeddable']
 }
+def lintOwners = [':composeApp', ':data', ':data:download', ':data:remote', ':platform']
+if (scope == 'lint-models') {
+    configurations.clear()
+    lintOwners.each { project ->
+        configurations[project] = ['androidHostTestCompileClasspath', 'androidHostTestRuntimeClasspath']
+    }
+}
 
 gradle.beforeProject { project ->
     // Identical native policy to the reviewed App61 source. Gradle, not this
-    // controller, emits version locks and verification XML.
+    // controller, emits native version locks. Only the broad graph acquisition
+    // workflow may additionally request unreviewed verification XML generation.
     project.dependencyLocking {
         lockAllConfigurations()
         lockMode.set(LockMode.STRICT)
@@ -82,6 +99,15 @@ def sha256 = { file ->
 }
 def attributes = { values ->
     values.keySet().sort { it.name }.collectEntries { [(it.name): values.getAttribute(it).toString()] }
+}
+def causes = { failure ->
+    def messages = []
+    Throwable current = failure
+    while (current != null && messages.size() < 12) {
+        messages.add(current.toString())
+        current = current.cause
+    }
+    messages
 }
 def ownerTaskName = 'captureReleaseDependencyProjectInputs'
 def expectedTasks = []
@@ -105,33 +131,92 @@ gradle.projectsEvaluated {
                         !owner.configurations.getByName(it).canBeResolved }]
                 def output = ownerReceipt(owner.path)
                 output.parentFile.mkdirs()
-                output.text = JsonOutput.prettyPrint(JsonOutput.toJson([coverage: coverage, configurations: receipts])) + '\n'
+                def save = {
+                    output.text = JsonOutput.prettyPrint(JsonOutput.toJson([coverage: coverage, configurations: receipts])) + '\n'
+                }
+                save()
                 require(coverage.missing.isEmpty(), 'Named configuration coverage changed: ' + owner.path)
+                if (scope == 'lint-models') {
+                    def names = owner.tasks.names
+                    coverage.registeredLintModels = names.findAll {
+                        it.startsWith('generate') && it.contains('Lint') && it.endsWith('Model')
+                    }.sort()
+                    coverage.realizedModels = []
+                    save()
+                    require(names.contains('generateAndroidHostTestLintModel') == (owner.path in lintOwners),
+                        'Actual HostTest lint-model owner coverage changed: ' + owner.path)
+                    // Device classpaths exist on :platform, but the current source does
+                    // not apply standalone com.android.lint and registers no Device model.
+                    require(!names.contains('generateAndroidDeviceTestLintModel'),
+                        'A newly registered DeviceTest model requires separate scope review')
+                    if (owner.path == ':app') {
+                        require(names.findAll { it.startsWith('generateRelease') && it.contains('Test') &&
+                            it.contains('Lint') && it.endsWith('Model') }.isEmpty(),
+                            'A newly registered app Release test model requires separate scope review')
+                    }
+                    if (owner.path in lintOwners) {
+                        require(owner.dependencyLocking.lockFile.get().asFile.canonicalFile == owner.file('gradle.lockfile').canonicalFile,
+                            'Only the exact Linux native project lock may be extended')
+                        def beforeNames = owner.configurations.collect { it.name }
+                        def model = owner.tasks.named('generateAndroidHostTestLintModel').get()
+                        require(model.class.name.contains('LintModelWriterTask'), 'Unexpected registered lint-model task type')
+                        coverage.realizedModels.add([path: model.path, type: model.class.name, executed: false])
+                        coverage.createdConfigurations = owner.configurations.collect { it.name }.findAll { !(it in beforeNames) }.sort()
+                        save()
+                        require(coverage.createdConfigurations.isEmpty(), 'New lazy model configurations require separate scope review')
+                    }
+                }
                 def resolve = { configuration, buildscript ->
                     require(configuration.canBeResolved, 'Named input is not resolvable: ' + owner.path + ':' + configuration.name)
-                    def graph = configuration.incoming.resolutionResult
-                    def failures = graph.allDependencies.findAll { it instanceof UnresolvedDependencyResult }
-                    require(failures.isEmpty(), 'Unresolved named graph: ' + owner.path + ':' + configuration.name +
-                        ' ' + failures.collect { it.requested.displayName }.join(', '))
-                    def components = graph.allComponents.collect { it.id }.findAll { it instanceof ModuleComponentIdentifier }
-                    require(components.findAll { it.group == 'me.manga.kira.source' }.every { it.version == '0.2.7' },
-                        'A named graph selected another Source Engine cohort')
-                    // Force genuine external artifact consumption, not just a dependency report.
-                    // Excluding project components avoids compile/link/test task execution.
-                    def artifacts = configuration.incoming.artifactView {
-                        componentFilter { identifier -> identifier instanceof ModuleComponentIdentifier }
-                    }.artifacts.artifacts.collect { artifact ->
-                        [component: artifact.id.componentIdentifier.displayName, artifact: artifact.id.displayName,
-                         variant: artifact.variant.displayName, attributes: attributes(artifact.variant.attributes),
-                         file: artifact.file.name, bytes: artifact.file.length(), sha256: sha256(artifact.file)]
-                    }.sort { a, b -> a.component <=> b.component ?: a.artifact <=> b.artifact }
-                    receipts.add([project: owner.path, configuration: configuration.name, buildscript: buildscript,
-                        attributes: attributes(configuration.attributes),
-                        components: components.collect { it.displayName }.sort(), artifacts: artifacts])
+                    def receipt = [project: owner.path, configuration: configuration.name, buildscript: buildscript,
+                        attributes: attributes(configuration.attributes), status: 'RESOLVING']
+                    receipts.add(receipt)
+                    save()
+                    try {
+                        def graph = configuration.incoming.resolutionResult
+                        def failures = graph.allDependencies.findAll { it instanceof UnresolvedDependencyResult }
+                        receipt.unresolved = failures.collect { [requested: it.requested.displayName, failures: causes(it.failure)] }
+                        save()
+                        require(failures.isEmpty(), 'Unresolved named graph: ' + owner.path + ':' + configuration.name +
+                            ' ' + failures.collect { it.requested.displayName }.join(', '))
+                        def components = graph.allComponents.collect { it.id }.findAll { it instanceof ModuleComponentIdentifier }
+                        require(components.findAll { it.group == 'me.manga.kira.source' }.every { it.version == '0.2.7' },
+                            'A named graph selected another Source Engine cohort')
+                        receipt.components = components.collect { it.displayName }.sort()
+                        save()
+                        // Force genuine external artifact consumption, not just a dependency report.
+                        // Excluding project components avoids compile/link/test task execution.
+                        def artifacts = configuration.incoming.artifactView {
+                            componentFilter { identifier -> identifier instanceof ModuleComponentIdentifier }
+                        }.artifacts.artifacts.collect { artifact ->
+                            [component: artifact.id.componentIdentifier.displayName, artifact: artifact.id.displayName,
+                             variant: artifact.variant.displayName, attributes: attributes(artifact.variant.attributes),
+                             file: artifact.file.name, bytes: artifact.file.length(), sha256: sha256(artifact.file)]
+                        }.sort { a, b -> a.component <=> b.component ?: a.artifact <=> b.artifact }
+                        receipt.artifacts = artifacts
+                        receipt.status = 'RESOLVED_EXTERNAL_GRAPH_AND_ARTIFACTS_ONLY'
+                    } catch (Exception failure) {
+                        receipt.status = 'FAILED_NOT_ACCEPTED'
+                        receipt.failures = causes(failure)
+                        save()
+                        throw failure
+                    }
+                    save()
                 }
-                resolve(owner.buildscript.configurations.getByName('classpath'), true)
-                requested.each { name -> resolve(owner.configurations.getByName(name), false) }
-                output.text = JsonOutput.prettyPrint(JsonOutput.toJson([coverage: coverage, configurations: receipts])) + '\n'
+                if (scope == 'lint-models') {
+                    // Plugin/buildscript inputs were already configured under native
+                    // verification. Do not add broad graph roots to this ten-root intake.
+                    def failed = []
+                    requested.each { name ->
+                        try { resolve(owner.configurations.getByName(name), false) }
+                        catch (Exception failure) { failed.add(name) }
+                    }
+                    require(failed.isEmpty(), 'Strict lint-model roots failed: ' + owner.path + ' ' + failed + '; original causes retained in receipts')
+                } else {
+                    resolve(owner.buildscript.configurations.getByName('classpath'), true)
+                    requested.each { name -> resolve(owner.configurations.getByName(name), false) }
+                }
+                save()
             }
         }
     }
@@ -148,7 +233,7 @@ gradle.projectsEvaluated {
             new File(root, 'evidence/' + phase + '-configuration-coverage.json').text =
                 JsonOutput.prettyPrint(JsonOutput.toJson(coverage)) + '\n'
             new File(root, 'evidence/' + phase + '-resolution.json').text = JsonOutput.prettyPrint(JsonOutput.toJson([
-                status: 'UNREVIEWED_CANDIDATE', platform: platform, phase: phase, task: task,
+                status: 'UNREVIEWED_CANDIDATE', platform: platform, phase: phase, scope: scope, task: task,
                 configurations: receipts, qualification: 'external graph/artifact resolution; no compilation, archive or signing'
             ])) + '\n'
             logger.lifecycle('Candidate dependency resolution completed: ' + receipts.size() + ' named configurations; NOT accepted metadata')
