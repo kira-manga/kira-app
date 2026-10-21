@@ -197,6 +197,17 @@ class SourceBootstrapTests(unittest.TestCase):
             [("sample/link", "symlink", "target"), ("sample/link/child", "file", "bad")],
             [("sample/a", "symlink", "b"), ("sample/b", "symlink", "a")],
             [("sample/link", "hardlink", "../escape")],
+            [("sample/a", "symlink", "a")],
+            [("sample/a", "symlink", "b"), ("sample/b", "symlink", "missing")],
+            [("sample/a", "symlink", "b"), ("sample/b", "symlink", "../../escape")],
+            [("sample/real/file", "file", "safe"), ("sample/alias", "symlink", "real"),
+             ("sample/link", "symlink", "alias/file")],
+            [("sample/file", "file", "safe"), ("sample/link", "symlink", "file"),
+             ("sample/hard", "hardlink", "sample/link")],
+            [("sample/file", "file", "safe"), ("sample/hard", "hardlink", "sample/file"),
+             ("sample/link", "symlink", "hard")],
+            [("sample/file", "file", "safe"), ("sample/hard", "hardlink", "sample/file"),
+             ("sample/other", "hardlink", "sample/hard")],
         ]
         for index, entries in enumerate(cases):
             with self.subTest(index=index):
@@ -206,7 +217,7 @@ class SourceBootstrapTests(unittest.TestCase):
                     libffi.extract_verified(path, pin, output)
                 self.assertFalse(output.exists())
 
-    def test_verified_extraction_allows_only_direct_internal_links(self):
+    def test_verified_extraction_preserves_direct_links_and_copies_hardlinks(self):
         path, pin = self.archive("good", [("sample/dir/target", "file", "verified"),
                                           ("sample/link", "symlink", "dir/target"),
                                           ("sample/hard", "hardlink", "sample/dir/target")])
@@ -219,6 +230,45 @@ class SourceBootstrapTests(unittest.TestCase):
         with self.assertRaises(libffi.BootstrapError):
             libffi.extract_verified(path, pin, self.temp / "source", source=True)
         self.assertFalse((self.temp / "source").exists())
+
+    def test_verified_extraction_preserves_llvm_internal_symlink_chains(self):
+        # Exact four link names/targets/order from the pinned LLVM essentials-97 archive;
+        # executable payloads are replaced with tiny inert text and are never executed.
+        path, pin = self.archive("llvm-links", [
+            ("sample/bin", "directory", ""),
+            ("sample/bin/clang", "symlink", "clang-21"),
+            ("sample/bin/clang++", "symlink", "clang"),
+            ("sample/bin/clang-21", "file", "inert clang"),
+            ("sample/bin/clang-cache", "symlink", "clang"),
+            ("sample/bin/ld.lld", "symlink", "lld"),
+            ("sample/bin/lld", "file", "inert lld"),
+        ])
+        home = libffi.extract_verified(path, pin, self.temp / "llvm-links")
+        for name, immediate, content in (("clang", "clang-21", "inert clang"),
+                                          ("clang++", "clang", "inert clang"),
+                                          ("clang-cache", "clang", "inert clang"),
+                                          ("ld.lld", "lld", "inert lld")):
+            link = home / "bin" / name
+            self.assertEqual(os.readlink(link), immediate)
+            self.assertEqual(link.read_text(), content)
+        (home / "bin/clang-21").chmod(0o700)
+        libffi.llvm_tree_hash(home)  # Complete installed-tree validation accepts the internal chains.
+
+    def test_archive_symlink_chain_depth_is_bounded_before_writes(self):
+        for count in (32, 33):
+            entries = [("sample/terminal", "file", "verified")]
+            entries += [(f"sample/link-{index}", "symlink",
+                         f"link-{index + 1}" if index + 1 < count else "terminal")
+                        for index in range(count)]
+            path, pin = self.archive(f"chain-{count}", entries)
+            output = self.temp / f"chain-{count}"
+            if count == 32:
+                home = libffi.extract_verified(path, pin, output)
+                self.assertEqual(os.readlink(home / "link-0"), "link-1")
+            else:
+                with self.assertRaisesRegex(libffi.BootstrapError, "excessive archive symlink chain"):
+                    libffi.extract_verified(path, pin, output)
+                self.assertFalse(output.exists())
 
     def test_profiles_are_exact_local_edits_with_offline_policy_and_no_extra_candidates(self):
         original = self.upstream_config().replace(b"default alt", b"default \\\n alt")

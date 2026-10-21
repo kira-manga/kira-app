@@ -805,6 +805,43 @@ class ToolchainInputsTest < Minitest::Test
     end
   end
 
+  def test_qualification_checks_active_bundler_version_not_cli_presentation
+    workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
+    script = workflow.fetch("jobs").fetch("qualify").fetch("steps").find do |step|
+      step["name"] == "Preserve actual runtime identities and authenticated archive receipts"
+    end.fetch("run")
+    commands = script.lines.grep(/^bundle /)
+    assert_equal 2, commands.length
+    [["4.0.16", "4.0.16"], ["Bundler version 4.0.16", "4.0.16"],
+      ["4.0.16", "4.0.15"], ["4.0.16", "4.0.17"], ["4.0.16", "4.0.16.pre"]].each do |cli, version|
+      Dir.mktmpdir("kira-bundler-identity-") do |root|
+        FileUtils.mkdir_p(File.join(root, "evidence"))
+        # Execute the actual workflow probe with synthetic Bundler inputs, not installed gems.
+        File.write(File.join(root, "bundler.rb"), 'module Bundler; VERSION = ENV.fetch("FIXTURE_BUNDLER_VERSION"); end')
+        executable(File.join(root, "bundle"), <<~'SH')
+          #!/bin/sh
+          if [ "$1" = "--version" ]; then printf '%s\n' "$FIXTURE_BUNDLER_CLI"; exit 0; fi
+          [ "$1" = "exec" ] && [ "$2" = "ruby" ] || exit 91
+          shift 2
+          exec "$FIXTURE_RUBY" -I"$KIRA_APP61_ROOT" "$@"
+        SH
+        environment = { "PATH" => "#{root}:#{ENV.fetch('PATH')}", "KIRA_APP61_ROOT" => root,
+          "FIXTURE_BUNDLER_VERSION" => version, "FIXTURE_BUNDLER_CLI" => cli, "FIXTURE_RUBY" => RbConfig.ruby }
+        result = Open3.capture3(environment, "/bin/bash", "-e", "-o", "pipefail", "-c",
+          commands.join + 'printf "reached\n" > "$KIRA_APP61_ROOT/evidence/after-bundler-check"')
+        assert_equal "#{cli}\n", File.read(File.join(root, "evidence/bundler.txt"))
+        if version == "4.0.16"
+          assert result.last.success?, result[1]
+          assert_equal "4.0.16\n", File.read(File.join(root, "evidence/bundler-version.txt"))
+          assert File.exist?(File.join(root, "evidence/after-bundler-check"))
+        else
+          assert_rejected(result, "Wrong Bundler runtime: #{version}")
+          refute File.exist?(File.join(root, "evidence/after-bundler-check"))
+        end
+      end
+    end
+  end
+
   def test_implicit_parent_locks_do_not_invent_a_source_build_script
     with_checkout do |root|
       refute File.exist?(File.join(root, "sources/build.gradle.kts"))

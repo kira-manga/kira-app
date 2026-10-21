@@ -112,7 +112,7 @@ jobs:
           java -version > "$KIRA_APP61_ROOT/evidence/java.txt" 2>&1
           ruby -e 'abort "Wrong Ruby runtime" unless RUBY_VERSION == "3.3.12"; puts RUBY_DESCRIPTION' > "$KIRA_APP61_ROOT/evidence/ruby.txt"
           bundle --version > "$KIRA_APP61_ROOT/evidence/bundler.txt"
-          [[ "$(cat "$KIRA_APP61_ROOT/evidence/bundler.txt")" == 'Bundler version 4.0.16' ]]
+          bundle exec ruby -rbundler -e 'abort "Wrong Bundler runtime: #{Bundler::VERSION}" unless Bundler::VERSION == "4.0.16"; puts Bundler::VERSION' > "$KIRA_APP61_ROOT/evidence/bundler-version.txt"
           cp "$KIRA_VERIFIED_JAVA_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/java-archive-receipt.json"
           cp "$KIRA_VERIFIED_RUBY_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/ruby-archive-receipt.json"
 

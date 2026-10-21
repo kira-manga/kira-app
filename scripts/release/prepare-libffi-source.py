@@ -246,10 +246,18 @@ def extract_verified(path, pin, destination, *, source=False):
                   not any(ord(char) < 32 or char in "\\:" for char in link), "unsafe archive link")
             target = posixpath.normpath(posixpath.join(posixpath.dirname(name), link) if member.issym() else link)
             target = archive_name(target, top)
-            # Direct internal links only; no cycles, chains, absent targets, or link ancestors.
-            check(target in directories or (target in members and members[target].isreg()), "unsafe archive link target")
-            check(member.issym() or target not in directories, "hard link to a directory")
             links[name] = target
+        for name, target in links.items():
+            # LLVM's clang++/clang-cache -> clang -> clang-21 aliases are internal.
+            # Validate the complete bounded chain before writing, retaining its immediate target.
+            seen = {name}
+            while target in links:
+                check(members[name].issym() and members[target].issym(), "archive link chain includes a hard link")
+                check(target not in seen and len(seen) < 32, "cyclic or excessive archive symlink chain")
+                seen.add(target)
+                target = links[target]
+            check(target in directories or (target in members and members[target].isreg()), "unsafe archive link target")
+            check(members[name].issym() or target not in directories, "hard link to a directory")
         destination.mkdir(mode=0o700)
         for name in sorted(directories, key=lambda item: (item.count("/"), item)):
             (destination / name).mkdir(mode=0o700)
