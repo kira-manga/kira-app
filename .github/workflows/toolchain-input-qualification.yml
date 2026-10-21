@@ -1,10 +1,6 @@
 name: App61 accepted inputs (unsigned qualification, no Store)
 
 on:
-  # Register this bounded gate from the reviewed issue branch, never a release caller.
-  push:
-    branches: [remediation/app-61-resume-20261021]
-    paths: [.github/workflows/toolchain-input-qualification.yml, scripts/release/install-toolchain-inputs.py, app/src/release/AndroidManifest.xml]
   workflow_dispatch:
     inputs:
       platform:
@@ -20,12 +16,12 @@ permissions:
 
 jobs:
   qualify:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'apple-runtime' }}
+    if: ${{ inputs.platform != 'apple-runtime' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        platform: ${{ fromJSON(github.event_name == 'push' && '["linux"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
+        platform: ${{ fromJSON(inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
     runs-on: ${{ matrix.platform == 'apple' && 'macos-26' || 'ubuntu-24.04' }}
     concurrency:
       group: kira-app61-input-qualification-${{ matrix.platform }}
@@ -261,7 +257,7 @@ jobs:
       - name: Record the unsigned build output and unchanged accepted input files
         run: |
           set -euo pipefail
-          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+          env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
           git diff --exit-code
           python3 - <<'PY'
           import hashlib, json, os, pathlib
@@ -336,10 +332,7 @@ jobs:
         if: ${{ always() && (env.KIRA_VERIFIED_JAVA_AREA == '' || steps.stop-owned-gradle.outcome == 'success') }}
         run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup
 
-  # This follow-up isolates the changed Ruby/Bundler intake; full Apple selectors
-  # remain available for separate qualification without repeating them on push.
-  # Ruby/Bundler admission passed in run39578012065; keep its targeted manual option
-  # without repeating it for subsequent Android lock-only corrections.
+  # Independent Ruby/Bundler-only qualification, without Native or Gradle work.
   apple-runtime:
     if: ${{ inputs.platform == 'apple-runtime' }}
     runs-on: macos-26

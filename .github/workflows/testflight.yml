@@ -123,7 +123,7 @@ jobs:
       - name: Resolve the reviewed SwiftPM lock before protected inputs
         run: |
           set -euo pipefail
-          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --restore-swiftpm
+          env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --restore-swiftpm
           xcodebuild -resolvePackageDependencies \
             -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
@@ -131,7 +131,7 @@ jobs:
             -packageCachePath "$RUNNER_TEMP/kira-swiftpm-cache" \
             -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+          env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
 
       - name: Build verified libffi source and select the private Kotlin distribution
         run: python3 -B scripts/release/prepare-libffi-source.py prepare
@@ -228,7 +228,7 @@ jobs:
           # system crypto provider but rejected by Ruby 3.3's OpenSSL 3 build.
           # Keep the password file-based and use the system provider only for
           # this extraction step so the password never appears in argv.
-          /usr/bin/ruby release/ios/extract_signing_identity.rb
+          env -u GEM_HOME -u GEM_PATH /usr/bin/ruby release/ios/extract_signing_identity.rb
           ruby release/ios/validate_signing_assets.rb
 
           security create-keychain -p "" "$KIRA_KEYCHAIN_PATH" >/dev/null
@@ -280,7 +280,7 @@ jobs:
           CRASHLYTICS_DSYM_UPLOAD_DEFERRED: "1"
         run: |
           set +x
-          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+          env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
           python3 -B scripts/release/prepare-libffi-source.py verify
           trap './gradlew --stop' EXIT
           log="$RUNNER_TEMP/xcode-archive.log"
@@ -290,7 +290,7 @@ jobs:
           fi
           ./gradlew --stop
           python3 -B scripts/release/prepare-libffi-source.py verify
-          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+          env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
           echo "Signed App Store archive created; Crashlytics upload is the next mandatory gate"
 
       - name: Verify the Xcode-generated source-catalog version

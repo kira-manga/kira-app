@@ -33,7 +33,7 @@ class ToolchainInputVerifier
   GENERATED_SWIFTPM_LOCK = "iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved".freeze
   SWIFTPM_PREFLIGHT_COMMAND = <<~'SH'.strip.freeze
     set -euo pipefail
-    /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --restore-swiftpm
+    env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --restore-swiftpm
     xcodebuild -resolvePackageDependencies \
       -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
       -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
@@ -41,11 +41,11 @@ class ToolchainInputVerifier
       -packageCachePath "$RUNNER_TEMP/kira-swiftpm-cache" \
       -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution -skipPackageUpdates \
       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-    /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+    env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
   SH
   LOCKED_ARCHIVE_COMMAND = <<~'SH'.strip.freeze
     set +x
-    /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+    env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
     python3 -B scripts/release/prepare-libffi-source.py verify
     trap './gradlew --stop' EXIT
     log="$RUNNER_TEMP/xcode-archive.log"
@@ -55,7 +55,7 @@ class ToolchainInputVerifier
     fi
     ./gradlew --stop
     python3 -B scripts/release/prepare-libffi-source.py verify
-    /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
+    env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm
     echo "Signed App Store archive created; Crashlytics upload is the next mandatory gate"
   SH
   # Native Gradle owns graph resolution. These source guards bind only reviewed inputs and order;

@@ -332,7 +332,7 @@ class ToolchainInputsTest < Minitest::Test
           when :archive_update then archive["run"].sub!("-disableAutomaticPackageResolution", "")
           when :archive_path then archive["run"].sub!("$RUNNER_TEMP/DerivedData/SourcePackages", "$RUNNER_TEMP/other-packages")
           when :missing_archive_check
-            archive["run"].sub!("/usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm\n", "")
+            archive["run"].sub!("env -u GEM_HOME -u GEM_PATH /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb --check-swiftpm\n", "")
           when :regenerate
             steps << steps.find { |step| step["name"] == "Generate the Xcode project" }.dup
           end
@@ -843,15 +843,14 @@ class ToolchainInputsTest < Minitest::Test
     refute_includes steps.map { |step| step["run"].to_s }.join, ":captureReleaseDependencyInputs"
   end
 
-  def test_qualification_push_runs_only_linux_build_and_keeps_manual_apple_ruby_runtime
+  def test_qualification_is_manual_only_with_full_platform_and_apple_ruby_selectors
     workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
     events = workflow.fetch("on") { workflow.fetch(true) }
-    assert_equal ["remediation/app-61-resume-20261021"], events.fetch("push").fetch("branches")
-    assert_equal [".github/workflows/toolchain-input-qualification.yml", "scripts/release/install-toolchain-inputs.py", "app/src/release/AndroidManifest.xml"], events.fetch("push").fetch("paths")
+    assert_equal ["workflow_dispatch"], events.keys
     assert_equal %w[linux apple both apple-runtime], events.fetch("workflow_dispatch").fetch("inputs").fetch("platform").fetch("options")
     full = workflow.fetch("jobs").fetch("qualify")
-    assert_equal "${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'apple-runtime' }}", full.fetch("if")
-    assert_equal "${{ fromJSON(github.event_name == 'push' && '[\"linux\"]' || inputs.platform == 'both' && '[\"linux\",\"apple\"]' || inputs.platform == 'apple' && '[\"apple\"]' || '[\"linux\"]') }}",
+    assert_equal "${{ inputs.platform != 'apple-runtime' }}", full.fetch("if")
+    assert_equal "${{ fromJSON(inputs.platform == 'both' && '[\"linux\",\"apple\"]' || inputs.platform == 'apple' && '[\"apple\"]' || '[\"linux\"]') }}",
       full.fetch("strategy").fetch("matrix").fetch("platform")
 
     runtime = workflow.fetch("jobs").fetch("apple-runtime")
@@ -881,6 +880,68 @@ class ToolchainInputsTest < Minitest::Test
     assert_includes commands, '"$KIRA_VERIFIED_RUBY_AREA/owned.json"'
     assert_equal "/usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup", steps.last.fetch("run")
     assert_equal "${{ always() }}", steps.last.fetch("if")
+  end
+
+  def test_system_ruby_postcheck_isolates_gem_paths_and_still_rejects_changed_inputs_and_tree
+    skip "Linux system Ruby gem-discovery regression" unless RUBY_PLATFORM.include?("linux")
+
+    isolated = "env -u GEM_HOME -u GEM_PATH /usr/bin/ruby"
+    workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
+    command = workflow.fetch("jobs").fetch("qualify").fetch("steps").find { |step|
+      step["name"] == "Record the unsigned build output and unchanged accepted input files"
+    }.fetch("run")
+    assert_equal "#{isolated} scripts/release/verify-toolchain-inputs.rb\n", command.lines.fetch(1)
+    shipping = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/testflight.yml")), aliases: false)
+    steps = shipping.fetch("jobs").fetch("build-and-upload").fetch("steps")
+    installer = steps.index { |step| step["run"] == "/usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py ruby" }
+    late_calls = steps.drop(installer + 1).flat_map { |step| step["run"].to_s.lines }.grep(%r{/usr/bin/ruby})
+    assert_equal 5, late_calls.length # Four SwiftPM guards and the intentional system-OpenSSL extractor.
+    assert late_calls.all? { |line| line.start_with?("#{isolated} ") }
+
+    with_checkout(graph_fixture: false) do |root|
+      gem_home = File.join(root, "owned-ruby-gems")
+      evidence = File.join(root, "runtime", "evidence")
+      FileUtils.mkdir_p([gem_home, evidence])
+      environment = { "GEM_HOME" => gem_home, "GEM_PATH" => gem_home, "BUNDLER_VERSION" => "4.0.16",
+        "KIRA_APP61_ROOT" => File.dirname(evidence), "KIRA_APP61_PLATFORM" => "linux", "GITHUB_SHA" => "fixture" }
+      # No fake Ruby/REXML: reproduce the hosted loader failure with the actual Linux system Ruby.
+      original = Open3.capture3(environment, "/usr/bin/ruby", "scripts/release/verify-toolchain-inputs.rb", chdir: root)
+      assert_rejected(original, "cannot load such file -- rexml/document")
+      assert_includes original[1], "LoadError"
+
+      tracked = File.join(root, "fixture-tracked.txt")
+      File.write(tracked, "unchanged tracked fixture\n")
+      [["git", "init", "--quiet"], ["git", "add", "--all"]].each do |argv|
+        result = Open3.capture3(*argv, chdir: root)
+        assert result.last.success?, result[1]
+      end
+      # Only the reporter is exercised; this synthetic output is not an Android build or valid AAB.
+      output = File.join(root, "app/build/outputs/bundle/release/app-release.aab")
+      FileUtils.mkdir_p(File.dirname(output))
+      File.write(output, "synthetic reporter fixture, not an AAB\n")
+      receipt = File.join(evidence, "unsigned-build.json")
+      probe = command + "\nprintf '%s\\n' \"$GEM_HOME\" \"$GEM_PATH\" > \"$KIRA_APP61_ROOT/evidence/inherited-gem-paths.txt\"\n"
+      result = Open3.capture3(environment, "/bin/bash", "-c", probe, chdir: root)
+      assert result.last.success?, result[1]
+      assert_includes result[0], "pre-credential ordering checks passed"
+      assert_equal Digest::SHA256.file(output).hexdigest, JSON.parse(File.read(receipt)).fetch("sha256")
+      assert_equal "#{gem_home}\n#{gem_home}\n", File.read(File.join(evidence, "inherited-gem-paths.txt"))
+      File.delete(receipt)
+
+      metadata = File.join(root, "gradle/verification-metadata.xml")
+      original_metadata = File.binread(metadata)
+      File.binwrite(metadata, original_metadata + "\n")
+      assert_rejected(Open3.capture3(environment, "/bin/bash", "-c", command, chdir: root), "Gradle input digest mismatch")
+      refute File.exist?(receipt)
+      File.binwrite(metadata, original_metadata)
+
+      File.write(tracked, "changed tracked fixture\n")
+      result = Open3.capture3(environment, "/bin/bash", "-c", command, chdir: root)
+      refute result.last.success?, result[0]
+      assert_includes result[0], "pre-credential ordering checks passed"
+      assert_includes result[0], "diff --git a/fixture-tracked.txt b/fixture-tracked.txt"
+      refute File.exist?(receipt)
+    end
   end
 
   def test_qualification_checks_active_bundler_version_not_cli_presentation
