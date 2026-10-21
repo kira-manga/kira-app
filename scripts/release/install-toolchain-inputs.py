@@ -263,7 +263,7 @@ def install_bundler(prefix, area, pin):
     environment = {**bootstrap_environment(), **values, "HOME": str(area)}
     environment["PATH"] = str(prefix / "bin") + ":" + environment["PATH"]
     ruby = str(prefix / "bin/ruby")
-    subprocess.run([ruby, str(prefix / "bin/gem"), "--norc", "install", "--local", "--ignore-dependencies",
+    subprocess.run([ruby, str(prefix / "bin/gem"), "install", "--norc", "--local", "--ignore-dependencies",
         "--no-document", "--no-user-install", "--install-dir", str(gem_home), "--bindir", str(gem_home / "bin"),
         str(package)], check=True, timeout=60, env=environment)
     inventory = tree_snapshot(gem_home)

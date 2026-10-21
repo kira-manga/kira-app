@@ -352,7 +352,7 @@ class RuntimeInputsTest(unittest.TestCase):
         area = Path(self.values()["KIRA_VERIFIED_RUBY_AREA"])
         gem_home = area / "gems"
         command, options = executed.call_args_list[0].args[0], executed.call_args_list[0].kwargs
-        self.assertEqual([str(self.ruby_prefix / "bin/ruby"), str(self.ruby_prefix / "bin/gem"), "--norc", "install",
+        self.assertEqual([str(self.ruby_prefix / "bin/ruby"), str(self.ruby_prefix / "bin/gem"), "install", "--norc",
             "--local", "--ignore-dependencies", "--no-document", "--no-user-install", "--install-dir", str(gem_home),
             "--bindir", str(gem_home / "bin"), str(area / "bundler.gem")], command)
         environment = {**runtime.bootstrap_environment(), "HOME": str(area), "GEM_HOME": str(gem_home), "GEM_PATH": str(gem_home),
@@ -371,6 +371,36 @@ class RuntimeInputsTest(unittest.TestCase):
         self.assertEqual("4.0.16", self.values()["BUNDLER_VERSION"])
         self.assertEqual("", self.path_file.read_text())  # setup-ruby owns the authenticated prefix/bin PATH.
         self.assertFalse((area / "bundler.gem").exists())
+        self.cleanup("ruby")
+
+    def test_bundler_real_rubygems_parser_accepts_command_options_and_ignores_rc(self):
+        pin = self.archive("x64", [("bin/ruby", b"fixture-ruby")])
+        installed = self.install("ruby", pin)
+        call = installed.call_args_list[0]
+        arguments, environment = call.args[0][2:], call.kwargs["env"]
+        (Path(environment["HOME"]) / ".gemrc").write_text("fixture_rc_sentinel: unreviewed\n")
+        # Real configuration, command dispatch and option parsing. RubyGems' supported
+        # test callback replaces only final installation: no gem or network is touched.
+        parser = '''
+require "rubygems/gem_runner"
+Gem::CommandManager.instance["install"].when_invoked do |options|
+  abort "gemrc options were applied" if Gem.configuration["fixture_rc_sentinel"]
+  abort "not local-only" unless options[:domain] == :local && options[:ignore_dependencies]
+  puts "REAL_PARSER_PASS #{Gem::VERSION}"
+end
+Gem::GemRunner.new.run(ARGV)
+'''
+        cases = [(arguments, "REAL_PARSER_PASS"),
+                 (["--norc", "install", *arguments[2:]], "Invalid option: --norc"),
+                 ([arg for arg in arguments if arg != "--norc"], "gemrc options were applied")]
+        before = runtime.tree_snapshot(Path(environment["GEM_HOME"]))
+        for args, expected in cases:
+            with self.subTest(args=args):
+                result = subprocess.run(["/usr/bin/ruby", "-e", parser, "--", *args], env=environment,
+                    cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20, text=True)
+                self.assertEqual(0 if expected == "REAL_PARSER_PASS" else 1, result.returncode, result.stdout)
+                self.assertIn(expected, result.stdout)
+        self.assertEqual(before, runtime.tree_snapshot(Path(environment["GEM_HOME"])))
         self.cleanup("ruby")
 
     def test_bad_or_missing_bundler_pin_never_executes_ruby_or_changes_a_borrowed_prefix(self):

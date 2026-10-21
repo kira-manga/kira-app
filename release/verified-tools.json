@@ -88,7 +88,7 @@
       },
       "consumer_files": {
         ".github/workflows/source-runtime-checks.yml": "8eb134cf7da5eafd828124252831a4a1e3ffc0b11d4a06be743426c9bc0aacd0",
-        ".github/workflows/toolchain-input-qualification.yml": "b172814e7f7b4615e2fbe7b8ee213098f5402b1545cea4a750c40662370880c4",
+        ".github/workflows/toolchain-input-qualification.yml": "78f3584211bd61996f865208c4074e37bccd03794ff778f03a126c031a819b1b",
         "fastlane/Fastfile": "9a4cfbe735230404d55dbfe8b5a821a398e063fb719bd08ccc5f124016f9cab4",
         "iosApp/project.yml": "6332d5a1de3fad966d8e74ea04e081e1f0d1c4ae0475144b033d448d60e4ae95",
         "scripts/release/check-source-runtime-ios.py": "4d9a12a25cdc24aad216c931ced7fa048894ad7a5ae95c716a9a91c8edf32b73"
@@ -133,7 +133,7 @@
     }
   },
   "runtime_archives": {
-    "installer_sha256": "b15d32ffed52a5c4a585d3719165149b6ff8d8f5b780b20d36515e3e78b38154",
+    "installer_sha256": "60c009791b75e3e33f87a6e304c77859d547a1c67dbeda45fd0dd9ea2bcf3b65",
     "java": {
       "linux-x64": {
         "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
