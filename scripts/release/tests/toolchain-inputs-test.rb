@@ -847,7 +847,7 @@ class ToolchainInputsTest < Minitest::Test
     workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
     events = workflow.fetch("on") { workflow.fetch(true) }
     assert_equal ["remediation/app-61-resume-20261021"], events.fetch("push").fetch("branches")
-    assert_equal [".github/workflows/toolchain-input-qualification.yml", "scripts/release/install-toolchain-inputs.py"], events.fetch("push").fetch("paths")
+    assert_equal [".github/workflows/toolchain-input-qualification.yml", "scripts/release/install-toolchain-inputs.py", "app/src/release/AndroidManifest.xml"], events.fetch("push").fetch("paths")
     assert_equal %w[linux apple both apple-runtime], events.fetch("workflow_dispatch").fetch("inputs").fetch("platform").fetch("options")
     full = workflow.fetch("jobs").fetch("qualify")
     assert_equal "${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'apple-runtime' }}", full.fetch("if")

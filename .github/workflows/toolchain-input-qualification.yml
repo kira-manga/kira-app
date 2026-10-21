@@ -4,7 +4,7 @@ on:
   # Register this bounded gate from the reviewed issue branch, never a release caller.
   push:
     branches: [remediation/app-61-resume-20261021]
-    paths: [.github/workflows/toolchain-input-qualification.yml, scripts/release/install-toolchain-inputs.py]
+    paths: [.github/workflows/toolchain-input-qualification.yml, scripts/release/install-toolchain-inputs.py, app/src/release/AndroidManifest.xml]
   workflow_dispatch:
     inputs:
       platform:
