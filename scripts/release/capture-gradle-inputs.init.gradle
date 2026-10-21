@@ -1,4 +1,5 @@
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.security.MessageDigest
@@ -82,52 +83,70 @@ def sha256 = { file ->
 def attributes = { values ->
     values.keySet().sort { it.name }.collectEntries { [(it.name): values.getAttribute(it).toString()] }
 }
+def ownerTaskName = 'captureReleaseDependencyProjectInputs'
+def expectedTasks = []
 gradle.projectsEvaluated {
+    // :sources is an implicit Gradle parent, with no invented build.gradle.kts input.
+    def owners = gradle.rootProject.allprojects.sort { it.path }
+    def ownerPaths = owners.collect { it.path }
+    require(ownerPaths == (kmp + [':', ':app', ':desktopApp', ':sources']).sort(), 'Unexpected capture project set')
+    def ownerDirectory = { projectPath -> projectPath == ':' ? 'root' : projectPath.substring(1).replace(':', '/') }
+    def ownerReceipt = { projectPath -> new File(root, 'evidence/' + phase + '-projects/' + ownerDirectory(projectPath) + '/resolution.json') }
+    def ownerTasks = owners.collect { owner ->
+        def requested = configurations[owner.path] ?: []
+        owner.tasks.register(ownerTaskName) {
+            doLast {
+                // Gradle 9 requires resolution under the owning project's exclusive lock.
+                // A root task must never resolve another project's configurations.
+                def receipts = []
+                def coverage = [project: owner.path, requested: requested,
+                    available: owner.configurations.findAll { it.canBeResolved }.collect { it.name }.sort(),
+                    missing: requested.findAll { owner.configurations.findByName(it) == null ||
+                        !owner.configurations.getByName(it).canBeResolved }]
+                def output = ownerReceipt(owner.path)
+                output.parentFile.mkdirs()
+                output.text = JsonOutput.prettyPrint(JsonOutput.toJson([coverage: coverage, configurations: receipts])) + '\n'
+                require(coverage.missing.isEmpty(), 'Named configuration coverage changed: ' + owner.path)
+                def resolve = { configuration, buildscript ->
+                    require(configuration.canBeResolved, 'Named input is not resolvable: ' + owner.path + ':' + configuration.name)
+                    def graph = configuration.incoming.resolutionResult
+                    def failures = graph.allDependencies.findAll { it instanceof UnresolvedDependencyResult }
+                    require(failures.isEmpty(), 'Unresolved named graph: ' + owner.path + ':' + configuration.name +
+                        ' ' + failures.collect { it.requested.displayName }.join(', '))
+                    def components = graph.allComponents.collect { it.id }.findAll { it instanceof ModuleComponentIdentifier }
+                    require(components.findAll { it.group == 'me.manga.kira.source' }.every { it.version == '0.2.7' },
+                        'A named graph selected another Source Engine cohort')
+                    // Force genuine external artifact consumption, not just a dependency report.
+                    // Excluding project components avoids compile/link/test task execution.
+                    def artifacts = configuration.incoming.artifactView {
+                        componentFilter { identifier -> identifier instanceof ModuleComponentIdentifier }
+                    }.artifacts.artifacts.collect { artifact ->
+                        [component: artifact.id.componentIdentifier.displayName, artifact: artifact.id.displayName,
+                         variant: artifact.variant.displayName, attributes: attributes(artifact.variant.attributes),
+                         file: artifact.file.name, bytes: artifact.file.length(), sha256: sha256(artifact.file)]
+                    }.sort { a, b -> a.component <=> b.component ?: a.artifact <=> b.artifact }
+                    receipts.add([project: owner.path, configuration: configuration.name, buildscript: buildscript,
+                        attributes: attributes(configuration.attributes),
+                        components: components.collect { it.displayName }.sort(), artifacts: artifacts])
+                }
+                resolve(owner.buildscript.configurations.getByName('classpath'), true)
+                requested.each { name -> resolve(owner.configurations.getByName(name), false) }
+                output.text = JsonOutput.prettyPrint(JsonOutput.toJson([coverage: coverage, configurations: receipts])) + '\n'
+            }
+        }
+    }
+    expectedTasks = ([task] + ownerPaths.collect { it == ':' ? ':' + ownerTaskName : it + ':' + ownerTaskName }).sort()
     gradle.rootProject.tasks.register('captureReleaseDependencyInputs') {
+        dependsOn(ownerTasks)
         doLast {
-            def receipts = []
-            // These names come from the previously emitted native App61 locks,
-            // plus notificationHostSdk32Input declared in the current app build.
-            // Report every mismatch together; never silently skip an absent graph.
-            def coverage = configurations.collect { projectPath, names ->
-                def owner = gradle.rootProject.project(projectPath)
-                [project: projectPath, requested: names,
-                 available: owner.configurations.findAll { it.canBeResolved }.collect { it.name }.sort(),
-                 missing: names.findAll { owner.configurations.findByName(it) == null ||
-                     !owner.configurations.getByName(it).canBeResolved }]
+            // This task aggregates already-resolved receipts only; no cross-project resolution.
+            def results = ownerPaths.collect { new JsonSlurper().parse(ownerReceipt(it)) }
+            def coverage = results.collect { it.coverage }.findAll { !it.requested.isEmpty() }
+            def receipts = results.collectMany { it.configurations }.sort { a, b ->
+                a.project <=> b.project ?: a.buildscript <=> b.buildscript ?: a.configuration <=> b.configuration
             }
             new File(root, 'evidence/' + phase + '-configuration-coverage.json').text =
                 JsonOutput.prettyPrint(JsonOutput.toJson(coverage)) + '\n'
-            require(coverage.every { it.missing.isEmpty() }, 'Named configuration coverage changed; inspect the complete coverage receipt')
-            def resolve = { owner, configuration, buildscript ->
-                require(configuration.canBeResolved, 'Named input is not resolvable: ' + owner.path + ':' + configuration.name)
-                def graph = configuration.incoming.resolutionResult
-                def failures = graph.allDependencies.findAll { it instanceof UnresolvedDependencyResult }
-                require(failures.isEmpty(), 'Unresolved named graph: ' + owner.path + ':' + configuration.name +
-                    ' ' + failures.collect { it.requested.displayName }.join(', '))
-                def components = graph.allComponents.collect { it.id }.findAll { it instanceof ModuleComponentIdentifier }
-                require(components.findAll { it.group == 'me.manga.kira.source' }.every { it.version == '0.2.7' },
-                    'A named graph selected another Source Engine cohort')
-                // Force genuine external artifact consumption, not just a dependency report.
-                // Excluding project components avoids compile/link/test task execution.
-                def artifacts = configuration.incoming.artifactView {
-                    componentFilter { identifier -> identifier instanceof ModuleComponentIdentifier }
-                }.artifacts.artifacts.collect { artifact ->
-                    [component: artifact.id.componentIdentifier.displayName, artifact: artifact.id.displayName,
-                     variant: artifact.variant.displayName, attributes: attributes(artifact.variant.attributes),
-                     file: artifact.file.name, bytes: artifact.file.length(), sha256: sha256(artifact.file)]
-                }.sort { a, b -> a.component <=> b.component ?: a.artifact <=> b.artifact }
-                receipts.add([project: owner.path, configuration: configuration.name, buildscript: buildscript,
-                    attributes: attributes(configuration.attributes),
-                    components: components.collect { it.displayName }.sort(), artifacts: artifacts])
-            }
-            gradle.rootProject.allprojects.sort { it.path }.each { owner ->
-                resolve(owner, owner.buildscript.configurations.getByName('classpath'), true)
-            }
-            configurations.each { projectPath, names ->
-                def owner = gradle.rootProject.project(projectPath)
-                names.each { name -> resolve(owner, owner.configurations.getByName(name), false) }
-            }
             new File(root, 'evidence/' + phase + '-resolution.json').text = JsonOutput.prettyPrint(JsonOutput.toJson([
                 status: 'UNREVIEWED_CANDIDATE', platform: platform, phase: phase, task: task,
                 configurations: receipts, qualification: 'external graph/artifact resolution; no compilation, archive or signing'
@@ -137,5 +156,6 @@ gradle.projectsEvaluated {
     }
 }
 gradle.taskGraph.whenReady { graph ->
-    require(graph.allTasks.collect { it.path } == [task], 'Capture cannot run compilers, tests, linkers or release tasks')
+    require(graph.allTasks.collect { it.path }.sort() == expectedTasks,
+        'Capture permits only the fixed project-owned resolution tasks and receipt aggregator; no compilers, tests, linkers or release tasks')
 }

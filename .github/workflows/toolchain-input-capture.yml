@@ -28,7 +28,7 @@ jobs:
       max-parallel: 2
       matrix:
         platform: ${{ fromJSON(github.event_name == 'push' && '["linux","apple"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
-    runs-on: ${{ matrix.platform == 'apple' && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.platform == 'apple' && 'macos-latest' || 'ubuntu-24.04' }}
     concurrency:
       group: kira-app61-input-capture-${{ matrix.platform }}
       cancel-in-progress: false
@@ -117,7 +117,8 @@ jobs:
               'data/remote', 'data/download', 'platform', 'presentation', 'ui',
               'sources/contracts', 'sources/engine', 'sources/config', 'sources/legacy']
           candidates = [pathlib.Path('gradle/verification-metadata.xml')]
-          candidates += [p for directory in projects for name in ['gradle.lockfile', 'buildscript-gradle.lockfile']
+          lock_projects = projects + ['sources']  # Real implicit parent; it has no build script.
+          candidates += [p for directory in lock_projects for name in ['gradle.lockfile', 'buildscript-gradle.lockfile']
               if (p := pathlib.Path(directory) / name).exists()]
           assert candidates[0].is_file() and pathlib.Path('buildscript-gradle.lockfile') in candidates
           document = ET.parse(candidates[0])
