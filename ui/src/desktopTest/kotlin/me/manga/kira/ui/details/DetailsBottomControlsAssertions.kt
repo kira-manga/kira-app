@@ -38,7 +38,7 @@ internal suspend fun ComposeUiTest.assertDeleteRoutesToFinalChapter(
     direction: LayoutDirection,
 ) {
     val expandedBounds = resumeFab.requireFullyVisible().boundsInRoot
-    assertTrue(chapterList.fetchSemanticsNode().boundsInRoot.bottom <= expandedBounds.top)
+    assertChapterViewportFillsScreen()
     chapterList.performScrollToIndex(fixture.finalChapterIndex)
     awaitIdle()
     val collapsedFab = resumeFab.requireFullyVisible()
@@ -80,6 +80,7 @@ internal suspend fun ComposeUiTest.assertCancelRoutesToSelectionClear(
     awaitIdle()
     fixture.assertOnlyIntentAndReset(DetailsIntent.OnSelectionClear)
     resumeFab.assertIsDisplayed()
+    assertChapterViewportFillsScreen()
 }
 
 private suspend fun ComposeUiTest.selectFinalChapter(fixture: DetailsBottomControlsFixture) {
@@ -94,11 +95,26 @@ private fun ComposeUiTest.assertFinalRowClear(
     rowMatcher: SemanticsMatcher,
     fab: SemanticsNode,
 ) {
-    assertDisjoint(onNode(rowMatcher).requireFullyVisible(), fab)
+    val row = onNode(rowMatcher).requireFullyVisible()
+    assertDisjoint(row, fab)
     val buttons = onAllNodes(hasClickAction() and hasAnyAncestor(rowMatcher)).fetchSemanticsNodes()
     assertTrue(buttons.isNotEmpty(), "The final saved chapter must expose its trailing controls")
     buttons.forEach { assertDisjoint(it, fab) }
-    assertTrue(chapterList.fetchSemanticsNode().boundsInRoot.bottom <= fab.boundsInRoot.top)
+    assertTrue(
+        row.boundsInRoot.bottom <= fab.boundsInRoot.top,
+        "Scroll-end padding must lift the final row above Resume",
+    )
+    assertChapterViewportFillsScreen()
+}
+
+private fun ComposeUiTest.assertChapterViewportFillsScreen() {
+    // This fixture has no system insets: Resume must float over the full-height viewport, not
+    // turn into a full-width blank bottom bar. Final-row clearance is checked separately above.
+    assertEquals(
+        onRoot().fetchSemanticsNode().boundsInRoot.bottom,
+        chapterList.fetchSemanticsNode().boundsInRoot.bottom,
+        "The chapter viewport must extend to the screen bottom while Resume floats over it",
+    )
 }
 
 private fun assertDisjoint(
