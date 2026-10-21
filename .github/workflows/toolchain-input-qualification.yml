@@ -121,107 +121,9 @@ jobs:
         if: ${{ matrix.platform == 'apple' }}
         run: python3 -B scripts/release/prepare-libffi-source.py prepare
 
-      - name: Resolve accepted external artifacts strictly before the offline build
-        if: ${{ matrix.platform == 'apple' }}
-        # Reuse the finite project-owned resolver, but NEVER write/update metadata or locks.
-        # Its raw inventory retains the UNREVIEWED label; it does not approve new input bytes.
-        env:
-          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
-          KIRA_APP61_PHASE: acquire
-        run: |
-          set -euo pipefail
-          stop_resolution() {
-            status=$?
-            unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
-            ./gradlew --stop || status=1
-            exit "$status"
-          }
-          trap stop_resolution EXIT
-          ./gradlew :captureReleaseDependencyInputs \
-            --init-script scripts/release/capture-gradle-inputs.init.gradle \
-            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
-            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon \
-            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
-            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
-            -Pandroid.builder.sdkDownload=false --stacktrace \
-            > "$KIRA_APP61_ROOT/evidence/accepted-resolution.log" 2>&1
-          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
-          git diff --exit-code
-
-      # The exact early-plugin negative below is configuration-only, not a second build/link.
-      # It restores the accepted XML even on failure and preserves native Gradle's real report.
-
-      - name: Reject one altered early plugin checksum offline before any build task
-        if: ${{ matrix.platform == 'apple' }}
-        env:
-          KIRA_APP61_PHASE: consume
-        run: |
-          set -euo pipefail
-          unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
-          finish_negative() {
-            status=$?
-            cp "$KIRA_APP61_ROOT/evidence/accepted-metadata.xml" gradle/verification-metadata.xml || status=1
-            /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb || status=1
-            git diff --exit-code || status=1
-            ./gradlew --stop || status=1
-            exit "$status"
-          }
-          trap finish_negative EXIT
-          python3 - <<'PY'
-          import json, os, pathlib, xml.etree.ElementTree as ET
-          path = pathlib.Path('gradle/verification-metadata.xml')
-          tree = ET.parse(path)
-          ns = {'v': 'https://schema.gradle.org/dependency-verification'}
-          component = tree.find("v:components/v:component[@group='com.android.tools.build'][@name='gradle'][@version='9.2.1']", ns)
-          assert component is not None
-          checksum = component.find("v:artifact[@name='gradle-9.2.1.jar']/v:sha256", ns)
-          assert checksum is not None
-          actual = checksum.attrib['value']
-          assert len(actual) == 64 and actual != '0' * 64
-          text = path.read_text()
-          assert text.count('value="' + actual + '"') == 1
-          path.write_text(text.replace('value="' + actual + '"', 'value="' + '0' * 64 + '"'))
-          (pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'evidence/negative-oracle.json').write_text(json.dumps({
-              'artifact': 'gradle-9.2.1.jar', 'expected': '0' * 64, 'actual': actual
-          }))
-          PY
-          set +e
-          ./gradlew :captureReleaseDependencyInputs \
-            --init-script scripts/release/capture-gradle-inputs.init.gradle \
-            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
-            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
-            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
-            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
-            -Pandroid.builder.sdkDownload=false --stacktrace \
-            > "$KIRA_APP61_ROOT/evidence/checksum-negative.log" 2>&1
-          result=$?
-          set -e
-          [[ "$result" -ne 0 ]]
-          python3 - <<'PY'
-          import json, os, pathlib, shutil
-          root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
-          oracle = json.loads((root / 'evidence/negative-oracle.json').read_text())
-          log = (root / 'evidence/checksum-negative.log').read_text()
-          assert 'Dependency verification failed' in log and oracle['artifact'] in log
-          # Early plugin verification can create its report before buildDirectory
-          # is redirected by beforeProject. Admit only these two owned locations.
-          report_roots = [root / 'builds', pathlib.Path.cwd() / 'build/reports/dependency-verification']
-          reports = [p for base in report_roots for p in base.rglob('*.html')
-                     if 'dependency-verification' in p.parts]
-          assert len(reports) <= 32
-          matching = []
-          for report in reports:
-              assert report.is_file() and not report.is_symlink()
-              assert report.resolve() == report.absolute() and report.stat().st_size <= 2 * 1024 * 1024
-              if all(value in report.read_text() for value in oracle.values()):
-                  matching.append(report)
-          assert matching, 'Native Gradle report must identify the exact artifact and expected/actual SHA-256'
-          shutil.copyfile(matching[0], root / 'evidence/checksum-negative-report.html')
-          (root / 'evidence/checksum-negative.json').write_text(json.dumps({
-              'status': 'NATIVE_CHECKSUM_NEGATIVE_PASS_NOT_INPUT_AUTHORITY', **oracle,
-              'offline': True, 'package_credential': False
-          }, indent=2) + '\n')
-          PY
+      # Actual early changed-AGP checksum refusal is retained from run 39566201401.
+      # The same strict verifier, wrapper and AGP bytes remain mandatory below; do not
+      # replay configuration-only acquisition, which misses lazy KSP/tool classpaths.
 
       - name: Qualify the unsigned Android lint and release bundle identity online
         if: ${{ matrix.platform == 'linux' }}
@@ -296,21 +198,62 @@ jobs:
           }, indent=2) + '\n')
           PY
 
-      - name: Qualify both Apple compiles and the Release framework offline
+      - name: Qualify both Apple compiles and the Release framework online
+        if: ${{ matrix.platform == 'apple' }}
+        # Same pre-secret acquisition/build menu as the production TestFlight preflight.
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          stop_preflight() {
+            local status=$?
+            unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+            ./gradlew --stop || status=1
+            exit "$status"
+          }
+          trap stop_preflight EXIT
+          python3 -B scripts/release/prepare-libffi-source.py verify
+          ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 :composeApp:linkReleaseFrameworkIosArm64 \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon \
+            --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/unsigned-build.log" 2>&1
+          ruby release/version.rb verify-generated
+          python3 -B scripts/release/prepare-libffi-source.py verify
+
+      - name: Verify cached Apple framework consumption strictly offline
         if: ${{ matrix.platform == 'apple' }}
         run: |
           set -euo pipefail
           unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
           trap './gradlew --stop' EXIT
           python3 -B scripts/release/prepare-libffi-source.py verify
-          ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 :composeApp:linkReleaseFrameworkIosArm64 \
+          framework=composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework/ComposeApp
+          shasum -a 256 "$framework" > "$KIRA_APP61_ROOT/evidence/framework-before.sha256"
+          ./gradlew :composeApp:linkReleaseFrameworkIosArm64 \
             --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
             --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
             --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process \
             -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
             -Pandroid.builder.sdkDownload=false --stacktrace \
-            > "$KIRA_APP61_ROOT/evidence/unsigned-build.log" 2>&1
-          ruby release/version.rb verify-generated
+            > "$KIRA_APP61_ROOT/evidence/offline-framework.log" 2>&1
+          shasum -a 256 -c "$KIRA_APP61_ROOT/evidence/framework-before.sha256"
+          python3 - <<'PYTHON'
+          import json, os, pathlib, re
+          evidence = pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'evidence'
+          tasks = re.findall(r'^> Task (.+)$', (evidence / 'offline-framework.log').read_text(), re.M)
+          assert ':composeApp:linkReleaseFrameworkIosArm64 UP-TO-DATE' in tasks, tasks
+          heavy = [task for task in tasks if re.search(r':(?:compileKotlin|kspKotlin|linkReleaseFramework|cinterop)', task)]
+          assert all(task.endswith((' UP-TO-DATE', ' SKIPPED', ' NO-SOURCE')) for task in heavy), heavy
+          (evidence / 'offline-framework.json').write_text(json.dumps({
+              'status': 'STRICT_OFFLINE_CACHED_FRAMEWORK_PASS', 'tasks': tasks,
+              'framework_sha256': (evidence / 'framework-before.sha256').read_text().split()[0],
+              'package_credential': False, 'compile_or_link_reexecuted': False,
+              'scope': 'warm cached consumption; not a cold offline compile or Xcode archive/signing'
+          }, indent=2) + '\n')
+          PYTHON
           python3 -B scripts/release/prepare-libffi-source.py verify
 
       - name: Record the unsigned build output and unchanged accepted input files
@@ -330,13 +273,13 @@ jobs:
               for block in iter(lambda: stream.read(1048576), b''):
                   digest.update(block)
           (root / 'evidence/unsigned-build.json').write_text(json.dumps({
-              'status': 'STRICT_OFFLINE_UNSIGNED_BUILD_PASS' if apple else 'STRICT_ONLINE_UNSIGNED_BUILD_AND_OFFLINE_IDENTITY_PASS',
+              'status': 'STRICT_ONLINE_UNSIGNED_BUILD_AND_OFFLINE_FRAMEWORK_PASS' if apple else 'STRICT_ONLINE_UNSIGNED_BUILD_AND_OFFLINE_IDENTITY_PASS',
               'source_sha': os.environ['GITHUB_SHA'],
               'platform': os.environ['KIRA_APP61_PLATFORM'], 'output': str(output),
               'bytes': output.stat().st_size, 'sha256': digest.hexdigest(),
               'signing_store_or_shared_test_execution': False,
-              'accepted_metadata_unchanged': True, 'build_offline': apple,
-              'package_read_credential_in_unsigned_build': not apple,
+              'accepted_metadata_unchanged': True, 'build_offline': False,
+              'package_read_credential_in_unsigned_build': True,
               'package_credential_in_offline_consumer': False
           }, indent=2) + '\n')
           PY

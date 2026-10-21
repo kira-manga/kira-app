@@ -791,7 +791,7 @@ class ToolchainInputsTest < Minitest::Test
       relative = ".github/workflows/toolchain-input-qualification.yml"
       mutate_workflow(root, File.basename(relative)) do |workflow|
         step = workflow.fetch("jobs").fetch("qualify").fetch("steps").find do |item|
-          item["name"] == "Resolve accepted external artifacts strictly before the offline build"
+          item["name"] == "Qualify both Apple compiles and the Release framework online"
         end
         step["run"] = step.fetch("run").sub("--dependency-verification=strict", "--dependency-verification=strict --write-locks")
       end
@@ -803,6 +803,24 @@ class ToolchainInputsTest < Minitest::Test
     with_checkout do |root|
       assert_rejected(verify(root, "--capture"), "Usage:")
     end
+  end
+
+  def test_qualification_uses_real_preflight_then_only_cached_offline_framework
+    workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
+    steps = workflow.fetch("jobs").fetch("qualify").fetch("steps")
+    online = steps.find { |step| step["name"] == "Qualify both Apple compiles and the Release framework online" }
+    offline = steps.find { |step| step["name"] == "Verify cached Apple framework consumption strictly offline" }
+    assert_operator steps.index(online), :<, steps.index(offline)
+    assert_equal ["KIRA_PACKAGES_READ_TOKEN"], online.fetch("env").keys
+    assert_includes online.fetch("run"), ":composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 :composeApp:linkReleaseFrameworkIosArm64"
+    refute_includes online.fetch("run"), "--offline"
+    assert_includes online.fetch("run"), "unset KIRA_PACKAGES_READ_TOKEN"
+    refute offline.key?("env")
+    assert_includes offline.fetch("run"), "--dependency-verification=strict"
+    assert_includes offline.fetch("run"), "--offline"
+    assert_includes offline.fetch("run"), ":composeApp:linkReleaseFrameworkIosArm64 UP-TO-DATE"
+    assert_includes offline.fetch("run"), "shasum -a 256 -c"
+    refute_includes steps.map { |step| step["run"].to_s }.join, ":captureReleaseDependencyInputs"
   end
 
   def test_qualification_checks_active_bundler_version_not_cli_presentation
