@@ -107,6 +107,9 @@ jobs:
           bundler-cache: true
           self-hosted: true
 
+      - name: Validate committed release configuration
+        run: bundle exec ruby release/ios/validate_project_configuration.rb
+
       - name: Install verified XcodeGen
         run: bash scripts/release/install-xcodegen.sh
 
@@ -214,9 +217,6 @@ jobs:
           umask 077
           ruby release/ios/prepare_secret_files.rb
 
-      - name: Validate committed release configuration
-        run: ruby release/ios/validate_project_configuration.rb
-
       - name: Validate and install signing assets
         env:
           IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.IOS_PROVISIONING_PROFILE_SPECIFIER }}
@@ -229,7 +229,7 @@ jobs:
           # Keep the password file-based and use the system provider only for
           # this extraction step so the password never appears in argv.
           env -u GEM_HOME -u GEM_PATH /usr/bin/ruby release/ios/extract_signing_identity.rb
-          ruby release/ios/validate_signing_assets.rb
+          bundle exec ruby release/ios/validate_signing_assets.rb
 
           security create-keychain -p "" "$KIRA_KEYCHAIN_PATH" >/dev/null
           security set-keychain-settings -lut 21600 "$KIRA_KEYCHAIN_PATH" >/dev/null
@@ -330,7 +330,7 @@ jobs:
 
       - name: Validate the signed archive, IPA, entitlements, and dSYM UUIDs
         id: artifact-validation
-        run: ruby release/ios/validate_artifacts.rb
+        run: bundle exec ruby release/ios/validate_artifacts.rb
 
       - name: Upload to TestFlight without external distribution or review submission
         id: testflight-upload

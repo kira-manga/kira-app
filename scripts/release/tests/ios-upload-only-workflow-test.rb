@@ -41,7 +41,7 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
     assert_equal 1, validators.length
     assert_equal 1, uploads.length
     validation, upload = validators.first, uploads.first
-    assert_equal "ruby release/ios/validate_artifacts.rb", validation.fetch("run").strip
+    assert_equal "bundle exec ruby release/ios/validate_artifacts.rb", validation.fetch("run").strip
     assert_equal "set +x\nbundle exec fastlane ios upload_only", upload.fetch("run").strip
     assert_operator steps.index(validation), :<, steps.index(upload)
     [job, validation, upload].each { |node| refute node.key?("continue-on-error") }
@@ -50,6 +50,37 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
       refute step.key?("shell"), "validation/upload must use the job's fail-fast shell"
     end
     assert_equal "bash", job.dig("defaults", "run", "shell")
+  end
+
+  def test_ios_plist_helpers_use_the_locked_bundle_and_validate_source_before_build_or_secrets
+    steps = YAML.safe_load(TESTFLIGHT_WORKFLOW, aliases: false).fetch("jobs").fetch("build-and-upload").fetch("steps")
+    validations = steps.select { |step| step["name"] == "Validate committed release configuration" }
+    assert_equal 1, validations.length
+    validation = validations.first
+    assert_equal %w[name run], validation.keys.sort
+    assert_equal "bundle exec ruby release/ios/validate_project_configuration.rb", validation.fetch("run")
+    ruby_setup = steps.find { |step| step["name"] == "Set up verified Ruby and pinned Fastlane" }
+    assert_equal steps.index(ruby_setup) + 1, steps.index(validation)
+    [
+      "Install verified XcodeGen",
+      "Resolve the reviewed SwiftPM lock before protected inputs",
+      "Build verified libffi source and select the private Kotlin distribution",
+      "Consume the verified Apple Gradle graph before protected inputs",
+      "Decode protected files without logging contents"
+    ].each do |name|
+      boundary = steps.find { |step| step["name"] == name }
+      refute_nil boundary, name
+      assert_operator steps.index(validation), :<, steps.index(boundary)
+    end
+
+    signing = steps.find { |step| step["name"] == "Validate and install signing assets" }
+    assert_includes signing.fetch("run").lines.map(&:strip), "bundle exec ruby release/ios/validate_signing_assets.rb"
+    assert_includes signing.fetch("run").lines.map(&:strip), "env -u GEM_HOME -u GEM_PATH /usr/bin/ruby release/ios/extract_signing_identity.rb"
+    %w[if continue-on-error shell].each { |key| refute signing.key?(key) }
+    %w[validate_project_configuration validate_signing_assets validate_artifacts].each do |helper|
+      assert_equal 1, TESTFLIGHT_WORKFLOW.scan("bundle exec ruby release/ios/#{helper}.rb").length
+      refute_match(/^\s*(?:run: )?ruby release\/ios\/#{helper}\.rb\s*$/, TESTFLIGHT_WORKFLOW)
+    end
   end
 
   def test_preflight_does_not_create_external_groups
