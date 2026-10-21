@@ -18,7 +18,7 @@
       "gradle/wrapper/gradle-wrapper.properties": "556f4aa5f360e35fca77b010b306307765d4f4915a82a612035cd5cfb7a587cb"
     },
     "dependency_graph": {
-      "metadata_sha256": "fb8ea1b28cdd8d9b680533554bb20c55bbe2ea06bc4a43ef6290cf38d04b2b5d",
+      "metadata_sha256": "c4e3d6811623673103ac12b4f7db2f41c8bd24af146ba2e5d85f6893a1e8c74c",
       "lockfiles": {
         "app/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "app/gradle.lockfile": "30ccea46c096743e087516fe6ad11bdf660c53b7e3dd3b76e61f432389f5e296",
@@ -83,7 +83,7 @@
         "ui/build.gradle.kts": "83c84f6f1d0cd94df6cde744804d7e8abd3c2bfe7fe26184255ab3ade8792838"
       },
       "acquisition_files": {
-        ".github/workflows/toolchain-input-capture.yml": "db5406c8f7aa5dabb855267414e070b592fe08cdee74aed29988c512eae770ce",
+        ".github/workflows/toolchain-input-capture.yml": "0f44a2036f7de2dec73d42fdc7b53614e65eb3f3a184d962cfbdcc0d514cc8ed",
         "scripts/release/capture-gradle-inputs.init.gradle": "9b1cf87c93c2da4173bf9629589f1a30635189711d8278f5887cddcaca0c4564"
       },
       "consumer_files": {

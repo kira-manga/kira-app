@@ -4,7 +4,7 @@ on:
   # Only the unresolved Android lint-model inputs: no product or Apple rebuild.
   push:
     branches: [remediation/app-61-resume-20261021]
-    paths: [.github/workflows/toolchain-input-capture.yml]
+    paths: [.github/workflows/toolchain-input-capture.yml, gradle/verification-metadata.xml]
   workflow_dispatch:
     inputs:
       scope:
