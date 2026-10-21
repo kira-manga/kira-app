@@ -1,9 +1,10 @@
-name: Finalize existing TestFlight 1.0.5 (2)
+name: Finalize existing TestFlight 1.0.7 (2)
 
+# Exact completed release39609396419/1 at eced1df7; existing processed TestFlight1.0.7(2).
 # Owner-authorized existing-build submission only. No build, signing, or binary upload.
 on:
   push:
-    branches: [remediation/app-testflight-existing-2-20261017]
+    branches: [remediation/app-testflight-public-20261021]
     paths: [.github/workflows/testflight-existing-build.yml]
   workflow_dispatch:
 
@@ -17,8 +18,8 @@ concurrency:
 
 jobs:
   finalize:
-    if: ${{ github.ref == 'refs/heads/remediation/app-testflight-existing-2-20261017' }}
-    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/remediation/app-testflight-public-20261021' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -42,54 +43,112 @@ jobs:
         run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
 
       - name: Initialize owned runtime paths
+        id: reserve-paths
         run: |
+          set -euo pipefail
+          umask 077
+          [[ "$KIRA_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'The exact uploaded build number must be bound before finalization' >&2
+            exit 1
+          }
+          for name in kira-beta-key kira-beta-gems kira-beta-reports kira-beta-inspect.rb; do
+            [[ ! -e "$RUNNER_TEMP/$name" && ! -L "$RUNNER_TEMP/$name" ]]
+          done
+          [[ ! -e fastlane/report.xml && ! -L fastlane/report.xml ]]
+          mkdir -m 700 "$RUNNER_TEMP/kira-beta-key" "$RUNNER_TEMP/kira-beta-gems" "$RUNNER_TEMP/kira-beta-reports"
           {
             printf 'BUNDLE_PATH=%s/kira-beta-gems\n' "$RUNNER_TEMP"
+            printf 'BUNDLE_APP_CONFIG=%s/kira-beta-gems/.bundle\n' "$RUNNER_TEMP"
             printf 'APP_STORE_CONNECT_KEY_PATH=%s/kira-beta-key/AuthKey.p8\n' "$RUNNER_TEMP"
             printf 'KIRA_TESTFLIGHT_STATUS_FILE=%s/kira-beta-reports/testflight-status.json\n' "$RUNNER_TEMP"
           } >> "$GITHUB_ENV"
 
-      - name: Confirm the existing successful release (no rebuild)
+      - name: Confirm the exact successful iOS-only release and signed artifact (no rebuild)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/kira-beta-reports"
-          gh api repos/kira-manga/kira-app/actions/runs/38987093148 > "$RUNNER_TEMP/kira-beta-reports/release-run.json"
-          gh api repos/kira-manga/kira-app/actions/jobs/117263207210 > "$RUNNER_TEMP/kira-beta-reports/release-job.json"
+          gh api repos/kira-manga/kira-app/actions/runs/39609396419/attempts/1 > "$RUNNER_TEMP/kira-beta-reports/release-run.json"
+          gh api 'repos/kira-manga/kira-app/actions/runs/39609396419/attempts/1/jobs?per_page=100' > "$RUNNER_TEMP/kira-beta-reports/release-jobs.json"
+          gh api repos/kira-manga/kira-app/actions/artifacts/12355120534 > "$RUNNER_TEMP/kira-beta-reports/release-artifact.json"
           python3 - <<'PY'
           import json, os, subprocess
           from pathlib import Path
-          base = 'ea579142f271e3d9480ab9cbeb4f88d13142f047'
+          base = 'eced1df73ffddae8b3f9783dfdbd651b9641144e'
           if subprocess.run(['git', 'cat-file', '-e', base], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
               subprocess.run(['git', 'fetch', '--no-tags', '--depth=1', 'origin', base], check=True)
-          changed = subprocess.check_output(['git', 'diff', '--name-only', 'ea579142f271e3d9480ab9cbeb4f88d13142f047', 'HEAD'], text=True).splitlines()
-          assert set(changed) <= {'.github/workflows/testflight-existing-build.yml', 'fastlane/Fastfile', 'release/testflight/what-to-test.txt'}, 'Unrelated source/dependency changes'
+          changed = subprocess.check_output(['git', 'diff', '--name-only', base, 'HEAD'], text=True).splitlines()
+          assert set(changed) <= {'.github/workflows/testflight-existing-build.yml'}, 'Unrelated source/dependency changes'
           p = Path(os.environ['RUNNER_TEMP']) / 'kira-beta-reports'
           r = json.loads((p / 'release-run.json').read_text())
-          j = json.loads((p / 'release-job.json').read_text())
-          assert r['id'] == 38987093148 and r['head_sha'] == 'ea579142f271e3d9480ab9cbeb4f88d13142f047'
-          assert r['head_branch'] == 'internal-testing' and r['event'] == 'push'
+          page = json.loads((p / 'release-jobs.json').read_text())
+          a = json.loads((p / 'release-artifact.json').read_text())
+          assert r['id'] == 39609396419 and r['run_attempt'] == 1 and r['head_sha'] == base
+          assert r['repository']['id'] == 1289256257 and r['repository']['full_name'] == 'kira-manga/kira-app'
+          assert r['workflow_id'] == 319592317 and r['path'] == '.github/workflows/internal-testing-release.yml'
+          assert r['head_branch'] == 'internal-testing' and r['event'] == 'workflow_dispatch'
           assert r['status'] == 'completed' and r['conclusion'] == 'success'
-          assert j['id'] == 117263207210 and j['run_id'] == r['id'] and j['conclusion'] == 'success'
+          expected = {
+              119253968951: ('Validate release request', 'success'),
+              119254019388: ('Shared app tests before either Store upload / Existing shared tests and Android integration checks', 'success'),
+              int("119259028167"): ("Android Internal Testing", "skipped"),
+              int("119259027994"): ('iOS TestFlight / Signed iOS archive and TestFlight upload', 'success'),
+          }
+          assert page['total_count'] == 4 and len(page['jobs']) == 4
+          jobs = {job['id']: job for job in page['jobs']}
+          assert set(jobs) == set(expected), 'Unexpected release jobs'
+          for job_id, job in jobs.items():
+              assert job['run_id'] == r['id'] and job['run_attempt'] == 1 and job['head_sha'] == base
+              assert job['head_branch'] == 'internal-testing' and job['status'] == 'completed'
+              assert (job['name'], job['conclusion']) == expected[job_id]
+              assert all(step['status'] == 'completed' for step in job['steps'])
+              if job_id != int("119259028167"):
+                  assert all(step['conclusion'] == 'success' for step in job['steps'])
+          def require_step(job_id, name, conclusion='success'):
+              matches = [step for step in jobs[job_id]['steps'] if step['name'] == name]
+              assert len(matches) == 1 and matches[0]['conclusion'] == conclusion, name
+          require_step(119253968951, 'Require the internal-testing branch')
+          require_step(119254019388, 'Run existing shared, persistence, transport and Android tests in one batch')
+          require_step(119254019388, 'Clean disposable build outputs')
           for name in [
               'Validate the signed archive, IPA, entitlements, and dSYM UUIDs',
               'Upload to TestFlight without external distribution or review submission',
               'Query final App Store Connect state',
           ]:
-              matches = [s for s in j['steps'] if s['name'] == name]
-              assert len(matches) == 1 and matches[0]['conclusion'] == 'success', name
+              require_step(int("119259027994"), name)
+          android = jobs[int("119259028167")]
+          assert android['conclusion'] == 'skipped'
+          assert all(step['conclusion'] == 'skipped' for step in android['steps']), 'Android execution was not authorized'
+          assert a['id'] == int("12355120534") and a['name'] == 'kira-ios-1.0.7-2' and a['expired'] is False
+          assert a['size_in_bytes'] == int("117199969")
+          assert a['digest'] == 'sha256:6664f80a167b74bf5e227dbce6be77e9bd542260a8b678c558479ee4bee14d79'
+          ar = a['workflow_run']
+          assert ar['id'] == r['id'] and ar['head_sha'] == base and ar['head_branch'] == 'internal-testing'
+          assert ar['repository_id'] == 1289256257 and ar['head_repository_id'] == 1289256257
           print('Exact existing signed release and Apple upload gates verified; no binary rebuild/upload')
           PY
 
-      - name: Set up Ruby and locked Bundler
+      - name: Install verified Ruby and Bundler inputs
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py ruby
+
+      - name: Set up verified Ruby and the authenticated Bundler installation
         uses: ruby/setup-ruby@bec3f19a76460dbe12f60def7d1a77585f07516c # v1
         with:
-          ruby-version: "3.3"
-          bundler: "4.0.16"
+          ruby-version: "3.3.12"
+          bundler: "none"
           bundler-cache: false
+          self-hosted: true
 
-      - name: Install the existing locked Fastlane dependencies
-        run: bundle install --jobs 2 --retry 1
+      - name: Install the existing locked Fastlane dependencies and verify runtime identity
+        run: |
+          set -euo pipefail
+          bundle install --jobs 2 --retry 1
+          ruby -e 'abort "Wrong Ruby runtime" unless RUBY_VERSION == "3.3.12"; puts RUBY_DESCRIPTION' > "$RUNNER_TEMP/kira-beta-reports/ruby.txt"
+          bundle --version > "$RUNNER_TEMP/kira-beta-reports/bundler.txt"
+          bundle exec ruby -rbundler -e 'abort "Wrong Bundler runtime" unless Bundler::VERSION == "4.0.16"; puts Bundler::VERSION' > "$RUNNER_TEMP/kira-beta-reports/bundler-version.txt"
+          bundle exec ruby -rbundler -e 'expected = File.join(ENV.fetch("KIRA_VERIFIED_RUBY_AREA"), "gems", "gems", "bundler-4.0.16"); abort "Wrong Bundler installation" unless Gem.loaded_specs.fetch("bundler").full_gem_path == expected; puts expected' > "$RUNNER_TEMP/kira-beta-reports/bundler-path.txt"
+          cp "$KIRA_VERIFIED_RUBY_AREA/owned.json" "$RUNNER_TEMP/kira-beta-reports/ruby-archive-receipt.json"
+          git diff --exit-code
 
       - name: Prepare only the existing App Store Connect credential
         env:
@@ -121,12 +180,12 @@ jobs:
           )
           app = Spaceship::ConnectAPI::App.find('me.manga.kira')
           abort('Wrong App Store Connect application') unless app && app.id.to_s == '6792232678' && app.bundle_id == 'me.manga.kira'
-          builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '1.0.5', build_number: '2',
+          builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '1.0.7', build_number: '2',
             platform: Spaceship::ConnectAPI::Platform::IOS,
             includes: 'app,buildBetaDetail,preReleaseVersion,betaAppReviewSubmission')
-          abort('Expected exactly one existing build 1.0.5 (2)') unless builds.length == 1
+          abort('Expected exactly one existing build 1.0.7 (2)') unless builds.length == 1
           build = builds.first
-          abort('Existing build is not eligible') unless build.version == '2' && build.app_version == '1.0.5' && build.processing_state == 'VALID' && build.expired == false
+          abort('Existing build is not eligible') unless build.version == '2' && build.app_version == '1.0.7' && build.processing_state == 'VALID' && build.expired == false
           groups = app.get_beta_groups
           abort('Existing internal prerequisite group missing; refusing group creation') unless groups.any? { |g| g.is_internal_group == true }
           named = groups.select { |g| g.name == 'External Testing' }
@@ -190,13 +249,17 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: testflight-existing-1.0.5-2-status
+          name: testflight-existing-1.0.7-2-status
           path: ${{ runner.temp }}/kira-beta-reports
           retention-days: 7
           if-no-files-found: warn
 
       - name: Remove owned credential and temporary dependencies
-        if: ${{ always() }}
+        if: ${{ always() && steps.reserve-paths.outcome == 'success' }}
         run: |
           rm -rf -- "$RUNNER_TEMP/kira-beta-key" "$RUNNER_TEMP/kira-beta-gems"
           rm -f -- "$RUNNER_TEMP/kira-beta-inspect.rb" fastlane/report.xml
+
+      - name: Remove owned verified Ruby runtime inputs
+        if: ${{ always() }}
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup
