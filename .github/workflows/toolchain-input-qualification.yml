@@ -338,8 +338,10 @@ jobs:
 
   # This follow-up isolates the changed Ruby/Bundler intake; full Apple selectors
   # remain available for separate qualification without repeating them on push.
+  # Ruby/Bundler admission passed in run39578012065; keep its targeted manual option
+  # without repeating it for subsequent Android lock-only corrections.
   apple-runtime:
-    if: ${{ github.event_name == 'push' || inputs.platform == 'apple-runtime' }}
+    if: ${{ inputs.platform == 'apple-runtime' }}
     runs-on: macos-26
     permissions:
       contents: read

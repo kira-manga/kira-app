@@ -843,7 +843,7 @@ class ToolchainInputsTest < Minitest::Test
     refute_includes steps.map { |step| step["run"].to_s }.join, ":captureReleaseDependencyInputs"
   end
 
-  def test_qualification_push_runs_only_linux_build_and_separate_apple_ruby_runtime
+  def test_qualification_push_runs_only_linux_build_and_keeps_manual_apple_ruby_runtime
     workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
     events = workflow.fetch("on") { workflow.fetch(true) }
     assert_equal ["remediation/app-61-resume-20261021"], events.fetch("push").fetch("branches")
@@ -855,7 +855,7 @@ class ToolchainInputsTest < Minitest::Test
       full.fetch("strategy").fetch("matrix").fetch("platform")
 
     runtime = workflow.fetch("jobs").fetch("apple-runtime")
-    assert_equal "${{ github.event_name == 'push' || inputs.platform == 'apple-runtime' }}", runtime.fetch("if")
+    assert_equal "${{ inputs.platform == 'apple-runtime' }}", runtime.fetch("if")
     assert_equal "macos-26", runtime.fetch("runs-on")
     assert_equal({ "contents" => "read" }, runtime.fetch("permissions"))
     refute_includes JSON.generate(runtime), "secrets."

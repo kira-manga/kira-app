@@ -1,10 +1,7 @@
 name: App61 dependency inputs (unreviewed acquisition, no Store)
 
 on:
-  # Only the unresolved Android lint-model inputs: no product or Apple rebuild.
-  push:
-    branches: [remediation/app-61-resume-20261021]
-    paths: [.github/workflows/toolchain-input-capture.yml, gradle/verification-metadata.xml]
+  # Targeted lint-model capture passed. Any further acquisition is explicit.
   workflow_dispatch:
     inputs:
       scope:
@@ -30,12 +27,12 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        platform: ${{ fromJSON((github.event_name == 'push' || inputs.scope == 'lint-models') && '["linux"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
+        platform: ${{ fromJSON(inputs.scope == 'lint-models' && '["linux"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
     runs-on: ${{ matrix.platform == 'apple' && 'macos-latest' || 'ubuntu-24.04' }}
     concurrency:
       group: kira-app61-input-capture-${{ matrix.platform }}
       cancel-in-progress: false
-    timeout-minutes: ${{ (github.event_name == 'push' || inputs.scope == 'lint-models') && 15 || 45 }}
+    timeout-minutes: ${{ inputs.scope == 'lint-models' && 15 || 45 }}
     defaults:
       run:
         shell: bash
@@ -43,7 +40,7 @@ jobs:
       CI: "true"
       KIRA_PACKAGES_USER: ${{ github.actor }}
       KIRA_APP61_PLATFORM: ${{ matrix.platform }}
-      KIRA_APP61_SCOPE: ${{ github.event_name == 'push' && 'lint-models' || inputs.scope }}
+      KIRA_APP61_SCOPE: ${{ inputs.scope }}
       KIRA_SOURCE_CONFIG_BASE_URL: ${{ vars.KIRA_SOURCE_CONFIG_BASE_URL }}
       KIRA_SOURCE_CONFIG_PINNED_KEYS: ${{ vars.KIRA_SOURCE_CONFIG_PINNED_KEYS }}
     steps:
