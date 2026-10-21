@@ -1,0 +1,141 @@
+import groovy.json.JsonOutput
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.dsl.LockMode
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+
+// Acquisition/consume-only derivative of the reviewed App61 native locking and
+// Engine234 finite resolution control. No repository substitution or project build.
+// These receipts describe CANDIDATE inputs, not an approved verification baseline.
+def require = { condition, message -> if (!condition) throw new GradleException(message) }
+def platform = System.getenv('KIRA_APP61_PLATFORM')
+def phase = System.getenv('KIRA_APP61_PHASE')
+def root = new File(System.getenv('KIRA_APP61_ROOT')).canonicalFile
+def task = ':captureReleaseDependencyInputs'
+require(platform in ['linux', 'apple'], 'Explicit input-capture platform is required')
+require(phase in ['acquire', 'consume'], 'Explicit input-capture phase is required')
+require(gradle.gradleVersion == '9.6.1', 'This capture is for the selected Gradle 9.6.1')
+require(gradle.startParameter.dependencyVerificationMode.name() == 'STRICT', 'Native strict verification is required')
+require(gradle.startParameter.taskNames == [task], 'Only the fixed dependency-resolution task is permitted')
+require(gradle.startParameter.offline == (phase == 'consume'), 'Only acquisition may access package repositories')
+require(root.isDirectory() && new File(root, 'owner').isFile(), 'An owned capture root is required')
+
+def kmp = [':composeApp', ':core', ':domain', ':data', ':data:local', ':data:remote',
+    ':data:download', ':platform', ':presentation', ':ui', ':sources:contracts',
+    ':sources:engine', ':sources:config', ':sources:legacy']
+def compiler = ['kotlinCompilerClasspath', 'kotlinBuildToolsApiClasspath', 'kotlinCompilerPluginClasspath']
+def configurations = [:]
+kmp.each { project ->
+    configurations[project] = compiler + (platform == 'linux' ? [
+        'androidCompileClasspath', 'androidRuntimeClasspath', 'desktopCompileClasspath',
+        'desktopRuntimeClasspath', 'desktopTestCompileClasspath', 'desktopTestRuntimeClasspath'
+    ] : [
+        'iosArm64CompileKlibraries', 'iosSimulatorArm64CompileKlibraries',
+        'iosArm64CompilationDependenciesMetadata', 'iosSimulatorArm64CompilationDependenciesMetadata',
+        'kotlinNativeCompilerPluginClasspath', 'kotlinKlibCommonizerClasspath'
+    ])
+}
+if (platform == 'linux') {
+    configurations[':app'] = compiler + [
+        'releaseCompileClasspath', 'releaseRuntimeClasspath', 'releaseAnnotationProcessorClasspath',
+        'releaseImplementationDependenciesMetadata', 'releaseLintChecksClasspath', 'androidLintTool',
+        'coreLibraryDesugaring', 'lintChecks', 'kotlinCompilerPluginClasspathRelease',
+        'debugUnitTestCompileClasspath', 'debugUnitTestRuntimeClasspath',
+        'kspReleaseKotlinProcessorClasspath', 'kspPluginClasspath', 'kspPluginClasspathNonEmbeddable',
+        'notificationHostNativeInput', 'notificationHostSdkInput', 'notificationHostSdk32Input'
+    ]
+    configurations[':data:local'] += ['kspAndroidMainKotlinProcessorClasspath', 'kspAndroidMainProcessorClasspath',
+        'kspKotlinDesktopProcessorClasspath', 'kspPluginClasspath', 'kspPluginClasspathNonEmbeddable']
+    configurations[':data:download'] += ['app75HostNativeInput', 'app75HostSdkInput']
+    configurations[':composeApp'] += ['app13HostSdkInput']
+} else {
+    configurations[':composeApp'] += ['iosArm64ReleaseFrameworkExport', 'kotlinNativeBundleConfiguration']
+    configurations[':data:local'] += ['kspKotlinIosArm64ProcessorClasspath', 'kspKotlinIosSimulatorArm64ProcessorClasspath',
+        'kspPluginClasspath', 'kspPluginClasspathNonEmbeddable']
+}
+
+gradle.beforeProject { project ->
+    // Identical native policy to the reviewed App61 source. Gradle, not this
+    // controller, emits version locks and verification XML.
+    project.dependencyLocking {
+        lockAllConfigurations()
+        lockMode.set(LockMode.STRICT)
+    }
+    project.buildscript.configurations.configureEach { resolutionStrategy.activateDependencyLocking() }
+    def directory = project.path == ':' ? 'root' : project.path.substring(1).replace(':', '/')
+    project.layout.buildDirectory.set(new File(root, 'builds/' + directory))
+}
+
+def sha256 = { file ->
+    require(Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS), 'Resolved external artifact is not a regular file')
+    def digest = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { input ->
+        byte[] buffer = new byte[65536]
+        int count
+        while ((count = input.read(buffer)) > 0) digest.update(buffer, 0, count)
+    }
+    digest.digest().encodeHex().toString()
+}
+def attributes = { values ->
+    values.keySet().sort { it.name }.collectEntries { [(it.name): values.getAttribute(it).toString()] }
+}
+gradle.projectsEvaluated {
+    gradle.rootProject.tasks.register('captureReleaseDependencyInputs') {
+        doLast {
+            def receipts = []
+            // These names come from the previously emitted native App61 locks,
+            // plus notificationHostSdk32Input declared in the current app build.
+            // Report every mismatch together; never silently skip an absent graph.
+            def coverage = configurations.collect { projectPath, names ->
+                def owner = gradle.rootProject.project(projectPath)
+                [project: projectPath, requested: names,
+                 available: owner.configurations.findAll { it.canBeResolved }.collect { it.name }.sort(),
+                 missing: names.findAll { owner.configurations.findByName(it) == null ||
+                     !owner.configurations.getByName(it).canBeResolved }]
+            }
+            new File(root, 'evidence/' + phase + '-configuration-coverage.json').text =
+                JsonOutput.prettyPrint(JsonOutput.toJson(coverage)) + '\n'
+            require(coverage.every { it.missing.isEmpty() }, 'Named configuration coverage changed; inspect the complete coverage receipt')
+            def resolve = { owner, configuration, buildscript ->
+                require(configuration.canBeResolved, 'Named input is not resolvable: ' + owner.path + ':' + configuration.name)
+                def graph = configuration.incoming.resolutionResult
+                def failures = graph.allDependencies.findAll { it instanceof UnresolvedDependencyResult }
+                require(failures.isEmpty(), 'Unresolved named graph: ' + owner.path + ':' + configuration.name +
+                    ' ' + failures.collect { it.requested.displayName }.join(', '))
+                def components = graph.allComponents.collect { it.id }.findAll { it instanceof ModuleComponentIdentifier }
+                require(components.findAll { it.group == 'me.manga.kira.source' }.every { it.version == '0.2.7' },
+                    'A named graph selected another Source Engine cohort')
+                // Force genuine external artifact consumption, not just a dependency report.
+                // Excluding project components avoids compile/link/test task execution.
+                def artifacts = configuration.incoming.artifactView {
+                    componentFilter { identifier -> identifier instanceof ModuleComponentIdentifier }
+                }.artifacts.artifacts.collect { artifact ->
+                    [component: artifact.id.componentIdentifier.displayName, artifact: artifact.id.displayName,
+                     variant: artifact.variant.displayName, attributes: attributes(artifact.variant.attributes),
+                     file: artifact.file.name, bytes: artifact.file.length(), sha256: sha256(artifact.file)]
+                }.sort { a, b -> a.component <=> b.component ?: a.artifact <=> b.artifact }
+                receipts.add([project: owner.path, configuration: configuration.name, buildscript: buildscript,
+                    attributes: attributes(configuration.attributes),
+                    components: components.collect { it.displayName }.sort(), artifacts: artifacts])
+            }
+            gradle.rootProject.allprojects.sort { it.path }.each { owner ->
+                resolve(owner, owner.buildscript.configurations.getByName('classpath'), true)
+            }
+            configurations.each { projectPath, names ->
+                def owner = gradle.rootProject.project(projectPath)
+                names.each { name -> resolve(owner, owner.configurations.getByName(name), false) }
+            }
+            new File(root, 'evidence/' + phase + '-resolution.json').text = JsonOutput.prettyPrint(JsonOutput.toJson([
+                status: 'UNREVIEWED_CANDIDATE', platform: platform, phase: phase, task: task,
+                configurations: receipts, qualification: 'external graph/artifact resolution; no compilation, archive or signing'
+            ])) + '\n'
+            logger.lifecycle('Candidate dependency resolution completed: ' + receipts.size() + ' named configurations; NOT accepted metadata')
+        }
+    }
+}
+gradle.taskGraph.whenReady { graph ->
+    require(graph.allTasks.collect { it.path } == [task], 'Capture cannot run compilers, tests, linkers or release tasks')
+}

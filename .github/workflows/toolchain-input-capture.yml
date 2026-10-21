@@ -1,0 +1,292 @@
+name: App61 dependency inputs (unreviewed acquisition, no Store)
+
+on:
+  # One reviewed issue branch only: GitHub must first register this new workflow.
+  # Never main/internal-testing and never a release caller.
+  push:
+    branches: [remediation/app-61-resume-20261021]
+    paths:
+      - .github/workflows/toolchain-input-capture.yml
+      - scripts/release/capture-gradle-inputs.init.gradle
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        description: Resolve current Linux or Apple dependency inputs without compiling or signing
+        options: [linux, apple, both]
+        default: both
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  capture:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        platform: ${{ fromJSON(github.event_name == 'push' && '["linux","apple"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
+    runs-on: ${{ matrix.platform == 'apple' && 'macos-latest' || 'ubuntu-latest' }}
+    concurrency:
+      group: kira-app61-input-capture-${{ matrix.platform }}
+      cancel-in-progress: false
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      KIRA_PACKAGES_USER: ${{ github.actor }}
+      KIRA_APP61_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: Check out the exact reviewed acquisition source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned bootstrap inputs
+        run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+
+      - name: Reserve fresh owned locations and record immutable source identity
+        run: |
+          set -euo pipefail
+          umask 077
+          root="$RUNNER_TEMP/kira-app61-inputs"
+          [[ ! -e "$root" && ! -L "$root" ]]
+          mkdir -m 700 "$root"
+          printf '%s:%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" > "$root/owner"
+          mkdir "$root/gradle" "$root/project-cache" "$root/builds" "$root/tmp" "$root/evidence"
+          git diff --exit-code
+          git rev-parse HEAD HEAD^{tree} > "$root/evidence/source.txt"
+          git status --porcelain=v1 > "$root/evidence/source-before.status"
+          [[ ! -s "$root/evidence/source-before.status" ]]
+          {
+            printf 'KIRA_APP61_ROOT=%s\n' "$root"
+            printf 'GRADLE_USER_HOME=%s\n' "$root/gradle"
+            printf 'TMPDIR=%s\n' "$root/tmp"
+          } >> "$GITHUB_ENV"
+
+      - name: Select the Java patch observed in the accepted current release
+        # Matches the accepted iOS runtime. This is an explicit Linux patch selection,
+        # not a claim that the earlier Android tool-cache label authenticated its bytes.
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21.0.12+101.0.LTS"
+          check-latest: false
+
+      - name: Restore Gradle dependencies without saving new shared cache entries
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-read-only: true
+
+      - name: Preserve the current authenticated Native compiler and source-built libffi
+        id: native-bootstrap
+        if: ${{ matrix.platform == 'apple' }}
+        run: python3 -B scripts/release/prepare-libffi-source.py prepare
+
+      - name: Acquire unreviewed native metadata and locks from actual external artifacts
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+          KIRA_APP61_PHASE: acquire
+        run: |
+          set -euo pipefail
+          stop_acquisition() {
+            status=$?
+            unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+            ./gradlew --stop || status=1
+            exit "$status"
+          }
+          trap stop_acquisition EXIT
+          java -version 2> "$KIRA_APP61_ROOT/evidence/java.txt"
+          ./gradlew :captureReleaseDependencyInputs \
+            --init-script scripts/release/capture-gradle-inputs.init.gradle \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false \
+            --write-verification-metadata sha256 --write-locks --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/acquire.log" 2>&1
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, xml.etree.ElementTree as ET
+          root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
+          projects = ['', 'app', 'composeApp', 'desktopApp', 'core', 'domain', 'data', 'data/local',
+              'data/remote', 'data/download', 'platform', 'presentation', 'ui',
+              'sources/contracts', 'sources/engine', 'sources/config', 'sources/legacy']
+          candidates = [pathlib.Path('gradle/verification-metadata.xml')]
+          candidates += [p for directory in projects for name in ['gradle.lockfile', 'buildscript-gradle.lockfile']
+              if (p := pathlib.Path(directory) / name).exists()]
+          assert candidates[0].is_file() and pathlib.Path('buildscript-gradle.lockfile') in candidates
+          document = ET.parse(candidates[0])
+          ns = {'v': 'https://schema.gradle.org/dependency-verification'}
+          configuration = document.find('v:configuration', ns)
+          assert configuration is not None and len(configuration) == 2
+          assert {child.tag.split('}')[-1]: child.text for child in configuration} == {
+              'verify-metadata': 'true', 'verify-signatures': 'false'}
+          artifacts = document.findall('v:components/v:component/v:artifact', ns)
+          assert artifacts
+          for artifact in artifacts:
+              checksums = list(artifact)
+              assert len(checksums) == 1 and checksums[0].tag == '{' + ns['v'] + '}sha256'
+              assert not list(checksums[0])
+              value = checksums[0].attrib['value']
+              assert len(value) == 64 and all(c in '0123456789abcdef' for c in value)
+          inventory = {}
+          for path in candidates:
+              assert path.is_file() and not path.is_symlink()
+              data = path.read_bytes()
+              destination = root / 'evidence/candidate' / path
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              destination.write_bytes(data)
+              inventory[str(path)] = hashlib.sha256(data).hexdigest()
+          graph_sources = [pathlib.Path(directory) / 'build.gradle.kts' for directory in projects]
+          graph_sources += [pathlib.Path(name) for name in ['settings.gradle.kts', 'gradle.properties',
+              'gradle/libs.versions.toml', 'scripts/release/capture-gradle-inputs.init.gradle',
+              '.github/workflows/toolchain-input-capture.yml']]
+          (root / 'evidence/candidate.json').write_text(json.dumps({
+              'status': 'UNREVIEWED_CANDIDATE', 'source_sha': os.environ['GITHUB_SHA'],
+              'platform': os.environ['KIRA_APP61_PLATFORM'], 'native_files': inventory,
+              'source_inputs': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in graph_sources},
+              'accepted_metadata': False, 'verify_descriptors': True, 'trust_exemptions': False,
+              'scope': 'Graph/artifact acquisition only; review is required before release adoption.'
+          }, indent=2) + '\n')
+          PY
+
+      - name: Consume the same candidate bytes strictly offline without package credentials
+        env:
+          KIRA_APP61_PHASE: consume
+        run: |
+          set -euo pipefail
+          trap './gradlew --stop' EXIT
+          unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+          ./gradlew :captureReleaseDependencyInputs \
+            --init-script scripts/release/capture-gradle-inputs.init.gradle \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/consume.log" 2>&1
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
+          receipt = json.loads((root / 'evidence/candidate.json').read_text())
+          for name, expected in receipt['native_files'].items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == expected, name
+          for name, expected in receipt['source_inputs'].items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == expected, name
+          before = json.loads((root / 'evidence/acquire-resolution.json').read_text())
+          after = json.loads((root / 'evidence/consume-resolution.json').read_text())
+          assert before['configurations'] == after['configurations']
+          (root / 'evidence/strict-consumption.json').write_text(json.dumps({
+              'status': 'CANDIDATE_STRICT_RESOLUTION_PASS_NOT_ACCEPTED_METADATA',
+              'native_inputs_unchanged': True, 'resolved_artifacts_unchanged': True,
+              'compilation_link_signing_store_executed': False
+          }, indent=2) + '\n')
+          PY
+
+      - name: Reject one altered early plugin checksum offline before any build task
+        env:
+          KIRA_APP61_PHASE: consume
+        run: |
+          set -euo pipefail
+          unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+          finish_negative() {
+            status=$?
+            cp "$KIRA_APP61_ROOT/evidence/candidate/gradle/verification-metadata.xml" gradle/verification-metadata.xml || status=1
+            ./gradlew --stop || status=1
+            exit "$status"
+          }
+          trap finish_negative EXIT
+          python3 - <<'PY'
+          import json, os, pathlib, xml.etree.ElementTree as ET
+          path = pathlib.Path('gradle/verification-metadata.xml')
+          tree = ET.parse(path)
+          ns = {'v': 'https://schema.gradle.org/dependency-verification'}
+          component = tree.find("v:components/v:component[@group='com.android.tools.build'][@name='gradle'][@version='9.2.1']", ns)
+          assert component is not None
+          checksum = component.find("v:artifact[@name='gradle-9.2.1.jar']/v:sha256", ns)
+          assert checksum is not None
+          actual = checksum.attrib['value']
+          assert len(actual) == 64 and actual != '0' * 64
+          text = path.read_text()
+          assert text.count('value="' + actual + '"') == 1
+          path.write_text(text.replace('value="' + actual + '"', 'value="' + '0' * 64 + '"'))
+          (pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'negative-oracle.json').write_text(json.dumps({
+              'artifact': 'gradle-9.2.1.jar', 'expected': '0' * 64, 'actual': actual
+          }))
+          PY
+          set +e
+          ./gradlew :captureReleaseDependencyInputs \
+            --init-script scripts/release/capture-gradle-inputs.init.gradle \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/checksum-negative.log" 2>&1
+          result=$?
+          set -e
+          [[ "$result" -ne 0 ]]
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
+          oracle = json.loads((root / 'negative-oracle.json').read_text())
+          log = (root / 'evidence/checksum-negative.log').read_text()
+          assert 'Dependency verification failed' in log and oracle['artifact'] in log
+          reports = [p for p in (root / 'builds').rglob('*.html') if 'dependency-verification' in p.parts]
+          matching = [p for p in reports if all(value in p.read_text() for value in oracle.values())]
+          assert matching, 'Native Gradle report must identify the exact artifact and expected/actual SHA-256'
+          shutil.copyfile(matching[0], root / 'evidence/checksum-negative-report.html')
+          (root / 'evidence/checksum-negative.json').write_text(json.dumps({
+              'status': 'NATIVE_CHECKSUM_NEGATIVE_PASS_NOT_INPUT_AUTHORITY', **oracle,
+              'offline': True, 'package_credential': False
+          }, indent=2) + '\n')
+          PY
+
+      - name: Always stop owned workers and verify the existing Native bootstrap
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          status=0
+          if [[ -n "${KIRA_APP61_ROOT:-}" && -d "$KIRA_APP61_ROOT/gradle" ]]; then
+            ./gradlew --stop || status=1
+          fi
+          if [[ "$KIRA_APP61_PLATFORM" == apple ]]; then
+            if [[ '${{ steps.native-bootstrap.outcome }}' == success ]]; then
+              python3 -B scripts/release/prepare-libffi-source.py verify || status=1
+            fi
+            python3 -B scripts/release/prepare-libffi-source.py cleanup || status=1
+            if [[ -n "${KIRA_APP61_ROOT:-}" && -f "$RUNNER_TEMP/kira-libffi-provenance.json" ]]; then
+              cp "$RUNNER_TEMP/kira-libffi-provenance.json" "$KIRA_APP61_ROOT/evidence/libffi-provenance.json" || status=1
+            fi
+          fi
+          exit "$status"
+
+      - name: Preserve candidate data and original failure logs without claiming approval
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app61-unreviewed-${{ matrix.platform }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kira-app61-inputs/evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove only this job's owned disposable locations
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import os, pathlib, shutil
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kira-app61-inputs'
+          if root.exists() or root.is_symlink():
+              assert root.is_dir() and not root.is_symlink()
+              expected = ':'.join(os.environ[k] for k in ['GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_SHA']) + '\n'
+              assert (root / 'owner').is_file() and not (root / 'owner').is_symlink()
+              assert (root / 'owner').read_text() == expected
+              shutil.rmtree(root)
+          PY
