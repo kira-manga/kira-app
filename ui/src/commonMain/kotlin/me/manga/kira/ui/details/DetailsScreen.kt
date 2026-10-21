@@ -93,6 +93,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,6 +109,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -117,6 +119,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -551,6 +554,13 @@ internal fun DetailsScreenContent(
         }
     }
 
+    val spacing = LocalSpacing.current
+    val resumeChapter =
+        state.firstUnreadChapter?.takeIf {
+            state.isInLibrary && state.hasDetails && !state.isAdultGateActive && !state.isInChapterSelectionMode
+        }
+    var resumeFabHeightPx by remember { mutableIntStateOf(0) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -588,11 +598,21 @@ internal fun DetailsScreenContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        // Measured bottom chrome keeps chapter hit targets clear at every scroll position.
-        // Preserve selection's exclusive ownership of this region (including the existing FAB guard).
+        // Resume floats over the chapter viewport; it must not reserve a full-width bottom bar.
+        // Its measured height is added only to scroll-end padding so the final chapter clears it.
+        floatingActionButton = {
+            if (resumeChapter != null) {
+                Box(modifier = Modifier.onSizeChanged { resumeFabHeightPx = it.height }) {
+                    ResumeFab(
+                        firstUnread = resumeChapter,
+                        expanded = resumeFabExpanded,
+                        onClick = { onIntent(DetailsIntent.OnChapterClick(resumeChapter)) },
+                    )
+                }
+            }
+        },
+        // Selection actions are real bottom chrome and retain exclusive ownership of this region.
         bottomBar = {
-            val isResumeAvailable = state.isInLibrary && state.hasDetails && !state.isAdultGateActive
-            val firstUnread = state.firstUnreadChapter
             if (state.isInChapterSelectionMode) {
                 ChapterSelectionBar(
                     selectedCount = state.selectedChapterUrls.size,
@@ -605,22 +625,6 @@ internal fun DetailsScreenContent(
                     onMarkRead = { onIntent(DetailsIntent.OnMarkSelectedRead) },
                     onClear = { onIntent(DetailsIntent.OnSelectionClear) },
                 )
-            } else if (isResumeAvailable && firstUnread != null) {
-                val spacing = LocalSpacing.current
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(BottomAppBarDefaults.windowInsets)
-                            .padding(spacing.lg),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    ResumeFab(
-                        firstUnread = firstUnread,
-                        expanded = resumeFabExpanded,
-                        onClick = { onIntent(DetailsIntent.OnChapterClick(firstUnread)) },
-                    )
-                }
             }
         },
     ) { padding ->
@@ -676,6 +680,12 @@ internal fun DetailsScreenContent(
                 details != null -> DetailsBody(
                     details = details,
                     listState = listState,
+                    resumeFabClearance =
+                        if (resumeChapter != null) {
+                            with(density) { resumeFabHeightPx.toDp() } + spacing.lg
+                        } else {
+                            0.dp
+                        },
                     chapters = state.displayChapters,
                     // Redesign 2026-06: header CTA target + action — identical to the Resume FAB
                     // (same firstUnreadChapter, same OnChapterClick dispatch). When finished
@@ -1016,6 +1026,7 @@ private fun DetailsHelpDialog(
 private fun DetailsBody(
     details: MangaDetails,
     listState: LazyListState,
+    resumeFabClearance: Dp,
     chapters: List<Chapter>,
     // Redesign 2026-06: the header's prominent reading CTA target + action — the same resume target
     // (DetailsState.firstUnreadChapter) and click the Resume FAB uses, threaded down to DetailsHeader.
@@ -1071,7 +1082,13 @@ private fun DetailsBody(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(spacing.lg),
+            contentPadding =
+                PaddingValues(
+                    start = spacing.lg,
+                    top = spacing.lg,
+                    end = spacing.lg,
+                    bottom = spacing.lg + resumeFabClearance,
+                ),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             item("header") {

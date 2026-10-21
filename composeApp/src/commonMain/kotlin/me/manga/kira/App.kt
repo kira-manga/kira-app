@@ -2,6 +2,8 @@ package me.manga.kira
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -615,6 +617,7 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean, complaintHost: Complain
         // Each tab screen adds `LocalBottomBarPadding` to its scroll content's bottom `contentPadding`
         // so the last item still clears the capsule at rest (and stays reachable).
         val systemBottom = paddingValues.calculateBottomPadding()
+        val contentPadding = PaddingValues(bottom = if (showBottomBar || fullBleed) 0.dp else systemBottom)
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier =
@@ -622,8 +625,10 @@ private fun MainScreen(crashDiagnosticsEnabled: Boolean, complaintHost: Complain
                         .fillMaxSize()
                         // Nav visible → full-bleed (capsule floats over content). Immersive reader →
                         // full-bleed (it owns its chrome insets). Other non-tab screens (Details/…) keep
-                        // the system-bottom inset so they clear the home indicator exactly as before.
-                        .padding(bottom = if (showBottomBar || fullBleed) 0.dp else systemBottom),
+                        // the system-bottom inset. Consume only that applied padding so their own
+                        // Scaffolds/bottom bars do not reserve the same system inset a second time.
+                        .padding(contentPadding)
+                        .consumeWindowInsets(contentPadding),
             ) {
                 CompositionLocalProvider(
                     LocalBottomBarPadding provides
