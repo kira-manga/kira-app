@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install verified Java/Ruby archives; Native inputs have a separate source-libffi owner."""
+"""Install verified Java/Ruby/Bundler inputs; Native has a separate source-libffi owner."""
 import hashlib
 import json
 import os
@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLES = ("java", "ruby")
 MAX_ARCHIVE = 1024 ** 3
 MAX_EXPANDED = 4 * 1024 ** 3
+BUNDLER_VERSION = "4.0.16"
+BUNDLER_URL = "https://rubygems.org/gems/bundler-" + BUNDLER_VERSION + ".gem"
 RUBY_PREFIXES = {
     "linux-x64": Path("/opt/hostedtoolcache/Ruby/3.3.12/x64"),
     "macos-arm64": Path("/Users/runner/hostedtoolcache/Ruby/3.3.12/arm64"),
@@ -236,12 +238,43 @@ def bootstrap_environment():
 
 
 def download(pin, target):
-    require(re.fullmatch(r"https://github\.com/[^\s?#]+", pin["url"]), "unreviewed runtime URL")
+    require(re.fullmatch(r"https://github\.com/[^\s?#]+", pin["url"]) or pin["url"] == BUNDLER_URL,
+            "unreviewed runtime URL")
     require(re.fullmatch(r"[0-9a-f]{64}", pin["sha256"]), "missing runtime archive digest")
     subprocess.run(["/usr/bin/curl", "--fail", "--silent", "--show-error", "--location",
         "--proto", "=https", "--proto-redir", "=https", "--tlsv1.2", "--connect-timeout", "15",
         "--max-time", "180", "--max-filesize", str(pin.get("size", MAX_ARCHIVE)),
         "--output", str(target), pin["url"]], check=True, timeout=190, env=bootstrap_environment())
+
+
+def install_bundler(prefix, area, pin):
+    require(pin.get("version") == BUNDLER_VERSION and pin.get("url") == BUNDLER_URL and
+            type(pin.get("size")) is int and 0 < pin["size"] <= 2 * 1024 ** 2 and
+            re.fullmatch(r"[0-9a-f]{64}", pin.get("sha256", "")), "invalid Bundler gem pin")
+    package = area / "bundler.gem"
+    download(pin, package)
+    # Do not ask RubyGems to parse or install anything until the complete package is authenticated.
+    require(package.is_file() and not package.is_symlink() and package.stat().st_size == pin["size"],
+            "Bundler gem size mismatch")
+    require(digest(package) == pin["sha256"], "Bundler gem checksum mismatch")
+    gem_home = area / "gems"
+    gem_home.mkdir(mode=0o700)
+    values = {"GEM_HOME": str(gem_home), "GEM_PATH": str(gem_home), "BUNDLER_VERSION": BUNDLER_VERSION}
+    environment = {**bootstrap_environment(), **values, "HOME": str(area)}
+    environment["PATH"] = str(prefix / "bin") + ":" + environment["PATH"]
+    ruby = str(prefix / "bin/ruby")
+    subprocess.run([ruby, str(prefix / "bin/gem"), "--norc", "install", "--local", "--ignore-dependencies",
+        "--no-document", "--no-user-install", "--install-dir", str(gem_home), "--bindir", str(gem_home / "bin"),
+        str(package)], check=True, timeout=60, env=environment)
+    inventory = tree_snapshot(gem_home)
+    subprocess.run([ruby, "-rbundler", "-e",
+        'abort "Wrong verified Bundler" unless Bundler::VERSION == ENV.fetch("BUNDLER_VERSION") && '
+        'Gem.loaded_specs.fetch("bundler").full_gem_path == '
+        'File.join(ENV.fetch("GEM_HOME"), "gems", "bundler-" + ENV.fetch("BUNDLER_VERSION"))'],
+        check=True, timeout=15, env=environment)
+    package.unlink()
+    return {**pin, "directory": str(gem_home), "files": len(inventory),
+            "tree_sha256": hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()}, values
 
 
 def publish(values, paths=()):
@@ -339,6 +372,8 @@ def install(role, current_host, temporary, pins):
                 save(area, receipt)
             receipt["rubyPrefix"] = str(prefix)
             values["KIRA_VERIFIED_RUBY_PREFIX"] = str(prefix)
+            receipt["bundler"], gem_values = install_bundler(prefix, area, pins["bundler"])
+            values.update(gem_values)
         save(area, receipt)
         publish(values, paths)
         print("Verified " + role + " archive inputs: " + ", ".join(row["sha256"] for row in receipt["archives"]))

@@ -9,8 +9,8 @@ on:
     inputs:
       platform:
         type: choice
-        description: Qualify accepted inputs with one unsigned Linux or Apple build
-        options: [linux, apple, both]
+        description: Qualify a full unsigned build or only the Apple Ruby/Bundler runtime
+        options: [linux, apple, both, apple-runtime]
         default: both
         required: true
 
@@ -20,11 +20,12 @@ permissions:
 
 jobs:
   qualify:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'apple-runtime' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        platform: ${{ fromJSON(github.event_name == 'push' && '["linux","apple"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
+        platform: ${{ fromJSON(github.event_name == 'push' && '["linux"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
     runs-on: ${{ matrix.platform == 'apple' && 'macos-26' || 'ubuntu-24.04' }}
     concurrency:
       group: kira-app61-input-qualification-${{ matrix.platform }}
@@ -102,7 +103,7 @@ jobs:
         uses: ruby/setup-ruby@bec3f19a76460dbe12f60def7d1a77585f07516c # v1
         with:
           ruby-version: "3.3.12"
-          bundler: "4.0.16"
+          bundler: "none"
           bundler-cache: true
           self-hosted: true
 
@@ -113,6 +114,7 @@ jobs:
           ruby -e 'abort "Wrong Ruby runtime" unless RUBY_VERSION == "3.3.12"; puts RUBY_DESCRIPTION' > "$KIRA_APP61_ROOT/evidence/ruby.txt"
           bundle --version > "$KIRA_APP61_ROOT/evidence/bundler.txt"
           bundle exec ruby -rbundler -e 'abort "Wrong Bundler runtime: #{Bundler::VERSION}" unless Bundler::VERSION == "4.0.16"; puts Bundler::VERSION' > "$KIRA_APP61_ROOT/evidence/bundler-version.txt"
+          bundle exec ruby -rbundler -e 'expected = File.join(ENV.fetch("KIRA_VERIFIED_RUBY_AREA"), "gems", "gems", "bundler-4.0.16"); abort "Wrong Bundler installation" unless Gem.loaded_specs.fetch("bundler").full_gem_path == expected; puts expected' > "$KIRA_APP61_ROOT/evidence/bundler-path.txt"
           cp "$KIRA_VERIFIED_JAVA_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/java-archive-receipt.json"
           cp "$KIRA_VERIFIED_RUBY_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/ruby-archive-receipt.json"
 
@@ -332,4 +334,132 @@ jobs:
 
       - name: Remove owned verified runtime inputs
         if: ${{ always() && (env.KIRA_VERIFIED_JAVA_AREA == '' || steps.stop-owned-gradle.outcome == 'success') }}
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup
+
+  # This follow-up isolates the changed Ruby/Bundler intake; full Apple selectors
+  # remain available for separate qualification without repeating them on push.
+  apple-runtime:
+    if: ${{ github.event_name == 'push' || inputs.platform == 'apple-runtime' }}
+    runs-on: macos-26
+    permissions:
+      contents: read
+    concurrency:
+      group: kira-app61-apple-ruby-runtime
+      cancel-in-progress: false
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      FASTLANE_OPT_OUT_USAGE: "1"
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+
+    steps:
+      - name: Check out the exact reviewed runtime qualification source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned bootstrap inputs
+        run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+
+      - name: Reserve owned Ruby qualification evidence and temporary locations
+        run: |
+          set -euo pipefail
+          umask 077
+          root="$RUNNER_TEMP/kira-app61-ruby-qualification"
+          [[ ! -e "$root" && ! -L "$root" ]]
+          # setup-ruby's reviewed cache path is fixed to these workspace slots.
+          [[ ! -e .bundle && ! -L .bundle && ! -e vendor/bundle && ! -L vendor/bundle ]]
+          [[ ! -L vendor && ( ! -e vendor || -d vendor ) ]]
+          mkdir -m 700 "$root"
+          printf '%s:%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" > "$root/owner"
+          printf '%s\n' "$GITHUB_WORKSPACE" > "$root/workspace"
+          mkdir "$root/evidence" "$root/tmp"
+          git diff --exit-code
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          git rev-parse HEAD HEAD^{tree} > "$root/evidence/source.txt"
+          cp release/verified-tools.json "$root/evidence/accepted-manifest.json"
+          cp Gemfile Gemfile.lock "$root/evidence/"
+          {
+            printf 'KIRA_APP61_ROOT=%s\n' "$root"
+            printf 'TMPDIR=%s\n' "$root/tmp"
+          } >> "$GITHUB_ENV"
+
+      - name: Install verified Ruby and Bundler inputs
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py ruby
+
+      - name: Set up verified Ruby and the authenticated Bundler installation
+        uses: ruby/setup-ruby@bec3f19a76460dbe12f60def7d1a77585f07516c # v1
+        with:
+          ruby-version: "3.3.12"
+          bundler: "none"
+          bundler-cache: true
+          self-hosted: true
+
+      - name: Preserve actual Ruby and Bundler identities and authenticated receipts
+        run: |
+          set -euo pipefail
+          ruby -e 'abort "Wrong Ruby runtime" unless RUBY_VERSION == "3.3.12"; puts RUBY_DESCRIPTION' > "$KIRA_APP61_ROOT/evidence/ruby.txt"
+          bundle --version > "$KIRA_APP61_ROOT/evidence/bundler.txt"
+          bundle exec ruby -rbundler -e 'abort "Wrong Bundler runtime: #{Bundler::VERSION}" unless Bundler::VERSION == "4.0.16"; puts Bundler::VERSION' > "$KIRA_APP61_ROOT/evidence/bundler-version.txt"
+          bundle exec ruby -rbundler -e 'expected = File.join(ENV.fetch("KIRA_VERIFIED_RUBY_AREA"), "gems", "gems", "bundler-4.0.16"); abort "Wrong Bundler installation" unless Gem.loaded_specs.fetch("bundler").full_gem_path == expected; puts expected' > "$KIRA_APP61_ROOT/evidence/bundler-path.txt"
+          ruby -rjson -e 'puts JSON.pretty_generate({"gem_home" => Gem.dir, "gem_path" => Gem.path})' > "$KIRA_APP61_ROOT/evidence/gem-paths.json"
+          cp "$KIRA_VERIFIED_RUBY_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/ruby-archive-receipt.json"
+          git diff --exit-code
+          cmp -s release/verified-tools.json "$KIRA_APP61_ROOT/evidence/accepted-manifest.json"
+          cmp -s Gemfile "$KIRA_APP61_ROOT/evidence/Gemfile"
+          cmp -s Gemfile.lock "$KIRA_APP61_ROOT/evidence/Gemfile.lock"
+          /usr/bin/python3 -I -B - <<'PY'
+          import hashlib, json, os, pathlib
+          evidence = pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'evidence'
+          receipt = evidence / 'ruby-archive-receipt.json'
+          (evidence / 'runtime-only.json').write_text(json.dumps({
+              'status': 'VERIFIED_RUBY_BUNDLER_RUNTIME_ONLY_PASS',
+              'source_sha': os.environ['GITHUB_SHA'], 'platform': 'apple',
+              'ruby_version': '3.3.12', 'bundler_version': '4.0.16',
+              'authenticated_receipt_sha256': hashlib.sha256(receipt.read_bytes()).hexdigest(),
+              'java_gradle_native_or_store_executed': False,
+              'package_read_credential': False, 'accepted_inputs_unchanged': True
+          }, indent=2) + '\n')
+          PY
+
+      - name: Preserve Ruby-only qualification receipts
+        id: preserve-ruby-evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app61-qualified-apple-runtime-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kira-app61-ruby-qualification/evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove only this Ruby qualification job's bundle and temporary outputs
+        if: ${{ always() && steps.preserve-ruby-evidence.outcome != 'failure' }}
+        run: |
+          set -euo pipefail
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          /usr/bin/python3 -I -B - <<'PY'
+          import os, pathlib, shutil
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kira-app61-ruby-qualification'
+          if root.exists() or root.is_symlink():
+              assert root.is_dir() and not root.is_symlink()
+              expected = ':'.join(os.environ[k] for k in ['GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_SHA']) + '\n'
+              marker = root / 'owner'
+              assert marker.is_file() and not marker.is_symlink() and marker.read_text() == expected
+              workspace = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+              slot = root / 'workspace'
+              assert slot.is_file() and not slot.is_symlink() and slot.read_text() == str(workspace) + '\n'
+              assert not (workspace / 'vendor').is_symlink()
+              for path in [workspace / 'vendor/bundle', workspace / '.bundle']:
+                  if path.exists() or path.is_symlink():
+                      assert path.is_dir() and not path.is_symlink()
+                      shutil.rmtree(path)
+              shutil.rmtree(root)
+          PY
+
+      - name: Remove owned verified Ruby inputs
+        if: ${{ always() }}
         run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup

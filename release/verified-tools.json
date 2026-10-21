@@ -25,12 +25,12 @@
         "buildscript-gradle.lockfile": "261af2bcc177126189c15dfe94833c1d33394017a6e6a24e96d782105306b358",
         "composeApp/buildscript-gradle.lockfile": "107daa9ce65695caf0db7a98dcba721a7c6917bc086324cec7f7ae1578749f67",
         "composeApp/gradle-macos-arm64.lockfile": "411a40d20bb95381f0565096be92de4182ddb784e4bd5f32b72b2f8da4971e87",
-        "composeApp/gradle.lockfile": "f9d03eb042b773140dd1b7c92655d5ab0fe7da63c5cdf2524c2edb92d5f11754",
+        "composeApp/gradle.lockfile": "174349fd868d49b9082edcea63d48f9b755895896d43e14fcdde73badabb7404",
         "core/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "core/gradle.lockfile": "96ba7b5a51645bb259e2d7c6d6583ecd05452a9a0b8fe4f0b7f48c2d396f303a",
         "data/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "data/download/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
-        "data/download/gradle.lockfile": "017f15ae4641337f2afb8cde9d89602977d9f805d86f188ace53463ac4d96170",
+        "data/download/gradle.lockfile": "0201d18d3d67bb59eecfdc13b34b7d5358153a6e544c6fabc74a0473d4864e14",
         "data/gradle-macos-arm64.lockfile": "17ff04663dcad9dcc49fa780c94ed6e6efb921f828c795cb2195ae30701a10bb",
         "data/gradle.lockfile": "ba881f84d6a60c56183bf292fdc5084228f1b566f8888cd5b412e07dd122684a",
         "data/local/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
@@ -58,7 +58,7 @@
         "sources/legacy/gradle.lockfile": "090b8bd878f98c0ae586eb7e5a825b8f9e99ac35e3bb0f1fd26c6fbcae92a540",
         "ui/buildscript-gradle.lockfile": "8b30b614f19c3b6f43575c7fd28704ff2167606e52ea6940d88ea5fb9acd0110",
         "ui/gradle-macos-arm64.lockfile": "e90d34a6431a0a57616a0b6492c5e884f6975eca62d13ddd788e2fe90cb5c1bb",
-        "ui/gradle.lockfile": "a899fc7d753e544c6e0b02549874043539d668f1ad86bde5a8f6e13fffb8f540"
+        "ui/gradle.lockfile": "66ca28bba0715442a1125d2bb3091fd13c01d14afe055743d685245fe3e61e72"
       },
       "files": {
         "app/build.gradle.kts": "08e24dafeee58210da463cf0a9ce988c9a78085a6f26a09fe440033bfb8e637e",
@@ -88,7 +88,7 @@
       },
       "consumer_files": {
         ".github/workflows/source-runtime-checks.yml": "8eb134cf7da5eafd828124252831a4a1e3ffc0b11d4a06be743426c9bc0aacd0",
-        ".github/workflows/toolchain-input-qualification.yml": "705bb8c8568be61007d04f17ebc8bee88da0978b4edf9357a4500afb8bc7ab23",
+        ".github/workflows/toolchain-input-qualification.yml": "b172814e7f7b4615e2fbe7b8ee213098f5402b1545cea4a750c40662370880c4",
         "fastlane/Fastfile": "9a4cfbe735230404d55dbfe8b5a821a398e063fb719bd08ccc5f124016f9cab4",
         "iosApp/project.yml": "6332d5a1de3fad966d8e74ea04e081e1f0d1c4ae0475144b033d448d60e4ae95",
         "scripts/release/check-source-runtime-ios.py": "4d9a12a25cdc24aad216c931ced7fa048894ad7a5ae95c716a9a91c8edf32b73"
@@ -133,7 +133,7 @@
     }
   },
   "runtime_archives": {
-    "installer_sha256": "e9ca43141707bdce0300e51e484571c1c7f60b96e10706985be96f41746dfcad",
+    "installer_sha256": "b15d32ffed52a5c4a585d3719165149b6ff8d8f5b780b20d36515e3e78b38154",
     "java": {
       "linux-x64": {
         "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
@@ -159,6 +159,12 @@
         "size": 11288432,
         "directory": "arm64"
       }
+    },
+    "bundler": {
+      "version": "4.0.16",
+      "url": "https://rubygems.org/gems/bundler-4.0.16.gem",
+      "sha256": "d6ca5dd440c24f9abce9844cf44cc8e18c6a553de65a47efb4544137af92c47d",
+      "size": 460800
     }
   },
   "native_source_bootstrap": {

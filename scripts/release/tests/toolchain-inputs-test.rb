@@ -587,7 +587,7 @@ class ToolchainInputsTest < Minitest::Test
       _, stderr, status = verify(root)
       assert status.success?, stderr
     end
-    %i[java_fallback ruby_minor bundler_latest ruby_download_fallback runner_latest xcode_path skipped_xcode_probe skipped_java skipped_ruby ignored_java_failure].each do |mutation|
+    %i[java_fallback ruby_minor bundler_latest bundler_remote ruby_download_fallback runner_latest xcode_path skipped_xcode_probe skipped_java skipped_ruby ignored_java_failure].each do |mutation|
       with_checkout do |root|
         mutate_workflow(root, "testflight.yml") do |workflow|
           job = workflow.fetch("jobs").fetch("build-and-upload")
@@ -598,6 +598,7 @@ class ToolchainInputsTest < Minitest::Test
               "with" => { "distribution" => "temurin", "java-version" => "21" } })
           when :ruby_minor then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["ruby-version"] = "3.3"
           when :bundler_latest then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["bundler"] = "latest"
+          when :bundler_remote then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["bundler"] = "4.0.16"
           when :ruby_download_fallback then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with").delete("self-hosted")
           when :runner_latest then job["runs-on"] = "macos-latest"
           when :xcode_path then job.fetch("env")["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
@@ -680,8 +681,27 @@ class ToolchainInputsTest < Minitest::Test
     end
   end
 
+  def test_bundler_package_requires_a_complete_exact_provider_pin
+    { "sha256" => [nil, "latest"], "size" => [nil, 0, 2 * 1024**2 + 1],
+      "url" => ["https://rubygems.org/gems/bundler-latest.gem"], "version" => ["4.0.17"] }.each do |key, values|
+      values.each do |value|
+        with_checkout do |root|
+          mutate_pins(root) do |pins|
+            gem = pins.fetch("runtime_archives").fetch("bundler")
+            value.nil? ? gem.delete(key) : gem[key] = value
+          end
+          assert_rejected(verify(root), "Bundler requires the exact reviewed gem URL, version, size and SHA-256 pin")
+        end
+      end
+    end
+    with_checkout do |root|
+      mutate_pins(root) { |pins| pins.fetch("runtime_archives").delete("bundler") }
+      assert_rejected(verify(root), "runtime archive role set changed")
+    end
+  end
+
   def test_workflow_environment_cannot_replace_verified_runtime_paths
-    %w[JAVA_HOME KONAN_DATA_DIR ORG_GRADLE_PROJECT_kotlin.native.home RUBYOPT RUNNER_TOOL_CACHE KIRA_VERIFIED_NATIVE_AREA].each do |variable|
+    %w[JAVA_HOME KONAN_DATA_DIR ORG_GRADLE_PROJECT_kotlin.native.home RUBYOPT BUNDLER_VERSION RUNNER_TOOL_CACHE KIRA_VERIFIED_NATIVE_AREA].each do |variable|
       %i[workflow job step].each do |scope|
         with_checkout do |root|
           mutate_workflow(root, "testflight.yml") do |workflow|
@@ -823,19 +843,65 @@ class ToolchainInputsTest < Minitest::Test
     refute_includes steps.map { |step| step["run"].to_s }.join, ":captureReleaseDependencyInputs"
   end
 
+  def test_qualification_push_runs_only_linux_build_and_separate_apple_ruby_runtime
+    workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
+    events = workflow.fetch("on") { workflow.fetch(true) }
+    assert_equal ["remediation/app-61-resume-20261021"], events.fetch("push").fetch("branches")
+    assert_equal [".github/workflows/toolchain-input-qualification.yml"], events.fetch("push").fetch("paths")
+    assert_equal %w[linux apple both apple-runtime], events.fetch("workflow_dispatch").fetch("inputs").fetch("platform").fetch("options")
+    full = workflow.fetch("jobs").fetch("qualify")
+    assert_equal "${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'apple-runtime' }}", full.fetch("if")
+    assert_equal "${{ fromJSON(github.event_name == 'push' && '[\"linux\"]' || inputs.platform == 'both' && '[\"linux\",\"apple\"]' || inputs.platform == 'apple' && '[\"apple\"]' || '[\"linux\"]') }}",
+      full.fetch("strategy").fetch("matrix").fetch("platform")
+
+    runtime = workflow.fetch("jobs").fetch("apple-runtime")
+    assert_equal "${{ github.event_name == 'push' || inputs.platform == 'apple-runtime' }}", runtime.fetch("if")
+    assert_equal "macos-26", runtime.fetch("runs-on")
+    assert_equal({ "contents" => "read" }, runtime.fetch("permissions"))
+    refute_includes JSON.generate(runtime), "secrets."
+    steps = runtime.fetch("steps")
+    assert_equal "/usr/bin/ruby scripts/release/verify-toolchain-inputs.rb", steps.fetch(1).fetch("run")
+    installer = steps.find { |step| step["name"] == "Install verified Ruby and Bundler inputs" }
+    setup = steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }
+    assert_equal "/usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py ruby", installer.fetch("run")
+    assert_operator steps.index(installer), :<, steps.index(setup)
+    assert_equal({ "ruby-version" => "3.3.12", "bundler" => "none", "bundler-cache" => true, "self-hosted" => true }, setup.fetch("with"))
+    [steps.fetch(1), installer, setup].each do |step|
+      refute step.key?("if")
+      refute step.key?("continue-on-error")
+    end
+    assert_equal %w[actions/checkout ruby/setup-ruby actions/upload-artifact],
+      steps.filter_map { |step| step["uses"]&.split("@")&.first }
+    commands = steps.map { |step| step["run"].to_s }.join("\n")
+    ruby_probe = steps.find { |step| step["name"] == "Preserve actual Ruby and Bundler identities and authenticated receipts" }
+    full_probe = full.fetch("steps").find { |step| step["name"] == "Preserve actual runtime identities and authenticated archive receipts" }
+    assert_equal full_probe.fetch("run").lines.grep(/^bundle /), ruby_probe.fetch("run").lines.grep(/^bundle /)
+    refute_match(/(?:\.\/gradlew|prepare-libffi-source|xcodebuild|install-toolchain-inputs\.py java|KIRA_PACKAGES_READ_TOKEN)/, commands)
+    assert_includes commands, "VERIFIED_RUBY_BUNDLER_RUNTIME_ONLY_PASS"
+    assert_includes commands, '"$KIRA_VERIFIED_RUBY_AREA/owned.json"'
+    assert_equal "/usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup", steps.last.fetch("run")
+    assert_equal "${{ always() }}", steps.last.fetch("if")
+  end
+
   def test_qualification_checks_active_bundler_version_not_cli_presentation
     workflow = YAML.safe_load(File.read(File.join(ROOT, ".github/workflows/toolchain-input-qualification.yml")), aliases: false)
     script = workflow.fetch("jobs").fetch("qualify").fetch("steps").find do |step|
       step["name"] == "Preserve actual runtime identities and authenticated archive receipts"
     end.fetch("run")
     commands = script.lines.grep(/^bundle /)
-    assert_equal 2, commands.length
+    assert_equal 3, commands.length
     [["4.0.16", "4.0.16"], ["Bundler version 4.0.16", "4.0.16"],
-      ["4.0.16", "4.0.15"], ["4.0.16", "4.0.17"], ["4.0.16", "4.0.16.pre"]].each do |cli, version|
+      ["4.0.16", "4.0.15"], ["4.0.16", "4.0.17"], ["4.0.16", "4.0.16.pre"],
+      ["4.0.16", "4.0.16", true]].each do |cli, version, wrong_path|
       Dir.mktmpdir("kira-bundler-identity-") do |root|
         FileUtils.mkdir_p(File.join(root, "evidence"))
+        area = File.join(root, "owned-ruby")
+        expected_path = File.join(area, "gems", "gems", "bundler-4.0.16")
         # Execute the actual workflow probe with synthetic Bundler inputs, not installed gems.
-        File.write(File.join(root, "bundler.rb"), 'module Bundler; VERSION = ENV.fetch("FIXTURE_BUNDLER_VERSION"); end')
+        File.write(File.join(root, "bundler.rb"), <<~'RUBY')
+          module Bundler; VERSION = ENV.fetch("FIXTURE_BUNDLER_VERSION"); end
+          Gem.loaded_specs["bundler"] = Struct.new(:full_gem_path).new(ENV.fetch("FIXTURE_BUNDLER_PATH"))
+        RUBY
         executable(File.join(root, "bundle"), <<~'SH')
           #!/bin/sh
           if [ "$1" = "--version" ]; then printf '%s\n' "$FIXTURE_BUNDLER_CLI"; exit 0; fi
@@ -843,17 +909,19 @@ class ToolchainInputsTest < Minitest::Test
           shift 2
           exec "$FIXTURE_RUBY" -I"$KIRA_APP61_ROOT" "$@"
         SH
-        environment = { "PATH" => "#{root}:#{ENV.fetch('PATH')}", "KIRA_APP61_ROOT" => root,
+        environment = { "PATH" => "#{root}:#{ENV.fetch('PATH')}", "KIRA_APP61_ROOT" => root, "KIRA_VERIFIED_RUBY_AREA" => area,
+          "FIXTURE_BUNDLER_PATH" => wrong_path ? "/unverified/bundler-4.0.16" : expected_path,
           "FIXTURE_BUNDLER_VERSION" => version, "FIXTURE_BUNDLER_CLI" => cli, "FIXTURE_RUBY" => RbConfig.ruby }
         result = Open3.capture3(environment, "/bin/bash", "-e", "-o", "pipefail", "-c",
           commands.join + 'printf "reached\n" > "$KIRA_APP61_ROOT/evidence/after-bundler-check"')
         assert_equal "#{cli}\n", File.read(File.join(root, "evidence/bundler.txt"))
-        if version == "4.0.16"
+        if version == "4.0.16" && !wrong_path
           assert result.last.success?, result[1]
           assert_equal "4.0.16\n", File.read(File.join(root, "evidence/bundler-version.txt"))
+          assert_equal "#{expected_path}\n", File.read(File.join(root, "evidence/bundler-path.txt"))
           assert File.exist?(File.join(root, "evidence/after-bundler-check"))
         else
-          assert_rejected(result, "Wrong Bundler runtime: #{version}")
+          assert_rejected(result, wrong_path ? "Wrong Bundler installation" : "Wrong Bundler runtime: #{version}")
           refute File.exist?(File.join(root, "evidence/after-bundler-check"))
         end
       end

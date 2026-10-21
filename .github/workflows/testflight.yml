@@ -103,7 +103,7 @@ jobs:
         uses: ruby/setup-ruby@bec3f19a76460dbe12f60def7d1a77585f07516c # v1
         with:
           ruby-version: "3.3.12"
-          bundler: "4.0.16"
+          bundler: "none" # Installed from authenticated local gem bytes by the runtime helper.
           bundler-cache: true
           self-hosted: true
 

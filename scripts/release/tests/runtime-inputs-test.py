@@ -29,6 +29,10 @@ class RuntimeInputsTest(unittest.TestCase):
         self.env_file.touch()
         self.path_file.touch()
         self.ruby_prefix = self.root / "toolcache/Ruby/3.3.12/x64"
+        self.bundler_package = self.root / "bundler.gem"
+        self.bundler_package.write_bytes(b"fixture-bundler-gem")
+        self.bundler_pin = {"version": "4.0.16", "url": runtime.BUNDLER_URL,
+                            "sha256": runtime.digest(self.bundler_package), "size": self.bundler_package.stat().st_size}
         environment = mock.patch.dict(os.environ, {
             "HOME": str(self.root), "RUNNER_TEMP": str(self.runner),
             "RUNNER_TOOL_CACHE": str(self.root / "toolcache"),
@@ -69,12 +73,21 @@ class RuntimeInputsTest(unittest.TestCase):
 
     def install(self, role, entries, host="linux-x64", process=None):
         def download(pin, target):
-            shutil.copyfile(self.root / pin["url"], target)
+            shutil.copyfile(self.bundler_package if pin["url"] == runtime.BUNDLER_URL else self.root / pin["url"], target)
 
+        if role == "ruby" and process is None:
+            def process(command, **options):
+                if command[1] == str(self.ruby_prefix / "bin/gem"):
+                    (Path(options["env"]["GEM_HOME"]) / "fixture-bundler").write_bytes(b"fixture-installed-bundler")
+                return subprocess.CompletedProcess(command, 0)
+
+        pins = {role: {host: entries}}
+        if self.bundler_pin is not None:
+            pins["bundler"] = self.bundler_pin
         with mock.patch.object(runtime, "download", side_effect=download), \
                 mock.patch.object(runtime.subprocess, "run", side_effect=process) as executed, \
                 contextlib.redirect_stdout(io.StringIO()):
-            runtime.install(role, host, self.runner, {role: {host: entries}})
+            runtime.install(role, host, self.runner, pins)
         return executed
 
     def values(self):
@@ -185,7 +198,7 @@ class RuntimeInputsTest(unittest.TestCase):
     def test_ruby_installs_only_into_an_absent_embedded_prefix_and_cleans_only_its_creation(self):
         pin = self.archive("x64", [("bin/ruby", b"fixture-ruby")])
         executed = self.install("ruby", pin)
-        executed.assert_not_called()
+        self.assertEqual(2, executed.call_count)
         self.assertEqual(b"fixture-ruby", (self.ruby_prefix / "bin/ruby").read_bytes())
         self.assertTrue(Path(str(self.ruby_prefix) + ".complete").is_file())
         self.cleanup("ruby")
@@ -197,7 +210,7 @@ class RuntimeInputsTest(unittest.TestCase):
         authenticated, _ = self.extract(pin)
         shutil.copytree(authenticated, self.ruby_prefix)
         Path(str(self.ruby_prefix) + ".complete").touch()
-        self.install("ruby", pin).assert_not_called()
+        self.assertEqual(2, self.install("ruby", pin).call_count)
         self.cleanup("ruby")
         self.assertTrue(self.ruby_prefix.is_dir())
         for changed in (self.ruby_prefix / "bin/ruby", self.ruby_prefix / "extra-gem"):
@@ -260,7 +273,7 @@ class RuntimeInputsTest(unittest.TestCase):
             if not path.is_symlink():
                 path.chmod(0o1777 if path.is_dir() else 0o777)
         os.environ.update(GITHUB_ACTIONS="true", RUNNER_ENVIRONMENT="github-hosted")
-        self.install("ruby", pin).assert_not_called()
+        self.assertEqual(2, self.install("ruby", pin).call_count)
         receipt = json.loads((Path(self.values()["KIRA_VERIFIED_RUBY_AREA"]) / "owned.json").read_text())
         self.assertEqual("ubuntu-hosted-permissions", receipt["rubyCachePolicy"])
         self.assertFalse(receipt["createdRuby"])
@@ -330,6 +343,70 @@ class RuntimeInputsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "wrong embedded Ruby tool-cache prefix"):
             self.install("ruby", pin)
         self.assertFalse(self.ruby_prefix.exists())
+
+    def test_bundler_installs_authenticated_local_bytes_into_owned_state_with_isolated_environment(self):
+        pin = self.archive("x64", [("bin/ruby", b"fixture-ruby"), ("bin/gem", b"fixture-rubygems")])
+        os.environ.update(GEM_HOME="/unreviewed", GEM_PATH="/unreviewed", RUBYOPT="-runreviewed",
+                          BUNDLER_VERSION="0.0.0", SECRET_TOKEN="fixture-secret")
+        executed = self.install("ruby", pin)
+        area = Path(self.values()["KIRA_VERIFIED_RUBY_AREA"])
+        gem_home = area / "gems"
+        command, options = executed.call_args_list[0].args[0], executed.call_args_list[0].kwargs
+        self.assertEqual([str(self.ruby_prefix / "bin/ruby"), str(self.ruby_prefix / "bin/gem"), "--norc", "install",
+            "--local", "--ignore-dependencies", "--no-document", "--no-user-install", "--install-dir", str(gem_home),
+            "--bindir", str(gem_home / "bin"), str(area / "bundler.gem")], command)
+        environment = {**runtime.bootstrap_environment(), "HOME": str(area), "GEM_HOME": str(gem_home), "GEM_PATH": str(gem_home),
+                       "BUNDLER_VERSION": "4.0.16"}
+        environment["PATH"] = str(self.ruby_prefix / "bin") + ":" + environment["PATH"]
+        self.assertEqual(environment, options["env"])
+        probe = executed.call_args_list[1]
+        self.assertEqual([str(self.ruby_prefix / "bin/ruby"), "-rbundler", "-e"], probe.args[0][:3])
+        self.assertIn('Gem.loaded_specs.fetch("bundler").full_gem_path', probe.args[0][3])
+        self.assertEqual(environment, probe.kwargs["env"])
+        receipt = runtime.read_json(area / "owned.json")["bundler"]
+        self.assertEqual(self.bundler_pin, {key: receipt[key] for key in self.bundler_pin})
+        self.assertEqual(str(gem_home), receipt["directory"])
+        self.assertEqual(1, receipt["files"])
+        self.assertEqual(str(gem_home), self.values()["GEM_PATH"])
+        self.assertEqual("4.0.16", self.values()["BUNDLER_VERSION"])
+        self.assertEqual("", self.path_file.read_text())  # setup-ruby owns the authenticated prefix/bin PATH.
+        self.assertFalse((area / "bundler.gem").exists())
+        self.cleanup("ruby")
+
+    def test_bad_or_missing_bundler_pin_never_executes_ruby_or_changes_a_borrowed_prefix(self):
+        pin = self.archive("x64", [("bin/ruby", b"fixture-ruby")])
+        authenticated, expected = self.extract(pin)
+        original = self.bundler_pin.copy()
+        cases = [None, {key: value for key, value in original.items() if key != "sha256"},
+                 {**original, "sha256": "0" * 64}, {**original, "size": original["size"] + 1},
+                 {**original, "url": "https://rubygems.org/gems/bundler-latest.gem"}]
+        for borrowed in (False, True):
+            if borrowed:
+                shutil.copytree(authenticated, self.ruby_prefix)
+                Path(str(self.ruby_prefix) + ".complete").touch()
+            for changed in cases:
+                with self.subTest(borrowed=borrowed, pin=changed):
+                    self.bundler_pin = changed
+                    with self.assertRaises((RuntimeError, KeyError)):
+                        self.install("ruby", pin, process=lambda *a, **k: self.fail("unverified Bundler processed"))
+                    self.assertEqual({"KIRA_VERIFIED_RUBY_AREA": ""}, self.values())
+                    self.assertEqual([], list(self.runner.iterdir()))
+                    self.assertEqual(borrowed, self.ruby_prefix.exists())
+                    if borrowed:
+                        self.assertEqual(expected, runtime.tree_snapshot(self.ruby_prefix))
+
+    def test_bundler_install_or_identity_failure_cleans_owned_runtime_without_publishing_it(self):
+        pin = self.archive("x64", [("bin/ruby", b"fixture-ruby")])
+        for fail_probe in (False, True):
+            def failure(command, **options):
+                if not fail_probe or command[1] == "-rbundler":
+                    raise subprocess.CalledProcessError(1, command)
+                return subprocess.CompletedProcess(command, 0)
+            with self.subTest(fail_probe=fail_probe), self.assertRaises(subprocess.CalledProcessError):
+                self.install("ruby", pin, process=failure)
+            self.assertEqual({"KIRA_VERIFIED_RUBY_AREA": ""}, self.values())
+            self.assertEqual([], list(self.runner.iterdir()))
+            self.assertFalse(self.ruby_prefix.exists())
 
     def test_unsupported_role_rejected_before_creating_or_publishing_resources(self):
         for role in ("native", "unknown"):

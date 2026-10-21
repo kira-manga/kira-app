@@ -21,7 +21,7 @@ class ToolchainInputVerifier
   RUNTIME_DISPOSAL_CONDITION = "${{ always() && (env.KIRA_VERIFIED_JAVA_AREA == '' || steps.stop-owned-gradle.outcome == 'success') }}".freeze
   RUNTIME_ENV = %w[
     PATH JAVA_HOME JAVA_OPTS JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS
-    RUBYOPT RUBYLIB GEM_HOME GEM_PATH RUNNER_TOOL_CACHE
+    RUBYOPT RUBYLIB GEM_HOME GEM_PATH BUNDLER_VERSION RUNNER_TOOL_CACHE
     KONAN_DATA_DIR KONAN_USE_INTERNAL_SERVER
   ].freeze
   NATIVE_SERIAL_OPTIONS = "-Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1".freeze
@@ -490,8 +490,14 @@ class ToolchainInputVerifier
 
   def verify_runtime_archives!
     pins = @pins.fetch("runtime_archives")
-    check!(pins.keys.sort == %w[installer_sha256 java ruby], "runtime archive role set changed")
+    check!(pins.keys.sort == %w[bundler installer_sha256 java ruby], "runtime archive role set changed")
     checked_gradle_file(RUNTIME_INSTALLER, pins.fetch("installer_sha256"))
+    bundler = pins.fetch("bundler")
+    check!(bundler.is_a?(Hash) && bundler.keys.sort == %w[sha256 size url version] &&
+      bundler["version"] == "4.0.16" && bundler["version"] == @pins.fetch("runtime_selections").fetch("ruby").fetch("bundler") &&
+      bundler["url"] == "https://rubygems.org/gems/bundler-4.0.16.gem" && sha256?(bundler["sha256"]) &&
+      bundler["size"].is_a?(Integer) && bundler["size"].between?(1, 2 * 1024**2),
+      "Bundler requires the exact reviewed gem URL, version, size and SHA-256 pin")
     java_base = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/"
     ruby_base = "https://github.com/ruby/ruby-builder/releases/download/ruby-3.3.12/"
     layouts = {
@@ -605,7 +611,7 @@ class ToolchainInputVerifier
     if shipping
       ruby = steps.select { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }
       check!(ruby.length == 1 && (ruby.first.keys - %w[name uses with]).empty? && ruby.first["with"] == {
-        "ruby-version" => runtime.fetch("ruby").fetch("version"), "bundler" => runtime.fetch("ruby").fetch("bundler"),
+        "ruby-version" => runtime.fetch("ruby").fetch("version"), "bundler" => "none",
         "bundler-cache" => true, "self-hosted" => true
       } && steps.index(ruby.first) == installers.fetch("ruby") + 1,
         "runtime selection must match the reviewed verified Ruby and locked Bundler without download fallback")
