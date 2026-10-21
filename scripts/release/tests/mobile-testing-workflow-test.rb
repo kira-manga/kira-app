@@ -72,10 +72,24 @@ class MobileTestingWorkflowTest < Minitest::Test
       steps = workflow(name).fetch("jobs").values.flat_map { |job| job.fetch("steps") }
       batches = steps.select do |step|
         command = step["run"].to_s
-        command.include?("./gradlew ") || command.include?("quiet archive") || command.include?("fastlane android upload_internal")
+        command.match?(/^\s*\.\/gradlew (?!\-\-stop(?:\s|$))/) || command.include?("quiet archive") || command.include?("fastlane android upload_internal")
       end
       refute_empty batches
-      batches.each { |step| assert_includes step.fetch("run"), "trap './gradlew --stop' EXIT" }
+      batches.each do |step|
+        command = step.fetch("run")
+        case step["name"]
+        when "Consume the verified Android graph before protected inputs"
+          assert_includes command, "trap cleanup_placeholder EXIT"
+          assert_includes command, "./gradlew --stop || original_status=1"
+          assert_includes command, "unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN"
+        when "Consume the verified Apple Gradle graph before protected inputs"
+          assert_includes command, "trap stop_preflight EXIT"
+          assert_includes command, "./gradlew --stop || original_status=1"
+          assert_includes command, "unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN"
+        else
+          assert_includes command, "trap './gradlew --stop' EXIT"
+        end
+      end
     end
   end
 

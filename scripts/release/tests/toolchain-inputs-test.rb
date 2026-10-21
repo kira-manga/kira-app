@@ -10,19 +10,22 @@ require "yaml"
 class ToolchainInputsTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
   INPUTS = %w[
-    release/verified-tools.json gradlew gradlew.bat
+    release/verified-tools.json gradlew gradlew.bat Gemfile Gemfile.lock
     gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
     scripts/release/verify-toolchain-inputs.rb scripts/release/install-xcodegen.sh
-    scripts/release/cleanup-xcodegen.sh
+    scripts/release/cleanup-xcodegen.sh scripts/release/install-toolchain-inputs.py
+    app/google-services.json.example
     .github/workflows/ci.yml .github/workflows/android-internal-testing.yml
     .github/workflows/testflight.yml .github/workflows/internal-testing-release.yml
-    .github/workflows/mobile-release-checks.yml
+    .github/workflows/mobile-release-checks.yml .github/workflows/toolchain-input-capture.yml
+    .github/workflows/source-runtime-checks.yml .github/workflows/testflight-existing-build.yml
+    .github/workflows/libffi-source-check.yml
     iosApp/Package.resolved iosApp/project.yml
   ].freeze
   GENERATED_LOCK = "iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved".freeze
 
   def test_committed_inputs_pass_the_actual_verifier
-    with_checkout do |root|
+    with_checkout(graph_fixture: false) do |root|
       stdout, stderr, status = verify(root)
       assert status.success?, stderr
       assert_includes stdout, "pre-credential ordering checks passed"
@@ -58,7 +61,9 @@ class ToolchainInputsTest < Minitest::Test
     ["v4", "ea165f8"].each do |reference|
       with_checkout do |root|
         mutate_workflow(root, "ci.yml") do |workflow|
-          workflow.fetch("jobs").fetch("jvm-android").fetch("steps").last["uses"] = "actions/upload-artifact@#{reference}"
+          workflow.fetch("jobs").fetch("jvm-android").fetch("steps").find { |step|
+            step["uses"].to_s.start_with?("actions/upload-artifact@")
+          }["uses"] = "actions/upload-artifact@#{reference}"
         end
         assert_rejected(verify(root), "unreviewed or floating Action reference")
       end
@@ -141,14 +146,14 @@ class ToolchainInputsTest < Minitest::Test
             protected_index = steps.index { |step| step.fetch("env", {}).key?("APP_STORE_CONNECT_KEY_ID") }
             steps.insert(protected_index + 1, installer)
           when :unchecked_native
-            compile = steps.find { |step| step["name"] == "Compile iOS targets and link the Release framework" }
+            compile = steps.find { |step| step["name"] == "Consume the verified Apple Gradle graph before protected inputs" }
             compile["run"].sub!("python3 -B scripts/release/prepare-libffi-source.py verify\n", "")
           end
         end
         expected = case mutation
         when :missing then "requires one verified libffi source bootstrap"
         when :ignored_failure then "libffi source bootstrap cannot be skipped"
-        when :late then "protected input precedes verified libffi source bootstrap"
+        when :late then "native compilation must verify the private source dependency"
         else "native compilation must verify the private source dependency"
         end
         assert_rejected(verify(root), expected)
@@ -380,6 +385,475 @@ class ToolchainInputsTest < Minitest::Test
     end
   end
 
+  def test_gradle_metadata_and_native_lockfiles_must_be_present_regular_and_pinned
+    %i[unbound metadata_missing metadata_changed metadata_symlink lock_missing lock_changed lock_symlink].each do |mutation|
+      with_checkout do |root|
+        relative = mutation.to_s.start_with?("lock_") ? "app/gradle.lockfile" : "gradle/verification-metadata.xml"
+        path = File.join(root, relative)
+        case mutation
+        when :unbound then mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph")["metadata_sha256"] = nil }
+        when :metadata_missing, :lock_missing then File.unlink(path)
+        when :metadata_changed, :lock_changed then File.open(path, "ab") { |file| file.write("changed") }
+        when :metadata_symlink, :lock_symlink
+          FileUtils.mv(path, path + ".retained")
+          File.symlink(path + ".retained", path)
+        end
+        message = case mutation
+        when :unbound then "reviewed Gradle dependency verification metadata SHA-256 is missing"
+        when :lock_missing then "reviewed native Gradle lockfile set is missing or changed"
+        when :metadata_changed, :lock_changed then "Gradle input digest mismatch"
+        else "Gradle input is missing or symlinked"
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_gradle_metadata_rejects_unverified_descriptors_and_checksum_exemptions
+    %i[descriptors_disabled trust_exemption unchecked_artifact].each do |mutation|
+      with_checkout do |root|
+        path = File.join(root, "gradle/verification-metadata.xml")
+        xml = File.read(path)
+        xml = case mutation
+        when :descriptors_disabled then xml.sub("<verify-metadata>true", "<verify-metadata>false")
+        when :trust_exemption then xml.sub("</configuration>", '<trusted-artifacts><trust group=".*" regex="true" /></trusted-artifacts></configuration>')
+        when :unchecked_artifact then xml.gsub("sha256", "sha1")
+        end
+        File.write(path, xml)
+        # Re-pinning a policy downgrade must not turn it into an accepted graph.
+        mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph")["metadata_sha256"] = Digest::SHA256.file(path).hexdigest }
+        message = mutation == :unchecked_artifact ? "every Gradle artifact and descriptor needs one reviewed SHA-256" :
+          "Gradle must verify descriptors and cannot use trust or signature exemptions"
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_native_lock_policy_and_dependency_inputs_are_not_silently_changed
+    %i[late_or_missing_locking weakened_lock_mode host_fallback changed_catalog].each do |mutation|
+      with_checkout do |root|
+        relative = mutation == :changed_catalog ? "gradle/libs.versions.toml" : "settings.gradle.kts"
+        path = File.join(root, relative)
+        source = File.read(path)
+        source = case mutation
+        when :late_or_missing_locking then source.sub("resolutionStrategy.activateDependencyLocking()", "// removed")
+        when :weakened_lock_mode then source.sub("LockMode.STRICT", "LockMode.LENIENT")
+        when :host_fallback then source.sub('else -> error("No reviewed dependency locks for build host $os/$arch")', 'else -> "gradle.lockfile"')
+        else source + "\n# changed graph input\n"
+        end
+        File.write(path, source)
+        unless mutation == :changed_catalog
+          mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph").fetch("files")[relative] = Digest::SHA256.file(path).hexdigest }
+        end
+        assert_rejected(verify(root), mutation == :changed_catalog ? "Gradle input digest mismatch" :
+          "native strict Gradle verification and early project/buildscript locking are required")
+      end
+    end
+  end
+
+  def test_gradle_commands_cannot_weaken_verify_rewrite_locks_or_substitute_builds
+    ["--dependency-verification=off", "--write-locks", "--write-verification-metadata sha256",
+      "--update-locks test.fixture:tool", "--include-build /tmp/unreviewed", "-I/tmp/unreviewed.init.gradle",
+      "-PkiraUseMavenLocal=true", "--project-dir /tmp/unreviewed", "--build-cache", "--configuration-cache",
+      "--daemon", "-Porg.gradle.java.installations.auto-download=true", "-Pandroid.builder.sdkDownload=true"].each do |argument|
+      with_checkout do |root|
+        mutate_workflow(root, "ci.yml") do |workflow|
+          step = workflow.fetch("jobs").fetch("jvm-android").fetch("steps").find { |item| item["run"].to_s.start_with?("./gradlew ") }
+          step["run"] += " #{argument}"
+        end
+        assert_rejected(verify(root), "Gradle must consume strict locked inputs without updates, substitution, or alternate scripts")
+      end
+    end
+  end
+
+  def test_gradle_preflight_must_precede_signing_inputs_without_skips
+    [["android-internal-testing.yml", "build-and-upload"], ["ci.yml", "release-verify"], ["testflight.yml", "build-and-upload"]].each do |filename, job|
+      mutations = %i[missing late skipped signing_in_preflight]
+      mutations += %i[unconditional_cleanup early_keystore] unless filename == "testflight.yml"
+      mutations.each do |mutation|
+        with_checkout do |root|
+          mutate_workflow(root, filename) do |workflow|
+            steps = workflow.fetch("jobs").fetch(job).fetch("steps")
+            index = steps.index { |step| step["name"].to_s.match?(/Consume the verified (?:Android|Apple Gradle) graph/) }
+            step = steps.fetch(index)
+            case mutation
+            when :missing then steps.delete_at(index)
+            when :late
+              steps.delete_at(index)
+              protected_index = steps.index do |item|
+                item.fetch("env", {}).any? { |key, value| key != "KIRA_PACKAGES_READ_TOKEN" && value.to_s.include?("secrets.") }
+              end
+              steps.insert(protected_index + 1, step)
+            when :skipped then step["if"] = "${{ false }}"
+            when :signing_in_preflight then step.fetch("env")["KEYSTORE_PASSWORD"] = "${{ secrets.KEYSTORE_PASSWORD }}"
+            when :unconditional_cleanup
+              steps.find { |item| item["name"].to_s.match?(/Remove (?:temporary release credentials|decoded Android credentials)/) }["if"] = "${{ always() }}"
+            when :early_keystore
+              keystore_name = filename == "ci.yml" ? "Decode release keystore" :
+                "Reconstruct the Android upload keystore in the runner temp directory"
+              keystore = steps.delete_at(steps.index { |item| item["name"] == keystore_name })
+              steps.insert(steps.index { |item| item["id"] == "android-firebase" }, keystore)
+            end
+          end
+          message = case mutation
+          when :missing then "one mandatory pre-signing Gradle graph consumption is required"
+          when :late then "protected input precedes verified Gradle graph consumption"
+          when :unconditional_cleanup, :early_keystore then "Android credential cleanup cannot remove a refused preflight Firebase slot"
+          else "pre-signing Gradle graph consumption cannot be skipped, weakened, or receive signing inputs"
+          end
+          message = "native compilation must verify the private source dependency" if filename == "testflight.yml" && %i[missing skipped].include?(mutation)
+          assert_rejected(verify(root), message)
+        end
+      end
+    end
+  end
+
+  def test_signed_gradle_and_xcode_embed_cannot_resume_online_resolution
+    %i[android_online ci_online late_package_token signed_placeholder xcode_online xcode_weak].each do |mutation|
+      with_checkout do |root|
+        if mutation.to_s.start_with?("xcode_")
+          path = File.join(root, "iosApp/project.yml")
+          text = File.read(path)
+          text = mutation == :xcode_online ? text.sub("set -- --offline", "set --") : text.sub("--dependency-verification=strict", "--dependency-verification=off")
+          File.write(path, text)
+          mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph").fetch("consumer_files")["iosApp/project.yml"] = Digest::SHA256.file(path).hexdigest }
+          message = "Xcode Release embedding must consume the strict Gradle graph offline"
+        else
+          filename = mutation == :ci_online ? "ci.yml" : "android-internal-testing.yml"
+          job = mutation == :ci_online ? "release-verify" : "build-and-upload"
+          mutate_workflow(root, filename) do |workflow|
+            step = workflow.fetch("jobs").fetch(job).fetch("steps").find { |item| item["run"].to_s.include?("./gradlew") && item["run"].include?("--offline") }
+            if mutation == :late_package_token
+              step.fetch("env")["KIRA_PACKAGES_READ_TOKEN"] = "${{ secrets.KIRA_PACKAGES_READ_TOKEN }}"
+            elsif mutation == :signed_placeholder
+              step["run"] = step["run"].sub(" --offline", " --offline -PallowPlaceholderGoogleServices=true")
+            else
+              step["run"] = step["run"].sub(" --offline", "")
+            end
+          end
+          message = mutation == :late_package_token ? "package-read credentials must not reach signed Gradle consumption" :
+            "signed Gradle consumption must be offline and follow the verified graph preflight"
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_actual_android_preflight_only_cleans_owned_example_and_propagates_failure
+    %w[success failed_gradle changed_slot preexisting_slot].each do |outcome|
+      with_checkout do |root|
+        trace = File.join(root, "gradle-arguments")
+        slot = File.join(root, "app/google-services.json")
+        File.write(slot, "owner data") if outcome == "preexisting_slot"
+        # This boundary records argv only. It does not resolve/compile a Gradle graph.
+        executable(File.join(root, "gradlew"), <<~'SH')
+          #!/bin/sh
+          if [ "$1" = "--stop" ]; then exit 0; fi
+          printf '%s\n' "$@" > "$GRADLE_TRACE"
+          if [ "$GRADLE_OUTCOME" = "changed_slot" ]; then printf 'foreign data' > app/google-services.json; fi
+          if [ "$GRADLE_OUTCOME" = "failed_gradle" ]; then exit 7; fi
+        SH
+        workflow = YAML.safe_load(File.read(File.join(root, ".github/workflows/android-internal-testing.yml")), aliases: false)
+        script = workflow.fetch("jobs").fetch("build-and-upload").fetch("steps").find do |step|
+          step["name"] == "Consume the verified Android graph before protected inputs"
+        end.fetch("run")
+        result = Open3.capture3({ "GRADLE_TRACE" => trace, "GRADLE_OUTCOME" => outcome },
+          "/bin/bash", "-e", "-o", "pipefail", "-c", script, chdir: root)
+        case outcome
+        when "success"
+          assert result.last.success?, result[1]
+          refute File.exist?(slot)
+        when "failed_gradle"
+          assert_equal 7, result.last.exitstatus
+          refute File.exist?(slot)
+        when "changed_slot"
+          assert_rejected(result, "Unsigned preflight Firebase slot changed; refusing cleanup")
+          assert_equal "foreign data", File.read(slot)
+        when "preexisting_slot"
+          assert_rejected(result, "Unsigned preflight requires an absent Firebase slot")
+          assert_equal "owner data", File.read(slot)
+          refute File.exist?(trace)
+        end
+        assert_includes File.readlines(trace, chomp: true), "--dependency-verification=strict" unless outcome == "preexisting_slot"
+      end
+    end
+  end
+
+  def test_runtime_selections_cannot_float_or_switch_xcode_after_bootstrap
+    with_checkout do |root|
+      java = JSON.parse(File.read(File.join(root, "release/verified-tools.json"))).fetch("runtime_selections").fetch("java")
+      assert_equal "21.0.12.1+1", java.fetch("version")
+      refute java.key?("setup_java_version"), "Java comes from the authenticated archive, not an Action selector"
+      _, stderr, status = verify(root)
+      assert status.success?, stderr
+    end
+    %i[java_fallback ruby_minor bundler_latest ruby_download_fallback runner_latest xcode_path skipped_xcode_probe skipped_java skipped_ruby ignored_java_failure].each do |mutation|
+      with_checkout do |root|
+        mutate_workflow(root, "testflight.yml") do |workflow|
+          job = workflow.fetch("jobs").fetch("build-and-upload")
+          steps = job.fetch("steps")
+          case mutation
+          when :java_fallback
+            steps.insert(3, { "uses" => "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3",
+              "with" => { "distribution" => "temurin", "java-version" => "21" } })
+          when :ruby_minor then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["ruby-version"] = "3.3"
+          when :bundler_latest then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with")["bundler"] = "latest"
+          when :ruby_download_fallback then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }.fetch("with").delete("self-hosted")
+          when :runner_latest then job["runs-on"] = "macos-latest"
+          when :xcode_path then job.fetch("env")["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
+          when :skipped_xcode_probe then steps.fetch(2)["if"] = "${{ false }}"
+          when :skipped_java then steps.find { |step| step["name"] == "Install verified Java runtime" }["if"] = "${{ false }}"
+          when :skipped_ruby then steps.find { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") }["if"] = "${{ false }}"
+          when :ignored_java_failure then steps.find { |step| step["name"] == "Install verified Java runtime" }["continue-on-error"] = true
+          end
+        end
+        assert_rejected(verify(root), "runtime selection must match the reviewed")
+      end
+    end
+    %w[21 21.0.12+8].each do |version|
+      with_checkout do |root|
+        mutate_pins(root) do |pins|
+          pins.fetch("runtime_selections").fetch("java")["version"] = version
+        end
+        assert_rejected(verify(root), "runtime selections require exact supported Java, Ruby, and Xcode identities")
+      end
+    end
+  end
+
+  def test_runtime_archive_registry_and_installer_are_bound
+    %i[missing_digest malformed_digest mutable_url wrong_layout extra_host rejected_native installer_changed].each do |mutation|
+      with_checkout do |root|
+        if mutation == :installer_changed
+          File.open(File.join(root, "scripts/release/install-toolchain-inputs.py"), "a") { |file| file.puts("# changed") }
+          message = "Gradle input digest mismatch: scripts/release/install-toolchain-inputs.py"
+        else
+          mutate_pins(root) do |pins|
+            archives = pins.fetch("runtime_archives")
+            case mutation
+            when :missing_digest then archives.fetch("java").fetch("linux-x64").delete("sha256")
+            when :malformed_digest then archives.fetch("ruby").fetch("macos-arm64")["sha256"] = "latest"
+            when :mutable_url then archives.fetch("java").fetch("macos-arm64")["url"] = "https://example.com/latest.tar.gz"
+            when :wrong_layout then archives.fetch("ruby").fetch("linux-x64")["directory"] = "unreviewed"
+            when :extra_host then archives.fetch("java")["linux-arm64"] = archives.fetch("java").fetch("linux-x64")
+            when :rejected_native then archives["native"] = { "macos-arm64" => [] }
+            end
+          end
+          message = case mutation
+          when :extra_host then "runtime archive host set changed"
+          when :rejected_native then "runtime archive role set changed"
+          else "runtime archives require exact provider URLs, layouts, and SHA-256 pins"
+          end
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_runtime_installation_cannot_move_after_consumers_or_lose_cleanup
+    %i[late_java late_ruby skipped_cleanup ignored_cleanup late_cleanup writable_gradle_cache].each do |mutation|
+      with_checkout do |root|
+        mutate_workflow(root, "testflight.yml") do |workflow|
+          steps = workflow.fetch("jobs").fetch("build-and-upload").fetch("steps")
+          case mutation
+          when :late_java, :late_ruby
+            role = mutation.to_s.delete_prefix("late_")
+            index = steps.index { |step| step["run"].to_s.strip.end_with?("install-toolchain-inputs.py #{role}") }
+            installer = steps.delete_at(index)
+            consumer = role == "ruby" ? steps.index { |step| step["uses"].to_s.start_with?("ruby/setup-ruby@") } :
+              steps.index { |step| step["uses"].to_s.start_with?("gradle/actions/setup-gradle@") }
+            steps.insert(consumer + 1, installer)
+          when :skipped_cleanup then steps.last.delete("if")
+          when :ignored_cleanup then steps.last["continue-on-error"] = true
+          when :late_cleanup then steps << { "run" => "echo after cleanup" }
+          when :writable_gradle_cache
+            steps.find { |step| step["uses"].to_s.start_with?("gradle/actions/setup-gradle@") }.fetch("with")["cache-read-only"] = false
+          end
+        end
+        message = case mutation
+        when :late_java then "Gradle consumption precedes verified runtime installation"
+        when :late_ruby then "runtime selection must match the reviewed verified Ruby"
+        when :writable_gradle_cache then "Gradle setup must retain read-only caches"
+        else "verified runtime cleanup must always be the final step"
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_workflow_environment_cannot_replace_verified_runtime_paths
+    %w[JAVA_HOME KONAN_DATA_DIR ORG_GRADLE_PROJECT_kotlin.native.home RUBYOPT RUNNER_TOOL_CACHE KIRA_VERIFIED_NATIVE_AREA].each do |variable|
+      %i[workflow job step].each do |scope|
+        with_checkout do |root|
+          mutate_workflow(root, "testflight.yml") do |workflow|
+            job = workflow.fetch("jobs").fetch("build-and-upload")
+            node = scope == :workflow ? workflow : (scope == :job ? job : job.fetch("steps").last)
+            (node["env"] ||= {})[variable] = "/unverified"
+          end
+          assert_rejected(verify(root), "workflow environment cannot override verified runtime inputs")
+        end
+      end
+    end
+  end
+
+  def test_owned_disposal_requires_the_successful_final_worker_stop
+    with_checkout do |root|
+      _stdout, stderr, status = verify(root)
+      assert status.success?, stderr # Synthetic policy state only, never release metadata approval.
+    end
+    cases = [
+      ["testflight.yml", "build-and-upload", :ignored_stop],
+      ["testflight.yml", "build-and-upload", :skipped_stop],
+      ["testflight.yml", "build-and-upload", :weakened_stop],
+      ["testflight.yml", "build-and-upload", :runtime_failure],
+      ["testflight.yml", "build-and-upload", :runtime_skipped],
+      ["testflight.yml", "build-and-upload", :native_failure],
+      ["testflight.yml", "build-and-upload", :output_failure],
+      ["testflight.yml", "build-and-upload", :late_stop],
+      ["testflight.yml", "build-and-upload", :early_stop],
+      ["ci.yml", "ios", :native_failure],
+      ["android-internal-testing.yml", "build-and-upload", :lost_evidence_guard],
+      ["mobile-release-checks.yml", "checks", :lost_evidence_guard]
+    ]
+    cases.each do |filename, job_name, mutation|
+      with_checkout do |root|
+        mutate_workflow(root, filename) do |workflow|
+          steps = workflow.fetch("jobs").fetch(job_name).fetch("steps")
+          stop = steps.find { |step| step["id"] == "stop-owned-gradle" }
+          native = steps.find { |step| step["run"].to_s.strip == "python3 -B scripts/release/prepare-libffi-source.py cleanup" }
+          outputs = steps.find { |step| step["run"].to_s.include?("scripts/release/clean-mobile-build.py") }
+          case mutation
+          when :ignored_stop then stop["continue-on-error"] = true
+          when :skipped_stop then stop.delete("if")
+          when :weakened_stop then stop["run"] = "./gradlew --stop || true"
+          when :runtime_failure then steps.last["if"] = "${{ always() }}"
+          when :runtime_skipped then steps.last["if"] = steps.last.fetch("if").sub("== 'success'", "!= 'failure'")
+          when :native_failure then native["if"] = "${{ always() }}"
+          when :output_failure then outputs["if"] = "${{ always() }}"
+          when :lost_evidence_guard
+            outputs["if"] = outputs.fetch("if").sub(/ && steps\.preserve-[a-z]+\.outcome != 'failure'/, "")
+          when :late_stop
+            steps.delete(stop)
+            steps.insert(-2, stop)
+          when :early_stop
+            steps.delete(stop)
+            steps.insert(steps.index { |step| step["id"] == "archive" }, stop)
+          end
+        end
+        message = case mutation
+        when :ignored_stop, :skipped_stop, :weakened_stop then "one non-ignored owned worker-stop barrier is required"
+        when :runtime_failure, :runtime_skipped then "verified runtime cleanup must always be the final step behind the worker-stop barrier"
+        when :early_stop then "owned worker-stop barrier must follow every build consumer"
+        else "owned input/output disposal must follow the successful worker-stop barrier"
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
+  def test_late_fastlane_gradle_is_bound_and_cannot_resume_online_or_unverified
+    %i[changed_source online weakened].each do |mutation|
+      with_checkout do |root|
+        path = File.join(root, "fastlane/Fastfile")
+        text = File.read(path)
+        text = case mutation
+        when :changed_source then text + "\n# changed consumer\n"
+        when :online then text.sub(', "--offline"', '')
+        else text.sub('--dependency-verification=strict', '--dependency-verification=off')
+        end
+        File.write(path, text)
+        unless mutation == :changed_source
+          mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph").fetch("consumer_files")["fastlane/Fastfile"] = Digest::SHA256.file(path).hexdigest }
+        end
+        expected = mutation == :changed_source ? "Gradle input digest mismatch" :
+          "Fastlane AAB inspection must use the same strict offline Gradle graph"
+        assert_rejected(verify(root), expected)
+      end
+    end
+  end
+
+  def test_acquisition_is_byte_bound_and_not_a_general_workflow_escape
+    %w[.github/workflows/toolchain-input-capture.yml scripts/release/capture-gradle-inputs.init.gradle
+      .github/workflows/source-runtime-checks.yml scripts/release/check-source-runtime-ios.py
+      .github/workflows/toolchain-input-qualification.yml].each do |relative|
+      with_checkout do |root|
+        File.open(File.join(root, relative), "a") { |file| file.puts("# unreviewed controller change") }
+        assert_rejected(verify(root), "Gradle input digest mismatch: #{relative}")
+      end
+    end
+    %w[toolchain-input-capture.yml toolchain-input-qualification.yml].each do |filename|
+      with_checkout do |root|
+        FileUtils.cp(File.join(root, ".github/workflows", filename),
+          File.join(root, ".github/workflows/another-capture.yml"))
+        assert_rejected(verify(root), "Gradle must consume strict locked inputs without updates, substitution, or alternate scripts")
+      end
+    end
+    with_checkout do |root|
+      relative = ".github/workflows/toolchain-input-qualification.yml"
+      mutate_workflow(root, File.basename(relative)) do |workflow|
+        step = workflow.fetch("jobs").fetch("qualify").fetch("steps").find do |item|
+          item["name"] == "Resolve accepted external artifacts strictly before the offline build"
+        end
+        step["run"] = step.fetch("run").sub("--dependency-verification=strict", "--dependency-verification=strict --write-locks")
+      end
+      mutate_pins(root) do |pins|
+        pins.fetch("gradle").fetch("dependency_graph").fetch("consumer_files")[relative] = Digest::SHA256.file(File.join(root, relative)).hexdigest
+      end
+      assert_rejected(verify(root), "unsigned qualification cannot write or update accepted Gradle inputs")
+    end
+    with_checkout do |root|
+      assert_rejected(verify(root, "--capture"), "Usage:")
+    end
+  end
+
+  def test_implicit_parent_locks_do_not_invent_a_source_build_script
+    with_checkout do |root|
+      refute File.exist?(File.join(root, "sources/build.gradle.kts"))
+      relative = "sources/buildscript-gradle.lockfile"
+      path = File.join(root, relative)
+      File.write(path, "# Synthetic implicit-parent lock fixture\nempty=classpath\n")
+      mutate_pins(root) do |pins|
+        graph = pins.fetch("gradle").fetch("dependency_graph")
+        refute graph.fetch("files").key?("sources/build.gradle.kts")
+        graph.fetch("lockfiles")[relative] = Digest::SHA256.file(path).hexdigest
+      end
+      _, stderr, status = verify(root)
+      assert status.success?, stderr
+      File.open(path, "a") { |file| file.puts("changed") }
+      assert_rejected(verify(root), "Gradle input digest mismatch: #{relative}")
+    end
+  end
+
+  def test_host_native_locks_are_explicit_regular_and_bound_for_both_hosts
+    %i[missing_mac missing_linux unbound_mac changed_mac symlink_mac extra_host wrong_project].each do |mutation|
+      with_checkout do |root|
+        relative = mutation == :missing_linux ? "composeApp/gradle.lockfile" : "composeApp/gradle-macos-arm64.lockfile"
+        path = File.join(root, relative)
+        case mutation
+        when :missing_mac, :missing_linux then File.unlink(path)
+        when :unbound_mac
+          mutate_pins(root) { |pins| pins.fetch("gradle").fetch("dependency_graph").fetch("lockfiles").delete(relative) }
+        when :changed_mac then File.open(path, "a") { |file| file.puts("changed") }
+        when :symlink_mac
+          FileUtils.mv(path, path + ".retained")
+          File.symlink(path + ".retained", path)
+        when :extra_host, :wrong_project
+          relative = mutation == :extra_host ? "composeApp/gradle-linux-arm64.lockfile" : "core/gradle-macos-arm64.lockfile"
+          path = File.join(root, relative)
+          File.write(path, "# Unreviewed host/owner fixture\nempty=\n")
+          mutate_pins(root) do |pins|
+            pins.fetch("gradle").fetch("dependency_graph").fetch("lockfiles")[relative] = Digest::SHA256.file(path).hexdigest
+          end
+        end
+        message = case mutation
+        when :changed_mac then "Gradle input digest mismatch"
+        when :symlink_mac then "Gradle input is missing or symlinked"
+        else "reviewed native Gradle lockfile set is missing or changed"
+        end
+        assert_rejected(verify(root), message)
+      end
+    end
+  end
+
   def test_actual_installer_publishes_only_the_checked_executable
     with_checkout do |root|
       environment = installer_fixture(root)
@@ -511,14 +985,55 @@ class ToolchainInputsTest < Minitest::Test
 
   private
 
-  def with_checkout
+  def with_checkout(graph_fixture: true)
     Dir.mktmpdir("kira-toolchain-inputs-") do |root|
-      INPUTS.each do |relative|
+      graph = JSON.parse(File.read(File.join(ROOT, "release/verified-tools.json"))).fetch("gradle").fetch("dependency_graph")
+      # The genuine committed-input positive remains unbound until real capture/review. Other
+      # mutation fixtures isolate policy with explicitly synthetic records, never repo lock data.
+      graph_inputs = graph.fetch("files").keys + graph.fetch("consumer_files").keys + graph.fetch("acquisition_files").keys
+      graph_inputs += JSON.parse(File.read(File.join(ROOT, "release/verified-tools.json"))).fetch("native_source_bootstrap").keys
+      unless graph_fixture
+        graph_inputs += graph.fetch("lockfiles").keys
+        graph_inputs << "gradle/verification-metadata.xml" if File.file?(File.join(ROOT, "gradle/verification-metadata.xml"))
+      end
+      (INPUTS + graph_inputs).uniq.each do |relative|
         destination = File.join(root, relative)
         FileUtils.mkdir_p(File.dirname(destination))
         FileUtils.cp(File.join(ROOT, relative), destination, preserve: true)
       end
+      gradle_policy_fixture(root) if graph_fixture
       yield root
+    end
+  end
+
+  def gradle_policy_fixture(root)
+    metadata = <<~XML
+      <?xml version="1.0" encoding="UTF-8"?>
+      <verification-metadata xmlns="https://schema.gradle.org/dependency-verification">
+        <configuration><verify-metadata>true</verify-metadata><verify-signatures>false</verify-signatures></configuration>
+        <components><component group="test.fixture" name="tool" version="1.0">
+          <artifact name="tool-1.0.jar"><sha256 value="#{'0' * 64}" /></artifact>
+          <artifact name="tool-1.0.pom"><sha256 value="#{'1' * 64}" /></artifact>
+        </component></components>
+      </verification-metadata>
+    XML
+    files = {
+      "gradle/verification-metadata.xml" => metadata,
+      "buildscript-gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\ntest.fixture:tool:1.0=classpath\nempty=\n",
+      "app/gradle.lockfile" => "# Synthetic policy fixture, NOT generated release state\ntest.fixture:tool:1.0=releaseRuntimeClasspath\nempty=\n"
+    }
+    %w[composeApp desktopApp ui data platform].each do |directory|
+      %w[gradle.lockfile gradle-macos-arm64.lockfile].each do |name|
+        files["#{directory}/#{name}"] = "# Synthetic host lock fixture, NOT generated release state\nempty=desktopRuntimeClasspath\n"
+      end
+    end
+    files.each { |relative, contents| File.write(File.join(root, relative), contents) }
+    mutate_pins(root) do |pins|
+      graph = pins.fetch("gradle").fetch("dependency_graph")
+      graph["metadata_sha256"] = Digest::SHA256.file(File.join(root, "gradle/verification-metadata.xml")).hexdigest
+      graph["lockfiles"] = files.keys.grep(/lockfile\z/).to_h do |relative|
+        [relative, Digest::SHA256.file(File.join(root, relative)).hexdigest]
+      end
     end
   end
 

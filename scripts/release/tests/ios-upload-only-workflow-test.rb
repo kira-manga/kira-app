@@ -167,7 +167,7 @@ class IosUploadOnlyWorkflowTest < Minitest::Test
 
   def test_ios_verifies_generation_before_archive_and_again_after_xcode
     steps = YAML.safe_load(TESTFLIGHT_WORKFLOW, aliases: false).fetch("jobs").fetch("build-and-upload").fetch("steps")
-    compilation = steps.find { |step| step["name"] == "Compile iOS targets and link the Release framework" }
+    compilation = steps.find { |step| step["name"] == "Consume the verified Apple Gradle graph before protected inputs" }
     archive = steps.find { |step| step["id"] == "archive" }
     verification = steps.find { |step| step["name"] == "Verify the Xcode-generated source-catalog version" }
     assert_includes compilation.fetch("run"), "ruby release/version.rb verify-generated"

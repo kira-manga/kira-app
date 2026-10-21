@@ -16,6 +16,33 @@ pluginManagement {
     }
 }
 
+check(gradle.startParameter.dependencyVerificationMode.name == "STRICT") {
+    "Kira builds require strict Gradle dependency verification"
+}
+gradle.beforeProject {
+    dependencyLocking {
+        lockAllConfigurations()
+        lockMode.set(org.gradle.api.artifacts.dsl.LockMode.STRICT)
+        // Compose/Skiko select host-native modules even in shared metadata graphs.
+        // Preserve each observed graph; combining their members breaks STRICT locks.
+        if (path in setOf(":composeApp", ":desktopApp", ":ui", ":data", ":platform")) {
+            val os = System.getProperty("os.name")
+            val arch = System.getProperty("os.arch")
+            val hostLock = when {
+                os == "Linux" && arch in setOf("amd64", "x86_64") -> "gradle.lockfile"
+                os == "Mac OS X" && arch in setOf("aarch64", "arm64") -> "gradle-macos-arm64.lockfile"
+                else -> error("No reviewed dependency locks for build host $os/$arch")
+            }
+            lockFile.set(file(hostLock))
+        }
+    }
+    // Register before project evaluation, including the root plugin classpath. A late allprojects
+    // block would miss root buildscript resolution and give incomplete plugin lock coverage.
+    buildscript.configurations.configureEach {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}
+
 // Source-bound Android candidate only; this integrity check is not runtime qualification.
 // Check the exact AAR and its inspected POM before Gradle can resolve this local module.
 val avifCandidateDirectory =

@@ -1,13 +1,8 @@
 name: App61 dependency inputs (unreviewed acquisition, no Store)
 
 on:
-  # One reviewed issue branch only: GitHub must first register this new workflow.
-  # Never main/internal-testing and never a release caller.
-  push:
-    branches: [remediation/app-61-resume-20261021]
-    paths:
-      - .github/workflows/toolchain-input-capture.yml
-      - scripts/release/capture-gradle-inputs.init.gradle
+  # The one-off registration push has completed. Further acquisition is explicit;
+  # changing a collector must not automatically repeat successful dependency intake.
   workflow_dispatch:
     inputs:
       platform:
@@ -122,6 +117,8 @@ jobs:
           lock_projects = projects + ['sources']  # Real implicit parent; it has no build script.
           candidates += [p for directory in lock_projects for name in ['gradle.lockfile', 'buildscript-gradle.lockfile']
               if (p := pathlib.Path(directory) / name).exists()]
+          candidates += [p for directory in ['composeApp', 'desktopApp', 'ui', 'data', 'platform']
+              if (p := pathlib.Path(directory) / 'gradle-macos-arm64.lockfile').exists() or p.is_symlink()]
           assert candidates[0].is_file() and pathlib.Path('buildscript-gradle.lockfile') in candidates
           document = ET.parse(candidates[0])
           ns = {'v': 'https://schema.gradle.org/dependency-verification'}
@@ -218,7 +215,7 @@ jobs:
           text = path.read_text()
           assert text.count('value="' + actual + '"') == 1
           path.write_text(text.replace('value="' + actual + '"', 'value="' + '0' * 64 + '"'))
-          (pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'negative-oracle.json').write_text(json.dumps({
+          (pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'evidence/negative-oracle.json').write_text(json.dumps({
               'artifact': 'gradle-9.2.1.jar', 'expected': '0' * 64, 'actual': actual
           }))
           PY
@@ -237,11 +234,21 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib, shutil
           root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
-          oracle = json.loads((root / 'negative-oracle.json').read_text())
+          oracle = json.loads((root / 'evidence/negative-oracle.json').read_text())
           log = (root / 'evidence/checksum-negative.log').read_text()
           assert 'Dependency verification failed' in log and oracle['artifact'] in log
-          reports = [p for p in (root / 'builds').rglob('*.html') if 'dependency-verification' in p.parts]
-          matching = [p for p in reports if all(value in p.read_text() for value in oracle.values())]
+          # Early plugin verification can create its report before buildDirectory
+          # is redirected by beforeProject. Admit only these two owned locations.
+          report_roots = [root / 'builds', pathlib.Path.cwd() / 'build/reports/dependency-verification']
+          reports = [p for base in report_roots for p in base.rglob('*.html')
+                     if 'dependency-verification' in p.parts]
+          assert len(reports) <= 32
+          matching = []
+          for report in reports:
+              assert report.is_file() and not report.is_symlink()
+              assert report.resolve() == report.absolute() and report.stat().st_size <= 2 * 1024 * 1024
+              if all(value in report.read_text() for value in oracle.values()):
+                  matching.append(report)
           assert matching, 'Native Gradle report must identify the exact artifact and expected/actual SHA-256'
           shutil.copyfile(matching[0], root / 'evidence/checksum-negative-report.html')
           (root / 'evidence/checksum-negative.json').write_text(json.dumps({
@@ -251,12 +258,13 @@ jobs:
           PY
 
       - name: Always stop owned workers and verify the existing Native bootstrap
+        id: stop-owned-workers
         if: ${{ always() }}
         run: |
           set -euo pipefail
           status=0
           if [[ -n "${KIRA_APP61_ROOT:-}" && -d "$KIRA_APP61_ROOT/gradle" ]]; then
-            ./gradlew --stop || status=1
+            ./gradlew --stop || exit 1
           fi
           if [[ "$KIRA_APP61_PLATFORM" == apple ]]; then
             if [[ '${{ steps.native-bootstrap.outcome }}' == success ]]; then
@@ -279,12 +287,12 @@ jobs:
           retention-days: 7
 
       - name: Remove only this job's owned disposable locations
-        if: ${{ always() }}
+        if: ${{ always() && steps.stop-owned-workers.outcome == 'success' }}
         run: |
           set -euo pipefail
           printf 'TMPDIR=%s\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           python3 - <<'PY'
-          import os, pathlib, shutil
+          import os, pathlib, shutil, subprocess
           root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kira-app61-inputs'
           if root.exists() or root.is_symlink():
               assert root.is_dir() and not root.is_symlink()
@@ -292,4 +300,10 @@ jobs:
               assert (root / 'owner').is_file() and not (root / 'owner').is_symlink()
               assert (root / 'owner').read_text() == expected
               shutil.rmtree(root)
+          report_root = pathlib.Path.cwd() / 'build/reports/dependency-verification'
+          if report_root.exists() or report_root.is_symlink():
+              assert report_root.is_dir() and report_root.resolve() == report_root
+              tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', 'build/reports/dependency-verification'])
+              assert not tracked, 'Never clean a tracked source path'
+              shutil.rmtree(report_root)
           PY

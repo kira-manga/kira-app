@@ -60,6 +60,26 @@ class SourceBootstrapTests(unittest.TestCase):
             path.write_text("small fixture: " + name)
         return install
 
+    def upstream_config(self):
+        # Kotlin 2.4.0 PrepareKonanProperties selects host ESSENTIALS and appends
+        # LLVMDistributionSource's generated aliases/default remote profile.
+        return (b"dependencyProfiles = default alt\nairplaneMode = false\n"
+                b"libffiDir.macos_arm64 = libffi-3.3-1-macos-arm64\n"
+                b"llvmHome.macos_arm64 = $llvm.macos_arm64.user\n"
+                b"llvm.macos_arm64.user=llvm-21-aarch64-macos-essentials-97\n"
+                b"llvmVersion.macos_arm64=21\n"
+                b"llvm-21-aarch64-macos-essentials-97.default=remote:public:resources/llvm/21-aarch64-macos\n"
+                b"other = $distribution_version\n")
+
+    def installed_llvm(self):
+        llvm = self.root / "llvm" / libffi.LLVM_DEPENDENCY
+        (llvm / "bin").mkdir(parents=True)
+        clang = llvm / "bin/clang-21"
+        clang.write_text("small authenticated LLVM fixture, never executed")
+        clang.chmod(0o700)
+        (llvm / "bin/clang").symlink_to("clang-21")
+        return llvm
+
     def prepared(self):
         libffi.create_owned_root(self.root, self.env)
         pin = libffi.pins()
@@ -68,15 +88,17 @@ class SourceBootstrapTests(unittest.TestCase):
         (home / "tools").mkdir()
         (self.root / "data").mkdir()
         install = self.installed()
-        original = b"dependencyProfiles = default alt\nlibffiDir.macos_arm64 = libffi-3.3-1-macos-arm64\nother = $distribution_version\n"
+        llvm = self.installed_llvm()
+        original = self.upstream_config()
         config = home / "konan/konan.properties"
-        config.write_bytes(libffi.profile_bytes(original, install))
+        config.write_bytes(libffi.profile_bytes(original, install, llvm))
         state = {"owner": libffi.owner(self.root, self.env), "status": "prepared",
                  "inputs": libffi.state_inputs(REPO, pin), "native_home": str(home),
                  "konan_data_dir": str(self.root / "data"), "verification_count": 0,
                  "original_konan_properties_sha256": hashlib.sha256(original).hexdigest(),
                  "configured_konan_properties_sha256": libffi.digest(config),
-                 "env_blacklist_sha256": None, "installed_files": libffi.install_hashes(install)}
+                 "env_blacklist_sha256": None, "installed_files": libffi.install_hashes(install),
+                 "llvm_tree_sha256": libffi.llvm_tree_hash(llvm)}
         libffi.write_json(self.root / libffi.STATE, state)
         self.env.update(GRADLE_OPTS=f"-Xmx128m {libffi.NATIVE_HOME}{home} {libffi.CACHE_OFF}",
                         KONAN_DATA_DIR=str(self.root / "data"))
@@ -86,6 +108,8 @@ class SourceBootstrapTests(unittest.TestCase):
         pin = libffi.pins()
         self.assertEqual(pin["source"]["sha256"], "72fba7922703ddfa7a028d513ac15a85c8d54c8d67f55fa5a4802885dc652056")
         self.assertEqual(pin["compiler"]["bytes"], 259007716)
+        self.assertEqual(pin["llvm"]["bytes"], 151150049)
+        self.assertEqual(pin["llvm"]["sha256"], "62fd78f090353aa7b2c6601ad6f95bd7a0b0558b18f86978043cc878321b408a")
         with mock.patch.object(libffi.platform, "system", return_value="Linux"), \
                 mock.patch.object(libffi, "download") as download:
             with self.assertRaises(libffi.BootstrapError):
@@ -196,20 +220,38 @@ class SourceBootstrapTests(unittest.TestCase):
             libffi.extract_verified(path, pin, self.temp / "source", source=True)
         self.assertFalse((self.temp / "source").exists())
 
-    def test_profile_is_an_exact_suffix_and_rejects_prior_candidates(self):
-        original = b"# upstream\ndependencyProfiles = default \\\n alt\nlibffiDir.macos_arm64 = libffi-3.3-1-macos-arm64\nother = $generated\n"
+    def test_profiles_are_exact_local_edits_with_offline_policy_and_no_extra_candidates(self):
+        original = self.upstream_config().replace(b"default alt", b"default \\\n alt")
         path = self.root / "install"
-        modified = libffi.profile_bytes(original, path)
-        self.assertEqual(modified, original + f"\n{libffi.PROFILE}={path}\n".encode())
+        llvm = self.root / "llvm" / libffi.LLVM_DEPENDENCY
+        modified = libffi.profile_bytes(original, path, llvm)
+        expected = original.replace(b"airplaneMode = false\n", b"airplaneMode = true\n")
+        expected = expected.replace(libffi.LLVM_REMOTE.encode(), str(llvm).encode())
+        self.assertEqual(modified, expected + f"\n{libffi.PROFILE}={path}\n".encode())
+        values = libffi.properties(modified)
+        self.assertEqual([value for key, value in values if key == "airplaneMode"], ["true"])
+        self.assertEqual([value for key, value in values if key == libffi.LLVM_PROFILE], [str(llvm)])
         for bad in (original.replace(b"default \\\n alt", b"alt default"),
                     original.replace(b"libffi-3.3-1-macos-arm64", b"unreviewed"),
                     original + b"libffiDir.macos_arm64=libffi-3.3-1-macos-arm64\n",
                     original + b"libffi-3.3-1-macos-arm64.alt=remote:public\n",
-                    original + b"libffi-3.3-1-macos-arm64.\\u0064efault=/bad\n"):
+                    original + b"libffi-3.3-1-macos-arm64.\\u0064efault=/bad\n",
+                    original.replace(b"$llvm.macos_arm64.user", b"$llvm.macos_arm64.dev"),
+                    original.replace(b"llvmVersion.macos_arm64=21", b"llvmVersion.macos_arm64=22"),
+                    original.replace(b"llvm-21-aarch64-macos-essentials-97", b"llvm-unreviewed"),
+                    original.replace(libffi.LLVM_REMOTE.encode(), b"/unreviewed/cache"),
+                    original + f"{libffi.LLVM_DEPENDENCY}.alt=remote:public\n".encode(),
+                    original + f"{libffi.LLVM_DEPENDENCY}.\\u0064efault=/bad\n".encode(),
+                    original.replace(b"airplaneMode = false", b"airplaneMode = true"),
+                    original.replace(b"airplaneMode = false", b"airplaneMode=false"),
+                    original + b"airplaneMode = false\n",
+                    original + b"airplane\\u004dode=false\n"):
             with self.subTest(bad=bad), self.assertRaises(libffi.BootstrapError):
-                libffi.profile_bytes(bad, path)
+                libffi.profile_bytes(bad, path, llvm)
         with self.assertRaises(libffi.BootstrapError):
-            libffi.profile_bytes(original, Path("/tmp/unsafe path"))
+            libffi.profile_bytes(original, Path("/tmp/unsafe path"), llvm)
+        with self.assertRaises(libffi.BootstrapError):
+            libffi.profile_bytes(original, path, Path("/tmp/unsafe path"))
 
     def test_property_and_environment_overrides_fail_closed(self):
         (self.repo / "gradle.properties").write_text("org.gradle.caching=true\n")
@@ -219,7 +261,7 @@ class SourceBootstrapTests(unittest.TestCase):
                          {"JAVA_OPTS": "-Dorg.gradle.project.konan.data.dir=/other"},
                          {"JAVA_TOOL_OPTIONS": "-Dorg.jetbrains.kotlin.native.home=/other"},
                          {"ORG_GRADLE_PROJECT_kotlin.native.home": "/other"},
-                         {"GRADLE_OPTS": "-Dorg.gradle.caching=true"}):
+                         {"GRADLE_OPTS": "-Dorg.gradle.caching=true"}, {"KONAN_USE_INTERNAL_SERVER": "1"}):
             with self.subTest(addition=addition), self.assertRaises(libffi.BootstrapError):
                 libffi.override_guard(self.repo, dict(good, **addition))
         for filename, setting in (("gradle.properties", "systemProp.org.gradle.project.konan.data.dir=/other\n"),
@@ -256,12 +298,46 @@ class SourceBootstrapTests(unittest.TestCase):
             with self.assertRaisesRegex(libffi.BootstrapError, "config changed"):
                 libffi.verify(self.env)
             config.write_bytes(original_config)
+            for before, after in ((b"airplaneMode = true", b"airplaneMode = false"),
+                                  (str(self.root / "llvm").encode(), b"/unverified/llvm")):
+                config.write_bytes(original_config.replace(before, after))
+                with self.assertRaisesRegex(libffi.BootstrapError, "LLVM/offline profile"):
+                    libffi.verify(self.env)
+                config.write_bytes(original_config)
+            clang = self.root / "llvm" / libffi.LLVM_DEPENDENCY / "bin/clang-21"
+            original_clang = clang.read_bytes()
+            clang.write_bytes(b"modified")
+            with self.assertRaisesRegex(libffi.BootstrapError, "installed LLVM tree changed"):
+                libffi.verify(self.env)
+            clang.write_bytes(original_clang)
+            libffi.verify(self.env)
             with self.assertRaises(libffi.BootstrapError):
                 libffi.verify(dict(self.env, KONAN_DATA_DIR="/other"))
         library.unlink()
         library.symlink_to(home / "konan/konan.properties")
         with self.assertRaises(libffi.BootstrapError):
             libffi.install_hashes(self.root / "install")
+
+    def test_llvm_tree_inventory_detects_extra_paths_modes_and_external_links(self):
+        llvm = self.installed_llvm()
+        expected = libffi.llvm_tree_hash(llvm)
+        extra = llvm / "unexpected"
+        extra.write_text("not in the authenticated tree")
+        self.assertNotEqual(libffi.llvm_tree_hash(llvm), expected)
+        extra.unlink()
+        clang = llvm / "bin/clang-21"
+        clang.chmod(0o500)
+        self.assertNotEqual(libffi.llvm_tree_hash(llvm), expected)
+        clang.chmod(0o700)
+        self.assertEqual(libffi.llvm_tree_hash(llvm), expected)
+        link = llvm / "bin/clang"
+        link.unlink()
+        outside = self.temp / "outside"
+        outside.write_bytes(clang.read_bytes())
+        outside.chmod(0o700)
+        link.symlink_to(outside)
+        with self.assertRaisesRegex(libffi.BootstrapError, "LLVM link escapes"):
+            libffi.llvm_tree_hash(llvm)
 
     def test_blacklist_and_download_receipts_cannot_bypass_isolation(self):
         home = self.prepared()

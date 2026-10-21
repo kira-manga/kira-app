@@ -37,5 +37,11 @@
     "bytes": 259007716,
     "archive_root": "kotlin-native-prebuilt-macos-aarch64-2.4.0"
   },
-  "provenance": "The upstream libffi 3.3 source digest also matches NixOS/nixpkgs 20.09 pkgs/development/libraries/libffi/default.nix (0mi0cpf8aa40ljjmzxb7im6dbj45bb0kllcd09xgmp834y9agyvj). The Homebrew patch and build recipe are commit-pinned official Kotlin 2.4.0 inputs. The additional reviewed CFI backport implements only the three cfi_startproc/entry-label ordering fixes from libffi upstream commit 8308bed5b2423878aa20d7884a99cf2e30b8daf7 (PR857, issue852) for current Apple assemblers; input and output src/aarch64/sysv.S hashes are pinned. It does not disable unwind information or change ABI/instructions. The compiler digest is the official GitHub v2.4.0 release asset digest. The resulting library is built on the hosted Apple ARM64 runner, not a JetBrains-signed or byte-identical prebuilt. No disputed prebuilt libffi archive is accepted."
+  "provenance": "The upstream libffi 3.3 source digest also matches NixOS/nixpkgs 20.09 pkgs/development/libraries/libffi/default.nix (0mi0cpf8aa40ljjmzxb7im6dbj45bb0kllcd09xgmp834y9agyvj). The Homebrew patch and build recipe are commit-pinned official Kotlin 2.4.0 inputs. The additional reviewed CFI backport implements only the three cfi_startproc/entry-label ordering fixes from libffi upstream commit 8308bed5b2423878aa20d7884a99cf2e30b8daf7 (PR857, issue852) for current Apple assemblers; input and output src/aarch64/sysv.S hashes are pinned. It does not disable unwind information or change ABI/instructions. The compiler digest is the official GitHub v2.4.0 release asset digest. The resulting library is built on the hosted Apple ARM64 runner, not a JetBrains-signed or byte-identical prebuilt. No disputed prebuilt libffi archive is accepted.",
+  "llvm": {
+    "url": "https://download.jetbrains.com/kotlin/native/resources/llvm/21-aarch64-macos/llvm-21-aarch64-macos-essentials-97.tar.gz",
+    "sha256": "62fd78f090353aa7b2c6601ad6f95bd7a0b0558b18f86978043cc878321b408a",
+    "bytes": 151150049,
+    "archive_root": "llvm-21-aarch64-macos-essentials-97"
+  }
 }

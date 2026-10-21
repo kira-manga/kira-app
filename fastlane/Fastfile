@@ -351,6 +351,8 @@ platform :android do
     # existing protobuf decoder and does not rebuild when an explicit artifact path is supplied.
     root = File.expand_path("..", __dir__)
     sh(File.join(root, "gradlew"), "--project-dir", root, "--no-daemon", "--max-workers=2",
+       "--dependency-verification=strict", "--no-configuration-cache", "--no-build-cache", "--offline",
+       "-PkiraUseMavenLocal=false", "-Porg.gradle.java.installations.auto-download=false", "-Pandroid.builder.sdkDownload=false",
        "-Dorg.gradle.jvmargs=-Xmx3g", "-Pkotlin.compiler.execution.strategy=in-process", ":app:verifyReleaseBundleIdentity",
        "-Pkira.releaseBundleToVerify=#{File.expand_path(aab_path)}")
 

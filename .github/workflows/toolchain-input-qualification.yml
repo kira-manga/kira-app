@@ -1,0 +1,392 @@
+name: App61 accepted inputs (unsigned qualification, no Store)
+
+on:
+  # Register this bounded gate from the reviewed issue branch, never a release caller.
+  push:
+    branches: [remediation/app-61-resume-20261021]
+    paths: [.github/workflows/toolchain-input-qualification.yml]
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        description: Qualify accepted inputs with one unsigned Linux or Apple build
+        options: [linux, apple, both]
+        default: both
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  qualify:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        platform: ${{ fromJSON(github.event_name == 'push' && '["linux","apple"]' || inputs.platform == 'both' && '["linux","apple"]' || inputs.platform == 'apple' && '["apple"]' || '["linux"]') }}
+    runs-on: ${{ matrix.platform == 'apple' && 'macos-26' || 'ubuntu-24.04' }}
+    concurrency:
+      group: kira-app61-input-qualification-${{ matrix.platform }}
+      cancel-in-progress: false
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      KIRA_PACKAGES_USER: ${{ github.actor }}
+      KIRA_APP61_PLATFORM: ${{ matrix.platform }}
+      KIRA_SOURCE_CONFIG_BASE_URL: ${{ vars.KIRA_SOURCE_CONFIG_BASE_URL }}
+      KIRA_SOURCE_CONFIG_PINNED_KEYS: ${{ vars.KIRA_SOURCE_CONFIG_PINNED_KEYS }}
+      # Preserve the current Apple Release LTO heap; serialize both platform jobs' work.
+      GRADLE_OPTS: "-Dorg.gradle.parallel=false -Dorg.gradle.workers.max=1"
+      FASTLANE_OPT_OUT_USAGE: "1"
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+
+    steps:
+      - name: Check out the exact reviewed qualification source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned bootstrap inputs
+        run: /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+
+      - name: Verify the selected Xcode identity
+        if: ${{ matrix.platform == 'apple' }}
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+        run: |
+          [[ "$(/usr/bin/xcodebuild -version)" == $'Xcode 26.6\nBuild version 17F113' ]] || {
+            echo 'Selected Xcode version/build does not match the reviewed runtime' >&2
+            exit 1
+          }
+          printf 'DEVELOPER_DIR=%s\n' "$DEVELOPER_DIR" >> "$GITHUB_ENV"
+
+      - name: Reserve owned locations and preserve the accepted input identity
+        run: |
+          set -euo pipefail
+          umask 077
+          root="$RUNNER_TEMP/kira-app61-qualification"
+          [[ ! -e "$root" && ! -L "$root" ]]
+          mkdir -m 700 "$root"
+          printf '%s:%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" > "$root/owner"
+          mkdir "$root/gradle" "$root/project-cache" "$root/builds" "$root/tmp" "$root/evidence"
+          git diff --exit-code
+          git rev-parse HEAD HEAD^{tree} > "$root/evidence/source.txt"
+          git status --porcelain=v1 > "$root/evidence/source-before.status"
+          [[ ! -s "$root/evidence/source-before.status" ]]
+          cp gradle/verification-metadata.xml "$root/evidence/accepted-metadata.xml"
+          cp release/verified-tools.json "$root/evidence/accepted-manifest.json"
+          {
+            printf 'KIRA_APP61_ROOT=%s\n' "$root"
+            printf 'GRADLE_USER_HOME=%s\n' "$root/gradle"
+            printf 'TMPDIR=%s\n' "$root/tmp"
+            printf 'KIRA_APP_VERSION=%s\n' "$(/usr/bin/ruby release/version.rb)"
+          } >> "$GITHUB_ENV"
+
+      - name: Install verified Java runtime
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py java
+
+      - name: Restore Gradle dependencies without saving new shared cache entries
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-read-only: true
+
+      - name: Install verified Ruby runtime
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py ruby
+
+      - name: Set up verified Ruby and locked Bundler
+        uses: ruby/setup-ruby@bec3f19a76460dbe12f60def7d1a77585f07516c # v1
+        with:
+          ruby-version: "3.3.12"
+          bundler: "4.0.16"
+          bundler-cache: true
+          self-hosted: true
+
+      - name: Preserve actual runtime identities and authenticated archive receipts
+        run: |
+          set -euo pipefail
+          java -version > "$KIRA_APP61_ROOT/evidence/java.txt" 2>&1
+          ruby -e 'abort "Wrong Ruby runtime" unless RUBY_VERSION == "3.3.12"; puts RUBY_DESCRIPTION' > "$KIRA_APP61_ROOT/evidence/ruby.txt"
+          bundle --version > "$KIRA_APP61_ROOT/evidence/bundler.txt"
+          [[ "$(cat "$KIRA_APP61_ROOT/evidence/bundler.txt")" == 'Bundler version 4.0.16' ]]
+          cp "$KIRA_VERIFIED_JAVA_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/java-archive-receipt.json"
+          cp "$KIRA_VERIFIED_RUBY_AREA/owned.json" "$KIRA_APP61_ROOT/evidence/ruby-archive-receipt.json"
+
+      - name: Prepare the verified Native compiler, source-built libffi and LLVM
+        id: native-bootstrap
+        if: ${{ matrix.platform == 'apple' }}
+        run: python3 -B scripts/release/prepare-libffi-source.py prepare
+
+      - name: Resolve accepted external artifacts strictly before the offline build
+        if: ${{ matrix.platform == 'apple' }}
+        # Reuse the finite project-owned resolver, but NEVER write/update metadata or locks.
+        # Its raw inventory retains the UNREVIEWED label; it does not approve new input bytes.
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+          KIRA_APP61_PHASE: acquire
+        run: |
+          set -euo pipefail
+          stop_resolution() {
+            status=$?
+            unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+            ./gradlew --stop || status=1
+            exit "$status"
+          }
+          trap stop_resolution EXIT
+          ./gradlew :captureReleaseDependencyInputs \
+            --init-script scripts/release/capture-gradle-inputs.init.gradle \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/accepted-resolution.log" 2>&1
+          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+          git diff --exit-code
+
+      # The exact early-plugin negative below is configuration-only, not a second build/link.
+      # It restores the accepted XML even on failure and preserves native Gradle's real report.
+
+      - name: Reject one altered early plugin checksum offline before any build task
+        if: ${{ matrix.platform == 'apple' }}
+        env:
+          KIRA_APP61_PHASE: consume
+        run: |
+          set -euo pipefail
+          unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+          finish_negative() {
+            status=$?
+            cp "$KIRA_APP61_ROOT/evidence/accepted-metadata.xml" gradle/verification-metadata.xml || status=1
+            /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb || status=1
+            git diff --exit-code || status=1
+            ./gradlew --stop || status=1
+            exit "$status"
+          }
+          trap finish_negative EXIT
+          python3 - <<'PY'
+          import json, os, pathlib, xml.etree.ElementTree as ET
+          path = pathlib.Path('gradle/verification-metadata.xml')
+          tree = ET.parse(path)
+          ns = {'v': 'https://schema.gradle.org/dependency-verification'}
+          component = tree.find("v:components/v:component[@group='com.android.tools.build'][@name='gradle'][@version='9.2.1']", ns)
+          assert component is not None
+          checksum = component.find("v:artifact[@name='gradle-9.2.1.jar']/v:sha256", ns)
+          assert checksum is not None
+          actual = checksum.attrib['value']
+          assert len(actual) == 64 and actual != '0' * 64
+          text = path.read_text()
+          assert text.count('value="' + actual + '"') == 1
+          path.write_text(text.replace('value="' + actual + '"', 'value="' + '0' * 64 + '"'))
+          (pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'evidence/negative-oracle.json').write_text(json.dumps({
+              'artifact': 'gradle-9.2.1.jar', 'expected': '0' * 64, 'actual': actual
+          }))
+          PY
+          set +e
+          ./gradlew :captureReleaseDependencyInputs \
+            --init-script scripts/release/capture-gradle-inputs.init.gradle \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/checksum-negative.log" 2>&1
+          result=$?
+          set -e
+          [[ "$result" -ne 0 ]]
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
+          oracle = json.loads((root / 'evidence/negative-oracle.json').read_text())
+          log = (root / 'evidence/checksum-negative.log').read_text()
+          assert 'Dependency verification failed' in log and oracle['artifact'] in log
+          # Early plugin verification can create its report before buildDirectory
+          # is redirected by beforeProject. Admit only these two owned locations.
+          report_roots = [root / 'builds', pathlib.Path.cwd() / 'build/reports/dependency-verification']
+          reports = [p for base in report_roots for p in base.rglob('*.html')
+                     if 'dependency-verification' in p.parts]
+          assert len(reports) <= 32
+          matching = []
+          for report in reports:
+              assert report.is_file() and not report.is_symlink()
+              assert report.resolve() == report.absolute() and report.stat().st_size <= 2 * 1024 * 1024
+              if all(value in report.read_text() for value in oracle.values()):
+                  matching.append(report)
+          assert matching, 'Native Gradle report must identify the exact artifact and expected/actual SHA-256'
+          shutil.copyfile(matching[0], root / 'evidence/checksum-negative-report.html')
+          (root / 'evidence/checksum-negative.json').write_text(json.dumps({
+              'status': 'NATIVE_CHECKSUM_NEGATIVE_PASS_NOT_INPUT_AUTHORITY', **oracle,
+              'offline': True, 'package_credential': False
+          }, indent=2) + '\n')
+          PY
+
+      - name: Qualify the unsigned Android lint and release bundle identity online
+        if: ${{ matrix.platform == 'linux' }}
+        # Actual resource processing resolves lazy tools such as AAPT2; graph-only capture
+        # cannot prove this closure. This unsigned build is the sole Linux acquisition step.
+        env:
+          KIRA_PACKAGES_READ_TOKEN: ${{ secrets.KIRA_PACKAGES_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ ! -e app/google-services.json && ! -L app/google-services.json ]] || {
+            echo 'Unsigned qualification requires an absent Firebase slot' >&2
+            exit 1
+          }
+          cleanup_placeholder() {
+            local original_status=$?
+            unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+            ./gradlew --stop || original_status=1
+            if [[ ! -f app/google-services.json || -L app/google-services.json ]] ||
+                ! cmp -s app/google-services.json.example app/google-services.json; then
+              echo 'Unsigned qualification Firebase slot changed; refusing cleanup' >&2
+              exit 1
+            fi
+            rm -- app/google-services.json || exit 1
+            exit "$original_status"
+          }
+          ( set -o noclobber; cat app/google-services.json.example > app/google-services.json )
+          trap cleanup_placeholder EXIT
+          ./gradlew :app:lintRelease :app:verifyReleaseBundleIdentity \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false -PallowPlaceholderGoogleServices=true --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/unsigned-build.log" 2>&1
+          ruby release/version.rb verify-generated
+
+      - name: Inspect the exact existing unsigned AAB strictly offline without a build
+        if: ${{ matrix.platform == 'linux' }}
+        run: |
+          set -euo pipefail
+          unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+          trap './gradlew --stop' EXIT
+          [[ ! -e app/google-services.json && ! -L app/google-services.json ]]
+          aab="$GITHUB_WORKSPACE/app/build/outputs/bundle/release/app-release.aab"
+          [[ -f "$aab" && ! -L "$aab" ]]
+          sha256sum "$aab" > "$KIRA_APP61_ROOT/evidence/aab-before-offline.sha256"
+          ./gradlew :app:verifyReleaseBundleIdentity \
+            "-Pkira.releaseBundleToVerify=$aab" \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
+            --max-workers=1 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/offline-identity.log" 2>&1
+          [[ -f "$aab" && ! -L "$aab" ]]
+          sha256sum "$aab" > "$KIRA_APP61_ROOT/evidence/aab-after-offline.sha256"
+          cmp -s "$KIRA_APP61_ROOT/evidence/aab-before-offline.sha256" "$KIRA_APP61_ROOT/evidence/aab-after-offline.sha256"
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          evidence = pathlib.Path(os.environ['KIRA_APP61_ROOT']) / 'evidence'
+          log = (evidence / 'offline-identity.log').read_text()
+          tasks = re.findall(r'^> Task (\S+)', log, re.MULTILINE)
+          assert tasks == [':app:verifyReleaseBundleIdentity'], 'Supplied-AAB inspection must not rebuild, compile or run R8'
+          assert 'Store AAB canonical package and non-debuggable binary manifest verified' in log
+          before = (evidence / 'aab-before-offline.sha256').read_text().split()[0]
+          after = (evidence / 'aab-after-offline.sha256').read_text().split()[0]
+          assert before == after and re.fullmatch(r'[0-9a-f]{64}', before)
+          (evidence / 'offline-identity.json').write_text(json.dumps({
+              'status': 'STRICT_OFFLINE_EXISTING_AAB_IDENTITY_PASS', 'tasks': tasks,
+              'before_sha256': before, 'after_sha256': after, 'package_credential': False,
+              'rebuild_compile_or_r8_executed': False
+          }, indent=2) + '\n')
+          PY
+
+      - name: Qualify both Apple compiles and the Release framework offline
+        if: ${{ matrix.platform == 'apple' }}
+        run: |
+          set -euo pipefail
+          unset KIRA_PACKAGES_READ_TOKEN MOBILE_RELEASE_PROJECT_READ_TOKEN GITHUB_TOKEN GH_TOKEN
+          trap './gradlew --stop' EXIT
+          python3 -B scripts/release/prepare-libffi-source.py verify
+          ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 :composeApp:linkReleaseFrameworkIosArm64 \
+            --project-cache-dir "$KIRA_APP61_ROOT/project-cache" \
+            --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon --offline \
+            --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process \
+            -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false \
+            -Pandroid.builder.sdkDownload=false --stacktrace \
+            > "$KIRA_APP61_ROOT/evidence/unsigned-build.log" 2>&1
+          ruby release/version.rb verify-generated
+          python3 -B scripts/release/prepare-libffi-source.py verify
+
+      - name: Record the unsigned build output and unchanged accepted input files
+        run: |
+          set -euo pipefail
+          /usr/bin/ruby scripts/release/verify-toolchain-inputs.rb
+          git diff --exit-code
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path(os.environ['KIRA_APP61_ROOT'])
+          apple = os.environ['KIRA_APP61_PLATFORM'] == 'apple'
+          output = pathlib.Path('composeApp/build/bin/iosArm64/releaseFramework/ComposeApp.framework/ComposeApp' if apple
+              else 'app/build/outputs/bundle/release/app-release.aab')
+          assert output.is_file() and not output.is_symlink()
+          digest = hashlib.sha256()
+          with output.open('rb') as stream:
+              for block in iter(lambda: stream.read(1048576), b''):
+                  digest.update(block)
+          (root / 'evidence/unsigned-build.json').write_text(json.dumps({
+              'status': 'STRICT_OFFLINE_UNSIGNED_BUILD_PASS' if apple else 'STRICT_ONLINE_UNSIGNED_BUILD_AND_OFFLINE_IDENTITY_PASS',
+              'source_sha': os.environ['GITHUB_SHA'],
+              'platform': os.environ['KIRA_APP61_PLATFORM'], 'output': str(output),
+              'bytes': output.stat().st_size, 'sha256': digest.hexdigest(),
+              'signing_store_or_shared_test_execution': False,
+              'accepted_metadata_unchanged': True, 'build_offline': apple,
+              'package_read_credential_in_unsigned_build': not apple,
+              'package_credential_in_offline_consumer': False
+          }, indent=2) + '\n')
+          PY
+
+      - name: Stop owned Gradle workers before disposal
+        id: stop-owned-gradle
+        if: ${{ always() && env.KIRA_VERIFIED_JAVA_AREA != '' }}
+        run: ./gradlew --stop
+
+      - name: Verify and remove the owned Native inputs, preserving provenance
+        if: ${{ always() && matrix.platform == 'apple' && (env.KIRA_VERIFIED_JAVA_AREA == '' || steps.stop-owned-gradle.outcome == 'success') }}
+        run: |
+          set -euo pipefail
+          status=0
+          if [[ '${{ steps.native-bootstrap.outcome }}' == success ]]; then
+            python3 -B scripts/release/prepare-libffi-source.py verify || status=1
+          fi
+          python3 -B scripts/release/prepare-libffi-source.py cleanup || status=1
+          if [[ -n "${KIRA_APP61_ROOT:-}" && -f "$RUNNER_TEMP/kira-libffi-provenance.json" ]]; then
+            cp "$RUNNER_TEMP/kira-libffi-provenance.json" "$KIRA_APP61_ROOT/evidence/libffi-provenance.json" || status=1
+          fi
+          exit "$status"
+
+      - name: Preserve qualification receipts and original failure logs
+        id: preserve-evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app61-qualified-${{ matrix.platform }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kira-app61-qualification/evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove only this job's owned build outputs and temporary locations
+        if: ${{ always() && (env.KIRA_VERIFIED_JAVA_AREA == '' || steps.stop-owned-gradle.outcome == 'success') && steps.preserve-evidence.outcome != 'failure' }}
+        run: |
+          set -euo pipefail
+          python3 -B scripts/release/clean-mobile-build.py
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import os, pathlib, shutil
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kira-app61-qualification'
+          if root.exists() or root.is_symlink():
+              assert root.is_dir() and not root.is_symlink()
+              expected = ':'.join(os.environ[k] for k in ['GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_SHA']) + '\n'
+              assert (root / 'owner').is_file() and not (root / 'owner').is_symlink()
+              assert (root / 'owner').read_text() == expected
+              shutil.rmtree(root)
+          PY
+
+      - name: Remove owned verified runtime inputs
+        if: ${{ always() && (env.KIRA_VERIFIED_JAVA_AREA == '' || steps.stop-owned-gradle.outcome == 'success') }}
+        run: /usr/bin/python3 -I -B scripts/release/install-toolchain-inputs.py cleanup

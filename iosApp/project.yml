@@ -144,8 +144,14 @@ targets:
         # KOTLIN_FRAMEWORK_BUILD_TYPE/ARCHS/SDK_NAME are read by Kotlin's Xcode integration
         # from the Xcode build environment.
         script: |
+          set -eu
           cd "$SRCROOT/.."
-          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+          if [ "$CONFIGURATION" = "Release" ]; then
+            set -- --offline
+          else
+            set --
+          fi
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode --dependency-verification=strict --no-configuration-cache --no-build-cache --no-daemon -PkiraUseMavenLocal=false -Porg.gradle.java.installations.auto-download=false -Pandroid.builder.sdkDownload=false "$@"
         inputFiles:
           - $(SRCROOT)/../composeApp/build.gradle.kts
         outputFiles:

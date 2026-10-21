@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded, job-private Kotlin 2.4.0 libffi source qualification; no fallback.
+"""Bounded, job-private Kotlin 2.4.0/source-libffi/LLVM qualification; no fallback.
 
 The reviewed checkout and hosted Xcode runner are trust roots. Input SHA-256s
 are checked before extraction/execution. This does not authenticate the rejected
@@ -30,6 +30,9 @@ import urllib.request
 VERSION = "2.4.0"
 DEPENDENCY = "libffi-3.3-1-macos-arm64"
 PROFILE = DEPENDENCY + ".default"
+LLVM_DEPENDENCY = "llvm-21-aarch64-macos-essentials-97"
+LLVM_PROFILE = LLVM_DEPENDENCY + ".default"
+LLVM_REMOTE = "remote:public:resources/llvm/21-aarch64-macos"
 MARKER = ".kira-libffi-source-owned.json"
 STATE = "provenance.json"
 PROVENANCE = "kira-libffi-provenance.json"
@@ -95,7 +98,7 @@ def write_json(path, value, replace=False):
 def pins(repo=ROOT):
     value = read_json(repo / "release/libffi-source.json")
     check(set(value) == {"schema_version", "kotlin_version", "host", "dependency", "source", "patch",
-                         "cfi_upstream", "cfi_backport", "recipe", "compiler", "provenance"}, "unexpected source pin schema")
+                         "cfi_upstream", "cfi_backport", "recipe", "compiler", "llvm", "provenance"}, "unexpected source pin schema")
     check(value["schema_version"] == 1 and value["kotlin_version"] == VERSION and
           value["host"] == "macos_arm64" and value["dependency"] == DEPENDENCY,
           "only the reviewed Kotlin 2.4.0 Apple ARM64 recipe is supported")
@@ -105,6 +108,7 @@ def pins(repo=ROOT):
         "cfi_upstream": ("https://github.com/libffi/libffi/commit/8308bed5b2423878aa20d7884a99cf2e30b8daf7.patch", 1315),
         "recipe": ("https://raw.githubusercontent.com/JetBrains/kotlin/add726ca8c82922b6ab4cb2a27ae738d6a780817/kotlin-native/tools/libffi/build_for_macos.sh", 933),
         "compiler": (f"https://github.com/JetBrains/kotlin/releases/download/v{VERSION}/kotlin-native-prebuilt-macos-aarch64-{VERSION}.tar.gz", 259007716),
+        "llvm": (f"https://download.jetbrains.com/kotlin/native/resources/llvm/21-aarch64-macos/{LLVM_DEPENDENCY}.tar.gz", 151150049),
     }
     for name, (url, size) in routes.items():
         pin = value[name]
@@ -116,7 +120,8 @@ def pins(repo=ROOT):
           "invalid reviewed CFI backport pin")
     verify_download(repo / backport["path"], backport)
     check(value["source"]["archive_root"] == "libffi-3.3" and
-          value["compiler"]["archive_root"] == f"kotlin-native-prebuilt-macos-aarch64-{VERSION}",
+          value["compiler"]["archive_root"] == f"kotlin-native-prebuilt-macos-aarch64-{VERSION}" and
+          value["llvm"]["archive_root"] == LLVM_DEPENDENCY,
           "unexpected archive layout")
     catalog = (repo / "gradle/libs.versions.toml").read_text()
     check(re.findall(r'^kotlin\s*=\s*"([^"\n]+)"\s*$', catalog, re.M) == [VERSION],
@@ -293,15 +298,34 @@ def properties(data):
     return result
 
 
-def profile_bytes(original, install):
+def profile_edits(llvm):
+    return ((b"airplaneMode = false\n", b"airplaneMode = true\n"),
+            (f"{LLVM_PROFILE}={LLVM_REMOTE}\n".encode("ascii"),
+             f"{LLVM_PROFILE}={llvm}\n".encode("ascii")))
+
+
+def profile_bytes(original, install, llvm):
     values = properties(original)
     check([value for key, value in values if key == "libffiDir.macos_arm64"] == [DEPENDENCY],
           "official libffiDir.macos_arm64 is not the expected dependency")
     check([value for key, value in values if key == "dependencyProfiles"] == ["default alt"],
           "unexpected dependency profile ordering")
     check(not any(key.startswith(DEPENDENCY + ".") for key, _ in values), "prior libffi profile override")
-    check(install.is_absolute() and re.fullmatch(r"/[A-Za-z0-9._/-]+", str(install)), "unsafe local profile path")
-    return original + (f"\n{PROFILE}={install}\n").encode("ascii")
+    check([value for key, value in values if key == "llvmHome.macos_arm64"] == ["$llvm.macos_arm64.user"] and
+          [value for key, value in values if key == "llvm.macos_arm64.user"] == [LLVM_DEPENDENCY] and
+          [value for key, value in values if key == "llvmVersion.macos_arm64"] == ["21"],
+          "official LLVM selection is not the expected essentials dependency")
+    check([(key, value) for key, value in values if key.startswith(LLVM_DEPENDENCY + ".")] ==
+          [(LLVM_PROFILE, LLVM_REMOTE)], "unexpected LLVM profile candidates")
+    check([value for key, value in values if key == "airplaneMode"] == ["false"], "unexpected Native offline policy")
+    for path in (install, llvm):
+        check(path.is_absolute() and re.fullmatch(r"/[A-Za-z0-9._/-]+", str(path)), "unsafe local profile path")
+    modified = original
+    for before, after in profile_edits(llvm):
+        pattern = rb"(?m)^" + re.escape(before)
+        check(len(re.findall(pattern, modified)) == 1, "unsupported Native profile/offline-policy layout")
+        modified = re.sub(pattern, after, modified, count=1)
+    return modified + (f"\n{PROFILE}={install}\n").encode("ascii")
 
 
 def override_guard(repo, env, home=None, data=None):
@@ -328,6 +352,7 @@ def override_guard(repo, env, home=None, data=None):
             check(prop != "org.gradle.caching" or value == "false", "conflicting Gradle build-cache environment")
     for key in ("KONAN_HOME", "KOTLIN_NATIVE_HOME"):
         check(key not in env, f"unexpected {key} override")
+    check(env.get("KONAN_USE_INTERNAL_SERVER", "0") == "0", "unexpected internal Native server override")
     check(("KONAN_DATA_DIR" not in env) if data is None else env.get("KONAN_DATA_DIR") == str(data),
           "unexpected or missing KONAN_DATA_DIR")
     for path in {repo / "gradle.properties", repo / "local.properties",
@@ -472,6 +497,32 @@ def install_hashes(install):
     return files
 
 
+def llvm_tree_hash(home):
+    """Bind the complete private LLVM tree, including modes and internal links."""
+    directory(home)
+    check(home.resolve(strict=True) == home and home.stat().st_mode & 0o7000 == 0, "aliased or privileged LLVM root")
+    entries, size = {".": ["directory", stat.S_IMODE(home.stat().st_mode)]}, 0
+    for base, directories, files in os.walk(home, followlinks=False):
+        for name in directories + files:
+            path = Path(base) / name
+            info = path.lstat()
+            mode = stat.S_IMODE(info.st_mode)
+            check(mode & 0o7000 == 0, "privileged LLVM tree mode")
+            if stat.S_ISLNK(info.st_mode):
+                check(path.resolve(strict=True).is_relative_to(home), "LLVM link escapes its authenticated tree")
+                entry = ["link", mode, os.readlink(path)]
+            elif stat.S_ISDIR(info.st_mode):
+                entry = ["directory", mode]
+            else:
+                size += regular(path, 2 * 1024**3).st_size
+                entry = ["file", mode, info.st_size, digest(path)]
+            entries[path.relative_to(home).as_posix()] = entry
+            check(len(entries) <= 4096 and size <= 2 * 1024**3, "LLVM tree exceeds bounds")
+    clang = home / "bin/clang"
+    check(clang.is_file() and regular(clang.resolve(strict=True)).st_mode & 0o111, "verified LLVM clang is missing or not executable")
+    return hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def blacklist_hash(home):
     path = home / "tools/env_blacklist"
     directory(home / "tools")
@@ -535,13 +586,16 @@ def prepare(env, repo=ROOT):
         write_json(root / STATE, state, replace=True)
         download(pin["compiler"], root / "downloads/compiler")
         home = extract_verified(root / "downloads/compiler", pin["compiler"], root / "compiler")
+        download(pin["llvm"], root / "downloads/llvm")
+        llvm = extract_verified(root / "downloads/llvm", pin["llvm"], root / "llvm")
+        state["llvm_tree_sha256"] = llvm_tree_hash(llvm)
         config = home / "konan/konan.properties"
         directory(home / "konan")
         regular(config, 262144)
         original = config.read_bytes()
-        modified = profile_bytes(original, root / "install")
+        modified = profile_bytes(original, root / "install", llvm)
         state["original_konan_properties_sha256"] = hashlib.sha256(original).hexdigest()
-        config.write_bytes(modified)  # The sole distribution edit: append one local-profile property.
+        config.write_bytes(modified)  # Two local profiles, with all auxiliary downloads disabled.
         state["configured_konan_properties_sha256"] = digest(config)
         state["env_blacklist_sha256"] = blacklist_hash(home)
         state["native_home"] = str(home)
@@ -554,7 +608,7 @@ def prepare(env, repo=ROOT):
         options += (" " if options else "") + NATIVE_HOME + str(home) + " " + CACHE_OFF
         with github_env.open("a", encoding="utf-8") as output:
             output.write(f"GRADLE_OPTS={options}\nKONAN_DATA_DIR={root / 'data'}\n")
-        print("Verified source-built ARM64 libffi, static ABI/closure smoke, and private Kotlin 2.4.0 compiler prepared")
+        print("Verified source-built ARM64 libffi, static ABI/closure smoke, private Kotlin 2.4.0 and offline LLVM prepared")
     except BaseException:
         state["status"] = "prepare-failed"
         if present(root / STATE):
@@ -573,7 +627,8 @@ def verify(env, repo=ROOT):
     check(state["owner"] == owner(root, env) and state["status"] == "prepared" and
           state["inputs"] == state_inputs(repo, pin), "prepared provenance or checkout inputs changed")
     home = root / "compiler" / pin["compiler"]["archive_root"]
-    for path in (root / "compiler", home, home / "konan"):
+    llvm = root / "llvm" / pin["llvm"]["archive_root"]
+    for path in (root / "compiler", home, home / "konan", root / "llvm"):
         directory(path)
     check(state["native_home"] == str(home) and state["konan_data_dir"] == str(root / "data"), "prepared paths changed")
     override_guard(repo, env, home, root / "data")
@@ -583,16 +638,21 @@ def verify(env, repo=ROOT):
     suffix = f"\n{PROFILE}={root / 'install'}\n".encode("ascii")
     check(modified.endswith(suffix), "private libffi profile is missing or changed")
     original = modified[:-len(suffix)]
+    for before, after in profile_edits(llvm):
+        pattern = rb"(?m)^" + re.escape(after)
+        check(len(re.findall(pattern, original)) == 1, "private LLVM/offline profile is missing or changed")
+        original = re.sub(pattern, before, original, count=1)
     check(hashlib.sha256(original).hexdigest() == state["original_konan_properties_sha256"] and
           digest(config) == state["configured_konan_properties_sha256"] and
-          profile_bytes(original, root / "install") == modified, "private compiler config changed beyond its sole override")
+          profile_bytes(original, root / "install", llvm) == modified, "private compiler config changed beyond its reviewed overrides")
     check(blacklist_hash(home) == state["env_blacklist_sha256"], "compiler environment blacklist changed")
     check(install_hashes(root / "install") == state["installed_files"], "installed libffi archive/headers/config changed")
+    check(llvm_tree_hash(llvm) == state["llvm_tree_sha256"], "installed LLVM tree changed")
     check(not present(root / "work") and not present(root / "downloads"), "source/download intermediates remain")
     no_prebuilt(root / "data")
     state["verification_count"] += 1
     write_json(root / STATE, state, replace=True)
-    print("Verified private source-built libffi/profile/isolation; no disputed prebuilt receipt or download")
+    print("Verified private source-built libffi/LLVM/offline profiles; no disputed prebuilt receipt or download")
 
 
 def cleanup(env):

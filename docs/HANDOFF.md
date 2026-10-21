@@ -334,3 +334,24 @@ New provider/shared-rule and actual Android worker/service Room-fixture regressi
 device/network verification or issue closure. Independent review and the primary's composed gate
 are still required. The App33 composition preserves its production token guards and adapts only the
 new Android fixture to real artifact admission, producer drain and checked settlement.
+
+## App61 immutable mobile build inputs (2026-10-21)
+
+`release/verified-tools.json` binds the wrapper, runtime archives, current Gradle verification
+metadata/native locks, source inputs and their workflow consumers. Run the credential-free
+`/usr/bin/ruby scripts/release/verify-toolchain-inputs.rb` before using the release toolchain.
+Do not regenerate hashes merely to make a failed integrity check pass: compare changed inputs
+with their actual publisher/accepted publication, review them, then update the exact bindings.
+The manual `toolchain-input-capture.yml` workflow emits **unreviewed candidates**, not authority.
+`toolchain-input-qualification.yml` checks accepted inputs without signing or uploading to Stores.
+
+The selected build hosts are Linux x86_64 and macOS arm64. Five projects (composeApp, desktopApp,
+ui, data and platform) resolve different Compose/Skiko host modules, including in shared metadata.
+Their Linux native lockfile is `gradle.lockfile`; macOS uses `gradle-macos-arm64.lockfile`.
+Both are committed and checked, while `buildscript-gradle.lockfile` remains independent.
+Do not union different host graphs or relax STRICT mode. This is build-host support, not a
+Desktop shipping commitment. Other build hosts require their own reviewed input qualification.
+
+Store workflows consume the strict graph before protected signing/store inputs, then use it
+offline. Kotlin/Native uses the authenticated compiler and LLVM with the existing source-built
+libffi; no disputed prebuilt libffi archive or checksum-verification bypass is introduced.
